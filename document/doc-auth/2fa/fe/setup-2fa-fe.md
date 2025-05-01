@@ -3,13 +3,19 @@
 **File:** `ui-setup-2fa.md`
 **Ngày tạo:** 2025-04-30
 
+---
+
 ## Mục Tiêu (Goal)
 
 Cho phép người dùng đã đăng nhập kích hoạt tính năng Xác thực 2 yếu tố (2FA) dựa trên TOTP (Time-based One-Time Password) sử dụng ứng dụng Authenticator.
 
+---
+
 ## API Endpoint Liên Quan (Related API Endpoint)
 
 * `POST /auth/setup-2fa` (Yêu cầu người dùng đã được xác thực - authenticated)
+
+---
 
 ## Luồng Logic Backend (Backend Logic Flow - Summary)
 
@@ -20,6 +26,8 @@ Cho phép người dùng đã đăng nhập kích hoạt tính năng Xác thực
         * Gọi `twoFactorService.generateTOTPSecret` để tạo `secret` và `uri` (dùng cho QR code).
         * **Cập nhật (lưu) `secret` vào bản ghi `user` trong database.**
         * Trả về `{ secret, uri }`.
+
+---
 
 ## Các Thành Phần Giao Diện (UI Components)
 
@@ -48,6 +56,8 @@ Cho phép người dùng đã đăng nhập kích hoạt tính năng Xác thực
         * Nút Hoàn Tất Cài Đặt (`<button type="button" id="complete-setup-btn">`)
             * Text: "Xác Nhận và Hoàn Tất"
     * **Vùng Thông Báo (`<div class="setup-feedback">`)**: Hiển thị lỗi hoặc thành công.
+
+---
 
 ## Luồng Tương Tác Người Dùng (User Interaction Workflow)
 
@@ -83,6 +93,8 @@ Cho phép người dùng đã đăng nhập kích hoạt tính năng Xác thực
     * **Nếu không có Bước 3 (Xác nhận):**
         * Sau khi hiển thị hướng dẫn, có thể coi như 2FA đã được "kích hoạt" ở backend (vì secret đã được lưu). Cần có nút "Đã hiểu/Đóng" để ẩn khu vực hướng dẫn và cập nhật trạng thái UI thành "Đang bật". **Tuy nhiên, cách này kém an toàn hơn.**
 
+---
+
 ## Xử Lý Trạng Thái & Phản Hồi (State Management & Feedback)
 
 * Quản lý trạng thái 2FA hiện tại của người dùng (`is2FAEnabled`).
@@ -91,9 +103,13 @@ Cho phép người dùng đã đăng nhập kích hoạt tính năng Xác thực
 * Render QR code bằng thư viện phù hợp (ví dụ: `qrcode.react`, `ngx-qrcode`).
 * Triển khai chức năng copy mã secret vào clipboard.
 
+---
+
 ## Validation Phía Client (Client-Side Validation)
 
 * *(Nếu có bước xác nhận)* Kiểm tra định dạng mã TOTP (6 chữ số).
+
+---
 
 ## Lưu Ý Cho Intern (Notes for Intern)
 

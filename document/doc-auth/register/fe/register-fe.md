@@ -3,35 +3,20 @@
 **File:** `ui-register.md`
 **Ngày tạo:** 2025-04-30
 
+---
+
 ## Mục Tiêu (Goal)
 
 Giao diện này cho phép người dùng mới tạo tài khoản bằng cách cung cấp thông tin cá nhân và xác thực địa chỉ email thông qua mã OTP.
+
+---
 
 ## API Endpoint Liên Quan (Related API Endpoint)
 
 1.  `POST /auth/send-otp` (với `type: TypeOfVerificationCode.REGISTER`)
 2.  `POST /auth/register`
 
-## Luồng Logic Backend (Backend Logic Flow - Summary)
-
-1.  **`sendOTP (REGISTER)`**:
-    * Kiểm tra xem `email` đã tồn tại trong `SharedUserRepository` chưa.
-    * Nếu **đã tồn tại**, ném lỗi `EmailAlreadyExistsException`.
-    * Nếu **chưa tồn tại**:
-        * Tạo mã `code` (OTP).
-        * Lưu `email`, `code`, `type = REGISTER`, và `expiresAt` vào bảng Verification Code.
-        * Gửi email chứa `code` cho người dùng. Ném `FailedToSendOTPException` nếu gửi thất bại.
-        * Trả về thông báo thành công.
-2.  **`register`**:
-    * Gọi `validateVerificationCode` để kiểm tra `email`, `code`, và `type = REGISTER`.
-        * Ném `InvalidOTPException` nếu không tìm thấy bản ghi phù hợp.
-        * Ném `OTPExpiredException` nếu mã đã hết hạn.
-    * Lấy `clientRoleId`.
-    * Hash mật khẩu (`password`).
-    * Tạo bản ghi người dùng mới (`User`) với thông tin đã cung cấp.
-    * Xóa bản ghi Verification Code đã sử dụng.
-    * Trả về thông tin người dùng vừa tạo.
-    * *Catch Block:* Ném `EmailAlreadyExistsException` nếu có lỗi unique constraint khi tạo user (trường hợp hiếm xảy ra nếu `sendOTP` đã kiểm tra).
+---
 
 ## Các Thành Phần Giao Diện (UI Components)
 
@@ -65,6 +50,8 @@ Giao diện này cho phép người dùng mới tạo tài khoản bằng cách 
         * *Trạng thái:* Disable khi đang xử lý đăng ký.
 * **Vùng Thông Báo Chung (`<div class="form-feedback">`)**: Hiển thị lỗi cuối cùng (ví dụ: "Mã OTP không hợp lệ", "Mật khẩu không khớp") hoặc thông báo thành công chung.
 * **Liên kết Đăng Nhập (`<a href="/login">`)**: "Đã có tài khoản? Đăng nhập ngay"
+
+---
 
 ## Luồng Tương Tác Người Dùng (User Interaction Workflow)
 
@@ -101,6 +88,8 @@ Giao diện này cho phép người dùng mới tạo tài khoản bằng cách 
                 * `EmailAlreadyExistsException`: "Email này đã được đăng ký." (Trường hợp hy hữu)
                 * Lỗi khác: "Đăng ký thất bại. Vui lòng thử lại."
 
+---
+
 ## Xử Lý Trạng Thái & Phản Hồi (State Management & Feedback)
 
 * Sử dụng state để quản lý trạng thái loading của các nút (`isSendingOtp`, `isRegistering`).
@@ -108,12 +97,16 @@ Giao diện này cho phép người dùng mới tạo tài khoản bằng cách 
 * Disable các trường/nút không cần thiết trong quá trình xử lý API call.
 * Clear thông báo lỗi khi người dùng bắt đầu nhập lại thông tin.
 
+---
+
 ## Validation Phía Client (Client-Side Validation)
 
 * Kiểm tra định dạng email hợp lệ.
 * Kiểm tra các trường `required` không bị trống.
 * Kiểm tra `password` và `confirmPassword` phải trùng khớp.
 * *(Optional)* Kiểm tra độ mạnh mật khẩu (độ dài, ký tự đặc biệt,...).
+
+---
 
 ## Lưu Ý Cho Intern (Notes for Intern)
 

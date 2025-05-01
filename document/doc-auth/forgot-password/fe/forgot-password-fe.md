@@ -3,34 +3,20 @@
 **File:** `ui-forgot-password.md`
 **Ngày tạo:** 2025-04-30
 
+---
+
 ## Mục Tiêu (Goal)
 
 Cho phép người dùng đặt lại mật khẩu nếu họ quên mật khẩu hiện tại, bằng cách xác thực qua email OTP.
+
+--- 
 
 ## API Endpoint Liên Quan (Related API Endpoint)
 
 1.  `POST /auth/send-otp` (với `type: TypeOfVerificationCode.FORGOT_PASSWORD`)
 2.  `POST /auth/forgot-password`
 
-## Luồng Logic Backend (Backend Logic Flow - Summary)
-
-1.  **`sendOTP (FORGOT_PASSWORD)`**:
-    * Kiểm tra xem `email` có tồn tại trong `SharedUserRepository` không.
-    * Nếu **KHÔNG tồn tại**, ném lỗi `EmailNotFoundException`.
-    * Nếu **CÓ tồn tại**:
-        * Tạo mã `code` (OTP).
-        * Lưu `email`, `code`, `type = FORGOT_PASSWORD`, và `expiresAt`.
-        * Gửi email chứa `code`. Ném `FailedToSendOTPException` nếu gửi thất bại.
-        * Trả về thông báo thành công.
-2.  **`forgotPassword`**:
-    * Tìm user bằng `email`. Ném `EmailNotFoundException` nếu không tìm thấy (kiểm tra lại).
-    * Gọi `validateVerificationCode` để kiểm tra `email`, `code`, và `type = FORGOT_PASSWORD`.
-        * Ném `InvalidOTPException` nếu không tìm thấy bản ghi phù hợp.
-        * Ném `OTPExpiredException` nếu mã đã hết hạn.
-    * Hash mật khẩu mới (`newPassword`).
-    * Cập nhật `password` cho user.
-    * Xóa bản ghi Verification Code đã sử dụng.
-    * Trả về thông báo thành công.
+---
 
 ## Các Thành Phần Giao Diện (UI Components)
 
@@ -61,6 +47,8 @@ Cho phép người dùng đặt lại mật khẩu nếu họ quên mật khẩu
         * Text: "Đặt Lại Mật Khẩu"
         * *Trạng thái:* Disable khi đang xử lý.
     * **Vùng Thông Báo (`<div class="feedback-step2">`)**: Hiển thị lỗi hoặc thông báo thành công.
+
+---
 
 ## Luồng Tương Tác Người Dùng (User Interaction Workflow)
 
@@ -102,6 +90,8 @@ Cho phép người dùng đặt lại mật khẩu nếu họ quên mật khẩu
                     * `OTPExpiredException`: "Mã OTP đã hết hạn. Vui lòng yêu cầu lại."
                     * Lỗi khác: "Đặt lại mật khẩu thất bại."
 
+---
+
 ## Xử Lý Trạng Thái & Phản Hồi (State Management & Feedback)
 
 * Quản lý trạng thái để hiển thị Giai đoạn 1 hoặc Giai đoạn 2 (`currentStep`).
@@ -109,10 +99,14 @@ Cho phép người dùng đặt lại mật khẩu nếu họ quên mật khẩu
 * Quản lý trạng thái loading cho các nút.
 * Hiển thị thông báo lỗi/thành công/hướng dẫn phù hợp với từng giai đoạn.
 
+---
+
 ## Validation Phía Client (Client-Side Validation)
 
 * **Giai đoạn 1:** Định dạng email hợp lệ.
 * **Giai đoạn 2:** Các trường `required`, mật khẩu mới và xác nhận phải khớp. Độ mạnh mật khẩu (optional).
+
+---
 
 ## Lưu Ý Cho Intern (Notes for Intern)
 

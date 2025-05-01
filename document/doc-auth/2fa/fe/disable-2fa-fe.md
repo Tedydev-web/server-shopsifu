@@ -3,14 +3,20 @@
 **File:** `ui-disable-2fa.md`
 **Ngày tạo:** 2025-04-30
 
+---
+
 ## Mục Tiêu (Goal)
 
 Cho phép người dùng đã đăng nhập và đã bật 2FA có thể tắt tính năng này sau khi xác minh danh tính bằng mã TOTP hoặc mã OTP gửi qua email.
+
+---
 
 ## API Endpoint Liên Quan (Related API Endpoint)
 
 1.  `POST /auth/disable-2fa` (Yêu cầu người dùng đã được xác thực)
 2.  `POST /auth/send-otp` (với `type: TypeOfVerificationCode.DISABLE_2FA`, chỉ khi xác minh qua email)
+
+---
 
 ## Luồng Logic Backend (Backend Logic Flow - Summary)
 
@@ -30,6 +36,8 @@ Cho phép người dùng đã đăng nhập và đã bật 2FA có thể tắt t
     * Lưu `email`, `code`, `type = DISABLE_2FA`, và `expiresAt`.
     * Gửi email chứa `code`. Ném `FailedToSendOTPException` nếu thất bại.
     * Trả về thông báo thành công.
+
+---
 
 ## Các Thành Phần Giao Diện (UI Components)
 
@@ -62,6 +70,8 @@ Cho phép người dùng đã đăng nhập và đã bật 2FA có thể tắt t
         * *Trạng thái:* Disable khi đang xử lý.
     * **Nút Hủy (`<button type="button" id="cancel-disable-btn">`)**: Đóng modal.
     * **Vùng Thông Báo Lỗi Modal (`<div class="modal-feedback">`)**
+
+---
 
 ## Luồng Tương Tác Người Dùng (User Interaction Workflow)
 
@@ -106,6 +116,8 @@ Cho phép người dùng đã đăng nhập và đã bật 2FA có thể tắt t
             * `OTPExpiredException`: "Mã xác thực (Email OTP) đã hết hạn."
             * Lỗi khác (401 Unauthorized, 500): "Không thể tắt 2FA vào lúc này."
 
+---
+
 ## Xử Lý Trạng Thái & Phản Hồi (State Management & Feedback)
 
 * Quản lý trạng thái hiển thị của Modal (`isDisableModalOpen`).
@@ -114,10 +126,14 @@ Cho phép người dùng đã đăng nhập và đã bật 2FA có thể tắt t
 * Hiển thị/xóa thông báo lỗi trong modal.
 * Cập nhật trạng thái 2FA chung (`is2FAEnabled`) sau khi thành công.
 
+---
+
 ## Validation Phía Client (Client-Side Validation)
 
 * Khi nhấn "Xác Nhận Tắt", kiểm tra xem người dùng đã nhập `totpCode` **HOẶC** `code` chưa.
 * Kiểm tra định dạng mã (ví dụ: 6 chữ số).
+
+---
 
 ## Lưu Ý Cho Intern (Notes for Intern)
 
