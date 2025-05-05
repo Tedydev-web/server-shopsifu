@@ -14,19 +14,19 @@ export class AuthController {
     return await this.authService.register(body)
   }
 
-  @Post('login')
-  async login(@Body() body: any) {
-    return this.authService.login(body)
-  }
+  // @Post('login')
+  // async login(@Body() body: any) {
+  //   return this.authService.login(body)
+  // }
 
-  @Post('refresh-token')
-  @HttpCode(HttpStatus.OK)
-  async refreshToken(@Body() body: any) {
-    return this.authService.refreshToken(body.refreshToken)
-  }
+  // @Post('refresh-token')
+  // @HttpCode(HttpStatus.OK)
+  // async refreshToken(@Body() body: any) {
+  //   return this.authService.refreshToken(body.refreshToken)
+  // }
 
-  @Post('logout')
-  async logout(@Body() body: any) {
-    return this.authService.logout(body.refreshToken)
-  }
+  // @Post('logout')
+  // async logout(@Body() body: any) {
+  //   return this.authService.logout(body.refreshToken)
+  // }
 }
