@@ -44,14 +44,14 @@ Cho phép người dùng đã đăng nhập kích hoạt tính năng Xác thực
     * **Bước 1: Cài đặt Ứng dụng**: "Cài đặt ứng dụng Google Authenticator, Authy hoặc tương tự."
     * **Bước 2: Quét Mã QR**:
         * Hiển thị Mã QR Code (`<div id="qr-code"></div>` - Sử dụng thư viện để render từ `uri`).
-        * Thông báo: "Quét mã QR này bằng ứng dụng Authenticator của bạn."
+        * Thông báo: "Quét mã QR này bằng ứng dụng Authenticator."
     * **Hoặc Nhập Thủ Công**:
         * Hiển thị Mã Bí Mật (`<p>`) : "Hoặc nhập mã bí mật này thủ công:"
         * Hiển thị `secret` (`<code id="secret-key">{secretValue}</code>`).
         * Nút Copy Secret (`<button type="button" id="copy-secret-btn">`)
-    * **CẢNH BÁO QUAN TRỌNG (`<div class="warning">`)**: "**LƯU Ý:** Hãy ghi lại Mã Bí Mật này và cất giữ ở nơi an toàn. Mã này dùng để khôi phục quyền truy cập nếu bạn mất điện thoại."
+    * **CẢNH BÁO QUAN TRỌNG (`<div class="warning">`)**: "**LƯU Ý:** Hãy ghi lại Mã Bí Mật này và cất giữ ở nơi an toàn. Mã này dùng để khôi phục quyền truy cập nếu mất điện thoại."
     * **Bước 3: Xác nhận (Optional - Nên có)**:
-        * Label: "Nhập mã gồm 6 chữ số từ ứng dụng của bạn để xác nhận:"
+        * Label: "Nhập mã gồm 6 chữ số từ ứng dụng của để xác nhận:"
         * TOTP Xác Nhận Input (`<input type="text" name="verifyTotpCode">`)
         * Nút Hoàn Tất Cài Đặt (`<button type="button" id="complete-setup-btn">`)
             * Text: "Xác Nhận và Hoàn Tất"
