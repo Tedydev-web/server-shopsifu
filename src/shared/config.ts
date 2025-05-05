@@ -4,7 +4,7 @@ import path from 'path'
 import { config } from 'dotenv'
 
 config({
-  path: '.env',
+  path: '.env'
 })
 // Kiểm tra coi thử có file .env hay chưa
 if (!fs.existsSync(path.resolve('.env'))) {
@@ -19,6 +19,10 @@ const configSchema = z.object({
   REFRESH_TOKEN_SECRET: z.string(),
   REFRESH_TOKEN_EXPIRES_IN: z.string(),
   SECRET_API_KEY: z.string(),
+  ADMIN_NAME: z.string(),
+  ADMIN_EMAIL: z.string(),
+  ADMIN_PASSWORD: z.string(),
+  ADMIN_PHONE_NUMBER: z.string()
 })
 
 const configServer = configSchema.safeParse(process.env)

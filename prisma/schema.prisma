@@ -154,7 +154,7 @@ model Permission {
 
 model Role {
   id          Int          @id @default(autoincrement())
-  name        String       @db.VarChar(500)
+  name        String       @unique@db.VarChar(500)
   description String
   isActive    Boolean      @default(true)
   permissions Permission[]
