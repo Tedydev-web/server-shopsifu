@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>{{subject}}</title>
+    <style>
+      @media only screen and (max-width: 620px) {
+        .container {
+          padding: 0 !important;
+          width: 100% !important;
+        }
+
+        .content {
+          padding: 20px !important;
+          border-radius: 0 !important;
+        }
+
+        .header img {
+          max-width: 220px;
+        }
+
+        .message-box {
+          font-size: 20px;
+        }
+
+        .social-icons td {
+          padding: 0 3px;
+        }
+
+        .social-icons img {
+          width: 32px;
+          height: 32px;
+          padding: 4px;
+        }
+
+        h1 {
+          font-size: 22px !important;
+        }
+
+        p,
+        ul,
+        ol {
+          font-size: 14px !important;
+        }
+
+        .btn a {
+          padding: 8px 20px;
+          font-size: 12px;
+        }
+
+        .footer p,
+        .footer a {
+          font-size: 10px;
+        }
+      }
+      @media all {
+        .ExternalClass {
+          width: 100%;
+        }
+
+        .ExternalClass,
+        .ExternalClass p,
+        .ExternalClass span,
+        .ExternalClass font,
+        .ExternalClass td,
+        .ExternalClass div {
+          line-height: 100%;
+        }
+
+        .apple-link a {
+          color: inherit !important;
+          font-family: inherit !important;
+          font-size: inherit !important;
+          font-weight: inherit !important;
+          line-height: inherit !important;
+          text-decoration: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body
+    style="
+      background-color: #f5f5f5;
+      font-family: 'Roboto', Arial, Helvetica, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      font-size: 16px;
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+      -ms-text-size-adjust: 100%;
+      -webkit-text-size-adjust: 100%;
+    "
+  >
+    <div class="body" style="background-color: #f5f5f5; margin: 0; padding: 20px 0; width: 100%">
+      <div
+        class="container"
+        style="display: block; max-width: 600px; padding: 10px; width: 100%; box-sizing: border-box; margin: 0 auto"
+      >
+        <div
+          class="content"
+          style="
+            box-sizing: border-box;
+            border-radius: 12px;
+            display: block;
+            margin: 0 auto;
+            max-width: 600px;
+            padding: 30px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+          "
+        >
+          <div class="header" style="padding: 20px; margin-bottom: 20px; text-align: center">
+            <img
+              src="https://res.cloudinary.com/tedydev/image/upload/v1746529334/shopsifu/red-full-390x240.png"
+              alt="Shopsifu Logo"
+              style="
+                border: none;
+                -ms-interpolation-mode: bicubic;
+                max-width: 250px;
+                height: auto;
+                display: block;
+                margin: 0 auto;
+              "
+              height="auto"
+            />
+          </div>
+          <p
+            style="
+              font-family: 'Roboto', Arial, Helvetica, sans-serif;
+              font-size: 16px;
+              color: #333333;
+              margin: 0;
+              margin-bottom: 15px;
+            "
+          >
+            Kính gửi <span class="highlight">{{name}}</span>,
+          </p>
+          <p
+            style="
+              font-family: 'Roboto', Arial, Helvetica, sans-serif;
+              font-size: 16px;
+              color: #333333;
+              margin: 0;
+              margin-bottom: 15px;
+            "
+          >
+            Cảm ơn bạn đã sử dụng dịch vụ tại <strong>Shopsifu</strong>! Để đảm bảo an toàn cho tài khoản của bạn, chúng
+            tôi đã gửi mã OTP xác thực cho yêu cầu đăng nhập/đăng ký của bạn.
+          </p>
+          <p
+            style="
+              font-family: 'Roboto', Arial, Helvetica, sans-serif;
+              font-size: 16px;
+              color: #333333;
+              margin: 0;
+              margin-bottom: 15px;
+            "
+          >
+            <strong>Mã OTP của bạn là:</strong>
+          </p>
+          <div
+            class="message-box"
+            style="
+              border-left: 4px solid #d0201c;
+              background-color: #f9f9f9;
+              margin: 20px 0;
+              padding: 15px;
+              text-align: center;
+              font-size: 24px;
+              font-weight: 700;
+              color: #333333;
+            "
+          >
+            <strong>{{code}}</strong>
+          </div>
+          <p
+            style="
+              font-family: 'Roboto', Arial, Helvetica, sans-serif;
+              font-size: 16px;
+              color: #333333;
+              margin: 0;
+              margin-bottom: 15px;
+            "
+          >
+            Mã OTP có hiệu lực trong vòng <strong>5 phút</strong>. Vui lòng nhập mã này để hoàn tất quá trình xác thực.
+            Nếu không yêu cầu mã này, xin vui lòng bỏ qua email hoặc liên hệ với chúng tôi ngay để được hỗ trợ.
+          </p>
+          <div class="btn" style="box-sizing: border-box; width: 100%; margin: 20px 0">
+            <table
+              role="presentation"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              style="
+                border-collapse: separate;
+                mso-table-lspace: 0pt;
+                mso-table-rspace: 0pt;
+                width: auto;
+                margin: 0 auto;
+              "
+              width="auto"
+            >
+              <tr>
+                <td
+                  style="
+                    font-family: 'Roboto', Arial, Helvetica, sans-serif;
+                    font-size: 16px;
+                    vertical-align: top;
+                    background: linear-gradient(90deg, #d0201c, #e9312e);
+                    border-radius: 8px;
+                    text-align: center;
+                  "
+                  valign="top"
+                  align="center"
+                >
+                  <a
+                    href="https://shopsifu.com"
+                    target="_blank"
+                    style="
+                      background: linear-gradient(90deg, #d0201c, #e9312e);
+                      border: none;
+                      border-radius: 8px;
+                      box-sizing: border-box;
+                      color: #ffffff;
+                      cursor: pointer;
+                      display: inline-block;
+                      font-size: 14px;
+                      font-weight: 700;
+                      padding: 10px 25px;
+                      text-decoration: none;
+                    "
+                    >Quay lại Shopsifu</a
+                  >
+                </td>
+              </tr>
+            </table>
+          </div>
+          <p
+            style="
+              font-family: 'Roboto', Arial, Helvetica, sans-serif;
+              font-size: 16px;
+              color: #333333;
+              margin: 0;
+              margin-bottom: 15px;
+            "
+          >
+            Để đảm bảo trải nghiệm mua sắm tuyệt vời trên nền tảng của chúng tôi, bạn có thể khám phá thêm:
+          </p>
+          <ul
+            style="
+              font-family: 'Roboto', Arial, Helvetica, sans-serif;
+              font-size: 16px;
+              color: #333333;
+              margin: 0;
+              margin-bottom: 15px;
+            "
+          >
+            <li style="list-style-position: inside; margin-left: 5px">
+              <a
+                href="https://shopsifu.com/promotions"
+                target="_blank"
+                style="color: #d0201c; text-decoration: none; font-weight: bold"
+                >Ưu đãi & Khuyến mãi</a
+              >
+            </li>
+            <li style="list-style-position: inside; margin-left: 5px">
+              <a
+                href="https://shopsifu.com/categories"
+                target="_blank"
+                style="color: #d0201c; text-decoration: none; font-weight: bold"
+                >Danh mục sản phẩm</a
+              >
+            </li>
+            <li style="list-style-position: inside; margin-left: 5px">
+              <a
+                href="https://shopsifu.com/support"
+                target="_blank"
+                style="color: #d0201c; text-decoration: none; font-weight: bold"
+                >Hỗ trợ khách hàng</a
+              >
+            </li>
+          </ul>
+          <p
+            style="
+              font-family: 'Roboto', Arial, Helvetica, sans-serif;
+              font-size: 16px;
+              color: #333333;
+              margin: 0;
+              margin-bottom: 15px;
+            "
+          >
+            Chúng tôi luôn sẵn sàng hỗ trợ bạn! Nếu có bất kỳ thắc mắc nào, đừng ngần ngại liên hệ với đội ngũ Shopsifu.
+            😊
+          </p>
+          <p
+            style="
+              font-family: 'Roboto', Arial, Helvetica, sans-serif;
+              font-size: 16px;
+              color: #333333;
+              margin: 0;
+              margin-bottom: 15px;
+            "
+          >
+            Trân trọng,
+          </p>
+          <p
+            style="
+              font-family: 'Roboto', Arial, Helvetica, sans-serif;
+              font-size: 16px;
+              color: #333333;
+              margin: 0;
+              margin-bottom: 15px;
+            "
+          >
+            <strong>Đội ngũ hỗ trợ Shopsifu</strong>
+          </p>
+          <div class="footer" style="clear: both; margin-top: 20px; text-align: center; width: 100%">
+            <p
+              style="
+                font-family: 'Roboto', Arial, Helvetica, sans-serif;
+                margin: 0;
+                margin-bottom: 15px;
+                color: #666666;
+                font-size: 12px;
+                text-align: center;
+              "
+            >
+              Để biết thêm thông tin, vui lòng truy cập
+              <a
+                href="https://shopsifu.com"
+                target="_blank"
+                style="text-decoration: none; font-weight: bold; color: #666666; font-size: 12px; text-align: center"
+                >trang web của chúng tôi</a
+              >.
+            </p>
+            <p
+              style="
+                font-family: 'Roboto', Arial, Helvetica, sans-serif;
+                margin: 0;
+                margin-bottom: 15px;
+                color: #666666;
+                font-size: 12px;
+                text-align: center;
+              "
+            >
+              <b>Cần hỗ trợ gấp? Liên hệ qua email </b><u><i>support@shopsifu.com</i></u> <b>hoặc:</b>
+            </p>
+            <table
+              class="social-icons"
+              align="center"
+              role="presentation"
+              cellpadding="0"
+              cellspacing="0"
+              border="0"
+              style="
+                border-collapse: separate;
+                mso-table-lspace: 0pt;
+                mso-table-rspace: 0pt;
+                width: 100%;
+                margin-top: 10px;
+              "
+              width="100%"
+            >
+              <tr>
+                <td
+                  align="center"
+                  style="
+                    font-family: 'Roboto', Arial, Helvetica, sans-serif;
+                    vertical-align: top;
+                    color: #666666;
+                    font-size: 12px;
+                    text-align: center;
+                    padding: 0 4px;
+                  "
+                  valign="top"
+                >
+                  <a
+                    href="https://web.facebook.com/shopsifu"
+                    target="_blank"
+                    style="
+                      text-decoration: none;
+                      font-weight: bold;
+                      color: #666666;
+                      font-size: 12px;
+                      text-align: center;
+                    "
+                  >
+                    <img
+                      src="https://res.cloudinary.com/tedydev/image/upload/v1728706753/nphdigital/facebook.png"
+                      alt="Facebook"
+                      style="
+                        border: none;
+                        -ms-interpolation-mode: bicubic;
+                        max-width: 100%;
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 50%;
+                        background-color: #ffffff;
+                        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                        padding: 6px;
+                      "
+                      width="32"
+                      height="32"
+                    />
+                  </a>
+                </td>
+                <td
+                  align="center"
+                  style="
+                    font-family: 'Roboto', Arial, Helvetica, sans-serif;
+                    vertical-align: top;
+                    color: #666666;
+                    font-size: 12px;
+                    text-align: center;
+                    padding: 0 4px;
+                  "
+                  valign="top"
+                >
+                  <a
+                    href="https://zalo.me/shopsifu"
+                    target="_blank"
+                    style="
+                      text-decoration: none;
+                      font-weight: bold;
+                      color: #666666;
+                      font-size: 12px;
+                      text-align: center;
+                    "
+                  >
+                    <img
+                      src="https://res.cloudinary.com/tedydev/image/upload/v1728706753/nphdigital/zalo.png"
+                      alt="Zalo"
+                      style="
+                        border: none;
+                        -ms-interpolation-mode: bicubic;
+                        max-width: 100%;
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 50%;
+                        background-color: #ffffff;
+                        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                        padding: 6px;
+                      "
+                      width="32"
+                      height="32"
+                    />
+                  </a>
+                </td>
+                <td
+                  align="center"
+                  style="
+                    font-family: 'Roboto', Arial, Helvetica, sans-serif;
+                    vertical-align: top;
+                    color: #666666;
+                    font-size: 12px;
+                    text-align: center;
+                    padding: 0 4px;
+                  "
+                  valign="top"
+                >
+                  <a
+                    href="https://t.me/shopsifu"
+                    target="_blank"
+                    style="
+                      text-decoration: none;
+                      font-weight: bold;
+                      color: #666666;
+                      font-size: 12px;
+                      text-align: center;
+                    "
+                  >
+                    <img
+                      src="https://res.cloudinary.com/tedydev/image/upload/v1728706753/nphdigital/telegram.png"
+                      alt="Telegram"
+                      style="
+                        border: none;
+                        -ms-interpolation-mode: bicubic;
+                        max-width: 100%;
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 50%;
+                        background-color: #ffffff;
+                        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                        padding: 6px;
+                      "
+                      width="32"
+                      height="32"
+                    />
+                  </a>
+                </td>
+                <td
+                  align="center"
+                  style="
+                    font-family: 'Roboto', Arial, Helvetica, sans-serif;
+                    vertical-align: top;
+                    color: #666666;
+                    font-size: 12px;
+                    text-align: center;
+                    padding: 0 4px;
+                  "
+                  valign="top"
+                >
+                  <a
+                    href="mailto:support@shopsifu.com"
+                    style="
+                      text-decoration: none;
+                      font-weight: bold;
+                      color: #666666;
+                      font-size: 12px;
+                      text-align: center;
+                    "
+                  >
+                    <img
+                      src="https://res.cloudinary.com/tedydev/image/upload/v1728727676/nphdigital/gmail.png"
+                      alt="Email"
+                      style="
+                        border: none;
+                        -ms-interpolation-mode: bicubic;
+                        max-width: 100%;
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 50%;
+                        background-color: #ffffff;
+                        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                        padding: 6px;
+                      "
+                      width="32"
+                      height="32"
+                    />
+                  </a>
+                </td>
+                <td
+                  align="center"
+                  style="
+                    font-family: 'Roboto', Arial, Helvetica, sans-serif;
+                    vertical-align: top;
+                    color: #666666;
+                    font-size: 12px;
+                    text-align: center;
+                    padding: 0 4px;
+                  "
+                  valign="top"
+                >
+                  <a
+                    href="tel:+84777018333"
+                    style="
+                      text-decoration: none;
+                      font-weight: bold;
+                      color: #666666;
+                      font-size: 12px;
+                      text-align: center;
+                    "
+                  >
+                    <img
+                      src="https://res.cloudinary.com/tedydev/image/upload/v1728726283/nphdigital/phone.png"
+                      alt="Phone"
+                      style="
+                        border: none;
+                        -ms-interpolation-mode: bicubic;
+                        max-width: 100%;
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 50%;
+                        background-color: #ffffff;
+                        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                        padding: 6px;
+                      "
+                      width="32"
+                      height="32"
+                    />
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
