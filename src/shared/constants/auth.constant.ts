@@ -3,14 +3,14 @@ export const REQUEST_USER_KEY = 'user'
 export const AuthType = {
   Bearer: 'Bearer',
   None: 'None',
-  APIKey: 'ApiKey'
+  APIKey: 'ApiKey',
 } as const
 
 export type AuthTypeType = (typeof AuthType)[keyof typeof AuthType]
 
 export const ConditionGuard = {
   And: 'and',
-  Or: 'or'
+  Or: 'or',
 } as const
 
 export type ConditionGuardType = (typeof ConditionGuard)[keyof typeof ConditionGuard]
@@ -18,13 +18,12 @@ export type ConditionGuardType = (typeof ConditionGuard)[keyof typeof ConditionG
 export const UserStatus = {
   ACTIVE: 'ACTIVE',
   INACTIVE: 'INACTIVE',
-  BLOCKED: 'BLOCKED'
-} as const
-<<<<<<< HEAD
-=======
+  BLOCKED: 'BLOCKED',
+}
 
 export const TypeOfVerificationCode = {
   REGISTER: 'REGISTER',
-  FORGOT_PASSWORD: 'FORGOT_PASSWORD'
+  FORGOT_PASSWORD: 'FORGOT_PASSWORD',
 } as const
->>>>>>> feature/3-users-auth-otp
+
+export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof typeof TypeOfVerificationCode]
