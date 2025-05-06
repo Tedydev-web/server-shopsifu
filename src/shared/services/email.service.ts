@@ -11,7 +11,7 @@ export class EmailService {
 
   sendOTP(payload: { email: string; code: string }) {
     return this.resend.emails.send({
-      from: 'Shopsifu Ecommerce <onboarding@resend.dev>',
+      from: 'Shopsifu Ecommerce <no-reply@demo-website.live>',
       to: [payload.email],
       subject: 'Mã OTP của bạn là',
       html: `<strong>${payload.code}</strong>`
