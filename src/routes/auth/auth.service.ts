@@ -1,17 +1,21 @@
-import { ConflictException, Injectable } from '@nestjs/common'
+import { ConflictException, Injectable, UnprocessableEntityException } from '@nestjs/common'
+import { addMilliseconds } from 'date-fns'
 import { RegisterBodyType, SendOTPBodyType } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { RolesService } from 'src/routes/auth/roles.service'
-import { isUniqueConstraintPrismaError } from 'src/shared/helpers'
+import { generateOTP, isUniqueConstraintPrismaError } from 'src/shared/helpers'
+import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from 'src/shared/services/token.service'
-
+import ms from 'ms'
+import envConfig from 'src/shared/config'
 @Injectable()
 export class AuthService {
   constructor(
     private readonly hashingService: HashingService,
     private readonly rolesService: RolesService,
-    private readonly authRepository: AuthRepository
+    private readonly authRepository: AuthRepository,
+    private readonly sharedUserRepository: SharedUserRepository
   ) {}
   async register(body: RegisterBodyType) {
     try {
@@ -26,14 +30,40 @@ export class AuthService {
       })
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw new ConflictException('Email đã tồn tại')
+        throw new UnprocessableEntityException([
+          {
+            message: 'Email đã tồn tại',
+            path: 'email'
+          }
+        ])
       }
       throw error
     }
   }
 
-  sendOTP(body: SendOTPBodyType) {
-    return body
+  async sendOTP(body: SendOTPBodyType) {
+    // 1. Kiểm tra email đã tồn tại trong database chưa
+    const user = await this.sharedUserRepository.findUnique({
+      email: body.email
+    })
+    if (user) {
+      throw new UnprocessableEntityException([
+        {
+          message: 'Email đã tồn tại',
+          path: 'email'
+        }
+      ])
+    }
+    // 2. Tạo mã OTP
+    const code = generateOTP()
+    const verificationCode = this.authRepository.createVerificationCode({
+      email: body.email,
+      code,
+      type: body.type,
+      expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_EXPIRES_IN))
+    })
+    // 3. Gửi mã OTP
+    return verificationCode
   }
 
   // async login(body: any) {
