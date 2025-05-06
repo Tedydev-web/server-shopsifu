@@ -6,10 +6,11 @@ export const RegisterBodySchema = UserSchema.pick({
   email: true,
   password: true,
   name: true,
-  phoneNumber: true
+  phoneNumber: true,
 })
   .extend({
-    confirmPassword: z.string().min(6).max(100)
+    confirmPassword: z.string().min(6).max(100),
+    code: z.string().length(6),
   })
   .strict()
   .superRefine(({ confirmPassword, password }, ctx) => {
@@ -17,7 +18,7 @@ export const RegisterBodySchema = UserSchema.pick({
       ctx.addIssue({
         code: 'custom',
         message: 'Password and confirm password must match',
-        path: ['confirmPassword']
+        path: ['confirmPassword'],
       })
     }
   })
@@ -26,7 +27,7 @@ export type RegisterBodyType = z.infer<typeof RegisterBodySchema>
 
 export const RegisterResSchema = UserSchema.omit({
   password: true,
-  totpSecret: true
+  totpSecret: true,
 })
 
 export type RegisterResType = z.infer<typeof RegisterResSchema>
@@ -37,14 +38,14 @@ export const VerificationCode = z.object({
   code: z.string().length(6),
   type: z.enum([TypeOfVerificationCode.REGISTER, TypeOfVerificationCode.FORGOT_PASSWORD]),
   expiresAt: z.date(),
-  createdAt: z.date()
+  createdAt: z.date(),
 })
 
 export type VerificationCodeType = z.infer<typeof VerificationCode>
 
 export const SendOTPBodySchema = VerificationCode.pick({
   email: true,
-  type: true
+  type: true,
 }).strict()
 
 export type SendOTPBodyType = z.infer<typeof SendOTPBodySchema>
