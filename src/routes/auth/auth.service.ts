@@ -1,5 +1,9 @@
 import { ConflictException, Injectable } from '@nestjs/common'
+<<<<<<< HEAD
 import { RegisterBodyType } from 'src/routes/auth/auth.model'
+=======
+import { RegisterBodyType, SendOTPBodyType } from 'src/routes/auth/auth.model'
+>>>>>>> feature/3-users-auth-otp
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { RolesService } from 'src/routes/auth/roles.service'
 import { isUniqueConstraintPrismaError } from 'src/shared/helpers'
@@ -32,6 +36,13 @@ export class AuthService {
     }
   }
 
+<<<<<<< HEAD
+=======
+  sendOTP(body: SendOTPBodyType) {
+    return body
+  }
+
+>>>>>>> feature/3-users-auth-otp
   // async login(body: any) {
   //   const user = await this.prismaService.user.findUnique({
   //     where: {

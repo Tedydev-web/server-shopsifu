@@ -1,6 +1,10 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
+<<<<<<< HEAD
 import { RegisterBodyDTO, RegisterResDTO } from 'src/routes/auth/auth.dto'
+=======
+import { RegisterBodyDTO, RegisterResDTO, SendOTPBodyDTO } from 'src/routes/auth/auth.dto'
+>>>>>>> feature/3-users-auth-otp
 
 import { AuthService } from 'src/routes/auth/auth.service'
 
@@ -14,6 +18,14 @@ export class AuthController {
     return await this.authService.register(body)
   }
 
+<<<<<<< HEAD
+=======
+  @Post('otp')
+  async sendOTP(@Body() body: SendOTPBodyDTO) {
+    return await this.authService.sendOTP(body)
+  }
+
+>>>>>>> feature/3-users-auth-otp
   // @Post('login')
   // async login(@Body() body: any) {
   //   return this.authService.login(body)

@@ -20,3 +20,11 @@ export const UserStatus = {
   INACTIVE: 'INACTIVE',
   BLOCKED: 'BLOCKED'
 } as const
+<<<<<<< HEAD
+=======
+
+export const TypeOfVerificationCode = {
+  REGISTER: 'REGISTER',
+  FORGOT_PASSWORD: 'FORGOT_PASSWORD'
+} as const
+>>>>>>> feature/3-users-auth-otp

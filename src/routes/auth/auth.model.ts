@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { UserStatus } from 'src/shared/constants/auth.constant'
+=======
+import { TypeOfVerificationCode, UserStatus } from 'src/shared/constants/auth.constant'
+>>>>>>> feature/3-users-auth-otp
 import { z } from 'zod'
 
 export const UserSchema = z.object({
@@ -48,3 +52,24 @@ export const RegisterResSchema = UserSchema.omit({
 })
 
 export type RegisterResType = z.infer<typeof RegisterResSchema>
+<<<<<<< HEAD
+=======
+
+export const VerificationCode = z.object({
+  id: z.number(),
+  email: z.string().email(),
+  code: z.string().length(6),
+  type: z.enum([TypeOfVerificationCode.REGISTER, TypeOfVerificationCode.FORGOT_PASSWORD]),
+  expiresAt: z.date(),
+  createdAt: z.date()
+})
+
+export type VerificationCodeType = z.infer<typeof VerificationCode>
+
+export const SendOTPBodySchema = VerificationCode.pick({
+  email: true,
+  type: true
+}).strict()
+
+export type SendOTPBodyType = z.infer<typeof SendOTPBodySchema>
+>>>>>>> feature/3-users-auth-otp
