@@ -1,12 +1,15 @@
 {
-  "name": "ecom",
+  "name": "shopsifu",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "<p align=\"center\">   <a href=\"http://nestjs.com/\" target=\"blank\"><img src=\"https://nestjs.com/img/logo-small.svg\" width=\"120\" alt=\"Nest Logo\" /></a> </p>",
+  "author": "Shopsifu",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
     "init-seed-data": "ts-node initialScript",
+    "email:dev": "email dev",
+    "email:build": "email build",
+    "email:export": "email export",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
@@ -26,11 +29,14 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/client": "^6.3.1",
+    "@react-email/components": "0.0.38",
     "bcrypt": "^5.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
     "ms": "^2.1.3",
     "nestjs-zod": "^4.3.1",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "reflect-metadata": "^0.2.2",
     "resend": "^4.5.1",
     "rxjs": "^7.8.1",
@@ -56,6 +62,7 @@
     "jest": "^29.7.0",
     "prettier": "^3.4.2",
     "prisma": "^6.3.1",
+    "react-email": "4.0.11",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
@@ -81,5 +88,20 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
-  }
+  },
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tedydev-web/server-ecommerce.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Tedydev-web/server-ecommerce/issues"
+  },
+  "homepage": "https://github.com/Tedydev-web/server-ecommerce#readme",
+  "keywords": [
+    "Shopsifu"
+  ]
 }
