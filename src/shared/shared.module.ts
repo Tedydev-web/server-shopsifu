@@ -19,10 +19,10 @@ const sharedServices = [PrismaService, HashingService, TokenService, SharedUserR
     APIKeyGuard,
     {
       provide: APP_GUARD,
-      useClass: AuthenticationGuard,
-    },
+      useClass: AuthenticationGuard
+    }
   ],
   exports: sharedServices,
-  imports: [JwtModule],
+  imports: [JwtModule]
 })
 export class SharedModule {}

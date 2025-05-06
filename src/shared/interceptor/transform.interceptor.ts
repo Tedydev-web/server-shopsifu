@@ -15,7 +15,7 @@ export class TransformInterceptor<T> implements NestInterceptor<T, Response<T>> 
         const response = ctx.getResponse()
         const statusCode = response.statusCode
         return { data, statusCode }
-      }),
+      })
     )
   }
 }
