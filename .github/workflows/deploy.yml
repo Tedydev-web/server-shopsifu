@@ -74,26 +74,40 @@ jobs:
             # Restart pm2
             pm2 restart server-shopsifu || exit 1
             
-            # Lưu trạng thái pm2
-            PM2_STATUS=$(pm2 status)
-            echo "PM2_STATUS<<EOF" >> $GITHUB_ENV
-            echo "$PM2_STATUS" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
+            # Lưu trạng thái pm2 vào file tạm
+            pm2 status > /tmp/pm2_status.txt
             
-            # Lưu log pm2 (20 dòng cuối)
-            PM2_LOGS=$(pm2 logs server-shopsifu --lines 20 --nostream)
-            echo "PM2_LOGS<<EOF" >> $GITHUB_ENV
-            echo "$PM2_LOGS" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
+            # Lưu log pm2 (20 dòng cuối) vào file tạm
+            pm2 logs server-shopsifu --lines 20 --nostream > /tmp/pm2_logs.txt
             
             EOF
+
+      - name: Retrieve PM2 Status and Logs
+        id: retrieve_outputs
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_IP_HOST}}
+          username: ${{ secrets.VPS_USERNAME}}
+          password: ${{ secrets.VPS_PASSWORD }}
+          script: |
+            # Đọc nội dung file tạm và lưu vào biến môi trường
+            echo "PM2_STATUS<<EOF" >> $GITHUB_ENV
+            cat /tmp/pm2_status.txt >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+            
+            echo "PM2_LOGS<<EOF" >> $GITHUB_ENV
+            cat /tmp/pm2_logs.txt >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+            
+            # Xóa file tạm
+            rm /tmp/pm2_status.txt /tmp/pm2_logs.txt
 
       - name: Get deployment details
         id: deployment
         run: |
           echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
           echo "commit_message=$(git log -1 --pretty=%B)" >> $GITHUB_OUTPUT
-          echo "commit_author=$(git log -1 --pretty=%an)" >> $G patrimonial
+          echo "commit_author=$(git log -1 --pretty=%an)" >> $GITHUB_OUTPUT
           echo "commit_date=$(git log -1 --pretty=%cd)" >> $GITHUB_OUTPUT
           echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
 
