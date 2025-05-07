@@ -1,4 +1,4 @@
-import { Injectable, UnprocessableEntityException } from '@nestjs/common'
+import { ConflictException, Injectable, UnprocessableEntityException } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import { LoginBodyType, RegisterBodyType, SendOTPBodyType } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'

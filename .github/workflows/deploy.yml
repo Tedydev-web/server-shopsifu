@@ -36,11 +36,11 @@ jobs:
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-            
+
             # Load shell environment
             source ~/.bashrc
             source ~/.profile
-            
+
             # Kiểm tra môi trường
             echo "User: $(whoami)"
             echo "PATH: $PATH"
@@ -49,37 +49,39 @@ jobs:
             node --version || echo "Node.js not found"
             npm --version || echo "npm not found"
             pm2 --version || echo "pm2 not found"
-            
+
             # Di chuyển vào thư mục dự án
             cd server-shopsifu || exit 1
-            
+
             # Tạo file .env
             echo "${{ secrets.ENV }}" > .env
             ls -la .env
             echo "File .env đã được tạo thành công"
-            
+
             # Kéo code mới nhất và ghi đè thay đổi cục bộ
             git fetch origin master || exit 1
             git reset --hard origin/master || exit 1
-            
+
             # Xóa cache và build cũ
             rm -rf dist node_modules/.cache node_modules
-            
+
+            npm cache clean --force
+
             # Cài đặt dependencies
             npm install || exit 1
-            
+
             # Build ứng dụng
             npm run build || exit 1
-            
+
             # Restart pm2
             pm2 restart server-shopsifu || exit 1
-            
+
             # Lưu trạng thái pm2 vào file tạm
             pm2 status > /tmp/pm2_status.txt
-            
+
             # Lưu log pm2 (20 dòng cuối) vào file tạm
             pm2 logs server-shopsifu --lines 20 --nostream > /tmp/pm2_logs.txt
-            
+
             EOF
 
       - name: Retrieve PM2 Status and Logs
@@ -94,11 +96,11 @@ jobs:
             echo "PM2_STATUS<<EOF" >> $GITHUB_ENV
             cat /tmp/pm2_status.txt >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
-            
+
             echo "PM2_LOGS<<EOF" >> $GITHUB_ENV
             cat /tmp/pm2_logs.txt >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
-            
+
             # Xóa file tạm
             rm /tmp/pm2_status.txt /tmp/pm2_logs.txt
 

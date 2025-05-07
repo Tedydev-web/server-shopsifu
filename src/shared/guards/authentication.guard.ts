@@ -7,18 +7,16 @@ import { APIKeyGuard } from 'src/shared/guards/api-key.guard'
 
 @Injectable()
 export class AuthenticationGuard implements CanActivate {
-  private readonly authTypeGuardMap: Record<string, CanActivate>
+  private readonly authTypeGuardMap: Record<string, CanActivate> = {
+    [AuthType.Bearer]: this.accessTokenGuard,
+    [AuthType.APIKey]: this.apiKeyGuard,
+    [AuthType.None]: { canActivate: () => true }
+  }
   constructor(
     private readonly reflector: Reflector,
     private readonly accessTokenGuard: AccessTokenGuard,
     private readonly apiKeyGuard: APIKeyGuard
-  ) {
-    this.authTypeGuardMap = {
-      [AuthType.Bearer]: this.accessTokenGuard,
-      [AuthType.APIKey]: this.apiKeyGuard,
-      [AuthType.None]: { canActivate: () => true }
-    }
-  }
+  ) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const authTypeValue = this.reflector.getAllAndOverride<AuthTypeDecoratorPayload | undefined>(AUTH_TYPE_KEY, [
       context.getHandler(),
