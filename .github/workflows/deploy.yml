@@ -22,21 +22,6 @@ jobs:
           username: ${{ secrets.VPS_USERNAME}}
           password: ${{ secrets.VPS_PASSWORD }}
           script: |
-            # Kiểm tra và cài đặt Node.js nếu cần
-            if ! command -v node &> /dev/null; then
-              curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-              apt-get install -y nodejs
-            fi
-
-            # Kiểm tra version Node.js và npm
-            node --version
-            npm --version
-
-            # Cài đặt PM2 globally nếu chưa có
-            if ! command -v pm2 &> /dev/null; then
-              npm install -g pm2
-            fi
-
             # Di chuyển vào thư mục dự án
             cd server-shopsifu
 
@@ -50,34 +35,6 @@ jobs:
 
             # Cài đặt dependencies
             npm ci
-
-            # Tạo file .env
-            cat > .env << EOL
-            # Database Configuration
-            DATABASE_URL=${{ secrets.DATABASE_URL }}
-
-            # Server Configuration
-            PORT=${{ secrets.PORT }}
-            NODE_ENV=production
-
-            # JWT Configuration
-            ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN }}
-            ACCESS_TOKEN_EXPIRES_IN=${{ secrets.ACCESS_TOKEN_EXPIRES_IN }}
-
-            REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}
-            REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REFRESH_TOKEN_EXPIRES_IN }}
-
-            SECRET_API_KEY=${{ secrets.API_KEY }}
-            ADMIN_NAME=${{ secrets.ADMIN_NAME }}
-            ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
-            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
-            ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER }}
-
-            OTP_EXPIRES_IN=${{ secrets.OTP_EXPIRES_IN }}
-
-            # Other Configuration
-            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-            EOL
 
             # Build và restart
             npm run build
