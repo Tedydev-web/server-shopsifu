@@ -26,8 +26,7 @@ jobs:
             cd server-shopsifu
 
             # Kéo code mới nhất
-            git fetch origin master
-            git reset --hard origin/master
+            git pull
 
             # Xóa cache và build cũ
             rm -rf dist
@@ -38,7 +37,7 @@ jobs:
 
             # Build và restart
             npm run build
-            pm2 restart server-shopsifu || pm2 start dist/main.js --name server-shopsifu
+            pm2 restart server-shopsifu
 
             # Kiểm tra status
             pm2 status
