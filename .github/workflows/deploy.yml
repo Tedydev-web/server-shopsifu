@@ -26,14 +26,6 @@ jobs:
           npm install -g npm@latest
           npm --version
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build
-        run: npm run build
-        env:
-          NODE_ENV: production
-
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
         with:
@@ -41,13 +33,21 @@ jobs:
           username: ${{ secrets.VPS_USERNAME}}
           password: ${{ secrets.VPS_PASSWORD }}
           script: |
+            # Di chuyển vào thư mục dự án
             cd server-shopsifu
+
+            # Kéo code mới nhất
             git fetch origin master
             git reset --hard origin/master
+
+            # Xóa cache và build cũ
             sudo rm -rf dist
             sudo rm -rf node_modules/.cache
+
+            # Cài đặt dependencies
             npm install
-            # Tạo file .env từ các biến môi trường
+
+            # Tạo file .env
             cat > .env << EOL
             # Database Configuration
             DATABASE_URL=${{ secrets.DATABASE_URL }}
@@ -74,6 +74,8 @@ jobs:
             # Other Configuration
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             EOL
+
+            # Build và restart
             npm run build
             pm2 restart server-shopsifu
 
