@@ -6,6 +6,6 @@ import { AuthRepository } from 'src/routes/auth/auth.repo'
 
 @Module({
   providers: [AuthService, RolesService, AuthRepository],
-  controllers: [AuthController]
+  controllers: [AuthController],
 })
 export class AuthModule {}
