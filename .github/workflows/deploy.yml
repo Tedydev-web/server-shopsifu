@@ -22,9 +22,20 @@ jobs:
           username: ${{ secrets.VPS_USERNAME}}
           password: ${{ secrets.VPS_PASSWORD }}
           script: |
+            bash -i << 'EOF'
             # Load shell environment
             source ~/.bashrc
             source ~/.profile
+
+            # Kiểm tra môi trường
+            whoami
+            pwd
+            echo $PATH
+            which npm
+            which pm2
+            node --version || echo "Node.js not found"
+            npm --version || echo "npm not found"
+            pm2 --version || echo "pm2 not found"
             
             # Di chuyển vào thư mục dự án
             cd server-shopsifu
@@ -42,6 +53,7 @@ jobs:
             # Xóa cache và build cũ
             rm -rf dist
             rm -rf node_modules/.cache
+            rm -rf node_modules
             
             # Cài đặt dependencies
             npm ci
