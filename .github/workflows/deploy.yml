@@ -11,25 +11,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
       - name: Cache node modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
 
+      - name: Run lint and tests
+        run: |
+          npm ci
+          npm run lint
+          npm test
+        working-directory: ./server-shopsifu
+
       - name: Deploy to VPS
         id: deploy
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_IP_HOST}}
           username: ${{ secrets.VPS_USERNAME}}
-          password: ${{ secrets.VPS_PASSWORD }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             bash -i << 'EOF'
             # Load nvm
@@ -44,34 +57,43 @@ jobs:
             # Kiểm tra môi trường
             echo "User: $(whoami)"
             echo "PATH: $PATH"
-            which npm || echo "npm not found"
-            which pm2 || echo "pm2 not found"
-            node --version || echo "Node.js not found"
-            npm --version || echo "npm not found"
-            pm2 --version || echo "pm2 not found"
+            node --version || { echo "Node.js not found"; exit 1; }
+            npm --version || { echo "npm not found"; exit 1; }
+            pm2 --version || { echo "pm2 not found"; exit 1; }
             
             # Di chuyển vào thư mục dự án
-            cd server-shopsifu || exit 1
+            cd server-shopsifu || { echo "Directory not found"; exit 1; }
             
             # Tạo file .env
             echo "${{ secrets.ENV }}" > .env
             ls -la .env
-            echo "File .env đã được tạo thành công"
+            echo "File .env created successfully"
             
-            # Kéo code mới nhất
-            git pull || exit 1
+            # Kéo code mới nhất và ghi đè thay đổi cục bộ
+            git fetch origin master || { echo "Git fetch failed"; exit 1; }
+            git reset --hard origin/master || { echo "Git reset failed"; exit 1; }
             
             # Xóa cache và build cũ
             rm -rf dist node_modules/.cache node_modules
             
             # Cài đặt dependencies
-            npm ci || exit 1
+            npm ci || { echo "npm ci failed"; exit 1; }
             
             # Build ứng dụng
-            npm run build || exit 1
+            npm run build || { echo "Build failed"; exit 1; }
             
             # Restart pm2
-            pm2 restart server-shopsifu || exit 1
+            pm2 restart server-shopsifu || { echo "PM2 restart failed"; exit 1; }
+            
+            # Kiểm tra sức khỏe ứng dụng
+            sleep 5
+            HEALTH_CHECK=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/health)
+            if [ "$HEALTH_CHECK" != "200" ]; then
+              echo "Health check failed: HTTP $HEALTH_CHECK"
+              pm2 logs server-shopsifu --lines 20 --nostream
+              exit 1
+            fi
+            echo "Health check passed: HTTP $HEALTH_CHECK"
             
             # Lưu trạng thái pm2
             PM2_STATUS=$(pm2 status)
@@ -79,10 +101,17 @@ jobs:
             echo "$PM2_STATUS" >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
             
-            # Lưu log pm2 (20 dòng cuối)
-            PM2_LOGS=$(pm2 logs server-shopsifu --lines 20 --nostream)
+            # Lưu log pm2 (10 dòng cuối)
+            PM2_LOGS=$(pm2 logs server-shopsifu --lines 10 --nostream)
             echo "PM2_LOGS<<EOF" >> $GITHUB_ENV
             echo "$PM2_LOGS" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+            
+            # Lưu thông tin hệ thống
+            SYSTEM_INFO=$(free -m | grep Mem | awk '{print "Memory: " $3 "/" $2 " MB"}')
+            SYSTEM_INFO="$SYSTEM_INFO\n$(top -bn1 | head -n 3 | grep "Cpu(s)" | awk '{print "CPU: " $2 "%"}')"
+            echo "SYSTEM_INFO<<EOF" >> $GITHUB_ENV
+            echo "$SYSTEM_INFO" >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
             
             EOF
@@ -98,30 +127,73 @@ jobs:
 
       - name: Send Discord Notification
         if: always()
-        uses: Ilshidur/action-discord@master
+        uses: Ilshidur/action-discord@0.3.2
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         with:
           args: |
-            **🚀 Deployment Notification**
-
-            **Status**: ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}
-            **Repository**: [${{ github.repository }}](https://github.com/${{ github.repository }})
-            **Branch**: `${{ steps.deployment.outputs.branch }}`
-            **Commit**: [${{ steps.deployment.outputs.commit_sha }}](https://github.com/${{ github.repository }}/commit/${{ steps.deployment.outputs.commit_sha }})
-            **Author**: ${{ steps.deployment.outputs.commit_author }}
-            **Message**: ${{ steps.deployment.outputs.commit_message }}
-            **Deployed At**: <t:${{ toJSON(github.event.head_commit.timestamp) }}:F>
-            **Environment**: Production
-
-            **PM2 Status**:
-            ```
-            ${{ env.PM2_STATUS }}
-            ```
-
-            **Recent Logs**:
-            ```
-            ${{ env.PM2_LOGS }}
-            ```
-
-            **Details**: Check [GitHub Actions](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            {
+              "embeds": [
+                {
+                  "title": "🚀 Deployment Notification",
+                  "color": ${{ job.status == 'success' && 65280 || 16711680 }},
+                  "description": "**Environment**: Production\n**Status**: ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}",
+                  "fields": [
+                    {
+                      "name": "📦 Repository",
+                      "value": "[${{ github.repository }}](https://github.com/${{ github.repository }})",
+                      "inline": true
+                    },
+                    {
+                      "name": "🌿 Branch",
+                      "value": "`${{ steps.deployment.outputs.branch }}`",
+                      "inline": true
+                    },
+                    {
+                      "name": "👤 Author",
+                      "value": "${{ steps.deployment.outputs.commit_author }}",
+                      "inline": true
+                    },
+                    {
+                      "name": "🔗 Commit",
+                      "value": "[`${{ steps.deployment.outputs.commit_sha }}`](https://github.com/${{ github.repository }}/commit/${{ steps.deployment.outputs.commit_sha }})",
+                      "inline": true
+                    },
+                    {
+                      "name": "📜 Message",
+                      "value": "${{ steps.deployment.outputs.commit_message }}",
+                      "inline": false
+                    },
+                    {
+                      "name": "⏰ Deployed At",
+                      "value": "<t:${{ toJSON(github.event.head_commit.timestamp) }}:F>",
+                      "inline": true
+                    },
+                    {
+                      "name": "🔄 PM2 Status",
+                      "value": "```\n${{ env.PM2_STATUS }}\n```",
+                      "inline": false
+                    },
+                    {
+                      "name": "📋 Recent Logs",
+                      "value": "```\n${{ env.PM2_LOGS }}\n```",
+                      "inline": false
+                    },
+                    {
+                      "name": "💻 System Info",
+                      "value": "```\n${{ env.SYSTEM_INFO }}\n```",
+                      "inline": false
+                    },
+                    {
+                      "name": "🔗 Details",
+                      "value": "[GitHub Actions](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})",
+                      "inline": false
+                    }
+                  ],
+                  "footer": {
+                    "text": "Shopsifu Backend Deployment"
+                  },
+                  "timestamp": "${{ toJSON(github.event.head_commit.timestamp) }}"
+                }
+              ]
+            }
