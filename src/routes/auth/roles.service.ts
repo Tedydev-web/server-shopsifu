@@ -14,8 +14,8 @@ export class RolesService {
     }
     const role = await this.prismaService.role.findUniqueOrThrow({
       where: {
-        name: RoleName.Client,
-      },
+        name: RoleName.Client
+      }
     })
     this.clientRoleId = role.id
     return role.id

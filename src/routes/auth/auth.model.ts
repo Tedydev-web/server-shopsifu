@@ -6,11 +6,11 @@ export const RegisterBodySchema = UserSchema.pick({
   email: true,
   password: true,
   name: true,
-  phoneNumber: true,
+  phoneNumber: true
 })
   .extend({
     confirmPassword: z.string().min(6).max(100),
-    code: z.string().length(6),
+    code: z.string().length(6)
   })
   .strict()
   .superRefine(({ confirmPassword, password }, ctx) => {
@@ -18,14 +18,14 @@ export const RegisterBodySchema = UserSchema.pick({
       ctx.addIssue({
         code: 'custom',
         message: 'Password and confirm password must match',
-        path: ['confirmPassword'],
+        path: ['confirmPassword']
       })
     }
   })
 
 export const RegisterResSchema = UserSchema.omit({
   password: true,
-  totpSecret: true,
+  totpSecret: true
 })
 
 export const VerificationCodeSchema = z.object({
@@ -34,27 +34,27 @@ export const VerificationCodeSchema = z.object({
   code: z.string().length(6),
   type: z.enum([TypeOfVerificationCode.REGISTER, TypeOfVerificationCode.FORGOT_PASSWORD]),
   expiresAt: z.date(),
-  createdAt: z.date(),
+  createdAt: z.date()
 })
 
 export const SendOTPBodySchema = VerificationCodeSchema.pick({
   email: true,
-  type: true,
+  type: true
 }).strict()
 
 export const LoginBodySchema = UserSchema.pick({
   email: true,
-  password: true,
+  password: true
 }).strict()
 
 export const LoginResSchema = z.object({
   accessToken: z.string(),
-  refreshToken: z.string(),
+  refreshToken: z.string()
 })
 
 export const RefreshTokenBodySchema = z
   .object({
-    refreshToken: z.string(),
+    refreshToken: z.string()
   })
   .strict()
 
@@ -67,7 +67,7 @@ export const DeviceSchema = z.object({
   ip: z.string(),
   lastActive: z.date(),
   createdAt: z.date(),
-  isActive: z.boolean(),
+  isActive: z.boolean()
 })
 
 export const RefreshTokenSchema = z.object({
@@ -75,7 +75,7 @@ export const RefreshTokenSchema = z.object({
   userId: z.number(),
   deviceId: z.number(),
   expiresAt: z.date(),
-  createdAt: z.date(),
+  createdAt: z.date()
 })
 
 export const RoleSchema = z.object({
@@ -87,7 +87,7 @@ export const RoleSchema = z.object({
   updatedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date(),
+  updatedAt: z.date()
 })
 
 export const LogoutBodySchema = RefreshTokenBodySchema
