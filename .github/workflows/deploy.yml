@@ -22,21 +22,32 @@ jobs:
           username: ${{ secrets.VPS_USERNAME}}
           password: ${{ secrets.VPS_PASSWORD }}
           script: |
-            # Di chuyển vào thư mục dự án
+            # Install Node.js and npm
+            curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+
+            # Verify Node.js and npm installation
+            node -v
+            npm -v
+
+            # Install PM2 globally
+            sudo npm install -g pm2
+
+            # Move to the project directory
             cd server-shopsifu
 
-            # Kéo code mới nhất
+            # Pull the latest code
             echo "${{ secrets.VPS_PASSWORD }}" | sudo -S git fetch origin master
             echo "${{ secrets.VPS_PASSWORD }}" | sudo -S git reset --hard origin/master
 
-            # Xóa cache và build cũ
-            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S sudo rm -rf dist
-            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S  sudo rm -rf node_modules/.cache
+            # Remove old cache and build
+            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S rm -rf dist
+            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S rm -rf node_modules/.cache
 
-            # Cài đặt dependencies với phiên bản node mới
-            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S  npm install
+            # Install dependencies
+            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S npm install
 
-            # Tạo file .env
+            # Create the .env file
             echo "${{ secrets.VPS_PASSWORD }}" | sudo -S cat > .env << EOL
             # Database Configuration
             DATABASE_URL=${{ secrets.DATABASE_URL }}
@@ -52,19 +63,19 @@ jobs:
             REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}
             REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REFRESH_TOKEN_EXPIRES_IN }}
 
-            SECRET_API_KEY=${{ secrets.API_KEY}}
-            ADMIN_NAME=${{ secrets.ADMIN_NAME}}
-            ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD}}
-            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL}}
-            ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER}}
+            SECRET_API_KEY=${{ secrets.API_KEY }}
+            ADMIN_NAME=${{ secrets.ADMIN_NAME }}
+            ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+            ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER }}
 
-            OTP_EXPIRES_IN=${{ secrets.OTP_EXPIRES_IN}}
+            OTP_EXPIRES_IN=${{ secrets.OTP_EXPIRES_IN }}
 
             # Other Configuration
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             EOL
 
-            # Build và restart với Node.js mới
+            # Build and restart with Node.js
             echo "${{ secrets.VPS_PASSWORD }}" | sudo -S npm run build
             echo "${{ secrets.VPS_PASSWORD }}" | sudo -S pm2 restart server-shopsifu
 
