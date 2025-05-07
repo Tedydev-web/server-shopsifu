@@ -22,6 +22,8 @@ jobs:
           username: ${{ secrets.VPS_USERNAME}}
           password: ${{ secrets.VPS_PASSWORD }}
           script: |
+
+            ls -la
             # Di chuyển vào thư mục dự án
             cd server-shopsifu
 
