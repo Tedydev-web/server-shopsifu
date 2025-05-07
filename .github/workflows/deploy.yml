@@ -22,33 +22,22 @@ jobs:
           username: ${{ secrets.VPS_USERNAME}}
           password: ${{ secrets.VPS_PASSWORD }}
           script: |
-            # Cài đặt Node.js mới
-            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-            sudo apt-get install -y nodejs
-
-            # Kiểm tra version
-            node --version
-            npm --version
-
-            # Cài đặt PM2 globally
-            sudo npm install -g pm2
-
             # Di chuyển vào thư mục dự án
             cd server-shopsifu
 
             # Kéo code mới nhất
-            git fetch origin master
-            git reset --hard origin/master
+            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S git fetch origin master
+            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S git reset --hard origin/master
 
             # Xóa cache và build cũ
-            sudo rm -rf dist
-            sudo rm -rf node_modules/.cache
+            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S sudo rm -rf dist
+            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S  sudo rm -rf node_modules/.cache
 
             # Cài đặt dependencies với phiên bản node mới
-            npm install
+            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S  npm install
 
             # Tạo file .env
-            cat > .env << EOL
+            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S cat > .env << EOL
             # Database Configuration
             DATABASE_URL=${{ secrets.DATABASE_URL }}
 
@@ -59,7 +48,7 @@ jobs:
             # JWT Configuration
             ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN }}
             ACCESS_TOKEN_EXPIRES_IN=${{ secrets.ACCESS_TOKEN_EXPIRES_IN }}
-            
+
             REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}
             REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REFRESH_TOKEN_EXPIRES_IN }}
 
@@ -70,14 +59,14 @@ jobs:
             ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER}}
 
             OTP_EXPIRES_IN=${{ secrets.OTP_EXPIRES_IN}}
-            
+
             # Other Configuration
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             EOL
 
             # Build và restart với Node.js mới
-            npm run build
-            pm2 restart server-shopsifu || pm2 start dist/main.js --name server-shopsifu
+            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S npm run build
+            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S pm2 restart server-shopsifu
 
       - name: Get deployment details
         id: deployment
@@ -139,4 +128,4 @@ jobs:
                   "timestamp": "${{ toJSON(github.event.head_commit.timestamp) }}"
                 }
               ]
-            } 
+            }
