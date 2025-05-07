@@ -1,0 +1,148 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 'latest'
+          cache: 'npm'
+
+      - name: Install latest npm
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Cache build
+        uses: actions/cache@v3
+        with:
+          path: dist
+          key: ${{ runner.os }}-build-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-build-
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_IP_HOST}}
+          username: ${{ secrets.VPS_USERNAME}}
+          password: ${{ secrets.VPS_PASSWORD }}
+          script: |
+            cd server-shopsifu
+            git fetch origin master
+            git reset --hard origin/master
+            sudo rm -rf dist
+            sudo rm -rf node_modules/.cache
+            npm install
+            # Tạo file .env từ các biến môi trường
+            cat > .env << EOL
+            # Database Configuration
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+
+            # Server Configuration
+            PORT=${{ secrets.PORT }}
+            NODE_ENV=production
+
+            # JWT Configuration
+            ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN }}
+            ACCESS_TOKEN_EXPIRES_IN=${{ secrets.ACCESS_TOKEN_EXPIRES_IN }}
+            
+            REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}
+            REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REFRESH_TOKEN_EXPIRES_IN }}
+
+            SECRET_API_KEY=${{ secrets.API_KEY}}
+            ADMIN_NAME=${{ secrets.ADMIN_NAME}}
+            ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD}}
+            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL}}
+            ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER}}
+
+            OTP_EXPIRES_IN=${{ secrets.OTP_EXPIRES_IN}}
+            
+            # Other Configuration
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            EOL
+            npm run build
+            pm2 restart server-shopsifu
+
+      - name: Get deployment details
+        id: deployment
+        run: |
+          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "commit_message=$(git log -1 --pretty=%B)" >> $GITHUB_OUTPUT
+          echo "commit_author=$(git log -1 --pretty=%an)" >> $GITHUB_OUTPUT
+          echo "commit_date=$(git log -1 --pretty=%cd)" >> $GITHUB_OUTPUT
+          echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Send Discord Notification
+        if: always()
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        with:
+          args: |
+            {
+              "embeds": [
+                {
+                  "title": "🚀 Deployment Status: ${{ job.status }}",
+                  "color": ${{ job.status == 'success' && '65280' || '16711680' }},
+                  "description": "**Commit Message:**\n${{ steps.deployment.outputs.commit_message }}\n\n**Environment:** Production",
+                  "fields": [
+                    {
+                      "name": "📦 Repository",
+                      "value": "[${{ github.repository }}](https://github.com/${{ github.repository }})",
+                      "inline": true
+                    },
+                    {
+                      "name": "🌿 Branch",
+                      "value": "`${{ steps.deployment.outputs.branch }}`",
+                      "inline": true
+                    },
+                    {
+                      "name": "👤 Author",
+                      "value": "${{ steps.deployment.outputs.commit_author }}",
+                      "inline": true
+                    },
+                    {
+                      "name": "🔗 Commit",
+                      "value": "[`${{ steps.deployment.outputs.commit_sha }}`](https://github.com/${{ github.repository }}/commit/${{ steps.deployment.outputs.commit_sha }})",
+                      "inline": true
+                    },
+                    {
+                      "name": "⏰ Deployed At",
+                      "value": "<t:${{ toJSON(github.event.head_commit.timestamp) }}:F>",
+                      "inline": true
+                    },
+                    {
+                      "name": "🔄 Status",
+                      "value": "${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}",
+                      "inline": true
+                    }
+                  ],
+                  "footer": {
+                    "text": "Shopsifu Backend Deployment"
+                  },
+                  "timestamp": "${{ toJSON(github.event.head_commit.timestamp) }}"
+                }
+              ]
+            } 
