@@ -22,25 +22,34 @@ jobs:
           username: ${{ secrets.VPS_USERNAME}}
           password: ${{ secrets.VPS_PASSWORD }}
           script: |
-
-            ls -la
+            # Load shell environment
+            source ~/.bashrc
+            source ~/.profile
+            
             # Di chuyển vào thư mục dự án
             cd server-shopsifu
-
+            
+            # Tạo file .env từ secret
+            echo "${{ secrets.ENV }}" > .env
+            
+            # Kiểm tra file .env đã được tạo
+            ls -la .env
+            echo "File .env đã được tạo thành công"
+            
             # Kéo code mới nhất
             git pull
-
+            
             # Xóa cache và build cũ
             rm -rf dist
             rm -rf node_modules/.cache
-
+            
             # Cài đặt dependencies
             npm ci
-
+            
             # Build và restart
             npm run build
             pm2 restart server-shopsifu
-
+            
             # Kiểm tra status
             pm2 status
             pm2 logs server-shopsifu --lines 20
