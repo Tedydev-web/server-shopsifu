@@ -22,33 +22,37 @@ jobs:
           username: ${{ secrets.VPS_USERNAME}}
           password: ${{ secrets.VPS_PASSWORD }}
           script: |
-            # Install Node.js and npm
-            curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
-            sudo apt-get install -y nodejs
+            # Kiểm tra và cài đặt Node.js nếu cần
+            if ! command -v node &> /dev/null; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+              apt-get install -y nodejs
+            fi
 
-            # Verify Node.js and npm installation
-            node -v
-            npm -v
+            # Kiểm tra version Node.js và npm
+            node --version
+            npm --version
 
-            # Install PM2 globally
-            sudo npm install -g pm2
+            # Cài đặt PM2 globally nếu chưa có
+            if ! command -v pm2 &> /dev/null; then
+              npm install -g pm2
+            fi
 
-            # Move to the project directory
+            # Di chuyển vào thư mục dự án
             cd server-shopsifu
 
-            # Pull the latest code
-            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S git fetch origin master
-            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S git reset --hard origin/master
+            # Kéo code mới nhất
+            git fetch origin master
+            git reset --hard origin/master
 
-            # Remove old cache and build
-            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S rm -rf dist
-            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S rm -rf node_modules/.cache
+            # Xóa cache và build cũ
+            rm -rf dist
+            rm -rf node_modules/.cache
 
-            # Install dependencies
-            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S npm install
+            # Cài đặt dependencies
+            npm ci
 
-            # Create the .env file
-            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S cat > .env << EOL
+            # Tạo file .env
+            cat > .env << EOL
             # Database Configuration
             DATABASE_URL=${{ secrets.DATABASE_URL }}
 
@@ -75,9 +79,13 @@ jobs:
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             EOL
 
-            # Build and restart with Node.js
-            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S npm run build
-            echo "${{ secrets.VPS_PASSWORD }}" | sudo -S pm2 restart server-shopsifu
+            # Build và restart
+            npm run build
+            pm2 restart server-shopsifu || pm2 start dist/main.js --name server-shopsifu
+
+            # Kiểm tra status
+            pm2 status
+            pm2 logs server-shopsifu --lines 20
 
       - name: Get deployment details
         id: deployment
