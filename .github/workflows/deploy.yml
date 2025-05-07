@@ -15,17 +15,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 'latest'
-          cache: 'npm'
-
-      - name: Install latest npm
-        run: |
-          npm install -g npm@latest
-          npm --version
-
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
         with:
@@ -33,6 +22,17 @@ jobs:
           username: ${{ secrets.VPS_USERNAME}}
           password: ${{ secrets.VPS_PASSWORD }}
           script: |
+            # Cài đặt Node.js mới
+            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+
+            # Kiểm tra version
+            node --version
+            npm --version
+
+            # Cài đặt PM2 globally
+            sudo npm install -g pm2
+
             # Di chuyển vào thư mục dự án
             cd server-shopsifu
 
@@ -44,7 +44,7 @@ jobs:
             sudo rm -rf dist
             sudo rm -rf node_modules/.cache
 
-            # Cài đặt dependencies
+            # Cài đặt dependencies với phiên bản node mới
             npm install
 
             # Tạo file .env
@@ -75,9 +75,9 @@ jobs:
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             EOL
 
-            # Build và restart
+            # Build và restart với Node.js mới
             npm run build
-            pm2 restart server-shopsifu
+            pm2 restart server-shopsifu || pm2 start dist/main.js --name server-shopsifu
 
       - name: Get deployment details
         id: deployment
