@@ -178,7 +178,10 @@ export class AuthService {
       }
       const {
         deviceId,
-        user: { roleId, name: roleName }
+        user: {
+          roleId,
+          role: { name: roleName }
+        }
       } = refreshTokenInDb
       // 3. Cập nhật device
       const $updateDevice = this.authRepository.updateDevice(deviceId, {
