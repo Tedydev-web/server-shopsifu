@@ -29,7 +29,7 @@ export default function OTPEmail({ otpCode, title }: OTPEmailProps) {
         <title>{title}</title>
       </Head>
       <Body style={main}>
-        <Preview>Xác minh email Shopsifu</Preview>
+        <Preview>Shopsifu - Xác minh tài khoản</Preview>
         <Tailwind>
           <Container style={container}>
             <Section style={coverSection}>
