@@ -11,7 +11,7 @@ export class EmailService {
     this.resend = new Resend(envConfig.RESEND_API_KEY)
   }
   async sendOTP(payload: { email: string; code: string }) {
-    const subject = `Shopsifu - Mã Xác Thực OTP Của Bạn Là ${payload.code}`
+    const subject = 'Shopsifu - Mã Xác Thực OTP Của Bạn Là'
     return this.resend.emails.send({
       from: 'Shopsifu E-commerce <no-reply@shopsifu.id.vn>',
       to: [payload.email],

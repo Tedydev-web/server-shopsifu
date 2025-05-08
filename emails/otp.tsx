@@ -25,10 +25,9 @@ interface OTPEmailProps {
 export default function OTPEmail({ otpCode, title }: OTPEmailProps) {
   return (
     <Html>
-      {/* <Head>
+      <Head>
         <title>{title}</title>
-      </Head> */}
-      <Head />
+      </Head>
       <Body style={main}>
         <Preview>Shopsifu - Xác minh tài khoản</Preview>
         <Tailwind>
