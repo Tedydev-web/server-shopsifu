@@ -74,14 +74,22 @@ jobs:
             npm run build || exit 1
 
             # Restart pm2
-            pm2 restart server-shopsifu || exit 1
+            pm2 restart server-shopsifu
 
             # Lưu trạng thái pm2 vào file tạm
-            pm2 status > /tmp/pm2_status.txt
+            pm2 status server-shopsifu > /tmp/pm2_status.txt
 
             # Lưu log pm2 (20 dòng cuối) vào file tạm
             pm2 logs server-shopsifu --lines 20 --nostream > /tmp/pm2_logs.txt
 
+            # Kiểm tra trạng thái app
+            APP_STATUS=$(pm2 info server-shopsifu | grep status | awk '{print $4}')
+            echo "App status: $APP_STATUS"
+            echo "$APP_STATUS" > /tmp/app_status.txt
+            if [ "$APP_STATUS" != "online" ]; then
+              echo "App is not online! Status: $APP_STATUS"
+              exit 2
+            fi
             EOF
 
       - name: Retrieve PM2 Status and Logs
@@ -101,8 +109,12 @@ jobs:
             cat /tmp/pm2_logs.txt >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
 
+            echo "APP_STATUS<<EOF" >> $GITHUB_ENV
+            cat /tmp/app_status.txt >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+
             # Xóa file tạm
-            rm /tmp/pm2_status.txt /tmp/pm2_logs.txt
+            rm /tmp/pm2_status.txt /tmp/pm2_logs.txt /tmp/app_status.txt
 
       - name: Get deployment details
         id: deployment
@@ -130,5 +142,7 @@ jobs:
             **Message**: ${{ steps.deployment.outputs.commit_message }}
             **Deployed At**: <t:${{ toJSON(github.event.head_commit.timestamp) }}:F>
             **Environment**: Production
+
+            **App Status**: ${{ env.APP_STATUS }}
 
             **PM2 Status**:
