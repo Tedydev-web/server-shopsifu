@@ -1,4 +1,10 @@
-import { HttpException, Injectable, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common'
+import {
+  ConflictException,
+  HttpException,
+  Injectable,
+  UnauthorizedException,
+  UnprocessableEntityException
+} from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import { LoginBodyType, RefreshTokenBodyType, RegisterBodyType, SendOTPBodyType } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
@@ -101,7 +107,7 @@ export class AuthService {
         }
       ])
     }
-    return verificationCode
+    return { message: 'Gửi mã OTP thành công' }
   }
 
   async login(body: LoginBodyType & { userAgent: string; ip: string }) {
