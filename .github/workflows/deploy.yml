@@ -51,7 +51,7 @@ jobs:
             pm2 --version || echo "pm2 not found"
 
             # Di chuyển vào thư mục dự án
-            cd server-shopsifu || exit 1
+            cd ${{ secrets.PATH_PROJECT }} || exit 1
 
             # Tạo file .env
             echo "${{ secrets.ENV }}" > .env
