@@ -29,7 +29,7 @@ export default function OTPEmail({ otpCode, title }: OTPEmailProps) {
         <title>{title}</title>
       </Head>
       <Body style={main}>
-        <Preview>Shopsifu - Xác minh tài khoản</Preview>
+        <Preview>Mã xác minh có hiệu lực trong 5 phút</Preview>
         <Tailwind>
           <Container style={container}>
             <Section style={coverSection}>

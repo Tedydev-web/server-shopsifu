@@ -51,24 +51,3 @@ export const UnauthorizedAccessException = new UnauthorizedException('Error.Unau
 
 // Google auth related errors
 export const GoogleUserInfoError = new Error('Error.FailedToGetGoogleUserInfo')
-
-export const InvalidEmailException = new UnprocessableEntityException([
-  {
-    message: 'Error.InvalidEmail',
-    path: 'email'
-  }
-])
-
-export const InvalidNameException = new UnprocessableEntityException([
-  {
-    message: 'Error.InvalidName',
-    path: 'name'
-  }
-])
-
-export const InvalidPhoneNumberException = new UnprocessableEntityException([
-  {
-    message: 'Error.InvalidPhoneNumber',
-    path: 'phoneNumber'
-  }
-])
