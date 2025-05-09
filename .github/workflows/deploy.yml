@@ -49,21 +49,21 @@ jobs:
           cat <<EOF > .env
           PORT=3000
           DATABASE_URL="${{ secrets.DATABASE_URL }}"
-          ACCESS_TOKEN_EXPIRES_IN=${{ secrets.ACCESS_TOKEN_EXPIRES_IN }}
-          REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REFRESH_TOKEN_EXPIRES_IN }}
-          ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}
-          REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}
-          SECRET_API_KEY=${{ secrets.SECRET_API_KEY }}
+          ACCESS_TOKEN_EXPIRES_IN=${{ secrets.ACCESS_TOKEN_EXPIRES_IN }}"
+          REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REFRESH_TOKEN_EXPIRES_IN }}"
+          ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}"
+          REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}"
+          SECRET_API_KEY=${{ secrets.SECRET_API_KEY }}"
           ADMIN_NAME="${{ secrets.ADMIN_NAME }}"
-          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
-          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
-          ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER }}
-          OTP_EXPIRES_IN=${{ secrets.OTP_EXPIRES_IN }}
-          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}
-          GOOGLE_CLIENT_REDIRECT_URI=${{ secrets.GOOGLE_CLIENT_REDIRECT_URI }}
+          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}"
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}"
+          ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER }}"
+          OTP_EXPIRES_IN=${{ secrets.OTP_EXPIRES_IN }}"
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}"
+          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}"
+          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}"
+          GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}"
+          GOOGLE_CLIENT_REDIRECT_URI=${{ secrets.GOOGLE_CLIENT_REDIRECT_URI }}"
           EOF
 
       - name: Deploy via SSH & PM2
@@ -74,6 +74,10 @@ jobs:
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             source ~/.bashrc; source ~/.profile
+            # Cài đặt jq nếu chưa có
+            if ! command -v jq &> /dev/null; then
+              apt-get update && apt-get install -y jq
+            fi
             cd ${{ secrets.PATH_PROJECT }}
             git fetch origin master && git reset --hard origin/master
             rm -rf dist node_modules
@@ -82,7 +86,7 @@ jobs:
             # Lấy trạng thái PM2 dưới dạng JSON
             pm2 jlist > /tmp/pm2_status.json
             # Thêm độ trễ để ứng dụng ghi log
-            sleep 2
+            sleep 5
             # Lấy log
             pm2 logs server-shopsifu --lines 100 --nostream > /tmp/pm2_logs.txt
             STATUS=$(pm2 info server-shopsifu | grep status | awk '{print $4}')
@@ -98,16 +102,12 @@ jobs:
         id: pm2_logs
         run: |
           sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
-            # Cài jq nếu chưa có
-            sudo apt-get update && sudo apt-get install -y jq || true
             # Trích xuất thông tin từ pm2 jlist
-            PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json)
-            echo "PM2_INFO<<EOF" >> $GITHUB_ENV
-            echo "$PM2_INFO" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-            echo "PM2_LOGS<<EOF" >> $GITHUB_ENV
-            cat /tmp/pm2_logs.txt >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
+            PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json 2>/dev/null || echo "Không thể lấy trạng thái PM2")
+            echo "::set-output name=pm2_info::$PM2_INFO"
+            # Lấy log
+            PM2_LOGS=$(cat /tmp/pm2_logs.txt 2>/dev/null || echo "Không có log")
+            echo "::set-output name=pm2_logs::$PM2_LOGS"
           EOF
 
       - name: Tag Release
@@ -127,8 +127,8 @@ jobs:
           ACTOR: ${{ github.actor }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          PM2_INFO: ${{ env.PM2_INFO }}
-          PM2_LOGS: ${{ env.PM2_LOGS }}
+          PM2_INFO: ${{ steps.pm2_logs.outputs.pm2_info }}
+          PM2_LOGS: ${{ steps.pm2_logs.outputs.pm2_logs }}
         run: |
           # Kiểm tra DISCORD_WEBHOOK
           if [ -z "$DISCORD_WEBHOOK" ]; then
