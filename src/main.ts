@@ -8,7 +8,7 @@ async function bootstrap() {
     logger: ['error', 'warn']
   })
   app.enableCors({
-    origin: ['*'],
+    origin: '*',
     methods: 'GET,POST,PUT,DELETE',
     credentials: true
   })
