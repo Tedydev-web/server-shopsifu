@@ -50,9 +50,11 @@ export class AuthService {
     type: TypeOfVerificationCodeType
   }) {
     const vevificationCode = await this.authRepository.findUniqueVerificationCode({
-      email,
-      code,
-      type
+      email_code_type: {
+        email,
+        code,
+        type
+      }
     })
     if (!vevificationCode) {
       throw InvalidOTPException
@@ -80,9 +82,11 @@ export class AuthService {
           roleId: clientRoleId
         }),
         this.authRepository.deleteVerificationCode({
-          email: body.email,
-          code: body.code,
-          type: TypeOfVerificationCode.FORGOT_PASSWORD
+          email_code_type: {
+            email: body.email,
+            code: body.code,
+            type: TypeOfVerificationCode.FORGOT_PASSWORD
+          }
         })
       ])
       return user
@@ -261,9 +265,11 @@ export class AuthService {
         }
       ),
       this.authRepository.deleteVerificationCode({
-        email: body.email,
-        code: body.code,
-        type: TypeOfVerificationCode.FORGOT_PASSWORD
+        email_code_type: {
+          email: body.email,
+          code: body.code,
+          type: TypeOfVerificationCode.FORGOT_PASSWORD
+        }
       })
     ])
     return {
