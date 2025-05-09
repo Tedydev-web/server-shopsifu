@@ -83,10 +83,10 @@ jobs:
             rm -rf dist node_modules
             npm ci && npm run build
             pm2 describe server-shopsifu &>/dev/null && pm2 restart server-shopsifu || pm2 start dist/main.js --name server-shopsifu
+            # Thêm độ trễ để ứng dụng ghi log và PM2 cập nhật trạng thái
+            sleep 12
             # Lấy trạng thái PM2 dưới dạng JSON
             pm2 jlist > /tmp/pm2_status.json
-            # Thêm độ trễ để ứng dụng ghi log
-            sleep 5
             # Lấy log
             pm2 logs server-shopsifu --lines 100 --nostream > /tmp/pm2_logs.txt
             STATUS=$(pm2 info server-shopsifu | grep status | awk '{print $4}')
