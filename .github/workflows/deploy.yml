@@ -173,7 +173,7 @@ jobs:
           # Thoát PM2_LOGS và PM2_INFO an toàn bằng jq
           ESCAPED_LOGS=$(echo "${PM2_LOGS:0:1500}" | jq -s -R .)
           ESCAPED_PM2_INFO=$(echo "$PM2_INFO" | jq -s -R .)
-          ESCAPED_COMMIT_MESSAGE=$(echo "$COMMIT_MESSAGE" | jq -s -R .)
+          ESCAPED_COMMIT_MESSAGE="$COMMIT_MESSAGE"
 
           # Tạo JSON payload bằng jq để đảm bảo cú pháp đúng
           JSON_PAYLOAD=$(jq -n \
@@ -198,7 +198,7 @@ jobs:
                   { name: "Nhánh", value: "`\($branch)`", inline: true },
                   { name: "Commit", value: "[`\($commit)`](https://github.com/\($repo)/commit/\($commit))", inline: false },
                   { name: "Commit SHA", value: "`\($commit_sha)`", inline: false },
-                  { name: "Commit Message", value: (\($commit_message)), inline: false },
+                  { name: "Commit Message", value: $commit_message, inline: false },
                   { name: "Người thực hiện", value: "`\($actor)`", inline: true },
                   { name: "Trạng thái PM2", value: "```\n\($pm2_info)\n```", inline: false }
                 ],
