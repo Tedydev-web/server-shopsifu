@@ -142,7 +142,3 @@ jobs:
             **Message**: ${{ steps.deployment.outputs.commit_message }}
             **Deployed At**: <t:${{ toJSON(github.event.head_commit.timestamp) }}:F>
             **Environment**: Production
-
-            **App Status**: ${{ env.APP_STATUS }}
-
-            **PM2 Status**:
