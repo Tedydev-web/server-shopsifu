@@ -79,7 +79,7 @@ jobs:
             rm -rf dist node_modules
             npm ci && npm run build
             pm2 describe server-shopsifu &>/dev/null && pm2 restart server-shopsifu || pm2 start dist/main.js --name server-shopsifu
-            pm2 status server-shopsifu --lines 0 > /tmp/pm2_status.txt
+            pm2 status server-shopsifu > /tmp/pm2_status.txt
             pm2 logs server-shopsifu --lines 100 --nostream > /tmp/pm2_logs.txt
             STATUS=$(pm2 info server-shopsifu | grep status | awk '{print $4}')
             echo "$STATUS" > /tmp/app_status.txt
@@ -173,3 +173,6 @@ jobs:
             npm ci && npm run build
             pm2 restart server-shopsifu
           EOF
+
+permissions:
+  contents: write
