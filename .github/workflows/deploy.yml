@@ -1,21 +1,24 @@
-name: Deploy to Production
+name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - master
+    branches: [master]
   workflow_dispatch:
+    inputs:
+      manual_rollback:
+        description: 'Commit SHA hoặc tag để rollback (để trống để deploy bình thường)'
+        required: false
 
 jobs:
-  deploy:
+  # 1. Build & Test
+  build:
+    name: Build & Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
-      - name: Cache node modules
+      - name: Cache node_modules
         uses: actions/cache@v3
         with:
           path: ~/.npm
@@ -23,122 +26,150 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
 
-      - name: Deploy to VPS
-        id: deploy
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.VPS_IP_HOST}}
-          username: ${{ secrets.VPS_USERNAME}}
-          password: ${{ secrets.VPS_PASSWORD }}
-          script: |
-            bash -i << 'EOF'
-            # Load nvm
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  # 2. Deploy to Production
+  deploy:
+    name: Deploy to Production
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !github.event.inputs.manual_rollback) }}
+    env:
+      NODE_ENV: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Generate .env
+        run: |
+          cat <<EOF > .env
+          PORT=3000
+          DATABASE_URL="${{ secrets.DATABASE_URL }}"
+          ACCESS_TOKEN_EXPIRES_IN=${{ secrets.ACCESS_TOKEN_EXPIRES_IN }}
+          REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REFRESH_TOKEN_EXPIRES_IN }}
+          ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}
+          REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}
+          SECRET_API_KEY=${{ secrets.SECRET_API_KEY }}
+          ADMIN_NAME="${{ secrets.ADMIN_NAME }}"
+          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER }}
+          OTP_EXPIRES_IN=${{ secrets.OTP_EXPIRES_IN }}
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}
+          GOOGLE_CLIENT_REDIRECT_URI=${{ secrets.GOOGLE_CLIENT_REDIRECT_URI }}
+          EOF
+
+      - name: Deploy via SSH & PM2
+        id: ssh_deploy
+        run: |
+          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+            set -euo pipefail
             export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-
-            # Load shell environment
-            source ~/.bashrc
-            source ~/.profile
-
-            # Kiểm tra môi trường
-            echo "User: $(whoami)"
-            echo "PATH: $PATH"
-            which npm || echo "npm not found"
-            which pm2 || echo "pm2 not found"
-            node --version || echo "Node.js not found"
-            npm --version || echo "npm not found"
-            pm2 --version || echo "pm2 not found"
-
-            # Di chuyển vào thư mục dự án
-            cd ${{ secrets.PATH_PROJECT }} || exit 1
-
-            # Tạo file .env
-            echo "${{ secrets.ENV }}" > .env
-            ls -la .env
-            echo "File .env đã được tạo thành công"
-
-            # Kéo code mới nhất và ghi đè thay đổi cục bộ
-            git fetch origin master || exit 1
-            git reset --hard origin/master || exit 1
-
-            # Xóa cache và build cũ
-            rm -rf dist node_modules/.cache node_modules
-
-            npm cache clean --force
-
-            # Cài đặt dependencies
-            npm install || exit 1
-
-            # Build ứng dụng
-            npm run build || exit 1
-
-            # Restart pm2
-            pm2 restart server-shopsifu
-
-            # Lưu trạng thái pm2 vào file tạm
-            pm2 status server-shopsifu > /tmp/pm2_status.txt
-
-            # Lưu log pm2 (20 dòng cuối) vào file tạm
-            pm2 logs server-shopsifu --lines 20 --nostream > /tmp/pm2_logs.txt
-
-            # Kiểm tra trạng thái app
-            APP_STATUS=$(pm2 info server-shopsifu | grep status | awk '{print $4}')
-            echo "App status: $APP_STATUS"
-            echo "$APP_STATUS" > /tmp/app_status.txt
-            if [ "$APP_STATUS" != "online" ]; then
-              echo "App is not online! Status: $APP_STATUS"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            source ~/.bashrc; source ~/.profile
+            cd ${{ secrets.PATH_PROJECT }}
+            git fetch origin master && git reset --hard origin/master
+            rm -rf dist node_modules
+            npm ci && npm run build
+            pm2 describe server-shopsifu &>/dev/null && pm2 restart server-shopsifu || pm2 start dist/main.js --name server-shopsifu
+            pm2 status server-shopsifu --lines 0 > /tmp/pm2_status.txt
+            pm2 logs server-shopsifu --lines 100 --nostream > /tmp/pm2_logs.txt
+            STATUS=$(pm2 info server-shopsifu | grep status | awk '{print $4}')
+            echo "$STATUS" > /tmp/app_status.txt
+            if [[ "$STATUS" != "online" ]]; then
               exit 2
             fi
-            EOF
+          EOF
+        continue-on-error: true
 
-      - name: Retrieve PM2 Status and Logs
-        id: retrieve_outputs
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.VPS_IP_HOST}}
-          username: ${{ secrets.VPS_USERNAME}}
-          password: ${{ secrets.VPS_PASSWORD }}
-          script: |
-            # Đọc nội dung file tạm và lưu vào biến môi trường
-            echo "PM2_STATUS<<EOF" >> $GITHUB_ENV
-            cat /tmp/pm2_status.txt >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-
-            echo "PM2_LOGS<<EOF" >> $GITHUB_ENV
-            cat /tmp/pm2_logs.txt >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-
-            echo "APP_STATUS<<EOF" >> $GITHUB_ENV
-            cat /tmp/app_status.txt >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-
-            # Xóa file tạm
-            rm /tmp/pm2_status.txt /tmp/pm2_logs.txt /tmp/app_status.txt
-
-      - name: Get deployment details
-        id: deployment
+      - name: Collect PM2 Output
+        if: always()
+        id: pm2_logs
         run: |
-          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          echo "commit_message=$(git log -1 --pretty=%B)" >> $GITHUB_OUTPUT
-          echo "commit_author=$(git log -1 --pretty=%an)" >> $GITHUB_OUTPUT
-          echo "commit_date=$(git log -1 --pretty=%cd)" >> $GITHUB_OUTPUT
-          echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+            echo "::set-output name=status::$(cat /tmp/pm2_status.txt)"
+            echo "::set-output name=logs::$(cat /tmp/pm2_logs.txt)"
+          EOF
+
+      - name: Tag Release
+        if: success()
+        run: |
+          TAG=v$(date +'%Y.%m.%d.%H%M%S')
+          git tag $TAG
+          git push origin $TAG
 
       - name: Send Discord Notification
-        if: always()
         uses: Ilshidur/action-discord@master
+        if: always()
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         with:
           args: |
             **🚀 Deployment Notification**
-
             **Status**: ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}
-            **Repository**: [${{ github.repository }}](https://github.com/${{ github.repository }})
-            **Branch**: `${{ steps.deployment.outputs.branch }}`
-            **Commit**: [${{ steps.deployment.outputs.commit_sha }}](https://github.com/${{ github.repository }}/commit/${{ steps.deployment.outputs.commit_sha }})
-            **Author**: ${{ steps.deployment.outputs.commit_author }}
-            **Message**: ${{ steps.deployment.outputs.commit_message }}
-            **Deployed At**: <t:${{ toJSON(github.event.head_commit.timestamp) }}:F>
-            **Environment**: Production
+            **Ref**: `${{ github.ref }}`
+            **Commit**: `${{ github.sha }}`
+            **Actor**: `${{ github.actor }}`
+            **PM2 Status:**
+            ```
+            ${{ steps.pm2_logs.outputs.status }}
+            ```
+            **Last 100 lines of Logs:**
+            ```
+            ${{ steps.pm2_logs.outputs.logs }}
+            ```
+
+  # 3. Automatic Rollback on Failure
+  rollback-auto:
+    name: Automatic Rollback
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: needs.deploy.result == 'failure'
+    steps:
+      - name: Rollback to previous commit on server
+        run: |
+          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+            set -euo pipefail
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            source ~/.bashrc; source ~/.profile
+            cd ${{ secrets.PATH_PROJECT }}
+            git fetch origin master
+            git reset --hard HEAD~1
+            rm -rf dist node_modules
+            npm ci && npm run build
+            pm2 restart server-shopsifu
+          EOF
+
+  # 4. Manual Rollback
+  manual-rollback:
+    name: Manual Rollback
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.manual_rollback
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout specific commit/tag
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.manual_rollback }}
+
+      - name: Re-deploy to VPS
+        run: |
+          # Copy lại các bước deploy SSH như trên, nhưng với ref cụ thể đã checkout
+          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+            set -euo pipefail
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            source ~/.bashrc; source ~/.profile
+            cd ${{ secrets.PATH_PROJECT }}
+            git reset --hard HEAD
+            rm -rf dist node_modules
+            npm ci && npm run build
+            pm2 restart server-shopsifu
+          EOF
