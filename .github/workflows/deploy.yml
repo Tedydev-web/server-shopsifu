@@ -105,26 +105,41 @@ jobs:
           git tag $TAG
           git push origin $TAG
 
-      - name: Send Discord Notification
-        uses: Ilshidur/action-discord@master
+      - name: Send Discord Embed Notification
         if: always()
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        with:
-          args: |
-            **🚀 Deployment Notification**
-            **Status**: ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}
-            **Ref**: `${{ github.ref }}`
-            **Commit**: `${{ github.sha }}`
-            **Actor**: `${{ github.actor }}`
-            **PM2 Status:**
-            ```
-            ${{ steps.pm2_logs.outputs.status }}
-            ```
-            **Last 100 lines of Logs:**
-            ```
-            ${{ steps.pm2_logs.outputs.logs }}
-            ```
+          STATUS: ${{ job.status }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          PM2_STATUS: ${{ steps.pm2_logs.outputs.status }}
+          PM2_LOGS: ${{ steps.pm2_logs.outputs.logs }}
+        run: |
+          COLOR=3066993
+          ICON="✅"
+          if [ "$STATUS" != "success" ]; then
+            COLOR=15158332
+            ICON="❌"
+          fi
+
+          curl -H "Content-Type: application/json" -X POST -d "{
+            \"embeds\": [{
+              \"title\": \"🚀 Deployment Notification\",
+              \"color\": $COLOR,
+              \"fields\": [
+                { \"name\": \"Status\", \"value\": \"$ICON $STATUS\", \"inline\": true },
+                { \"name\": \"Branch\", \"value\": \"\`$BRANCH\`\", \"inline\": true },
+                { \"name\": \"Commit\", \"value\": \"[\`$COMMIT\`](https://github.com/$REPO/commit/$COMMIT)\", \"inline\": false },
+                { \"name\": \"Actor\", \"value\": \"\`$ACTOR\`\", \"inline\": true },
+                { \"name\": \"PM2 Status\", \"value\": \"\`\`\`\n$PM2_STATUS\n\`\`\`\", \"inline\": false }
+              ],
+              \"description\": \"**Last 100 lines of Logs:**\n\`\`\`\n${PM2_LOGS:0:1800}\n\`\`\`\",  // Discord limit: 2000 chars
+              \"url\": \"https://github.com/$REPO/actions/runs/$RUN_ID\"
+            }]
+          }" $DISCORD_WEBHOOK
 
   # 3. Automatic Rollback on Failure
   rollback-auto:
