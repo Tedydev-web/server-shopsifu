@@ -79,7 +79,11 @@ jobs:
             rm -rf dist node_modules
             npm ci && npm run build
             pm2 describe server-shopsifu &>/dev/null && pm2 restart server-shopsifu || pm2 start dist/main.js --name server-shopsifu
-            pm2 status server-shopsifu > /tmp/pm2_status.txt
+            # Lấy trạng thái PM2 dưới dạng JSON
+            pm2 jlist > /tmp/pm2_status.json
+            # Thêm độ trễ để ứng dụng ghi log
+            sleep 2
+            # Lấy log
             pm2 logs server-shopsifu --lines 100 --nostream > /tmp/pm2_logs.txt
             STATUS=$(pm2 info server-shopsifu | grep status | awk '{print $4}')
             echo "$STATUS" > /tmp/app_status.txt
@@ -94,8 +98,16 @@ jobs:
         id: pm2_logs
         run: |
           sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
-            echo "::set-output name=status::$(cat /tmp/pm2_status.txt)"
-            echo "::set-output name=logs::$(cat /tmp/pm2_logs.txt)"
+            # Cài jq nếu chưa có
+            sudo apt-get update && sudo apt-get install -y jq || true
+            # Trích xuất thông tin từ pm2 jlist
+            PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json)
+            echo "PM2_INFO<<EOF" >> $GITHUB_ENV
+            echo "$PM2_INFO" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+            echo "PM2_LOGS<<EOF" >> $GITHUB_ENV
+            cat /tmp/pm2_logs.txt >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
           EOF
 
       - name: Tag Release
@@ -115,8 +127,8 @@ jobs:
           ACTOR: ${{ github.actor }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          PM2_STATUS: ${{ steps.pm2_logs.outputs.status }}
-          PM2_LOGS: ${{ steps.pm2_logs.outputs.logs }}
+          PM2_INFO: ${{ env.PM2_INFO }}
+          PM2_LOGS: ${{ env.PM2_LOGS }}
         run: |
           # Kiểm tra DISCORD_WEBHOOK
           if [ -z "$DISCORD_WEBHOOK" ]; then
@@ -136,9 +148,9 @@ jobs:
             ICON="❌"
           fi
 
-          # Thoát PM2_LOGS và PM2_STATUS an toàn bằng jq
+          # Thoát PM2_LOGS và PM2_INFO an toàn bằng jq
           ESCAPED_LOGS=$(echo "${PM2_LOGS:0:1500}" | jq -s -R .)
-          ESCAPED_PM2_STATUS=$(echo "$PM2_STATUS" | jq -s -R .)
+          ESCAPED_PM2_INFO=$(echo "$PM2_INFO" | jq -s -R .)
 
           # Tạo JSON payload bằng jq để đảm bảo cú pháp đúng
           JSON_PAYLOAD=$(jq -n \
@@ -148,7 +160,7 @@ jobs:
             --arg commit "$COMMIT" \
             --arg repo "$REPO" \
             --arg actor "$ACTOR" \
-            --arg pm2_status "$ESCAPED_PM2_STATUS" \
+            --arg pm2_info "$ESCAPED_PM2_INFO" \
             --arg logs "$ESCAPED_LOGS" \
             --arg run_id "$RUN_ID" \
             --arg color "$COLOR" \
@@ -161,7 +173,7 @@ jobs:
                   { name: "Nhánh", value: "`\($branch)`", inline: true },
                   { name: "Commit", value: "[`\($commit)`](https://github.com/\($repo)/commit/\($commit))", inline: false },
                   { name: "Người thực hiện", value: "`\($actor)`", inline: true },
-                  { name: "Trạng thái PM2", value: "```\n\($pm2_status)\n```", inline: false }
+                  { name: "Trạng thái PM2", value: "```\n\($pm2_info)\n```", inline: false }
                 ],
                 description: "**100 dòng log cuối:**\n```\n\($logs)\n```",
                 url: "https://github.com/\($repo)/actions/runs/\($run_id)"
@@ -219,7 +231,6 @@ jobs:
 
       - name: Re-deploy to VPS
         run: |
-          # Copy lại các bước deploy SSH như trên, nhưng với ref cụ thể đã checkout
           sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
             set -euo pipefail
             export NVM_DIR="$HOME/.nvm"
