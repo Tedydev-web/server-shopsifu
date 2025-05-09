@@ -1,21 +1,24 @@
-name: Deploy to Production
+name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - master
+    branches: [master]
   workflow_dispatch:
+    inputs:
+      manual_rollback:
+        description: 'Commit SHA hoặc tag để rollback (để trống để deploy bình thường)'
+        required: false
 
 jobs:
-  deploy:
+  # 1. Build & Test
+  build:
+    name: Build & Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
-      - name: Cache node modules
+      - name: Cache node_modules
         uses: actions/cache@v3
         with:
           path: ~/.npm
@@ -23,122 +26,249 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
 
-      - name: Deploy to VPS
-        id: deploy
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.VPS_IP_HOST}}
-          username: ${{ secrets.VPS_USERNAME}}
-          password: ${{ secrets.VPS_PASSWORD }}
-          script: |
-            bash -i << 'EOF'
-            # Load nvm
+      - name: Install dependencies
+        run: npm ci
+
+      # - name: Run tests
+      #   run: npm test
+
+  # 2. Deploy to Production
+  deploy:
+    name: Deploy to Production
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !github.event.inputs.manual_rollback) }}
+    env:
+      NODE_ENV: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Generate .env
+        run: |
+          cat <<EOF > .env
+          PORT=3000
+          DATABASE_URL="${{ secrets.DATABASE_URL }}"
+          ACCESS_TOKEN_EXPIRES_IN=${{ secrets.ACCESS_TOKEN_EXPIRES_IN }}"
+          REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REFRESH_TOKEN_EXPIRES_IN }}"
+          ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}"
+          REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}"
+          SECRET_API_KEY=${{ secrets.SECRET_API_KEY }}"
+          ADMIN_NAME="${{ secrets.ADMIN_NAME }}"
+          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}"
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}"
+          ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER }}"
+          OTP_EXPIRES_IN=${{ secrets.OTP_EXPIRES_IN }}"
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}"
+          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}"
+          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}"
+          GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}"
+          GOOGLE_CLIENT_REDIRECT_URI=${{ secrets.GOOGLE_CLIENT_REDIRECT_URI }}"
+          EOF
+
+      - name: Deploy via SSH & PM2
+        id: ssh_deploy
+        run: |
+          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+            set -euo pipefail
             export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-
-            # Load shell environment
-            source ~/.bashrc
-            source ~/.profile
-
-            # Kiểm tra môi trường
-            echo "User: $(whoami)"
-            echo "PATH: $PATH"
-            which npm || echo "npm not found"
-            which pm2 || echo "pm2 not found"
-            node --version || echo "Node.js not found"
-            npm --version || echo "npm not found"
-            pm2 --version || echo "pm2 not found"
-
-            # Di chuyển vào thư mục dự án
-            cd ${{ secrets.PATH_PROJECT }} || exit 1
-
-            # Tạo file .env
-            echo "${{ secrets.ENV }}" > .env
-            ls -la .env
-            echo "File .env đã được tạo thành công"
-
-            # Kéo code mới nhất và ghi đè thay đổi cục bộ
-            git fetch origin master || exit 1
-            git reset --hard origin/master || exit 1
-
-            # Xóa cache và build cũ
-            rm -rf dist node_modules/.cache node_modules
-
-            npm cache clean --force
-
-            # Cài đặt dependencies
-            npm install || exit 1
-
-            # Build ứng dụng
-            npm run build || exit 1
-
-            # Restart pm2
-            pm2 restart server-shopsifu
-
-            # Lưu trạng thái pm2 vào file tạm
-            pm2 status server-shopsifu > /tmp/pm2_status.txt
-
-            # Lưu log pm2 (20 dòng cuối) vào file tạm
-            pm2 logs server-shopsifu --lines 20 --nostream > /tmp/pm2_logs.txt
-
-            # Kiểm tra trạng thái app
-            APP_STATUS=$(pm2 info server-shopsifu | grep status | awk '{print $4}')
-            echo "App status: $APP_STATUS"
-            echo "$APP_STATUS" > /tmp/app_status.txt
-            if [ "$APP_STATUS" != "online" ]; then
-              echo "App is not online! Status: $APP_STATUS"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            source ~/.bashrc; source ~/.profile
+            # Cài đặt jq nếu chưa có
+            if ! command -v jq &> /dev/null; then
+              sudo apt-get update && sudo apt-get install -y jq
+            fi
+            cd ${{ secrets.PATH_PROJECT }}
+            git fetch origin master && git reset --hard origin/master
+            rm -rf dist node_modules
+            npm ci && npm run build
+            pm2 describe server-shopsifu &>/dev/null && pm2 restart server-shopsifu || pm2 start dist/main.js --name server-shopsifu
+            # Thêm độ trễ để ứng dụng ghi log và PM2 cập nhật trạng thái
+            sleep 12
+            # Lấy trạng thái PM2 dưới dạng JSON
+            pm2 jlist > /tmp/pm2_status.json
+            # Lấy log
+            pm2 logs server-shopsifu --lines 100 --nostream > /tmp/pm2_logs.txt
+            STATUS=$(pm2 info server-shopsifu | grep status | awk '{print $4}')
+            echo "$STATUS" > /tmp/app_status.txt
+            if [[ "$STATUS" != "online" ]]; then
               exit 2
             fi
-            EOF
+          EOF
+        continue-on-error: true
 
-      - name: Retrieve PM2 Status and Logs
-        id: retrieve_outputs
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.VPS_IP_HOST}}
-          username: ${{ secrets.VPS_USERNAME}}
-          password: ${{ secrets.VPS_PASSWORD }}
-          script: |
-            # Đọc nội dung file tạm và lưu vào biến môi trường
-            echo "PM2_STATUS<<EOF" >> $GITHUB_ENV
-            cat /tmp/pm2_status.txt >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-
-            echo "PM2_LOGS<<EOF" >> $GITHUB_ENV
-            cat /tmp/pm2_logs.txt >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-
-            echo "APP_STATUS<<EOF" >> $GITHUB_ENV
-            cat /tmp/app_status.txt >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-
-            # Xóa file tạm
-            rm /tmp/pm2_status.txt /tmp/pm2_logs.txt /tmp/app_status.txt
-
-      - name: Get deployment details
-        id: deployment
-        run: |
-          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          echo "commit_message=$(git log -1 --pretty=%B)" >> $GITHUB_OUTPUT
-          echo "commit_author=$(git log -1 --pretty=%an)" >> $GITHUB_OUTPUT
-          echo "commit_date=$(git log -1 --pretty=%cd)" >> $GITHUB_OUTPUT
-          echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Send Discord Notification
+      - name: Collect PM2 Output
         if: always()
-        uses: Ilshidur/action-discord@master
+        id: pm2_logs
+        run: |
+          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+            # Trích xuất thông tin từ pm2 jlist
+            PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json 2>/dev/null)
+            if [ -z "$PM2_INFO" ]; then
+              PM2_INFO="Không tìm thấy process server-shopsifu hoặc không thể lấy trạng thái PM2"
+            fi
+            echo "::set-output name=pm2_info::$PM2_INFO"
+            # Lấy log, lọc bỏ dòng hệ thống
+            if [ -f /tmp/pm2_logs.txt ]; then
+              PM2_LOGS=$(grep -v '\[TAILING\]' /tmp/pm2_logs.txt | tail -n 100)
+              if [ -z "$PM2_LOGS" ]; then
+                PM2_LOGS="Không có log ứng dụng hoặc log rỗng"
+              fi
+            else
+              PM2_LOGS="Không có log ứng dụng hoặc file log không tồn tại"
+            fi
+            echo "::set-output name=pm2_logs::$PM2_LOGS"
+          EOF
+
+      - name: Tag Release
+        if: success()
+        run: |
+          TAG=v$(date +'%Y.%m.%d.%H%M%S')
+          git tag $TAG
+          git push origin $TAG
+
+      - name: Get Commit Info
+        id: commit_info
+        run: |
+          COMMIT_SHA=$(git rev-parse HEAD)
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "commit_message<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Send Discord Embed Notification
+        if: always()
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        with:
-          args: |
-            **🚀 Deployment Notification**
+          STATUS: ${{ job.status }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          PM2_INFO: ${{ steps.pm2_logs.outputs.pm2_info }}
+          PM2_LOGS: ${{ steps.pm2_logs.outputs.pm2_logs }}
+          COMMIT_SHA: ${{ steps.commit_info.outputs.commit_sha }}
+          COMMIT_MESSAGE: ${{ steps.commit_info.outputs.commit_message }}
+        run: |
+          # Kiểm tra DISCORD_WEBHOOK
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "Lỗi: DISCORD_WEBHOOK không được đặt"
+            exit 1
+          else
+            echo "DISCORD_WEBHOOK đã được đặt"
+          fi
 
-            **Status**: ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}
-            **Repository**: [${{ github.repository }}](https://github.com/${{ github.repository }})
-            **Branch**: `${{ steps.deployment.outputs.branch }}`
-            **Commit**: [${{ steps.deployment.outputs.commit_sha }}](https://github.com/${{ github.repository }}/commit/${{ steps.deployment.outputs.commit_sha }})
-            **Author**: ${{ steps.deployment.outputs.commit_author }}
-            **Message**: ${{ steps.deployment.outputs.commit_message }}
-            **Deployed At**: <t:${{ toJSON(github.event.head_commit.timestamp) }}:F>
-            **Environment**: Production
+          # Cài đặt jq để xử lý JSON
+          sudo apt-get update && sudo apt-get install -y jq
+
+          COLOR=3066993
+          ICON="✅"
+          if [ "$STATUS" != "success" ]; then
+            COLOR=15158332
+            ICON="❌"
+          fi
+
+          # Thoát PM2_LOGS và PM2_INFO an toàn bằng jq
+          ESCAPED_LOGS=$(echo "${PM2_LOGS:0:1500}" | jq -s -R .)
+          ESCAPED_PM2_INFO=$(echo "$PM2_INFO" | jq -s -R .)
+          ESCAPED_COMMIT_MESSAGE=$(echo "$COMMIT_MESSAGE" | jq -s -R .)
+
+          # Tạo JSON payload bằng jq để đảm bảo cú pháp đúng
+          JSON_PAYLOAD=$(jq -n \
+            --arg status "$STATUS" \
+            --arg icon "$ICON" \
+            --arg branch "$BRANCH" \
+            --arg commit "$COMMIT" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg commit_message "$ESCAPED_COMMIT_MESSAGE" \
+            --arg repo "$REPO" \
+            --arg actor "$ACTOR" \
+            --arg pm2_info "$ESCAPED_PM2_INFO" \
+            --arg logs "$ESCAPED_LOGS" \
+            --arg run_id "$RUN_ID" \
+            --arg color "$COLOR" \
+            '{
+              embeds: [{
+                title: "🚀 Thông báo triển khai",
+                color: ($color | tonumber),
+                fields: [
+                  { name: "Trạng thái", value: "\($icon) \($status)", inline: true },
+                  { name: "Nhánh", value: "`\($branch)`", inline: true },
+                  { name: "Commit", value: "[`\($commit)`](https://github.com/\($repo)/commit/\($commit))", inline: false },
+                  { name: "Commit SHA", value: "`\($commit_sha)`", inline: false },
+                  { name: "Commit Message", value: (\($commit_message)), inline: false },
+                  { name: "Người thực hiện", value: "`\($actor)`", inline: true },
+                  { name: "Trạng thái PM2", value: "```\n\($pm2_info)\n```", inline: false }
+                ],
+                description: "**100 dòng log cuối:**\n```\n\($logs)\n```",
+                url: "https://github.com/\($repo)/actions/runs/\($run_id)"
+              }]
+            }')
+
+          # Ghi log payload để kiểm tra
+          echo "JSON Payload: $JSON_PAYLOAD"
+
+          # Gửi yêu cầu và ghi lại phản hồi
+          RESPONSE=$(curl -s -w "%{http_code}" -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK")
+          HTTP_CODE=${RESPONSE: -3}
+          RESPONSE_BODY=${RESPONSE%???}
+
+          echo "Mã trạng thái HTTP: $HTTP_CODE"
+          echo "Nội dung phản hồi: $RESPONSE_BODY"
+
+          if [ "$HTTP_CODE" != "204" ]; then
+            echo "Lỗi: Không thể gửi thông báo Discord"
+            exit 1
+          fi
+
+  # 3. Automatic Rollback on Failure
+  rollback-auto:
+    name: Automatic Rollback
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: needs.deploy.result == 'failure'
+    steps:
+      - name: Rollback to previous commit on server
+        run: |
+          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+            set -euo pipefail
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            source ~/.bashrc; source ~/.profile
+            cd ${{ secrets.PATH_PROJECT }}
+            git fetch origin master
+            git reset --hard HEAD~1
+            rm -rf dist node_modules
+            npm ci && npm run build
+            pm2 restart server-shopsifu
+          EOF
+
+  # 4. Manual Rollback
+  manual-rollback:
+    name: Manual Rollback
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.manual_rollback
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout specific commit/tag
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.manual_rollback }}
+
+      - name: Re-deploy to VPS
+        run: |
+          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+            set -euo pipefail
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            source ~/.bashrc; source ~/.profile
+            cd ${{ secrets.PATH_PROJECT }}
+            git reset --hard HEAD
+            rm -rf dist node_modules
+            npm ci && npm run build
+            pm2 restart server-shopsifu
+          EOF
+
+permissions:
+  contents: write

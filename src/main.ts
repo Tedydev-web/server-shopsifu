@@ -5,10 +5,10 @@ import helmet from 'helmet'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn']
+    logger: ['error', 'warn', 'log', 'verbose', 'debug']
   })
   app.enableCors({
-    origin: ['*'],
+    origin: '*',
     methods: 'GET,POST,PUT,DELETE',
     credentials: true
   })
