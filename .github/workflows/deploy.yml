@@ -136,7 +136,7 @@ jobs:
                 { \"name\": \"Actor\", \"value\": \"\`$ACTOR\`\", \"inline\": true },
                 { \"name\": \"PM2 Status\", \"value\": \"\`\`\`\n$PM2_STATUS\n\`\`\`\", \"inline\": false }
               ],
-              \"description\": \"**Last 100 lines of Logs:**\n\`\`\`\n${PM2_LOGS:0:1800}\n\`\`\`\",  // Discord limit: 2000 chars
+              \"description\": \"**Last 100 lines of Logs:**\\n\\\`\\\`\\\`\\n${PM2_LOGS:0:1500}\\n\\\`\\\`\\\`\", 
               \"url\": \"https://github.com/$REPO/actions/runs/$RUN_ID\"
             }]
           }" $DISCORD_WEBHOOK
