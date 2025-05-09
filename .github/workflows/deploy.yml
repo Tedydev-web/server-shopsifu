@@ -127,6 +127,16 @@ jobs:
           git tag $TAG
           git push origin $TAG
 
+      - name: Get Commit Info
+        id: commit_info
+        run: |
+          COMMIT_SHA=$(git rev-parse HEAD)
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "commit_message<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Send Discord Embed Notification
         if: always()
         env:
@@ -139,6 +149,8 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           PM2_INFO: ${{ steps.pm2_logs.outputs.pm2_info }}
           PM2_LOGS: ${{ steps.pm2_logs.outputs.pm2_logs }}
+          COMMIT_SHA: ${{ steps.commit_info.outputs.commit_sha }}
+          COMMIT_MESSAGE: ${{ steps.commit_info.outputs.commit_message }}
         run: |
           # Kiểm tra DISCORD_WEBHOOK
           if [ -z "$DISCORD_WEBHOOK" ]; then
@@ -161,6 +173,7 @@ jobs:
           # Thoát PM2_LOGS và PM2_INFO an toàn bằng jq
           ESCAPED_LOGS=$(echo "${PM2_LOGS:0:1500}" | jq -s -R .)
           ESCAPED_PM2_INFO=$(echo "$PM2_INFO" | jq -s -R .)
+          ESCAPED_COMMIT_MESSAGE=$(echo "$COMMIT_MESSAGE" | jq -s -R .)
 
           # Tạo JSON payload bằng jq để đảm bảo cú pháp đúng
           JSON_PAYLOAD=$(jq -n \
@@ -168,6 +181,8 @@ jobs:
             --arg icon "$ICON" \
             --arg branch "$BRANCH" \
             --arg commit "$COMMIT" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg commit_message "$ESCAPED_COMMIT_MESSAGE" \
             --arg repo "$REPO" \
             --arg actor "$ACTOR" \
             --arg pm2_info "$ESCAPED_PM2_INFO" \
@@ -182,6 +197,8 @@ jobs:
                   { name: "Trạng thái", value: "\($icon) \($status)", inline: true },
                   { name: "Nhánh", value: "`\($branch)`", inline: true },
                   { name: "Commit", value: "[`\($commit)`](https://github.com/\($repo)/commit/\($commit))", inline: false },
+                  { name: "Commit SHA", value: "`\($commit_sha)`", inline: false },
+                  { name: "Commit Message", value: (\($commit_message)), inline: false },
                   { name: "Người thực hiện", value: "`\($actor)`", inline: true },
                   { name: "Trạng thái PM2", value: "```\n\($pm2_info)\n```", inline: false }
                 ],
