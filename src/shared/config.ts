@@ -27,6 +27,7 @@ const configSchema = z.object({
   RESEND_API_KEY: z.string(),
   GOOGLE_CLIENT_ID: z.string(),
   GOOGLE_CLIENT_SECRET: z.string(),
+  GOOGLE_CLIENT_REDIRECT_URI: z.string(),
   GOOGLE_REDIRECT_URI: z.string()
 })
 
