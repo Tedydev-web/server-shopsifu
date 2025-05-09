@@ -118,11 +118,16 @@ jobs:
           PM2_STATUS: ${{ steps.pm2_logs.outputs.status }}
           PM2_LOGS: ${{ steps.pm2_logs.outputs.logs }}
         run: |
-          # Kiểm tra webhook
+          # Kiểm tra DISCORD_WEBHOOK
           if [ -z "$DISCORD_WEBHOOK" ]; then
             echo "Lỗi: DISCORD_WEBHOOK không được đặt"
             exit 1
+          else
+            echo "DISCORD_WEBHOOK đã được đặt"
           fi
+
+          # Cài đặt jq để xử lý JSON
+          sudo apt-get update && sudo apt-get install -y jq
 
           COLOR=3066993
           ICON="✅"
@@ -131,26 +136,39 @@ jobs:
             ICON="❌"
           fi
 
-          # Thoát PM2_LOGS
-          ESCAPED_LOGS=$(echo "${PM2_LOGS:0:1500}" | sed 's/"/\\"/g; s/\n/\\n/g')
+          # Thoát PM2_LOGS và PM2_STATUS an toàn bằng jq
+          ESCAPED_LOGS=$(echo "${PM2_LOGS:0:1500}" | jq -s -R .)
+          ESCAPED_PM2_STATUS=$(echo "$PM2_STATUS" | jq -s -R .)
 
-          JSON_PAYLOAD="{
-            \"embeds\": [{
-              \"title\": \"🚀 Thông báo triển khai\",
-              \"color\": $COLOR,
-              \"fields\": [
-                { \"name\": \"Trạng thái\", \"value\": \"$ICON $STATUS\", \"inline\": true },
-                { \"name\": \"Nhánh\", \"value\": \"\`$BRANCH\`\", \"inline\": true },
-                { \"name\": \"Commit\", \"value\": \"[\`$COMMIT\`](https://github.com/$REPO/commit/$COMMIT)\", \"inline\": false },
-                { \"name\": \"Người thực hiện\", \"value\": \"\`$ACTOR\`\", \"inline\": true },
-                { \"name\": \"Trạng thái PM2\", \"value\": \"\`\`\`\n$PM2_STATUS\n\`\`\`\", \"inline\": false }
-              ],
-              \"description\": \"**100 dòng log cuối:**\\n\\\`\\\`\\\`\\n$ESCAPED_LOGS\\n\\\`\\\`\\\`\", 
-              \"url\": \"https://github.com/$REPO/actions/runs/$RUN_ID\"
-            }]
-          }"
+          # Tạo JSON payload bằng jq để đảm bảo cú pháp đúng
+          JSON_PAYLOAD=$(jq -n \
+            --arg status "$STATUS" \
+            --arg icon "$ICON" \
+            --arg branch "$BRANCH" \
+            --arg commit "$COMMIT" \
+            --arg repo "$REPO" \
+            --arg actor "$ACTOR" \
+            --arg pm2_status "$ESCAPED_PM2_STATUS" \
+            --arg logs "$ESCAPED_LOGS" \
+            --arg run_id "$RUN_ID" \
+            --arg color "$COLOR" \
+            '{
+              embeds: [{
+                title: "🚀 Thông báo triển khai",
+                color: ($color | tonumber),
+                fields: [
+                  { name: "Trạng thái", value: "\($icon) \($status)", inline: true },
+                  { name: "Nhánh", value: "`\($branch)`", inline: true },
+                  { name: "Commit", value: "[`\($commit)`](https://github.com/\($repo)/commit/\($commit))", inline: false },
+                  { name: "Người thực hiện", value: "`\($actor)`", inline: true },
+                  { name: "Trạng thái PM2", value: "```\n\($pm2_status)\n```", inline: false }
+                ],
+                description: "**100 dòng log cuối:**\n```\n\($logs)\n```",
+                url: "https://github.com/\($repo)/actions/runs/\($run_id)"
+              }]
+            }')
 
-          # Ghi log payload
+          # Ghi log payload để kiểm tra
           echo "JSON Payload: $JSON_PAYLOAD"
 
           # Gửi yêu cầu và ghi lại phản hồi
