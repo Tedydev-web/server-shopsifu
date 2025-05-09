@@ -76,7 +76,7 @@ jobs:
             source ~/.bashrc; source ~/.profile
             # Cài đặt jq nếu chưa có
             if ! command -v jq &> /dev/null; then
-              apt-get update && apt-get install -y jq
+              sudo apt-get update && sudo apt-get install -y jq
             fi
             cd ${{ secrets.PATH_PROJECT }}
             git fetch origin master && git reset --hard origin/master
@@ -103,10 +103,20 @@ jobs:
         run: |
           sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
             # Trích xuất thông tin từ pm2 jlist
-            PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json 2>/dev/null || echo "Không thể lấy trạng thái PM2")
+            PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json 2>/dev/null)
+            if [ -z "$PM2_INFO" ]; then
+              PM2_INFO="Không tìm thấy process server-shopsifu hoặc không thể lấy trạng thái PM2"
+            fi
             echo "::set-output name=pm2_info::$PM2_INFO"
-            # Lấy log
-            PM2_LOGS=$(cat /tmp/pm2_logs.txt 2>/dev/null || echo "Không có log")
+            # Lấy log, lọc bỏ dòng hệ thống
+            if [ -f /tmp/pm2_logs.txt ]; then
+              PM2_LOGS=$(grep -v '\[TAILING\]' /tmp/pm2_logs.txt | tail -n 100)
+              if [ -z "$PM2_LOGS" ]; then
+                PM2_LOGS="Không có log ứng dụng hoặc log rỗng"
+              fi
+            else
+              PM2_LOGS="Không có log ứng dụng hoặc file log không tồn tại"
+            fi
             echo "::set-output name=pm2_logs::$PM2_LOGS"
           EOF
 
