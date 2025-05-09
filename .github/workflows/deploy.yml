@@ -118,6 +118,12 @@ jobs:
           PM2_STATUS: ${{ steps.pm2_logs.outputs.status }}
           PM2_LOGS: ${{ steps.pm2_logs.outputs.logs }}
         run: |
+          # Kiểm tra webhook
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "Lỗi: DISCORD_WEBHOOK không được đặt"
+            exit 1
+          fi
+
           COLOR=3066993
           ICON="✅"
           if [ "$STATUS" != "success" ]; then
@@ -125,21 +131,40 @@ jobs:
             ICON="❌"
           fi
 
-          curl -H "Content-Type: application/json" -X POST -d "{
+          # Thoát PM2_LOGS
+          ESCAPED_LOGS=$(echo "${PM2_LOGS:0:1500}" | sed 's/"/\\"/g; s/\n/\\n/g')
+
+          JSON_PAYLOAD="{
             \"embeds\": [{
-              \"title\": \"🚀 Deployment Notification\",
+              \"title\": \"🚀 Thông báo triển khai\",
               \"color\": $COLOR,
               \"fields\": [
-                { \"name\": \"Status\", \"value\": \"$ICON $STATUS\", \"inline\": true },
-                { \"name\": \"Branch\", \"value\": \"\`$BRANCH\`\", \"inline\": true },
+                { \"name\": \"Trạng thái\", \"value\": \"$ICON $STATUS\", \"inline\": true },
+                { \"name\": \"Nhánh\", \"value\": \"\`$BRANCH\`\", \"inline\": true },
                 { \"name\": \"Commit\", \"value\": \"[\`$COMMIT\`](https://github.com/$REPO/commit/$COMMIT)\", \"inline\": false },
-                { \"name\": \"Actor\", \"value\": \"\`$ACTOR\`\", \"inline\": true },
-                { \"name\": \"PM2 Status\", \"value\": \"\`\`\`\n$PM2_STATUS\n\`\`\`\", \"inline\": false }
+                { \"name\": \"Người thực hiện\", \"value\": \"\`$ACTOR\`\", \"inline\": true },
+                { \"name\": \"Trạng thái PM2\", \"value\": \"\`\`\`\n$PM2_STATUS\n\`\`\`\", \"inline\": false }
               ],
-              \"description\": \"**Last 100 lines of Logs:**\\n\\\`\\\`\\\`\\n${PM2_LOGS:0:1500}\\n\\\`\\\`\\\`\", 
+              \"description\": \"**100 dòng log cuối:**\\n\\\`\\\`\\\`\\n$ESCAPED_LOGS\\n\\\`\\\`\\\`\", 
               \"url\": \"https://github.com/$REPO/actions/runs/$RUN_ID\"
             }]
-          }" $DISCORD_WEBHOOK
+          }"
+
+          # Ghi log payload
+          echo "JSON Payload: $JSON_PAYLOAD"
+
+          # Gửi yêu cầu và ghi lại phản hồi
+          RESPONSE=$(curl -s -w "%{http_code}" -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK")
+          HTTP_CODE=${RESPONSE: -3}
+          RESPONSE_BODY=${RESPONSE%???}
+
+          echo "Mã trạng thái HTTP: $HTTP_CODE"
+          echo "Nội dung phản hồi: $RESPONSE_BODY"
+
+          if [ "$HTTP_CODE" != "204" ]; then
+            echo "Lỗi: Không thể gửi thông báo Discord"
+            exit 1
+          fi
 
   # 3. Automatic Rollback on Failure
   rollback-auto:
