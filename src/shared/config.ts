@@ -24,6 +24,7 @@ const configSchema = z.object({
   ADMIN_EMAIL: z.string(),
   ADMIN_PHONE_NUMBER: z.string(),
   OTP_EXPIRES_IN: z.string(),
+  OTP_TOKEN_EXPIRES_IN: z.string().default('15m'),
   RESEND_API_KEY: z.string(),
   GOOGLE_CLIENT_ID: z.string(),
   GOOGLE_CLIENT_SECRET: z.string(),

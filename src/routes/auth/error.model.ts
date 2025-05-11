@@ -15,6 +15,13 @@ export const OTPExpiredException = new UnprocessableEntityException([
   }
 ])
 
+export const TooManyAttemptsException = new UnprocessableEntityException([
+  {
+    message: 'Error.TooManyAttempts',
+    path: 'code'
+  }
+])
+
 export const FailedToSendOTPException = new UnprocessableEntityException([
   {
     message: 'Error.FailedToSendOTP',
@@ -48,6 +55,12 @@ export const InvalidPasswordException = new UnprocessableEntityException([
 // Auth token related errors
 export const RefreshTokenAlreadyUsedException = new UnauthorizedException('Error.RefreshTokenAlreadyUsed')
 export const UnauthorizedAccessException = new UnauthorizedException('Error.UnauthorizedAccess')
+
+// Otp token related errors
+export const OtpTokenExpiredException = new UnauthorizedException('Error.OtpTokenExpired')
+export const InvalidOtpTokenException = new UnauthorizedException('Error.InvalidOtpToken')
+export const OtpTokenAlreadyUsedException = new UnauthorizedException('Error.OtpTokenAlreadyUsed')
+export const InvalidOtpTokenTypeException = new UnauthorizedException('Error.InvalidOtpTokenType')
 
 // Google auth related errors
 export const GoogleUserInfoError = new Error('Error.FailedToGetGoogleUserInfo')

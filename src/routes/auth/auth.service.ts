@@ -1,21 +1,23 @@
 import { HttpException, Injectable } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import {
-  ForgotPasswordBodyType,
   LoginBodyType,
   RefreshTokenBodyType,
   RegisterBodyType,
-  SendOTPBodyType
+  ResetPasswordBodyType,
+  SendOTPBodyType,
+  VerifyCodeBodyType,
+  VerifyCodeResponseType
 } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { RolesService } from 'src/routes/auth/roles.service'
-import { generateOTP, isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
+import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from 'src/shared/services/token.service'
 import ms from 'ms'
 import envConfig from 'src/shared/config'
-import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
+import { TypeOfVerificationCode, TypeOfVerificationCodeType, TypeOfOtpToken } from 'src/shared/constants/auth.constant'
 import { EmailService } from 'src/shared/services/email.service'
 import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import {
@@ -23,11 +25,17 @@ import {
   EmailNotFoundException,
   FailedToSendOTPException,
   InvalidOTPException,
+  InvalidOtpTokenException,
+  InvalidOtpTokenTypeException,
   InvalidPasswordException,
   OTPExpiredException,
+  OtpTokenExpiredException,
   RefreshTokenAlreadyUsedException,
+  TooManyAttemptsException,
   UnauthorizedAccessException
 } from 'src/routes/auth/error.model'
+import { randomUUID } from 'crypto'
+import { OtpService } from 'src/shared/services/otp.service'
 
 @Injectable()
 export class AuthService {
@@ -37,7 +45,8 @@ export class AuthService {
     private readonly authRepository: AuthRepository,
     private readonly sharedUserRepository: SharedUserRepository,
     private readonly emailService: EmailService,
-    private readonly tokenService: TokenService
+    private readonly tokenService: TokenService,
+    private readonly otpService: OtpService
   ) {}
 
   async validateVerificationCode({
@@ -49,21 +58,51 @@ export class AuthService {
     code: string
     type: TypeOfVerificationCodeType
   }) {
-    const vevificationCode = await this.authRepository.findUniqueVerificationCode({
+    // Tìm verification code trong DB
+    const verificationCode = await this.authRepository.findUniqueVerificationCode({
       email_code_type: {
         email,
-        code,
+        code: code, // Bây giờ code trong DB là hashed
         type
       }
     })
-    if (!vevificationCode) {
+
+    if (!verificationCode) {
       throw InvalidOTPException
     }
-    if (vevificationCode.expiresAt < new Date()) {
+
+    // Kiểm tra xem đã quá số lần thử chưa
+    if (verificationCode.attempts >= 5) {
+      throw TooManyAttemptsException
+    }
+
+    // Kiểm tra xem OTP đã hết hạn chưa
+    if (verificationCode.expiresAt < new Date()) {
       throw OTPExpiredException
     }
-    return vevificationCode
+
+    // Xác thực mã OTP với mã đã được mã hóa
+    const isValidOtp = await this.otpService.verifyOTP(code, verificationCode.code, verificationCode.salt)
+
+    if (!isValidOtp) {
+      // Tăng số lần thử
+      await this.authRepository.updateVerificationCodeAttempts(
+        {
+          email_code_type: {
+            email,
+            code: verificationCode.code,
+            type
+          }
+        },
+        verificationCode.attempts + 1
+      )
+
+      throw InvalidOTPException
+    }
+
+    return verificationCode
   }
+
   async register(body: RegisterBodyType) {
     try {
       await this.validateVerificationCode({
@@ -108,22 +147,35 @@ export class AuthService {
     if (body.type === TypeOfVerificationCode.FORGOT_PASSWORD && !user) {
       throw EmailNotFoundException
     }
-    // 2. Tạo mã OTP
-    const code = generateOTP()
+
+    // 1. Tạo mã OTP
+    const plainOtp = this.otpService.generateOTP()
+
+    // 2. Tạo salt ngẫu nhiên
+    const salt = randomUUID()
+
+    // 3. Mã hóa OTP trước khi lưu vào database
+    const hashedOtp = await this.otpService.hashOTP(plainOtp, salt)
+
+    // 4. Lưu OTP đã mã hóa vào database
     await this.authRepository.createVerificationCode({
       email: body.email,
-      code,
+      code: hashedOtp,
+      salt,
       type: body.type,
       expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_EXPIRES_IN))
     })
-    // 3. Gửi mã OTP
+
+    // 5. Gửi mã OTP gốc cho người dùng
     const { error } = await this.emailService.sendOTP({
       email: body.email,
-      code
+      code: plainOtp
     })
+
     if (error) {
       throw FailedToSendOTPException
     }
+
     return { message: 'Gửi mã OTP thành công' }
   }
 
@@ -240,38 +292,97 @@ export class AuthService {
     }
   }
 
-  async forgotPassword(body: ForgotPasswordBodyType) {
-    const { email, code, newPassword } = body
-    // 1. Kiểm tra email đã tồn tại trong database chưa
+  async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string }): Promise<VerifyCodeResponseType> {
+    const { email, code, type, userAgent, ip } = body
+
+    // 1. Tìm user bằng email
     const user = await this.sharedUserRepository.findUnique({
       email
     })
+
     if (!user) {
       throw EmailNotFoundException
     }
-    //2. Kiểm tra mã OTP có hợp lệ không
+
+    // 2. Xác thực mã OTP
     await this.validateVerificationCode({
       email,
       code,
-      type: TypeOfVerificationCode.FORGOT_PASSWORD
+      type
     })
-    //3. Cập nhật lại mật khẩu mới và xóa đi OTP
+
+    // 3. Tạo hoặc cập nhật device
+    const device = await this.authRepository.createDevice({
+      userId: user.id,
+      userAgent,
+      ip,
+      isActive: true
+    })
+
+    // 4. Tạo OTP token với thời hạn giới hạn
+    const token = randomUUID()
+    const expiresAt = addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN || '15m'))
+
+    // 5. Lưu token vào database với thông tin device
+    await this.authRepository.createOtpToken({
+      token,
+      userId: user.id,
+      type:
+        type === TypeOfVerificationCode.FORGOT_PASSWORD
+          ? TypeOfOtpToken.FORGOT_PASSWORD
+          : TypeOfOtpToken.EMAIL_VERIFICATION,
+      expiresAt,
+      deviceId: device.id
+    })
+
+    // 6. Xóa mã OTP đã sử dụng
+    await this.authRepository.deleteVerificationCode({
+      email_code_type: {
+        email,
+        code,
+        type
+      }
+    })
+
+    return {
+      token,
+      expiresAt
+    }
+  }
+
+  async resetPassword(body: ResetPasswordBodyType) {
+    const { token, newPassword } = body
+
+    // 1. Tìm token trong database kèm thông tin thiết bị
+    const otpToken = await this.authRepository.findUniqueOtpTokenWithDevice({ token })
+
+    if (!otpToken) {
+      throw InvalidOtpTokenException
+    }
+
+    // 2. Kiểm tra token có hết hạn chưa
+    if (otpToken.expiresAt < new Date()) {
+      throw OtpTokenExpiredException
+    }
+
+    // 3. Kiểm tra loại token
+    if (otpToken.type !== TypeOfOtpToken.FORGOT_PASSWORD) {
+      throw InvalidOtpTokenTypeException
+    }
+
+    // 4. Hash mật khẩu mới
     const hashedPassword = await this.hashingService.hash(newPassword)
+
+    // 5. Cập nhật mật khẩu mới, xóa token, và đánh dấu thiết bị
     await Promise.all([
-      this.authRepository.updateUser(
-        { id: user.id },
-        {
-          password: hashedPassword
-        }
-      ),
-      this.authRepository.deleteVerificationCode({
-        email_code_type: {
-          email: body.email,
-          code: body.code,
-          type: TypeOfVerificationCode.FORGOT_PASSWORD
-        }
+      this.authRepository.updateUser({ id: otpToken.userId }, { password: hashedPassword }),
+      this.authRepository.deleteOtpToken({ token }),
+      this.authRepository.updateDevice(otpToken.deviceId, {
+        isActive: true,
+        lastActive: new Date() // Cập nhật thời gian hoạt động mới nhất
       })
     ])
+
     return {
       message: 'Đổi mật khẩu thành công'
     }
