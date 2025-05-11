@@ -128,7 +128,7 @@ export class AuthRepository {
     })
   }
 
-  deleteVerificationCode(
+  async deleteVerificationCode(
     uniqueValue:
       | { id: number }
       | {
@@ -138,7 +138,18 @@ export class AuthRepository {
             type: TypeOfVerificationCodeType
           }
         }
-  ): Promise<VerificationCodeType> {
+  ): Promise<VerificationCodeType | null> {
+    // Trước tiên kiểm tra xem verification code có tồn tại không
+    const existingCode = await this.prismaService.verificationCode.findUnique({
+      where: uniqueValue
+    })
+
+    if (!existingCode) {
+      // Nếu không tìm thấy, trả về null thay vì ném lỗi
+      return null
+    }
+
+    // Nếu tồn tại thì xóa và trả về bản ghi đã xóa
     return this.prismaService.verificationCode.delete({
       where: uniqueValue
     })
@@ -215,6 +226,22 @@ export class AuthRepository {
       where: {
         email: email.toLowerCase(),
         type
+      }
+    })
+  }
+
+  async invalidateOldVerificationCodesExceptId(
+    email: string,
+    type: TypeOfVerificationCodeType,
+    exceptId: number
+  ): Promise<{ count: number }> {
+    return this.prismaService.verificationCode.deleteMany({
+      where: {
+        email: email.toLowerCase(),
+        type,
+        id: {
+          not: exceptId
+        }
       }
     })
   }

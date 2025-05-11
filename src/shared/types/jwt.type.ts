@@ -18,3 +18,14 @@ export interface RefreshTokenPayload extends RefreshTokenPayloadCreate {
   exp: number
   iat: number
 }
+
+export interface EmailVerificationTokenPayload {
+  email: string
+  expiresAt: number
+  type: string
+}
+
+export interface EmailVerificationTokenResult extends EmailVerificationTokenPayload {
+  exp: number
+  iat: number
+}

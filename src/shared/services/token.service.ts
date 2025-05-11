@@ -4,6 +4,8 @@ import envConfig from 'src/shared/config'
 import {
   AccessTokenPayload,
   AccessTokenPayloadCreate,
+  EmailVerificationTokenPayload,
+  EmailVerificationTokenResult,
   RefreshTokenPayload,
   RefreshTokenPayloadCreate
 } from 'src/shared/types/jwt.type'
@@ -44,6 +46,23 @@ export class TokenService {
   verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
     return this.jwtService.verifyAsync(token, {
       secret: envConfig.REFRESH_TOKEN_SECRET
+    })
+  }
+
+  signEmailVerificationToken(payload: EmailVerificationTokenPayload): string {
+    return this.jwtService.sign(
+      { ...payload },
+      {
+        secret: envConfig.ACCESS_TOKEN_SECRET,
+        expiresIn: '15m',
+        algorithm: 'HS256'
+      }
+    )
+  }
+
+  verifyEmailVerificationToken(token: string): Promise<EmailVerificationTokenResult> {
+    return this.jwtService.verifyAsync(token, {
+      secret: envConfig.ACCESS_TOKEN_SECRET
     })
   }
 }

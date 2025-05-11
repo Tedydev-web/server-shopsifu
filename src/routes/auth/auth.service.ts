@@ -122,55 +122,49 @@ export class AuthService {
       throw InvalidOTPException
     }
 
-    // Vô hiệu hóa tất cả mã OTP của email và type này
-    await this.authRepository.invalidateOldVerificationCodes(email, type)
+    // Vô hiệu hóa tất cả mã OTP không hợp lệ của email và type này
+    // Loại trừ mã đang được sử dụng
+    await this.authRepository.invalidateOldVerificationCodesExceptId(email, type, validVerificationCode.id)
 
     return validVerificationCode
   }
 
   async register(body: RegisterBodyType) {
     try {
-      // Xác thực token thay vì code OTP
-      const otpToken = await this.authRepository.findUniqueOtpTokenWithDevice({
-        token: body.token
-      })
-
-      if (!otpToken) {
+      // Xác thực token JWT thay vì tìm trong database
+      let tokenPayload: any
+      try {
+        tokenPayload = await this.tokenService.verifyEmailVerificationToken(body.token)
+      } catch (error) {
         throw InvalidOtpTokenException
       }
 
-      // Kiểm tra token đã hết hạn chưa
-      if (otpToken.expiresAt < new Date()) {
+      // Kiểm tra nếu token đã hết hạn (so sánh thời gian hết hạn trong payload với thời gian hiện tại)
+      if (tokenPayload.expiresAt < Date.now()) {
         throw OtpTokenExpiredException
       }
 
       // Kiểm tra loại token
-      if (otpToken.type !== TypeOfOtpToken.EMAIL_VERIFICATION) {
+      if (tokenPayload.type !== TypeOfOtpToken.EMAIL_VERIFICATION) {
         throw InvalidOtpTokenTypeException
+      }
+
+      // Kiểm tra email trong token có khớp với email đăng ký không
+      if (tokenPayload.email.toLowerCase() !== body.email.toLowerCase()) {
+        throw InvalidOtpTokenException
       }
 
       const clientRoleId = await this.rolesService.getClientRoleId()
       const hashedPassword = await this.hashingService.hash(body.password)
 
-      // Tạo user và đồng thời thực hiện các thao tác khác
-      const [user] = await Promise.all([
-        this.authRepository.createUser({
-          email: body.email,
-          name: body.name,
-          phoneNumber: body.phoneNumber,
-          password: hashedPassword,
-          roleId: clientRoleId
-        }),
-        // Xóa token đã sử dụng
-        this.authRepository.deleteOtpToken({
-          token: body.token
-        }),
-        // Cập nhật device với user mới tạo và đánh dấu là active
-        this.authRepository.updateDevice(otpToken.deviceId, {
-          isActive: true,
-          lastActive: new Date() // Cập nhật thời gian hoạt động mới nhất
-        })
-      ])
+      // Tạo user
+      const user = await this.authRepository.createUser({
+        email: body.email,
+        name: body.name,
+        phoneNumber: body.phoneNumber,
+        password: hashedPassword,
+        roleId: clientRoleId
+      })
 
       return user
     } catch (error) {
@@ -435,14 +429,25 @@ export class AuthService {
     // 5. Đối với REGISTER type và chưa có user, chỉ trả về token và expiresAt
     // Token này sẽ được lưu tạm thời ở client và dùng để đăng ký
     if (type === TypeOfVerificationCode.REGISTER && !user) {
-      // Xóa mã OTP đã sử dụng bằng ID
+      // Xóa mã OTP đã được xác thực
       await this.authRepository.deleteVerificationCode({
         id: verificationCode.id
       })
 
-      // Trả về response với email kèm theo
+      // Tạo token mã hóa email và thời hạn
+      // Token này sẽ được xác thực ở phương thức register bằng cách giải mã và kiểm tra email
+      const tokenData = {
+        email,
+        expiresAt: expiresAt.getTime(),
+        type: TypeOfOtpToken.EMAIL_VERIFICATION
+      }
+
+      // Mã hóa token data thành một chuỗi JWT
+      const tokenString = await this.tokenService.signEmailVerificationToken(tokenData)
+
+      // Trả về token và expiresAt cho client
       return {
-        token,
+        token: tokenString,
         expiresAt,
         email
       }
@@ -471,7 +476,7 @@ export class AuthService {
       deviceId: device.id
     })
 
-    // Xóa mã OTP đã sử dụng bằng ID
+    // Xóa mã OTP đã được xác thực
     await this.authRepository.deleteVerificationCode({
       id: verificationCode.id
     })
