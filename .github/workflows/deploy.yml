@@ -64,6 +64,7 @@ jobs:
           GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}"
           GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}"
           GOOGLE_CLIENT_REDIRECT_URI=${{ secrets.GOOGLE_CLIENT_REDIRECT_URI }}"
+          OTP_TOKEN_EXPIRES_IN=${{ secrets.OTP_TOKEN_EXPIRES_IN }}"
           EOF
 
       - name: Deploy via SSH & PM2
