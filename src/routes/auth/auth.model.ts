@@ -2,6 +2,17 @@ import { TypeOfVerificationCode, TypeOfOtpToken } from 'src/shared/constants/aut
 import { UserSchema } from 'src/shared/models/shared-user.model'
 import { z } from 'zod'
 
+// Định nghĩa PasswordErrorMessages
+export const PasswordErrorMessages = {
+  MIN_LENGTH: 'Mật khẩu phải có ít nhất 8 ký tự',
+  MAX_LENGTH: 'Mật khẩu không được vượt quá 100 ký tự',
+  UPPERCASE: 'Mật khẩu phải có ít nhất một chữ hoa',
+  LOWERCASE: 'Mật khẩu phải có ít nhất một chữ thường',
+  NUMBER: 'Mật khẩu phải có ít nhất một chữ số',
+  SPECIAL_CHAR: 'Mật khẩu phải có ít nhất một ký tự đặc biệt',
+  MATCH: 'Mật khẩu xác nhận không khớp với mật khẩu mới'
+}
+
 export const RegisterBodySchema = UserSchema.pick({
   email: true,
   password: true,
@@ -9,19 +20,23 @@ export const RegisterBodySchema = UserSchema.pick({
   phoneNumber: true
 })
   .extend({
-    confirmPassword: z.string().min(6).max(100),
-    code: z.string().length(6)
+    confirmPassword: z.string().min(8, PasswordErrorMessages.MIN_LENGTH).max(100, PasswordErrorMessages.MAX_LENGTH),
+    token: z.string()
   })
   .strict()
   .superRefine(({ confirmPassword, password }, ctx) => {
     if (confirmPassword !== password) {
       ctx.addIssue({
         code: 'custom',
-        message: 'Password and confirm password must match',
+        message: PasswordErrorMessages.MATCH,
         path: ['confirmPassword']
       })
     }
   })
+  .transform(({ email, ...rest }) => ({
+    email: email.toLowerCase(),
+    ...rest
+  }))
 
 export const RegisterResSchema = UserSchema.omit({
   password: true,
@@ -31,7 +46,7 @@ export const RegisterResSchema = UserSchema.omit({
 export const VerificationCodeSchema = z.object({
   id: z.number(),
   email: z.string().email(),
-  code: z.string().length(6),
+  code: z.string(),
   salt: z.string(),
   attempts: z.number().default(0),
   type: z.enum([
@@ -40,6 +55,7 @@ export const VerificationCodeSchema = z.object({
     TypeOfVerificationCode.LOGIN,
     TypeOfVerificationCode.DISABLE_2FA
   ]),
+  isActive: z.boolean().default(true).optional(),
   expiresAt: z.date(),
   createdAt: z.date()
 })
@@ -47,7 +63,12 @@ export const VerificationCodeSchema = z.object({
 export const SendOTPBodySchema = VerificationCodeSchema.pick({
   email: true,
   type: true
-}).strict()
+})
+  .strict()
+  .transform(({ email, ...rest }) => ({
+    email: email.toLowerCase(),
+    ...rest
+  }))
 
 export const LoginBodySchema = UserSchema.pick({
   email: true,
@@ -55,9 +76,14 @@ export const LoginBodySchema = UserSchema.pick({
 })
   .extend({
     totpCode: z.string().length(6).optional(), // 2FA code
-    code: z.string().length(6).optional() // Email OTP code
+    code: z.string().length(6).optional(), // Email OTP code
+    token: z.string().optional() // Thêm token cho xác thực OTP
   })
   .strict()
+  .transform(({ email, ...rest }) => ({
+    email: email.toLowerCase(),
+    ...rest
+  }))
 
 export const LoginResSchema = z.object({
   accessToken: z.string(),
@@ -125,26 +151,38 @@ export const VerifyCodeBodySchema = z
     ])
   })
   .strict()
+  .transform(({ email, ...rest }) => ({
+    email: email.toLowerCase(),
+    ...rest
+  }))
 
 export const VerifyCodeResponseSchema = z
   .object({
     token: z.string(),
-    expiresAt: z.date()
+    expiresAt: z.date(),
+    email: z.string().email().optional()
   })
   .strict()
 
 export const ResetPasswordBodySchema = z
   .object({
     token: z.string(),
-    newPassword: z.string().min(6).max(100),
-    confirmNewPassword: z.string().min(6).max(100)
+    newPassword: z
+      .string()
+      .min(8, PasswordErrorMessages.MIN_LENGTH)
+      .max(100, PasswordErrorMessages.MAX_LENGTH)
+      .regex(/[A-Z]/, PasswordErrorMessages.UPPERCASE)
+      .regex(/[a-z]/, PasswordErrorMessages.LOWERCASE)
+      .regex(/[0-9]/, PasswordErrorMessages.NUMBER)
+      .regex(/[^A-Za-z0-9]/, PasswordErrorMessages.SPECIAL_CHAR),
+    confirmNewPassword: z.string().min(8).max(100)
   })
   .strict()
   .superRefine(({ confirmNewPassword, newPassword }, ctx) => {
     if (confirmNewPassword !== newPassword) {
       ctx.addIssue({
         code: 'custom',
-        message: 'Mật khẩu và mật khẩu xác nhận phải giống nhau',
+        message: PasswordErrorMessages.MATCH,
         path: ['confirmNewPassword']
       })
     }

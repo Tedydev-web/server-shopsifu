@@ -52,15 +52,70 @@ export const InvalidPasswordException = new UnprocessableEntityException([
   }
 ])
 
+export const PasswordMismatchException = new UnprocessableEntityException([
+  {
+    message: 'Error.PasswordMismatch',
+    path: 'confirmPassword'
+  }
+])
+
+export const PasswordRequirementsException = new UnprocessableEntityException([
+  {
+    message: 'Error.PasswordRequirements',
+    path: 'password'
+  }
+])
+
 // Auth token related errors
-export const RefreshTokenAlreadyUsedException = new UnauthorizedException('Error.RefreshTokenAlreadyUsed')
-export const UnauthorizedAccessException = new UnauthorizedException('Error.UnauthorizedAccess')
+export const RefreshTokenAlreadyUsedException = new UnauthorizedException([
+  {
+    message: 'Error.RefreshTokenAlreadyUsed',
+    path: 'refreshToken'
+  }
+])
+
+export const UnauthorizedAccessException = new UnauthorizedException([
+  {
+    message: 'Error.UnauthorizedAccess',
+    path: 'token'
+  }
+])
 
 // Otp token related errors
-export const OtpTokenExpiredException = new UnauthorizedException('Error.OtpTokenExpired')
-export const InvalidOtpTokenException = new UnauthorizedException('Error.InvalidOtpToken')
-export const OtpTokenAlreadyUsedException = new UnauthorizedException('Error.OtpTokenAlreadyUsed')
-export const InvalidOtpTokenTypeException = new UnauthorizedException('Error.InvalidOtpTokenType')
+export const OtpTokenExpiredException = new UnauthorizedException([
+  {
+    message: 'Error.OtpTokenExpired',
+    path: 'token'
+  }
+])
+
+export const InvalidOtpTokenException = new UnauthorizedException([
+  {
+    message: 'Error.InvalidOtpToken',
+    path: 'token'
+  }
+])
+
+export const OtpTokenAlreadyUsedException = new UnauthorizedException([
+  {
+    message: 'Error.OtpTokenAlreadyUsed',
+    path: 'token'
+  }
+])
+
+export const InvalidOtpTokenTypeException = new UnauthorizedException([
+  {
+    message: 'Error.InvalidOtpTokenType',
+    path: 'token'
+  }
+])
 
 // Google auth related errors
 export const GoogleUserInfoError = new Error('Error.FailedToGetGoogleUserInfo')
+
+// Generic response messages
+export const SuccessMessages = {
+  OTP_SENT: 'Gửi mã OTP thành công',
+  PASSWORD_RESET: 'Đổi mật khẩu thành công',
+  LOGOUT: 'Đăng xuất thành công'
+}

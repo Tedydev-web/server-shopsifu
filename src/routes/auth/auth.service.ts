@@ -31,6 +31,7 @@ import {
   OTPExpiredException,
   OtpTokenExpiredException,
   RefreshTokenAlreadyUsedException,
+  SuccessMessages,
   TooManyAttemptsException,
   UnauthorizedAccessException
 } from 'src/routes/auth/error.model'
@@ -49,6 +50,13 @@ export class AuthService {
     private readonly otpService: OtpService
   ) {}
 
+  /**
+   * Chuyển đổi email về dạng chữ thường để đồng nhất
+   */
+  private normalizeEmail(email: string): string {
+    return email.toLowerCase()
+  }
+
   async validateVerificationCode({
     email,
     code,
@@ -58,60 +66,93 @@ export class AuthService {
     code: string
     type: TypeOfVerificationCodeType
   }) {
-    // Tìm verification code trong DB
-    const verificationCode = await this.authRepository.findUniqueVerificationCode({
-      email_code_type: {
-        email,
-        code: code, // Bây giờ code trong DB là hashed
-        type
+    // Chuẩn hóa email
+    email = this.normalizeEmail(email)
+
+    // Tìm verification codes cho email và type này
+    const verificationCodes = await this.authRepository.findVerificationCodesByEmailAndType(email, type)
+
+    if (!verificationCodes || verificationCodes.length === 0) {
+      throw InvalidOTPException
+    }
+
+    // Kiểm tra từng mã OTP tìm thấy
+    let validVerificationCode: (typeof verificationCodes)[0] | null = null
+
+    for (const verificationCode of verificationCodes) {
+      // Kiểm tra OTP có đang active không (nếu có trường isActive)
+      if (verificationCode.isActive === false) {
+        continue
       }
-    })
 
-    if (!verificationCode) {
-      throw InvalidOTPException
+      // Kiểm tra xem OTP đã hết hạn chưa
+      if (verificationCode.expiresAt < new Date()) {
+        throw OTPExpiredException
+      }
+
+      // Kiểm tra số lần thử
+      if (verificationCode.attempts >= 5) {
+        throw TooManyAttemptsException
+      }
+
+      // Xác thực mã OTP
+      if (await this.otpService.verifyOTP(code, verificationCode.code, verificationCode.salt)) {
+        validVerificationCode = verificationCode
+        break
+      }
     }
 
-    // Kiểm tra xem đã quá số lần thử chưa
-    if (verificationCode.attempts >= 5) {
-      throw TooManyAttemptsException
-    }
-
-    // Kiểm tra xem OTP đã hết hạn chưa
-    if (verificationCode.expiresAt < new Date()) {
-      throw OTPExpiredException
-    }
-
-    // Xác thực mã OTP với mã đã được mã hóa
-    const isValidOtp = await this.otpService.verifyOTP(code, verificationCode.code, verificationCode.salt)
-
-    if (!isValidOtp) {
+    // Không tìm thấy mã OTP hợp lệ
+    if (!validVerificationCode) {
       // Tăng số lần thử
-      await this.authRepository.updateVerificationCodeAttempts(
-        {
-          email_code_type: {
-            email,
-            code: verificationCode.code,
-            type
-          }
-        },
-        verificationCode.attempts + 1
+      await Promise.all(
+        verificationCodes.map((vc) =>
+          this.authRepository.updateVerificationCodeAttempts(
+            {
+              email_code_type: {
+                email,
+                code: vc.code,
+                type
+              }
+            },
+            vc.attempts + 1
+          )
+        )
       )
-
       throw InvalidOTPException
     }
 
-    return verificationCode
+    // Vô hiệu hóa tất cả mã OTP của email và type này
+    await this.authRepository.invalidateOldVerificationCodes(email, type)
+
+    return validVerificationCode
   }
 
   async register(body: RegisterBodyType) {
     try {
-      await this.validateVerificationCode({
-        email: body.email,
-        code: body.code,
-        type: TypeOfVerificationCode.REGISTER
+      // Xác thực token thay vì code OTP
+      const otpToken = await this.authRepository.findUniqueOtpTokenWithDevice({
+        token: body.token
       })
+
+      if (!otpToken) {
+        throw InvalidOtpTokenException
+      }
+
+      // Kiểm tra token đã hết hạn chưa
+      if (otpToken.expiresAt < new Date()) {
+        throw OtpTokenExpiredException
+      }
+
+      // Kiểm tra loại token
+      if (otpToken.type !== TypeOfOtpToken.EMAIL_VERIFICATION) {
+        throw InvalidOtpTokenTypeException
+      }
+
       const clientRoleId = await this.rolesService.getClientRoleId()
       const hashedPassword = await this.hashingService.hash(body.password)
+
+      // Tạo user và đồng thời thực hiện các thao tác khác
       const [user] = await Promise.all([
         this.authRepository.createUser({
           email: body.email,
@@ -120,14 +161,17 @@ export class AuthService {
           password: hashedPassword,
           roleId: clientRoleId
         }),
-        this.authRepository.deleteVerificationCode({
-          email_code_type: {
-            email: body.email,
-            code: body.code,
-            type: TypeOfVerificationCode.FORGOT_PASSWORD
-          }
+        // Xóa token đã sử dụng
+        this.authRepository.deleteOtpToken({
+          token: body.token
+        }),
+        // Cập nhật device với user mới tạo và đánh dấu là active
+        this.authRepository.updateDevice(otpToken.deviceId, {
+          isActive: true,
+          lastActive: new Date() // Cập nhật thời gian hoạt động mới nhất
         })
       ])
+
       return user
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -138,15 +182,22 @@ export class AuthService {
   }
 
   async sendOTP(body: SendOTPBodyType) {
-    const user = await this.sharedUserRepository.findUnique({
-      email: body.email
+    // Chuẩn hóa email
+    const email = this.normalizeEmail(body.email)
+
+    const user = await this.authRepository.findUniqueUserIncludeRole({
+      email
     })
+
     if (body.type === TypeOfVerificationCode.REGISTER && user) {
       throw EmailAlreadyExistsException
     }
     if (body.type === TypeOfVerificationCode.FORGOT_PASSWORD && !user) {
       throw EmailNotFoundException
     }
+
+    // 0. Xóa các mã OTP cũ
+    await this.authRepository.invalidateOldVerificationCodes(email, body.type)
 
     // 1. Tạo mã OTP
     const plainOtp = this.otpService.generateOTP()
@@ -159,7 +210,7 @@ export class AuthService {
 
     // 4. Lưu OTP đã mã hóa vào database
     await this.authRepository.createVerificationCode({
-      email: body.email,
+      email,
       code: hashedOtp,
       salt,
       type: body.type,
@@ -168,7 +219,7 @@ export class AuthService {
 
     // 5. Gửi mã OTP gốc cho người dùng
     const { error } = await this.emailService.sendOTP({
-      email: body.email,
+      email,
       code: plainOtp
     })
 
@@ -176,12 +227,15 @@ export class AuthService {
       throw FailedToSendOTPException
     }
 
-    return { message: 'Gửi mã OTP thành công' }
+    return { message: SuccessMessages.OTP_SENT }
   }
 
   async login(body: LoginBodyType & { userAgent: string; ip: string }) {
+    // Chuẩn hóa email
+    const email = this.normalizeEmail(body.email)
+
     const user = await this.authRepository.findUniqueUserIncludeRole({
-      email: body.email
+      email
     })
 
     if (!user) {
@@ -192,6 +246,53 @@ export class AuthService {
     if (!isPasswordMatch) {
       throw InvalidPasswordException
     }
+
+    // Kiểm tra xem người dùng đã xác thực OTP chưa (nếu sử dụng OTP cho đăng nhập)
+    // Tìm token OTP đã xác thực thành công trong trường hợp LOGIN
+    if (body.token) {
+      const otpToken = await this.authRepository.findUniqueOtpTokenWithDevice({
+        token: body.token
+      })
+
+      if (!otpToken) {
+        throw InvalidOtpTokenException
+      }
+
+      // Kiểm tra token đã hết hạn chưa
+      if (otpToken.expiresAt < new Date()) {
+        throw OtpTokenExpiredException
+      }
+
+      // Kiểm tra loại token
+      if (otpToken.type !== TypeOfOtpToken.EMAIL_VERIFICATION) {
+        throw InvalidOtpTokenTypeException
+      }
+
+      // Xóa token sau khi đã sử dụng
+      await this.authRepository.deleteOtpToken({
+        token: body.token
+      })
+
+      // Cập nhật device từ token
+      await this.authRepository.updateDevice(otpToken.deviceId, {
+        ip: body.ip,
+        userAgent: body.userAgent,
+        isActive: true,
+        lastActive: new Date()
+      })
+
+      // Tạo tokens từ thiết bị đã được xác thực
+      const tokens = await this.generateTokens({
+        userId: user.id,
+        deviceId: otpToken.deviceId,
+        roleId: user.roleId,
+        roleName: user.role.name
+      })
+
+      return tokens
+    }
+
+    // Trường hợp không có token - luồng đăng nhập thông thường
     const device = await this.authRepository.createDevice({
       userId: user.id,
       userAgent: body.userAgent,
@@ -281,7 +382,7 @@ export class AuthService {
       await this.authRepository.updateDevice(deletedRefreshToken.deviceId, {
         isActive: false
       })
-      return { message: 'Đăng xuất thành công' }
+      return { message: SuccessMessages.LOGOUT }
     } catch (error) {
       // Trường hợp đã refresh token rồi, hãy thông báo cho user biết
       // refresh token của họ đã bị đánh cắp
@@ -293,25 +394,67 @@ export class AuthService {
   }
 
   async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string }): Promise<VerifyCodeResponseType> {
-    const { email, code, type, userAgent, ip } = body
+    // Chuẩn hóa email
+    const email = this.normalizeEmail(body.email)
+    const { code, type, userAgent, ip } = body
 
-    // 1. Tìm user bằng email
+    // 1. Tìm user bằng email (không yêu cầu với REGISTER)
     const user = await this.sharedUserRepository.findUnique({
       email
     })
 
-    if (!user) {
+    // Nếu không phải REGISTER mà không tìm thấy user
+    if (type !== TypeOfVerificationCode.REGISTER && !user) {
       throw EmailNotFoundException
     }
 
     // 2. Xác thực mã OTP
-    await this.validateVerificationCode({
+    const verificationCode = await this.validateVerificationCode({
       email,
       code,
       type
     })
 
-    // 3. Tạo hoặc cập nhật device
+    // 3. Tạo OTP token với thời hạn giới hạn
+    const token = randomUUID()
+    const expiresAt = addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN || '15m'))
+
+    // 4. Xác định loại token dựa vào loại verification code
+    let otpTokenType: (typeof TypeOfOtpToken)[keyof typeof TypeOfOtpToken]
+    switch (type) {
+      case TypeOfVerificationCode.FORGOT_PASSWORD:
+        otpTokenType = TypeOfOtpToken.FORGOT_PASSWORD
+        break
+      case TypeOfVerificationCode.REGISTER:
+      case TypeOfVerificationCode.LOGIN:
+      case TypeOfVerificationCode.DISABLE_2FA:
+      default:
+        otpTokenType = TypeOfOtpToken.EMAIL_VERIFICATION
+    }
+
+    // 5. Đối với REGISTER type và chưa có user, chỉ trả về token và expiresAt
+    // Token này sẽ được lưu tạm thời ở client và dùng để đăng ký
+    if (type === TypeOfVerificationCode.REGISTER && !user) {
+      // Xóa mã OTP đã sử dụng bằng ID
+      await this.authRepository.deleteVerificationCode({
+        id: verificationCode.id
+      })
+
+      // Trả về response với email kèm theo
+      return {
+        token,
+        expiresAt,
+        email
+      }
+    }
+
+    // 6. Với các trường hợp khác (user đã tồn tại), tiếp tục xử lý như bình thường
+    // Đã kiểm tra ở trên nên user không thể null ở đây
+    if (!user) {
+      throw EmailNotFoundException // Đảm bảo an toàn
+    }
+
+    // Tạo hoặc cập nhật device
     const device = await this.authRepository.createDevice({
       userId: user.id,
       userAgent,
@@ -319,29 +462,18 @@ export class AuthService {
       isActive: true
     })
 
-    // 4. Tạo OTP token với thời hạn giới hạn
-    const token = randomUUID()
-    const expiresAt = addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN || '15m'))
-
-    // 5. Lưu token vào database với thông tin device
+    // Lưu token vào database với thông tin device
     await this.authRepository.createOtpToken({
       token,
       userId: user.id,
-      type:
-        type === TypeOfVerificationCode.FORGOT_PASSWORD
-          ? TypeOfOtpToken.FORGOT_PASSWORD
-          : TypeOfOtpToken.EMAIL_VERIFICATION,
+      type: otpTokenType,
       expiresAt,
       deviceId: device.id
     })
 
-    // 6. Xóa mã OTP đã sử dụng
+    // Xóa mã OTP đã sử dụng bằng ID
     await this.authRepository.deleteVerificationCode({
-      email_code_type: {
-        email,
-        code,
-        type
-      }
+      id: verificationCode.id
     })
 
     return {
@@ -384,7 +516,7 @@ export class AuthService {
     ])
 
     return {
-      message: 'Đổi mật khẩu thành công'
+      message: SuccessMessages.PASSWORD_RESET
     }
   }
 }
