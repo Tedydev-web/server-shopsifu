@@ -1,8 +1,7 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Req, Res } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Req, Res, UseGuards } from '@nestjs/common'
 import { Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
-  ForgotPasswordBodyDTO,
   GetAuthorizationUrlResDTO,
   LoginBodyDTO,
   LoginResDTO,
@@ -11,15 +10,20 @@ import {
   RefreshTokenResDTO,
   RegisterBodyDTO,
   RegisterResDTO,
-  SendOTPBodyDTO
+  ResetPasswordBodyDTO,
+  SendOTPBodyDTO,
+  VerifyCodeBodyDTO,
+  VerifyCodeResponseDTO
 } from 'src/routes/auth/auth.dto'
 
 import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleService } from 'src/routes/auth/google.service'
 import envConfig from 'src/shared/config'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { RateLimit } from 'src/shared/decorators/rate-limit.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { RateLimitGuard } from 'src/shared/guards/rate-limit.guard'
 
 @Controller('auth')
 export class AuthController {
@@ -30,6 +34,8 @@ export class AuthController {
 
   @Post('register')
   @IsPublic()
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ ttl: 3600, limit: 5 }) // Giới hạn 5 lần đăng ký/giờ
   @ZodSerializerDto(RegisterResDTO)
   register(@Body() body: RegisterBodyDTO) {
     return this.authService.register(body)
@@ -37,6 +43,8 @@ export class AuthController {
 
   @Post('otp')
   @IsPublic()
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ ttl: 300, limit: 3 }) // Giới hạn 3 lần gửi OTP/5 phút
   @ZodSerializerDto(MessageResDTO)
   sendOTP(@Body() body: SendOTPBodyDTO) {
     return this.authService.sendOTP(body)
@@ -44,6 +52,8 @@ export class AuthController {
 
   @Post('login')
   @IsPublic()
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ ttl: 600, limit: 5 }) // Giới hạn 5 lần đăng nhập/10 phút
   @ZodSerializerDto(LoginResDTO)
   login(@Body() body: LoginBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
     return this.authService.login({
@@ -101,10 +111,25 @@ export class AuthController {
     }
   }
 
-  @Post('forgot-password')
+  @Post('verify-code')
   @IsPublic()
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ ttl: 300, limit: 5 }) // Giới hạn 5 lần xác thực/5 phút
+  @ZodSerializerDto(VerifyCodeResponseDTO)
+  verifyCode(@Body() body: VerifyCodeBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
+    return this.authService.verifyCode({
+      ...body,
+      userAgent,
+      ip
+    })
+  }
+
+  @Post('reset-password')
+  @IsPublic()
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ ttl: 3600, limit: 3 }) // Giới hạn 3 lần đặt lại mật khẩu/giờ
   @ZodSerializerDto(MessageResDTO)
-  forgotPassword(@Body() body: ForgotPasswordBodyDTO) {
-    return this.authService.forgotPassword(body)
+  resetPassword(@Body() body: ResetPasswordBodyDTO) {
+    return this.authService.resetPassword(body)
   }
 }

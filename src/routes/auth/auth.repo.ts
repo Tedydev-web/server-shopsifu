@@ -6,7 +6,8 @@ import {
   RoleType,
   VerificationCodeType
 } from 'src/routes/auth/auth.model'
-import { TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
+import { OtpTokenType as OtpTokenModelType } from 'src/routes/auth/auth.model'
+import { TypeOfVerificationCodeType, TypeOfOtpTokenType } from 'src/shared/constants/auth.constant'
 import { UserType } from 'src/shared/models/shared-user.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
@@ -38,20 +39,13 @@ export class AuthRepository {
   }
 
   async createVerificationCode(
-    payload: Pick<VerificationCodeType, 'email' | 'type' | 'code' | 'expiresAt'>
+    payload: Pick<VerificationCodeType, 'email' | 'type' | 'code' | 'expiresAt' | 'salt'>
   ): Promise<VerificationCodeType> {
-    return this.prismaService.verificationCode.upsert({
-      where: {
-        email_code_type: {
-          email: payload.email,
-          code: payload.code,
-          type: payload.type
-        }
-      },
-      create: payload,
-      update: {
-        code: payload.code,
-        expiresAt: payload.expiresAt
+    return this.prismaService.verificationCode.create({
+      data: {
+        ...payload,
+        attempts: 0,
+        isActive: true
       }
     })
   }
@@ -147,6 +141,81 @@ export class AuthRepository {
   ): Promise<VerificationCodeType> {
     return this.prismaService.verificationCode.delete({
       where: uniqueValue
+    })
+  }
+
+  createOtpToken(data: {
+    token: string
+    userId: number
+    type: TypeOfOtpTokenType
+    expiresAt: Date
+    deviceId: number
+  }): Promise<OtpTokenModelType> {
+    return this.prismaService.otpToken.create({
+      data
+    })
+  }
+
+  findUniqueOtpToken(uniqueObject: { token: string }): Promise<OtpTokenModelType | null> {
+    return this.prismaService.otpToken.findUnique({
+      where: uniqueObject
+    })
+  }
+
+  findUniqueOtpTokenWithDevice(uniqueObject: {
+    token: string
+  }): Promise<(OtpTokenModelType & { device: DeviceType }) | null> {
+    return this.prismaService.otpToken.findUnique({
+      where: uniqueObject,
+      include: {
+        device: true
+      }
+    })
+  }
+
+  deleteOtpToken(uniqueObject: { token: string }): Promise<OtpTokenModelType> {
+    return this.prismaService.otpToken.delete({
+      where: uniqueObject
+    })
+  }
+
+  async updateVerificationCodeAttempts(
+    uniqueValue: {
+      email_code_type: {
+        email: string
+        code: string
+        type: TypeOfVerificationCodeType
+      }
+    },
+    attempts: number
+  ): Promise<VerificationCodeType> {
+    return this.prismaService.verificationCode.update({
+      where: uniqueValue,
+      data: {
+        attempts
+      }
+    })
+  }
+
+  async findVerificationCodesByEmailAndType(
+    email: string,
+    type: TypeOfVerificationCodeType
+  ): Promise<VerificationCodeType[]> {
+    return this.prismaService.verificationCode.findMany({
+      where: {
+        email: email.toLowerCase(),
+        type,
+        expiresAt: { gt: new Date() }
+      }
+    })
+  }
+
+  async invalidateOldVerificationCodes(email: string, type: TypeOfVerificationCodeType): Promise<{ count: number }> {
+    return this.prismaService.verificationCode.deleteMany({
+      where: {
+        email: email.toLowerCase(),
+        type
+      }
     })
   }
 }

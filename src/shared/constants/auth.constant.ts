@@ -29,3 +29,11 @@ export const TypeOfVerificationCode = {
 } as const
 
 export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof typeof TypeOfVerificationCode]
+
+export const TypeOfOtpToken = {
+  FORGOT_PASSWORD: 'FORGOT_PASSWORD',
+  EMAIL_VERIFICATION: 'EMAIL_VERIFICATION',
+  CHANGE_EMAIL: 'CHANGE_EMAIL'
+} as const
+
+export type TypeOfOtpTokenType = (typeof TypeOfOtpToken)[keyof typeof TypeOfOtpToken]
