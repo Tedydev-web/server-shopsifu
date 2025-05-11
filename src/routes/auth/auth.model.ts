@@ -1,5 +1,6 @@
 import { TypeOfVerificationCode, TypeOfOtpToken } from 'src/shared/constants/auth.constant'
 import { UserSchema } from 'src/shared/models/shared-user.model'
+import { PasswordErrorMessages } from './error.model'
 import { z } from 'zod'
 
 export const RegisterBodySchema = UserSchema.pick({
@@ -9,7 +10,7 @@ export const RegisterBodySchema = UserSchema.pick({
   phoneNumber: true
 })
   .extend({
-    confirmPassword: z.string().min(6).max(100),
+    confirmPassword: z.string().min(8, PasswordErrorMessages.MIN_LENGTH).max(100, PasswordErrorMessages.MAX_LENGTH),
     code: z.string().length(6)
   })
   .strict()
@@ -17,11 +18,15 @@ export const RegisterBodySchema = UserSchema.pick({
     if (confirmPassword !== password) {
       ctx.addIssue({
         code: 'custom',
-        message: 'Password and confirm password must match',
+        message: PasswordErrorMessages.MATCH,
         path: ['confirmPassword']
       })
     }
   })
+  .transform(({ email, ...rest }) => ({
+    email: email.toLowerCase(),
+    ...rest
+  }))
 
 export const RegisterResSchema = UserSchema.omit({
   password: true,
@@ -47,7 +52,12 @@ export const VerificationCodeSchema = z.object({
 export const SendOTPBodySchema = VerificationCodeSchema.pick({
   email: true,
   type: true
-}).strict()
+})
+  .strict()
+  .transform(({ email, ...rest }) => ({
+    email: email.toLowerCase(),
+    ...rest
+  }))
 
 export const LoginBodySchema = UserSchema.pick({
   email: true,
@@ -58,6 +68,10 @@ export const LoginBodySchema = UserSchema.pick({
     code: z.string().length(6).optional() // Email OTP code
   })
   .strict()
+  .transform(({ email, ...rest }) => ({
+    email: email.toLowerCase(),
+    ...rest
+  }))
 
 export const LoginResSchema = z.object({
   accessToken: z.string(),
@@ -125,6 +139,10 @@ export const VerifyCodeBodySchema = z
     ])
   })
   .strict()
+  .transform(({ email, ...rest }) => ({
+    email: email.toLowerCase(),
+    ...rest
+  }))
 
 export const VerifyCodeResponseSchema = z
   .object({
@@ -136,15 +154,22 @@ export const VerifyCodeResponseSchema = z
 export const ResetPasswordBodySchema = z
   .object({
     token: z.string(),
-    newPassword: z.string().min(6).max(100),
-    confirmNewPassword: z.string().min(6).max(100)
+    newPassword: z
+      .string()
+      .min(8, PasswordErrorMessages.MIN_LENGTH)
+      .max(100, PasswordErrorMessages.MAX_LENGTH)
+      .regex(/[A-Z]/, PasswordErrorMessages.UPPERCASE)
+      .regex(/[a-z]/, PasswordErrorMessages.LOWERCASE)
+      .regex(/[0-9]/, PasswordErrorMessages.NUMBER)
+      .regex(/[^A-Za-z0-9]/, PasswordErrorMessages.SPECIAL_CHAR),
+    confirmNewPassword: z.string().min(8).max(100)
   })
   .strict()
   .superRefine(({ confirmNewPassword, newPassword }, ctx) => {
     if (confirmNewPassword !== newPassword) {
       ctx.addIssue({
         code: 'custom',
-        message: 'Mật khẩu và mật khẩu xác nhận phải giống nhau',
+        message: PasswordErrorMessages.MATCH,
         path: ['confirmNewPassword']
       })
     }
