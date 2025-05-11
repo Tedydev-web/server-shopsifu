@@ -115,7 +115,7 @@ model UserTranslation {
 model VerificationCode {
   id        Int                  @id @default(autoincrement())
   email     String               @db.VarChar(500)
-  code      String               @db.VarChar(50)
+  code      String               @db.VarChar(100)
   salt      String               @db.VarChar(100)
   attempts  Int                  @default(0)
   type      VerificationCodeType

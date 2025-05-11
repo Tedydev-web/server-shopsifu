@@ -7,7 +7,8 @@ import {
   ResetPasswordBodyType,
   SendOTPBodyType,
   VerifyCodeBodyType,
-  VerifyCodeResponseType
+  VerifyCodeResponseType,
+  VerificationCodeType
 } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { RolesService } from 'src/routes/auth/roles.service'
@@ -58,60 +59,67 @@ export class AuthService {
     code: string
     type: TypeOfVerificationCodeType
   }) {
-    // Tìm verification code trong DB
-    const verificationCode = await this.authRepository.findUniqueVerificationCode({
-      email_code_type: {
-        email,
-        code: code, // Bây giờ code trong DB là hashed
-        type
+    // Tìm tất cả các verification code cho email và type
+    const verificationCodes = await this.authRepository.findVerificationCodesByEmailAndType(email, type)
+
+    if (!verificationCodes || verificationCodes.length === 0) {
+      throw InvalidOTPException
+    }
+
+    let validCode: VerificationCodeType | null = null
+
+    // Kiểm tra từng mã
+    for (const verificationCode of verificationCodes) {
+      // Kiểm tra xem đã quá số lần thử chưa
+      if (verificationCode.attempts >= 5) {
+        continue // Bỏ qua mã này nếu đã quá số lần thử
       }
-    })
 
-    if (!verificationCode) {
+      // Kiểm tra xem OTP đã hết hạn chưa
+      if (verificationCode.expiresAt < new Date()) {
+        continue // Bỏ qua mã này nếu đã hết hạn
+      }
+
+      // Xác thực mã OTP với mã đã được mã hóa
+      const isValidOtp = await this.otpService.verifyOTP(code, verificationCode.code, verificationCode.salt)
+
+      if (isValidOtp) {
+        validCode = verificationCode
+        break // Tìm thấy mã hợp lệ, thoát vòng lặp
+      } else {
+        // Tăng số lần thử cho mã này
+        await this.authRepository.updateVerificationCodeAttempts(
+          {
+            email_code_type: {
+              email,
+              code: verificationCode.code,
+              type
+            }
+          },
+          verificationCode.attempts + 1
+        )
+      }
+    }
+
+    if (!validCode) {
       throw InvalidOTPException
     }
 
-    // Kiểm tra xem đã quá số lần thử chưa
-    if (verificationCode.attempts >= 5) {
-      throw TooManyAttemptsException
-    }
-
-    // Kiểm tra xem OTP đã hết hạn chưa
-    if (verificationCode.expiresAt < new Date()) {
-      throw OTPExpiredException
-    }
-
-    // Xác thực mã OTP với mã đã được mã hóa
-    const isValidOtp = await this.otpService.verifyOTP(code, verificationCode.code, verificationCode.salt)
-
-    if (!isValidOtp) {
-      // Tăng số lần thử
-      await this.authRepository.updateVerificationCodeAttempts(
-        {
-          email_code_type: {
-            email,
-            code: verificationCode.code,
-            type
-          }
-        },
-        verificationCode.attempts + 1
-      )
-
-      throw InvalidOTPException
-    }
-
-    return verificationCode
+    return validCode
   }
 
   async register(body: RegisterBodyType) {
     try {
-      await this.validateVerificationCode({
+      // Xác thực mã OTP và lấy bản ghi hợp lệ
+      const validCode = await this.validateVerificationCode({
         email: body.email,
         code: body.code,
         type: TypeOfVerificationCode.REGISTER
       })
+
       const clientRoleId = await this.rolesService.getClientRoleId()
       const hashedPassword = await this.hashingService.hash(body.password)
+
       const [user] = await Promise.all([
         this.authRepository.createUser({
           email: body.email,
@@ -123,11 +131,12 @@ export class AuthService {
         this.authRepository.deleteVerificationCode({
           email_code_type: {
             email: body.email,
-            code: body.code,
-            type: TypeOfVerificationCode.FORGOT_PASSWORD
+            code: validCode.code, // Sử dụng mã đã hash từ validCode
+            type: TypeOfVerificationCode.REGISTER
           }
         })
       ])
+
       return user
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -304,8 +313,8 @@ export class AuthService {
       throw EmailNotFoundException
     }
 
-    // 2. Xác thực mã OTP
-    await this.validateVerificationCode({
+    // 2. Xác thực mã OTP và lấy bản ghi hợp lệ
+    const validCode = await this.validateVerificationCode({
       email,
       code,
       type
@@ -339,7 +348,7 @@ export class AuthService {
     await this.authRepository.deleteVerificationCode({
       email_code_type: {
         email,
-        code,
+        code: validCode.code, // Sử dụng mã đã hash
         type
       }
     })

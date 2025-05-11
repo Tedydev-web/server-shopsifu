@@ -78,6 +78,18 @@ export class AuthRepository {
     })
   }
 
+  async findVerificationCodesByEmailAndType(
+    email: string,
+    type: TypeOfVerificationCodeType
+  ): Promise<VerificationCodeType[]> {
+    return this.prismaService.verificationCode.findMany({
+      where: {
+        email,
+        type
+      }
+    })
+  }
+
   createRefreshToken(data: { token: string; userId: number; expiresAt: Date; deviceId: number }) {
     return this.prismaService.refreshToken.create({
       data
