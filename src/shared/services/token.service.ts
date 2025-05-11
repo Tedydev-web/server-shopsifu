@@ -5,7 +5,7 @@ import {
   AccessTokenPayload,
   AccessTokenPayloadCreate,
   RefreshTokenPayload,
-  RefreshTokenPayloadCreate
+  RefreshTokenPayloadCreate,
 } from 'src/shared/types/jwt.type'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -19,8 +19,8 @@ export class TokenService {
       {
         secret: envConfig.ACCESS_TOKEN_SECRET,
         expiresIn: envConfig.ACCESS_TOKEN_EXPIRES_IN,
-        algorithm: 'HS256'
-      }
+        algorithm: 'HS256',
+      },
     )
   }
 
@@ -30,20 +30,20 @@ export class TokenService {
       {
         secret: envConfig.REFRESH_TOKEN_SECRET,
         expiresIn: envConfig.REFRESH_TOKEN_EXPIRES_IN,
-        algorithm: 'HS256'
-      }
+        algorithm: 'HS256',
+      },
     )
   }
 
   verifyAccessToken(token: string): Promise<AccessTokenPayload> {
     return this.jwtService.verifyAsync(token, {
-      secret: envConfig.ACCESS_TOKEN_SECRET
+      secret: envConfig.ACCESS_TOKEN_SECRET,
     })
   }
 
   verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
     return this.jwtService.verifyAsync(token, {
-      secret: envConfig.REFRESH_TOKEN_SECRET
+      secret: envConfig.REFRESH_TOKEN_SECRET,
     })
   }
 }

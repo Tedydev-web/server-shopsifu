@@ -4,45 +4,45 @@ import { UnauthorizedException, UnprocessableEntityException } from '@nestjs/com
 export const InvalidOTPException = new UnprocessableEntityException([
   {
     message: 'Error.InvalidOTP',
-    path: 'code'
-  }
+    path: 'code',
+  },
 ])
 
 export const OTPExpiredException = new UnprocessableEntityException([
   {
     message: 'Error.OTPExpired',
-    path: 'code'
-  }
+    path: 'code',
+  },
 ])
 
 export const FailedToSendOTPException = new UnprocessableEntityException([
   {
     message: 'Error.FailedToSendOTP',
-    path: 'code'
-  }
+    path: 'code',
+  },
 ])
 
 // Email related errors
 export const EmailAlreadyExistsException = new UnprocessableEntityException([
   {
     message: 'Error.EmailAlreadyExists',
-    path: 'email'
-  }
+    path: 'email',
+  },
 ])
 
 export const EmailNotFoundException = new UnprocessableEntityException([
   {
     message: 'Error.EmailNotFound',
-    path: 'email'
-  }
+    path: 'email',
+  },
 ])
 
 // Password related errors
 export const InvalidPasswordException = new UnprocessableEntityException([
   {
     message: 'Error.InvalidPassword',
-    path: 'password'
-  }
+    path: 'password',
+  },
 ])
 
 // Auth token related errors

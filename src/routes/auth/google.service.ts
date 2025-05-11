@@ -17,12 +17,12 @@ export class GoogleService {
     private readonly authRepository: AuthRepository,
     private readonly hashingService: HashingService,
     private readonly rolesService: RolesService,
-    private readonly authService: AuthService
+    private readonly authService: AuthService,
   ) {
     this.oauth2Client = new google.auth.OAuth2(
       envConfig.GOOGLE_CLIENT_ID,
       envConfig.GOOGLE_CLIENT_SECRET,
-      envConfig.GOOGLE_REDIRECT_URI
+      envConfig.GOOGLE_REDIRECT_URI,
     )
   }
   getAuthorizationUrl({ userAgent, ip }: GoogleAuthStateType) {
@@ -31,14 +31,14 @@ export class GoogleService {
     const stateString = Buffer.from(
       JSON.stringify({
         userAgent,
-        ip
-      })
+        ip,
+      }),
     ).toString('base64')
     const url = this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope,
       include_granted_scopes: true,
-      state: stateString
+      state: stateString,
     })
     return { url }
   }
@@ -63,7 +63,7 @@ export class GoogleService {
       // 3. Lấy thông tin google user
       const oauth2 = google.oauth2({
         auth: this.oauth2Client,
-        version: 'v2'
+        version: 'v2',
       })
       const { data } = await oauth2.userinfo.get()
       if (!data.email) {
@@ -71,7 +71,7 @@ export class GoogleService {
       }
 
       let user = await this.authRepository.findUniqueUserIncludeRole({
-        email: data.email
+        email: data.email,
       })
       // Nếu không có user tức là người mới, vậy nên sẽ tiến hành đăng ký
       if (!user) {
@@ -84,19 +84,19 @@ export class GoogleService {
           password: hashedPassword,
           roleId: clientRoleId,
           phoneNumber: '',
-          avatar: data.picture ?? null
+          avatar: data.picture ?? null,
         })
       }
       const device = await this.authRepository.createDevice({
         userId: user.id,
         userAgent,
-        ip
+        ip,
       })
       const authTokens = await this.authService.generateTokens({
         userId: user.id,
         deviceId: device.id,
         roleId: user.roleId,
-        roleName: user.role.name
+        roleName: user.role.name,
       })
       return authTokens
     } catch (error) {

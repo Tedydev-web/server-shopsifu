@@ -15,7 +15,7 @@ export const UserSchema = z.object({
   updatedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date()
+  updatedAt: z.date(),
 })
 
 export type UserType = z.infer<typeof UserSchema>
