@@ -4,9 +4,10 @@ import {
   RefreshTokenType,
   RegisterBodyType,
   RoleType,
-  VerificationCodeType
+  VerificationCodeType,
+  OtpTokenType
 } from 'src/routes/auth/auth.model'
-import { TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
+import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import { UserType } from 'src/shared/models/shared-user.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
@@ -147,6 +148,44 @@ export class AuthRepository {
   ): Promise<VerificationCodeType> {
     return this.prismaService.verificationCode.delete({
       where: uniqueValue
+    })
+  }
+
+  async createOtpToken(data: {
+    token: string
+    email: string
+    userId?: number
+    deviceId?: number
+    type: TypeOfVerificationCodeType
+    expiresAt: Date
+  }): Promise<OtpTokenType> {
+    return this.prismaService.otpToken.create({
+      data: {
+        ...data
+      }
+    })
+  }
+
+  async findUniqueOtpToken(where: {
+    token: string
+    email: string
+    type: TypeOfVerificationCodeType
+  }): Promise<OtpTokenType | null> {
+    return this.prismaService.otpToken.findFirst({
+      where: {
+        ...where,
+        usedAt: null,
+        expiresAt: {
+          gt: new Date()
+        }
+      }
+    })
+  }
+
+  async markOtpTokenAsUsed(token: string): Promise<OtpTokenType> {
+    return this.prismaService.otpToken.update({
+      where: { token },
+      data: { usedAt: new Date() }
     })
   }
 }

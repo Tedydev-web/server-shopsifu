@@ -45,6 +45,21 @@ export const InvalidPasswordException = new UnprocessableEntityException([
   }
 ])
 
+// Thêm error mới cho OTP token
+export const InvalidOTPTokenException = new UnauthorizedException([
+  {
+    message: 'Error.InvalidOTPToken',
+    path: 'otpToken'
+  }
+])
+
+export const OTPTokenExpiredException = new UnauthorizedException([
+  {
+    message: 'Error.OTPTokenExpired',
+    path: 'otpToken'
+  }
+])
+
 // Auth token related errors
 export const RefreshTokenAlreadyUsedException = new UnauthorizedException('Error.RefreshTokenAlreadyUsed')
 export const UnauthorizedAccessException = new UnauthorizedException('Error.UnauthorizedAccess')

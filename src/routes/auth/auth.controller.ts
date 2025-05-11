@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Req, Res } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Res } from '@nestjs/common'
 import { Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
@@ -11,7 +11,9 @@ import {
   RefreshTokenResDTO,
   RegisterBodyDTO,
   RegisterResDTO,
-  SendOTPBodyDTO
+  SendOTPBodyDTO,
+  VerifyOTPBodyDTO,
+  VerifyOTPResDTO
 } from 'src/routes/auth/auth.dto'
 
 import { AuthService } from 'src/routes/auth/auth.service'
@@ -106,5 +108,12 @@ export class AuthController {
   @ZodSerializerDto(MessageResDTO)
   forgotPassword(@Body() body: ForgotPasswordBodyDTO) {
     return this.authService.forgotPassword(body)
+  }
+
+  @Post('verify-code')
+  @IsPublic()
+  @ZodSerializerDto(VerifyOTPResDTO)
+  verifyOTP(@Body() body: VerifyOTPBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
+    return this.authService.verifyOTP(body, userAgent, ip)
   }
 }

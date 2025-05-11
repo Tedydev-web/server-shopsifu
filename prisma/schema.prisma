@@ -41,6 +41,7 @@ model User {
   role                        Role                  @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   devices                     Device[] // Liên kết 1-n với Device
   refreshTokens               RefreshToken[]
+  otpTokens                   OtpToken[] // Thêm quan hệ ngược với OtpToken
   carts                       CartItem[]
   orders                      Order[]
   reviews                     Review[]
@@ -134,6 +135,7 @@ model Device {
   createdAt     DateTime       @default(now())
   isActive      Boolean        @default(true) // Trạng thái thiết bị (đang login hay đã logout)
   refreshTokens RefreshToken[] // Liên kết 1-n với RefreshToken
+  otpTokens     OtpToken[] // Thêm quan hệ ngược với OtpToken
 }
 
 model RefreshToken {
@@ -437,6 +439,23 @@ model Message {
 
   readAt    DateTime?
   createdAt DateTime  @default(now())
+}
+
+model OtpToken {
+  id        Int       @id @default(autoincrement())
+  token     String    @unique @db.VarChar(1000)
+  userId    Int?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email     String    @db.VarChar(500)
+  deviceId  Int?
+  device    Device?   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  type      VerificationCodeType
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email, type])
+  @@index([expiresAt])
 }
 
 enum OrderStatus {

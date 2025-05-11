@@ -1,11 +1,13 @@
-import { HttpException, Injectable } from '@nestjs/common'
+import { HttpException, Injectable, UnauthorizedException } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import {
   ForgotPasswordBodyType,
   LoginBodyType,
   RefreshTokenBodyType,
   RegisterBodyType,
-  SendOTPBodyType
+  SendOTPBodyType,
+  VerifyOTPBodyType,
+  VerifyOTPResType
 } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { RolesService } from 'src/routes/auth/roles.service'
@@ -28,6 +30,8 @@ import {
   RefreshTokenAlreadyUsedException,
   UnauthorizedAccessException
 } from 'src/routes/auth/error.model'
+import { v4 as uuidv4 } from 'uuid'
+import { Device } from '@prisma/client'
 
 @Injectable()
 export class AuthService {
@@ -64,31 +68,34 @@ export class AuthService {
     }
     return vevificationCode
   }
+
   async register(body: RegisterBodyType) {
     try {
-      await this.validateVerificationCode({
+      // 1. Validate OTP token
+      const otpToken = await this.authRepository.findUniqueOtpToken({
+        token: body.otpToken,
         email: body.email,
-        code: body.code,
         type: TypeOfVerificationCode.REGISTER
       })
+
+      if (!otpToken) {
+        throw new UnauthorizedException('OTP token không hợp lệ hoặc đã hết hạn')
+      }
+
+      // 2. Tạo user mới
       const clientRoleId = await this.rolesService.getClientRoleId()
       const hashedPassword = await this.hashingService.hash(body.password)
-      const [user] = await Promise.all([
-        this.authRepository.createUser({
-          email: body.email,
-          name: body.name,
-          phoneNumber: body.phoneNumber,
-          password: hashedPassword,
-          roleId: clientRoleId
-        }),
-        this.authRepository.deleteVerificationCode({
-          email_code_type: {
-            email: body.email,
-            code: body.code,
-            type: TypeOfVerificationCode.REGISTER
-          }
-        })
-      ])
+      const user = await this.authRepository.createUser({
+        email: body.email,
+        name: body.name,
+        phoneNumber: body.phoneNumber,
+        password: hashedPassword,
+        roleId: clientRoleId
+      })
+
+      // 3. Đánh dấu token đã sử dụng
+      await this.authRepository.markOtpTokenAsUsed(body.otpToken)
+
       return user
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -241,39 +248,77 @@ export class AuthService {
   }
 
   async forgotPassword(body: ForgotPasswordBodyType) {
-    const { email, code, newPassword } = body
-    // 1. Kiểm tra email đã tồn tại trong database chưa
-    const user = await this.sharedUserRepository.findUnique({
-      email
-    })
-    if (!user) {
-      throw EmailNotFoundException
-    }
-    //2. Kiểm tra mã OTP có hợp lệ không
-    await this.validateVerificationCode({
-      email,
-      code,
+    // 1. Validate OTP token
+    const otpToken = await this.authRepository.findUniqueOtpToken({
+      token: body.otpToken,
+      email: body.email,
       type: TypeOfVerificationCode.FORGOT_PASSWORD
     })
-    //3. Cập nhật lại mật khẩu mới và xóa đi OTP
-    const hashedPassword = await this.hashingService.hash(newPassword)
+
+    if (!otpToken || !otpToken.userId) {
+      throw new UnauthorizedException('OTP token không hợp lệ hoặc đã hết hạn')
+    }
+
+    // 2. Cập nhật mật khẩu
+    const hashedPassword = await this.hashingService.hash(body.newPassword)
     await Promise.all([
-      this.authRepository.updateUser(
-        { id: user.id },
-        {
-          password: hashedPassword
-        }
-      ),
-      this.authRepository.deleteVerificationCode({
-        email_code_type: {
-          email: body.email,
-          code: body.code,
-          type: TypeOfVerificationCode.FORGOT_PASSWORD
-        }
-      })
+      this.authRepository.updateUser({ id: otpToken.userId }, { password: hashedPassword }),
+      this.authRepository.markOtpTokenAsUsed(body.otpToken)
     ])
+
+    // 3. Gửi email thông báo
+    await this.emailService.sendPasswordChangedNotification({
+      email: body.email,
+      otpCode: body.otpToken
+    })
+
     return {
       message: 'Đổi mật khẩu thành công'
     }
+  }
+
+  async verifyOTP(body: VerifyOTPBodyType, userAgent: string, ip: string): Promise<VerifyOTPResType> {
+    // 1. Validate OTP
+    const verificationCode = await this.validateVerificationCode({
+      email: body.email,
+      code: body.code,
+      type: body.type
+    })
+
+    // 2. Tìm user nếu có (cho FORGOT_PASSWORD)
+    const user = await this.sharedUserRepository.findUnique({
+      email: body.email
+    })
+
+    // 3. Tạo device nếu cần
+    let device: Device | null = null
+    if (user) {
+      device = await this.authRepository.createDevice({
+        userId: user.id,
+        userAgent,
+        ip
+      })
+    }
+
+    // 4. Tạo OTP token
+    const otpToken = await this.authRepository.createOtpToken({
+      token: uuidv4(),
+      email: body.email,
+      userId: user?.id,
+      deviceId: device?.id,
+      type: body.type,
+      expiresAt: addMilliseconds(new Date(), ms('15m')) // 15 phút
+    })
+
+    // 5. Xóa verification code đã dùng
+    await this.authRepository.deleteVerificationCode({
+      email_code_type: {
+        email: body.email,
+        code: body.code,
+        type: body.type
+      }
+    })
+
+    return { otpToken: otpToken.token }
   }
 }
