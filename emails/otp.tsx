@@ -1,237 +1,58 @@
-import {
-  Body,
-  Container,
-  Head,
-  Heading,
-  Hr,
-  Html,
-  Img,
-  Preview,
-  Section,
-  Text,
-  Tailwind,
-  Link,
-  Row,
-  Column
-} from '@react-email/components'
+import * as React from 'react'
+import { Tailwind } from '@react-email/tailwind'
 
-import React from 'react'
-
-interface OTPEmailProps {
+export interface OTPEmailProps {
   otpCode: string
   title: string
+  deviceInfo?: {
+    userAgent: string
+    ip: string
+    lastActive: Date
+    isActive: boolean
+  }
 }
 
-export default function OTPEmail({ otpCode, title }: OTPEmailProps) {
+export default function OTPEmail({ otpCode, title, deviceInfo }: OTPEmailProps) {
   return (
-    <Html>
-      <Head>
-        <title>{title}</title>
-      </Head>
-      <Body style={main}>
-        <Preview>Mã xác minh có hiệu lực trong 5 phút</Preview>
-        <Tailwind>
-          <Container style={container}>
-            <Section style={coverSection}>
-              <Section style={imageSection}>
-                <Img
-                  src={`https://res.cloudinary.com/tedydev/image/upload/v1746547380/shopsifu/white-logo.png`}
-                  width='120'
-                  height='120'
-                  alt='Logo Shopsifu'
-                />
-              </Section>
-              <Section style={upperSection}>
-                <Heading style={h1}>Xác minh địa chỉ email của bạn</Heading>
-                <Text style={mainText}>
-                  Cảm ơn bạn đã bắt đầu quá trình tạo tài khoản mới trên Shopsifu. Chúng tôi muốn đảm bảo rằng đó thực
-                  sự là bạn. Vui lòng nhập mã xác minh sau khi được yêu cầu. Nếu bạn không muốn tạo tài khoản, bạn có
-                  thể bỏ qua tin nhắn này.
-                </Text>
-              </Section>
-              <Section style={verificationSection}>
-                <Text style={verifyText}>Mã xác minh</Text>
-                <Text style={codeText}>{otpCode}</Text>
-                <Text style={validityText}>(Mã này có hiệu lực trong 5 phút)</Text>
-              </Section>
-              <Section style={lowerSection}>
-                <Text style={cautionText}>
-                  Shopsifu sẽ không bao giờ gửi email yêu cầu bạn tiết lộ hoặc xác minh mật khẩu, số thẻ tín dụng hoặc
-                  số tài khoản ngân hàng của bạn.
-                </Text>
-                <Hr style={hr} />
-              </Section>
-              <Section style={containerContact}>
-                <Row>
-                  <Text style={paragraph}>Liên hệ với chúng tôi</Text>
-                </Row>
-                <Row
-                  align='left'
-                  style={{
-                    width: '84px',
-                    float: 'left'
-                  }}
-                >
-                  <Column style={{ paddingRight: '4px' }}>
-                    <Link href='https://notifications.google.com'>
-                      <Img
-                        width='28'
-                        height='28'
-                        src={`https://res.cloudinary.com/tedydev/image/upload/v1728706753/nphdigital/facebook.png`}
-                      />
-                    </Link>
-                  </Column>
-                  <Column style={{ paddingRight: '4px' }}>
-                    <Link href='https://notifications.google.com'>
-                      <Img
-                        width='28'
-                        height='28'
-                        src={`https://res.cloudinary.com/tedydev/image/upload/v1728706753/nphdigital/telegram.png`}
-                      />
-                    </Link>
-                  </Column>
-                  <Column style={{ paddingRight: '4px' }}>
-                    <Link href='https://notifications.google.com'>
-                      <Img
-                        width='28'
-                        height='28'
-                        src={`https://res.cloudinary.com/tedydev/image/upload/v1728706753/nphdigital/zalo.png`}
-                      />
-                    </Link>
-                  </Column>
-                </Row>
-                <Row>
-                  <Img
-                    style={footer}
-                    width='540'
-                    height='48'
-                    src={`https://res.cloudinary.com/tedydev/image/upload/v1746551514/shopsifu/google-play-footer.png`}
-                  />
-                </Row>
-              </Section>
-              <Section style={{ ...paragraphContent, paddingBottom: 30 }}>
-                <Text
-                  style={{
-                    ...paragraph,
-                    fontSize: '12px',
-                    textAlign: 'center',
-                    margin: 0
-                  }}
-                >
-                  © 2025 Bản quyền thuộc về Shopsifu
-                </Text>
-              </Section>
-            </Section>
-          </Container>
-        </Tailwind>
-      </Body>
-    </Html>
+    <Tailwind>
+      <div className='max-w-lg mx-auto p-8 bg-white shadow-md rounded-md'>
+        <h1 className='text-2xl font-bold text-gray-800 mb-6'>{title}</h1>
+
+        <div className='border-b border-gray-200 mb-6'></div>
+
+        <p className='text-gray-600 mb-4'>Mã OTP của bạn là:</p>
+
+        <div className='bg-gray-100 p-6 rounded-md mb-6'>
+          <p className='text-center text-3xl font-bold tracking-wider text-blue-600'>{otpCode}</p>
+        </div>
+
+        <p className='text-gray-600 mb-6'>Mã này sẽ hết hạn sau 10 phút. Đừng chia sẻ mã này với bất kỳ ai.</p>
+
+        {deviceInfo && (
+          <div className='mt-6 border-t border-gray-200 pt-4'>
+            <p className='text-gray-600 text-sm mb-2'>Yêu cầu OTP được gửi từ thiết bị:</p>
+            <ul className='text-gray-600 text-xs space-y-1 bg-gray-50 p-3 rounded'>
+              <li>
+                <span className='font-medium'>Thiết bị:</span> {deviceInfo.userAgent}
+              </li>
+              <li>
+                <span className='font-medium'>Địa chỉ IP:</span> {deviceInfo.ip}
+              </li>
+              <li>
+                <span className='font-medium'>Thời gian:</span>{' '}
+                {new Date(deviceInfo.lastActive).toLocaleString('vi-VN')}
+              </li>
+            </ul>
+            <p className='text-xs text-gray-500 mt-2'>
+              Nếu đây không phải là bạn, vui lòng bỏ qua email này và liên hệ với chúng tôi ngay lập tức.
+            </p>
+          </div>
+        )}
+
+        <div className='mt-8 text-gray-500 text-xs text-center'>
+          <p>© 2024 Shopsifu. Tất cả các quyền được bảo lưu.</p>
+        </div>
+      </div>
+    </Tailwind>
   )
-}
-
-// OTPEmail.PreviewProps = {
-//   code: '{{code}}'
-// } satisfies OTPEmail
-
-const main = {
-  backgroundColor: '#fff',
-  color: '#212121'
-}
-
-const container = {
-  padding: '20px',
-  margin: '0 auto'
-}
-
-const h1 = {
-  color: '#333',
-  fontFamily:
-    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
-  fontSize: '20px',
-  fontWeight: 'bold',
-  marginBottom: '15px'
-}
-
-const text = {
-  color: '#333',
-  fontFamily:
-    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
-  fontSize: '14px',
-  margin: '24px 0'
-}
-
-const imageSection = {
-  backgroundColor: '#d0201c',
-  display: 'flex',
-  // padding: '20px 0',
-  alignItems: 'center',
-  justifyContent: 'center'
-}
-
-const coverSection = {
-  // backgroundImage: 'url("https://res.cloudinary.com/tedydev/image/upload/v1746548458/shopsifu/bg.png")',
-  // backgroundPosition: 'bottom',
-  // backgroundRepeat: 'no-repeat, no-repeat'
-}
-
-const upperSection = { padding: '25px 35px' }
-
-const lowerSection = { padding: '25px 35px' }
-
-const verifyText = {
-  ...text,
-  margin: 0,
-  fontWeight: 'bold',
-  textAlign: 'center' as const
-}
-
-const codeText = {
-  ...text,
-  fontWeight: 'bold',
-  fontSize: '36px',
-  margin: '10px 0',
-  textAlign: 'center' as const
-}
-
-const validityText = {
-  ...text,
-  margin: '0px',
-  textAlign: 'center' as const
-}
-
-const verificationSection = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center'
-}
-
-const mainText = { ...text, marginBottom: '14px' }
-
-const cautionText = { ...text, margin: '0px' }
-
-const paragraph = {
-  fontSize: '14px',
-  lineHeight: '22px',
-  color: '#3c4043'
-}
-
-const paragraphContent = {
-  padding: '0 40px'
-}
-
-const containerContact = {
-  backgroundColor: 'rgba(188, 188, 188, 0.67)',
-  width: '90%',
-  borderRadius: '5px',
-  overflow: 'hidden',
-  paddingLeft: '20px'
-}
-
-const footer = {
-  maxWidth: '100%'
-}
-
-const hr = {
-  borderColor: '#e8eaed',
-  margin: '20px 0'
 }

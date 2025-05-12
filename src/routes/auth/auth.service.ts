@@ -32,6 +32,7 @@ import {
 } from 'src/routes/auth/error.model'
 import { v4 as uuidv4 } from 'uuid'
 import { Device } from '@prisma/client'
+import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class AuthService {
@@ -41,7 +42,8 @@ export class AuthService {
     private readonly authRepository: AuthRepository,
     private readonly sharedUserRepository: SharedUserRepository,
     private readonly emailService: EmailService,
-    private readonly tokenService: TokenService
+    private readonly tokenService: TokenService,
+    private readonly prismaService: PrismaService
   ) {}
 
   async validateVerificationCode({
@@ -93,8 +95,20 @@ export class AuthService {
         roleId: clientRoleId
       })
 
-      // 3. Đánh dấu token đã sử dụng
-      await this.authRepository.markOtpTokenAsUsed(body.otpToken)
+      // 3. Xóa OTP token đã sử dụng và các OtpToken khác chưa sử dụng
+      await Promise.all([
+        this.authRepository.deleteOtpToken({ token: body.otpToken }),
+        // Xóa các OtpToken khác chưa sử dụng của cùng email và type
+        this.prismaService.otpToken.deleteMany({
+          where: {
+            email: body.email,
+            type: TypeOfVerificationCode.REGISTER,
+            token: {
+              not: body.otpToken
+            }
+          }
+        })
+      ])
 
       return user
     } catch (error) {
@@ -105,7 +119,7 @@ export class AuthService {
     }
   }
 
-  async sendOTP(body: SendOTPBodyType) {
+  async sendOTP(body: SendOTPBodyType & { userAgent?: string; ip?: string }) {
     const user = await this.sharedUserRepository.findUnique({
       email: body.email
     })
@@ -115,18 +129,48 @@ export class AuthService {
     if (body.type === TypeOfVerificationCode.FORGOT_PASSWORD && !user) {
       throw EmailNotFoundException
     }
+
+    // Tạo device nếu có thông tin userAgent và ip
+    let device: {
+      id: number
+      userAgent: string
+      ip: string
+      lastActive: Date
+      isActive: boolean
+      userId: number | null
+    } | null = null
+    if (body.userAgent && body.ip) {
+      device = await this.authRepository.createDevice({
+        userId: user?.id, // userId có thể là undefined nếu không có user
+        userAgent: body.userAgent,
+        ip: body.ip
+      })
+    }
+
     // 2. Tạo mã OTP
     const code = generateOTP()
     await this.authRepository.createVerificationCode({
       email: body.email,
       code,
       type: body.type,
-      expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_EXPIRES_IN))
+      expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_EXPIRES_IN)),
+      deviceId: device?.id
     })
-    // 3. Gửi mã OTP
+
+    // 3. Gửi mã OTP với thông tin thiết bị
+    const deviceInfo = device
+      ? {
+          userAgent: device.userAgent,
+          ip: device.ip,
+          lastActive: device.lastActive,
+          isActive: device.isActive
+        }
+      : undefined
+
     const { error } = await this.emailService.sendOTP({
       email: body.email,
-      code
+      code,
+      deviceInfo
     })
     if (error) {
       throw FailedToSendOTPException
@@ -259,17 +303,45 @@ export class AuthService {
       throw new UnauthorizedException('OTP token không hợp lệ hoặc đã hết hạn')
     }
 
-    // 2. Cập nhật mật khẩu
+    // 2. Lấy thông tin thiết bị nếu có
+    let deviceInfo: { userAgent: string; ip: string; lastActive: Date; isActive: boolean } | undefined = undefined
+    if (otpToken.deviceId) {
+      const device = await this.prismaService.device.findUnique({
+        where: { id: otpToken.deviceId }
+      })
+
+      if (device) {
+        deviceInfo = {
+          userAgent: device.userAgent,
+          ip: device.ip,
+          lastActive: device.lastActive,
+          isActive: device.isActive
+        }
+      }
+    }
+
+    // 3. Cập nhật mật khẩu
     const hashedPassword = await this.hashingService.hash(body.newPassword)
     await Promise.all([
       this.authRepository.updateUser({ id: otpToken.userId }, { password: hashedPassword }),
-      this.authRepository.markOtpTokenAsUsed(body.otpToken)
+      this.authRepository.deleteOtpToken({ token: body.otpToken }),
+      // Xóa các OtpToken khác chưa sử dụng của cùng email và type
+      this.prismaService.otpToken.deleteMany({
+        where: {
+          email: body.email,
+          type: TypeOfVerificationCode.FORGOT_PASSWORD,
+          token: {
+            not: body.otpToken
+          }
+        }
+      })
     ])
 
-    // 3. Gửi email thông báo
+    // 4. Gửi email thông báo
     await this.emailService.sendPasswordChangedNotification({
       email: body.email,
-      otpCode: body.otpToken
+      otpCode: body.otpToken,
+      deviceInfo
     })
 
     return {
@@ -290,14 +362,17 @@ export class AuthService {
       email: body.email
     })
 
-    // 3. Tạo device nếu cần
-    let device: Device | null = null
-    if (user) {
-      device = await this.authRepository.createDevice({
-        userId: user.id,
+    // 3. Sử dụng deviceId từ verificationCode nếu có, hoặc tạo mới device
+    let deviceId = verificationCode.deviceId
+
+    // Nếu không có deviceId từ verificationCode, tạo device mới
+    if (!deviceId) {
+      const device = await this.authRepository.createDevice({
+        userId: user?.id,
         userAgent,
         ip
       })
+      deviceId = device.id
     }
 
     // 4. Tạo OTP token
@@ -305,19 +380,31 @@ export class AuthService {
       token: uuidv4(),
       email: body.email,
       userId: user?.id,
-      deviceId: device?.id,
+      deviceId: deviceId,
       type: body.type,
       expiresAt: addMilliseconds(new Date(), ms('15m')) // 15 phút
     })
 
-    // 5. Xóa verification code đã dùng
-    await this.authRepository.deleteVerificationCode({
-      email_code_type: {
-        email: body.email,
-        code: body.code,
-        type: body.type
-      }
-    })
+    // 5. Xóa verification code đã dùng và các verification code còn lại chưa sử dụng
+    await Promise.all([
+      this.authRepository.deleteVerificationCode({
+        email_code_type: {
+          email: body.email,
+          code: body.code,
+          type: body.type
+        }
+      }),
+      // Xóa các verification code khác của cùng email và type
+      this.prismaService.verificationCode.deleteMany({
+        where: {
+          email: body.email,
+          type: body.type,
+          code: {
+            not: body.code // Đảm bảo không xóa code vừa sử dụng (mặc dù đã xóa ở trên)
+          }
+        }
+      })
+    ])
 
     return { otpToken: otpToken.token }
   }

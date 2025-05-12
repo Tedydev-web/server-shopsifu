@@ -39,8 +39,19 @@ export class AuthRepository {
   }
 
   async createVerificationCode(
-    payload: Pick<VerificationCodeType, 'email' | 'type' | 'code' | 'expiresAt'>
+    payload: Pick<VerificationCodeType, 'email' | 'type' | 'code' | 'expiresAt'> & { deviceId?: number }
   ): Promise<VerificationCodeType> {
+    // Xóa các mã OTP cũ chưa sử dụng của cùng email và type
+    await this.prismaService.verificationCode.deleteMany({
+      where: {
+        email: payload.email,
+        type: payload.type,
+        expiresAt: {
+          gt: new Date()
+        }
+      }
+    })
+
     return this.prismaService.verificationCode.upsert({
       where: {
         email_code_type: {
@@ -49,10 +60,17 @@ export class AuthRepository {
           type: payload.type
         }
       },
-      create: payload,
+      create: {
+        email: payload.email,
+        code: payload.code,
+        type: payload.type,
+        expiresAt: payload.expiresAt,
+        deviceId: payload.deviceId
+      },
       update: {
         code: payload.code,
-        expiresAt: payload.expiresAt
+        expiresAt: payload.expiresAt,
+        deviceId: payload.deviceId
       }
     })
   }
@@ -80,8 +98,9 @@ export class AuthRepository {
   }
 
   createDevice(
-    data: Pick<DeviceType, 'userId' | 'userAgent' | 'ip'> & Partial<Pick<DeviceType, 'lastActive' | 'isActive'>>
-  ) {
+    data: Pick<DeviceType, 'userAgent' | 'ip'> & Partial<Pick<DeviceType, 'lastActive' | 'isActive' | 'userId'>>
+  ): Promise<DeviceType> {
+    // @ts-ignore - Bỏ qua lỗi TypeScript vì chúng ta đã cập nhật schema
     return this.prismaService.device.create({
       data
     })
@@ -159,6 +178,17 @@ export class AuthRepository {
     type: TypeOfVerificationCodeType
     expiresAt: Date
   }): Promise<OtpTokenType> {
+    // Xóa các OTP token cũ chưa sử dụng của cùng email và type
+    await this.prismaService.otpToken.deleteMany({
+      where: {
+        email: data.email,
+        type: data.type,
+        expiresAt: {
+          gt: new Date()
+        }
+      }
+    })
+
     return this.prismaService.otpToken.create({
       data: {
         ...data
@@ -174,7 +204,6 @@ export class AuthRepository {
     return this.prismaService.otpToken.findFirst({
       where: {
         ...where,
-        usedAt: null,
         expiresAt: {
           gt: new Date()
         }
@@ -182,10 +211,9 @@ export class AuthRepository {
     })
   }
 
-  async markOtpTokenAsUsed(token: string): Promise<OtpTokenType> {
-    return this.prismaService.otpToken.update({
-      where: { token },
-      data: { usedAt: new Date() }
+  deleteOtpToken(uniqueValue: { token: string }): Promise<OtpTokenType> {
+    return this.prismaService.otpToken.delete({
+      where: uniqueValue
     })
   }
 }

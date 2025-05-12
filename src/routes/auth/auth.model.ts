@@ -33,6 +33,7 @@ export const VerificationCodeSchema = z.object({
     TypeOfVerificationCode.LOGIN,
     TypeOfVerificationCode.DISABLE_2FA
   ]),
+  deviceId: z.number().nullable(),
   expiresAt: z.date(),
   createdAt: z.date()
 })
@@ -67,7 +68,7 @@ export const RefreshTokenResSchema = LoginResSchema
 
 export const DeviceSchema = z.object({
   id: z.number(),
-  userId: z.number(),
+  userId: z.number().nullable(),
   userAgent: z.string(),
   ip: z.string(),
   lastActive: z.date(),
@@ -141,7 +142,6 @@ export const OtpTokenSchema = z.object({
   deviceId: z.number().nullable(),
   type: z.string(),
   expiresAt: z.date(),
-  usedAt: z.date().nullable(),
   createdAt: z.date()
 })
 

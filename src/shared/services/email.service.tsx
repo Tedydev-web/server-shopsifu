@@ -11,23 +11,41 @@ export class EmailService {
   constructor() {
     this.resend = new Resend(envConfig.RESEND_API_KEY)
   }
-  async sendOTP(payload: { email: string; code: string }) {
+  async sendOTP(payload: {
+    email: string
+    code: string
+    deviceInfo?: {
+      userAgent: string
+      ip: string
+      lastActive: Date
+      isActive: boolean
+    }
+  }) {
     const subject = `Shopsifu - Mã Xác Thực OTP Của Bạn Là ${payload.code}`
     return this.resend.emails.send({
       from: 'Shopsifu E-commerce <no-reply@shopsifu.live>',
       to: [payload.email],
       subject,
-      react: <OTPEmail otpCode={payload.code} title={subject} />
+      react: <OTPEmail otpCode={payload.code} title={subject} deviceInfo={payload.deviceInfo} />
     })
   }
 
-  async sendPasswordChangedNotification(payload: { email: string; otpCode: string }) {
+  async sendPasswordChangedNotification(payload: {
+    email: string
+    otpCode: string
+    deviceInfo?: {
+      userAgent: string
+      ip: string
+      lastActive: Date
+      isActive: boolean
+    }
+  }) {
     const subject = 'Shopsifu - Mật khẩu của bạn đã được thay đổi'
     return this.resend.emails.send({
       from: 'Shopsifu E-commerce <no-reply@shopsifu.live>',
       to: [payload.email],
       subject,
-      react: <PasswordChangedEmail title={subject} otpCode={payload.otpCode} />
+      react: <PasswordChangedEmail title={subject} otpCode={payload.otpCode} deviceInfo={payload.deviceInfo} />
     })
   }
 }
