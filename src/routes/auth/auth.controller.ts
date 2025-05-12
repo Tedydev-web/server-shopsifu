@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Res } fro
 import { Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
-  ForgotPasswordBodyDTO,
+  ResetPasswordBodyDTO,
   GetAuthorizationUrlResDTO,
   LoginBodyDTO,
   LoginResDTO,
@@ -103,11 +103,11 @@ export class AuthController {
     }
   }
 
-  @Post('forgot-password')
+  @Post('reset-password')
   @IsPublic()
   @ZodSerializerDto(MessageResDTO)
-  forgotPassword(@Body() body: ForgotPasswordBodyDTO) {
-    return this.authService.forgotPassword(body)
+  resetPassword(@Body() body: ResetPasswordBodyDTO) {
+    return this.authService.resetPassword(body)
   }
 
   @Post('verify-code')

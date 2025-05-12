@@ -157,7 +157,7 @@ export const VerifyOTPResSchema = z.object({
   otpToken: z.string()
 })
 
-export const ForgotPasswordBodySchema = z
+export const ResetPasswordBodySchema = z
   .object({
     email: z.string().email(),
     otpToken: z.string(),
@@ -189,4 +189,4 @@ export type TwoFactorSetupResType = z.infer<typeof TwoFactorSetupResSchema>
 export type OtpTokenType = z.infer<typeof OtpTokenSchema>
 export type VerifyOTPBodyType = z.infer<typeof VerifyOTPBodySchema>
 export type VerifyOTPResType = z.infer<typeof VerifyOTPResSchema>
-export type ForgotPasswordBodyType = z.infer<typeof ForgotPasswordBodySchema>
+export type ResetPasswordBodyType = z.infer<typeof ResetPasswordBodySchema>

@@ -1,7 +1,7 @@
 import { HttpException, Injectable, UnauthorizedException } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import {
-  ForgotPasswordBodyType,
+  ResetPasswordBodyType,
   LoginBodyType,
   RefreshTokenBodyType,
   RegisterBodyType,
@@ -247,7 +247,7 @@ export class AuthService {
     }
   }
 
-  async forgotPassword(body: ForgotPasswordBodyType) {
+  async resetPassword(body: ResetPasswordBodyType) {
     // 1. Validate OTP token
     const otpToken = await this.authRepository.findUniqueOtpToken({
       token: body.otpToken,
