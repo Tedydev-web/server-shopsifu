@@ -1,13 +1,6 @@
 import { Injectable } from '@nestjs/common'
-import {
-  DeviceType,
-  RefreshTokenType,
-  RegisterBodyType,
-  RoleType,
-  VerificationCodeType,
-  OtpTokenType
-} from 'src/routes/auth/auth.model'
-import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
+import { DeviceType, RefreshTokenType, RoleType, VerificationCodeType, OtpTokenType } from 'src/routes/auth/auth.model'
+import { TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import { UserType } from 'src/shared/models/shared-user.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
@@ -100,7 +93,6 @@ export class AuthRepository {
   createDevice(
     data: Pick<DeviceType, 'userAgent' | 'ip'> & Partial<Pick<DeviceType, 'lastActive' | 'isActive' | 'userId'>>
   ): Promise<DeviceType> {
-    // @ts-ignore - Bỏ qua lỗi TypeScript vì chúng ta đã cập nhật schema
     return this.prismaService.device.create({
       data
     })
