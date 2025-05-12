@@ -20,6 +20,7 @@ import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleService } from 'src/routes/auth/google.service'
 import envConfig from 'src/shared/config'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { RateLimit } from 'src/shared/decorators/rate-limit.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 
@@ -32,6 +33,7 @@ export class AuthController {
 
   @Post('register')
   @IsPublic()
+  @RateLimit({ limit: 5, ttl: 3600 })
   @ZodSerializerDto(RegisterResDTO)
   register(@Body() body: RegisterBodyDTO) {
     return this.authService.register(body)
@@ -39,6 +41,7 @@ export class AuthController {
 
   @Post('otp')
   @IsPublic()
+  @RateLimit({ limit: 3, ttl: 300 })
   @ZodSerializerDto(MessageResDTO)
   sendOTP(@Body() body: SendOTPBodyDTO) {
     return this.authService.sendOTP(body)
@@ -46,6 +49,7 @@ export class AuthController {
 
   @Post('login')
   @IsPublic()
+  @RateLimit({ limit: 5, ttl: 600 })
   @ZodSerializerDto(LoginResDTO)
   login(@Body() body: LoginBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
     return this.authService.login({
@@ -105,6 +109,7 @@ export class AuthController {
 
   @Post('reset-password')
   @IsPublic()
+  @RateLimit({ limit: 3, ttl: 300 })
   @ZodSerializerDto(MessageResDTO)
   resetPassword(@Body() body: ResetPasswordBodyDTO) {
     return this.authService.resetPassword(body)
@@ -112,6 +117,7 @@ export class AuthController {
 
   @Post('verify-code')
   @IsPublic()
+  @RateLimit({ limit: 3, ttl: 300 })
   @ZodSerializerDto(VerifyOTPResDTO)
   verifyOTP(@Body() body: VerifyOTPBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
     return this.authService.verifyOTP(body, userAgent, ip)
