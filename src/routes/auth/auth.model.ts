@@ -14,7 +14,7 @@ export const RegisterBodySchema = UserSchema.pick({
   })
   .strict()
   .refine((data) => data.password === data.confirmPassword, {
-    message: 'Mật khẩu xác nhận không khớp',
+    message: 'ERROR.PASSWORD_CONFIRMATION_MISMATCH',
     path: ['confirmPassword']
   })
 
@@ -114,17 +114,16 @@ export const DisableTwoFactorBodySchema = z
   })
   .strict()
   .superRefine(({ totpCode, code }, ctx) => {
-    const message = 'Bạn phải cung cấp mã xác thực 2FA hoặc mã OTP. Không được cung cấp cả 2'
     // Nếu cả 2 đều có hoặc không có thì sẽ nhảy vào if
     if ((totpCode !== undefined) === (code !== undefined)) {
       ctx.addIssue({
         path: ['totpCode'],
-        message,
+        message: 'ERROR.EITHER_TOTP_OR_OTP_REQUIRED',
         code: 'custom'
       })
       ctx.addIssue({
         path: ['code'],
-        message,
+        message: 'ERROR.EITHER_TOTP_OR_OTP_REQUIRED',
         code: 'custom'
       })
     }
@@ -166,7 +165,7 @@ export const ResetPasswordBodySchema = z
   })
   .strict()
   .refine((data) => data.newPassword === data.confirmNewPassword, {
-    message: 'Mật khẩu xác nhận không khớp',
+    message: 'ERROR.PASSWORD_CONFIRMATION_MISMATCH',
     path: ['confirmNewPassword']
   })
 

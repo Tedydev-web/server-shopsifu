@@ -23,7 +23,7 @@ export class HttpExceptionFilter extends BaseExceptionFilter {
     const timestamp = new Date().toISOString()
     const requestId = uuidv4()
 
-    let errorMessage: any = errorResponse
+    const errorMessage: any = errorResponse
     let errors: ErrorItem[] = []
 
     // Xử lý lỗi từ ZodSerializationException

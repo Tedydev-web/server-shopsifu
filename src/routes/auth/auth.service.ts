@@ -25,6 +25,7 @@ import {
   EmailNotFoundException,
   FailedToSendOTPException,
   InvalidOTPException,
+  InvalidOTPTokenException,
   InvalidPasswordException,
   OTPExpiredException,
   RefreshTokenAlreadyUsedException,
@@ -81,7 +82,7 @@ export class AuthService {
       })
 
       if (!otpToken) {
-        throw new UnauthorizedException('OTP token không hợp lệ hoặc đã hết hạn')
+        throw InvalidOTPTokenException
       }
 
       // 2. Tạo user mới
@@ -300,7 +301,7 @@ export class AuthService {
     })
 
     if (!otpToken || !otpToken.userId) {
-      throw new UnauthorizedException('OTP token không hợp lệ hoặc đã hết hạn')
+      throw InvalidOTPTokenException
     }
 
     // 2. Lấy thông tin thiết bị nếu có

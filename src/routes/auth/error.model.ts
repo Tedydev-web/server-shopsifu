@@ -71,3 +71,9 @@ export const UnauthorizedAccessException = new UnauthorizedException({
 
 // Google auth related errors
 export const GoogleUserInfoError = new Error('ERROR.FAILED_TO_GET_GOOGLE_USER_INFO')
+export const PasswordConfirmationMismatchException = new UnprocessableEntityException([
+  {
+    message: 'ERROR.PASSWORD_CONFIRMATION_MISMATCH',
+    path: 'confirmPassword'
+  }
+])
