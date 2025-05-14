@@ -10,17 +10,17 @@ export class AuthenticationGuard implements CanActivate {
   private readonly authTypeGuardMap: Record<string, CanActivate> = {
     [AuthType.Bearer]: this.accessTokenGuard,
     [AuthType.APIKey]: this.apiKeyGuard,
-    [AuthType.None]: { canActivate: () => true },
+    [AuthType.None]: { canActivate: () => true }
   }
   constructor(
     private readonly reflector: Reflector,
     private readonly accessTokenGuard: AccessTokenGuard,
-    private readonly apiKeyGuard: APIKeyGuard,
+    private readonly apiKeyGuard: APIKeyGuard
   ) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const authTypeValue = this.reflector.getAllAndOverride<AuthTypeDecoratorPayload | undefined>(AUTH_TYPE_KEY, [
       context.getHandler(),
-      context.getClass(),
+      context.getClass()
     ]) ?? { authTypes: [AuthType.Bearer], options: { condition: ConditionGuard.And } }
 
     const guards = authTypeValue.authTypes.map((authType) => this.authTypeGuardMap[authType])

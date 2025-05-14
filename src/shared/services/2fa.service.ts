@@ -11,7 +11,7 @@ export class TwoFactorService {
       algorithm: 'SHA1',
       digits: 6,
       period: 30,
-      secret: secret || new OTPAuth.Secret(),
+      secret: secret || new OTPAuth.Secret()
     })
   }
 
@@ -19,7 +19,7 @@ export class TwoFactorService {
     const totp = this.createTOTP(email)
     return {
       secret: totp.secret.base32,
-      uri: totp.toString(),
+      uri: totp.toString()
     }
   }
 

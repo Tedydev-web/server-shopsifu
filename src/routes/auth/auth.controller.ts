@@ -13,7 +13,7 @@ import {
   RegisterBodyDTO,
   RegisterResDTO,
   SendOTPBodyDTO,
-  TwoFactorSetupResDTO,
+  TwoFactorSetupResDTO
 } from 'src/routes/auth/auth.dto'
 
 import { AuthService } from 'src/routes/auth/auth.service'
@@ -29,7 +29,7 @@ import { MessageResDTO } from 'src/shared/dtos/response.dto'
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly googleService: GoogleService,
+    private readonly googleService: GoogleService
   ) {}
 
   @Post('register')
@@ -53,7 +53,7 @@ export class AuthController {
     return this.authService.login({
       ...body,
       userAgent,
-      ip,
+      ip
     })
   }
 
@@ -65,7 +65,7 @@ export class AuthController {
     return this.authService.refreshToken({
       refreshToken: body.refreshToken,
       userAgent,
-      ip,
+      ip
     })
   }
 
@@ -81,7 +81,7 @@ export class AuthController {
   getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string) {
     return this.googleService.getAuthorizationUrl({
       userAgent,
-      ip,
+      ip
     })
   }
 
@@ -91,10 +91,10 @@ export class AuthController {
     try {
       const data = await this.googleService.googleCallback({
         code,
-        state,
+        state
       })
       return res.redirect(
-        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`,
+        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`
       )
     } catch (error) {
       const message =
@@ -125,7 +125,7 @@ export class AuthController {
   disableTwoFactorAuth(@Body() body: DisableTwoFactorBodyDTO, @ActiveUser('userId') userId: number) {
     return this.authService.disableTwoFactorAuth({
       ...body,
-      userId,
+      userId
     })
   }
 }

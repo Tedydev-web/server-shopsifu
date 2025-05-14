@@ -17,7 +17,7 @@ const sharedServices = [
   TokenService,
   EmailService,
   SharedUserRepository,
-  TwoFactorService,
+  TwoFactorService
 ]
 
 @Global()
@@ -28,10 +28,10 @@ const sharedServices = [
     APIKeyGuard,
     {
       provide: APP_GUARD,
-      useClass: AuthenticationGuard,
-    },
+      useClass: AuthenticationGuard
+    }
   ],
   exports: sharedServices,
-  imports: [JwtModule],
+  imports: [JwtModule]
 })
 export class SharedModule {}

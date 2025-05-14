@@ -15,13 +15,13 @@ import { HttpExceptionFilter } from 'src/shared/filters/http-exception.filter'
     AppService,
     {
       provide: APP_PIPE,
-      useClass: CustomZodValidationPipe,
+      useClass: CustomZodValidationPipe
     },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
     {
       provide: APP_FILTER,
-      useClass: HttpExceptionFilter,
-    },
-  ],
+      useClass: HttpExceptionFilter
+    }
+  ]
 })
 export class AppModule {}

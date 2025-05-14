@@ -7,6 +7,6 @@ import { GoogleService } from 'src/routes/auth/google.service'
 
 @Module({
   providers: [AuthService, RolesService, AuthRepository, GoogleService],
-  controllers: [AuthController],
+  controllers: [AuthController]
 })
 export class AuthModule {}
