@@ -9,8 +9,7 @@ import { APP_GUARD } from '@nestjs/core'
 import { AuthenticationGuard } from 'src/shared/guards/authentication.guard'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { EmailService } from 'src/shared/services/email.service'
-import { RateLimitGuard } from 'src/shared/guards/rate-limit.guard'
-import { TwoFactorService } from './services/2fa.service'
+import { TwoFactorService } from 'src/shared/services/2fa.service'
 
 const sharedServices = [
   PrismaService,
@@ -18,7 +17,7 @@ const sharedServices = [
   TokenService,
   EmailService,
   SharedUserRepository,
-  TwoFactorService
+  TwoFactorService,
 ]
 
 @Global()
@@ -27,13 +26,12 @@ const sharedServices = [
     ...sharedServices,
     AccessTokenGuard,
     APIKeyGuard,
-    RateLimitGuard,
     {
       provide: APP_GUARD,
-      useClass: AuthenticationGuard
-    }
+      useClass: AuthenticationGuard,
+    },
   ],
   exports: sharedServices,
-  imports: [JwtModule]
+  imports: [JwtModule],
 })
 export class SharedModule {}

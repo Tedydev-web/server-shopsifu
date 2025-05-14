@@ -5,17 +5,16 @@ import { ZodError } from 'zod'
 const CustomZodValidationPipe = createZodValidationPipe({
   // provide custom validation exception factory
   createValidationException: (error: ZodError) => {
-    console.log('Validation Error:', error.errors)
+    console.log()
     return new UnprocessableEntityException(
-      error.errors.map((err) => {
+      error.errors.map((error) => {
         return {
-          message: err.message, // Sử dụng key đã chuẩn hóa, ví dụ: ERROR.INVALID_EMAIL
-          path: err.path.join('.'),
-          params: err.code === 'custom' && err.params ? err.params : {}
+          ...error,
+          path: error.path.join('.'),
         }
-      })
+      }),
     )
-  }
+  },
 })
 
 export default CustomZodValidationPipe

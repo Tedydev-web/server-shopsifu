@@ -3,102 +3,83 @@ import { UnauthorizedException, UnprocessableEntityException } from '@nestjs/com
 // OTP related errors
 export const InvalidOTPException = new UnprocessableEntityException([
   {
-    message: 'ERROR.INVALID_OTP',
-    path: 'code'
-  }
+    message: 'Error.InvalidOTP',
+    path: 'code',
+  },
 ])
 
 export const OTPExpiredException = new UnprocessableEntityException([
   {
-    message: 'ERROR.OTP_EXPIRED',
-    path: 'code'
-  }
+    message: 'Error.OTPExpired',
+    path: 'code',
+  },
 ])
 
 export const FailedToSendOTPException = new UnprocessableEntityException([
   {
-    message: 'ERROR.FAILED_TO_SEND_OTP',
-    path: 'code'
-  }
+    message: 'Error.FailedToSendOTP',
+    path: 'code',
+  },
 ])
 
 // Email related errors
 export const EmailAlreadyExistsException = new UnprocessableEntityException([
   {
-    message: 'ERROR.EMAIL_ALREADY_EXISTS',
-    path: 'email'
-  }
+    message: 'Error.EmailAlreadyExists',
+    path: 'email',
+  },
 ])
 
 export const EmailNotFoundException = new UnprocessableEntityException([
   {
-    message: 'ERROR.EMAIL_NOT_FOUND',
-    path: 'email'
-  }
+    message: 'Error.EmailNotFound',
+    path: 'email',
+  },
 ])
 
 // Password related errors
 export const InvalidPasswordException = new UnprocessableEntityException([
   {
-    message: 'ERROR.INVALID_PASSWORD',
-    path: 'password'
-  }
-])
-
-// Thêm error mới cho OTP token
-export const InvalidOTPTokenException = new UnauthorizedException([
-  {
-    message: 'ERROR.INVALID_OTP_TOKEN',
-    path: 'otpToken'
-  }
-])
-
-export const OTPTokenExpiredException = new UnauthorizedException([
-  {
-    message: 'ERROR.OTP_TOKEN_EXPIRED',
-    path: 'otpToken'
-  }
+    message: 'Error.InvalidPassword',
+    path: 'password',
+  },
 ])
 
 // Auth token related errors
-export const RefreshTokenAlreadyUsedException = new UnauthorizedException({
-  message: 'ERROR.REFRESH_TOKEN_ALREADY_USED'
-})
-
-export const UnauthorizedAccessException = new UnauthorizedException({
-  message: 'ERROR.UNAUTHORIZED_ACCESS'
-})
+export const RefreshTokenAlreadyUsedException = new UnauthorizedException('Error.RefreshTokenAlreadyUsed')
+export const UnauthorizedAccessException = new UnauthorizedException('Error.UnauthorizedAccess')
 
 // Google auth related errors
-export const GoogleUserInfoError = new Error('ERROR.FAILED_TO_GET_GOOGLE_USER_INFO')
-export const PasswordConfirmationMismatchException = new UnprocessableEntityException([
+export const GoogleUserInfoError = new Error('Error.FailedToGetGoogleUserInfo')
+
+export const InvalidTOTPException = new UnprocessableEntityException([
   {
-    message: 'ERROR.PASSWORD_CONFIRMATION_MISMATCH',
-    path: 'confirmPassword'
-  }
+    message: 'Error.InvalidTOTP',
+    path: 'totpCode',
+  },
 ])
 
 export const TOTPAlreadyEnabledException = new UnprocessableEntityException([
   {
     message: 'Error.TOTPAlreadyEnabled',
-    path: 'totpCode'
-  }
+    path: 'totpCode',
+  },
 ])
 
 export const TOTPNotEnabledException = new UnprocessableEntityException([
   {
     message: 'Error.TOTPNotEnabled',
-    path: 'totpCode'
-  }
+    path: 'totpCode',
+  },
 ])
 
 export const InvalidTOTPAndCodeException = new UnprocessableEntityException([
   {
     message: 'Error.InvalidTOTPAndCode',
-    path: 'totpCode'
+    path: 'totpCode',
   },
   {
     message: 'Error.InvalidTOTPAndCode',
-    path: 'code'
-  }
+    path: 'code',
+  },
 ])
