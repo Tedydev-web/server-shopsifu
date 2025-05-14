@@ -29,11 +29,13 @@ import {
   InvalidPasswordException,
   OTPExpiredException,
   RefreshTokenAlreadyUsedException,
+  TOTPAlreadyEnabledException,
   UnauthorizedAccessException
 } from 'src/routes/auth/error.model'
 import { v4 as uuidv4 } from 'uuid'
 import { Device } from '@prisma/client'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { TwoFactorService } from 'src/shared/services/2fa.service'
 
 @Injectable()
 export class AuthService {
@@ -44,7 +46,8 @@ export class AuthService {
     private readonly sharedUserRepository: SharedUserRepository,
     private readonly emailService: EmailService,
     private readonly tokenService: TokenService,
-    private readonly prismaService: PrismaService
+    private readonly prismaService: PrismaService,
+    private readonly twoFactorService: TwoFactorService
   ) {}
 
   async validateVerificationCode({
@@ -408,5 +411,44 @@ export class AuthService {
     ])
 
     return { otpToken: otpToken.token }
+  }
+
+  async setupTwoFactorAuth(userId: number) {
+    if (!userId) {
+      throw new UnauthorizedException([
+        {
+          message: 'ERROR.UNAUTHORIZED_ACCESS',
+          path: 'userId'
+        }
+      ])
+    }
+
+    // 1. Lấy thông tin user, kiểm tra xem user có tồn tại hay không, và xem họ đã bật 2FA chưa
+    const user = await this.sharedUserRepository.findUnique({
+      id: userId
+    })
+
+    // Ghi log để debug
+    console.log(`setupTwoFactorAuth - Tìm user với id ${userId}: ${user ? 'Tìm thấy' : 'Không tìm thấy'}`)
+
+    if (!user) {
+      throw UnauthorizedAccessException
+    }
+
+    if (user.totpSecret) {
+      throw TOTPAlreadyEnabledException
+    }
+
+    // 2. Tạo ra secret và uri
+    const { secret, uri } = this.twoFactorService.generateTOTPSecret(user.email)
+
+    // 3. Cập nhật secret vào user trong database
+    await this.authRepository.updateUser({ id: userId }, { totpSecret: secret })
+
+    // 4. Trả về secret và uri
+    return {
+      secret,
+      uri
+    }
   }
 }

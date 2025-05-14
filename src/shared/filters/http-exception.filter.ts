@@ -43,24 +43,48 @@ export class HttpExceptionFilter extends BaseExceptionFilter {
     else if (typeof errorResponse === 'object') {
       if (Array.isArray(errorResponse['message'])) {
         errors = errorResponse['message'].map((item) => {
+          // Log để debug
+          this.logger.debug(`Processing error item: ${JSON.stringify(item)}`)
+
+          // Xử lý trường hợp message đã là code lỗi chuẩn
+          let errorCode = 'ERROR.UNKNOWN'
+          if (item.message) {
+            errorCode = item.message.startsWith('ERROR.')
+              ? item.message
+              : `ERROR.${item.message.toUpperCase().replace(/\s+/g, '_')}`
+          }
+
           return {
-            code: item.message,
+            code: errorCode,
             path: item.path,
             params: item.params || {}
           }
         })
       } else if (errorResponse['message']) {
+        const message = errorResponse['message']
+        let errorCode = 'ERROR.UNKNOWN'
+        if (typeof message === 'string') {
+          errorCode = message.startsWith('ERROR.') ? message : `ERROR.${message.toUpperCase().replace(/\s+/g, '_')}`
+        }
+
         errors = [
           {
-            code: typeof errorResponse['message'] === 'string' ? errorResponse['message'] : 'ERROR.UNKNOWN',
-            params: typeof errorResponse['message'] !== 'string' ? { details: errorResponse['message'] } : {}
+            code: errorCode,
+            params: typeof message !== 'string' ? { details: message } : {}
           }
         ]
       }
     } else if (typeof errorResponse === 'string') {
+      let errorCode = 'ERROR.UNKNOWN'
+      if (errorResponse) {
+        errorCode = errorResponse.startsWith('ERROR.')
+          ? errorResponse
+          : `ERROR.${errorResponse.toUpperCase().replace(/\s+/g, '_')}`
+      }
+
       errors = [
         {
-          code: errorResponse,
+          code: errorCode,
           params: {}
         }
       ]

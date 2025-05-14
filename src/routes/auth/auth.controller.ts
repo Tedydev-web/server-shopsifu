@@ -13,15 +13,18 @@ import {
   RegisterResDTO,
   SendOTPBodyDTO,
   VerifyOTPBodyDTO,
-  VerifyOTPResDTO
+  VerifyOTPResDTO,
+  TwoFactorSetupResDTO
 } from 'src/routes/auth/auth.dto'
 
 import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleService } from 'src/routes/auth/google.service'
 import envConfig from 'src/shared/config'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { RateLimit } from 'src/shared/decorators/rate-limit.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
+import { EmptyBodyDTO } from 'src/shared/dtos/request.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { ApiResponseDTO } from 'src/shared/dtos/response.dto'
 
@@ -135,6 +138,21 @@ export class AuthController {
     }
   }
 
+  @Post('2fa/setup')
+  @RateLimit({ limit: 3, ttl: 300 })
+  @ZodSerializerDto(ApiResponseDTO)
+  async setupTwoFactorAuth(@Body() _: EmptyBodyDTO, @ActiveUser('userId') userId: number) {
+    const result = await this.authService.setupTwoFactorAuth(userId)
+    return {
+      success: true,
+      statusCode: HttpStatus.OK,
+      message: {
+        code: 'AUTH.TOTP_SETUP_SUCCESSFUL'
+      },
+      data: result
+    }
+  }
+
   @Post('verify-code')
   @IsPublic()
   @RateLimit({ limit: 3, ttl: 300 })
@@ -154,8 +172,8 @@ export class AuthController {
   @Get('google-link')
   @IsPublic()
   @ZodSerializerDto(ApiResponseDTO)
-  async getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string) {
-    const url = await this.googleService.getAuthorizationUrl({
+  getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string) {
+    const url = this.googleService.getAuthorizationUrl({
       userAgent,
       ip
     })

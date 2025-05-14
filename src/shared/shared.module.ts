@@ -10,7 +10,16 @@ import { AuthenticationGuard } from 'src/shared/guards/authentication.guard'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { EmailService } from 'src/shared/services/email.service'
 import { RateLimitGuard } from 'src/shared/guards/rate-limit.guard'
-const sharedServices = [PrismaService, HashingService, TokenService, EmailService, SharedUserRepository]
+import { TwoFactorService } from './services/2fa.service'
+
+const sharedServices = [
+  PrismaService,
+  HashingService,
+  TokenService,
+  EmailService,
+  SharedUserRepository,
+  TwoFactorService
+]
 
 @Global()
 @Module({

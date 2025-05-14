@@ -9,8 +9,8 @@ export const RegisterBodySchema = UserSchema.pick({
   password: true
 })
   .extend({
-    otpToken: z.string(),
-    confirmPassword: z.string()
+    otpToken: z.string({ required_error: 'ERROR.OTP_TOKEN_REQUIRED' }),
+    confirmPassword: z.string({ required_error: 'ERROR.PASSWORD_CONFIRMATION_REQUIRED' })
   })
   .strict()
   .refine((data) => data.password === data.confirmPassword, {
@@ -38,10 +38,20 @@ export const VerificationCodeSchema = z.object({
   createdAt: z.date()
 })
 
-export const SendOTPBodySchema = VerificationCodeSchema.pick({
-  email: true,
-  type: true
-}).strict()
+export const SendOTPBodySchema = z
+  .object({
+    email: z.string().email({ message: 'ERROR.INVALID_EMAIL' }),
+    type: z.enum(
+      [
+        TypeOfVerificationCode.REGISTER,
+        TypeOfVerificationCode.FORGOT_PASSWORD,
+        TypeOfVerificationCode.LOGIN,
+        TypeOfVerificationCode.DISABLE_2FA
+      ],
+      { errorMap: () => ({ message: 'ERROR.INVALID_OTP_TYPE' }) }
+    )
+  })
+  .strict()
 
 export const LoginBodySchema = UserSchema.pick({
   email: true,
@@ -130,7 +140,7 @@ export const DisableTwoFactorBodySchema = z
   })
 export const TwoFactorSetupResSchema = z.object({
   secret: z.string(),
-  url: z.string()
+  uri: z.string()
 })
 
 export const OtpTokenSchema = z.object({
