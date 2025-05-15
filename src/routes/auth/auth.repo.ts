@@ -118,7 +118,7 @@ export class AuthRepository {
         id: deviceId
       },
       data
-    })
+    }) as unknown as Promise<DeviceType>
   }
 
   deleteRefreshToken(uniqueObject: { token: string }): Promise<RefreshTokenType> {
@@ -134,7 +134,7 @@ export class AuthRepository {
     })
   }
 
-  deleteVerificationCode(
+  async deleteVerificationCode(
     uniqueValue:
       | { id: number }
       | {
@@ -147,6 +147,53 @@ export class AuthRepository {
   ): Promise<VerificationCodeType> {
     return this.prismaService.verificationCode.delete({
       where: uniqueValue
+    })
+  }
+
+  async deleteVerificationCodesByEmailAndType(data: {
+    email: string
+    type: TypeOfVerificationCodeType
+  }): Promise<{ count: number }> {
+    return this.prismaService.verificationCode.deleteMany({
+      where: {
+        email: data.email,
+        type: data.type
+      }
+    })
+  }
+
+  // OtpToken methods
+  async createOtpToken(data: {
+    token: string
+    email: string
+    type: TypeOfVerificationCodeType
+    expiresAt: Date
+    userId?: number
+    deviceId?: number
+  }) {
+    return this.prismaService.otpToken.create({
+      data
+    })
+  }
+
+  async findUniqueOtpToken(uniqueObject: { token: string }) {
+    return this.prismaService.otpToken.findUnique({
+      where: uniqueObject
+    })
+  }
+
+  async deleteOtpToken(uniqueObject: { token: string }) {
+    return this.prismaService.otpToken.delete({
+      where: uniqueObject
+    })
+  }
+
+  async deleteOtpTokenByEmailAndType(email: string, type: TypeOfVerificationCodeType) {
+    return this.prismaService.otpToken.deleteMany({
+      where: {
+        email,
+        type
+      }
     })
   }
 }

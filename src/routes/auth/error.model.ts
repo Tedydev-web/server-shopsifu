@@ -48,6 +48,7 @@ export const InvalidPasswordException = new UnprocessableEntityException([
 // Auth token related errors
 export const RefreshTokenAlreadyUsedException = new UnauthorizedException('Error.RefreshTokenAlreadyUsed')
 export const UnauthorizedAccessException = new UnauthorizedException('Error.UnauthorizedAccess')
+export const InvalidLoginSessionException = new UnauthorizedException('Error.InvalidLoginSession')
 
 // Google auth related errors
 export const GoogleUserInfoError = new Error('Error.FailedToGetGoogleUserInfo')
@@ -81,5 +82,20 @@ export const InvalidTOTPAndCodeException = new UnprocessableEntityException([
   {
     message: 'Error.InvalidTOTPAndCode',
     path: 'code'
+  }
+])
+
+// OtpToken related errors
+export const InvalidOTPTokenException = new UnprocessableEntityException([
+  {
+    message: 'Error.InvalidOTPToken',
+    path: 'otpToken'
+  }
+])
+
+export const OTPTokenExpiredException = new UnprocessableEntityException([
+  {
+    message: 'Error.OTPTokenExpired',
+    path: 'otpToken'
   }
 ])

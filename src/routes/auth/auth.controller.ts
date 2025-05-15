@@ -3,18 +3,23 @@ import { Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
   DisableTwoFactorBodyDTO,
-  ForgotPasswordBodyDTO,
   GetAuthorizationUrlResDTO,
   LoginBodyDTO,
   LoginResDTO,
+  LoginSessionResDTO,
   LogoutBodyDTO,
   RefreshTokenBodyDTO,
   RefreshTokenResDTO,
   RegisterBodyDTO,
   RegisterResDTO,
+  ResetPasswordBodyDTO,
   SendOTPBodyDTO,
-  TwoFactorSetupResDTO
+  TwoFactorSetupResDTO,
+  TwoFactorVerifyBodyDTO,
+  VerifyCodeBodyDTO,
+  VerifyCodeResDTO
 } from 'src/routes/auth/auth.dto'
+import { LoginResSchema, LoginSessionResSchema } from 'src/routes/auth/auth.model'
 
 import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleService } from 'src/routes/auth/google.service'
@@ -22,6 +27,7 @@ import envConfig from 'src/shared/config'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
+import { UseZodSchemas, createSchemaOption, hasProperty } from 'src/shared/decorators/use-zod-schema.decorator'
 import { EmptyBodyDTO } from 'src/shared/dtos/request.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 
@@ -46,9 +52,23 @@ export class AuthController {
     return this.authService.sendOTP(body)
   }
 
+  @Post('verify-code')
+  @IsPublic()
+  @ZodSerializerDto(VerifyCodeResDTO)
+  verifyCode(@Body() body: VerifyCodeBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
+    return this.authService.verifyCode({
+      ...body,
+      userAgent,
+      ip
+    })
+  }
+
   @Post('login')
   @IsPublic()
-  @ZodSerializerDto(LoginResDTO)
+  @UseZodSchemas(
+    createSchemaOption(LoginResSchema, hasProperty('accessToken')),
+    createSchemaOption(LoginSessionResSchema, hasProperty('loginSessionToken'))
+  )
   login(@Body() body: LoginBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
     return this.authService.login({
       ...body,
@@ -85,7 +105,7 @@ export class AuthController {
     })
   }
 
-  @Get('google/callback')
+  @Post('google/callback')
   @IsPublic()
   async googleCallback(@Query('code') code: string, @Query('state') state: string, @Res() res: Response) {
     try {
@@ -105,11 +125,11 @@ export class AuthController {
     }
   }
 
-  @Post('forgot-password')
+  @Post('reset-password')
   @IsPublic()
   @ZodSerializerDto(MessageResDTO)
-  forgotPassword(@Body() body: ForgotPasswordBodyDTO) {
-    return this.authService.forgotPassword(body)
+  resetPassword(@Body() body: ResetPasswordBodyDTO) {
+    return this.authService.resetPassword(body)
   }
   // Tại sao không dùng GET mà dùng POST? khi mà body gửi lên là {}
   // Vì POST mang ý nghĩa là tạo ra cái gì đó và POST cũng bảo mật hơn GET
@@ -126,6 +146,17 @@ export class AuthController {
     return this.authService.disableTwoFactorAuth({
       ...body,
       userId
+    })
+  }
+
+  @Post('2fa/verify')
+  @IsPublic()
+  @ZodSerializerDto(LoginResDTO)
+  verifyTwoFactor(@Body() body: TwoFactorVerifyBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
+    return this.authService.verifyTwoFactor({
+      ...body,
+      userAgent,
+      ip
     })
   }
 }

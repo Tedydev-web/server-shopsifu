@@ -41,7 +41,7 @@ model User {
   role                        Role                  @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   devices                     Device[] // Liên kết 1-n với Device
   refreshTokens               RefreshToken[]
-  otpTokens                   OtpToken[]
+  otpTokens                   OtpToken[] // Thêm quan hệ ngược với OtpToken
   carts                       CartItem[]
   orders                      Order[]
   reviews                     Review[]
@@ -117,6 +117,8 @@ model VerificationCode {
   email String               @db.VarChar(500)
   code  String               @db.VarChar(50)
   type  VerificationCodeType
+  deviceId  Int?
+  device    Device?   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   expiresAt DateTime
   createdAt DateTime @default(now())
@@ -127,15 +129,16 @@ model VerificationCode {
 
 model Device {
   id            Int            @id @default(autoincrement())
-  userId        Int
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  userId        Int?
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   userAgent     String
   ip            String
   lastActive    DateTime       @updatedAt // Thay updatedAt bằng lastActive cho ý nghĩa rõ hơn
   createdAt     DateTime       @default(now())
   isActive      Boolean        @default(true) // Trạng thái thiết bị (đang login hay đã logout)
   refreshTokens RefreshToken[] // Liên kết 1-n với RefreshToken
-  otpTokens     OtpToken[]
+  otpTokens     OtpToken[] // Thêm quan hệ ngược với OtpToken
+  verificationCodes VerificationCode[] // Thêm quan hệ ngược với VerificationCode
 }
 
 model RefreshToken {
@@ -442,16 +445,16 @@ model Message {
 }
 
 model OtpToken {
-  id        Int                  @id @default(autoincrement())
-  token     String               @unique @db.VarChar(1000)
+  id        Int       @id @default(autoincrement())
+  token     String    @unique @db.VarChar(1000)
   userId    Int?
-  user      User?                @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  email     String               @db.VarChar(500)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email     String    @db.VarChar(500)
   deviceId  Int?
-  device    Device?              @relation(fields: [deviceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  device    Device?   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   type      VerificationCodeType
   expiresAt DateTime
-  createdAt DateTime             @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([email, type])
   @@index([expiresAt])

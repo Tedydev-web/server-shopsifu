@@ -10,7 +10,7 @@ export const RegisterBodySchema = UserSchema.pick({
 })
   .extend({
     confirmPassword: z.string().min(6).max(100),
-    code: z.string().length(6)
+    otpToken: z.string()
   })
   .strict()
   .superRefine(({ confirmPassword, password }, ctx) => {
@@ -53,13 +53,38 @@ export const LoginBodySchema = UserSchema.pick({
 })
   .extend({
     totpCode: z.string().length(6).optional(), // 2FA code
-    code: z.string().length(6).optional() // Email OTP code
+    code: z.string().length(6).optional(), // Email OTP code
+    otpToken: z.string().optional() // Token từ verify-code endpoint
   })
   .strict()
-  .superRefine(({ totpCode, code }, ctx) => {
-    // Nếu mà truyền cùng lúc totpCode và code thì sẽ add issue
-    const message = 'Bạn chỉ nên truyền mã xác thực 2FA hoặc mã OTP. Không được truyền cả 2'
+  .superRefine(({ totpCode, code, otpToken }, ctx) => {
+    // Không được truyền cả hai cùng lúc: (totpCode và code) hoặc (otpToken)
+    if ((totpCode !== undefined || code !== undefined) && otpToken !== undefined) {
+      const message = 'Bạn không thể truyền cả otpToken và mã xác thực (totpCode hoặc code) cùng lúc'
+      ctx.addIssue({
+        path: ['otpToken'],
+        message,
+        code: 'custom'
+      })
+      if (totpCode !== undefined) {
+        ctx.addIssue({
+          path: ['totpCode'],
+          message,
+          code: 'custom'
+        })
+      }
+      if (code !== undefined) {
+        ctx.addIssue({
+          path: ['code'],
+          message,
+          code: 'custom'
+        })
+      }
+    }
+
+    // Kiểm tra trường hợp cả code và totpCode cùng được truyền
     if (totpCode !== undefined && code !== undefined) {
+      const message = 'Bạn chỉ nên truyền mã xác thực 2FA hoặc mã OTP. Không được truyền cả 2'
       ctx.addIssue({
         path: ['totpCode'],
         message,
@@ -76,6 +101,29 @@ export const LoginBodySchema = UserSchema.pick({
 export const LoginResSchema = z.object({
   accessToken: z.string(),
   refreshToken: z.string()
+})
+
+export const LoginSessionResSchema = z.object({
+  loginSessionToken: z.string(),
+  message: z.string(),
+  twoFactorEnabled: z.boolean()
+})
+
+export const VerifyCodeBodySchema = z
+  .object({
+    email: z.string().email(),
+    code: z.string().length(6),
+    type: z.enum([
+      TypeOfVerificationCode.REGISTER,
+      TypeOfVerificationCode.FORGOT_PASSWORD,
+      TypeOfVerificationCode.LOGIN,
+      TypeOfVerificationCode.DISABLE_2FA
+    ])
+  })
+  .strict()
+
+export const VerifyCodeResSchema = z.object({
+  otpToken: z.string()
 })
 
 export const RefreshTokenBodySchema = z
@@ -127,10 +175,10 @@ export const GetAuthorizationUrlResSchema = z.object({
   url: z.string().url()
 })
 
-export const ForgotPasswordBodySchema = z
+export const ResetPasswordBodySchema = z
   .object({
     email: z.string().email(),
-    code: z.string().length(6),
+    otpToken: z.string(),
     newPassword: z.string().min(6).max(100),
     confirmNewPassword: z.string().min(6).max(100)
   })
@@ -171,6 +219,15 @@ export const TwoFactorSetupResSchema = z.object({
   secret: z.string(),
   uri: z.string()
 })
+
+export const TwoFactorVerifyBodySchema = z
+  .object({
+    loginSessionToken: z.string(),
+    method: z.enum(['TOTP', 'OTP']),
+    code: z.string().length(6)
+  })
+  .strict()
+
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>
 export type RegisterResType = z.infer<typeof RegisterResSchema>
 export type VerificationCodeType = z.infer<typeof VerificationCodeSchema>
@@ -185,6 +242,10 @@ export type RoleType = z.infer<typeof RoleSchema>
 export type LogoutBodyType = RefreshTokenBodyType
 export type GoogleAuthStateType = z.infer<typeof GoogleAuthStateSchema>
 export type GetAuthorizationUrlResType = z.infer<typeof GetAuthorizationUrlResSchema>
-export type ForgotPasswordBodyType = z.infer<typeof ForgotPasswordBodySchema>
+export type ResetPasswordBodyType = z.infer<typeof ResetPasswordBodySchema>
 export type DisableTwoFactorBodyType = z.infer<typeof DisableTwoFactorBodySchema>
 export type TwoFactorSetupResType = z.infer<typeof TwoFactorSetupResSchema>
+export type VerifyCodeBodyType = z.infer<typeof VerifyCodeBodySchema>
+export type VerifyCodeResType = z.infer<typeof VerifyCodeResSchema>
+export type LoginSessionResType = z.infer<typeof LoginSessionResSchema>
+export type TwoFactorVerifyBodyType = z.infer<typeof TwoFactorVerifyBodySchema>
