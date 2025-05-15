@@ -18,7 +18,13 @@ import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from 'src/shared/services/token.service'
 import ms from 'ms'
 import envConfig from 'src/shared/config'
-import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
+import {
+  TokenType,
+  TokenTypeType,
+  TwoFactorMethodType,
+  TypeOfVerificationCode,
+  TypeOfVerificationCodeType
+} from 'src/shared/constants/auth.constant'
 import { EmailService } from 'src/shared/services/email.service'
 import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import {
@@ -78,22 +84,36 @@ export class AuthService {
     return vevificationCode
   }
 
-  async validateOtpToken({ token, email, type }: { token: string; email: string; type: TypeOfVerificationCodeType }) {
-    const otpToken = await this.authRepository.findUniqueOtpToken({ token })
+  async validateVerificationToken({
+    token,
+    email,
+    type,
+    tokenType
+  }: {
+    token: string
+    email: string
+    type: TypeOfVerificationCodeType
+    tokenType: TokenTypeType
+  }) {
+    const verificationToken = await this.authRepository.findUniqueVerificationToken({ token })
 
-    if (!otpToken) {
+    if (!verificationToken) {
       throw InvalidOTPTokenException
     }
 
-    if (otpToken.email !== email || otpToken.type !== type) {
+    if (
+      verificationToken.email !== email ||
+      verificationToken.type !== type ||
+      verificationToken.tokenType !== tokenType
+    ) {
       throw InvalidOTPTokenException
     }
 
-    if (otpToken.expiresAt < new Date()) {
+    if (verificationToken.expiresAt < new Date()) {
       throw OTPTokenExpiredException
     }
 
-    return otpToken
+    return verificationToken
   }
 
   async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string }) {
@@ -104,8 +124,8 @@ export class AuthService {
       type: body.type
     })
 
-    // 2. Xóa các OtpToken cũ nếu có
-    await this.authRepository.deleteOtpTokenByEmailAndType(body.email, body.type)
+    // 2. Xóa các VerificationToken cũ nếu có
+    await this.authRepository.deleteVerificationTokenByEmailAndType(body.email, body.type, TokenType.OTP)
 
     // 3. Lấy userId nếu email tồn tại trong User (cho FORGOT_PASSWORD, LOGIN, DISABLE_2FA)
     let userId: number | undefined = undefined
@@ -133,12 +153,13 @@ export class AuthService {
       }
     }
 
-    // 5. Tạo OtpToken mới
+    // 5. Tạo VerificationToken mới
     const token = uuidv4()
-    const otpToken = await this.authRepository.createOtpToken({
+    const verificationToken = await this.authRepository.createVerificationToken({
       token,
       email: body.email,
       type: body.type,
+      tokenType: TokenType.OTP,
       userId,
       deviceId,
       expiresAt: addMilliseconds(new Date(), ms('15m'))
@@ -159,10 +180,11 @@ export class AuthService {
   async register(body: RegisterBodyType) {
     try {
       // 1. Kiểm tra otpToken
-      await this.validateOtpToken({
+      await this.validateVerificationToken({
         token: body.otpToken,
         email: body.email,
-        type: TypeOfVerificationCode.REGISTER
+        type: TypeOfVerificationCode.REGISTER,
+        tokenType: TokenType.OTP
       })
 
       // 2. Đăng ký tài khoản mới
@@ -176,8 +198,8 @@ export class AuthService {
         roleId: clientRoleId
       })
 
-      // 3. Xóa otpToken đã sử dụng
-      await this.authRepository.deleteOtpToken({ token: body.otpToken })
+      // 3. Xóa verificationToken đã sử dụng
+      await this.authRepository.deleteVerificationToken({ token: body.otpToken })
 
       return user
     } catch (error) {
@@ -240,15 +262,16 @@ export class AuthService {
       throw InvalidPasswordException
     }
 
-    // 2. Nếu user đã bật 2FA và không có thông tin xác thực 2FA
-    if (user.totpSecret && !body.totpCode && !body.code && !body.otpToken) {
+    // 2. Nếu user đã bật 2FA, tạo loginSessionToken
+    if (user.totpSecret) {
       // Tạo loginSessionToken cho phiên xác thực 2FA
       const loginSessionToken = uuidv4()
-      // Lưu token vào bảng OtpToken với loại LOGIN
-      await this.authRepository.createOtpToken({
+      // Lưu token vào bảng VerificationToken với loại LOGIN
+      await this.authRepository.createVerificationToken({
         token: loginSessionToken,
         email: user.email,
         type: TypeOfVerificationCode.LOGIN,
+        tokenType: TokenType.LOGIN_SESSION,
         userId: user.id,
         expiresAt: addMilliseconds(new Date(), ms('5m')) // Thời hạn 5 phút
       })
@@ -261,58 +284,14 @@ export class AuthService {
       }
     }
 
-    // 3. Nếu user đã bật 2FA và có thông tin xác thực
-    if (user.totpSecret) {
-      // Xử lý otpToken
-      if (body.otpToken) {
-        await this.validateOtpToken({
-          token: body.otpToken,
-          email: user.email,
-          type: TypeOfVerificationCode.LOGIN
-        })
-
-        // Xóa otpToken đã sử dụng
-        await this.authRepository.deleteOtpToken({ token: body.otpToken })
-      }
-      // Xử lý totpCode hoặc code
-      else if (!body.totpCode && !body.code) {
-        throw InvalidTOTPAndCodeException
-      } else if (body.totpCode) {
-        const isValid = this.twoFactorService.verifyTOTP({
-          email: user.email,
-          secret: user.totpSecret,
-          token: body.totpCode
-        })
-        if (!isValid) {
-          throw InvalidTOTPException
-        }
-      } else if (body.code) {
-        // Kiểm tra mã OTP
-        await this.validateVerificationCode({
-          email: user.email,
-          code: body.code,
-          type: TypeOfVerificationCode.LOGIN
-        })
-
-        // Xóa verification code đã sử dụng
-        await this.authRepository.deleteVerificationCode({
-          email_code_type: {
-            email: user.email,
-            code: body.code,
-            type: TypeOfVerificationCode.LOGIN
-          }
-        })
-      }
-    }
-
-    // 4. Tạo mới device
+    // 3. Nếu không có 2FA, tạo token và đăng nhập trực tiếp
     const device = await this.authRepository.createDevice({
       userId: user.id,
       userAgent: body.userAgent,
       ip: body.ip
     })
 
-    // 5. Tạo mới accessToken và refreshToken
+    // 4. Tạo mới accessToken và refreshToken
     const tokens = await this.generateTokens({
       userId: user.id,
       deviceId: device.id,
@@ -418,11 +397,12 @@ export class AuthService {
       throw EmailNotFoundException
     }
 
-    // 2. Kiểm tra otpToken
-    await this.validateOtpToken({
+    // 2. Kiểm tra verificationToken
+    await this.validateVerificationToken({
       token: otpToken,
       email,
-      type: TypeOfVerificationCode.FORGOT_PASSWORD
+      type: TypeOfVerificationCode.FORGOT_PASSWORD,
+      tokenType: TokenType.OTP
     })
 
     // 3. Cập nhật lại mật khẩu mới và xóa đi token
@@ -434,7 +414,7 @@ export class AuthService {
           password: hashedPassword
         }
       ),
-      this.authRepository.deleteOtpToken({ token: otpToken })
+      this.authRepository.deleteVerificationToken({ token: otpToken })
     ])
 
     return {
@@ -465,7 +445,7 @@ export class AuthService {
   }
 
   async disableTwoFactorAuth(data: DisableTwoFactorBodyType & { userId: number }) {
-    const { userId, totpCode, code } = data
+    const { userId, type, code } = data
     // 1. Lấy thông tin user, kiểm tra xem user có tồn tại hay không, và xem họ đã bật 2FA chưa
     const user = await this.sharedUserRepository.findUnique({ id: userId })
     if (!user) {
@@ -475,18 +455,19 @@ export class AuthService {
       throw TOTPNotEnabledException
     }
 
-    // 2. Kiểm tra mã TOTP có hợp lệ hay không
-    if (totpCode) {
+    // 2. Xác thực theo phương thức người dùng chọn
+    if (type === TwoFactorMethodType.TOTP) {
+      // Xác thực TOTP
       const isValid = this.twoFactorService.verifyTOTP({
         email: user.email,
         secret: user.totpSecret,
-        token: totpCode
+        token: code
       })
       if (!isValid) {
         throw InvalidTOTPException
       }
-    } else if (code) {
-      // 3. Kiểm tra mã OTP email có hợp lệ hay không
+    } else if (type === TwoFactorMethodType.OTP) {
+      // Xác thực OTP email
       await this.validateVerificationCode({
         email: user.email,
         code,
@@ -504,24 +485,24 @@ export class AuthService {
   }
 
   async verifyTwoFactor(body: TwoFactorVerifyBodyType & { userAgent: string; ip: string }) {
-    // 1. Tìm loginSessionToken trong bảng OtpToken
-    const otpToken = await this.authRepository.findUniqueOtpToken({ token: body.loginSessionToken })
+    // 1. Tìm loginSessionToken trong bảng VerificationToken
+    const verificationToken = await this.authRepository.findUniqueVerificationToken({ token: body.loginSessionToken })
 
-    if (!otpToken) {
+    if (!verificationToken) {
       throw InvalidOTPTokenException
     }
 
-    if (otpToken.expiresAt < new Date()) {
+    if (verificationToken.expiresAt < new Date()) {
       throw OTPTokenExpiredException
     }
 
     // 2. Lấy thông tin user
-    if (!otpToken.userId) {
+    if (!verificationToken.userId) {
       throw InvalidLoginSessionException
     }
 
     const user = await this.authRepository.findUniqueUserIncludeRole({
-      id: otpToken.userId
+      id: verificationToken.userId
     })
 
     if (!user) {
@@ -529,7 +510,7 @@ export class AuthService {
     }
 
     // 3. Xác thực 2FA
-    if (body.method === 'TOTP') {
+    if (body.type === TwoFactorMethodType.TOTP) {
       // Xác thực TOTP
       if (!user.totpSecret) {
         throw TOTPNotEnabledException
@@ -544,7 +525,7 @@ export class AuthService {
       if (!isValid) {
         throw InvalidTOTPException
       }
-    } else {
+    } else if (body.type === TwoFactorMethodType.OTP) {
       // Xác thực OTP
       await this.validateVerificationCode({
         email: user.email,
@@ -563,7 +544,7 @@ export class AuthService {
     }
 
     // 4. Xóa loginSessionToken đã sử dụng
-    await this.authRepository.deleteOtpToken({ token: body.loginSessionToken })
+    await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken })
 
     // 5. Tạo mới device
     const device = await this.authRepository.createDevice({

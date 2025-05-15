@@ -29,3 +29,17 @@ export const TypeOfVerificationCode = {
 } as const
 
 export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof typeof TypeOfVerificationCode]
+
+export const TwoFactorMethodType = {
+  TOTP: 'TOTP',
+  OTP: 'OTP'
+} as const
+
+export type TwoFactorMethodTypeType = (typeof TwoFactorMethodType)[keyof typeof TwoFactorMethodType]
+
+export const TokenType = {
+  LOGIN_SESSION: 'LOGIN_SESSION',
+  OTP: 'OTP'
+} as const
+
+export type TokenTypeType = (typeof TokenType)[keyof typeof TokenType]

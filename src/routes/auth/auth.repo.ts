@@ -1,12 +1,6 @@
 import { Injectable } from '@nestjs/common'
-import {
-  DeviceType,
-  RefreshTokenType,
-  RegisterBodyType,
-  RoleType,
-  VerificationCodeType
-} from 'src/routes/auth/auth.model'
-import { TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
+import { DeviceType, RefreshTokenType, RoleType, VerificationCodeType } from 'src/routes/auth/auth.model'
+import { TokenTypeType, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import { UserType } from 'src/shared/models/shared-user.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
@@ -26,7 +20,7 @@ export class AuthRepository {
     })
   }
 
-  async createUserInclueRole(
+  async createUserIncludeRole(
     user: Pick<UserType, 'email' | 'name' | 'password' | 'phoneNumber' | 'avatar' | 'roleId'>
   ): Promise<UserType & { role: RoleType }> {
     return this.prismaService.user.create({
@@ -162,37 +156,39 @@ export class AuthRepository {
     })
   }
 
-  // OtpToken methods
-  async createOtpToken(data: {
+  // VerificationToken methods (thay thế OtpToken)
+  createVerificationToken(data: {
     token: string
     email: string
     type: TypeOfVerificationCodeType
+    tokenType: TokenTypeType
     expiresAt: Date
     userId?: number
     deviceId?: number
   }) {
-    return this.prismaService.otpToken.create({
+    return this.prismaService.verificationToken.create({
       data
     })
   }
 
-  async findUniqueOtpToken(uniqueObject: { token: string }) {
-    return this.prismaService.otpToken.findUnique({
+  findUniqueVerificationToken(uniqueObject: { token: string }) {
+    return this.prismaService.verificationToken.findUnique({
       where: uniqueObject
     })
   }
 
-  async deleteOtpToken(uniqueObject: { token: string }) {
-    return this.prismaService.otpToken.delete({
+  deleteVerificationToken(uniqueObject: { token: string }) {
+    return this.prismaService.verificationToken.delete({
       where: uniqueObject
     })
   }
 
-  async deleteOtpTokenByEmailAndType(email: string, type: TypeOfVerificationCodeType) {
-    return this.prismaService.otpToken.deleteMany({
+  deleteVerificationTokenByEmailAndType(email: string, type: TypeOfVerificationCodeType, tokenType: TokenTypeType) {
+    return this.prismaService.verificationToken.deleteMany({
       where: {
         email,
-        type
+        type,
+        tokenType
       }
     })
   }

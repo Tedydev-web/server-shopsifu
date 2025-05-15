@@ -1,4 +1,4 @@
-import { TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
+import { TwoFactorMethodType, TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
 import { UserSchema } from 'src/shared/models/shared-user.model'
 import { z } from 'zod'
 
@@ -50,53 +50,7 @@ export const SendOTPBodySchema = VerificationCodeSchema.pick({
 export const LoginBodySchema = UserSchema.pick({
   email: true,
   password: true
-})
-  .extend({
-    totpCode: z.string().length(6).optional(), // 2FA code
-    code: z.string().length(6).optional(), // Email OTP code
-    otpToken: z.string().optional() // Token từ verify-code endpoint
-  })
-  .strict()
-  .superRefine(({ totpCode, code, otpToken }, ctx) => {
-    // Không được truyền cả hai cùng lúc: (totpCode và code) hoặc (otpToken)
-    if ((totpCode !== undefined || code !== undefined) && otpToken !== undefined) {
-      const message = 'Bạn không thể truyền cả otpToken và mã xác thực (totpCode hoặc code) cùng lúc'
-      ctx.addIssue({
-        path: ['otpToken'],
-        message,
-        code: 'custom'
-      })
-      if (totpCode !== undefined) {
-        ctx.addIssue({
-          path: ['totpCode'],
-          message,
-          code: 'custom'
-        })
-      }
-      if (code !== undefined) {
-        ctx.addIssue({
-          path: ['code'],
-          message,
-          code: 'custom'
-        })
-      }
-    }
-
-    // Kiểm tra trường hợp cả code và totpCode cùng được truyền
-    if (totpCode !== undefined && code !== undefined) {
-      const message = 'Bạn chỉ nên truyền mã xác thực 2FA hoặc mã OTP. Không được truyền cả 2'
-      ctx.addIssue({
-        path: ['totpCode'],
-        message,
-        code: 'custom'
-      })
-      ctx.addIssue({
-        path: ['code'],
-        message,
-        code: 'custom'
-      })
-    }
-  })
+}).strict()
 
 export const LoginResSchema = z.object({
   accessToken: z.string(),
@@ -195,26 +149,10 @@ export const ResetPasswordBodySchema = z
 
 export const DisableTwoFactorBodySchema = z
   .object({
-    totpCode: z.string().length(6).optional(),
-    code: z.string().length(6).optional()
+    type: z.enum([TwoFactorMethodType.TOTP, TwoFactorMethodType.OTP]),
+    code: z.string().length(6)
   })
   .strict()
-  .superRefine(({ totpCode, code }, ctx) => {
-    const message = 'Bạn phải cung cấp mã xác thực 2FA hoặc mã OTP. Không được cung cấp cả 2'
-    // Nếu cả 2 đều có hoặc không có thì sẽ nhảy vào if
-    if ((totpCode !== undefined) === (code !== undefined)) {
-      ctx.addIssue({
-        path: ['totpCode'],
-        message,
-        code: 'custom'
-      })
-      ctx.addIssue({
-        path: ['code'],
-        message,
-        code: 'custom'
-      })
-    }
-  })
 export const TwoFactorSetupResSchema = z.object({
   secret: z.string(),
   uri: z.string()
@@ -223,7 +161,7 @@ export const TwoFactorSetupResSchema = z.object({
 export const TwoFactorVerifyBodySchema = z
   .object({
     loginSessionToken: z.string(),
-    method: z.enum(['TOTP', 'OTP']),
+    type: z.enum([TwoFactorMethodType.TOTP, TwoFactorMethodType.OTP]),
     code: z.string().length(6)
   })
   .strict()
