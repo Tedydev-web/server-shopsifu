@@ -43,7 +43,7 @@ import {
   UnauthorizedAccessException,
   DeviceMismatchException,
   InvalidDeviceException
-} from 'src/routes/auth/error.model'
+} from 'src/routes/auth/auth.error'
 import { TwoFactorService } from 'src/shared/services/2fa.service'
 import { v4 as uuidv4 } from 'uuid'
 import envConfig from 'src/shared/config'
