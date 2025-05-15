@@ -1,4 +1,4 @@
-import { HttpException, Injectable, UnauthorizedException } from '@nestjs/common'
+import { HttpException, Injectable } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import {
   DisableTwoFactorBodyType,
@@ -17,7 +17,6 @@ import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from 'src/shared/services/token.service'
 import ms from 'ms'
-import envConfig from 'src/shared/config'
 import {
   TokenType,
   TokenTypeType,
@@ -35,7 +34,6 @@ import {
   InvalidOTPException,
   InvalidOTPTokenException,
   InvalidPasswordException,
-  InvalidTOTPAndCodeException,
   InvalidTOTPException,
   OTPExpiredException,
   OTPTokenExpiredException,
@@ -48,6 +46,7 @@ import {
 } from 'src/routes/auth/error.model'
 import { TwoFactorService } from 'src/shared/services/2fa.service'
 import { v4 as uuidv4 } from 'uuid'
+import envConfig from 'src/shared/config'
 
 @Injectable()
 export class AuthService {
@@ -170,7 +169,7 @@ export class AuthService {
       tokenType: TokenType.OTP,
       userId,
       deviceId,
-      expiresAt: addMilliseconds(new Date(), ms('15m'))
+      expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
     })
 
     // 6. Xóa mã OTP đã sử dụng
@@ -254,7 +253,7 @@ export class AuthService {
       email: body.email,
       code,
       type: body.type,
-      expiresAt: addMilliseconds(new Date(), ms('15m'))
+      expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
     })
 
     // 3. Gửi mã OTP
@@ -302,7 +301,7 @@ export class AuthService {
         tokenType: TokenType.LOGIN_SESSION,
         userId: user.id,
         deviceId: device.id,
-        expiresAt: addMilliseconds(new Date(), ms('5m')) // Thời hạn 5 phút
+        expiresAt: addMilliseconds(new Date(), ms(envConfig.LOGIN_SESSION_TOKEN_EXPIRES_IN))
       })
 
       // Trả về chỉ loginSessionToken thay vì đối tượng phức tạp
@@ -340,7 +339,7 @@ export class AuthService {
     await this.authRepository.createRefreshToken({
       token: refreshToken,
       userId,
-      expiresAt: new Date(decodedRefreshToken.exp * 1000), // 7 ngày
+      expiresAt: new Date(decodedRefreshToken.exp * 1000),
       deviceId
     })
     return { accessToken, refreshToken }
