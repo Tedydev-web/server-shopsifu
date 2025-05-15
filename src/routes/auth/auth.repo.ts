@@ -192,4 +192,58 @@ export class AuthRepository {
       }
     })
   }
+
+  async findOrCreateDevice(data: Pick<DeviceType, 'userId' | 'userAgent' | 'ip'>): Promise<DeviceType> {
+    // Tìm kiếm device hiện có dựa vào userId, userAgent và ip
+    const existingDevice = await this.prismaService.device.findFirst({
+      where: {
+        userId: data.userId,
+        userAgent: data.userAgent,
+        isActive: true
+      }
+    })
+
+    if (existingDevice) {
+      // Nếu tìm thấy, cập nhật lastActive và ip
+      return this.updateDevice(existingDevice.id, {
+        ip: data.ip,
+        lastActive: new Date()
+      })
+    }
+
+    // Nếu không tìm thấy, tạo mới
+    return this.createDevice(data)
+  }
+
+  async validateDevice(deviceId: number, userAgent: string, ip: string): Promise<boolean> {
+    const device = await this.prismaService.device.findUnique({
+      where: {
+        id: deviceId
+      }
+    })
+
+    if (!device) {
+      return false
+    }
+
+    // Kiểm tra thiết bị có còn hoạt động không
+    if (!device.isActive) {
+      return false
+    }
+
+    // Trong thực tế, ta có thể thêm logic phức tạp hơn để xác minh thiết bị
+    // Ví dụ: kiểm tra chi tiết userAgent, kiểm tra IP trong phạm vi địa lý...
+
+    // Tùy vào mức độ nghiêm ngặt, có thể chỉ kiểm tra userAgent hoặc cả userAgent và IP
+    // Đây là một cách tiếp cận cân bằng:
+    const isUserAgentMatched = device.userAgent === userAgent
+
+    // Cập nhật thiết bị với thông tin mới nhất
+    await this.updateDevice(deviceId, {
+      lastActive: new Date(),
+      ip // Cập nhật IP mới
+    })
+
+    return isUserAgentMatched
+  }
 }

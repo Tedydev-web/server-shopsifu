@@ -78,7 +78,7 @@ export class GoogleService {
         const clientRoleId = await this.rolesService.getClientRoleId()
         const randomPassword = uuidv4()
         const hashedPassword = await this.hashingService.hash(randomPassword)
-        user = await this.authRepository.createUserInclueRole({
+        user = await this.authRepository.createUserIncludeRole({
           email: data.email,
           name: data.name ?? '',
           password: hashedPassword,
@@ -87,11 +87,18 @@ export class GoogleService {
           avatar: data.picture ?? null
         })
       }
+
+      // Kiểm tra user không null trước khi sử dụng
+      if (!user) {
+        throw new Error('Không thể tạo hoặc tìm thấy người dùng')
+      }
+
       const device = await this.authRepository.createDevice({
         userId: user.id,
         userAgent,
         ip
       })
+
       const authTokens = await this.authService.generateTokens({
         userId: user.id,
         deviceId: device.id,

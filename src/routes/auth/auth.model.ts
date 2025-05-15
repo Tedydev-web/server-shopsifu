@@ -58,9 +58,7 @@ export const LoginResSchema = z.object({
 })
 
 export const LoginSessionResSchema = z.object({
-  loginSessionToken: z.string(),
-  message: z.string(),
-  twoFactorEnabled: z.boolean()
+  loginSessionToken: z.string()
 })
 
 export const VerifyCodeBodySchema = z

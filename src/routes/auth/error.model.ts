@@ -99,3 +99,11 @@ export const OTPTokenExpiredException = new UnprocessableEntityException([
     path: 'otpToken'
   }
 ])
+
+export const InvalidDeviceException = new UnauthorizedException('Error.InvalidDevice')
+export const DeviceMismatchException = new UnprocessableEntityException([
+  {
+    message: 'Error.DeviceMismatch',
+    path: 'device'
+  }
+])

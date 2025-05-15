@@ -41,8 +41,12 @@ export class AuthController {
   @Post('register')
   @IsPublic()
   @ZodSerializerDto(RegisterResDTO)
-  register(@Body() body: RegisterBodyDTO) {
-    return this.authService.register(body)
+  register(@Body() body: RegisterBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
+    return this.authService.register({
+      ...body,
+      userAgent,
+      ip
+    })
   }
 
   @Post('otp')
@@ -128,8 +132,12 @@ export class AuthController {
   @Post('reset-password')
   @IsPublic()
   @ZodSerializerDto(MessageResDTO)
-  resetPassword(@Body() body: ResetPasswordBodyDTO) {
-    return this.authService.resetPassword(body)
+  resetPassword(@Body() body: ResetPasswordBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
+    return this.authService.resetPassword({
+      ...body,
+      userAgent,
+      ip
+    })
   }
   // Tại sao không dùng GET mà dùng POST? khi mà body gửi lên là {}
   // Vì POST mang ý nghĩa là tạo ra cái gì đó và POST cũng bảo mật hơn GET

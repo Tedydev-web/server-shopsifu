@@ -42,7 +42,9 @@ import {
   RefreshTokenAlreadyUsedException,
   TOTPAlreadyEnabledException,
   TOTPNotEnabledException,
-  UnauthorizedAccessException
+  UnauthorizedAccessException,
+  DeviceMismatchException,
+  InvalidDeviceException
 } from 'src/routes/auth/error.model'
 import { TwoFactorService } from 'src/shared/services/2fa.service'
 import { v4 as uuidv4 } from 'uuid'
@@ -88,12 +90,14 @@ export class AuthService {
     token,
     email,
     type,
-    tokenType
+    tokenType,
+    deviceId
   }: {
     token: string
     email: string
     type: TypeOfVerificationCodeType
     tokenType: TokenTypeType
+    deviceId?: number
   }) {
     const verificationToken = await this.authRepository.findUniqueVerificationToken({ token })
 
@@ -111,6 +115,11 @@ export class AuthService {
 
     if (verificationToken.expiresAt < new Date()) {
       throw OTPTokenExpiredException
+    }
+
+    // Kiểm tra thiết bị nếu deviceId được cung cấp và verificationToken có deviceId
+    if (deviceId && verificationToken.deviceId && deviceId !== verificationToken.deviceId) {
+      throw DeviceMismatchException
     }
 
     return verificationToken
@@ -139,17 +148,16 @@ export class AuthService {
     // 4. Lấy hoặc tạo device
     let deviceId: number | undefined = undefined
     if (userId) {
-      // Nếu có userId, tạo hoặc tìm thiết bị hiện có
       try {
-        const device = await this.authRepository.createDevice({
+        const device = await this.authRepository.findOrCreateDevice({
           userId,
           userAgent: body.userAgent,
           ip: body.ip
         })
         deviceId = device.id
       } catch (error) {
-        // Bỏ qua lỗi nếu không thể tạo device
-        console.error('Không thể tạo device', error)
+        // Log lỗi nhưng không gây ra lỗi cho quy trình xác thực
+        console.error('Không thể tạo hoặc tìm device', error)
       }
     }
 
@@ -177,15 +185,28 @@ export class AuthService {
     return { otpToken: token }
   }
 
-  async register(body: RegisterBodyType) {
+  async register(body: RegisterBodyType & { userAgent?: string; ip?: string }) {
     try {
       // 1. Kiểm tra otpToken
-      await this.validateVerificationToken({
+      const verificationToken = await this.validateVerificationToken({
         token: body.otpToken,
         email: body.email,
         type: TypeOfVerificationCode.REGISTER,
         tokenType: TokenType.OTP
       })
+
+      // Kiểm tra thiết bị nếu có thông tin
+      if (verificationToken.deviceId && body.userAgent && body.ip) {
+        const isValidDevice = await this.authRepository.validateDevice(
+          verificationToken.deviceId,
+          body.userAgent,
+          body.ip
+        )
+
+        if (!isValidDevice) {
+          throw InvalidDeviceException
+        }
+      }
 
       // 2. Đăng ký tài khoản mới
       const clientRoleId = await this.rolesService.getClientRoleId()
@@ -262,6 +283,13 @@ export class AuthService {
       throw InvalidPasswordException
     }
 
+    // Tạo hoặc tìm device cho phiên đăng nhập này
+    const device = await this.authRepository.findOrCreateDevice({
+      userId: user.id,
+      userAgent: body.userAgent,
+      ip: body.ip
+    })
+
     // 2. Nếu user đã bật 2FA, tạo loginSessionToken
     if (user.totpSecret) {
       // Tạo loginSessionToken cho phiên xác thực 2FA
@@ -273,23 +301,18 @@ export class AuthService {
         type: TypeOfVerificationCode.LOGIN,
         tokenType: TokenType.LOGIN_SESSION,
         userId: user.id,
+        deviceId: device.id,
         expiresAt: addMilliseconds(new Date(), ms('5m')) // Thời hạn 5 phút
       })
 
-      // Trả về loginSessionToken và thông báo cần 2FA
+      // Trả về chỉ loginSessionToken thay vì đối tượng phức tạp
       return {
-        loginSessionToken,
-        message: '2FA required',
-        twoFactorEnabled: true
+        loginSessionToken
       }
     }
 
     // 3. Nếu không có 2FA, tạo token và đăng nhập trực tiếp
-    const device = await this.authRepository.createDevice({
-      userId: user.id,
-      userAgent: body.userAgent,
-      ip: body.ip
-    })
+    // Đã tạo device ở trên, không cần tạo lại
 
     // 4. Tạo mới accessToken và refreshToken
     const tokens = await this.generateTokens({
@@ -387,8 +410,8 @@ export class AuthService {
     }
   }
 
-  async resetPassword(body: ResetPasswordBodyType) {
-    const { email, otpToken, newPassword } = body
+  async resetPassword(body: ResetPasswordBodyType & { userAgent?: string; ip?: string }) {
+    const { email, otpToken, newPassword, userAgent, ip } = body
     // 1. Kiểm tra email đã tồn tại trong database chưa
     const user = await this.sharedUserRepository.findUnique({
       email
@@ -398,12 +421,21 @@ export class AuthService {
     }
 
     // 2. Kiểm tra verificationToken
-    await this.validateVerificationToken({
+    const verificationToken = await this.validateVerificationToken({
       token: otpToken,
       email,
       type: TypeOfVerificationCode.FORGOT_PASSWORD,
       tokenType: TokenType.OTP
     })
+
+    // Kiểm tra thiết bị nếu có thông tin
+    if (verificationToken.deviceId && userAgent && ip) {
+      const isValidDevice = await this.authRepository.validateDevice(verificationToken.deviceId, userAgent, ip)
+
+      if (!isValidDevice) {
+        throw InvalidDeviceException
+      }
+    }
 
     // 3. Cập nhật lại mật khẩu mới và xóa đi token
     const hashedPassword = await this.hashingService.hash(newPassword)
@@ -501,6 +533,19 @@ export class AuthService {
       throw InvalidLoginSessionException
     }
 
+    // Kiểm tra thiết bị nếu có deviceId
+    if (verificationToken.deviceId) {
+      const isValidDevice = await this.authRepository.validateDevice(
+        verificationToken.deviceId,
+        body.userAgent,
+        body.ip
+      )
+
+      if (!isValidDevice) {
+        throw InvalidDeviceException
+      }
+    }
+
     const user = await this.authRepository.findUniqueUserIncludeRole({
       id: verificationToken.userId
     })
@@ -546,8 +591,8 @@ export class AuthService {
     // 4. Xóa loginSessionToken đã sử dụng
     await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken })
 
-    // 5. Tạo mới device
-    const device = await this.authRepository.createDevice({
+    // 5. Tạo mới device hoặc sử dụng device hiện có
+    const device = await this.authRepository.findOrCreateDevice({
       userId: user.id,
       userAgent: body.userAgent,
       ip: body.ip
