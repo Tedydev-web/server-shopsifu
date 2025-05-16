@@ -10,6 +10,7 @@ datasource db {
 model Language {
   id                   String                @id @db.VarChar(10)
   name                 String                @db.VarChar(500)
+
   userTranslations     UserTranslation[]
   productTranslations  ProductTranslation[]
   categoryTranslations CategoryTranslation[]
