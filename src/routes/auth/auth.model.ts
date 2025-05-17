@@ -51,7 +51,11 @@ export const SendOTPBodySchema = VerificationCodeSchema.pick({
 export const LoginBodySchema = UserSchema.pick({
   email: true,
   password: true
-}).strict()
+})
+  .extend({
+    rememberMe: z.boolean().optional().default(false)
+  })
+  .strict()
 
 export const LoginResSchema = z.object({
   userId: z.number(),
@@ -61,7 +65,9 @@ export const LoginResSchema = z.object({
 })
 
 export const LoginSessionResSchema = z.object({
-  loginSessionToken: z.string()
+  message: z.string(),
+  loginSessionToken: z.string(),
+  twoFactorMethod: z.nativeEnum(TwoFactorMethodType)
 })
 
 export const VerifyCodeBodySchema = z
@@ -88,10 +94,11 @@ export const RefreshTokenBodySchema = z
   })
   .strict()
 
-export const RefreshTokenResSchema = z.object({
-  userId: z.number(),
-  role: z.string()
+export const AccessTokenResSchema = z.object({
+  accessToken: z.string()
 })
+
+export const RefreshTokenResSchema = AccessTokenResSchema
 
 export const DeviceSchema = z.object({
   id: z.number(),
@@ -216,7 +223,7 @@ export type LoginBodyType = z.infer<typeof LoginBodySchema>
 export type LoginResType = z.infer<typeof LoginResSchema>
 export type RefreshTokenType = z.infer<typeof RefreshTokenSchema>
 export type RefreshTokenBodyType = z.infer<typeof RefreshTokenBodySchema>
-export type RefreshTokenResType = LoginResType
+export type RefreshTokenResType = z.infer<typeof RefreshTokenResSchema>
 export type DeviceType = z.infer<typeof DeviceSchema>
 export type RoleType = z.infer<typeof RoleSchema>
 export type LogoutBodyType = RefreshTokenBodyType
@@ -232,3 +239,4 @@ export type VerifyCodeResType = z.infer<typeof VerifyCodeResSchema>
 export type LoginSessionResType = z.infer<typeof LoginSessionResSchema>
 export type TwoFactorVerifyBodyType = z.infer<typeof TwoFactorVerifyBodySchema>
 export type UserProfileResType = z.infer<typeof UserProfileResSchema>
+export type AccessTokenResType = z.infer<typeof AccessTokenResSchema>

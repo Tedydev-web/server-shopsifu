@@ -3,7 +3,6 @@ import {
   DisableTwoFactorBodySchema,
   GetAuthorizationUrlResSchema,
   LoginBodySchema,
-  LoginResSchema,
   LoginSessionResSchema,
   LogoutBodySchema,
   RefreshTokenBodySchema,
@@ -18,7 +17,8 @@ import {
   TwoFactorVerifyBodySchema,
   UserProfileResSchema,
   VerifyCodeBodySchema,
-  VerifyCodeResSchema
+  VerifyCodeResSchema,
+  AccessTokenResSchema
 } from 'src/routes/auth/auth.model'
 
 export class RegisterBodyDTO extends createZodDto(RegisterBodySchema) {}
@@ -29,13 +29,13 @@ export class SendOTPBodyDTO extends createZodDto(SendOTPBodySchema) {}
 
 export class LoginBodyDTO extends createZodDto(LoginBodySchema) {}
 
-export class LoginResDTO extends createZodDto(LoginResSchema) {}
+export class LoginResDTO extends createZodDto(UserProfileResSchema) {}
 
 export class LoginSessionResDTO extends createZodDto(LoginSessionResSchema) {}
 
 export class RefreshTokenBodyDTO extends createZodDto(RefreshTokenBodySchema) {}
 
-export class RefreshTokenResDTO extends createZodDto(RefreshTokenResSchema) {}
+export class RefreshTokenResDTO extends createZodDto(AccessTokenResSchema) {}
 
 export class LogoutBodyDTO extends createZodDto(LogoutBodySchema) {}
 

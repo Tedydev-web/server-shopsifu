@@ -4,7 +4,7 @@ import { google } from 'googleapis'
 import { GoogleAuthStateType } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { AuthService } from 'src/routes/auth/auth.service'
-import { GoogleUserInfoError } from 'src/routes/auth/auth.error'
+import { GoogleUserInfoException } from 'src/routes/auth/auth.error'
 import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
 import { HashingService } from 'src/shared/services/hashing.service'
@@ -67,7 +67,7 @@ export class GoogleService {
       })
       const { data } = await oauth2.userinfo.get()
       if (!data.email) {
-        throw GoogleUserInfoError
+        throw GoogleUserInfoException
       }
 
       let user = await this.authRepository.findUniqueUserIncludeRole({
@@ -106,7 +106,7 @@ export class GoogleService {
         roleId: user.roleId,
         roleName: user.role.name
       })
-      
+
       // Trả về cả thông tin người dùng và token
       return {
         userId: user.id,

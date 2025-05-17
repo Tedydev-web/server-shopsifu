@@ -60,42 +60,88 @@ export class TokenService {
     return req.cookies?.[CookieNames.REFRESH_TOKEN] || req.body?.refreshToken
   }
 
-  setTokenCookies(res: Response, accessToken: string, refreshToken: string) {
+  setTokenCookies(res: Response, accessToken: string, refreshToken: string, maxAgeForRefreshTokenCookie?: number) {
     const isProduction = envConfig.NODE_ENV === 'production'
+    console.log('[DEBUG TokenService] Attempting to set token cookies.')
+    console.log(
+      '[DEBUG TokenService] AccessToken provided:',
+      accessToken ? `Present (length: ${accessToken.length})` : 'MISSING'
+    )
+    console.log(
+      '[DEBUG TokenService] RefreshToken provided:',
+      refreshToken ? `Present (length: ${refreshToken.length})` : 'MISSING'
+    )
+    console.log('[DEBUG TokenService] ACCESS_TOKEN_COOKIE_MAX_AGE:', envConfig.ACCESS_TOKEN_COOKIE_MAX_AGE)
+
+    const actualRefreshTokenMaxAge = maxAgeForRefreshTokenCookie ?? envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
+    console.log('[DEBUG TokenService] Actual REFRESH_TOKEN_COOKIE_MAX_AGE to be used:', actualRefreshTokenMaxAge)
 
     // Access token cookie
     const accessTokenOptions: CookieOptions = {
       httpOnly: true,
       secure: isProduction,
-      sameSite: 'strict',
+      sameSite: 'lax',
       maxAge: envConfig.ACCESS_TOKEN_COOKIE_MAX_AGE,
       path: '/',
       domain: envConfig.COOKIE_DOMAIN
     }
+    console.log('[DEBUG TokenService] AccessToken Cookie Options:', accessTokenOptions)
 
-    // Refresh token cookie (chỉ gửi đến /auth/refresh-token)
+    // Refresh token cookie
     const refreshTokenOptions: CookieOptions = {
       httpOnly: true,
       secure: isProduction,
-      sameSite: 'strict',
-      maxAge: envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE,
-      path: '/auth/refresh-token',
+      sameSite: 'lax',
+      maxAge: actualRefreshTokenMaxAge,
+      path: '/api/v1/auth',
       domain: envConfig.COOKIE_DOMAIN
     }
+    console.log('[DEBUG TokenService] RefreshToken Cookie Options:', refreshTokenOptions)
 
-    res.cookie(CookieNames.ACCESS_TOKEN, accessToken, accessTokenOptions)
-    res.cookie(CookieNames.REFRESH_TOKEN, refreshToken, refreshTokenOptions)
+    if (accessToken && envConfig.ACCESS_TOKEN_COOKIE_MAX_AGE > 0) {
+      res.cookie(CookieNames.ACCESS_TOKEN, accessToken, accessTokenOptions)
+      console.log('[DEBUG TokenService] res.cookie CALLED for access_token.')
+    } else {
+      console.warn(
+        '[DEBUG TokenService] res.cookie SKIPPED for access_token. Reason:',
+        !accessToken ? 'AccessToken missing' : 'MaxAge not positive'
+      )
+    }
+
+    if (refreshToken && actualRefreshTokenMaxAge > 0) {
+      res.cookie(CookieNames.REFRESH_TOKEN, refreshToken, refreshTokenOptions)
+      console.log('[DEBUG TokenService] res.cookie CALLED for refresh_token.')
+    } else {
+      console.warn(
+        '[DEBUG TokenService] res.cookie SKIPPED for refresh_token. Reason:',
+        !refreshToken ? 'RefreshToken missing' : 'MaxAge not positive'
+      )
+    }
   }
 
   clearTokenCookies(res: Response) {
+    const cookieOptionsBase: CookieOptions = {
+      domain: envConfig.COOKIE_DOMAIN,
+      httpOnly: true,
+      secure: envConfig.NODE_ENV === 'production',
+      sameSite: 'lax'
+    }
+
     res.clearCookie(CookieNames.ACCESS_TOKEN, {
-      path: '/',
-      domain: envConfig.COOKIE_DOMAIN
+      ...cookieOptionsBase,
+      path: '/'
     })
 
     res.clearCookie(CookieNames.REFRESH_TOKEN, {
-      path: '/auth/refresh-token',
-      domain: envConfig.COOKIE_DOMAIN
+      ...cookieOptionsBase,
+      path: '/api/v1/auth'
+    })
+
+    // Also clear CSRF token for client
+    res.clearCookie(CookieNames.CSRF_TOKEN, {
+      ...cookieOptionsBase,
+      httpOnly: false,
+      path: '/'
     })
   }
 

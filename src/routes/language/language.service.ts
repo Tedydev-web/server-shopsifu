@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { LanguageRepo } from 'src/routes/language/language.repo'
-import { CreateLanguageBodyType, UpdateLanguageBodyType } from 'src/routes/language/language.model'
+import { CreateLanguageBodyType, UpdateLanguageBodyType, LanguageType } from 'src/routes/language/language.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { LanguageAlreadyExistsException } from 'src/routes/language/language.error'
@@ -9,7 +9,7 @@ import { LanguageAlreadyExistsException } from 'src/routes/language/language.err
 export class LanguageService {
   constructor(private languageRepo: LanguageRepo) {}
 
-  async findAll() {
+  async findAll(): Promise<{ data: LanguageType[]; totalItems: number }> {
     const data = await this.languageRepo.findAll()
     return {
       data,
@@ -17,20 +17,23 @@ export class LanguageService {
     }
   }
 
-  async findById(id: string) {
+  async findById(id: string): Promise<LanguageType> {
     const language = await this.languageRepo.findById(id)
     if (!language) {
-      throw NotFoundRecordException
+      throw NotFoundRecordException('Error.Language.NotFound', 'RESOURCE_NOT_FOUND', [
+        { code: 'Error.Language.NotFound', args: { id } }
+      ])
     }
     return language
   }
 
-  async create({ data, createdById }: { data: CreateLanguageBodyType; createdById: number }) {
+  async create({ data, createdById }: { data: CreateLanguageBodyType; createdById: number }): Promise<LanguageType> {
     try {
-      return await this.languageRepo.create({
+      const newLanguage = await this.languageRepo.create({
         createdById,
         data
       })
+      return newLanguage
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw LanguageAlreadyExistsException
@@ -39,32 +42,44 @@ export class LanguageService {
     }
   }
 
-  async update({ id, data, updatedById }: { id: string; data: UpdateLanguageBodyType; updatedById: number }) {
+  async update({
+    id,
+    data,
+    updatedById
+  }: {
+    id: string
+    data: UpdateLanguageBodyType
+    updatedById: number
+  }): Promise<LanguageType> {
     try {
-      const language = await this.languageRepo.update({
+      const updatedLanguage = await this.languageRepo.update({
         id,
         updatedById,
         data
       })
-      return language
+      return updatedLanguage
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw NotFoundRecordException('Error.Language.NotFoundOnUpdate', 'RESOURCE_NOT_FOUND', [
+          { code: 'Error.Language.NotFoundOnUpdate', args: { id } }
+        ])
       }
       throw error
     }
   }
 
-  async delete(id: string) {
+  async delete(id: string): Promise<{ message: string }> {
     try {
       // hard delete
       await this.languageRepo.delete(id, true)
       return {
-        message: 'Delete successfully'
+        message: 'Language.Delete.Success'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw NotFoundRecordException('Error.Language.NotFoundOnDelete', 'RESOURCE_NOT_FOUND', [
+          { code: 'Error.Language.NotFoundOnDelete', args: { id } }
+        ])
       }
       throw error
     }

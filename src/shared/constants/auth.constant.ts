@@ -25,6 +25,7 @@ export const TypeOfVerificationCode = {
   REGISTER: 'REGISTER',
   FORGOT_PASSWORD: 'FORGOT_PASSWORD',
   LOGIN: 'LOGIN',
+  LOGIN_2FA: 'LOGIN_2FA',
   DISABLE_2FA: 'DISABLE_2FA',
   SETUP_2FA: 'SETUP_2FA'
 } as const
@@ -42,7 +43,7 @@ export type TwoFactorMethodTypeType = (typeof TwoFactorMethodType)[keyof typeof 
 export const TokenType = {
   LOGIN_SESSION: 'LOGIN_SESSION',
   OTP: 'OTP',
-  TOTP_SETUP: 'TOTP_SETUP',
+  SETUP_2FA_TOKEN: 'SETUP_2FA_TOKEN',
   RECOVERY: 'RECOVERY'
 } as const
 

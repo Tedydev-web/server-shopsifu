@@ -17,10 +17,7 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
 
     // Force HTTPS in production
     if (envConfig.NODE_ENV === 'production') {
-      res.setHeader(
-        SecurityHeaders.STRICT_TRANSPORT_SECURITY,
-        'max-age=31536000; includeSubDomains; preload'
-      )
+      res.setHeader(SecurityHeaders.STRICT_TRANSPORT_SECURITY, 'max-age=31536000; includeSubDomains; preload')
     }
 
     // Prevent embedding in iframes
@@ -29,11 +26,12 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
     // Add XSS protection
     res.setHeader(SecurityHeaders.X_XSS_PROTECTION, '1; mode=block')
 
-    // Set cache control for Auth endpoints
-    if (req.path.startsWith('/auth/')) {
+    // Chỉ giữ lại Cache-Control cho Auth endpoints
+    if (req.path.startsWith('/api/v1/auth/')) {
+      // Đảm bảo path khớp với global prefix
       res.setHeader(SecurityHeaders.CACHE_CONTROL, 'no-store, no-cache, must-revalidate, proxy-revalidate')
     }
 
     next()
   }
-} 
+}
