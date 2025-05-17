@@ -12,6 +12,8 @@ import {
   RegisterResSchema,
   ResetPasswordBodySchema,
   SendOTPBodySchema,
+  TwoFactorConfirmSetupBodySchema,
+  TwoFactorConfirmSetupResSchema,
   TwoFactorSetupResSchema,
   TwoFactorVerifyBodySchema,
   VerifyCodeBodySchema,
@@ -41,6 +43,10 @@ export class GetAuthorizationUrlResDTO extends createZodDto(GetAuthorizationUrlR
 export class ResetPasswordBodyDTO extends createZodDto(ResetPasswordBodySchema) {}
 
 export class TwoFactorSetupResDTO extends createZodDto(TwoFactorSetupResSchema) {}
+
+export class TwoFactorConfirmSetupBodyDTO extends createZodDto(TwoFactorConfirmSetupBodySchema) {}
+
+export class TwoFactorConfirmSetupResDTO extends createZodDto(TwoFactorConfirmSetupResSchema) {}
 
 export class DisableTwoFactorBodyDTO extends createZodDto(DisableTwoFactorBodySchema) {}
 

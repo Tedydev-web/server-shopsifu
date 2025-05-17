@@ -481,6 +481,7 @@ model VerificationToken {
   device    Device?              @relation(fields: [deviceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   type      VerificationCodeType
   tokenType String               @db.VarChar(50) // LOGIN_SESSION or OTP
+  metadata  String?              @db.Text // Thêm metadata để lưu các thông tin bổ sung như secret 2FA
   expiresAt DateTime
   createdAt DateTime             @default(now())
 
@@ -502,6 +503,7 @@ enum VerificationCodeType {
   FORGOT_PASSWORD
   LOGIN
   DISABLE_2FA
+  SETUP_2FA
 }
 
 enum UserStatus {

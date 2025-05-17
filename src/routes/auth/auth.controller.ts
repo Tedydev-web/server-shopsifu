@@ -16,7 +16,9 @@ import {
   TwoFactorSetupResDTO,
   TwoFactorVerifyBodyDTO,
   VerifyCodeBodyDTO,
-  VerifyCodeResDTO
+  VerifyCodeResDTO,
+  TwoFactorConfirmSetupBodyDTO,
+  TwoFactorConfirmSetupResDTO
 } from 'src/routes/auth/auth.dto'
 import { LoginResSchema, LoginSessionResSchema } from 'src/routes/auth/auth.model'
 
@@ -138,13 +140,17 @@ export class AuthController {
       ip
     })
   }
-  // Tại sao không dùng GET mà dùng POST? khi mà body gửi lên là {}
-  // Vì POST mang ý nghĩa là tạo ra cái gì đó và POST cũng bảo mật hơn GET
-  // Vì GET có thể được kích hoạt thông qua URL trên trình duyệt, POST thì không
+
   @Post('2fa/setup')
   @ZodSerializerDto(TwoFactorSetupResDTO)
   setupTwoFactorAuth(@Body() _: EmptyBodyDTO, @ActiveUser('userId') userId: number) {
     return this.authService.setupTwoFactorAuth(userId)
+  }
+
+  @Post('2fa/confirm-setup')
+  @ZodSerializerDto(TwoFactorConfirmSetupResDTO)
+  confirmTwoFactorSetup(@Body() body: TwoFactorConfirmSetupBodyDTO, @ActiveUser('userId') userId: number) {
+    return this.authService.confirmTwoFactorSetup(userId, body.setupToken, body.totpCode)
   }
 
   @Post('2fa/disable')

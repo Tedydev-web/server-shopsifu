@@ -36,7 +36,8 @@ export const VerificationCodeSchema = z.object({
     TypeOfVerificationCode.REGISTER,
     TypeOfVerificationCode.FORGOT_PASSWORD,
     TypeOfVerificationCode.LOGIN,
-    TypeOfVerificationCode.DISABLE_2FA
+    TypeOfVerificationCode.DISABLE_2FA,
+    TypeOfVerificationCode.SETUP_2FA
   ]),
   expiresAt: z.date(),
   createdAt: z.date()
@@ -69,7 +70,8 @@ export const VerifyCodeBodySchema = z
       TypeOfVerificationCode.REGISTER,
       TypeOfVerificationCode.FORGOT_PASSWORD,
       TypeOfVerificationCode.LOGIN,
-      TypeOfVerificationCode.DISABLE_2FA
+      TypeOfVerificationCode.DISABLE_2FA,
+      TypeOfVerificationCode.SETUP_2FA
     ])
   })
   .strict()
@@ -153,16 +155,46 @@ export const DisableTwoFactorBodySchema = z
   .strict()
 export const TwoFactorSetupResSchema = z.object({
   secret: z.string(),
-  uri: z.string()
+  uri: z.string(),
+  setupToken: z.string()
+})
+
+export const TwoFactorConfirmSetupBodySchema = z
+  .object({
+    setupToken: z.string(),
+    totpCode: z.string().length(6)
+  })
+  .strict()
+
+export const TwoFactorConfirmSetupResSchema = z.object({
+  message: z.string(),
+  recoveryCodes: z.array(z.string())
 })
 
 export const TwoFactorVerifyBodySchema = z
   .object({
     loginSessionToken: z.string(),
-    type: z.enum([TwoFactorMethodType.TOTP, TwoFactorMethodType.OTP]),
-    code: z.string().length(6)
+    type: z.enum([TwoFactorMethodType.TOTP, TwoFactorMethodType.OTP, TwoFactorMethodType.RECOVERY]),
+    code: z.string()
   })
   .strict()
+  .refine(
+    (data) => {
+      // Kiểm tra độ dài code dựa vào type
+      if (data.code.length === 0) return false
+
+      if (data.type === TwoFactorMethodType.TOTP || data.type === TwoFactorMethodType.OTP) {
+        return data.code.length === 6 // OTP và TOTP luôn có 6 ký tự
+      } else if (data.type === TwoFactorMethodType.RECOVERY) {
+        return data.code.length >= 10 // Recovery code dài hơn (ví dụ: XXXX-XXXX-XXXX)
+      }
+      return true
+    },
+    {
+      message: 'Mã xác thực không đúng định dạng',
+      path: ['code']
+    }
+  )
 
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>
 export type RegisterResType = z.infer<typeof RegisterResSchema>
@@ -181,6 +213,8 @@ export type GetAuthorizationUrlResType = z.infer<typeof GetAuthorizationUrlResSc
 export type ResetPasswordBodyType = z.infer<typeof ResetPasswordBodySchema>
 export type DisableTwoFactorBodyType = z.infer<typeof DisableTwoFactorBodySchema>
 export type TwoFactorSetupResType = z.infer<typeof TwoFactorSetupResSchema>
+export type TwoFactorConfirmSetupBodyType = z.infer<typeof TwoFactorConfirmSetupBodySchema>
+export type TwoFactorConfirmSetupResType = z.infer<typeof TwoFactorConfirmSetupResSchema>
 export type VerifyCodeBodyType = z.infer<typeof VerifyCodeBodySchema>
 export type VerifyCodeResType = z.infer<typeof VerifyCodeResSchema>
 export type LoginSessionResType = z.infer<typeof LoginSessionResSchema>

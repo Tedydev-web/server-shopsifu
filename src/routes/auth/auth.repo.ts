@@ -165,6 +165,7 @@ export class AuthRepository {
     expiresAt: Date
     userId?: number
     deviceId?: number
+    metadata?: string
   }) {
     return this.prismaService.verificationToken.create({
       data
@@ -174,6 +175,23 @@ export class AuthRepository {
   findUniqueVerificationToken(uniqueObject: { token: string }) {
     return this.prismaService.verificationToken.findUnique({
       where: uniqueObject
+    })
+  }
+
+  findVerificationTokens(filter: { email: string; type: TypeOfVerificationCodeType; tokenType: TokenTypeType }) {
+    return this.prismaService.verificationToken.findMany({
+      where: {
+        email: filter.email,
+        type: filter.type,
+        tokenType: filter.tokenType
+      }
+    })
+  }
+
+  updateVerificationToken(data: { token: string; metadata?: string }) {
+    return this.prismaService.verificationToken.update({
+      where: { token: data.token },
+      data: { metadata: data.metadata }
     })
   }
 

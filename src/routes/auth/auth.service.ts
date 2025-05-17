@@ -42,7 +42,8 @@ import {
   TOTPNotEnabledException,
   UnauthorizedAccessException,
   DeviceMismatchException,
-  InvalidDeviceException
+  InvalidDeviceException,
+  InvalidRecoveryCodeException
 } from 'src/routes/auth/auth.error'
 import { TwoFactorService } from 'src/shared/services/2fa.service'
 import { v4 as uuidv4 } from 'uuid'
@@ -466,12 +467,120 @@ export class AuthService {
     }
     // 2. Tạo ra secret và uri
     const { secret, uri } = this.twoFactorService.generateTOTPSecret(user.email)
-    // 3. Cập nhật secret vào user trong database
-    await this.authRepository.updateUser({ id: userId }, { totpSecret: secret })
-    // 4. Trả về secret và uri
+
+    // 3. Tạo một token xác thực để lưu giữ secret tạm thời, thay vì lưu vào user
+    const setupToken = uuidv4()
+    await this.authRepository.deleteVerificationTokenByEmailAndType(
+      user.email,
+      TypeOfVerificationCode.REGISTER,
+      TokenType.TOTP_SETUP
+    )
+
+    await this.authRepository.createVerificationToken({
+      token: setupToken,
+      email: user.email,
+      type: TypeOfVerificationCode.REGISTER,
+      tokenType: TokenType.TOTP_SETUP,
+      userId: user.id,
+      expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN)),
+      // Lưu secret vào metadata của token
+      metadata: JSON.stringify({ secret, uri })
+    })
+
+    // 4. Trả về token, secret và uri
     return {
       secret,
-      uri
+      uri,
+      setupToken
+    }
+  }
+
+  async confirmTwoFactorSetup(userId: number, setupToken: string, totpCode: string) {
+    // 1. Lấy thông tin user
+    const user = await this.sharedUserRepository.findUnique({
+      id: userId
+    })
+    if (!user) {
+      throw EmailNotFoundException
+    }
+
+    if (user.totpSecret) {
+      throw TOTPAlreadyEnabledException
+    }
+
+    // 2. Xác thực token
+    const verificationToken = await this.authRepository.findUniqueVerificationToken({ token: setupToken })
+
+    if (
+      !verificationToken ||
+      verificationToken.userId !== userId ||
+      verificationToken.tokenType !== TokenType.TOTP_SETUP ||
+      verificationToken.expiresAt < new Date()
+    ) {
+      throw InvalidOTPTokenException
+    }
+
+    try {
+      // 3. Lấy secret từ metadata
+      const { secret } = JSON.parse(verificationToken.metadata || '{}')
+
+      if (!secret) {
+        throw InvalidOTPTokenException
+      }
+
+      // 4. Xác thực mã TOTP
+      const isValid = this.twoFactorService.verifyTOTP({
+        email: user.email,
+        secret,
+        token: totpCode
+      })
+
+      if (!isValid) {
+        throw InvalidTOTPException
+      }
+
+      // 5. Tạo recovery codes
+      const recoveryCodes = this.generateRecoveryCodes()
+
+      // 6. Lưu recovery codes vào bảng VerificationToken
+      // Xóa các recovery codes cũ nếu có
+      await this.authRepository.deleteVerificationTokenByEmailAndType(
+        user.email,
+        TypeOfVerificationCode.SETUP_2FA,
+        TokenType.RECOVERY
+      )
+
+      // Lưu các mã mới, mỗi mã là một token riêng biệt
+      const saveCodePromises = recoveryCodes.map((code) =>
+        this.authRepository.createVerificationToken({
+          token: uuidv4(),
+          email: user.email,
+          type: TypeOfVerificationCode.SETUP_2FA,
+          tokenType: TokenType.RECOVERY,
+          userId: user.id,
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 10), // 10 năm
+          metadata: JSON.stringify({ code, used: false })
+        })
+      )
+
+      await Promise.all(saveCodePromises)
+
+      // 7. Nếu hợp lệ, cập nhật secret vào user
+      await this.authRepository.updateUser({ id: userId }, { totpSecret: secret })
+
+      // 8. Xóa verification token
+      await this.authRepository.deleteVerificationToken({ token: setupToken })
+
+      // 9. Trả về thông báo thành công và recovery codes
+      return {
+        message: 'Xác thực 2 yếu tố đã được kích hoạt thành công',
+        recoveryCodes
+      }
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error
+      }
+      throw InvalidOTPTokenException
     }
   }
 
@@ -585,6 +694,13 @@ export class AuthService {
           type: TypeOfVerificationCode.LOGIN
         }
       })
+    } else if (body.type === TwoFactorMethodType.RECOVERY) {
+      // Xác thực recovery code
+      const isValid = await this.verifyRecoveryCode(user.email, body.code)
+
+      if (!isValid) {
+        throw InvalidRecoveryCodeException
+      }
     }
 
     // 4. Xóa loginSessionToken đã sử dụng
@@ -606,5 +722,56 @@ export class AuthService {
     })
 
     return tokens
+  }
+
+  // Sửa phương thức verifyRecoveryCode
+  async verifyRecoveryCode(email: string, recoveryCode: string) {
+    // Tìm tất cả các token recovery của user
+    const tokens = await this.authRepository.findVerificationTokens({
+      email,
+      type: TypeOfVerificationCode.SETUP_2FA,
+      tokenType: TokenType.RECOVERY
+    })
+
+    // Tìm token chứa recovery code và chưa được sử dụng
+    let matchedToken: any = null
+    for (const token of tokens) {
+      try {
+        const metadata = token.metadata ? JSON.parse(token.metadata) : {}
+        if (metadata.code === recoveryCode && !metadata.used) {
+          matchedToken = token
+          break
+        }
+      } catch (e) {
+        continue
+      }
+    }
+
+    if (!matchedToken) {
+      return false
+    }
+
+    // Đánh dấu recovery code đã được sử dụng
+    await this.authRepository.updateVerificationToken({
+      token: matchedToken.token,
+      metadata: JSON.stringify({ code: recoveryCode, used: true })
+    })
+
+    return true
+  }
+
+  // Thêm phương thức tạo recovery codes
+  private generateRecoveryCodes(): string[] {
+    // Tạo 8 mã khôi phục dạng xxxx-xxxx-xxxx
+    const codes: string[] = []
+    for (let i = 0; i < 8; i++) {
+      // Tạo 3 nhóm 4 ký tự ngẫu nhiên
+      const group1 = Math.random().toString(36).substring(2, 6).toUpperCase()
+      const group2 = Math.random().toString(36).substring(2, 6).toUpperCase()
+      const group3 = Math.random().toString(36).substring(2, 6).toUpperCase()
+
+      codes.push(`${group1}-${group2}-${group3}`)
+    }
+    return codes
   }
 }

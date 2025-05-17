@@ -85,6 +85,13 @@ export const InvalidTOTPAndCodeException = new UnprocessableEntityException([
   }
 ])
 
+export const InvalidRecoveryCodeException = new UnprocessableEntityException([
+  {
+    message: 'Error.InvalidRecoveryCode',
+    path: 'code'
+  }
+])
+
 // OtpToken related errors
 export const InvalidOTPTokenException = new UnprocessableEntityException([
   {
