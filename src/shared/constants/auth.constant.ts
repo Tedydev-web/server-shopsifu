@@ -65,5 +65,5 @@ export const SecurityHeaders = {
   X_FRAME_OPTIONS: 'X-Frame-Options',
   CACHE_CONTROL: 'Cache-Control',
   X_XSS_PROTECTION: 'X-XSS-Protection',
-  CSRF_TOKEN_HEADER: 'XSRF-TOKEN'
+  CSRF_TOKEN_HEADER: 'x-csrf-token'
 } as const

@@ -77,7 +77,7 @@ export class TokenService {
     const refreshTokenOptions: CookieOptions = {
       httpOnly: true,
       secure: isProduction,
-      sameSite: 'lax',
+      sameSite: 'strict',
       maxAge: envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE,
       path: '/auth/refresh-token',
       domain: envConfig.COOKIE_DOMAIN

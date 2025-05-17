@@ -74,11 +74,7 @@ export class AuthController {
   @Post('login')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
-  @UseZodSchemas(
-    createSchemaOption(LoginResSchema, hasProperty('accessToken')),
-    createSchemaOption(LoginSessionResSchema, hasProperty('loginSessionToken')),
-    createSchemaOption(UserProfileResSchema, hasProperty('userId'))
-  )
+  @ZodSerializerDto(UserProfileResSchema)
   login(
     @Body() body: LoginBodyDTO,
     @UserAgent() userAgent: string,
@@ -191,10 +187,7 @@ export class AuthController {
   @Post('2fa/verify')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
-  @UseZodSchemas(
-    createSchemaOption(LoginResSchema, hasProperty('accessToken')),
-    createSchemaOption(UserProfileResSchema, hasProperty('userId'))
-  )
+  @ZodSerializerDto(UserProfileResSchema)
   verifyTwoFactor(
     @Body() body: TwoFactorVerifyBodyDTO,
     @UserAgent() userAgent: string,

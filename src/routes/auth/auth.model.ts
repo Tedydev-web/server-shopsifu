@@ -54,8 +54,10 @@ export const LoginBodySchema = UserSchema.pick({
 }).strict()
 
 export const LoginResSchema = z.object({
-  accessToken: z.string(),
-  refreshToken: z.string()
+  userId: z.number(),
+  email: z.string().email(),
+  name: z.string(),
+  role: z.string()
 })
 
 export const LoginSessionResSchema = z.object({
@@ -86,7 +88,10 @@ export const RefreshTokenBodySchema = z
   })
   .strict()
 
-export const RefreshTokenResSchema = LoginResSchema
+export const RefreshTokenResSchema = z.object({
+  userId: z.number(),
+  role: z.string()
+})
 
 export const DeviceSchema = z.object({
   id: z.number(),

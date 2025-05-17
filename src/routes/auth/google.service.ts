@@ -99,13 +99,22 @@ export class GoogleService {
         ip
       })
 
+      // Tạo token để sử dụng cho cookie
       const authTokens = await this.authService.generateTokens({
         userId: user.id,
         deviceId: device.id,
         roleId: user.roleId,
         roleName: user.role.name
       })
-      return authTokens
+      
+      // Trả về cả thông tin người dùng và token
+      return {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role.name,
+        ...authTokens
+      }
     } catch (error) {
       console.error('Error in googleCallback', error)
       throw error

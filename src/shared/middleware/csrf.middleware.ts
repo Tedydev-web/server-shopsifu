@@ -11,10 +11,11 @@ export class CsrfMiddleware implements NestMiddleware {
   constructor() {
     this.csrfProtection = csurf({
       cookie: {
-        key: CookieNames.CSRF_TOKEN,
+        key: '_csrfSecret',
         httpOnly: true,
-        sameSite: 'strict',
         secure: envConfig.NODE_ENV === 'production',
+        sameSite: 'lax',
+        signed: true,
         path: '/'
       },
       ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
@@ -23,18 +24,31 @@ export class CsrfMiddleware implements NestMiddleware {
   }
 
   use(req: Request, res: Response, next: NextFunction) {
-    // Bỏ qua bảo vệ CSRF cho API endpoints được chỉ định
-    // (ví dụ: endpoint callback từ bên thứ ba hoặc webhook)
+    console.log('CSRF Middleware - Incoming request:', req.method, req.path)
+    console.log('CSRF Middleware - Headers:', JSON.stringify(req.headers))
+    console.log('CSRF Middleware - Cookies before protection:', req.cookies)
+
     if (
       req.path.startsWith('/api/v1/auth/google/callback') ||
       req.path.startsWith('/api/v1/webhook') ||
       req.path.startsWith('/api/v1/health')
     ) {
+      console.log('CSRF Middleware - Bypassing for specific path:', req.path)
       return next()
     }
 
     this.csrfProtection(req, res, (err: any) => {
       if (err) {
+        console.error('CSRF Protection Error:', err.code === 'EBADCSRFTOKEN' ? 'Invalid CSRF token' : err.message, err)
+        console.error(
+          'CSRF Secret Cookie (_csrfSecret value from req.signedCookies):',
+          req.signedCookies?.['_csrfSecret']
+        )
+        console.error('CSRF Token Cookie (xsrf-token value from req.cookies):', req.cookies?.[CookieNames.CSRF_TOKEN])
+        console.error(
+          'Header value (X-CSRF-Token from req.headers):',
+          req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()]
+        )
         res.status(403).json({
           statusCode: 403,
           message: 'Invalid CSRF token',
@@ -43,31 +57,37 @@ export class CsrfMiddleware implements NestMiddleware {
         return
       }
 
-      // Đặt CSRF token vào header response
-      const csrfToken = req.csrfToken?.()
-      if (csrfToken) {
-        res.setHeader(SecurityHeaders.CSRF_TOKEN_HEADER, csrfToken)
-
-        // Cũng có thể đặt vào cookie có thể đọc được từ frontend
-        res.cookie(CookieNames.CSRF_TOKEN, csrfToken, {
-          httpOnly: false, // Cho phép JavaScript đọc được token
-          sameSite: 'strict',
+      const csrfTokenVal = req.csrfToken?.()
+      if (csrfTokenVal) {
+        res.setHeader(SecurityHeaders.CSRF_TOKEN_HEADER, csrfTokenVal)
+        res.cookie(CookieNames.CSRF_TOKEN, csrfTokenVal, {
+          httpOnly: false,
+          sameSite: 'lax',
           secure: envConfig.NODE_ENV === 'production',
-          path: '/'
+          path: '/',
+          signed: false
         })
+        console.log(`CSRF Middleware - CSRF token (${CookieNames.CSRF_TOKEN}) set for client:`, csrfTokenVal)
+      } else {
+        console.warn('CSRF Middleware - req.csrfToken() did not return a token for path:', req.path)
       }
 
+      console.log('CSRF Middleware - Cookies after protection:', req.cookies)
       next()
     })
   }
 
   private csrfTokenExtractor(req: Request): string {
-    // Thứ tự ưu tiên: header -> body -> query
-    return (
-      (req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()] as string) ||
-      req.body?._csrf ||
-      (req.query?._csrf as string) ||
-      ''
-    )
+    console.log(`CSRF Extractor - Attempting to extract token for: ${req.method} ${req.path}`)
+    const tokenFromHeader = req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()] || req.headers['x-csrf-token']
+    const tokenFromBodyOrQuery = req.body?._csrf || req.query?._csrf
+
+    let token = tokenFromHeader || tokenFromBodyOrQuery
+
+    if (Array.isArray(token)) {
+      token = token[0]
+    }
+    console.log('CSRF Extractor - Token found in request:', token)
+    return (token as string) || ''
   }
 }

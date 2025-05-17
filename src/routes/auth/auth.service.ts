@@ -337,8 +337,8 @@ export class AuthService {
       }
     }
 
-    // Tương thích ngược: trả về token trong body
-    return tokens
+    // Thay thế bằng:
+    throw new Error('Response object is required for cookie-based authentication')
   }
 
   async generateTokens({ userId, deviceId, roleId, roleName }: AccessTokenPayloadCreate) {
@@ -425,8 +425,8 @@ export class AuthService {
         }
       }
 
-      // Tương thích ngược: trả về token trong body
-      return tokens
+      // Thay thế bằng:
+      throw new Error('Response object is required for cookie-based authentication')
     } catch (error) {
       if (error instanceof HttpException) {
         throw error
@@ -797,8 +797,8 @@ export class AuthService {
       }
     }
 
-    // Tương thích ngược: trả về token trong body
-    return tokens
+    // Thay thế bằng:
+    throw new Error('Response object is required for cookie-based authentication')
   }
 
   // Sửa phương thức verifyRecoveryCode

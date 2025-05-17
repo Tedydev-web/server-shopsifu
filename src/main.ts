@@ -9,16 +9,25 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn', 'log', 'verbose', 'debug']
   })
+
+  // Cấu hình CORS để cho phép cookies
   app.enableCors({
-    origin: '*',
-    methods: 'GET,POST,PUT,DELETE',
-    credentials: true
+    origin: ['https://shopsifu.live', 'http://localhost:8000'], // Cho phép mọi origin trong môi trường dev, thay đổi thành domain thực sự trong production
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true, // Quan trọng cho cookies
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'x-csrf-token']
   })
 
   // Security
   app.use(helmet())
   app.use(compression())
-  app.use(cookieParser(envConfig.COOKIE_SECRET))
+
+  // Cookie parser - không ký cookies CSRF để đảm bảo khớp với csurf
+  app.use(
+    cookieParser(envConfig.COOKIE_SECRET, {
+      decode: decodeURIComponent
+    })
+  )
 
   // Global prefix
   app.setGlobalPrefix('api/v1')

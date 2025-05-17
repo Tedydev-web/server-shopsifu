@@ -1,0 +1,963 @@
+{
+  "info": {
+    "_postman_id": "56255e22-f6d6-490b-8a22-f69bbf0c0cf9",
+    "name": "Shopsifu",
+    "description": "🛍️ Shopsifu API Documentation\n\n> 📌 Phiên bản: v1.0.0\n> 🗓️ Cập nhật lần cuối: 16/05/2025\n> 🌐 Môi trường mặc định: Production\n> 🔗 API Base URL: [https://api.shopsifu.live/api/v1](https://api.shopsifu.live/api/v1)\n\n---\n\n## 🔰 Giới thiệu\n\nShopsifu là nền tảng thương mại điện tử toàn diện, kết nối người mua và người bán, hỗ trợ từ đăng sản phẩm đến xử lý đơn hàng, vận chuyển và đánh giá.\n\nCollection API này giúp dev, QA, tester và stakeholder dễ dàng kiểm thử, tích hợp và mở rộng chức năng của hệ thống.\n\n---\n\n## 🚀 Chức năng chính\n\n| Module         | Mô tả                                               |\n| -------------- | --------------------------------------------------- |\n| 🧑‍💼 User     | Đăng ký, đăng nhập, xác thực, quản lý hồ sơ cá nhân |\n| 🏪 Shop        | Tạo shop, cập nhật thông tin, quản lý sản phẩm      |\n| 📦 Product     | CRUD sản phẩm, phân loại, tìm kiếm nâng cao         |\n| 🛒 Cart        | Thêm/xoá/sửa sản phẩm trong giỏ hàng                |\n| 💳 Order       | Tạo đơn hàng, thanh toán, theo dõi trạng thái đơn   |\n| 🚚 Shipping    | Tính phí ship, tracking vận đơn, tích hợp GHTK/GHN  |\n| 🧾 Payment     | Tích hợp ví điện tử, hoàn tiền, kiểm tra giao dịch  |\n| 🌟 Review      | Đánh giá sản phẩm và người bán                      |\n| 🔧 Admin Tools | Quản lý hệ thống, thống kê, kiểm duyệt nội dung     |\n\n---\n\n## 🔰 Xác thực & Bảo mật (Cookie-Based Authentication)\n\n### Cơ chế hoạt động của Cookie-Based Authentication\n\n* Hệ thống sử dụng cookie-based authentication thay vì token-based:\n  - Access Token được lưu trong cookie HTTP-Only (không truy cập được từ JavaScript)\n  - Refresh Token được lưu trong cookie HTTP-Only riêng biệt\n  - CSRF Token được sử dụng để bảo vệ khỏi tấn công CSRF\n\n* Luồng xác thực:\n  1. User đăng nhập → Server tạo token → Token được gửi trong cookie\n  2. Mỗi request sau đó tự động gửi kèm cookie chứa token\n  3. Server xác thực token từ cookie, không cần gửi trong header\n  4. Khi token hết hạn, refresh token cookie được sử dụng để làm mới\n  5. Khi đăng xuất, server xóa các cookie liên quan\n\n* CSRF Protection:\n  - Server tự động tạo CSRF token và gửi trong cookie `xsrf-token` và header `XSRF-TOKEN`\n  - Các request không phải GET phải kèm CSRF token trong header `X-CSRF-Token`\n\n### Cấu hình Postman\n\n1. **Bật chức năng Cookie trong Postman**:\n   - Settings > General > Cookies > Enable cookies\n   - Enable \"Automatically follow redirects\" \n\n2. **Tạo CSRF Token Variable**:\n   - Sau khi đăng nhập, token được tự động trả về trong cookie và header\n   - Lưu giá trị vào biến `{{csrfToken}}` cho các request tiếp theo\n   - Thêm header `XSRF-TOKEN: {{csrfToken}}` cho các request POST/PUT/DELETE\n\n3. **Cách debug Cookie**:\n   - Xem cookies bằng cách chọn request > Cookies (tab bên cạnh Headers)\n   - Xem response headers để lấy CSRF token mới nếu cần\n\n---\n\n## 🧪 Hướng dẫn sử dụng Collection\n\n1. Tải Collection: [→ Tải Shopsifu Postman Collection](https://api.shopsifu.live/docs/postman-collection)\n2. Import vào Postman\n3. Thiết lập Environment Variable:\n\n   * base\\_url = [https://api.shopsifu.live/api/v1](https://api.shopsifu.live/api/v1)\n   * localUrl = [http://localhost:3000/api/v1](http://localhost:3000/api/v1)\n   * csrfToken = (sẽ được cập nhật tự động sau đăng nhập)\n4. Luồng xác thực:\n   * Đăng nhập → Cookies được lưu tự động\n   * Lấy CSRF token từ response header/cookie\n   * Sử dụng CSRF token cho các request không phải GET\n   * Truy cập API - Cookies được gửi tự động\n   * Refresh token - Không cần gửi token thủ công\n   * Đăng xuất - Cookies bị xóa\n\n> **Lưu ý**: Với tất cả các endpoint không phải GET, nhớ thêm header `XSRF-TOKEN: {{csrfToken}}`.\n\n---\n\n## 📘 Tiêu chuẩn RESTful & Quy ước\n\n* ✅ GET – Lấy dữ liệu\n* ✏️ POST – Tạo mới\n* ♻️ PUT/PATCH – Cập nhật\n* ❌ DELETE – Xoá\n\nMã phản hồi (Status Code):\n\n* 200 OK – Thành công\n* 201 Created – Tạo thành công\n* 400 Bad Request – Request lỗi\n* 401 Unauthorized – Token sai/hết hạn\n* 403 Forbidden – Không đủ quyền hoặc thiếu CSRF token\n* 404 Not Found – Không tìm thấy\n* 500 Internal Server Error – Lỗi server\n\n---\n\n## 📈 Định hướng mở rộng\n\n* Tích hợp AI gợi ý sản phẩm\n* Tracking đơn hàng realtime với WebSocket\n* GraphQL API (phiên bản 2)\n* Microservices hóa từng module\n\n---\n\n## 👨‍💻 Đội ngũ phát triển\n\n| Thành viên       | Vai trò            |\n| ---------------- | ------------------ |\n| Đồng Hiếu Đạt    | Backend Engineer   |\n| Nguyễn Đăng Phát | Frontend Developer |\n| Huỳnh Sơn Tùng   | Frontend Developer |\n| Trương Hùng Anh  | Frontend Developer |\n| Nguyễn Gia Huy   | DQA & Tester       |\n| Phan Thành Lợi   | QA & Tester        |\n\n---\n\nMade with ❤️ by Shopsifu Engineering Team\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "30243513",
+    "_collection_link": "https://www.postman.com/shopsifu/workspace/shopsifu-workspace/collection/30243513-56255e22-f6d6-490b-8a22-f69bbf0c0cf9?action=share&source=collection_link&creator=30243513"
+  },
+  "item": [
+    {
+      "name": "Auth Modules Local",
+      "item": [
+        {
+          "name": "Get Collection Variables",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Lấy và hiển thị các biến môi trường và collection hiện tại",
+                  "console.log('===== THIẾT LẬP POSTMAN CHO COOKIE-BASED AUTH =====');",
+                  "console.log('* CSRF token hiện tại:', pm.environment.get('csrfToken'));",
+                  "console.log('* LOCAL URL hiện tại:', pm.environment.get('localUrl'));",
+                  "console.log('* EMAIL hiện tại:', pm.environment.get('email'));",
+                  "console.log('* Mật khẩu hiện tại:', pm.environment.get('defaultPwd'));",
+                  "console.log('===== HƯỚNG DẪN SỬ DỤNG =====');",
+                  "console.log('1. Enable cookies trong Postman: Settings > General > Cookies');",
+                  "console.log('2. Thêm biến môi trường \"localUrl\" = http://localhost:3000/api/v1');",
+                  "console.log('3. Đặt email và defaultPwd phù hợp với hệ thống của bạn');",
+                  "console.log('4. Thực hiện các request theo thứ tự trong collection');",
+                  "console.log('5. Headers với X-CSRF-Token sẽ được tự động điền sau khi đăng nhập');"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{localUrl}}/",
+              "host": ["{{localUrl}}"],
+              "path": [""]
+            },
+            "description": "## Hướng dẫn cài đặt và sử dụng Cookie-Based Auth\n\n### Cài đặt Postman\n\n1. **Thiết lập biến môi trường**:\n   - `localUrl`: URL của API local (ví dụ: http://localhost:3000/api/v1)\n   - `email`: Email đăng ký/đăng nhập\n   - `defaultPwd`: Mật khẩu mặc định\n\n2. **Cấu hình Postman**:\n   - Settings > General > Cookies > Enable cookies\n   - Bật \"Automatically follow redirects\"\n\n### Thứ tự thực hiện các API\n\n1. **Đăng ký người dùng mới**:\n   - Send OTP (type: REGISTER)\n   - Verify Code (type: REGISTER)\n   - Register\n\n2. **Đăng nhập**:\n   - Login\n   - Sau khi đăng nhập, Postman sẽ tự động lưu cookies và CSRF token\n\n3. **Sử dụng API đã xác thực**:\n   - Tất cả các request bảo mật sẽ sử dụng cookies được lưu tự động\n   - Thêm header `X-CSRF-Token: {{csrfToken}}` cho các request không phải GET\n\n4. **Refresh Token** (khi access token hết hạn):\n   - Gọi endpoint refresh-token để cập nhật cookies\n\n5. **Đăng xuất**:\n   - Gọi endpoint logout để xóa cookies\n\nCác cookies được tạo:\n- `access_token`: Chứa JWT access token (HTTP-Only)\n- `refresh_token`: Chứa JWT refresh token (HTTP-Only)\n- `xsrf-token`: Chứa CSRF token (đọc được từ JavaScript)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Authorize",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/google-link",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "google-link"]
+            },
+            "description": "#### 📄 Mục đích\n\nLấy đường dẫn OAuth2 để redirect người dùng sang Google, phục vụ login/auth với Google account.\n\n#### 🔑 Headers\n\n* (Không yêu cầu)\n\n#### ❓ Query / Path / Body\n\n* (Không có)\n\n#### 📤 Ví dụ Request\n\n```\nGET https://api.shopsifu.live/api/v1/auth/google-link\n```\n\n#### ✅ Response Codes\n\n* `200 OK` – Trả về URL redirect.\n* `500 Internal Server Error` – Lỗi server.\n\n#### 📦 Ví dụ Response\n\n```json\n{\n  \"url\": \"https://accounts.google.com/o/oauth2/v2/auth?client_id=…\"\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"\", function () {",
+                  "    pm.response.to.be.success",
+                  "    const {email} = pm.response.json().data",
+                  "    pm.environment.set(\"email\", email)",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "XSRF-TOKEN",
+                "value": "{{csrfToken}}",
+                "type": "text"
+              },
+              {
+                "key": "User-Agent",
+                "value": "",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "  {\n    \"email\": \"{{email}}\",\n    \"name\": \"{{defaultName}}\",\n    \"phoneNumber\": \"0123456789\",\n    \"password\": \"{{defaultPwd}}\",\n    \"confirmPassword\": \"{{defaultPwd}}\",\n    \"otpToken\": \"ad960e3e-1602-4879-8efe-10d091648f23\" // otpToken: Nhận được sau khi gọi verify-code với type=REGISTER\n  }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/register",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "#### 📄 Mục đích\n\nTạo mới tài khoản người dùng sau khi đã verify OTP.\n\n#### 🔑 Headers\n\n* `Content-Type: application/json`\n* `Accept-Language: vi`\n\n#### 📥 Body Parameters\n\n| Field           | Loại   | Mô tả                             |\n| --------------- | ------ | --------------------------------- |\n| email           | string | Email đã verify bằng OTP          |\n| name            | string | Họ tên người dùng                 |\n| phoneNumber     | string | Số điện thoại                     |\n| password        | string | Mật khẩu                          |\n| confirmPassword | string | Nhập lại mật khẩu                 |\n| otpToken        | string | Token OTP (response từ /auth/otp) |\n\n#### 📤 Ví dụ Request\n\n```json\nPOST https://api.shopsifu.live/api/v1/auth/register\nContent-Type: application/json\nAccept-Language: vi\n\n{\n  \"email\": \"user@example.com\",\n  \"name\": \"Nguyen Phat\",\n  \"phoneNumber\": \"0123456789\",\n  \"password\": \"P@ssw0rd!\",\n  \"confirmPassword\": \"P@ssw0rd!\",\n  \"otpToken\": \"{{otpToken}}\"\n}\n```\n\n#### ✅ Response Codes\n\n* `201 Created` – Tạo tài khoản thành công.\n* `400 Bad Request` – Thiếu trường hoặc mật khẩu không khớp.\n* `409 Conflict` – Email đã tồn tại.\n\n#### 📦 Ví dụ Response\n\n```json\n{\n  \"data\": {\n    \"email\": \"user@example.com\",\n    \"id\": \"user-uuid-1234\"\n  }\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Send OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "",
+                  "// Check response for successful execution and set environment variables",
+                  "pm.test(\"Check response for successful execution and set environment variables\", function () {",
+                  "    pm.response.to.be.success;",
+                  "    const responseData = pm.response.json();",
+                  "    ",
+                  "    // Nếu môi trường phát triển có thể có email và code",
+                  "    if (responseData.email) {",
+                  "        pm.expect(responseData).to.have.property('email').that.is.a('string');",
+                  "        pm.environment.set(\"email\", responseData.email);",
+                  "    }",
+                  "    ",
+                  "    if (responseData.code) {",
+                  "        pm.expect(responseData).to.have.property('code').that.is.a('string');",
+                  "        pm.environment.set(\"code\", responseData.code);",
+                  "    }",
+                  "    ",
+                  "    // Lưu otpToken nếu có",
+                  "    if (responseData.otpToken) {",
+                  "        pm.environment.set(\"otpToken\", responseData.otpToken);",
+                  "    }",
+                  "    ",
+                  "    // Kiểm tra CSRF token mới nếu có",
+                  "    var csrfToken = pm.cookies.get('xsrf-token') || pm.response.headers.get('XSRF-TOKEN');",
+                  "    if (csrfToken) {",
+                  "        console.log('CSRF Token mới:', csrfToken);",
+                  "        pm.environment.set(\"csrfToken\", csrfToken);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "  {\n    \"email\": \"{{email}}\",\n    \"type\": \"FORGOT_PASSWORD\" // type: Loại mã xác thực - có thể là: \"REGISTER\", \"FORGOT_PASSWORD\", \"LOGIN\", \"DISABLE_2FA\", \"SETUP_2FA\"\n  }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/otp",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "otp"]
+            },
+            "description": "#### 📄 Mục đích\n\nGửi mã OTP cho email:\n\n* Đăng ký (REGISTER)\n* Quên mật khẩu (FORGOT\\_PASSWORD)\n* Login không mật khẩu (LOGIN)\n* Tắt 2FA (DISABLE\\_2FA)\n\n#### 🔑 Headers\n\n* `Content-Type: application/json`\n* `X-CSRF-Token: {{csrfToken}}`\n\n#### 📥 Body Parameters\n\n| Field | Loại   | Mô tả                                              |\n| ----- | ------ | -------------------------------------------------- |\n| email | string | Địa chỉ email nhận OTP                             |\n| type  | string | REGISTER / FORGOT\\_PASSWORD / LOGIN / DISABLE\\_2FA |\n\n#### 📤 Ví dụ Request\n\n```json\nPOST https://api.shopsifu.live/api/v1/auth/otp\nContent-Type: application/json\nX-CSRF-Token: {{csrfToken}}\n\n{\n  \"email\": \"user@example.com\",\n  \"type\": \"REGISTER\"\n}\n```\n\n#### ✅ Response Codes\n\n* `200 OK` – OTP đã gửi thành công.\n* `400 Bad Request` – Thiếu hoặc sai type.\n* `403 Forbidden` – Thiếu CSRF token.\n* `429 Too Many Requests` – Gửi quá số lần cho phép.\n\n#### 📦 Ví dụ Response (Chỉ trong môi trường phát triển)\n\n```json\n{\n  \"email\": \"user@example.com\",\n  \"code\": \"d6f3a2\",\n  \"message\": \"Gửi mã OTP thành công\"\n}\n```\n\n#### 📦 Ví dụ Response (Môi trường production)\n\n```json\n{\n  \"message\": \"Gửi mã OTP thành công\"\n}\n```\n"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify code",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{email}}\",\n    \"code\": \"239667\", // code: Mã 6 số người dùng nhận qua email\n    \"type\": \"FORGOT_PASSWORD\" // type: Loại mã xác thực, cần khớp với loại đã gửi - có thể là: \"REGISTER\", \"FORGOT_PASSWORD\", \"LOGIN\", \"DISABLE_2FA\", \"SETUP_2FA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/verify-code",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "verify-code"]
+            },
+            "description": "#### 📄 Mục đích\n\nXác thực mã OTP đã gửi về email để tiếp tục flow REGISTER / LOGIN / RESET / DISABLE\\_2FA.\n\n#### 🔑 Headers\n\n* `Content-Type: application/json`\n* `X-CSRF-Token: {{csrfToken}}`\n\n#### 📥 Body Parameters\n\n| Field | Loại   | Mô tả                                              |\n| ----- | ------ | -------------------------------------------------- |\n| email | string | Email đã dùng lấy OTP                              |\n| code  | string | Mã OTP nhận được                                   |\n| type  | string | REGISTER / FORGOT\\_PASSWORD / LOGIN / DISABLE\\_2FA |\n\n#### 📤 Ví dụ Request\n\n```json\nPOST https://api.shopsifu.live/api/v1/auth/verify-code\nContent-Type: application/json\nX-CSRF-Token: {{csrfToken}}\n\n{\n  \"email\": \"user@example.com\",\n  \"code\": \"d6f3a2\",\n  \"type\": \"REGISTER\"\n}\n```\n\n#### ✅ Response Codes\n\n* `200 OK` – Code hợp lệ.\n* `400 Bad Request` – Code sai/hết hạn.\n* `401 Unauthorized` – Email chưa gửi OTP.\n* `403 Forbidden` – Thiếu CSRF token.\n\n#### 📦 Ví dụ Response\n\n```json\n{\n  \"otpToken\": \"a1b2c3d4-e5f6-g7h8-i9j0-k1l2m3n4o5p6\",\n  \"message\": \"Code verified successfully.\"\n}\n```\n"
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Kiểm tra response status code và set environment variables",
+                  "pm.test(\"Đăng nhập thành công, lưu thông tin người dùng\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    ",
+                  "    // Lấy thông tin người dùng từ response body",
+                  "    var responseData = pm.response.json();",
+                  "    if (responseData.userId) {",
+                  "        pm.environment.set(\"userId\", responseData.userId);",
+                  "        pm.environment.set(\"userEmail\", responseData.email);",
+                  "    }",
+                  "    ",
+                  "    // Kiểm tra xem có loginSessionToken không (cho 2FA)",
+                  "    if (responseData.loginSessionToken) {",
+                  "        pm.environment.set(\"loginSessionToken\", responseData.loginSessionToken);",
+                  "    }",
+                  "    ",
+                  "    // Kiểm tra cookies đã được set hay chưa",
+                  "    var allCookies = pm.cookies.getAll();",
+                  "    console.log('Cookies hiện tại:', allCookies);",
+                  "    ",
+                  "    // Lấy CSRF token từ cookie hoặc header",
+                  "    var csrfToken = pm.cookies.get('xsrf-token') || pm.response.headers.get('XSRF-TOKEN');",
+                  "    if (csrfToken) {",
+                  "        console.log('CSRF Token:', csrfToken);",
+                  "        pm.environment.set(\"csrfToken\", csrfToken);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{email}}\",\n    \"password\": \"{{defaultPwd}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/login",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "#### 📄 Mục đích\n\nXác thực email + password, lưu tokens vào cookies và trả về thông tin người dùng.\n\n#### 🔑 Headers\n\n* `Content-Type: application/json`\n* `X-CSRF-Token: {{csrfToken}}` (Nếu đã có sẵn từ request trước)\n\n#### 📥 Body Parameters\n\n| Field    | Loại   | Mô tả            |\n| -------- | ------ | ---------------- |\n| email    | string | Email người dùng |\n| password | string | Mật khẩu         |\n\n#### 📤 Ví dụ Request\n\n```json\nPOST https://api.shopsifu.live/api/v1/auth/login\nContent-Type: application/json\n\n{\n  \"email\": \"user@example.com\",\n  \"password\": \"P@ssw0rd!\"\n}\n```\n\n#### ✅ Response Codes\n\n* `200 OK` – Thông tin hợp lệ, cookies đã được set.\n* `401 Unauthorized` – Email hoặc mật khẩu sai.\n* `403 Forbidden` – Tài khoản cần 2FA.\n\n#### 📦 Ví dụ Response\n\n```json\n{\n  \"userId\": 123,\n  \"email\": \"user@example.com\",\n  \"name\": \"User Name\",\n  \"role\": \"client\"\n}\n```\n\n#### 🍪 Cookie\n\nAPI này sẽ set cookie:\n* `access_token`: Cookie HTTP-Only chứa JWT access token\n* `refresh_token`: Cookie HTTP-Only chứa JWT refresh token\n* `xsrf-token`: Cookie chứa CSRF token\n\n#### 📋 CSRF Token\n\nCSRF token cũng được trả về trong response header `XSRF-TOKEN`"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Kiểm tra response status code và set environment variables",
+                  "pm.test(\"Refresh token thành công\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    ",
+                  "    // Kiểm tra xem response chỉ chứa thông tin user và không chứa token",
+                  "    var responseData = pm.response.json();",
+                  "    pm.expect(responseData).to.have.property('userId');",
+                  "    pm.expect(responseData).to.have.property('role');",
+                  "    pm.expect(responseData).to.not.have.property('accessToken');",
+                  "    pm.expect(responseData).to.not.have.property('refreshToken');",
+                  "    ",
+                  "    // Kiểm tra cookies đã được cập nhật hay chưa",
+                  "    var allCookies = pm.cookies.getAll();",
+                  "    console.log('Cookies sau refresh:', allCookies);",
+                  "    ",
+                  "    // Lấy CSRF token mới nếu có",
+                  "    var csrfToken = pm.cookies.get('xsrf-token') || pm.response.headers.get('XSRF-TOKEN');",
+                  "    if (csrfToken) {",
+                  "        console.log('CSRF Token mới:', csrfToken);",
+                  "        pm.environment.set(\"csrfToken\", csrfToken);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/refresh-token",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "refresh-token"]
+            },
+            "description": "#### 📄 Mục đích\n\nLàm mới access token khi hết hạn, sử dụng refresh token từ cookie.\n\n#### 🔑 Headers\n\n* `Content-Type: application/json`\n* `X-CSRF-Token: {{csrfToken}}`\n\n#### 📥 Body Parameters\n\n* Không cần body, cookie refresh_token sẽ được gửi tự động\n\n#### 📤 Ví dụ Request\n\n```json\nPOST https://api.shopsifu.live/api/v1/auth/refresh-token\nContent-Type: application/json\nX-CSRF-Token: {{csrfToken}}\n```\n\n#### ✅ Response Codes\n\n* `200 OK` – Refresh thành công, cookies đã được cập nhật.\n* `401 Unauthorized` – Refresh token không hợp lệ hoặc đã hết hạn.\n* `403 Forbidden` – Thiếu CSRF token.\n\n#### 📦 Ví dụ Response\n\n```json\n{\n  \"userId\": 123,\n  \"role\": \"client\"\n}\n```\n\n#### 🍪 Cookie\n\nAPI này sẽ cập nhật cookie:\n* `access_token`: Cookie HTTP-Only chứa JWT access token mới\n* `refresh_token`: Cookie HTTP-Only chứa JWT refresh token mới\n* `xsrf-token`: Cookie chứa CSRF token mới\n\n#### 📋 CSRF Token\n\nCSRF token mới cũng được trả về trong response header `XSRF-TOKEN`"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Đăng xuất thành công, cookies được xóa\", function () {",
+                  "    pm.response.to.be.success;",
+                  "    ",
+                  "    // Kiểm tra xem cookies đã bị xóa chưa",
+                  "    var accessTokenCookie = pm.cookies.get('access_token');",
+                  "    var refreshTokenCookie = pm.cookies.get('refresh_token');",
+                  "    ",
+                  "    // Kiểm tra response message",
+                  "    var responseData = pm.response.json();",
+                  "    pm.expect(responseData).to.have.property('message');",
+                  "    pm.expect(responseData.message).to.include('thành công');",
+                  "    ",
+                  "    // Log các cookies còn lại cho mục đích debug",
+                  "    console.log('Cookies sau khi đăng xuất:', pm.cookies.getAll());",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/logout",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "#### 📄 Mục đích\n\nHủy phiên đăng nhập, xóa các cookie chứa token.\n\n#### 🔑 Headers\n\n* `Content-Type: application/json`\n* `X-CSRF-Token: {{csrfToken}}`\n\n#### 📥 Body Parameters\n\n* Không cần body, cookie refresh_token sẽ được gửi tự động\n\n#### 📤 Ví dụ Request\n\n```json\nPOST https://api.shopsifu.live/api/v1/auth/logout\nContent-Type: application/json\nX-CSRF-Token: {{csrfToken}}\n```\n\n#### ✅ Response Codes\n\n* `200 OK` – Đăng xuất thành công, cookies đã bị xóa.\n* `401 Unauthorized` – Phiên không hợp lệ.\n* `403 Forbidden` – Thiếu CSRF token.\n\n#### 📦 Ví dụ Response\n\n```json\n{\n  \"message\": \"Đăng xuất thành công\"\n}\n```\n\n#### 🍪 Cookie\n\nAPI này sẽ xóa các cookie sau:\n* `access_token`\n* `refresh_token`\n* `xsrf-token` (có thể được giữ lại để sử dụng cho đăng nhập tiếp theo)"
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{email}}\",\n    \"otpToken\": \"1f170a4e-fb12-4402-a656-d116b4cd86c3\", // otpToken: Nhận được sau khi gọi verify-code với type=FORGOT_PASSWORD\n    \"newPassword\": \"{{defaultPwd}}\",\n    \"confirmNewPassword\": \"{{defaultPwd}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/reset-password",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "reset-password"]
+            },
+            "description": "#### 📄 Mục đích\n\nĐặt lại mật khẩu mới cho tài khoản sau khi đã verify OTP.\n\n#### 🔑 Headers\n\n* `Content-Type: application/json`\n\n#### 📥 Body Parameters\n\n| Field              | Loại   | Mô tả                  |\n| ------------------ | ------ | ---------------------- |\n| email              | string | Email người dùng       |\n| otpToken           | string | Token OTP từ /auth/otp |\n| newPassword        | string | Mật khẩu mới           |\n| confirmNewPassword | string | Nhập lại mật khẩu mới  |\n\n#### 📤 Ví dụ Request\n\n```json\nPOST https://api.shopsifu.live/api/v1/auth/reset-password\nContent-Type: application/json\n\n{\n  \"email\": \"user@example.com\",\n  \"otpToken\": \"{{otpToken}}\",\n  \"newPassword\": \"NewP@ss123\",\n  \"confirmNewPassword\": \"NewP@ss123\"\n}\n```\n\n#### ✅ Response Codes\n\n* `200 OK` – Đổi mật khẩu thành công.\n* `400 Bad Request` – Mật khẩu không hợp lệ hoặc không khớp.\n* `401 Unauthorized` – OTP sai/hết hạn.\n"
+          },
+          "response": []
+        },
+        {
+          "name": "Setup 2FA",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Store the secret from the response in an environment or global variable",
+                  "var responseBody = pm.response.json();",
+                  "var setupToken = responseBody.setupToken;",
+                  "pm.environment.set(\"setupToken\", setupToken);"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/2fa/setup",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "2fa", "setup"]
+            },
+            "description": "#### 📄 Mục đích\n\nKhởi tạo 2FA cho tài khoản, trả về secret QR code hoặc URL để người dùng quét vào Authenticator app.\n\n#### 🔑 Headers\n\n* `Authorization: Bearer {{accessToken}}`\n\n#### ❓ Body\n\n* (Không cần body)\n\n#### 📤 Ví dụ Request\n\n```\nPOST https://api.shopsifu.live/api/v1/auth/2fa/setup\nAuthorization: Bearer <accessToken>\n```\n\n#### ✅ Response Codes\n\n* `200 OK` – Trả về `secret`, `qrCodeUrl`.\n* `401 Unauthorized` – Token sai/hết hạn.\n\n#### 📦 Ví dụ Response\n\n```json\n{\n  \"secret\": \"JBSWY3DPEHPK3PXP\",\n  \"qrCodeUrl\": \"https://api.qrserver.com/v1/create-qr-code/?data=…\"\n}\n```\n"
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm 2FA",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"setupToken\": \"{{setupToken}}\", // setupToken: Token nhận được từ API setup 2FA\n  \"totpCode\": \"290704\" // totpCode: Mã 6 số từ ứng dụng Authenticator\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/2fa/confirm-setup",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "2fa", "confirm-setup"]
+            },
+            "description": "#### 📄 Mục đích\n\nKhởi tạo 2FA cho tài khoản, trả về secret QR code hoặc URL để người dùng quét vào Authenticator app.\n\n#### 🔑 Headers\n\n* `Authorization: Bearer {{accessToken}}`\n\n#### ❓ Body\n\n* (Không cần body)\n\n#### 📤 Ví dụ Request\n\n```\nPOST https://api.shopsifu.live/api/v1/auth/2fa/setup\nAuthorization: Bearer <accessToken>\n```\n\n#### ✅ Response Codes\n\n* `200 OK` – Trả về `secret`, `qrCodeUrl`.\n* `401 Unauthorized` – Token sai/hết hạn.\n\n#### 📦 Ví dụ Response\n\n```json\n{\n  \"secret\": \"JBSWY3DPEHPK3PXP\",\n  \"qrCodeUrl\": \"https://api.qrserver.com/v1/create-qr-code/?data=…\"\n}\n```\n"
+          },
+          "response": []
+        },
+        {
+          "name": "Disable 2FA",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n\t\"type\": \"TOTP\", // hoặc \"OTP\" | type: Phương thức xác thực - \"TOTP\" (từ app) hoặc \"OTP\" (từ email)\n\t\"code\": \"015508\" // code: Mã xác thực 6 số từ app hoặc email\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/2fa/disable",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "2fa", "disable"]
+            },
+            "description": "#### 📄 Mục đích\n\nTắt 2FA cho tài khoản sau khi xác nhận mã OTP hoặc TOTP.\n\n#### 🔑 Headers\n\n* `Authorization: Bearer {{accessToken}}`\n* `Content-Type: application/json`\n\n#### 📥 Body Parameters\n\n| Field    | Loại   | Mô tả                   |\n| -------- | ------ | ----------------------- |\n| totpCode | string | Mã TOTP hoặc OTP đã gửi |\n\n#### 📤 Ví dụ Request\n\n```json\nPOST https://api.shopsifu.live/api/v1/auth/2fa/disable\nAuthorization: Bearer <accessToken>\nContent-Type: application/json\n\n{\n  \"totpCode\": \"654321\"\n}\n```\n\n#### ✅ Response Codes\n\n* `200 OK` – Tắt 2FA thành công.\n* `400 Bad Request` – Code sai/hết hạn.\n* `401 Unauthorized` – Token không hợp lệ.\n"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify 2FA",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Xác thực 2FA thành công\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    ",
+                  "    // Lấy thông tin người dùng từ response body",
+                  "    var responseData = pm.response.json();",
+                  "    pm.expect(responseData).to.have.property('userId');",
+                  "    pm.expect(responseData).to.have.property('email');",
+                  "    pm.expect(responseData).to.have.property('name');",
+                  "    pm.expect(responseData).to.have.property('role');",
+                  "    pm.expect(responseData).to.not.have.property('accessToken');",
+                  "    pm.expect(responseData).to.not.have.property('refreshToken');",
+                  "    ",
+                  "    // Kiểm tra cookies đã được set hay chưa",
+                  "    var allCookies = pm.cookies.getAll();",
+                  "    console.log('Cookies sau xác thực 2FA:', allCookies);",
+                  "    ",
+                  "    // Lấy CSRF token từ cookie hoặc header",
+                  "    var csrfToken = pm.cookies.get('xsrf-token') || pm.response.headers.get('XSRF-TOKEN');",
+                  "    if (csrfToken) {",
+                  "        console.log('CSRF Token:', csrfToken);",
+                  "        pm.environment.set(\"csrfToken\", csrfToken);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [""],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginSessionToken\": \"{{loginSessionToken}}\", // loginSessionToken: Token nhận được từ API login khi 2FA được bật\n  \"type\": \"TOTP\", // type: Phương thức xác thực - \"TOTP\" (từ app) hoặc \"OTP\" (từ email) hoặc \"recoveryCode\" (Tùy chọn, chỉ sử dụng khi muốn bypass 2FA bằng recovery code nó sẽ được trả ra khi bật 2FA thành công)\n  \"code\": \"189282\" // code: Mã xác thực 6 số hoặc recovery code 10 số\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localUrl}}/auth/2fa/verify",
+              "host": ["{{localUrl}}"],
+              "path": ["auth", "2fa", "verify"]
+            },
+            "description": "#### 📄 Mục đích\n\nXác thực mã 2FA (TOTP hoặc OTP) sau khi login, lưu tokens vào cookies và trả về thông tin người dùng.\n\n#### 🔑 Headers\n\n* `Content-Type: application/json`\n* `X-CSRF-Token: {{csrfToken}}`\n\n#### 📥 Body Parameters\n\n| Field             | Loại   | Mô tả                                                 |\n| ----------------- | ------ | ----------------------------------------------------- |\n| loginSessionToken | string | Token phiên đăng nhập tạm thời                        |\n| type              | string | TOTP / OTP / RECOVERY                                 |\n| code              | string | Mã từ Authenticator app, email, hoặc recovery code    |\n\n#### 📤 Ví dụ Request\n\n```json\nPOST https://api.shopsifu.live/api/v1/auth/2fa/verify\nContent-Type: application/json\nX-CSRF-Token: {{csrfToken}}\n\n{\n  \"loginSessionToken\": \"abc123-session-token\",\n  \"type\": \"TOTP\",\n  \"code\": \"123456\"\n}\n```\n\n#### ✅ Response Codes\n\n* `200 OK` – Xác thực thành công, cookies đã được set.\n* `400 Bad Request` – Code sai/hết hạn.\n* `401 Unauthorized` – Session token không hợp lệ.\n* `403 Forbidden` – Thiếu CSRF token.\n\n#### 📦 Ví dụ Response\n\n```json\n{\n  \"userId\": 123,\n  \"email\": \"user@example.com\",\n  \"name\": \"User Name\",\n  \"role\": \"client\"\n}\n```\n\n#### 🍪 Cookie\n\nAPI này sẽ set cookie:\n* `access_token`: Cookie HTTP-Only chứa JWT access token\n* `refresh_token`: Cookie HTTP-Only chứa JWT refresh token\n* `xsrf-token`: Cookie chứa CSRF token\n\n#### 📋 CSRF Token\n\nCSRF token cũng được trả về trong response header `XSRF-TOKEN`"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Language Modules",
+      "item": [
+        {
+          "name": "Create Language",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n\t\"id\": \"ru\",\n\t\"name\": \"Rusia\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{serverUrl}}/languages",
+              "host": ["{{serverUrl}}"],
+              "path": ["languages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Languages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{serverUrl}}/languages",
+              "host": ["{{serverUrl}}"],
+              "path": ["languages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Language",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n\t\"name\": \"English\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{serverUrl}}/languages/en",
+              "host": ["{{serverUrl}}"],
+              "path": ["languages", "en"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Language",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{serverUrl}}/languages/vi",
+              "host": ["{{serverUrl}}"],
+              "path": ["languages", "vi"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Language Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{serverUrl}}/languages/vi",
+              "host": ["{{serverUrl}}"],
+              "path": ["languages", "vi"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Permissions Modules",
+      "item": []
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "exec": [""]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "exec": [""]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "localUrl",
+      "value": ""
+    },
+    {
+      "key": "serverUrl",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "email",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "defaultPwd",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "loginSessionToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "otpToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "setupToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "csrfToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
