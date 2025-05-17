@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common'
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common'
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { SharedModule } from 'src/shared/shared.module'
@@ -8,6 +8,8 @@ import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import { HttpExceptionFilter } from 'src/shared/filters/http-exception.filter'
 import { LanguageModule } from './routes/language/language.module'
+import { SecurityHeadersMiddleware } from './shared/middleware/security-headers.middleware'
+import { CsrfMiddleware } from './shared/middleware/csrf.middleware'
 
 @Module({
   imports: [SharedModule, AuthModule, LanguageModule],
@@ -25,4 +27,8 @@ import { LanguageModule } from './routes/language/language.module'
     }
   ]
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(SecurityHeadersMiddleware).forRoutes('*').apply(CsrfMiddleware).forRoutes('*')
+  }
+}

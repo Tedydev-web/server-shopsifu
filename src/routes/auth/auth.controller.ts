@@ -1,5 +1,5 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Res } from '@nestjs/common'
-import { Response } from 'express'
+import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Req, Res } from '@nestjs/common'
+import { Response, Request } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
   DisableTwoFactorBodyDTO,
@@ -18,9 +18,10 @@ import {
   VerifyCodeBodyDTO,
   VerifyCodeResDTO,
   TwoFactorConfirmSetupBodyDTO,
-  TwoFactorConfirmSetupResDTO
+  TwoFactorConfirmSetupResDTO,
+  UserProfileResDTO
 } from 'src/routes/auth/auth.dto'
-import { LoginResSchema, LoginSessionResSchema } from 'src/routes/auth/auth.model'
+import { LoginResSchema, LoginSessionResSchema, UserProfileResSchema } from 'src/routes/auth/auth.model'
 
 import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleService } from 'src/routes/auth/google.service'
@@ -31,12 +32,14 @@ import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { UseZodSchemas, createSchemaOption, hasProperty } from 'src/shared/decorators/use-zod-schema.decorator'
 import { EmptyBodyDTO } from 'src/shared/dtos/request.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { TokenService } from 'src/shared/services/token.service'
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly googleService: GoogleService
+    private readonly googleService: GoogleService,
+    private readonly tokenService: TokenService
   ) {}
 
   @Post('register')
@@ -70,34 +73,55 @@ export class AuthController {
 
   @Post('login')
   @IsPublic()
+  @HttpCode(HttpStatus.OK)
   @UseZodSchemas(
     createSchemaOption(LoginResSchema, hasProperty('accessToken')),
-    createSchemaOption(LoginSessionResSchema, hasProperty('loginSessionToken'))
+    createSchemaOption(LoginSessionResSchema, hasProperty('loginSessionToken')),
+    createSchemaOption(UserProfileResSchema, hasProperty('userId'))
   )
-  login(@Body() body: LoginBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
-    return this.authService.login({
-      ...body,
-      userAgent,
-      ip
-    })
+  login(
+    @Body() body: LoginBodyDTO,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    return this.authService.login(
+      {
+        ...body,
+        userAgent,
+        ip
+      },
+      res
+    )
   }
 
   @Post('refresh-token')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(RefreshTokenResDTO)
-  refreshToken(@Body() body: RefreshTokenBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
-    return this.authService.refreshToken({
-      refreshToken: body.refreshToken,
-      userAgent,
-      ip
-    })
+  refreshToken(
+    @Body() body: RefreshTokenBodyDTO,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    return this.authService.refreshToken(
+      {
+        refreshToken: body.refreshToken,
+        userAgent,
+        ip
+      },
+      req,
+      res
+    )
   }
 
   @Post('logout')
+  @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  logout(@Body() body: LogoutBodyDTO) {
-    return this.authService.logout(body.refreshToken)
+  logout(@Body() body: LogoutBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    return this.authService.logout(body.refreshToken, req, res)
   }
 
   @Get('google-link')
@@ -118,9 +142,11 @@ export class AuthController {
         code,
         state
       })
-      return res.redirect(
-        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`
-      )
+
+      // Set cookies nếu đăng nhập thành công
+      this.tokenService.setTokenCookies(res, data.accessToken, data.refreshToken)
+
+      return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true`)
     } catch (error) {
       const message =
         error instanceof Error
@@ -164,12 +190,24 @@ export class AuthController {
 
   @Post('2fa/verify')
   @IsPublic()
-  @ZodSerializerDto(LoginResDTO)
-  verifyTwoFactor(@Body() body: TwoFactorVerifyBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
-    return this.authService.verifyTwoFactor({
-      ...body,
-      userAgent,
-      ip
-    })
+  @HttpCode(HttpStatus.OK)
+  @UseZodSchemas(
+    createSchemaOption(LoginResSchema, hasProperty('accessToken')),
+    createSchemaOption(UserProfileResSchema, hasProperty('userId'))
+  )
+  verifyTwoFactor(
+    @Body() body: TwoFactorVerifyBodyDTO,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    return this.authService.verifyTwoFactor(
+      {
+        ...body,
+        userAgent,
+        ip
+      },
+      res
+    )
   }
 }

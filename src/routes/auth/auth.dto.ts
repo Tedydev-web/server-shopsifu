@@ -16,6 +16,7 @@ import {
   TwoFactorConfirmSetupResSchema,
   TwoFactorSetupResSchema,
   TwoFactorVerifyBodySchema,
+  UserProfileResSchema,
   VerifyCodeBodySchema,
   VerifyCodeResSchema
 } from 'src/routes/auth/auth.model'
@@ -55,3 +56,5 @@ export class VerifyCodeBodyDTO extends createZodDto(VerifyCodeBodySchema) {}
 export class VerifyCodeResDTO extends createZodDto(VerifyCodeResSchema) {}
 
 export class TwoFactorVerifyBodyDTO extends createZodDto(TwoFactorVerifyBodySchema) {}
+
+export class UserProfileResDTO extends createZodDto(UserProfileResSchema) {}

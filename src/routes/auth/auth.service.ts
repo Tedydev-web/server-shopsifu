@@ -48,6 +48,8 @@ import {
 import { TwoFactorService } from 'src/shared/services/2fa.service'
 import { v4 as uuidv4 } from 'uuid'
 import envConfig from 'src/shared/config'
+import { Response } from 'express'
+import { Request } from 'express'
 
 @Injectable()
 export class AuthService {
@@ -268,7 +270,7 @@ export class AuthService {
     return { message: 'Gửi mã OTP thành công' }
   }
 
-  async login(body: LoginBodyType & { userAgent: string; ip: string }) {
+  async login(body: LoginBodyType & { userAgent: string; ip: string }, res?: Response) {
     // 1. Lấy thông tin user, kiểm tra user có tồn tại hay không, mật khẩu có đúng không
     const user = await this.authRepository.findUniqueUserIncludeRole({
       email: body.email
@@ -321,6 +323,21 @@ export class AuthService {
       roleId: user.roleId,
       roleName: user.role.name
     })
+
+    // Nếu có res, đặt token vào cookie
+    if (res) {
+      this.tokenService.setTokenCookies(res, tokens.accessToken, tokens.refreshToken)
+
+      // Trả về thông tin user mà không kèm token
+      return {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role.name
+      }
+    }
+
+    // Tương thích ngược: trả về token trong body
     return tokens
   }
 
@@ -346,19 +363,33 @@ export class AuthService {
     return { accessToken, refreshToken }
   }
 
-  async refreshToken({ refreshToken, userAgent, ip }: RefreshTokenBodyType & { userAgent: string; ip: string }) {
+  async refreshToken(
+    { refreshToken, userAgent, ip }: RefreshTokenBodyType & { userAgent: string; ip: string },
+    req?: Request,
+    res?: Response
+  ) {
     try {
-      // 1. Kiểm tra refreshToken có hợp lệ không
-      const { userId } = await this.tokenService.verifyRefreshToken(refreshToken)
-      // 2. Kiểm tra refreshToken có tồn tại trong database không
+      // 1. Lấy refreshToken từ cookie hoặc body
+      const tokenToUse = (req && this.tokenService.extractRefreshTokenFromRequest(req)) || refreshToken
+
+      if (!tokenToUse) {
+        throw RefreshTokenAlreadyUsedException
+      }
+
+      // 2. Kiểm tra refreshToken có hợp lệ không
+      const { userId } = await this.tokenService.verifyRefreshToken(tokenToUse)
+
+      // 3. Kiểm tra refreshToken có tồn tại trong database không
       const refreshTokenInDb = await this.authRepository.findUniqueRefreshTokenIncludeUserRole({
-        token: refreshToken
+        token: tokenToUse
       })
+
       if (!refreshTokenInDb) {
-        // Trường hợp đã refresh token rồi, hãy thông báo cho user biết
+        // Trường hợp đã refresh token rồi, thông báo cho user biết
         // refresh token của họ đã bị đánh cắp
         throw RefreshTokenAlreadyUsedException
       }
+
       const {
         deviceId,
         user: {
@@ -366,18 +397,35 @@ export class AuthService {
           role: { name: roleName }
         }
       } = refreshTokenInDb
-      // 3. Cập nhật device
+
+      // 4. Cập nhật device
       const $updateDevice = this.authRepository.updateDevice(deviceId, {
         ip,
         userAgent
       })
-      // 4. Xóa refreshToken cũ
+
+      // 5. Xóa refreshToken cũ
       const $deleteRefreshToken = this.authRepository.deleteRefreshToken({
-        token: refreshToken
+        token: tokenToUse
       })
-      // 5. Tạo mới accessToken và refreshToken
+
+      // 6. Tạo mới accessToken và refreshToken
       const $tokens = this.generateTokens({ userId, roleId, roleName, deviceId })
+
       const [, , tokens] = await Promise.all([$updateDevice, $deleteRefreshToken, $tokens])
+
+      // 7. Nếu có res, đặt token vào cookie
+      if (res) {
+        this.tokenService.setTokenCookies(res, tokens.accessToken, tokens.refreshToken)
+
+        // Trả về thông tin user mà không kèm token
+        return {
+          userId,
+          role: roleName
+        }
+      }
+
+      // Tương thích ngược: trả về token trong body
       return tokens
     } catch (error) {
       if (error instanceof HttpException) {
@@ -387,18 +435,33 @@ export class AuthService {
     }
   }
 
-  async logout(refreshToken: string) {
+  async logout(refreshToken: string, req?: Request, res?: Response) {
     try {
+      // Lấy refreshToken từ cookie hoặc param
+      const tokenToUse = (req && this.tokenService.extractRefreshTokenFromRequest(req)) || refreshToken
+
+      if (!tokenToUse) {
+        throw RefreshTokenAlreadyUsedException
+      }
+
       // 1. Kiểm tra refreshToken có hợp lệ không
-      await this.tokenService.verifyRefreshToken(refreshToken)
+      await this.tokenService.verifyRefreshToken(tokenToUse)
+
       // 2. Xóa refreshToken trong database
       const deletedRefreshToken = await this.authRepository.deleteRefreshToken({
-        token: refreshToken
+        token: tokenToUse
       })
+
       // 3. Cập nhật device là đã logout
       await this.authRepository.updateDevice(deletedRefreshToken.deviceId, {
         isActive: false
       })
+
+      // 4. Xóa cookies nếu có
+      if (res) {
+        this.tokenService.clearTokenCookies(res)
+      }
+
       return { message: 'Đăng xuất thành công' }
     } catch (error) {
       // Trường hợp đã refresh token rồi, hãy thông báo cho user biết
@@ -624,7 +687,7 @@ export class AuthService {
     }
   }
 
-  async verifyTwoFactor(body: TwoFactorVerifyBodyType & { userAgent: string; ip: string }) {
+  async verifyTwoFactor(body: TwoFactorVerifyBodyType & { userAgent: string; ip: string }, res?: Response) {
     // 1. Tìm loginSessionToken trong bảng VerificationToken
     const verificationToken = await this.authRepository.findUniqueVerificationToken({ token: body.loginSessionToken })
 
@@ -721,6 +784,20 @@ export class AuthService {
       roleName: user.role.name
     })
 
+    // 7. Nếu có res, đặt token vào cookie
+    if (res) {
+      this.tokenService.setTokenCookies(res, tokens.accessToken, tokens.refreshToken)
+
+      // Trả về thông tin user mà không kèm token
+      return {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role.name
+      }
+    }
+
+    // Tương thích ngược: trả về token trong body
     return tokens
   }
 

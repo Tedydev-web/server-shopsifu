@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
 import compression from 'compression'
 import helmet from 'helmet'
+import cookieParser from 'cookie-parser'
+import envConfig from './shared/config'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -16,6 +18,7 @@ async function bootstrap() {
   // Security
   app.use(helmet())
   app.use(compression())
+  app.use(cookieParser(envConfig.COOKIE_SECRET))
 
   // Global prefix
   app.setGlobalPrefix('api/v1')

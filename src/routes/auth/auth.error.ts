@@ -50,6 +50,12 @@ export const RefreshTokenAlreadyUsedException = new UnauthorizedException('Error
 export const UnauthorizedAccessException = new UnauthorizedException('Error.UnauthorizedAccess')
 export const InvalidLoginSessionException = new UnauthorizedException('Error.InvalidLoginSession')
 
+// Cookie related errors
+export const MissingAccessTokenException = new UnauthorizedException('Error.MissingAccessToken')
+export const InvalidAccessTokenException = new UnauthorizedException('Error.InvalidAccessToken')
+export const ExpiredAccessTokenException = new UnauthorizedException('Error.ExpiredAccessToken')
+export const MissingRefreshTokenException = new UnauthorizedException('Error.MissingRefreshToken')
+
 // Google auth related errors
 export const GoogleUserInfoError = new Error('Error.FailedToGetGoogleUserInfo')
 

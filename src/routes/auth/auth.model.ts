@@ -196,6 +196,13 @@ export const TwoFactorVerifyBodySchema = z
     }
   )
 
+export const UserProfileResSchema = z.object({
+  userId: z.number(),
+  email: z.string().email(),
+  name: z.string(),
+  role: z.string()
+})
+
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>
 export type RegisterResType = z.infer<typeof RegisterResSchema>
 export type VerificationCodeType = z.infer<typeof VerificationCodeSchema>
@@ -219,3 +226,4 @@ export type VerifyCodeBodyType = z.infer<typeof VerifyCodeBodySchema>
 export type VerifyCodeResType = z.infer<typeof VerifyCodeResSchema>
 export type LoginSessionResType = z.infer<typeof LoginSessionResSchema>
 export type TwoFactorVerifyBodyType = z.infer<typeof TwoFactorVerifyBodySchema>
+export type UserProfileResType = z.infer<typeof UserProfileResSchema>
