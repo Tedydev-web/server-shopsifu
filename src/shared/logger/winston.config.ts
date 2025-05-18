@@ -14,7 +14,16 @@ const dailyRotateFileTransport = (level: string, dirname?: string) => {
     zippedArchive: true,
     maxSize: '20m',
     maxFiles: '14d',
-    format: combine(errors({ stack: true }), timestamp(), json(), prettyPrint())
+    format: combine(
+      errors({ stack: true }),
+      timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSSZ' }),
+      winston.format((info) => {
+        info.pid = process.pid
+        return info
+      })(),
+      json()
+      // prettyPrint()
+    )
   })
 }
 

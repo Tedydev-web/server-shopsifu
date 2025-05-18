@@ -1,4 +1,4 @@
-import { HttpException, Injectable } from '@nestjs/common'
+import { HttpException, Injectable, HttpStatus } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import {
   DisableTwoFactorBodyType,
@@ -148,7 +148,7 @@ export class AuthService {
   }
 
   async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string }) {
-    let auditLogEntry: Partial<AuditLogData> = {
+    const auditLogEntry: Partial<AuditLogData> = {
       action: 'OTP_VERIFY_ATTEMPT',
       userEmail: body.email,
       ipAddress: body.ip,
@@ -240,14 +240,32 @@ export class AuthService {
   }
 
   async register(body: RegisterBodyType & { userAgent?: string; ip?: string }) {
+    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
+      action: 'USER_REGISTER_ATTEMPT',
+      userEmail: body.email,
+      ipAddress: body.ip,
+      userAgent: body.userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: {
+        otpTokenProvided: !!body.otpToken,
+        nameProvided: !!body.name,
+        phoneNumberProvided: !!body.phoneNumber
+      }
+    }
+
     try {
-      return await this.prismaService.$transaction(async (tx) => {
+      const user = await this.prismaService.$transaction(async (tx) => {
         const verificationToken = await this.validateVerificationToken({
           token: body.otpToken,
           email: body.email,
           type: TypeOfVerificationCode.REGISTER,
           tokenType: TokenType.OTP
         })
+
+        if (verificationToken.userId) {
+          auditLogEntry.userId = verificationToken.userId
+        }
+        auditLogEntry.details.verificationTokenDeviceId = verificationToken.deviceId
 
         if (verificationToken.deviceId && body.userAgent && body.ip) {
           const isValidDevice = await this.authRepository.validateDevice(
@@ -257,13 +275,27 @@ export class AuthService {
             tx
           )
           if (!isValidDevice) {
+            auditLogEntry.errorMessage = DeviceMismatchException.message
+            auditLogEntry.details.reason = 'DEVICE_MISMATCH_ON_REGISTER'
+            auditLogEntry.details.validatedDeviceId = verificationToken.deviceId
             throw DeviceMismatchException
           }
+          auditLogEntry.details.deviceValidatedOnRegister = true
         }
 
         const clientRoleId = await this.rolesService.getClientRoleId()
         const hashedPassword = await this.hashingService.hash(body.password)
-        const user = await this.authRepository.createUser(
+
+        // Kiểm tra email tồn tại trước khi tạo user để ghi log lỗi cụ thể hơn nếu cần
+        const existingUserCheck = await tx.user.findUnique({ where: { email: body.email }, select: { id: true } })
+        if (existingUserCheck) {
+          auditLogEntry.errorMessage = EmailAlreadyExistsException.message
+          auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK'
+          // Không throw ở đây ngay, vì createUser sẽ throw và được bắt ở ngoài
+          // throw EmailAlreadyExistsException;
+        }
+
+        const createdUser = await this.authRepository.createUser(
           {
             email: body.email,
             name: body.name,
@@ -274,10 +306,33 @@ export class AuthService {
           tx
         )
 
+        auditLogEntry.userId = createdUser.id
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = 'USER_REGISTER_SUCCESS'
+        auditLogEntry.details.roleIdAssigned = clientRoleId
+
         await this.authRepository.deleteVerificationToken({ token: body.otpToken }, tx)
-        return user
+        return createdUser
       })
+      // Ghi log sau khi transaction thành công
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      return user
     } catch (error) {
+      // Nếu lỗi là do email đã tồn tại (từ createUser hoặc từ check manual bên trong transaction)
+      if (
+        isUniqueConstraintPrismaError(error) ||
+        (auditLogEntry.details.reason === 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK' && !auditLogEntry.errorMessage)
+      ) {
+        auditLogEntry.errorMessage = EmailAlreadyExistsException.message
+        auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS'
+      } else if (!auditLogEntry.errorMessage) {
+        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during registration'
+        if (error instanceof ApiException) {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
+      }
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      // Ném lại lỗi để controller hoặc global filter xử lý
       if (isUniqueConstraintPrismaError(error)) {
         throw EmailAlreadyExistsException
       }
@@ -321,22 +376,26 @@ export class AuthService {
 
   async login(body: LoginBodyType & { userAgent: string; ip: string }, res?: Response) {
     console.log('[DEBUG AuthService login] Received login request for email:', body.email)
-    return this.prismaService.$transaction(async (tx) => {
-      let auditLogEntry: Partial<AuditLogData> = {
-        action: 'USER_LOGIN_ATTEMPT',
-        userEmail: body.email,
-        ipAddress: body.ip,
-        userAgent: body.userAgent,
-        status: AuditLogStatus.FAILURE // Mặc định là thất bại
+    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
+      action: 'USER_LOGIN_ATTEMPT',
+      userEmail: body.email,
+      ipAddress: body.ip,
+      userAgent: body.userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: {
+        rememberMeRequested: body.rememberMe
       }
-      try {
+    }
+    try {
+      const result = await this.prismaService.$transaction(async (tx) => {
         const user = await tx.user.findUnique({
           where: { email: body.email },
           include: { role: true }
         })
         if (!user) {
           console.warn('[DEBUG AuthService login] User not found:', body.email)
-          auditLogEntry.errorMessage = 'User not found or invalid login session'
+          auditLogEntry.errorMessage = InvalidLoginSessionException.message
+          auditLogEntry.details.reason = 'USER_NOT_FOUND'
           throw InvalidLoginSessionException
         }
         console.log('[DEBUG AuthService login] User found:', {
@@ -349,7 +408,8 @@ export class AuthService {
         const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
         if (!isPasswordMatch) {
           console.warn('[DEBUG AuthService login] Invalid password for user:', user.email)
-          auditLogEntry.errorMessage = 'Invalid password'
+          auditLogEntry.errorMessage = InvalidPasswordException.message
+          auditLogEntry.details.reason = 'INVALID_PASSWORD'
           throw InvalidPasswordException
         }
         console.log('[DEBUG AuthService login] Password matched for user:', user.email)
@@ -369,9 +429,12 @@ export class AuthService {
             )
             deviceId = device.id
             console.log('[DEBUG AuthService login - 2FA flow] Device created/found with ID:', deviceId)
+            auditLogEntry.details.deviceId = deviceId
+            auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
           } catch (error) {
             console.error('[DEBUG AuthService login - 2FA flow] Error creating/finding device:', error)
-            auditLogEntry.errorMessage = error.message
+            auditLogEntry.errorMessage = DeviceSetupFailedException().message
+            auditLogEntry.details.deviceError = 'DeviceSetupFailed'
             throw DeviceSetupFailedException()
           }
 
@@ -389,9 +452,8 @@ export class AuthService {
             tx
           )
           console.log('[DEBUG AuthService login - 2FA flow] LOGIN_2FA token created. Returning 2FA prompt.')
-          auditLogEntry.status = AuditLogStatus.SUCCESS // Thành công đến bước yêu cầu 2FA
+          auditLogEntry.status = AuditLogStatus.SUCCESS
           auditLogEntry.notes = '2FA required'
-          this.auditLogService.record(auditLogEntry as AuditLogData) // Ghi log
           return {
             message: 'Auth.Login.2FARequired',
             loginSessionToken: otpToken,
@@ -415,15 +477,19 @@ export class AuthService {
           )
           deviceId = device.id
           console.log('[DEBUG AuthService login - Direct login] Device created/found with ID:', deviceId)
+          auditLogEntry.details.deviceId = deviceId
+          auditLogEntry.details.twoFactorFlow = false
         } catch (error) {
           console.error('[DEBUG AuthService login - Direct login] Error creating/finding device:', error)
-          auditLogEntry.errorMessage = error.message
+          auditLogEntry.errorMessage = DeviceSetupFailedException().message
+          auditLogEntry.details.deviceError = 'DeviceSetupFailed'
           throw DeviceSetupFailedException()
         }
 
         if (!deviceId) {
           console.error('[DEBUG AuthService login - Direct login] Device ID is undefined after creation attempt.')
-          auditLogEntry.errorMessage = 'Device ID is undefined after creation attempt'
+          auditLogEntry.errorMessage = 'Device ID is undefined after creation attempt (direct login)'
+          auditLogEntry.details.deviceError = 'DeviceIDUndefined'
           throw DeviceSetupFailedException()
         }
 
@@ -456,23 +522,26 @@ export class AuthService {
 
         console.log('[DEBUG AuthService login - Direct login] Returning user profile.')
         auditLogEntry.status = AuditLogStatus.SUCCESS
-        auditLogEntry.action = 'USER_LOGIN_SUCCESS' // Cập nhật action
-        this.auditLogService.record(auditLogEntry as AuditLogData) // Ghi log
+        auditLogEntry.action = 'USER_LOGIN_SUCCESS'
         return {
           userId: user.id,
           email: user.email,
           name: user.name,
           role: user.role.name
         }
-      } catch (error) {
-        auditLogEntry.errorMessage = error.message
+      })
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      return result
+    } catch (error) {
+      if (!auditLogEntry.errorMessage) {
+        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during login'
         if (error instanceof ApiException) {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
-        this.auditLogService.record(auditLogEntry as AuditLogData) // Ghi log lỗi
-        throw error
       }
-    })
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
   }
 
   async generateTokens(
@@ -525,17 +594,18 @@ export class AuthService {
     res?: Response
   ) {
     console.log('[DEBUG AuthService refreshToken] Received refreshToken request.')
-    let auditLogEntry: Partial<AuditLogData> = {
+    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
       action: 'REFRESH_TOKEN_ATTEMPT',
       ipAddress: ip,
       userAgent: userAgent,
-      status: AuditLogStatus.FAILURE
+      status: AuditLogStatus.FAILURE,
+      details: {}
     }
+
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
         const tokenToUse = refreshToken || (req && req.cookies && req.cookies[CookieNames.REFRESH_TOKEN])
-        console.log('[DEBUG AuthService refreshToken] Token to use:', tokenToUse ? 'Present' : 'MISSING')
-        auditLogEntry.details = { tokenProvided: !!tokenToUse }
+        auditLogEntry.details.tokenProvidedInRequest = !!tokenToUse
 
         if (!tokenToUse) {
           if (res) {
@@ -543,6 +613,7 @@ export class AuthService {
           }
           console.warn('[DEBUG AuthService refreshToken] No refresh token provided.')
           auditLogEntry.errorMessage = UnauthorizedAccessException.message
+          auditLogEntry.details.reason = 'NO_REFRESH_TOKEN_PROVIDED'
           throw UnauthorizedAccessException
         }
 
@@ -559,26 +630,35 @@ export class AuthService {
 
           if (potentiallyReplayedToken) {
             auditLogEntry.userId = potentiallyReplayedToken.userId
+            auditLogEntry.details.replayedTokenInfo = {
+              used: potentiallyReplayedToken.used,
+              expired: potentiallyReplayedToken.expiresAt < new Date()
+            }
             console.warn(
               `[SECURITY AuthService refreshToken] Potentially replayed/expired token used. UserId: ${potentiallyReplayedToken.userId}. Invalidating all tokens for this user.`
             )
             await tx.refreshToken.deleteMany({ where: { userId: potentiallyReplayedToken.userId } })
-            auditLogEntry.notes = 'Potential replay attack or expired/used token.'
+            auditLogEntry.notes = 'Potential replay attack or used/expired token. All user tokens invalidated.'
           }
 
           if (res) {
             this.tokenService.clearTokenCookies(res)
           }
           console.warn(
-            '[DEBUG AuthService refreshToken] Refresh token not found in DB (or user data missing), or token is invalid/used/expired.'
+            '[DEBUG AuthService refreshToken] Refresh token not found in DB, user data missing, or token invalid/used/expired.'
           )
           auditLogEntry.errorMessage = UnauthorizedAccessException.message
+          auditLogEntry.details.reason = 'REFRESH_TOKEN_INVALID_OR_NOT_FOUND'
           throw UnauthorizedAccessException
         }
 
-        // Gán userId và userEmail sớm nhất có thể
         auditLogEntry.userId = existingRefreshToken.userId
         auditLogEntry.userEmail = existingRefreshToken.user.email
+        auditLogEntry.details.originalTokenInfo = {
+          rememberMe: existingRefreshToken.rememberMe,
+          originalDeviceId: existingRefreshToken.deviceId,
+          originalTokenExpiresAt: existingRefreshToken.expiresAt
+        }
 
         try {
           await tx.refreshToken.update({
@@ -593,10 +673,11 @@ export class AuthService {
             }
             console.warn('[DEBUG AuthService refreshToken] RT disappeared before it could be marked as used.')
             auditLogEntry.errorMessage = UnauthorizedAccessException.message
+            auditLogEntry.details.reason = 'REFRESH_TOKEN_DISAPPEARED_BEFORE_MARKING_USED'
             throw UnauthorizedAccessException
           }
           console.error('[DEBUG AuthService refreshToken] Error marking RT as used:', error)
-          auditLogEntry.errorMessage = error.message
+          auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Error marking RT as used'
           throw error
         }
 
@@ -608,6 +689,12 @@ export class AuthService {
             '[DEBUG AuthService refreshToken] Validating device. Device ID from RT:',
             deviceFromRefreshToken.id
           )
+          auditLogEntry.details.deviceValidationAttempt = {
+            providedUserAgent: userAgent,
+            expectedUserAgent: deviceFromRefreshToken.userAgent,
+            providedIp: ip,
+            expectedIp: deviceFromRefreshToken.ip
+          }
           const isValidDevice = await this.authRepository.validateDevice(deviceFromRefreshToken.id, userAgent, ip, tx)
           if (!isValidDevice) {
             console.warn(
@@ -618,9 +705,12 @@ export class AuthService {
               this.tokenService.clearTokenCookies(res)
             }
             auditLogEntry.errorMessage = DeviceMismatchException.message
+            auditLogEntry.details.reason = 'DEVICE_MISMATCH_ON_REFRESH'
+            auditLogEntry.notes = 'All user tokens invalidated due to device mismatch.'
             throw DeviceMismatchException
           }
           currentDeviceId = deviceFromRefreshToken.id
+          auditLogEntry.details.deviceValidated = true
           console.log(
             '[DEBUG AuthService refreshToken] Device validated successfully. Using deviceId:',
             currentDeviceId
@@ -634,6 +724,8 @@ export class AuthService {
             this.tokenService.clearTokenCookies(res)
           }
           auditLogEntry.errorMessage = InvalidDeviceException.message
+          auditLogEntry.details.reason = 'NO_DEVICE_ASSOCIATED_WITH_REFRESH_TOKEN'
+          auditLogEntry.notes = 'All user tokens invalidated due to missing device on refresh token.'
           throw InvalidDeviceException
         }
 
@@ -652,6 +744,8 @@ export class AuthService {
             this.tokenService.clearTokenCookies(res)
           }
           auditLogEntry.errorMessage = InvalidDeviceException.message
+          auditLogEntry.details.reason = 'CRITICAL_UNDEFINED_DEVICE_ID_BEFORE_NEW_TOKEN_GENERATION'
+          auditLogEntry.notes = 'All user tokens invalidated.'
           throw InvalidDeviceException
         }
 
@@ -676,18 +770,23 @@ export class AuthService {
           console.log('[DEBUG AuthService refreshToken] New AT/RT cookies set.')
         }
 
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = 'REFRESH_TOKEN_SUCCESS'
+        auditLogEntry.details.newTokensGeneratedForDeviceId = currentDeviceId
+        auditLogEntry.details.newRefreshTokenRememberMe = shouldRememberUser
+
         return {
           accessToken: newAccessToken
         }
       })
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'REFRESH_TOKEN_SUCCESS'
       this.auditLogService.record(auditLogEntry as AuditLogData)
       return result
     } catch (error) {
-      auditLogEntry.errorMessage = error.message
-      if (error instanceof ApiException) {
-        auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+      if (!auditLogEntry.errorMessage) {
+        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during token refresh'
+        if (error instanceof ApiException) {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
       }
       this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
@@ -695,7 +794,7 @@ export class AuthService {
   }
 
   async logout(refreshTokenInput: string, req?: Request, res?: Response) {
-    let auditLogEntry: Partial<AuditLogData> = {
+    const auditLogEntry: Partial<AuditLogData> = {
       action: 'USER_LOGOUT_ATTEMPT',
       status: AuditLogStatus.FAILURE
     }
@@ -749,7 +848,7 @@ export class AuthService {
   }
 
   async resetPassword(body: ResetPasswordBodyType & { userAgent?: string; ip?: string }) {
-    let auditLogEntry: Partial<AuditLogData> = {
+    const auditLogEntry: Partial<AuditLogData> = {
       action: 'PASSWORD_RESET_ATTEMPT',
       userEmail: body.email,
       ipAddress: body.ip,
@@ -801,48 +900,85 @@ export class AuthService {
   }
 
   async setupTwoFactorAuth(userId: number) {
-    return this.prismaService.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({ where: { id: userId } })
-      if (!user) {
-        throw EmailNotFoundException
+    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
+      action: '2FA_SETUP_INITIATED_ATTEMPT',
+      userId: userId,
+      status: AuditLogStatus.FAILURE,
+      details: {}
+    }
+    // Cố gắng lấy email sớm để ghi log nếu có lỗi sớm
+    try {
+      const userForEmail = await this.sharedUserRepository.findUnique({ id: userId })
+      if (userForEmail) {
+        auditLogEntry.userEmail = userForEmail.email
       }
-      if (user.twoFactorEnabled) {
-        throw TOTPAlreadyEnabledException
+
+      const result = await this.prismaService.$transaction(async (tx) => {
+        const user = await tx.user.findUnique({ where: { id: userId } })
+        if (!user) {
+          auditLogEntry.errorMessage = EmailNotFoundException.message // Hoặc một lỗi cụ thể hơn như UserNotFoundException
+          auditLogEntry.details.reason = 'USER_NOT_FOUND_FOR_2FA_SETUP'
+          throw EmailNotFoundException
+        }
+        auditLogEntry.userEmail = user.email // Cập nhật lại email từ user trong transaction
+
+        if (user.twoFactorEnabled) {
+          auditLogEntry.errorMessage = TOTPAlreadyEnabledException.message
+          auditLogEntry.details.reason = '2FA_ALREADY_ENABLED'
+          throw TOTPAlreadyEnabledException
+        }
+
+        const { secret, uri: otpauthUrl } = this.twoFactorService.generateTOTPSecret(user.email)
+        const setupToken = uuidv4()
+
+        await this.authRepository.deleteVerificationTokenByEmailAndType(
+          user.email,
+          TypeOfVerificationCode.SETUP_2FA,
+          TokenType.SETUP_2FA_TOKEN,
+          tx
+        )
+
+        await this.authRepository.createVerificationToken(
+          {
+            token: setupToken,
+            email: user.email,
+            userId: user.id,
+            type: TypeOfVerificationCode.SETUP_2FA,
+            tokenType: TokenType.SETUP_2FA_TOKEN,
+            metadata: JSON.stringify({ tempTwoFactorSecret: secret }),
+            expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
+          },
+          tx
+        )
+
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = '2FA_SETUP_INITIATED_SUCCESS'
+        auditLogEntry.details.setupTokenGenerated = true
+        auditLogEntry.details.otpUriGenerated = !!otpauthUrl // Ghi nhận việc URI được tạo
+
+        return {
+          secret: secret,
+          uri: otpauthUrl,
+          setupToken
+        }
+      })
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      return result
+    } catch (error) {
+      if (!auditLogEntry.errorMessage) {
+        auditLogEntry.errorMessage =
+          error instanceof Error ? error.message : 'Unknown error during 2FA setup initiation'
+        if (error instanceof ApiException) {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
       }
-
-      const { secret, uri: otpauthUrl } = this.twoFactorService.generateTOTPSecret(user.email)
-      const setupToken = uuidv4()
-
-      await this.authRepository.deleteVerificationTokenByEmailAndType(
-        user.email,
-        TypeOfVerificationCode.SETUP_2FA,
-        TokenType.SETUP_2FA_TOKEN,
-        tx
-      )
-
-      await this.authRepository.createVerificationToken(
-        {
-          token: setupToken,
-          email: user.email,
-          userId: user.id,
-          type: TypeOfVerificationCode.SETUP_2FA,
-          tokenType: TokenType.SETUP_2FA_TOKEN,
-          metadata: JSON.stringify({ tempTwoFactorSecret: secret }),
-          expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
-        },
-        tx
-      )
-
-      return {
-        secret: secret,
-        uri: otpauthUrl,
-        setupToken
-      }
-    })
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
   }
 
   async confirmTwoFactorSetup(userId: number, setupToken: string, totpCode: string) {
-    let auditLogEntry: Partial<AuditLogData> = {
+    const auditLogEntry: Partial<AuditLogData> = {
       action: '2FA_CONFIRM_SETUP_ATTEMPT',
       userId: userId,
       status: AuditLogStatus.FAILURE,
@@ -945,156 +1081,307 @@ export class AuthService {
     }
   }
 
-  async disableTwoFactorAuth(data: DisableTwoFactorBodyType & { userId: number }) {
-    return this.prismaService.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({ where: { id: data.userId } })
-      if (!user) {
-        throw EmailNotFoundException
+  async disableTwoFactorAuth(data: DisableTwoFactorBodyType & { userId: number; userAgent?: string; ip?: string }) {
+    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
+      action: '2FA_DISABLE_ATTEMPT',
+      userId: data.userId,
+      ipAddress: data.ip,
+      userAgent: data.userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: {
+        verificationTypeAttempted: data.type,
+        codeProvided: !!data.code
+      }
+    }
+
+    try {
+      const userForEmail = await this.sharedUserRepository.findUnique({ id: data.userId })
+      if (userForEmail) {
+        auditLogEntry.userEmail = userForEmail.email
       }
 
-      if (!user.twoFactorEnabled || !user.twoFactorSecret) {
-        throw TOTPNotEnabledException
+      const result = await this.prismaService.$transaction(async (tx) => {
+        const user = await tx.user.findUnique({ where: { id: data.userId } })
+        if (!user) {
+          auditLogEntry.errorMessage = EmailNotFoundException.message
+          auditLogEntry.details.reason = 'USER_NOT_FOUND_FOR_2FA_DISABLE'
+          throw EmailNotFoundException
+        }
+        auditLogEntry.userEmail = user.email
+
+        if (!user.twoFactorEnabled || !user.twoFactorSecret || !user.twoFactorMethod) {
+          auditLogEntry.errorMessage = TOTPNotEnabledException.message
+          auditLogEntry.details.reason = '2FA_NOT_ENABLED_CANNOT_DISABLE'
+          throw TOTPNotEnabledException
+        }
+        auditLogEntry.details.methodWasEnabled = user.twoFactorMethod
+
+        if (data.type === TwoFactorMethodType.TOTP) {
+          const isValidTOTP = this.twoFactorService.verifyTOTP({
+            email: user.email,
+            token: data.code,
+            secret: user.twoFactorSecret
+          })
+          if (!isValidTOTP) {
+            auditLogEntry.errorMessage = InvalidTOTPException.message
+            auditLogEntry.details.reason = 'INVALID_TOTP_FOR_2FA_DISABLE'
+            throw InvalidTOTPException
+          }
+          auditLogEntry.details.totpVerifiedForDisable = true
+        } else if (data.type === TwoFactorMethodType.OTP) {
+          try {
+            await this.validateVerificationCode({
+              email: user.email,
+              code: data.code,
+              type: TypeOfVerificationCode.DISABLE_2FA
+            })
+            auditLogEntry.details.otpVerifiedForDisable = true
+            await this.authRepository.deleteVerificationCode(
+              {
+                email_code_type: {
+                  email: user.email,
+                  code: data.code,
+                  type: TypeOfVerificationCode.DISABLE_2FA as PrismaVerificationCodeEnum
+                }
+              },
+              tx
+            )
+          } catch (error) {
+            auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Invalid OTP for 2FA disable'
+            if (error instanceof ApiException) {
+              auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+            }
+            auditLogEntry.details.reason = 'INVALID_OTP_FOR_2FA_DISABLE'
+            throw error
+          }
+        } else {
+          auditLogEntry.errorMessage = 'Unsupported 2FA disable type'
+          auditLogEntry.details.reason = 'UNSUPPORTED_2FA_DISABLE_TYPE'
+          throw new HttpException('Unsupported 2FA disable type', HttpStatus.BAD_REQUEST)
+        }
+
+        await this.authRepository.updateUser(
+          { id: data.userId },
+          {
+            twoFactorEnabled: false,
+            twoFactorSecret: null,
+            twoFactorMethod: null as TwoFactorMethodTypeType | null,
+            twoFactorVerifiedAt: null,
+            totpSecret: null
+          },
+          tx
+        )
+
+        await this.authRepository.deleteRecoveryCodesByUserId(data.userId, tx)
+        auditLogEntry.details.recoveryCodesDeleted = true
+
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = '2FA_DISABLE_SUCCESS'
+        auditLogEntry.details.methodDisabled = user.twoFactorMethod
+
+        return { message: 'Auth.2FA.DisableSuccessful' }
+      })
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      return result
+    } catch (error) {
+      if (!auditLogEntry.errorMessage) {
+        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during 2FA disable'
+        if (error instanceof ApiException) {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
       }
-
-      await this.authRepository.updateUser(
-        { id: data.userId },
-        {
-          twoFactorEnabled: false,
-          twoFactorSecret: null,
-          twoFactorMethod: null as TwoFactorMethodTypeType | null,
-          twoFactorVerifiedAt: null,
-          totpSecret: null
-        },
-        tx
-      )
-
-      await this.authRepository.deleteRecoveryCodesByUserId(data.userId, tx)
-
-      return { message: 'Auth.2FA.DisableSuccessful' }
-    })
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
   }
 
   async verifyTwoFactor(body: TwoFactorVerifyBodyType & { userAgent: string; ip: string }, res?: Response) {
-    return this.prismaService.$transaction(async (tx) => {
-      const initialVerificationToken = (await this.authRepository.findUniqueVerificationToken(
-        { token: body.loginSessionToken },
-        tx
-      )) as PrismaVerificationToken | null
-
-      if (!initialVerificationToken || !initialVerificationToken.email) {
-        throw InvalidOTPTokenException
+    // Khởi tạo auditLogEntry với details là một object cụ thể
+    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
+      action: '2FA_VERIFY_ATTEMPT',
+      ipAddress: body.ip,
+      userAgent: body.userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: {
+        loginSessionTokenProvided: !!body.loginSessionToken,
+        verificationTypeAttempted: body.type,
+        codeProvided: !!body.code // Chỉ ghi nhận sự tồn tại, không ghi giá trị code
       }
+    }
 
-      // Lấy rememberMe từ metadata của initialVerificationToken (LOGIN_2FA token)
-      let rememberMe = false // Giá trị mặc định
-      if (initialVerificationToken.metadata) {
-        try {
-          const parsedMetadata = JSON.parse(initialVerificationToken.metadata)
-          if (typeof parsedMetadata.rememberMe === 'boolean') {
-            rememberMe = parsedMetadata.rememberMe
+    try {
+      const result = await this.prismaService.$transaction(async (tx) => {
+        const initialVerificationToken = (await this.authRepository.findUniqueVerificationToken(
+          { token: body.loginSessionToken },
+          tx
+        )) as PrismaVerificationToken | null
+
+        // Cập nhật userEmail và userId sớm nếu có thể
+        if (initialVerificationToken) {
+          auditLogEntry.userEmail = initialVerificationToken.email
+          if (initialVerificationToken.userId) {
+            auditLogEntry.userId = initialVerificationToken.userId
           }
-        } catch (e) {
-          console.warn('[AuthService verifyTwoFactor] Could not parse rememberMe from token metadata', e)
         }
-      }
 
-      const verificationToken = await this.validateVerificationToken({
-        token: body.loginSessionToken,
-        email: initialVerificationToken.email,
-        type: TypeOfVerificationCode.LOGIN_2FA,
-        tokenType: TokenType.OTP,
-        deviceId: initialVerificationToken.deviceId ?? undefined
-      })
+        if (!initialVerificationToken || !initialVerificationToken.email) {
+          auditLogEntry.errorMessage = InvalidOTPTokenException.message
+          auditLogEntry.details.reason = 'INVALID_LOGIN_SESSION_TOKEN'
+          throw InvalidOTPTokenException
+        }
 
-      const user = await tx.user.findUnique({
-        where: { email: verificationToken.email },
-        include: { role: true }
-      })
+        let rememberMe = false
+        if (initialVerificationToken.metadata) {
+          try {
+            const parsedMetadata = JSON.parse(initialVerificationToken.metadata)
+            if (typeof parsedMetadata.rememberMe === 'boolean') {
+              rememberMe = parsedMetadata.rememberMe
+            }
+            auditLogEntry.details.rememberMeSettingFromToken = rememberMe // Log giá trị rememberMe lấy được
+          } catch (e) {
+            console.warn('[AuthService verifyTwoFactor] Could not parse rememberMe from token metadata', e)
+            auditLogEntry.notes = 'Error parsing rememberMe from token metadata.'
+          }
+        }
 
-      if (!user || !user.twoFactorEnabled || !user.twoFactorSecret || !user.twoFactorMethod) {
-        await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
-        throw TOTPNotEnabledException
-      }
+        const verificationToken = await this.validateVerificationToken({
+          token: body.loginSessionToken,
+          email: initialVerificationToken.email,
+          type: TypeOfVerificationCode.LOGIN_2FA,
+          tokenType: TokenType.OTP,
+          deviceId: initialVerificationToken.deviceId ?? undefined
+        })
+        // Sau validateVerificationToken, email và userId đã được xác thực phần nào
+        auditLogEntry.userEmail = verificationToken.email // Cập nhật lại từ token đã validate
+        if (verificationToken.userId) {
+          auditLogEntry.userId = verificationToken.userId
+        }
 
-      let isValid2FACode = false
-      if (body.type === TwoFactorMethodType.TOTP && body.code) {
-        if (user.twoFactorMethod === TwoFactorMethodType.TOTP) {
-          isValid2FACode = this.twoFactorService.verifyTOTP({
-            email: user.email,
-            token: body.code,
-            secret: user.twoFactorSecret
-          })
+        const user = await tx.user.findUnique({
+          where: { email: verificationToken.email },
+          include: { role: true }
+        })
+
+        if (!user || !user.twoFactorEnabled || !user.twoFactorSecret || !user.twoFactorMethod) {
+          await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+          auditLogEntry.errorMessage = TOTPNotEnabledException.message
+          auditLogEntry.details.reason = '2FA_NOT_ENABLED_FOR_USER'
+          throw TOTPNotEnabledException
+        }
+        auditLogEntry.details.userTwoFactorMethod = user.twoFactorMethod // Log phương thức 2FA của user
+
+        let isValid2FACode = false
+        if (body.type === TwoFactorMethodType.TOTP && body.code) {
+          if (user.twoFactorMethod === TwoFactorMethodType.TOTP) {
+            isValid2FACode = this.twoFactorService.verifyTOTP({
+              email: user.email,
+              token: body.code,
+              secret: user.twoFactorSecret
+            })
+          } else {
+            await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+            auditLogEntry.errorMessage = 'Invalid 2FA method for TOTP code.'
+            auditLogEntry.details.reason = 'INVALID_2FA_METHOD_FOR_TOTP_CODE'
+            throw new HttpException('Invalid 2FA method for TOTP code.', 400)
+          }
+        } else if (body.type === TwoFactorMethodType.RECOVERY && body.code) {
+          await this.verifyRecoveryCode(user.id, body.code, tx)
+          isValid2FACode = true
+          auditLogEntry.details.recoveryCodeUsed = true // Ghi nhận việc sử dụng recovery code
         } else {
           await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
-          throw new HttpException('Invalid 2FA method for TOTP code.', 400)
+          auditLogEntry.errorMessage = 'Either a TOTP code or a recovery code (with correct type) must be provided.'
+          auditLogEntry.details.reason = 'MISSING_2FA_CODE_OR_INVALID_TYPE'
+          throw new HttpException('Either a TOTP code or a recovery code (with correct type) must be provided.', 400)
         }
-      } else if (body.type === TwoFactorMethodType.RECOVERY && body.code) {
-        await this.verifyRecoveryCode(user.id, body.code, tx)
-        isValid2FACode = true
-      } else {
-        await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
-        throw new HttpException('Either a TOTP code or a recovery code (with correct type) must be provided.', 400)
-      }
 
-      if (!isValid2FACode) {
-        await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
-        throw InvalidTOTPException
-      }
-
-      let deviceId = verificationToken.deviceId
-      if (!deviceId && body.userAgent && body.ip) {
-        try {
-          const device = await this.authRepository.findOrCreateDevice(
-            {
-              userId: user.id,
-              userAgent: body.userAgent,
-              ip: body.ip
-            },
-            tx
-          )
-          deviceId = device.id
-        } catch (error) {
-          console.error('Lỗi khi tạo device trong verifyTwoFactor:', error)
-        }
-      } else if (deviceId && body.userAgent && body.ip) {
-        const isValidDevice = await this.authRepository.validateDevice(deviceId, body.userAgent, body.ip, tx)
-        if (!isValidDevice) {
+        if (!isValid2FACode) {
           await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
-          throw DeviceMismatchException
+          auditLogEntry.errorMessage = InvalidTOTPException.message // Hoặc lỗi cụ thể hơn nếu là recovery code
+          auditLogEntry.details.reason =
+            body.type === TwoFactorMethodType.RECOVERY ? 'INVALID_RECOVERY_CODE' : 'INVALID_TOTP_CODE'
+          throw InvalidTOTPException // Hoặc InvalidRecoveryCodeException
+        }
+
+        let deviceId = verificationToken.deviceId
+        if (!deviceId && body.userAgent && body.ip) {
+          try {
+            const device = await this.authRepository.findOrCreateDevice(
+              {
+                userId: user.id,
+                userAgent: body.userAgent,
+                ip: body.ip
+              },
+              tx
+            )
+            deviceId = device.id
+            auditLogEntry.details.newDeviceCreated = true
+          } catch (error) {
+            console.error('Lỗi khi tạo device trong verifyTwoFactor:', error)
+            auditLogEntry.errorMessage = DeviceAssociationFailedException().message
+            auditLogEntry.details.deviceError = 'DeviceCreationFailureIn2FAVerify'
+            throw DeviceAssociationFailedException()
+          }
+        } else if (deviceId && body.userAgent && body.ip) {
+          const isValidDevice = await this.authRepository.validateDevice(deviceId, body.userAgent, body.ip, tx)
+          if (!isValidDevice) {
+            await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+            auditLogEntry.errorMessage = DeviceMismatchException.message
+            auditLogEntry.details.deviceError = 'DeviceMismatchIn2FAVerify'
+            throw DeviceMismatchException
+          }
+          auditLogEntry.details.existingDeviceValidated = true
+        }
+
+        if (!deviceId) {
+          await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+          auditLogEntry.errorMessage = DeviceAssociationFailedException().message
+          auditLogEntry.details.deviceError = 'DeviceIDMissingIn2FAVerify'
+          throw DeviceAssociationFailedException()
+        }
+        auditLogEntry.details.finalDeviceId = deviceId
+
+        await this.authRepository.updateUser({ id: user.id }, { twoFactorVerifiedAt: new Date() }, tx)
+
+        const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.generateTokens(
+          {
+            userId: user.id,
+            deviceId: deviceId,
+            roleId: user.roleId,
+            roleName: user.role.name
+          },
+          tx,
+          rememberMe
+        )
+
+        await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+
+        if (res) {
+          this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
+        }
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = '2FA_VERIFY_SUCCESS'
+        auditLogEntry.details.rememberMeApplied = rememberMe
+
+        return {
+          userId: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role.name
+        }
+      }) // Kết thúc transaction
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      return result
+    } catch (error) {
+      if (!auditLogEntry.errorMessage) {
+        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during 2FA verification'
+        if (error instanceof ApiException) {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
       }
-
-      if (!deviceId) {
-        await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
-        throw DeviceAssociationFailedException()
-      }
-
-      await this.authRepository.updateUser({ id: user.id }, { twoFactorVerifiedAt: new Date() }, tx)
-
-      const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.generateTokens(
-        {
-          userId: user.id,
-          deviceId: deviceId,
-          roleId: user.roleId,
-          roleName: user.role.name
-        },
-        tx,
-        rememberMe // Sử dụng rememberMe đã lấy từ metadata
-      )
-
-      await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
-
-      if (res) {
-        this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
-      }
-
-      return {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role.name
-      }
-    })
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
   }
 
   async verifyRecoveryCode(userId: number, recoveryCodeInput: string, prismaTx?: Prisma.TransactionClient) {

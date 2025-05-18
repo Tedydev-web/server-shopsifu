@@ -555,24 +555,24 @@ enum TwoFactorMethodType {
 }
 
 model AuditLog {
-  id           Int      @id @default(autoincrement())
-  timestamp    DateTime @default(now())
-  userId       Int? // ID của người dùng thực hiện hành động (nếu có)
-  userEmail    String? // Email của người dùng (để dễ đọc)
-  action       String // Mô tả hành động, ví dụ: "USER_LOGIN", "PRODUCT_CREATED"
-  entity       String? // Tên của đối tượng bị tác động, ví dụ: "User", "Product"
-  entityId     String? // ID của đối tượng bị tác động
-  details      Json? // Thông tin chi tiết: dữ liệu cũ, dữ liệu mới, params
-  ipAddress    String?
-  userAgent    String?
-  status       String // Trạng thái: SUCCESS, FAILURE
-  errorMessage String? // Thông báo lỗi nếu thất bại
-  notes        String? // Ghi chú thêm
+  id          Int      @id @default(autoincrement())
+  timestamp   DateTime @default(now())
+  userId      Int? // Ai thực hiện
+  userEmail   String? // Email của người thực hiện (nếu có)
+  action      String // Hành động là gì (ví dụ: USER_LOGIN, PRODUCT_UPDATE)
+  entity      String? // Đối tượng bị tác động (ví dụ: User, Product)
+  entityId    String? // ID của đối tượng bị tác động
+  ipAddress   String?
+  userAgent   String?
+  status      String // SUCCESS, FAILURE (nên dùng Enum nếu Prisma hỗ trợ tốt hơn cho kiểu DB của bạn)
+  errorMessage String?
+  details     Json? // Chi tiết bổ sung dưới dạng JSON (ví dụ: dữ liệu thay đổi)
+  notes       String? // Ghi chú bổ sung, dễ đọc bởi con người
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id])
 
-  @@index([timestamp])
   @@index([userId])
   @@index([action])
   @@index([entity, entityId])
+  @@index([timestamp])
 }
