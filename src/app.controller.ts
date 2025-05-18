@@ -7,7 +7,7 @@ export class AppController {
   constructor(private readonly appService: AppService) {}
 
   @IsPublic()
-  @Get('cookies')
+  @Get('get-cookies')
   getHello(): string {
     return this.appService.getHello()
   }

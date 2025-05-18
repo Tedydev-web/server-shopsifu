@@ -12,15 +12,13 @@ async function bootstrap() {
     logger: winstonLogger
   })
 
-  // Cấu hình CORS để cho phép cookies
   app.enableCors({
-    origin: ['https://shopsifu.live', 'http://localhost:8000'], // Cho phép mọi origin trong môi trường dev, thay đổi thành domain thực sự trong production
+    origin: [envConfig.FRONTEND_HOST_URL, envConfig.FRONTEND_LOCAL_URL],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true, // Quan trọng cho cookies
+    credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'x-csrf-token']
   })
 
-  // Security
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -30,34 +28,29 @@ async function bootstrap() {
           objectSrc: ["'none'"],
           imgSrc: ["'self'", 'data:'],
           styleSrc: ["'self'"]
-          // Thêm các directives khác nếu cần
         }
       },
       hsts: envConfig.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
       frameguard: { action: 'deny' },
-      xXssProtection: true, // Tương đương với 1; mode=block
+      xXssProtection: true,
       noSniff: true
-      // Các cấu hình khác của helmet có thể giữ mặc định hoặc tùy chỉnh
     })
   )
   app.use(compression())
 
-  // Cookie parser - không ký cookies CSRF để đảm bảo khớp với csurf
   app.use(
     cookieParser(envConfig.COOKIE_SECRET, {
       decode: decodeURIComponent
     })
   )
 
-  // Đăng ký Global Exception Filter mới
   const httpAdapterHost = app.get(HttpAdapterHost)
   app.useGlobalFilters(new AllExceptionsFilter(httpAdapterHost))
 
-  // Global prefix
   app.setGlobalPrefix('api/v1')
 
-  const port = process.env.PORT ?? 3000
+  const port = envConfig.PORT ?? 3000
   await app.listen(port)
-  winstonLogger.log(`Application is running on: http://localhost:${port}/api/v1`, 'Bootstrap')
+  winstonLogger.log(`Application is running on: ${envConfig.API_LOCAL_URL}/api/v1`, 'Bootstrap')
 }
 void bootstrap()

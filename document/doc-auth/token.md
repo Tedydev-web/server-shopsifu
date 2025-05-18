@@ -8,15 +8,15 @@
 
 Hiện nay có khá nhiều kiểu xác thực, nhưng tui nhận thấy có 2 kiểu này là phổ biến nhất
 
-| Kiểu xác thực   | Combo AT và RT                                                                                                                                                | Session Token (A.K.A 1 Access Token)                         |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Access Token    | ✅, ngắn hạn (5-15p)                                                                                                                                          | ✅, thường dài (60 ngày)                                     |
-| Refresh Token   | ✅, thường dài (60 ngày), để lấy access token mới                                                                                                             | ❌                                                           |
-| Cách gia hạn    | Dùng Refresh Token                                                                                                                                            | Dùng Long-Lived Token                                        |
-| State           | AT là Stateless, RT thường là Stateful (stateless cũng được, nhưng stateful sẽ bảo mật hơn)                                                                   | Stateful                                                     |
-| Tốc độ xác thực | Nhanh, vì AT là stateless                                                                                                                                     | Chậm, vì cần phải query db mỗi lần xác thực request          |
-| Bảo mật         | Thấp hơn, không revoke được access token. Nên nếu muốn cho 1 người dùng logout, chỉ có cách xóa refresh token của người đó và đợi access token của họ hết hạn | Cao, cần revoke token thì có thể revoke ngay lập tức         |
-| Khả năng Scale  | Dễ, nếu có nhiều server (service trong microservice), chỉ cần verify token là xác thực đc request                                                         | Phức tạp hơn, phải query đến DB hoặc gọi đến API Gateway |
+| Kiểu xác thực   | Combo AT và RT                                                                                                                                                | Session Token (A.K.A 1 Access Token)                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Access Token    | ✅, ngắn hạn (5-15p)                                                                                                                                          | ✅, thường dài (60 ngày)                                 |
+| Refresh Token   | ✅, thường dài (60 ngày), để lấy access token mới                                                                                                             | ❌                                                       |
+| Cách gia hạn    | Dùng Refresh Token                                                                                                                                            | Dùng Long-Lived Token                                    |
+| State           | AT là Stateless, RT thường là Stateful (stateless cũng được, nhưng stateful sẽ bảo mật hơn)                                                                   | Stateful                                                 |
+| Tốc độ xác thực | Nhanh, vì AT là stateless                                                                                                                                     | Chậm, vì cần phải query db mỗi lần xác thực request      |
+| Bảo mật         | Thấp hơn, không revoke được access token. Nên nếu muốn cho 1 người dùng logout, chỉ có cách xóa refresh token của người đó và đợi access token của họ hết hạn | Cao, cần revoke token thì có thể revoke ngay lập tức     |
+| Khả năng Scale  | Dễ, nếu có nhiều server (service trong microservice), chỉ cần verify token là xác thực đc request                                                             | Phức tạp hơn, phải query đến DB hoặc gọi đến API Gateway |
 
 Ưu điểm của cái này là nhược điểm của cái kia. Quan trọng là hiểu app cần gì để chọn kiểu xác thực cho phù hợp
 
@@ -59,17 +59,17 @@ model Device {
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   userAgent    String
   ip           String
-  lastActive   DateTime      @updatedAt // Thay updatedAt bằng lastActive cho ý nghĩa rõ hơn
+  lastActive   DateTime      @updatedAt
   createdAt    DateTime      @default(now())
-  isActive     Boolean       @default(true) // Trạng thái thiết bị (đang login hay đã logout)
-  refreshTokens RefreshToken[] // Liên kết 1-n với RefreshToken
+  isActive     Boolean       @default(true)
+  refreshTokens RefreshToken[]
 }
 
 model RefreshToken {
   token     String    @unique @db.VarChar(1000)
   userId    Int
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  deviceId  Int      // Foreign key tới Device
+  deviceId  Int
   device    Device   @relation(fields: [deviceId], references: [id],  onDelete: Cascade, onUpdate: NoAction)
   expiresAt DateTime
   createdAt DateTime  @default(now())

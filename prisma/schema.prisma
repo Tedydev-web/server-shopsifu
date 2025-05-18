@@ -35,21 +35,17 @@ model User {
   password    String  @db.VarChar(500)
   phoneNumber String  @db.VarChar(50)
   avatar      String? @db.VarChar(1000)
-
-  // Này có thể dùng để thực hiện chức năng quên mật khẩu, đăng nhập 2 bước
   totpSecret                  String?               @unique @db.VarChar(1000)
   status                      UserStatus            @default(INACTIVE)
   roleId                      Int
   role                        Role                  @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  devices                     Device[] // Liên kết 1-n với Device
+  devices                     Device[] 
   refreshTokens               RefreshToken[]
   verificationTokens          VerificationToken[]
-  // Thêm các trường cho 2FA
   twoFactorEnabled            Boolean?              @default(false)
   twoFactorSecret             String?               @db.VarChar(1000)
   twoFactorMethod             TwoFactorMethodType?
   twoFactorVerifiedAt         DateTime?
-  // Kết thúc thêm các trường cho 2FA
   carts                       CartItem[]
   orders                      Order[]
   reviews                     Review[]
@@ -85,9 +81,6 @@ model User {
   sentMessages                Message[]             @relation("FromUser")
   receivedMessages            Message[]             @relation("ToUser")
 
-  // 1 user có thể tạo ra nhiều user khác
-  // 1 user chỉ có thể được tạo ra bởi 1 user khác
-  // Tự quan hệ 1-n
   createdById  Int?
   createdBy    User?  @relation("CreatorUsers", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
   createdUsers User[] @relation("CreatorUsers")
@@ -101,7 +94,6 @@ model User {
   updatedAt    DateTime       @updatedAt
   RecoveryCode RecoveryCode[]
 
-  // Thêm quan hệ ngược cho AuditLog
   auditLogs AuditLog[]
 
   @@index([deletedAt])
@@ -147,10 +139,10 @@ model Device {
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   userAgent          String
   ip                 String
-  lastActive         DateTime            @updatedAt // Thay updatedAt bằng lastActive cho ý nghĩa rõ hơn
+  lastActive         DateTime            @updatedAt
   createdAt          DateTime            @default(now())
-  isActive           Boolean             @default(true) // Trạng thái thiết bị (đang login hay đã logout)
-  refreshTokens      RefreshToken[] // Liên kết 1-n với RefreshToken
+  isActive           Boolean             @default(true)
+  refreshTokens      RefreshToken[]
   verificationTokens VerificationToken[]
 }
 
@@ -494,8 +486,8 @@ model VerificationToken {
   deviceId  Int?
   device    Device?              @relation(fields: [deviceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   type      VerificationCodeType
-  tokenType String               @db.VarChar(50) // LOGIN_SESSION or OTP
-  metadata  String?              @db.Text // Thêm metadata để lưu các thông tin bổ sung như secret 2FA
+  tokenType String               @db.VarChar(50)
+  metadata  String?              @db.Text
   expiresAt DateTime
   createdAt DateTime             @default(now())
 
@@ -507,7 +499,7 @@ model RecoveryCode {
   id        Int      @id @default(autoincrement())
   userId    Int
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  code      String   @unique @db.VarChar(255) // Đảm bảo đủ dài cho mã đã hash
+  code      String   @unique @db.VarChar(255)
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
 
@@ -557,17 +549,17 @@ enum TwoFactorMethodType {
 model AuditLog {
   id          Int      @id @default(autoincrement())
   timestamp   DateTime @default(now())
-  userId      Int? // Ai thực hiện
-  userEmail   String? // Email của người thực hiện (nếu có)
-  action      String // Hành động là gì (ví dụ: USER_LOGIN, PRODUCT_UPDATE)
-  entity      String? // Đối tượng bị tác động (ví dụ: User, Product)
-  entityId    String? // ID của đối tượng bị tác động
+  userId      Int?
+  userEmail   String?
+  action      String
+  entity      String?
+  entityId    String?
   ipAddress   String?
   userAgent   String?
-  status      String // SUCCESS, FAILURE (nên dùng Enum nếu Prisma hỗ trợ tốt hơn cho kiểu DB của bạn)
+  status      String
   errorMessage String?
-  details     Json? // Chi tiết bổ sung dưới dạng JSON (ví dụ: dữ liệu thay đổi)
-  notes       String? // Ghi chú bổ sung, dễ đọc bởi con người
+  details     Json?
+  notes       String?
 
   user User? @relation(fields: [userId], references: [id])
 

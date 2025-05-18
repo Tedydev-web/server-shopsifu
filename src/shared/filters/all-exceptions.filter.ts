@@ -3,15 +3,25 @@ import { HttpAdapterHost } from '@nestjs/core'
 import { ZodError } from 'zod'
 import { ZodValidationException, ZodSerializationException } from 'nestjs-zod'
 import { ApiException, ErrorDetailMessage } from '../exceptions/api.exception'
+import { v4 as uuidv4 } from 'uuid'
 
-interface StandardErrorResponseFormat {
-  statusCode: number
-  error: string // General error type code, e.g., VALIDATION_ERROR
-  message: string // Primary i18n key for this error
-  details: ErrorDetailMessage[] // Array of more specific error details
+interface DetailedErrorItem {
+  field?: string
+  description: string
+  args?: Record<string, any>
 }
 
-@Catch() // Catch all exceptions
+interface NewErrorResponse {
+  type: string
+  title: string
+  status: number
+  description?: string
+  timestamp: string
+  requestId?: string
+  errors?: DetailedErrorItem[]
+}
+
+@Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name)
 
@@ -21,11 +31,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const { httpAdapter } = this.httpAdapterHost
     const ctx = host.switchToHttp()
     const request = ctx.getRequest<Request>()
+    const response = ctx.getResponse()
 
     let httpStatus: HttpStatus = HttpStatus.INTERNAL_SERVER_ERROR
     let errorCode: string = 'INTERNAL_SERVER_ERROR'
-    let messageKey: string = 'Error.Global.InternalServerError'
-    let errorDetails: ErrorDetailMessage[] = []
+    let descriptionKey: string = 'Error.Global.InternalServerError'
+    let processedErrorDetails: DetailedErrorItem[] = []
 
     this.logger.error(
       `[${request.method} ${request.url}] Exception: ${exception instanceof Error ? exception.message : JSON.stringify(exception)}`,
@@ -35,69 +46,123 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (exception instanceof ApiException) {
       httpStatus = exception.getStatus()
       errorCode = exception.errorCode
-      messageKey = exception.getResponse() as string // The messageKey passed to super()
-      errorDetails = exception.details
+      descriptionKey = exception.getResponse() as string
+      processedErrorDetails = (exception.details || []).map((detail) => ({
+        field: detail.path,
+        description: detail.code,
+        ...(detail.args && { args: detail.args })
+      }))
     } else if (exception instanceof ZodValidationException) {
-      // From createZodDto validation pipe
       httpStatus = HttpStatus.UNPROCESSABLE_ENTITY
       errorCode = 'VALIDATION_ERROR'
-      messageKey = 'Error.Global.ValidationFailed'
+      descriptionKey = 'Error.Global.ValidationFailed'
       const zodError: ZodError = exception.getZodError()
-      errorDetails = zodError.errors.map((err) => ({
-        path: err.path.join('.'),
-        code: `Error.Validation.${err.path.join('.')}.${err.code}`, // Construct a more specific i18n key
-        args: { message: err.message } // Pass Zod's original message as args for fallback
-      }))
+      processedErrorDetails = zodError.errors.map((err) => {
+        const i18nKeyCode = `Error.Validation.${err.path.join('.')}.${err.code}`
+        return {
+          field: err.path.join('.'),
+          description: i18nKeyCode
+        }
+      })
     } else if (exception instanceof ZodSerializationException) {
-      // From ZodSerializerInterceptor
-      httpStatus = HttpStatus.UNPROCESSABLE_ENTITY // Or 500, as it's a server-side serialization issue
+      httpStatus = HttpStatus.UNPROCESSABLE_ENTITY
       errorCode = 'SERIALIZATION_ERROR'
-      messageKey = 'Error.Global.SerializationFailed'
+      descriptionKey = 'Error.Global.SerializationFailed'
       const zodError: ZodError = exception.getZodError()
-      errorDetails = zodError.errors.map((err) => ({
-        path: err.path.join('.'),
-        code: `Error.Serialization.${err.path.join('.')}.${err.code}`,
-        args: { message: err.message }
-      }))
+      processedErrorDetails = zodError.errors.map((err) => {
+        const i18nKeyCode = `Error.Serialization.${err.path.join('.')}.${err.code}`
+        return {
+          field: err.path.join('.'),
+          description: i18nKeyCode
+        }
+      })
     } else if (exception instanceof HttpException) {
       httpStatus = exception.getStatus()
-      const response = exception.getResponse()
+      const exceptionResponse = exception.getResponse()
       errorCode = this.mapHttpStatusToErrorCode(httpStatus)
 
-      if (typeof response === 'string') {
-        messageKey = response // Assume the string is the i18n key
-      } else if (typeof response === 'object' && response !== null && 'message' in response) {
-        // For NestJS default errors like { statusCode: 400, message: 'Bad Request', error: 'Bad Request' }
-        // Or UnprocessableEntityException with array of messages
-        if (Array.isArray((response as any).message)) {
-          messageKey = 'Error.Global.ValidationFailed' // General key for multiple validation issues
-          errorDetails = ((response as any).message as Array<string | { message: string; path?: string }>).map(
-            (detailError: any) => {
-              if (typeof detailError === 'string') return { code: detailError }
-              // If your UnprocessableEntityException provides { message: 'key', path: 'field'}
-              return { code: detailError.message, path: detailError.path }
+      if (typeof exceptionResponse === 'string') {
+        descriptionKey = exceptionResponse
+      } else if (
+        typeof exceptionResponse === 'object' &&
+        exceptionResponse !== null &&
+        'message' in exceptionResponse
+      ) {
+        const resMessage = (exceptionResponse as any).message
+        if (Array.isArray(resMessage)) {
+          descriptionKey = 'Error.Global.ValidationFailed'
+          processedErrorDetails = resMessage.map((detailError: any) => {
+            if (typeof detailError === 'string') {
+              return { description: detailError }
             }
-          )
+            const i18nKeyForDetail = `Error.Validation.${detailError.path}.${detailError.code}`
+            return {
+              field: detailError.path,
+              description: i18nKeyForDetail
+            }
+          })
         } else {
-          messageKey = (response as any).message || messageKey
+          descriptionKey = resMessage || `Error.Global.Http.${httpStatus}`
         }
       } else {
-        messageKey = `Error.Global.Http.${httpStatus}`
+        descriptionKey = `Error.Global.Http.${httpStatus}`
       }
     } else {
-      // For non-HttpException errors, keep the defaults (500, INTERNAL_SERVER_ERROR, etc.)
-      // No specific details unless we can parse the error further
-      errorDetails = [{ code: 'Error.Global.UnknownError' }]
+      processedErrorDetails = [{ description: descriptionKey }]
     }
 
-    const responseBody: StandardErrorResponseFormat = {
-      statusCode: httpStatus,
-      error: errorCode,
-      message: messageKey,
-      details: errorDetails.length > 0 ? errorDetails : [{ code: messageKey }] // Ensure details always has at least the main messageKey if empty
+    const timestamp = new Date().toISOString()
+    const reqId = request.headers['x-request-id'] || uuidv4()
+    const title = this.mapHttpStatusToText(httpStatus)
+    const typeUrlErrorSegment = errorCode.toLowerCase().replace(/_/g, '-')
+
+    const responseBody: NewErrorResponse = {
+      type: `https://api.shopsifu.live/errors/${typeUrlErrorSegment}`,
+      title,
+      status: httpStatus,
+      timestamp,
+      requestId: reqId
+    }
+
+    // Add errors if there are field-specific details
+    if (processedErrorDetails.length > 0) {
+      responseBody.errors = processedErrorDetails
+    } else {
+      // Add root-level description for non-field-specific errors
+      responseBody.description = descriptionKey
     }
 
     httpAdapter.reply(ctx.getResponse(), responseBody, httpStatus)
+  }
+
+  private mapHttpStatusToText(status: HttpStatus): string {
+    switch (status) {
+      case HttpStatus.BAD_REQUEST:
+        return 'Bad Request'
+      case HttpStatus.UNAUTHORIZED:
+        return 'Unauthorized'
+      case HttpStatus.FORBIDDEN:
+        return 'Forbidden'
+      case HttpStatus.NOT_FOUND:
+        return 'Not Found'
+      case HttpStatus.CONFLICT:
+        return 'Conflict'
+      case HttpStatus.UNPROCESSABLE_ENTITY:
+        return 'Unprocessable Entity'
+      case HttpStatus.INTERNAL_SERVER_ERROR:
+        return 'Internal Server Error'
+      case HttpStatus.SERVICE_UNAVAILABLE:
+        return 'Service Unavailable'
+      default: {
+        const statusText = Object.keys(HttpStatus).find((key) => HttpStatus[key] === status)
+        return statusText
+          ? statusText
+              .split('_')
+              .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+              .join(' ')
+          : 'Http Error'
+      }
+    }
   }
 
   private mapHttpStatusToErrorCode(status: HttpStatus): string {
@@ -118,7 +183,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return 'SERVICE_UNAVAILABLE'
       case HttpStatus.CONFLICT:
         return 'CONFLICT_ERROR'
-      // Add more mappings as needed
       default:
         return 'UNKNOWN_HTTP_ERROR'
     }
