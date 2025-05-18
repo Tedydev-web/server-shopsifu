@@ -49,7 +49,7 @@ export class LanguageService {
       })
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'LANGUAGE_CREATE_SUCCESS'
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return newLanguage
     } catch (error) {
       auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during language creation'
@@ -59,10 +59,10 @@ export class LanguageService {
       if (isUniqueConstraintPrismaError(error)) {
         auditLogEntry.details.reason = 'LANGUAGE_ID_ALREADY_EXISTS'
         auditLogEntry.errorMessage = LanguageAlreadyExistsException.message
-        this.auditLogService.record(auditLogEntry as AuditLogData)
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw LanguageAlreadyExistsException
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
@@ -91,7 +91,7 @@ export class LanguageService {
           { code: 'Error.Language.NotFoundOnUpdate', args: { id } }
         ]).message
         auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_PRE_UPDATE_CHECK'
-        this.auditLogService.record(auditLogEntry as AuditLogData)
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw NotFoundRecordException('Error.Language.NotFoundOnUpdate', 'RESOURCE_NOT_FOUND', [
           { code: 'Error.Language.NotFoundOnUpdate', args: { id } }
         ])
@@ -104,7 +104,7 @@ export class LanguageService {
       })
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'LANGUAGE_UPDATE_SUCCESS'
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return updatedLanguage
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
@@ -119,7 +119,7 @@ export class LanguageService {
           { code: 'Error.Language.NotFoundOnUpdate', args: { id } }
         ]).message
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
@@ -140,7 +140,7 @@ export class LanguageService {
           { code: 'Error.Language.NotFoundOnDelete', args: { id } }
         ]).message
         auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_PRE_DELETE_CHECK'
-        this.auditLogService.record(auditLogEntry as AuditLogData)
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw NotFoundRecordException('Error.Language.NotFoundOnDelete', 'RESOURCE_NOT_FOUND', [
           { code: 'Error.Language.NotFoundOnDelete', args: { id } }
         ])
@@ -148,7 +148,7 @@ export class LanguageService {
       await this.languageRepo.delete(id, true)
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'LANGUAGE_DELETE_SUCCESS'
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return {
         message: 'Language.Delete.Success'
       }
@@ -165,7 +165,7 @@ export class LanguageService {
           { code: 'Error.Language.NotFoundOnDelete', args: { id } }
         ]).message
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }

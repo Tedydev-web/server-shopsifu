@@ -39,7 +39,6 @@ import {
   InvalidTOTPException,
   OTPExpiredException,
   OTPTokenExpiredException,
-  RefreshTokenAlreadyUsedException,
   TOTPAlreadyEnabledException,
   TOTPNotEnabledException,
   UnauthorizedAccessException,
@@ -57,12 +56,9 @@ import { Request } from 'express'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import {
   Prisma,
-  User as PrismaUser,
   RecoveryCode as PrismaRecoveryCode,
   VerificationToken as PrismaVerificationToken,
-  RefreshToken as PrismaRefreshToken,
-  VerificationCodeType as PrismaVerificationCodeEnum,
-  Role as PrismaRole
+  VerificationCodeType as PrismaVerificationCodeEnum
 } from '@prisma/client'
 import { TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
 import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/shared/services/audit.service'
@@ -158,12 +154,11 @@ export class AuthService {
     }
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
-        const verificationCode = await this.validateVerificationCode({
+        await this.validateVerificationCode({
           email: body.email,
           code: body.code,
           type: body.type
         })
-        // Nếu code hợp lệ, có thể đã có user ID liên quan nếu type không phải REGISTER
         const existingUser = await this.sharedUserRepository.findUnique({ email: body.email })
         if (existingUser) {
           auditLogEntry.userId = existingUser.id
@@ -194,8 +189,7 @@ export class AuthService {
           } catch (error) {
             auditLogEntry.errorMessage = DeviceSetupFailedException().message
             auditLogEntry.notes = 'Device creation/finding failed during OTP verification'
-            // Không throw ở đây để luồng chính vẫn có thể tạo token nếu deviceId là optional
-            console.error('Không thể tạo hoặc tìm device trong verifyCode', error)
+            console.error('Could not create or find device in verifyCode', error)
           }
         }
 
@@ -227,14 +221,14 @@ export class AuthService {
       })
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'OTP_VERIFY_SUCCESS'
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return result
     } catch (error) {
       auditLogEntry.errorMessage = error.message
       if (error instanceof ApiException) {
         auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
@@ -286,13 +280,10 @@ export class AuthService {
         const clientRoleId = await this.rolesService.getClientRoleId()
         const hashedPassword = await this.hashingService.hash(body.password)
 
-        // Kiểm tra email tồn tại trước khi tạo user để ghi log lỗi cụ thể hơn nếu cần
         const existingUserCheck = await tx.user.findUnique({ where: { email: body.email }, select: { id: true } })
         if (existingUserCheck) {
           auditLogEntry.errorMessage = EmailAlreadyExistsException.message
           auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK'
-          // Không throw ở đây ngay, vì createUser sẽ throw và được bắt ở ngoài
-          // throw EmailAlreadyExistsException;
         }
 
         const createdUser = await this.authRepository.createUser(
@@ -314,11 +305,9 @@ export class AuthService {
         await this.authRepository.deleteVerificationToken({ token: body.otpToken }, tx)
         return createdUser
       })
-      // Ghi log sau khi transaction thành công
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return user
     } catch (error) {
-      // Nếu lỗi là do email đã tồn tại (từ createUser hoặc từ check manual bên trong transaction)
       if (
         isUniqueConstraintPrismaError(error) ||
         (auditLogEntry.details.reason === 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK' && !auditLogEntry.errorMessage)
@@ -331,8 +320,7 @@ export class AuthService {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
-      // Ném lại lỗi để controller hoặc global filter xử lý
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       if (isUniqueConstraintPrismaError(error)) {
         throw EmailAlreadyExistsException
       }
@@ -530,7 +518,7 @@ export class AuthService {
           role: user.role.name
         }
       })
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return result
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
@@ -539,7 +527,7 @@ export class AuthService {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
@@ -779,7 +767,7 @@ export class AuthService {
           accessToken: newAccessToken
         }
       })
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return result
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
@@ -788,7 +776,7 @@ export class AuthService {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
@@ -801,7 +789,6 @@ export class AuthService {
     if (req) {
       auditLogEntry.ipAddress = req.ip
       auditLogEntry.userAgent = req.headers['user-agent']
-      // Cố gắng lấy userId từ access token nếu có (dù có thể không cần thiết cho logout)
       const activeUser = req[REQUEST_USER_KEY] as AccessTokenPayload | undefined
       if (activeUser) {
         auditLogEntry.userId = activeUser.userId
@@ -835,14 +822,14 @@ export class AuthService {
       })
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'USER_LOGOUT_SUCCESS'
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return result
     } catch (error) {
       auditLogEntry.errorMessage = error.message
       if (error instanceof ApiException) {
         auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
@@ -879,7 +866,6 @@ export class AuthService {
         })
         await this.authRepository.deleteVerificationToken({ token: body.otpToken }, tx)
 
-        // Log out all other sessions
         await tx.refreshToken.deleteMany({ where: { userId: user.id } })
         auditLogEntry.notes = 'All refresh tokens for the user were invalidated.'
 
@@ -887,14 +873,14 @@ export class AuthService {
       })
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'PASSWORD_RESET_SUCCESS'
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return result
     } catch (error) {
       auditLogEntry.errorMessage = error.message
       if (error instanceof ApiException) {
         auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
@@ -906,7 +892,6 @@ export class AuthService {
       status: AuditLogStatus.FAILURE,
       details: {}
     }
-    // Cố gắng lấy email sớm để ghi log nếu có lỗi sớm
     try {
       const userForEmail = await this.sharedUserRepository.findUnique({ id: userId })
       if (userForEmail) {
@@ -916,11 +901,11 @@ export class AuthService {
       const result = await this.prismaService.$transaction(async (tx) => {
         const user = await tx.user.findUnique({ where: { id: userId } })
         if (!user) {
-          auditLogEntry.errorMessage = EmailNotFoundException.message // Hoặc một lỗi cụ thể hơn như UserNotFoundException
+          auditLogEntry.errorMessage = EmailNotFoundException.message
           auditLogEntry.details.reason = 'USER_NOT_FOUND_FOR_2FA_SETUP'
           throw EmailNotFoundException
         }
-        auditLogEntry.userEmail = user.email // Cập nhật lại email từ user trong transaction
+        auditLogEntry.userEmail = user.email
 
         if (user.twoFactorEnabled) {
           auditLogEntry.errorMessage = TOTPAlreadyEnabledException.message
@@ -954,7 +939,7 @@ export class AuthService {
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.action = '2FA_SETUP_INITIATED_SUCCESS'
         auditLogEntry.details.setupTokenGenerated = true
-        auditLogEntry.details.otpUriGenerated = !!otpauthUrl // Ghi nhận việc URI được tạo
+        auditLogEntry.details.otpUriGenerated = !!otpauthUrl
 
         return {
           secret: secret,
@@ -962,7 +947,7 @@ export class AuthService {
           setupToken
         }
       })
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return result
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
@@ -972,7 +957,7 @@ export class AuthService {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
@@ -1040,7 +1025,7 @@ export class AuthService {
             twoFactorSecret: tempTwoFactorSecret,
             twoFactorMethod: TwoFactorMethodType.TOTP as TwoFactorMethodTypeType,
             twoFactorVerifiedAt: new Date(),
-            totpSecret: null // Đảm bảo clear totpSecret cũ nếu có
+            totpSecret: null
           },
           tx
         )
@@ -1064,7 +1049,7 @@ export class AuthService {
       })
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = '2FA_CONFIRM_SETUP_SUCCESS'
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return result
     } catch (error) {
       auditLogEntry.errorMessage = error.message
@@ -1072,11 +1057,10 @@ export class AuthService {
         auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
       if (!auditLogEntry.userEmail && userId) {
-        // Cố gắng lấy email nếu chưa có
         const userForEmailOnError = await this.sharedUserRepository.findUnique({ id: userId })
         if (userForEmailOnError) auditLogEntry.userEmail = userForEmailOnError.email
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
@@ -1181,7 +1165,7 @@ export class AuthService {
 
         return { message: 'Auth.2FA.DisableSuccessful' }
       })
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return result
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
@@ -1190,13 +1174,12 @@ export class AuthService {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
 
   async verifyTwoFactor(body: TwoFactorVerifyBodyType & { userAgent: string; ip: string }, res?: Response) {
-    // Khởi tạo auditLogEntry với details là một object cụ thể
     const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
       action: '2FA_VERIFY_ATTEMPT',
       ipAddress: body.ip,
@@ -1205,7 +1188,7 @@ export class AuthService {
       details: {
         loginSessionTokenProvided: !!body.loginSessionToken,
         verificationTypeAttempted: body.type,
-        codeProvided: !!body.code // Chỉ ghi nhận sự tồn tại, không ghi giá trị code
+        codeProvided: !!body.code
       }
     }
 
@@ -1216,7 +1199,6 @@ export class AuthService {
           tx
         )) as PrismaVerificationToken | null
 
-        // Cập nhật userEmail và userId sớm nếu có thể
         if (initialVerificationToken) {
           auditLogEntry.userEmail = initialVerificationToken.email
           if (initialVerificationToken.userId) {
@@ -1237,7 +1219,7 @@ export class AuthService {
             if (typeof parsedMetadata.rememberMe === 'boolean') {
               rememberMe = parsedMetadata.rememberMe
             }
-            auditLogEntry.details.rememberMeSettingFromToken = rememberMe // Log giá trị rememberMe lấy được
+            auditLogEntry.details.rememberMeSettingFromToken = rememberMe
           } catch (e) {
             console.warn('[AuthService verifyTwoFactor] Could not parse rememberMe from token metadata', e)
             auditLogEntry.notes = 'Error parsing rememberMe from token metadata.'
@@ -1251,8 +1233,7 @@ export class AuthService {
           tokenType: TokenType.OTP,
           deviceId: initialVerificationToken.deviceId ?? undefined
         })
-        // Sau validateVerificationToken, email và userId đã được xác thực phần nào
-        auditLogEntry.userEmail = verificationToken.email // Cập nhật lại từ token đã validate
+        auditLogEntry.userEmail = verificationToken.email
         if (verificationToken.userId) {
           auditLogEntry.userId = verificationToken.userId
         }
@@ -1268,7 +1249,7 @@ export class AuthService {
           auditLogEntry.details.reason = '2FA_NOT_ENABLED_FOR_USER'
           throw TOTPNotEnabledException
         }
-        auditLogEntry.details.userTwoFactorMethod = user.twoFactorMethod // Log phương thức 2FA của user
+        auditLogEntry.details.userTwoFactorMethod = user.twoFactorMethod
 
         let isValid2FACode = false
         if (body.type === TwoFactorMethodType.TOTP && body.code) {
@@ -1287,7 +1268,7 @@ export class AuthService {
         } else if (body.type === TwoFactorMethodType.RECOVERY && body.code) {
           await this.verifyRecoveryCode(user.id, body.code, tx)
           isValid2FACode = true
-          auditLogEntry.details.recoveryCodeUsed = true // Ghi nhận việc sử dụng recovery code
+          auditLogEntry.details.recoveryCodeUsed = true
         } else {
           await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
           auditLogEntry.errorMessage = 'Either a TOTP code or a recovery code (with correct type) must be provided.'
@@ -1297,10 +1278,10 @@ export class AuthService {
 
         if (!isValid2FACode) {
           await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
-          auditLogEntry.errorMessage = InvalidTOTPException.message // Hoặc lỗi cụ thể hơn nếu là recovery code
+          auditLogEntry.errorMessage = InvalidTOTPException.message
           auditLogEntry.details.reason =
             body.type === TwoFactorMethodType.RECOVERY ? 'INVALID_RECOVERY_CODE' : 'INVALID_TOTP_CODE'
-          throw InvalidTOTPException // Hoặc InvalidRecoveryCodeException
+          throw InvalidTOTPException
         }
 
         let deviceId = verificationToken.deviceId
@@ -1317,7 +1298,7 @@ export class AuthService {
             deviceId = device.id
             auditLogEntry.details.newDeviceCreated = true
           } catch (error) {
-            console.error('Lỗi khi tạo device trong verifyTwoFactor:', error)
+            console.error('Error creating device in verifyTwoFactor:', error)
             auditLogEntry.errorMessage = DeviceAssociationFailedException().message
             auditLogEntry.details.deviceError = 'DeviceCreationFailureIn2FAVerify'
             throw DeviceAssociationFailedException()
@@ -1369,8 +1350,8 @@ export class AuthService {
           name: user.name,
           role: user.role.name
         }
-      }) // Kết thúc transaction
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      })
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return result
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
@@ -1379,7 +1360,7 @@ export class AuthService {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
       }
-      this.auditLogService.record(auditLogEntry as AuditLogData)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }

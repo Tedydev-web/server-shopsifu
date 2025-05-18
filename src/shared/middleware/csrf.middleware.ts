@@ -88,10 +88,13 @@ export class CsrfMiddleware implements NestMiddleware {
 
     let token = tokenFromHeader || tokenFromBodyOrQuery
 
+    // Log the token safely
+    this.logger.debug(`CSRF Extractor - Token found in request (raw): ${String(token)}`)
+
     if (Array.isArray(token)) {
       token = token[0]
     }
-    this.logger.debug(`CSRF Extractor - Token found in request: ${token}`)
+    this.logger.debug(`CSRF Extractor - Token after potential array conversion: ${token}`)
     return (token as string) || ''
   }
 }

@@ -6,7 +6,6 @@ import {
   LoginSessionResSchema,
   LogoutBodySchema,
   RefreshTokenBodySchema,
-  RefreshTokenResSchema,
   RegisterBodySchema,
   RegisterResSchema,
   ResetPasswordBodySchema,
