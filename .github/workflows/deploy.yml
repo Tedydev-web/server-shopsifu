@@ -47,30 +47,39 @@ jobs:
       - name: Generate .env
         run: |
           cat <<EOF > .env
-          PORT=3000
-          DATABASE_URL="${{ secrets.DATABASE_URL }}"
-          ACCESS_TOKEN_EXPIRES_IN=${{ secrets.ACCESS_TOKEN_EXPIRES_IN }}"
-          REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REFRESH_TOKEN_EXPIRES_IN }}"
-          ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}"
-          REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}"
-          SECRET_API_KEY=${{ secrets.SECRET_API_KEY }}"
-          ADMIN_NAME="${{ secrets.ADMIN_NAME }}"
-          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}"
-          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}"
-          ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER }}"
-          LOGIN_SESSION_TOKEN_EXPIRES_IN=${{ secrets.LOGIN_SESSION_TOKEN_EXPIRES_IN }}"
-          OTP_TOKEN_EXPIRES_IN=${{ secrets.OTP_TOKEN_EXPIRES_IN }}"
-          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}"
-          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}"
-          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}"
-          GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}"
-          GOOGLE_CLIENT_REDIRECT_URI=${{ secrets.GOOGLE_CLIENT_REDIRECT_URI }}"
+          NODE_ENV=staging
+          API_HOST_URL=${{ secrets.API_HOST_URL }}
+          API_LOCAL_URL=${{ secrets.API_LOCAL_URL }}
+          FRONTEND_HOST_URL=${{ secrets.FRONTEND_HOST_URL }}
+          FRONTEND_LOCAL_URL=${{ secrets.FRONTEND_LOCAL_URL }}
+          PORT=${{ secrets.PORT }}
+          APP_NAME=${{ secrets.APP_NAME }}
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          ACCESS_TOKEN_EXPIRES_IN=${{ secrets.ACCESS_TOKEN_EXPIRES_IN }}
+          REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REFRESH_TOKEN_EXPIRES_IN }}
+          ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}
+          REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}
+          LOGIN_SESSION_TOKEN_EXPIRES_IN=${{ secrets.LOGIN_SESSION_TOKEN_EXPIRES_IN }}
+          OTP_TOKEN_EXPIRES_IN=${{ secrets.OTP_TOKEN_EXPIRES_IN }}
+          REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN }}
+          COOKIE_SECRET=${{ secrets.COOKIE_SECRET }}
+          CSRF_SECRET=${{ secrets.CSRF_SECRET }}
+          SECRET_API_KEY=${{ secrets.SECRET_API_KEY }}
+          ADMIN_NAME=${{ secrets.ADMIN_NAME }}
+          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER }}
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}
+          GOOGLE_CLIENT_REDIRECT_URI=${{ secrets.GOOGLE_CLIENT_REDIRECT_URI }}
           EOF
 
       - name: Deploy via SSH & PM2
         id: ssh_deploy
         run: |
-          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+          sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} << 'EOF'
             set -euo pipefail
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
@@ -79,7 +88,7 @@ jobs:
             if ! command -v jq &> /dev/null; then
               sudo apt-get update && sudo apt-get install -y jq
             fi
-            cd ${{ secrets.PATH_PROJECT }}
+            cd ${{ secrets.STAGING_PATH_PROJECT }}
             git fetch origin master && git reset --hard origin/master
             rm -rf dist node_modules
             npm ci && npm run build
@@ -102,7 +111,7 @@ jobs:
         if: always()
         id: pm2_logs
         run: |
-          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+          sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} << 'EOF'
             # Trích xuất thông tin từ pm2 jlist
             PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json 2>/dev/null)
             if [ -z "$PM2_INFO" ]; then
@@ -233,12 +242,12 @@ jobs:
     steps:
       - name: Rollback to previous commit on server
         run: |
-          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+          sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} << 'EOF'
             set -euo pipefail
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             source ~/.bashrc; source ~/.profile
-            cd ${{ secrets.PATH_PROJECT }}
+            cd ${{ secrets.STAGING_PATH_PROJECT }}
             git fetch origin master
             git reset --hard HEAD~1
             rm -rf dist node_modules
@@ -259,12 +268,12 @@ jobs:
 
       - name: Re-deploy to VPS
         run: |
-          sshpass -p "${{ secrets.VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP_HOST }} << 'EOF'
+          sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} << 'EOF'
             set -euo pipefail
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             source ~/.bashrc; source ~/.profile
-            cd ${{ secrets.PATH_PROJECT }}
+            cd ${{ secrets.STAGING_PATH_PROJECT }}
             git reset --hard HEAD
             rm -rf dist node_modules
             npm ci && npm run build
