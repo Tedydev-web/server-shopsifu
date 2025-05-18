@@ -54,7 +54,7 @@ export class AuthController {
     })
   }
 
-  @Post('otp')
+  @Post('send-otp')
   @IsPublic()
   @ZodSerializerDto(MessageResDTO)
   @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })

@@ -101,6 +101,9 @@ model User {
   updatedAt    DateTime       @updatedAt
   RecoveryCode RecoveryCode[]
 
+  // Thêm quan hệ ngược cho AuditLog
+  auditLogs AuditLog[]
+
   @@index([deletedAt])
 }
 
@@ -549,4 +552,27 @@ enum TwoFactorMethodType {
   TOTP
   OTP
   RECOVERY
+}
+
+model AuditLog {
+  id           Int      @id @default(autoincrement())
+  timestamp    DateTime @default(now())
+  userId       Int? // ID của người dùng thực hiện hành động (nếu có)
+  userEmail    String? // Email của người dùng (để dễ đọc)
+  action       String // Mô tả hành động, ví dụ: "USER_LOGIN", "PRODUCT_CREATED"
+  entity       String? // Tên của đối tượng bị tác động, ví dụ: "User", "Product"
+  entityId     String? // ID của đối tượng bị tác động
+  details      Json? // Thông tin chi tiết: dữ liệu cũ, dữ liệu mới, params
+  ipAddress    String?
+  userAgent    String?
+  status       String // Trạng thái: SUCCESS, FAILURE
+  errorMessage String? // Thông báo lỗi nếu thất bại
+  notes        String? // Ghi chú thêm
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([timestamp])
+  @@index([userId])
+  @@index([action])
+  @@index([entity, entityId])
 }

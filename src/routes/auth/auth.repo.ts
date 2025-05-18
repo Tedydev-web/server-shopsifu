@@ -125,7 +125,13 @@ export class AuthRepository {
   ): Promise<(RefreshTokenType & { user: UserType & { role: RoleType } }) | null> {
     const client = this.getClient(prismaClient)
     return client.refreshToken.findUnique({
-      where: uniqueObject,
+      where: {
+        token: uniqueObject.token,
+        used: false,
+        expiresAt: {
+          gt: new Date()
+        }
+      },
       include: {
         user: {
           include: {

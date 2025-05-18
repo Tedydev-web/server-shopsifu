@@ -10,6 +10,7 @@ import { LanguageModule } from './routes/language/language.module'
 import { SecurityHeadersMiddleware } from './shared/middleware/security-headers.middleware'
 import { CsrfMiddleware } from './shared/middleware/csrf.middleware'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
+import { LoggerMiddleware } from './shared/middleware/logger.middleware'
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    consumer.apply(LoggerMiddleware).forRoutes('*')
     consumer.apply(SecurityHeadersMiddleware).forRoutes('*').apply(CsrfMiddleware).forRoutes('*')
   }
 }

@@ -149,3 +149,10 @@ export const DeviceMismatchException = new ApiException(
   'Error.Auth.Device.Mismatch'
   // [{ code: 'Error.Auth.Device.Mismatch', path: 'device' }] // path có thể không rõ ràng ở đây
 )
+
+// Thêm các exceptions mới cho lỗi thiết bị
+export const DeviceSetupFailedException = (messageKey = 'Error.Auth.Device.SetupFailed') =>
+  new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'DEVICE_SETUP_FAILED', messageKey, [{ code: messageKey }])
+
+export const DeviceAssociationFailedException = (messageKey = 'Error.Auth.Device.AssociationFailed') =>
+  new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'DEVICE_ASSOCIATION_FAILED', messageKey, [{ code: messageKey }])

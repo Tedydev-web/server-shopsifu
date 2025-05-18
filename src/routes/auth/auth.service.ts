@@ -23,10 +23,11 @@ import {
   TwoFactorMethodType,
   TypeOfVerificationCode,
   TypeOfVerificationCodeType,
-  CookieNames
+  CookieNames,
+  REQUEST_USER_KEY
 } from 'src/shared/constants/auth.constant'
 import { EmailService } from 'src/shared/services/email.service'
-import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
+import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import {
   EmailAlreadyExistsException,
   EmailNotFoundException,
@@ -44,7 +45,9 @@ import {
   UnauthorizedAccessException,
   DeviceMismatchException,
   InvalidDeviceException,
-  InvalidRecoveryCodeException
+  InvalidRecoveryCodeException,
+  DeviceSetupFailedException,
+  DeviceAssociationFailedException
 } from 'src/routes/auth/auth.error'
 import { TwoFactorService } from 'src/shared/services/2fa.service'
 import { v4 as uuidv4 } from 'uuid'
@@ -62,6 +65,8 @@ import {
   Role as PrismaRole
 } from '@prisma/client'
 import { TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
+import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/shared/services/audit.service'
+import { ApiException } from 'src/shared/exceptions/api.exception'
 
 @Injectable()
 export class AuthService {
@@ -73,7 +78,8 @@ export class AuthService {
     private readonly sharedUserRepository: SharedUserRepository,
     private readonly emailService: EmailService,
     private readonly tokenService: TokenService,
-    private readonly twoFactorService: TwoFactorService
+    private readonly twoFactorService: TwoFactorService,
+    private readonly auditLogService: AuditLogService
   ) {}
 
   async validateVerificationCode({
@@ -142,66 +148,95 @@ export class AuthService {
   }
 
   async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string }) {
-    return this.prismaService.$transaction(async (tx) => {
-      await this.validateVerificationCode({
-        email: body.email,
-        code: body.code,
-        type: body.type
-      })
-
-      await this.authRepository.deleteVerificationTokenByEmailAndType(body.email, body.type, TokenType.OTP, tx)
-
-      let userId: number | undefined = undefined
-      if (body.type !== TypeOfVerificationCode.REGISTER) {
-        const userFromSharedRepo = await this.sharedUserRepository.findUnique({ email: body.email })
-        if (userFromSharedRepo) {
-          userId = userFromSharedRepo.id
-        }
-      }
-
-      let deviceId: number | undefined = undefined
-      if (userId) {
-        try {
-          const device = await this.authRepository.findOrCreateDevice(
-            {
-              userId,
-              userAgent: body.userAgent,
-              ip: body.ip
-            },
-            tx
-          )
-          deviceId = device.id
-        } catch (error) {
-          console.error('Không thể tạo hoặc tìm device', error)
-        }
-      }
-
-      const token = uuidv4()
-      await this.authRepository.createVerificationToken(
-        {
-          token,
+    let auditLogEntry: Partial<AuditLogData> = {
+      action: 'OTP_VERIFY_ATTEMPT',
+      userEmail: body.email,
+      ipAddress: body.ip,
+      userAgent: body.userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: { type: body.type, codeProvided: !!body.code }
+    }
+    try {
+      const result = await this.prismaService.$transaction(async (tx) => {
+        const verificationCode = await this.validateVerificationCode({
           email: body.email,
-          type: body.type,
-          tokenType: TokenType.OTP,
-          userId,
-          deviceId,
-          expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
-        },
-        tx
-      )
+          code: body.code,
+          type: body.type
+        })
+        // Nếu code hợp lệ, có thể đã có user ID liên quan nếu type không phải REGISTER
+        const existingUser = await this.sharedUserRepository.findUnique({ email: body.email })
+        if (existingUser) {
+          auditLogEntry.userId = existingUser.id
+        }
 
-      await this.authRepository.deleteVerificationCode(
-        {
-          email_code_type: {
-            email: body.email,
-            code: body.code,
-            type: body.type as PrismaVerificationCodeEnum
+        await this.authRepository.deleteVerificationTokenByEmailAndType(body.email, body.type, TokenType.OTP, tx)
+
+        let userId: number | undefined = undefined
+        if (body.type !== TypeOfVerificationCode.REGISTER) {
+          const userFromSharedRepo = await this.sharedUserRepository.findUnique({ email: body.email })
+          if (userFromSharedRepo) {
+            userId = userFromSharedRepo.id
           }
-        },
-        tx
-      )
-      return { otpToken: token }
-    })
+        }
+
+        let deviceId: number | undefined = undefined
+        if (userId) {
+          try {
+            const device = await this.authRepository.findOrCreateDevice(
+              {
+                userId,
+                userAgent: body.userAgent,
+                ip: body.ip
+              },
+              tx
+            )
+            deviceId = device.id
+          } catch (error) {
+            auditLogEntry.errorMessage = DeviceSetupFailedException().message
+            auditLogEntry.notes = 'Device creation/finding failed during OTP verification'
+            // Không throw ở đây để luồng chính vẫn có thể tạo token nếu deviceId là optional
+            console.error('Không thể tạo hoặc tìm device trong verifyCode', error)
+          }
+        }
+
+        const token = uuidv4()
+        await this.authRepository.createVerificationToken(
+          {
+            token,
+            email: body.email,
+            type: body.type,
+            tokenType: TokenType.OTP,
+            userId,
+            deviceId,
+            expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
+          },
+          tx
+        )
+
+        await this.authRepository.deleteVerificationCode(
+          {
+            email_code_type: {
+              email: body.email,
+              code: body.code,
+              type: body.type as PrismaVerificationCodeEnum
+            }
+          },
+          tx
+        )
+        return { otpToken: token }
+      })
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'OTP_VERIFY_SUCCESS'
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      return result
+    } catch (error) {
+      auditLogEntry.errorMessage = error.message
+      if (error instanceof ApiException) {
+        auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+      }
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
   }
 
   async register(body: RegisterBodyType & { userAgent?: string; ip?: string }) {
@@ -287,31 +322,88 @@ export class AuthService {
   async login(body: LoginBodyType & { userAgent: string; ip: string }, res?: Response) {
     console.log('[DEBUG AuthService login] Received login request for email:', body.email)
     return this.prismaService.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({
-        where: { email: body.email },
-        include: { role: true }
-      })
-      if (!user) {
-        console.warn('[DEBUG AuthService login] User not found:', body.email)
-        throw InvalidLoginSessionException
+      let auditLogEntry: Partial<AuditLogData> = {
+        action: 'USER_LOGIN_ATTEMPT',
+        userEmail: body.email,
+        ipAddress: body.ip,
+        userAgent: body.userAgent,
+        status: AuditLogStatus.FAILURE // Mặc định là thất bại
       }
-      console.log('[DEBUG AuthService login] User found:', {
-        id: user.id,
-        email: user.email,
-        twoFactorEnabled: user.twoFactorEnabled
-      })
+      try {
+        const user = await tx.user.findUnique({
+          where: { email: body.email },
+          include: { role: true }
+        })
+        if (!user) {
+          console.warn('[DEBUG AuthService login] User not found:', body.email)
+          auditLogEntry.errorMessage = 'User not found or invalid login session'
+          throw InvalidLoginSessionException
+        }
+        console.log('[DEBUG AuthService login] User found:', {
+          id: user.id,
+          email: user.email,
+          twoFactorEnabled: user.twoFactorEnabled
+        })
+        auditLogEntry.userId = user.id
 
-      const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
-      if (!isPasswordMatch) {
-        console.warn('[DEBUG AuthService login] Invalid password for user:', user.email)
-        throw InvalidPasswordException
-      }
-      console.log('[DEBUG AuthService login] Password matched for user:', user.email)
+        const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
+        if (!isPasswordMatch) {
+          console.warn('[DEBUG AuthService login] Invalid password for user:', user.email)
+          auditLogEntry.errorMessage = 'Invalid password'
+          throw InvalidPasswordException
+        }
+        console.log('[DEBUG AuthService login] Password matched for user:', user.email)
 
-      if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod) {
-        console.log('[DEBUG AuthService login] 2FA is ENABLED for user. Proceeding with 2FA flow.', user.email)
-        const otpToken = uuidv4()
-        let deviceId: number | undefined = undefined
+        if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod) {
+          console.log('[DEBUG AuthService login] 2FA is ENABLED for user. Proceeding with 2FA flow.', user.email)
+          const otpToken = uuidv4()
+          let deviceId: number | undefined = undefined
+          try {
+            const device = await this.authRepository.findOrCreateDevice(
+              {
+                userId: user.id,
+                userAgent: body.userAgent,
+                ip: body.ip
+              },
+              tx
+            )
+            deviceId = device.id
+            console.log('[DEBUG AuthService login - 2FA flow] Device created/found with ID:', deviceId)
+          } catch (error) {
+            console.error('[DEBUG AuthService login - 2FA flow] Error creating/finding device:', error)
+            auditLogEntry.errorMessage = error.message
+            throw DeviceSetupFailedException()
+          }
+
+          await this.authRepository.createVerificationToken(
+            {
+              token: otpToken,
+              email: user.email,
+              type: TypeOfVerificationCode.LOGIN_2FA,
+              tokenType: TokenType.OTP,
+              userId: user.id,
+              deviceId,
+              metadata: JSON.stringify({ rememberMe: body.rememberMe }),
+              expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
+            },
+            tx
+          )
+          console.log('[DEBUG AuthService login - 2FA flow] LOGIN_2FA token created. Returning 2FA prompt.')
+          auditLogEntry.status = AuditLogStatus.SUCCESS // Thành công đến bước yêu cầu 2FA
+          auditLogEntry.notes = '2FA required'
+          this.auditLogService.record(auditLogEntry as AuditLogData) // Ghi log
+          return {
+            message: 'Auth.Login.2FARequired',
+            loginSessionToken: otpToken,
+            twoFactorMethod: user.twoFactorMethod
+          }
+        }
+
+        console.log(
+          '[DEBUG AuthService login] 2FA is NOT ENABLED or not fully configured. Proceeding with direct login.',
+          user.email
+        )
+        let deviceId: number | undefined
         try {
           const device = await this.authRepository.findOrCreateDevice(
             {
@@ -322,90 +414,63 @@ export class AuthService {
             tx
           )
           deviceId = device.id
-          console.log('[DEBUG AuthService login - 2FA flow] Device created/found with ID:', deviceId)
+          console.log('[DEBUG AuthService login - Direct login] Device created/found with ID:', deviceId)
         } catch (error) {
-          console.error('[DEBUG AuthService login - 2FA flow] Error creating/finding device:', error)
+          console.error('[DEBUG AuthService login - Direct login] Error creating/finding device:', error)
+          auditLogEntry.errorMessage = error.message
+          throw DeviceSetupFailedException()
         }
 
-        await this.authRepository.createVerificationToken(
+        if (!deviceId) {
+          console.error('[DEBUG AuthService login - Direct login] Device ID is undefined after creation attempt.')
+          auditLogEntry.errorMessage = 'Device ID is undefined after creation attempt'
+          throw DeviceSetupFailedException()
+        }
+
+        console.log('[DEBUG AuthService login - Direct login] Generating tokens...')
+        const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.generateTokens(
           {
-            token: otpToken,
-            email: user.email,
-            type: TypeOfVerificationCode.LOGIN_2FA,
-            tokenType: TokenType.OTP,
             userId: user.id,
-            deviceId,
-            expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
+            deviceId: deviceId,
+            roleId: user.roleId,
+            roleName: user.role.name
           },
-          tx
+          tx,
+          body.rememberMe
         )
-        console.log('[DEBUG AuthService login - 2FA flow] LOGIN_2FA token created. Returning 2FA prompt.')
+        console.log(
+          '[DEBUG AuthService login - Direct login] Tokens generated. AccessToken present:',
+          !!accessToken,
+          'RefreshToken present:',
+          !!refreshToken
+        )
+
+        if (res) {
+          console.log('[DEBUG AuthService login - Direct login] Response object present, attempting to set cookies.')
+          this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
+        } else {
+          console.warn(
+            '[DEBUG AuthService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
+          )
+        }
+
+        console.log('[DEBUG AuthService login - Direct login] Returning user profile.')
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = 'USER_LOGIN_SUCCESS' // Cập nhật action
+        this.auditLogService.record(auditLogEntry as AuditLogData) // Ghi log
         return {
-          message: 'Auth.Login.2FARequired',
-          loginSessionToken: otpToken,
-          twoFactorMethod: user.twoFactorMethod
-        }
-      }
-
-      console.log(
-        '[DEBUG AuthService login] 2FA is NOT ENABLED or not fully configured. Proceeding with direct login.',
-        user.email
-      )
-      let deviceId: number | undefined
-      try {
-        const device = await this.authRepository.findOrCreateDevice(
-          {
-            userId: user.id,
-            userAgent: body.userAgent,
-            ip: body.ip
-          },
-          tx
-        )
-        deviceId = device.id
-        console.log('[DEBUG AuthService login - Direct login] Device created/found with ID:', deviceId)
-      } catch (error) {
-        console.error('[DEBUG AuthService login - Direct login] Error creating/finding device:', error)
-        throw new HttpException('Không thể xử lý thông tin thiết bị.', 500)
-      }
-
-      if (!deviceId) {
-        console.error('[DEBUG AuthService login - Direct login] Device ID is undefined after creation attempt.')
-        throw new HttpException('Không thể xác định thiết bị.', 500)
-      }
-
-      console.log('[DEBUG AuthService login - Direct login] Generating tokens...')
-      const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.generateTokens(
-        {
           userId: user.id,
-          deviceId: deviceId,
-          roleId: user.roleId,
-          roleName: user.role.name
-        },
-        tx,
-        body.rememberMe
-      )
-      console.log(
-        '[DEBUG AuthService login - Direct login] Tokens generated. AccessToken present:',
-        !!accessToken,
-        'RefreshToken present:',
-        !!refreshToken
-      )
-
-      if (res) {
-        console.log('[DEBUG AuthService login - Direct login] Response object present, attempting to set cookies.')
-        this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
-      } else {
-        console.warn(
-          '[DEBUG AuthService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
-        )
-      }
-
-      console.log('[DEBUG AuthService login - Direct login] Returning user profile.')
-      return {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role.name
+          email: user.email,
+          name: user.name,
+          role: user.role.name
+        }
+      } catch (error) {
+        auditLogEntry.errorMessage = error.message
+        if (error instanceof ApiException) {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
+        this.auditLogService.record(auditLogEntry as AuditLogData) // Ghi log lỗi
+        throw error
       }
     })
   }
@@ -460,185 +525,279 @@ export class AuthService {
     res?: Response
   ) {
     console.log('[DEBUG AuthService refreshToken] Received refreshToken request.')
-    return this.prismaService.$transaction(async (tx) => {
-      const tokenToUse = refreshToken || (req && req.cookies && req.cookies[CookieNames.REFRESH_TOKEN])
-      console.log('[DEBUG AuthService refreshToken] Token to use:', tokenToUse ? 'Present' : 'MISSING')
+    let auditLogEntry: Partial<AuditLogData> = {
+      action: 'REFRESH_TOKEN_ATTEMPT',
+      ipAddress: ip,
+      userAgent: userAgent,
+      status: AuditLogStatus.FAILURE
+    }
+    try {
+      const result = await this.prismaService.$transaction(async (tx) => {
+        const tokenToUse = refreshToken || (req && req.cookies && req.cookies[CookieNames.REFRESH_TOKEN])
+        console.log('[DEBUG AuthService refreshToken] Token to use:', tokenToUse ? 'Present' : 'MISSING')
+        auditLogEntry.details = { tokenProvided: !!tokenToUse }
 
-      if (!tokenToUse) {
-        if (res) {
-          this.tokenService.clearTokenCookies(res)
-        }
-        console.warn('[DEBUG AuthService refreshToken] No refresh token provided.')
-        throw UnauthorizedAccessException
-      }
-
-      const existingRefreshToken = await tx.refreshToken.findUnique({
-        where: { token: tokenToUse },
-        include: { user: { include: { role: true } }, device: true } // Include device
-      })
-
-      if (!existingRefreshToken || !existingRefreshToken.user) {
-        if (res) {
-          this.tokenService.clearTokenCookies(res)
-        }
-        console.warn('[DEBUG AuthService refreshToken] Refresh token not found in DB or user data missing.')
-        throw UnauthorizedAccessException
-      }
-      console.log(
-        '[DEBUG AuthService refreshToken] Found existing RT in DB. Used status:',
-        existingRefreshToken.used,
-        'UserID:',
-        existingRefreshToken.userId
-      )
-
-      // --- Đánh dấu RT hiện tại là đã sử dụng ---
-      try {
-        await tx.refreshToken.update({
-          where: { token: tokenToUse },
-          data: { used: true }
-        })
-        console.log('[DEBUG AuthService refreshToken] Marked current RT as used.')
-      } catch (error) {
-        if (isNotFoundPrismaError(error)) {
+        if (!tokenToUse) {
           if (res) {
             this.tokenService.clearTokenCookies(res)
           }
-          console.warn('[DEBUG AuthService refreshToken] RT disappeared before it could be marked as used.')
+          console.warn('[DEBUG AuthService refreshToken] No refresh token provided.')
+          auditLogEntry.errorMessage = UnauthorizedAccessException.message
           throw UnauthorizedAccessException
         }
-        console.error('[DEBUG AuthService refreshToken] Error marking RT as used:', error)
-        throw error // Ném lỗi gốc nếu không phải NotFound
-      }
 
-      // --- Xác thực thiết bị ---
-      const deviceFromRefreshToken = existingRefreshToken.device
-      let currentDeviceId: number | undefined = undefined
+        const existingRefreshToken = await tx.refreshToken.findUnique({
+          where: { token: tokenToUse },
+          include: { user: { include: { role: true } }, device: true }
+        })
 
-      if (deviceFromRefreshToken) {
-        console.log('[DEBUG AuthService refreshToken] Validating device. Device ID from RT:', deviceFromRefreshToken.id)
-        const isValidDevice = await this.authRepository.validateDevice(deviceFromRefreshToken.id, userAgent, ip, tx)
-        if (!isValidDevice) {
+        if (!existingRefreshToken || !existingRefreshToken.user) {
+          const potentiallyReplayedToken = await tx.refreshToken.findUnique({
+            where: { token: tokenToUse },
+            select: { userId: true, used: true, expiresAt: true }
+          })
+
+          if (potentiallyReplayedToken) {
+            auditLogEntry.userId = potentiallyReplayedToken.userId
+            console.warn(
+              `[SECURITY AuthService refreshToken] Potentially replayed/expired token used. UserId: ${potentiallyReplayedToken.userId}. Invalidating all tokens for this user.`
+            )
+            await tx.refreshToken.deleteMany({ where: { userId: potentiallyReplayedToken.userId } })
+            auditLogEntry.notes = 'Potential replay attack or expired/used token.'
+          }
+
+          if (res) {
+            this.tokenService.clearTokenCookies(res)
+          }
           console.warn(
-            '[DEBUG AuthService refreshToken] Device validation failed. Potential session hijack attempt or user changed device significantly.'
+            '[DEBUG AuthService refreshToken] Refresh token not found in DB (or user data missing), or token is invalid/used/expired.'
           )
-          // Hành động nghiêm ngặt: Vô hiệu hóa tất cả token của user này vì có thể RT đã bị đánh cắp và dùng trên thiết bị khác.
+          auditLogEntry.errorMessage = UnauthorizedAccessException.message
+          throw UnauthorizedAccessException
+        }
+
+        // Gán userId và userEmail sớm nhất có thể
+        auditLogEntry.userId = existingRefreshToken.userId
+        auditLogEntry.userEmail = existingRefreshToken.user.email
+
+        try {
+          await tx.refreshToken.update({
+            where: { token: tokenToUse },
+            data: { used: true }
+          })
+          console.log('[DEBUG AuthService refreshToken] Marked current RT as used.')
+        } catch (error) {
+          if (isNotFoundPrismaError(error)) {
+            if (res) {
+              this.tokenService.clearTokenCookies(res)
+            }
+            console.warn('[DEBUG AuthService refreshToken] RT disappeared before it could be marked as used.')
+            auditLogEntry.errorMessage = UnauthorizedAccessException.message
+            throw UnauthorizedAccessException
+          }
+          console.error('[DEBUG AuthService refreshToken] Error marking RT as used:', error)
+          auditLogEntry.errorMessage = error.message
+          throw error
+        }
+
+        const deviceFromRefreshToken = existingRefreshToken.device
+        let currentDeviceId: number | undefined = undefined
+
+        if (deviceFromRefreshToken) {
+          console.log(
+            '[DEBUG AuthService refreshToken] Validating device. Device ID from RT:',
+            deviceFromRefreshToken.id
+          )
+          const isValidDevice = await this.authRepository.validateDevice(deviceFromRefreshToken.id, userAgent, ip, tx)
+          if (!isValidDevice) {
+            console.warn(
+              '[DEBUG AuthService refreshToken] Device validation failed. Potential session hijack attempt or user changed device significantly.'
+            )
+            await tx.refreshToken.deleteMany({ where: { userId: existingRefreshToken.userId } })
+            if (res) {
+              this.tokenService.clearTokenCookies(res)
+            }
+            auditLogEntry.errorMessage = DeviceMismatchException.message
+            throw DeviceMismatchException
+          }
+          currentDeviceId = deviceFromRefreshToken.id
+          console.log(
+            '[DEBUG AuthService refreshToken] Device validated successfully. Using deviceId:',
+            currentDeviceId
+          )
+        } else {
+          console.warn(
+            '[DEBUG AuthService refreshToken] Refresh token does not have an associated device ID. Rejecting refresh.'
+          )
           await tx.refreshToken.deleteMany({ where: { userId: existingRefreshToken.userId } })
           if (res) {
             this.tokenService.clearTokenCookies(res)
           }
-          throw DeviceMismatchException
+          auditLogEntry.errorMessage = InvalidDeviceException.message
+          throw InvalidDeviceException
         }
-        currentDeviceId = deviceFromRefreshToken.id
-        console.log('[DEBUG AuthService refreshToken] Device validated successfully. Using deviceId:', currentDeviceId)
-      } else {
-        // Nếu không có device liên kết với RT cũ (ví dụ: RT từ phiên bản cũ của hệ thống)
-        // hoặc nếu bạn muốn tạo device mới nếu không có.
-        // Hiện tại, nếu RT không có device, chúng ta sẽ không cho làm mới để đảm bảo an toàn.
-        // Nếu bạn muốn cho phép, bạn cần logic tạo device mới ở đây và lấy deviceId đó.
-        console.warn(
-          '[DEBUG AuthService refreshToken] Refresh token does not have an associated device ID. Rejecting refresh.'
+
+        const userFromRefreshToken = existingRefreshToken.user
+        const shouldRememberUser = existingRefreshToken.rememberMe
+        console.log(
+          `[DEBUG AuthService refreshToken] Generating new tokens. rememberMe status for new RT: ${shouldRememberUser}, Device ID: ${currentDeviceId}`
         )
-        // Cũng có thể coi đây là một rủi ro và vô hiệu hóa tất cả token
-        await tx.refreshToken.deleteMany({ where: { userId: existingRefreshToken.userId } })
-        if (res) {
-          this.tokenService.clearTokenCookies(res)
+
+        if (!currentDeviceId) {
+          console.error(
+            '[CRITICAL AuthService refreshToken] currentDeviceId is undefined before generating new tokens. This should not happen if device validation passed.'
+          )
+          await tx.refreshToken.deleteMany({ where: { userId: existingRefreshToken.userId } })
+          if (res) {
+            this.tokenService.clearTokenCookies(res)
+          }
+          auditLogEntry.errorMessage = InvalidDeviceException.message
+          throw InvalidDeviceException
         }
-        throw InvalidDeviceException // Hoặc một lỗi cụ thể hơn
-      }
 
-      // --- Tạo AT và RT mới ---
-      const userFromRefreshToken = existingRefreshToken.user
-      const shouldRememberUser = existingRefreshToken.rememberMe // Lấy trạng thái rememberMe từ RT cũ đã được đánh dấu là used
-      console.log(
-        `[DEBUG AuthService refreshToken] Generating new tokens. rememberMe status for new RT: ${shouldRememberUser}, Device ID: ${currentDeviceId}`
-      )
-
-      if (!currentDeviceId) {
-        // Kiểm tra lại currentDeviceId trước khi dùng
-        console.error(
-          '[CRITICAL AuthService refreshToken] currentDeviceId is undefined before generating new tokens. This should not happen if device validation passed.'
+        const {
+          accessToken: newAccessToken,
+          refreshToken: newRefreshTokenString,
+          maxAgeForRefreshTokenCookie
+        } = await this.generateTokens(
+          {
+            userId: userFromRefreshToken.id,
+            deviceId: currentDeviceId,
+            roleId: userFromRefreshToken.roleId,
+            roleName: userFromRefreshToken.role.name
+          },
+          tx,
+          shouldRememberUser
         )
-        // Đây là trường hợp rất lạ, có thể là lỗi logic ở trên. Clear mọi thứ cho an toàn.
-        await tx.refreshToken.deleteMany({ where: { userId: existingRefreshToken.userId } })
+        console.log('[DEBUG AuthService refreshToken] New tokens generated.')
+
         if (res) {
-          this.tokenService.clearTokenCookies(res)
+          this.tokenService.setTokenCookies(res, newAccessToken, newRefreshTokenString, maxAgeForRefreshTokenCookie)
+          console.log('[DEBUG AuthService refreshToken] New AT/RT cookies set.')
         }
-        throw InvalidDeviceException // Hoặc lỗi chung chung hơn
-      }
 
-      const {
-        accessToken: newAccessToken,
-        refreshToken: newRefreshTokenString,
-        maxAgeForRefreshTokenCookie
-      } = await this.generateTokens(
-        {
-          userId: userFromRefreshToken.id,
-          deviceId: currentDeviceId,
-          roleId: userFromRefreshToken.roleId,
-          roleName: userFromRefreshToken.role.name
-        },
-        tx,
-        shouldRememberUser // Truyền cờ rememberMe để quyết định thời gian sống của RT mới
-      )
-      console.log('[DEBUG AuthService refreshToken] New tokens generated.')
-
-      if (res) {
-        this.tokenService.setTokenCookies(res, newAccessToken, newRefreshTokenString, maxAgeForRefreshTokenCookie)
-        console.log('[DEBUG AuthService refreshToken] New AT/RT cookies set.')
+        return {
+          accessToken: newAccessToken
+        }
+      })
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'REFRESH_TOKEN_SUCCESS'
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      return result
+    } catch (error) {
+      auditLogEntry.errorMessage = error.message
+      if (error instanceof ApiException) {
+        auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
-
-      return {
-        accessToken: newAccessToken
-        // Không trả về newRefreshTokenString trong body response để tăng cường bảo mật.
-        // Client sẽ nhận nó qua cookie HttpOnly.
-      }
-    })
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
   }
 
   async logout(refreshTokenInput: string, req?: Request, res?: Response) {
-    return this.prismaService.$transaction(async (tx) => {
-      const tokenToUse = refreshTokenInput || (req && req.cookies && req.cookies[CookieNames.REFRESH_TOKEN])
+    let auditLogEntry: Partial<AuditLogData> = {
+      action: 'USER_LOGOUT_ATTEMPT',
+      status: AuditLogStatus.FAILURE
+    }
+    if (req) {
+      auditLogEntry.ipAddress = req.ip
+      auditLogEntry.userAgent = req.headers['user-agent']
+      // Cố gắng lấy userId từ access token nếu có (dù có thể không cần thiết cho logout)
+      const activeUser = req[REQUEST_USER_KEY] as AccessTokenPayload | undefined
+      if (activeUser) {
+        auditLogEntry.userId = activeUser.userId
+        const user = await this.sharedUserRepository.findUnique({ id: activeUser.userId })
+        if (user) auditLogEntry.userEmail = user.email
+      }
+    }
 
-      if (tokenToUse) {
-        await tx.refreshToken.deleteMany({ where: { token: tokenToUse } })
+    try {
+      const result = await this.prismaService.$transaction(async (tx) => {
+        const tokenToUse = refreshTokenInput || (req && req.cookies && req.cookies[CookieNames.REFRESH_TOKEN])
+        auditLogEntry.details = {
+          tokenProvidedInBody: !!refreshTokenInput,
+          tokenFoundInCookie: !!(req && req.cookies && req.cookies[CookieNames.REFRESH_TOKEN])
+        }
+
+        if (tokenToUse) {
+          await tx.refreshToken.deleteMany({ where: { token: tokenToUse } })
+        }
+        if (res) {
+          res.clearCookie(CookieNames.REFRESH_TOKEN, {
+            httpOnly: true,
+            secure: envConfig.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/api/v1/auth',
+            domain: envConfig.COOKIE_DOMAIN
+          })
+          this.tokenService.clearTokenCookies(res)
+        }
+        return { message: 'Auth.Logout.Successful' }
+      })
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'USER_LOGOUT_SUCCESS'
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      return result
+    } catch (error) {
+      auditLogEntry.errorMessage = error.message
+      if (error instanceof ApiException) {
+        auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
-      if (res) {
-        res.clearCookie(CookieNames.REFRESH_TOKEN, {
-          httpOnly: true,
-          secure: envConfig.NODE_ENV === 'production',
-          sameSite: 'lax',
-          path: '/api/v1/auth'
-        })
-      }
-      return { message: 'Auth.Logout.Successful' }
-    })
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
   }
 
   async resetPassword(body: ResetPasswordBodyType & { userAgent?: string; ip?: string }) {
-    return this.prismaService.$transaction(async (tx) => {
-      await this.validateVerificationToken({
-        token: body.otpToken,
-        email: body.email,
-        type: TypeOfVerificationCode.FORGOT_PASSWORD,
-        tokenType: TokenType.OTP
-      })
+    let auditLogEntry: Partial<AuditLogData> = {
+      action: 'PASSWORD_RESET_ATTEMPT',
+      userEmail: body.email,
+      ipAddress: body.ip,
+      userAgent: body.userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: { otpTokenProvided: !!body.otpToken }
+    }
+    try {
+      const result = await this.prismaService.$transaction(async (tx) => {
+        await this.validateVerificationToken({
+          token: body.otpToken,
+          email: body.email,
+          type: TypeOfVerificationCode.FORGOT_PASSWORD,
+          tokenType: TokenType.OTP
+        })
 
-      const user = await tx.user.findUnique({ where: { email: body.email } })
-      if (!user) {
-        throw EmailNotFoundException
+        const user = await tx.user.findUnique({ where: { email: body.email } })
+        if (!user) {
+          auditLogEntry.errorMessage = EmailNotFoundException.message
+          throw EmailNotFoundException
+        }
+        auditLogEntry.userId = user.id
+
+        const hashedPassword = await this.hashingService.hash(body.newPassword)
+        await tx.user.update({
+          where: { id: user.id },
+          data: { password: hashedPassword }
+        })
+        await this.authRepository.deleteVerificationToken({ token: body.otpToken }, tx)
+
+        // Log out all other sessions
+        await tx.refreshToken.deleteMany({ where: { userId: user.id } })
+        auditLogEntry.notes = 'All refresh tokens for the user were invalidated.'
+
+        return { message: 'Auth.Password.ResetSuccessful' }
+      })
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'PASSWORD_RESET_SUCCESS'
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      return result
+    } catch (error) {
+      auditLogEntry.errorMessage = error.message
+      if (error instanceof ApiException) {
+        auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
-
-      const hashedPassword = await this.hashingService.hash(body.newPassword)
-      await tx.user.update({
-        where: { id: user.id },
-        data: { password: hashedPassword }
-      })
-      await this.authRepository.deleteVerificationToken({ token: body.otpToken }, tx)
-
-      await tx.refreshToken.deleteMany({ where: { userId: user.id } })
-
-      return { message: 'Auth.Password.ResetSuccessful' }
-    })
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
   }
 
   async setupTwoFactorAuth(userId: number) {
@@ -683,75 +842,107 @@ export class AuthService {
   }
 
   async confirmTwoFactorSetup(userId: number, setupToken: string, totpCode: string) {
-    return this.prismaService.$transaction(async (tx) => {
-      const verificationToken = (await this.authRepository.findUniqueVerificationToken(
-        { token: setupToken },
-        tx
-      )) as PrismaVerificationToken | null
+    let auditLogEntry: Partial<AuditLogData> = {
+      action: '2FA_CONFIRM_SETUP_ATTEMPT',
+      userId: userId,
+      status: AuditLogStatus.FAILURE,
+      details: { setupTokenProvided: !!setupToken, totpCodeProvided: !!totpCode }
+    }
+    try {
+      const userForEmail = await this.sharedUserRepository.findUnique({ id: userId })
+      if (userForEmail) auditLogEntry.userEmail = userForEmail.email
 
-      let tempTwoFactorSecret: string | undefined = undefined
-      if (verificationToken?.metadata) {
-        try {
-          const parsedMetadata = JSON.parse(verificationToken.metadata)
-          tempTwoFactorSecret = parsedMetadata.tempTwoFactorSecret
-        } catch (e) {
-          console.error('Error parsing metadata for tempTwoFactorSecret', e)
+      const result = await this.prismaService.$transaction(async (tx) => {
+        const verificationToken = (await this.authRepository.findUniqueVerificationToken(
+          { token: setupToken },
+          tx
+        )) as PrismaVerificationToken | null
+
+        let tempTwoFactorSecret: string | undefined = undefined
+        if (verificationToken?.metadata) {
+          try {
+            const parsedMetadata = JSON.parse(verificationToken.metadata)
+            tempTwoFactorSecret = parsedMetadata.tempTwoFactorSecret
+          } catch (e) {
+            console.error('Error parsing metadata for tempTwoFactorSecret', e)
+            auditLogEntry.errorMessage = 'Error parsing metadata for tempTwoFactorSecret'
+            throw InvalidOTPTokenException
+          }
+        }
+
+        if (
+          !verificationToken ||
+          verificationToken.userId !== userId ||
+          verificationToken.type !== TypeOfVerificationCode.SETUP_2FA ||
+          verificationToken.tokenType !== TokenType.SETUP_2FA_TOKEN ||
+          !tempTwoFactorSecret
+        ) {
+          auditLogEntry.errorMessage = InvalidOTPTokenException.message
           throw InvalidOTPTokenException
         }
-      }
 
-      if (
-        !verificationToken ||
-        verificationToken.userId !== userId ||
-        verificationToken.type !== TypeOfVerificationCode.SETUP_2FA ||
-        verificationToken.tokenType !== TokenType.SETUP_2FA_TOKEN ||
-        !tempTwoFactorSecret
-      ) {
-        throw InvalidOTPTokenException
-      }
+        if (verificationToken.expiresAt < new Date()) {
+          await this.authRepository.deleteVerificationToken({ token: setupToken }, tx)
+          auditLogEntry.errorMessage = OTPTokenExpiredException.message
+          throw OTPTokenExpiredException
+        }
 
-      if (verificationToken.expiresAt < new Date()) {
+        const isValidTOTP = this.twoFactorService.verifyTOTP({
+          email: verificationToken.email,
+          token: totpCode,
+          secret: tempTwoFactorSecret
+        })
+        if (!isValidTOTP) {
+          auditLogEntry.errorMessage = InvalidTOTPException.message
+          throw InvalidTOTPException
+        }
+
+        await this.authRepository.updateUser(
+          { id: userId },
+          {
+            twoFactorEnabled: true,
+            twoFactorSecret: tempTwoFactorSecret,
+            twoFactorMethod: TwoFactorMethodType.TOTP as TwoFactorMethodTypeType,
+            twoFactorVerifiedAt: new Date(),
+            totpSecret: null // Đảm bảo clear totpSecret cũ nếu có
+          },
+          tx
+        )
+
+        const recoveryCodes = this.generateRecoveryCodes()
+        const hashedRecoveryCodes = await Promise.all(
+          recoveryCodes.map(async (code) => ({
+            userId,
+            code: await this.hashingService.hash(code)
+          }))
+        )
+        await this.authRepository.createManyRecoveryCodes(hashedRecoveryCodes, tx)
+
         await this.authRepository.deleteVerificationToken({ token: setupToken }, tx)
-        throw OTPTokenExpiredException
-      }
+        auditLogEntry.notes = 'Recovery codes generated and stored.'
 
-      const isValidTOTP = this.twoFactorService.verifyTOTP({
-        email: verificationToken.email,
-        token: totpCode,
-        secret: tempTwoFactorSecret
+        return {
+          message: 'Auth.2FA.ConfirmSetupSuccessful',
+          recoveryCodes
+        }
       })
-      if (!isValidTOTP) {
-        throw InvalidTOTPException
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = '2FA_CONFIRM_SETUP_SUCCESS'
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      return result
+    } catch (error) {
+      auditLogEntry.errorMessage = error.message
+      if (error instanceof ApiException) {
+        auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
-
-      await this.authRepository.updateUser(
-        { id: userId },
-        {
-          twoFactorEnabled: true,
-          twoFactorSecret: tempTwoFactorSecret,
-          twoFactorMethod: TwoFactorMethodType.TOTP as TwoFactorMethodTypeType,
-          twoFactorVerifiedAt: new Date(),
-          totpSecret: null
-        },
-        tx
-      )
-
-      const recoveryCodes = this.generateRecoveryCodes()
-      const hashedRecoveryCodes = await Promise.all(
-        recoveryCodes.map(async (code) => ({
-          userId,
-          code: await this.hashingService.hash(code)
-        }))
-      )
-      await this.authRepository.createManyRecoveryCodes(hashedRecoveryCodes, tx)
-
-      await this.authRepository.deleteVerificationToken({ token: setupToken }, tx)
-
-      return {
-        message: 'Auth.2FA.ConfirmSetupSuccessful',
-        recoveryCodes
+      if (!auditLogEntry.userEmail && userId) {
+        // Cố gắng lấy email nếu chưa có
+        const userForEmailOnError = await this.sharedUserRepository.findUnique({ id: userId })
+        if (userForEmailOnError) auditLogEntry.userEmail = userForEmailOnError.email
       }
-    })
+      this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
   }
 
   async disableTwoFactorAuth(data: DisableTwoFactorBodyType & { userId: number }) {
@@ -792,6 +983,19 @@ export class AuthService {
 
       if (!initialVerificationToken || !initialVerificationToken.email) {
         throw InvalidOTPTokenException
+      }
+
+      // Lấy rememberMe từ metadata của initialVerificationToken (LOGIN_2FA token)
+      let rememberMe = false // Giá trị mặc định
+      if (initialVerificationToken.metadata) {
+        try {
+          const parsedMetadata = JSON.parse(initialVerificationToken.metadata)
+          if (typeof parsedMetadata.rememberMe === 'boolean') {
+            rememberMe = parsedMetadata.rememberMe
+          }
+        } catch (e) {
+          console.warn('[AuthService verifyTwoFactor] Could not parse rememberMe from token metadata', e)
+        }
       }
 
       const verificationToken = await this.validateVerificationToken({
@@ -862,7 +1066,7 @@ export class AuthService {
 
       if (!deviceId) {
         await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
-        throw new HttpException('Could not associate with a device.', 500)
+        throw DeviceAssociationFailedException()
       }
 
       await this.authRepository.updateUser({ id: user.id }, { twoFactorVerifiedAt: new Date() }, tx)
@@ -875,7 +1079,7 @@ export class AuthService {
           roleName: user.role.name
         },
         tx,
-        false
+        rememberMe // Sử dụng rememberMe đã lấy từ metadata
       )
 
       await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
