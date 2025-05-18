@@ -565,7 +565,7 @@ export class AuthService {
       refreshTokenExpiresInMs = envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
       console.log(`[DEBUG TokenService generateTokens] Using REMEMBER_ME lifetime: ${refreshTokenExpiresInMs}ms`)
     } else {
-      refreshTokenExpiresInMs = envConfig.DEFAULT_REFRESH_TOKEN_COOKIE_MAX_AGE
+      refreshTokenExpiresInMs = envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
       console.log(`[DEBUG TokenService generateTokens] Using DEFAULT lifetime: ${refreshTokenExpiresInMs}ms`)
     }
     const refreshTokenExpiresAt = addMilliseconds(new Date(), refreshTokenExpiresInMs)

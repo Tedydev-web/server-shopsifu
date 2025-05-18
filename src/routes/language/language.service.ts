@@ -136,11 +136,9 @@ export class LanguageService {
     try {
       const existingLanguage = await this.languageRepo.findById(id)
       if (!existingLanguage) {
-        auditLogEntry.errorMessage = NotFoundRecordException(
-          'Error.Language.NotFoundOnDelete',
-          'RESOURCE_NOT_FOUND',
-          [{ code: 'Error.Language.NotFoundOnDelete', args: { id } }]
-        ).message
+        auditLogEntry.errorMessage = NotFoundRecordException('Error.Language.NotFoundOnDelete', 'RESOURCE_NOT_FOUND', [
+          { code: 'Error.Language.NotFoundOnDelete', args: { id } }
+        ]).message
         auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_PRE_DELETE_CHECK'
         this.auditLogService.record(auditLogEntry as AuditLogData)
         throw NotFoundRecordException('Error.Language.NotFoundOnDelete', 'RESOURCE_NOT_FOUND', [
@@ -163,11 +161,9 @@ export class LanguageService {
       }
       if (isNotFoundPrismaError(error) && auditLogEntry.details.reason !== 'LANGUAGE_NOT_FOUND_PRE_DELETE_CHECK') {
         auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_ON_DELETE_REPO_CALL'
-        auditLogEntry.errorMessage = NotFoundRecordException(
-          'Error.Language.NotFoundOnDelete',
-          'RESOURCE_NOT_FOUND',
-          [{ code: 'Error.Language.NotFoundOnDelete', args: { id } }]
-        ).message
+        auditLogEntry.errorMessage = NotFoundRecordException('Error.Language.NotFoundOnDelete', 'RESOURCE_NOT_FOUND', [
+          { code: 'Error.Language.NotFoundOnDelete', args: { id } }
+        ]).message
       }
       this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
