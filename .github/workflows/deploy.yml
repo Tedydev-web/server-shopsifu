@@ -44,39 +44,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Generate .env
-        run: |
-          cat <<EOF > .env
-          NODE_ENV=staging
-          API_HOST_URL=${{ secrets.API_HOST_URL }}
-          API_LOCAL_URL=${{ secrets.API_LOCAL_URL }}
-          FRONTEND_HOST_URL=${{ secrets.FRONTEND_HOST_URL }}
-          FRONTEND_LOCAL_URL=${{ secrets.FRONTEND_LOCAL_URL }}
-          PORT=${{ secrets.PORT }}
-          APP_NAME=${{ secrets.APP_NAME }}
-          DATABASE_URL=${{ secrets.DATABASE_URL }}
-          ACCESS_TOKEN_EXPIRES_IN=${{ secrets.ACCESS_TOKEN_EXPIRES_IN }}
-          REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REFRESH_TOKEN_EXPIRES_IN }}
-          ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}
-          REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}
-          LOGIN_SESSION_TOKEN_EXPIRES_IN=${{ secrets.LOGIN_SESSION_TOKEN_EXPIRES_IN }}
-          OTP_TOKEN_EXPIRES_IN=${{ secrets.OTP_TOKEN_EXPIRES_IN }}
-          REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN=${{ secrets.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN }}
-          COOKIE_SECRET=${{ secrets.COOKIE_SECRET }}
-          CSRF_SECRET=${{ secrets.CSRF_SECRET }}
-          SECRET_API_KEY=${{ secrets.SECRET_API_KEY }}
-          ADMIN_NAME=${{ secrets.ADMIN_NAME }}
-          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
-          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
-          ADMIN_PHONE_NUMBER=${{ secrets.ADMIN_PHONE_NUMBER }}
-          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}
-          GOOGLE_CLIENT_REDIRECT_URI=${{ secrets.GOOGLE_CLIENT_REDIRECT_URI }}
-          EOF
-
       - name: Deploy via SSH & PM2
         id: ssh_deploy
         run: |
