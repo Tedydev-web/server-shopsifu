@@ -64,6 +64,7 @@ import { TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
 import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/shared/services/audit.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { OtpService } from 'src/shared/services/otp.service'
+import { DeviceService } from 'src/shared/services/device.service'
 
 @Injectable()
 export class AuthService {
@@ -77,7 +78,8 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly twoFactorService: TwoFactorService,
     private readonly auditLogService: AuditLogService,
-    private readonly otpService: OtpService
+    private readonly otpService: OtpService,
+    private readonly deviceService: DeviceService
   ) {}
 
   async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string }) {
@@ -114,13 +116,13 @@ export class AuthService {
         let deviceId: number | undefined = undefined
         if (userId) {
           try {
-            const device = await this.authRepository.findOrCreateDevice(
+            const device = await this.deviceService.findOrCreateDevice(
               {
                 userId,
                 userAgent: body.userAgent,
                 ip: body.ip
               },
-              tx
+              tx as any
             )
             deviceId = device.id
           } catch (error) {
@@ -200,7 +202,7 @@ export class AuthService {
         auditLogEntry.details.verificationTokenDeviceId = verificationToken.deviceId
 
         if (verificationToken.deviceId && body.userAgent && body.ip) {
-          const isValidDevice = await this.authRepository.validateDevice(
+          const isValidDevice = await this.deviceService.validateDevice(
             verificationToken.deviceId,
             body.userAgent,
             body.ip,
@@ -303,13 +305,13 @@ export class AuthService {
           const otpToken = uuidv4()
           let deviceId: number | undefined = undefined
           try {
-            const device = await this.authRepository.findOrCreateDevice(
+            const device = await this.deviceService.findOrCreateDevice(
               {
                 userId: user.id,
                 userAgent: body.userAgent,
                 ip: body.ip
               },
-              tx
+              tx as any
             )
             deviceId = device.id
             auditLogEntry.details.deviceId = deviceId
@@ -345,13 +347,13 @@ export class AuthService {
 
         let deviceId: number | undefined
         try {
-          const device = await this.authRepository.findOrCreateDevice(
+          const device = await this.deviceService.findOrCreateDevice(
             {
               userId: user.id,
               userAgent: body.userAgent,
               ip: body.ip
             },
-            tx
+            tx as any
           )
           deviceId = device.id
           auditLogEntry.details.deviceId = deviceId
@@ -532,7 +534,7 @@ export class AuthService {
             providedIp: ip,
             expectedIp: deviceFromRefreshToken.ip
           }
-          const isValidDevice = await this.authRepository.validateDevice(deviceFromRefreshToken.id, userAgent, ip, tx)
+          const isValidDevice = await this.deviceService.validateDevice(deviceFromRefreshToken.id, userAgent, ip, tx)
           if (!isValidDevice) {
             console.warn(
               '[DEBUG AuthService refreshToken] Device validation failed. Potential session hijack attempt or user changed device significantly.'
@@ -864,26 +866,19 @@ export class AuthService {
           throw InvalidTOTPException
         }
 
-        await this.authRepository.updateUser(
-          { id: userId },
+        await this.twoFactorService.updateUserTwoFactorStatus(
+          userId,
           {
             twoFactorEnabled: true,
             twoFactorSecret: tempTwoFactorSecret,
             twoFactorMethod: TwoFactorMethodType.TOTP as TwoFactorMethodTypeType,
-            twoFactorVerifiedAt: new Date(),
-            totpSecret: tempTwoFactorSecret
+            twoFactorVerifiedAt: new Date()
           },
-          tx
+          tx as any
         )
 
-        const recoveryCodes = this.generateRecoveryCodes()
-        const hashedRecoveryCodes = await Promise.all(
-          recoveryCodes.map(async (code) => ({
-            userId,
-            code: await this.hashingService.hash(code)
-          }))
-        )
-        await this.authRepository.createManyRecoveryCodes(hashedRecoveryCodes, tx)
+        const recoveryCodes = this.twoFactorService.generateRecoveryCodes()
+        await this.twoFactorService.saveRecoveryCodes(userId, recoveryCodes, tx as any)
 
         await this.authRepository.deleteVerificationToken({ token: setupToken }, tx)
         auditLogEntry.notes = 'Recovery codes generated and stored.'
@@ -983,19 +978,18 @@ export class AuthService {
           throw new HttpException('Unsupported 2FA disable type', HttpStatus.BAD_REQUEST)
         }
 
-        await this.authRepository.updateUser(
-          { id: data.userId },
+        await this.twoFactorService.updateUserTwoFactorStatus(
+          data.userId,
           {
             twoFactorEnabled: false,
             twoFactorSecret: null,
-            twoFactorMethod: null as TwoFactorMethodTypeType | null,
-            twoFactorVerifiedAt: null,
-            totpSecret: null
+            twoFactorMethod: null,
+            twoFactorVerifiedAt: null
           },
-          tx
+          tx as any
         )
 
-        await this.authRepository.deleteRecoveryCodesByUserId(data.userId, tx)
+        await this.twoFactorService.deleteAllRecoveryCodes(data.userId, tx as any)
         auditLogEntry.details.recoveryCodesDeleted = true
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
@@ -1103,7 +1097,7 @@ export class AuthService {
             throw new HttpException('Invalid 2FA method for TOTP code.', 400)
           }
         } else if (body.type === TwoFactorMethodType.RECOVERY && body.code) {
-          await this.verifyRecoveryCode(user.id, body.code, tx)
+          await this.twoFactorService.verifyRecoveryCode(user.id, body.code, tx as any)
           isValid2FACode = true
           auditLogEntry.details.recoveryCodeUsed = true
         } else {
@@ -1124,13 +1118,13 @@ export class AuthService {
         let deviceId = verificationToken.deviceId
         if (!deviceId && body.userAgent && body.ip) {
           try {
-            const device = await this.authRepository.findOrCreateDevice(
+            const device = await this.deviceService.findOrCreateDevice(
               {
                 userId: user.id,
                 userAgent: body.userAgent,
                 ip: body.ip
               },
-              tx
+              tx as any
             )
             deviceId = device.id
             auditLogEntry.details.newDeviceCreated = true
@@ -1141,7 +1135,7 @@ export class AuthService {
             throw DeviceAssociationFailedException()
           }
         } else if (deviceId && body.userAgent && body.ip) {
-          const isValidDevice = await this.authRepository.validateDevice(deviceId, body.userAgent, body.ip, tx)
+          const isValidDevice = await this.deviceService.validateDevice(deviceId, body.userAgent, body.ip, tx as any)
           if (!isValidDevice) {
             await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
             auditLogEntry.errorMessage = DeviceMismatchException.message
@@ -1159,7 +1153,16 @@ export class AuthService {
         }
         auditLogEntry.details.finalDeviceId = deviceId
 
-        await this.authRepository.updateUser({ id: user.id }, { twoFactorVerifiedAt: new Date() }, tx)
+        await this.twoFactorService.updateUserTwoFactorStatus(
+          user.id,
+          {
+            twoFactorEnabled: true,
+            twoFactorVerifiedAt: new Date(),
+            twoFactorMethod: user.twoFactorMethod,
+            twoFactorSecret: user.twoFactorSecret
+          },
+          tx as any
+        )
 
         const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.generateTokens(
           {
@@ -1200,46 +1203,5 @@ export class AuthService {
       await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
-  }
-
-  async verifyRecoveryCode(userId: number, recoveryCodeInput: string, prismaTx?: Prisma.TransactionClient) {
-    const client = prismaTx || this.prismaService
-    const userWithRecoveryCodes = await this.authRepository.findUserWithRecoveryCodes(userId, client)
-
-    if (
-      !userWithRecoveryCodes ||
-      !userWithRecoveryCodes.RecoveryCode ||
-      userWithRecoveryCodes.RecoveryCode.length === 0
-    ) {
-      throw InvalidRecoveryCodeException
-    }
-
-    let matchedCodeEntry: PrismaRecoveryCode | null = null
-    for (const rcEntry of userWithRecoveryCodes.RecoveryCode) {
-      if (await this.hashingService.compare(recoveryCodeInput, rcEntry.code)) {
-        matchedCodeEntry = rcEntry
-        break
-      }
-    }
-
-    if (!matchedCodeEntry) {
-      throw InvalidRecoveryCodeException
-    }
-
-    if (matchedCodeEntry.used) {
-      throw InvalidRecoveryCodeException
-    }
-    await this.authRepository.updateRecoveryCode(matchedCodeEntry.id, { used: true }, client)
-    return matchedCodeEntry
-  }
-
-  private generateRecoveryCodes(): string[] {
-    const codes: string[] = []
-    for (let i = 0; i < 8; i++) {
-      const group1 = Math.random().toString(36).substring(2, 7).toUpperCase()
-      const group2 = Math.random().toString(36).substring(2, 7).toUpperCase()
-      codes.push(`${group1}-${group2}`)
-    }
-    return codes
   }
 }

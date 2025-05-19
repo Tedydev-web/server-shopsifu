@@ -9,6 +9,7 @@ import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { v4 as uuidv4 } from 'uuid'
+import { DeviceService } from 'src/shared/services/device.service'
 
 @Injectable()
 export class GoogleService {
@@ -17,7 +18,8 @@ export class GoogleService {
     private readonly authRepository: AuthRepository,
     private readonly hashingService: HashingService,
     private readonly rolesService: RolesService,
-    private readonly authService: AuthService
+    private readonly authService: AuthService,
+    private readonly deviceService: DeviceService
   ) {
     this.oauth2Client = new google.auth.OAuth2(
       envConfig.GOOGLE_CLIENT_ID,
@@ -93,7 +95,8 @@ export class GoogleService {
         throw new Error('Không thể tạo hoặc tìm thấy người dùng')
       }
 
-      const device = await this.authRepository.createDevice({
+      // Sử dụng DeviceService thay vì AuthRepository
+      const device = await this.deviceService.createDevice({
         userId: user.id,
         userAgent,
         ip
