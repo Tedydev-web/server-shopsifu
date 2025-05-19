@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser'
 import envConfig from './shared/config'
 import { winstonLogger } from './shared/logger/winston.config'
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
+import { SecurityHeaders } from './shared/constants/auth.constant'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -16,7 +17,8 @@ async function bootstrap() {
     origin: [envConfig.FRONTEND_HOST_URL, envConfig.FRONTEND_LOCAL_URL],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'x-csrf-token']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'x-csrf-token'],
+    exposedHeaders: [SecurityHeaders.CSRF_TOKEN_HEADER]
   })
 
   app.use(

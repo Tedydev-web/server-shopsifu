@@ -1025,7 +1025,7 @@ export class AuthService {
             twoFactorSecret: tempTwoFactorSecret,
             twoFactorMethod: TwoFactorMethodType.TOTP as TwoFactorMethodTypeType,
             twoFactorVerifiedAt: new Date(),
-            totpSecret: null
+            totpSecret: tempTwoFactorSecret
           },
           tx
         )
