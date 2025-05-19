@@ -771,7 +771,7 @@ export class AuthService {
             secure: envConfig.NODE_ENV === 'production',
             sameSite: 'lax',
             path: '/api/v1/auth',
-            domain: envConfig.COOKIE_DOMAIN
+            domain: envConfig.cookie.refreshToken.domain
           })
           this.tokenService.clearTokenCookies(res)
         }

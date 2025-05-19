@@ -49,44 +49,29 @@ export class TokenService {
     })
   }
 
-  // Các phương thức mới cho cookie-based auth
   extractTokenFromRequest(req: Request): string | null {
-    // Thứ tự ưu tiên: Cookie -> Authorization header
-    return req.cookies?.[CookieNames.ACCESS_TOKEN] || this.extractTokenFromHeader(req)
+    return req.cookies?.[envConfig.cookie.accessToken.name] || this.extractTokenFromHeader(req)
   }
 
   extractRefreshTokenFromRequest(req: Request): string | null {
-    // Thứ tự ưu tiên: Cookie -> Body (để tương thích ngược)
-    return req.cookies?.[CookieNames.REFRESH_TOKEN] || req.body?.refreshToken
+    return req.cookies?.[envConfig.cookie.refreshToken.name] || req.body?.refreshToken
   }
 
   setTokenCookies(res: Response, accessToken: string, refreshToken: string, maxAgeForRefreshTokenCookie?: number) {
-    const isProduction = envConfig.NODE_ENV === 'production'
+    const accessTokenConfig = envConfig.cookie.accessToken
+    const refreshTokenConfig = envConfig.cookie.refreshToken
 
-    const actualRefreshTokenMaxAge = maxAgeForRefreshTokenCookie ?? envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
+    const actualRefreshTokenMaxAge = maxAgeForRefreshTokenCookie ?? refreshTokenConfig.maxAge
 
-    // Access token cookie
-    const accessTokenOptions: CookieOptions = {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
-      maxAge: envConfig.ACCESS_TOKEN_COOKIE_MAX_AGE,
-      path: '/',
-      domain: envConfig.COOKIE_DOMAIN
-    }
-
-    // Refresh token cookie
-    const refreshTokenOptions: CookieOptions = {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
-      maxAge: actualRefreshTokenMaxAge,
-      path: '/api/v1/auth',
-      domain: envConfig.COOKIE_DOMAIN
-    }
-
-    if (accessToken && envConfig.ACCESS_TOKEN_COOKIE_MAX_AGE > 0) {
-      res.cookie(CookieNames.ACCESS_TOKEN, accessToken, accessTokenOptions)
+    if (accessToken && accessTokenConfig.maxAge > 0) {
+      res.cookie(accessTokenConfig.name, accessToken, {
+        path: accessTokenConfig.path,
+        domain: accessTokenConfig.domain,
+        maxAge: accessTokenConfig.maxAge,
+        httpOnly: accessTokenConfig.httpOnly,
+        secure: accessTokenConfig.secure,
+        sameSite: accessTokenConfig.sameSite
+      })
     } else {
       console.warn(
         '[DEBUG TokenService] res.cookie SKIPPED for access_token. Reason:',
@@ -95,7 +80,14 @@ export class TokenService {
     }
 
     if (refreshToken && actualRefreshTokenMaxAge > 0) {
-      res.cookie(CookieNames.REFRESH_TOKEN, refreshToken, refreshTokenOptions)
+      res.cookie(refreshTokenConfig.name, refreshToken, {
+        path: refreshTokenConfig.path,
+        domain: refreshTokenConfig.domain,
+        maxAge: actualRefreshTokenMaxAge,
+        httpOnly: refreshTokenConfig.httpOnly,
+        secure: refreshTokenConfig.secure,
+        sameSite: refreshTokenConfig.sameSite
+      })
     } else {
       console.warn(
         '[DEBUG TokenService] res.cookie SKIPPED for refresh_token. Reason:',
@@ -105,32 +97,36 @@ export class TokenService {
   }
 
   clearTokenCookies(res: Response) {
-    const cookieOptionsBase: CookieOptions = {
-      domain: envConfig.COOKIE_DOMAIN,
-      httpOnly: true,
-      secure: envConfig.NODE_ENV === 'production',
-      sameSite: 'lax'
-    }
+    const accessTokenConfig = envConfig.cookie.accessToken
+    const refreshTokenConfig = envConfig.cookie.refreshToken
+    const csrfTokenConfig = envConfig.cookie.csrfToken
 
-    res.clearCookie(CookieNames.ACCESS_TOKEN, {
-      ...cookieOptionsBase,
-      path: '/'
+    res.clearCookie(accessTokenConfig.name, {
+      domain: accessTokenConfig.domain,
+      path: accessTokenConfig.path,
+      httpOnly: accessTokenConfig.httpOnly,
+      secure: accessTokenConfig.secure,
+      sameSite: accessTokenConfig.sameSite
     })
 
-    res.clearCookie(CookieNames.REFRESH_TOKEN, {
-      ...cookieOptionsBase,
-      path: '/api/v1/auth'
+    res.clearCookie(refreshTokenConfig.name, {
+      domain: refreshTokenConfig.domain,
+      path: refreshTokenConfig.path,
+      httpOnly: refreshTokenConfig.httpOnly,
+      secure: refreshTokenConfig.secure,
+      sameSite: refreshTokenConfig.sameSite
     })
 
     // Also clear CSRF token for client
-    res.clearCookie(CookieNames.CSRF_TOKEN, {
-      ...cookieOptionsBase,
-      httpOnly: false,
-      path: '/'
+    res.clearCookie(csrfTokenConfig.name, {
+      domain: csrfTokenConfig.domain,
+      path: csrfTokenConfig.path,
+      httpOnly: csrfTokenConfig.httpOnly,
+      secure: csrfTokenConfig.secure,
+      sameSite: csrfTokenConfig.sameSite
     })
   }
 
-  // Phương thức hỗ trợ
   private extractTokenFromHeader(req: Request): string | null {
     const [type, token] = req.headers.authorization?.split(' ') || []
     return type === 'Bearer' ? token : null

@@ -10,14 +10,16 @@ export class CsrfMiddleware implements NestMiddleware {
   private readonly csrfProtection: any
 
   constructor() {
+    const csrfSecretCookieConfig = envConfig.cookie.csrfSecret
     this.csrfProtection = csurf({
       cookie: {
-        key: '_csrfSecret',
-        httpOnly: true,
-        secure: envConfig.NODE_ENV === 'production',
-        sameSite: 'lax',
-        signed: true,
-        path: '/'
+        key: csrfSecretCookieConfig.name,
+        httpOnly: csrfSecretCookieConfig.httpOnly,
+        secure: csrfSecretCookieConfig.secure,
+        sameSite: csrfSecretCookieConfig.sameSite,
+        signed: csrfSecretCookieConfig.signed,
+        path: csrfSecretCookieConfig.path,
+        domain: csrfSecretCookieConfig.domain
       },
       ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
       value: (req: Request) => this.csrfTokenExtractor(req)
@@ -26,8 +28,6 @@ export class CsrfMiddleware implements NestMiddleware {
 
   use(req: Request, res: Response, next: NextFunction) {
     this.logger.debug(`CSRF Middleware - Incoming request: ${req.method} ${req.path}`)
-    this.logger.debug(`CSRF Middleware - Headers: ${JSON.stringify(req.headers)}`)
-    this.logger.debug(`CSRF Middleware - Cookies before protection: ${JSON.stringify(req.cookies)}`)
 
     if (
       req.path.startsWith('/api/v1/auth/google/callback') ||
@@ -45,13 +45,13 @@ export class CsrfMiddleware implements NestMiddleware {
           err.stack
         )
         this.logger.error(
-          `CSRF Secret Cookie (_csrfSecret value from req.signedCookies): ${req.signedCookies?.['_csrfSecret']}`
+          `CSRF Secret Cookie (${envConfig.cookie.csrfSecret.name} value from req.signedCookies): ${req.signedCookies?.[envConfig.cookie.csrfSecret.name]}`
         )
         this.logger.error(
-          `CSRF Token Cookie (xsrf-token value from req.cookies): ${req.cookies?.[CookieNames.CSRF_TOKEN]}`
+          `CSRF Token Cookie (${envConfig.cookie.csrfToken.name} value from req.cookies): ${req.cookies?.[envConfig.cookie.csrfToken.name]}`
         )
         this.logger.error(
-          `Header value (X-CSRF-Token from req.headers): ${req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()]}`
+          `Header value (${SecurityHeaders.CSRF_TOKEN_HEADER} from req.headers): ${req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()]}`
         )
         res.status(403).json({
           statusCode: 403,
@@ -63,20 +63,22 @@ export class CsrfMiddleware implements NestMiddleware {
 
       const csrfTokenVal = req.csrfToken?.()
       if (csrfTokenVal) {
+        const csrfTokenCookieConfig = envConfig.cookie.csrfToken
         res.setHeader(SecurityHeaders.CSRF_TOKEN_HEADER, csrfTokenVal)
-        res.cookie(CookieNames.CSRF_TOKEN, csrfTokenVal, {
-          httpOnly: false,
-          sameSite: 'lax',
-          secure: envConfig.NODE_ENV === 'production',
-          path: '/',
-          signed: false
+        res.cookie(csrfTokenCookieConfig.name, csrfTokenVal, {
+          httpOnly: csrfTokenCookieConfig.httpOnly,
+          sameSite: csrfTokenCookieConfig.sameSite,
+          secure: csrfTokenCookieConfig.secure,
+          path: csrfTokenCookieConfig.path,
+          domain: csrfTokenCookieConfig.domain
         })
-        this.logger.debug(`CSRF Middleware - CSRF token (${CookieNames.CSRF_TOKEN}) set for client: ${csrfTokenVal}`)
+        this.logger.debug(
+          `CSRF Middleware - CSRF token (${csrfTokenCookieConfig.name}) set for client: ${csrfTokenVal}`
+        )
       } else {
         this.logger.warn(`CSRF Middleware - req.csrfToken() did not return a token for path: ${req.path}`)
       }
 
-      this.logger.debug(`CSRF Middleware - Cookies after protection: ${JSON.stringify(req.cookies)}`)
       next()
     })
   }
@@ -88,13 +90,10 @@ export class CsrfMiddleware implements NestMiddleware {
 
     let token = tokenFromHeader || tokenFromBodyOrQuery
 
-    // Log the token safely
-    this.logger.debug(`CSRF Extractor - Token found in request (raw): ${String(token)}`)
-
     if (Array.isArray(token)) {
       token = token[0]
     }
-    this.logger.debug(`CSRF Extractor - Token after potential array conversion: ${token}`)
+    this.logger.debug(`CSRF Extractor - Token found in request (presence): ${!!token}`)
     return (token as string) || ''
   }
 }
