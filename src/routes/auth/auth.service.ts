@@ -363,7 +363,6 @@ export class AuthService {
   }
 
   async login(body: LoginBodyType & { userAgent: string; ip: string }, res?: Response) {
-    console.log('[DEBUG AuthService login] Received login request for email:', body.email)
     const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
       action: 'USER_LOGIN_ATTEMPT',
       userEmail: body.email,
@@ -381,16 +380,10 @@ export class AuthService {
           include: { role: true }
         })
         if (!user) {
-          console.warn('[DEBUG AuthService login] User not found:', body.email)
           auditLogEntry.errorMessage = InvalidLoginSessionException.message
           auditLogEntry.details.reason = 'USER_NOT_FOUND'
           throw InvalidLoginSessionException
         }
-        console.log('[DEBUG AuthService login] User found:', {
-          id: user.id,
-          email: user.email,
-          twoFactorEnabled: user.twoFactorEnabled
-        })
         auditLogEntry.userId = user.id
 
         const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
@@ -400,10 +393,8 @@ export class AuthService {
           auditLogEntry.details.reason = 'INVALID_PASSWORD'
           throw InvalidPasswordException
         }
-        console.log('[DEBUG AuthService login] Password matched for user:', user.email)
 
         if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod) {
-          console.log('[DEBUG AuthService login] 2FA is ENABLED for user. Proceeding with 2FA flow.', user.email)
           const otpToken = uuidv4()
           let deviceId: number | undefined = undefined
           try {
@@ -416,7 +407,6 @@ export class AuthService {
               tx
             )
             deviceId = device.id
-            console.log('[DEBUG AuthService login - 2FA flow] Device created/found with ID:', deviceId)
             auditLogEntry.details.deviceId = deviceId
             auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
           } catch (error) {
@@ -439,7 +429,6 @@ export class AuthService {
             },
             tx
           )
-          console.log('[DEBUG AuthService login - 2FA flow] LOGIN_2FA token created. Returning 2FA prompt.')
           auditLogEntry.status = AuditLogStatus.SUCCESS
           auditLogEntry.notes = '2FA required'
           return {
@@ -449,10 +438,6 @@ export class AuthService {
           }
         }
 
-        console.log(
-          '[DEBUG AuthService login] 2FA is NOT ENABLED or not fully configured. Proceeding with direct login.',
-          user.email
-        )
         let deviceId: number | undefined
         try {
           const device = await this.authRepository.findOrCreateDevice(
@@ -464,7 +449,6 @@ export class AuthService {
             tx
           )
           deviceId = device.id
-          console.log('[DEBUG AuthService login - Direct login] Device created/found with ID:', deviceId)
           auditLogEntry.details.deviceId = deviceId
           auditLogEntry.details.twoFactorFlow = false
         } catch (error) {
@@ -481,7 +465,6 @@ export class AuthService {
           throw DeviceSetupFailedException()
         }
 
-        console.log('[DEBUG AuthService login - Direct login] Generating tokens...')
         const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.generateTokens(
           {
             userId: user.id,
@@ -492,15 +475,8 @@ export class AuthService {
           tx,
           body.rememberMe
         )
-        console.log(
-          '[DEBUG AuthService login - Direct login] Tokens generated. AccessToken present:',
-          !!accessToken,
-          'RefreshToken present:',
-          !!refreshToken
-        )
 
         if (res) {
-          console.log('[DEBUG AuthService login - Direct login] Response object present, attempting to set cookies.')
           this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
         } else {
           console.warn(
@@ -508,7 +484,6 @@ export class AuthService {
           )
         }
 
-        console.log('[DEBUG AuthService login - Direct login] Returning user profile.')
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.action = 'USER_LOGIN_SUCCESS'
         return {
@@ -538,7 +513,6 @@ export class AuthService {
     rememberMe?: boolean
   ) {
     const client = prismaTx || this.prismaService
-    console.log(`[DEBUG TokenService generateTokens] rememberMe flag: ${rememberMe}`)
 
     const accessToken = this.tokenService.signAccessToken({
       userId,
@@ -551,10 +525,8 @@ export class AuthService {
     let refreshTokenExpiresInMs: number
     if (rememberMe) {
       refreshTokenExpiresInMs = envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
-      console.log(`[DEBUG TokenService generateTokens] Using REMEMBER_ME lifetime: ${refreshTokenExpiresInMs}ms`)
     } else {
       refreshTokenExpiresInMs = envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
-      console.log(`[DEBUG TokenService generateTokens] Using DEFAULT lifetime: ${refreshTokenExpiresInMs}ms`)
     }
     const refreshTokenExpiresAt = addMilliseconds(new Date(), refreshTokenExpiresInMs)
 
@@ -581,7 +553,6 @@ export class AuthService {
     req?: Request,
     res?: Response
   ) {
-    console.log('[DEBUG AuthService refreshToken] Received refreshToken request.')
     const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
       action: 'REFRESH_TOKEN_ATTEMPT',
       ipAddress: ip,
@@ -653,7 +624,6 @@ export class AuthService {
             where: { token: tokenToUse },
             data: { used: true }
           })
-          console.log('[DEBUG AuthService refreshToken] Marked current RT as used.')
         } catch (error) {
           if (isNotFoundPrismaError(error)) {
             if (res) {
@@ -673,10 +643,6 @@ export class AuthService {
         let currentDeviceId: number | undefined = undefined
 
         if (deviceFromRefreshToken) {
-          console.log(
-            '[DEBUG AuthService refreshToken] Validating device. Device ID from RT:',
-            deviceFromRefreshToken.id
-          )
           auditLogEntry.details.deviceValidationAttempt = {
             providedUserAgent: userAgent,
             expectedUserAgent: deviceFromRefreshToken.userAgent,
@@ -699,10 +665,6 @@ export class AuthService {
           }
           currentDeviceId = deviceFromRefreshToken.id
           auditLogEntry.details.deviceValidated = true
-          console.log(
-            '[DEBUG AuthService refreshToken] Device validated successfully. Using deviceId:',
-            currentDeviceId
-          )
         } else {
           console.warn(
             '[DEBUG AuthService refreshToken] Refresh token does not have an associated device ID. Rejecting refresh.'
@@ -719,9 +681,6 @@ export class AuthService {
 
         const userFromRefreshToken = existingRefreshToken.user
         const shouldRememberUser = existingRefreshToken.rememberMe
-        console.log(
-          `[DEBUG AuthService refreshToken] Generating new tokens. rememberMe status for new RT: ${shouldRememberUser}, Device ID: ${currentDeviceId}`
-        )
 
         if (!currentDeviceId) {
           console.error(
@@ -751,11 +710,9 @@ export class AuthService {
           tx,
           shouldRememberUser
         )
-        console.log('[DEBUG AuthService refreshToken] New tokens generated.')
 
         if (res) {
           this.tokenService.setTokenCookies(res, newAccessToken, newRefreshTokenString, maxAgeForRefreshTokenCookie)
-          console.log('[DEBUG AuthService refreshToken] New AT/RT cookies set.')
         }
 
         auditLogEntry.status = AuditLogStatus.SUCCESS

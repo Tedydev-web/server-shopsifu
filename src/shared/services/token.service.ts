@@ -62,19 +62,8 @@ export class TokenService {
 
   setTokenCookies(res: Response, accessToken: string, refreshToken: string, maxAgeForRefreshTokenCookie?: number) {
     const isProduction = envConfig.NODE_ENV === 'production'
-    console.log('[DEBUG TokenService] Attempting to set token cookies.')
-    console.log(
-      '[DEBUG TokenService] AccessToken provided:',
-      accessToken ? `Present (length: ${accessToken.length})` : 'MISSING'
-    )
-    console.log(
-      '[DEBUG TokenService] RefreshToken provided:',
-      refreshToken ? `Present (length: ${refreshToken.length})` : 'MISSING'
-    )
-    console.log('[DEBUG TokenService] ACCESS_TOKEN_COOKIE_MAX_AGE:', envConfig.ACCESS_TOKEN_COOKIE_MAX_AGE)
 
     const actualRefreshTokenMaxAge = maxAgeForRefreshTokenCookie ?? envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
-    console.log('[DEBUG TokenService] Actual REFRESH_TOKEN_COOKIE_MAX_AGE to be used:', actualRefreshTokenMaxAge)
 
     // Access token cookie
     const accessTokenOptions: CookieOptions = {
@@ -85,7 +74,6 @@ export class TokenService {
       path: '/',
       domain: envConfig.COOKIE_DOMAIN
     }
-    console.log('[DEBUG TokenService] AccessToken Cookie Options:', accessTokenOptions)
 
     // Refresh token cookie
     const refreshTokenOptions: CookieOptions = {
@@ -96,11 +84,9 @@ export class TokenService {
       path: '/api/v1/auth',
       domain: envConfig.COOKIE_DOMAIN
     }
-    console.log('[DEBUG TokenService] RefreshToken Cookie Options:', refreshTokenOptions)
 
     if (accessToken && envConfig.ACCESS_TOKEN_COOKIE_MAX_AGE > 0) {
       res.cookie(CookieNames.ACCESS_TOKEN, accessToken, accessTokenOptions)
-      console.log('[DEBUG TokenService] res.cookie CALLED for access_token.')
     } else {
       console.warn(
         '[DEBUG TokenService] res.cookie SKIPPED for access_token. Reason:',
@@ -110,7 +96,6 @@ export class TokenService {
 
     if (refreshToken && actualRefreshTokenMaxAge > 0) {
       res.cookie(CookieNames.REFRESH_TOKEN, refreshToken, refreshTokenOptions)
-      console.log('[DEBUG TokenService] res.cookie CALLED for refresh_token.')
     } else {
       console.warn(
         '[DEBUG TokenService] res.cookie SKIPPED for refresh_token. Reason:',
