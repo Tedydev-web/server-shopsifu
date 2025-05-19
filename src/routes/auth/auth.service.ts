@@ -63,6 +63,7 @@ import {
 import { TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
 import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/shared/services/audit.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
+import { OtpService } from 'src/shared/services/otp.service'
 
 @Injectable()
 export class AuthService {
@@ -75,73 +76,9 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly tokenService: TokenService,
     private readonly twoFactorService: TwoFactorService,
-    private readonly auditLogService: AuditLogService
+    private readonly auditLogService: AuditLogService,
+    private readonly otpService: OtpService
   ) {}
-
-  async validateVerificationCode({
-    email,
-    code,
-    type
-  }: {
-    email: string
-    code: string
-    type: TypeOfVerificationCodeType
-  }) {
-    const verificationCode = await this.authRepository.findUniqueVerificationCode({
-      email_code_type: {
-        email,
-        code,
-        type: type as PrismaVerificationCodeEnum
-      }
-    })
-    if (!verificationCode) {
-      throw InvalidOTPException
-    }
-    if (verificationCode.expiresAt < new Date()) {
-      throw OTPExpiredException
-    }
-    return verificationCode
-  }
-
-  async validateVerificationToken({
-    token,
-    email,
-    type,
-    tokenType,
-    deviceId
-  }: {
-    token: string
-    email: string
-    type: TypeOfVerificationCodeType
-    tokenType: TokenTypeType
-    deviceId?: number
-  }) {
-    const verificationToken = (await this.authRepository.findUniqueVerificationToken({
-      token
-    })) as PrismaVerificationToken | null
-
-    if (!verificationToken) {
-      throw InvalidOTPTokenException
-    }
-
-    if (
-      verificationToken.email !== email ||
-      (verificationToken.type as string) !== type ||
-      verificationToken.tokenType !== tokenType
-    ) {
-      throw InvalidOTPTokenException
-    }
-
-    if (verificationToken.expiresAt < new Date()) {
-      throw OTPTokenExpiredException
-    }
-
-    if (deviceId !== undefined && verificationToken.deviceId !== undefined && deviceId !== verificationToken.deviceId) {
-      throw DeviceMismatchException
-    }
-
-    return verificationToken
-  }
 
   async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string }) {
     const auditLogEntry: Partial<AuditLogData> = {
@@ -154,17 +91,17 @@ export class AuthService {
     }
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
-        await this.validateVerificationCode({
+        await this.otpService.validateVerificationCode({
           email: body.email,
           code: body.code,
-          type: body.type
+          type: body.type,
+          tx
         })
+
         const existingUser = await this.sharedUserRepository.findUnique({ email: body.email })
         if (existingUser) {
           auditLogEntry.userId = existingUser.id
         }
-
-        await this.authRepository.deleteVerificationTokenByEmailAndType(body.email, body.type, TokenType.OTP, tx)
 
         let userId: number | undefined = undefined
         if (body.type !== TypeOfVerificationCode.REGISTER) {
@@ -193,30 +130,16 @@ export class AuthService {
           }
         }
 
-        const token = uuidv4()
-        await this.authRepository.createVerificationToken(
-          {
-            token,
-            email: body.email,
-            type: body.type,
-            tokenType: TokenType.OTP,
-            userId,
-            deviceId,
-            expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
-          },
+        const token = await this.otpService.createOtpToken({
+          email: body.email,
+          type: body.type,
+          userId,
+          deviceId,
           tx
-        )
+        })
 
-        await this.authRepository.deleteVerificationCode(
-          {
-            email_code_type: {
-              email: body.email,
-              code: body.code,
-              type: body.type as PrismaVerificationCodeEnum
-            }
-          },
-          tx
-        )
+        await this.otpService.deleteVerificationCode(body.email, body.code, body.type, tx)
+
         return { otpToken: token }
       })
       auditLogEntry.status = AuditLogStatus.SUCCESS
@@ -231,6 +154,20 @@ export class AuthService {
       await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
+  }
+
+  async sendOTP(body: SendOTPBodyType) {
+    const user = await this.sharedUserRepository.findUnique({
+      email: body.email
+    })
+    if (body.type === TypeOfVerificationCode.REGISTER && user) {
+      throw EmailAlreadyExistsException
+    }
+    if (body.type === TypeOfVerificationCode.FORGOT_PASSWORD && !user) {
+      throw EmailNotFoundException
+    }
+
+    return this.otpService.sendOTP(body.email, body.type)
   }
 
   async register(body: RegisterBodyType & { userAgent?: string; ip?: string }) {
@@ -249,11 +186,12 @@ export class AuthService {
 
     try {
       const user = await this.prismaService.$transaction(async (tx) => {
-        const verificationToken = await this.validateVerificationToken({
+        const verificationToken = await this.otpService.validateVerificationToken({
           token: body.otpToken,
           email: body.email,
           type: TypeOfVerificationCode.REGISTER,
-          tokenType: TokenType.OTP
+          tokenType: TokenType.OTP,
+          tx
         })
 
         if (verificationToken.userId) {
@@ -302,7 +240,8 @@ export class AuthService {
         auditLogEntry.action = 'USER_REGISTER_SUCCESS'
         auditLogEntry.details.roleIdAssigned = clientRoleId
 
-        await this.authRepository.deleteVerificationToken({ token: body.otpToken }, tx)
+        await this.otpService.deleteOtpToken(body.otpToken, tx)
+
         return createdUser
       })
       await this.auditLogService.record(auditLogEntry as AuditLogData)
@@ -326,40 +265,6 @@ export class AuthService {
       }
       throw error
     }
-  }
-
-  async sendOTP(body: SendOTPBodyType) {
-    const user = await this.sharedUserRepository.findUnique({
-      email: body.email
-    })
-    if (body.type === TypeOfVerificationCode.REGISTER && user) {
-      throw EmailAlreadyExistsException
-    }
-    if (body.type === TypeOfVerificationCode.FORGOT_PASSWORD && !user) {
-      throw EmailNotFoundException
-    }
-
-    await this.authRepository.deleteVerificationCodesByEmailAndType({
-      email: body.email,
-      type: body.type
-    })
-
-    const code = generateOTP()
-    await this.authRepository.createVerificationCode({
-      email: body.email,
-      code,
-      type: body.type,
-      expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
-    })
-
-    const { error } = await this.emailService.sendOTP({
-      email: body.email,
-      code
-    })
-    if (error) {
-      throw FailedToSendOTPException
-    }
-    return { message: 'Auth.Otp.SentSuccessfully' }
   }
 
   async login(body: LoginBodyType & { userAgent: string; ip: string }, res?: Response) {
@@ -802,11 +707,12 @@ export class AuthService {
     }
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
-        await this.validateVerificationToken({
+        await this.otpService.validateVerificationToken({
           token: body.otpToken,
           email: body.email,
           type: TypeOfVerificationCode.FORGOT_PASSWORD,
-          tokenType: TokenType.OTP
+          tokenType: TokenType.OTP,
+          tx
         })
 
         const user = await tx.user.findUnique({ where: { email: body.email } })
@@ -821,7 +727,8 @@ export class AuthService {
           where: { id: user.id },
           data: { password: hashedPassword }
         })
-        await this.authRepository.deleteVerificationToken({ token: body.otpToken }, tx)
+
+        await this.otpService.deleteOtpToken(body.otpToken, tx)
 
         await tx.refreshToken.deleteMany({ where: { userId: user.id } })
         auditLogEntry.notes = 'All refresh tokens for the user were invalidated.'
@@ -1071,22 +978,15 @@ export class AuthService {
           auditLogEntry.details.totpVerifiedForDisable = true
         } else if (data.type === TwoFactorMethodType.OTP) {
           try {
-            await this.validateVerificationCode({
+            await this.otpService.validateVerificationCode({
               email: user.email,
               code: data.code,
-              type: TypeOfVerificationCode.DISABLE_2FA
+              type: TypeOfVerificationCode.DISABLE_2FA,
+              tx
             })
             auditLogEntry.details.otpVerifiedForDisable = true
-            await this.authRepository.deleteVerificationCode(
-              {
-                email_code_type: {
-                  email: user.email,
-                  code: data.code,
-                  type: TypeOfVerificationCode.DISABLE_2FA as PrismaVerificationCodeEnum
-                }
-              },
-              tx
-            )
+
+            await this.otpService.deleteVerificationCode(user.email, data.code, TypeOfVerificationCode.DISABLE_2FA, tx)
           } catch (error) {
             auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Invalid OTP for 2FA disable'
             if (error instanceof ApiException) {
@@ -1151,10 +1051,7 @@ export class AuthService {
 
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
-        const initialVerificationToken = (await this.authRepository.findUniqueVerificationToken(
-          { token: body.loginSessionToken },
-          tx
-        )) as PrismaVerificationToken | null
+        const initialVerificationToken = await this.otpService.findVerificationToken(body.loginSessionToken, tx)
 
         if (initialVerificationToken) {
           auditLogEntry.userEmail = initialVerificationToken.email
@@ -1183,12 +1080,13 @@ export class AuthService {
           }
         }
 
-        const verificationToken = await this.validateVerificationToken({
+        const verificationToken = await this.otpService.validateVerificationToken({
           token: body.loginSessionToken,
           email: initialVerificationToken.email,
           type: TypeOfVerificationCode.LOGIN_2FA,
           tokenType: TokenType.OTP,
-          deviceId: initialVerificationToken.deviceId ?? undefined
+          deviceId: initialVerificationToken.deviceId ?? undefined,
+          tx
         })
         auditLogEntry.userEmail = verificationToken.email
         if (verificationToken.userId) {
@@ -1201,7 +1099,7 @@ export class AuthService {
         })
 
         if (!user || !user.twoFactorEnabled || !user.twoFactorSecret || !user.twoFactorMethod) {
-          await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+          await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
           auditLogEntry.errorMessage = TOTPNotEnabledException.message
           auditLogEntry.details.reason = '2FA_NOT_ENABLED_FOR_USER'
           throw TOTPNotEnabledException
@@ -1217,7 +1115,7 @@ export class AuthService {
               secret: user.twoFactorSecret
             })
           } else {
-            await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+            await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
             auditLogEntry.errorMessage = 'Invalid 2FA method for TOTP code.'
             auditLogEntry.details.reason = 'INVALID_2FA_METHOD_FOR_TOTP_CODE'
             throw new HttpException('Invalid 2FA method for TOTP code.', 400)
@@ -1227,14 +1125,14 @@ export class AuthService {
           isValid2FACode = true
           auditLogEntry.details.recoveryCodeUsed = true
         } else {
-          await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+          await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
           auditLogEntry.errorMessage = 'Either a TOTP code or a recovery code (with correct type) must be provided.'
           auditLogEntry.details.reason = 'MISSING_2FA_CODE_OR_INVALID_TYPE'
           throw new HttpException('Either a TOTP code or a recovery code (with correct type) must be provided.', 400)
         }
 
         if (!isValid2FACode) {
-          await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+          await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
           auditLogEntry.errorMessage = InvalidTOTPException.message
           auditLogEntry.details.reason =
             body.type === TwoFactorMethodType.RECOVERY ? 'INVALID_RECOVERY_CODE' : 'INVALID_TOTP_CODE'
@@ -1263,7 +1161,7 @@ export class AuthService {
         } else if (deviceId && body.userAgent && body.ip) {
           const isValidDevice = await this.authRepository.validateDevice(deviceId, body.userAgent, body.ip, tx)
           if (!isValidDevice) {
-            await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+            await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
             auditLogEntry.errorMessage = DeviceMismatchException.message
             auditLogEntry.details.deviceError = 'DeviceMismatchIn2FAVerify'
             throw DeviceMismatchException
@@ -1272,7 +1170,7 @@ export class AuthService {
         }
 
         if (!deviceId) {
-          await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+          await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
           auditLogEntry.errorMessage = DeviceAssociationFailedException().message
           auditLogEntry.details.deviceError = 'DeviceIDMissingIn2FAVerify'
           throw DeviceAssociationFailedException()
@@ -1292,7 +1190,7 @@ export class AuthService {
           rememberMe
         )
 
-        await this.authRepository.deleteVerificationToken({ token: body.loginSessionToken }, tx)
+        await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
 
         if (res) {
           this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
