@@ -412,47 +412,28 @@ export class AuthService {
     }
   }
 
+  /**
+   * Tạo cặp access token và refresh token mới
+   * @param payload Dữ liệu người dùng cần nhúng vào token
+   * @param prismaTx Client transaction Prisma (tùy chọn)
+   * @param rememberMe Có ghi nhớ đăng nhập không (tùy chọn)
+   * @returns Object chứa accessToken, refreshToken và maxAgeForRefreshTokenCookie
+   */
   async generateTokens(
     { userId, deviceId, roleId, roleName }: AccessTokenPayloadCreate,
     prismaTx?: Prisma.TransactionClient,
     rememberMe?: boolean
   ) {
-    const client = prismaTx || this.prismaService
-
-    const accessToken = this.tokenService.signAccessToken({
-      userId,
-      deviceId,
-      roleId,
-      roleName
-    })
-    const refreshToken = uuidv4()
-
-    let refreshTokenExpiresInMs: number
-    if (rememberMe) {
-      refreshTokenExpiresInMs = envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
-    } else {
-      refreshTokenExpiresInMs = envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
-    }
-    const refreshTokenExpiresAt = addMilliseconds(new Date(), refreshTokenExpiresInMs)
-
-    await this.authRepository.createRefreshToken(
-      {
-        token: refreshToken,
-        userId,
-        deviceId,
-        expiresAt: refreshTokenExpiresAt,
-        rememberMe: !!rememberMe
-      },
-      client
-    )
-
-    return {
-      accessToken,
-      refreshToken,
-      maxAgeForRefreshTokenCookie: refreshTokenExpiresInMs
-    }
+    return this.tokenService.generateTokens({ userId, deviceId, roleId, roleName }, prismaTx as any, rememberMe)
   }
 
+  /**
+   * Làm mới access token dựa trên refresh token hợp lệ
+   * @param data Thông tin refreshToken, userAgent và IP
+   * @param req Request object để truy xuất cookie nếu cần
+   * @param res Response object để cập nhật cookie
+   * @returns Object chứa accessToken mới
+   */
   async refreshToken(
     { refreshToken, userAgent, ip }: RefreshTokenBodyType & { userAgent: string; ip: string },
     req?: Request,
@@ -468,6 +449,7 @@ export class AuthService {
 
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
+        // Lấy token từ body hoặc cookie
         const tokenToUse = refreshToken || (req && req.cookies && req.cookies[CookieNames.REFRESH_TOKEN])
         auditLogEntry.details.tokenProvidedInRequest = !!tokenToUse
 
@@ -481,16 +463,12 @@ export class AuthService {
           throw UnauthorizedAccessException
         }
 
-        const existingRefreshToken = await tx.refreshToken.findUnique({
-          where: { token: tokenToUse },
-          include: { user: { include: { role: true } }, device: true }
-        })
+        // Lấy thông tin refresh token kèm theo thông tin user và device
+        const existingRefreshToken = await this.tokenService.findRefreshTokenWithUserAndDevice(tokenToUse, tx as any)
 
         if (!existingRefreshToken || !existingRefreshToken.user) {
-          const potentiallyReplayedToken = await tx.refreshToken.findUnique({
-            where: { token: tokenToUse },
-            select: { userId: true, used: true, expiresAt: true }
-          })
+          // Kiểm tra xem token có phải đã bị sử dụng hoặc hết hạn
+          const potentiallyReplayedToken = await this.tokenService.findRefreshToken(tokenToUse, tx as any)
 
           if (potentiallyReplayedToken) {
             auditLogEntry.userId = potentiallyReplayedToken.userId
@@ -501,7 +479,9 @@ export class AuthService {
             console.warn(
               `[SECURITY AuthService refreshToken] Potentially replayed/expired token used. UserId: ${potentiallyReplayedToken.userId}. Invalidating all tokens for this user.`
             )
-            await tx.refreshToken.deleteMany({ where: { userId: potentiallyReplayedToken.userId } })
+
+            // Xóa tất cả token của người dùng nếu phát hiện tấn công replay
+            await this.tokenService.deleteAllRefreshTokens(potentiallyReplayedToken.userId, tx as any)
             auditLogEntry.notes = 'Potential replay attack or used/expired token. All user tokens invalidated.'
           }
 
@@ -525,10 +505,8 @@ export class AuthService {
         }
 
         try {
-          await tx.refreshToken.update({
-            where: { token: tokenToUse },
-            data: { used: true }
-          })
+          // Đánh dấu token đã được sử dụng
+          await this.tokenService.markRefreshTokenUsed(tokenToUse, tx as any)
         } catch (error) {
           if (isNotFoundPrismaError(error)) {
             if (res) {
@@ -559,7 +537,7 @@ export class AuthService {
             console.warn(
               '[DEBUG AuthService refreshToken] Device validation failed. Potential session hijack attempt or user changed device significantly.'
             )
-            await tx.refreshToken.deleteMany({ where: { userId: existingRefreshToken.userId } })
+            await this.tokenService.deleteAllRefreshTokens(existingRefreshToken.userId, tx as any)
             if (res) {
               this.tokenService.clearTokenCookies(res)
             }
@@ -574,7 +552,7 @@ export class AuthService {
           console.warn(
             '[DEBUG AuthService refreshToken] Refresh token does not have an associated device ID. Rejecting refresh.'
           )
-          await tx.refreshToken.deleteMany({ where: { userId: existingRefreshToken.userId } })
+          await this.tokenService.deleteAllRefreshTokens(existingRefreshToken.userId, tx as any)
           if (res) {
             this.tokenService.clearTokenCookies(res)
           }
@@ -591,7 +569,7 @@ export class AuthService {
           console.error(
             '[CRITICAL AuthService refreshToken] currentDeviceId is undefined before generating new tokens. This should not happen if device validation passed.'
           )
-          await tx.refreshToken.deleteMany({ where: { userId: existingRefreshToken.userId } })
+          await this.tokenService.deleteAllRefreshTokens(existingRefreshToken.userId, tx as any)
           if (res) {
             this.tokenService.clearTokenCookies(res)
           }
@@ -601,22 +579,24 @@ export class AuthService {
           throw InvalidDeviceException
         }
 
+        // Tạo cặp token mới (access token và refresh token)
         const {
           accessToken: newAccessToken,
           refreshToken: newRefreshTokenString,
           maxAgeForRefreshTokenCookie
-        } = await this.generateTokens(
+        } = await this.tokenService.generateTokens(
           {
             userId: userFromRefreshToken.id,
             deviceId: currentDeviceId,
             roleId: userFromRefreshToken.roleId,
             roleName: userFromRefreshToken.role.name
           },
-          tx,
+          tx as any,
           shouldRememberUser
         )
 
         if (res) {
+          // Cập nhật cookies với token mới
           this.tokenService.setTokenCookies(res, newAccessToken, newRefreshTokenString, maxAgeForRefreshTokenCookie)
         }
 
@@ -643,6 +623,13 @@ export class AuthService {
     }
   }
 
+  /**
+   * Đăng xuất người dùng và xóa refresh token
+   * @param refreshTokenInput Token đầu vào từ request body
+   * @param req Request object chứa cookie và thông tin người dùng (tùy chọn)
+   * @param res Response object để xóa cookie (tùy chọn)
+   * @returns Thông báo đăng xuất thành công
+   */
   async logout(refreshTokenInput: string, req?: Request, res?: Response) {
     const auditLogEntry: Partial<AuditLogData> = {
       action: 'USER_LOGOUT_ATTEMPT',
@@ -668,18 +655,13 @@ export class AuthService {
         }
 
         if (tokenToUse) {
-          await tx.refreshToken.deleteMany({ where: { token: tokenToUse } })
+          await this.tokenService.deleteRefreshToken(tokenToUse, tx as any)
         }
+
         if (res) {
-          res.clearCookie(CookieNames.REFRESH_TOKEN, {
-            httpOnly: true,
-            secure: envConfig.NODE_ENV === 'production',
-            sameSite: 'lax',
-            path: '/api/v1/auth',
-            domain: envConfig.cookie.refreshToken.domain
-          })
           this.tokenService.clearTokenCookies(res)
         }
+
         return { message: 'Auth.Logout.Successful' }
       })
       auditLogEntry.status = AuditLogStatus.SUCCESS
