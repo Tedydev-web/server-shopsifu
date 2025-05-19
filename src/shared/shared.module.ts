@@ -15,6 +15,7 @@ import { OtpService } from './services/otp.service'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { DeviceService } from './services/device.service'
 import { AuditLogInterceptor } from './interceptor/audit-log.interceptor'
+import { TokenRefreshInterceptor } from './interceptor/token-refresh.interceptor'
 
 const sharedServices = [
   PrismaService,
@@ -42,6 +43,10 @@ const sharedServices = [
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditLogInterceptor
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TokenRefreshInterceptor
     }
   ],
   exports: sharedServices,

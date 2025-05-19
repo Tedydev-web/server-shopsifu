@@ -44,19 +44,29 @@ export class GoogleService {
     })
     return { url }
   }
-  async googleCallback({ code, state }: { code: string; state: string }) {
+  async googleCallback({
+    code,
+    state,
+    userAgent = 'Unknown',
+    ip = 'Unknown'
+  }: {
+    code: string
+    state: string
+    userAgent?: string
+    ip?: string
+  }) {
     try {
-      let userAgent = 'Unknown'
-      let ip = 'Unknown'
-      // 1. Lấy state từ url
+      // 1. Lấy state từ url - ưu tiên state từ URL trước
       try {
         if (state) {
           const clientInfo = JSON.parse(Buffer.from(state, 'base64').toString()) as GoogleAuthStateType
-          userAgent = clientInfo.userAgent
-          ip = clientInfo.ip
+          // Chỉ sử dụng giá trị từ state nếu tham số trực tiếp không được cung cấp
+          userAgent = clientInfo.userAgent || userAgent
+          ip = clientInfo.ip || ip
         }
       } catch (error) {
         console.error('Error parsing state', error)
+        // Giữ nguyên giá trị userAgent và ip được truyền vào
       }
       // 2. Dùng code để lấy token
       const { tokens } = await this.oauth2Client.getToken(code)

@@ -75,6 +75,24 @@ export class TokenService {
   }
 
   /**
+   * Tạo và ký access token với thời hạn ngắn (10 giây)
+   * Chỉ dùng cho mục đích thử nghiệm
+   * @param payload Dữ liệu cần nhúng vào token
+   * @returns Chuỗi JWT đã ký có thời hạn 10 giây
+   */
+  signShortLivedToken(payload: AccessTokenPayloadCreate) {
+    this.logger.debug(`Signing short-lived access token for testing purposes: userId=${payload.userId}`)
+    return this.jwtService.sign(
+      { ...payload, uuid: uuidv4() },
+      {
+        secret: envConfig.ACCESS_TOKEN_SECRET,
+        expiresIn: '10s',
+        algorithm: 'HS256'
+      }
+    )
+  }
+
+  /**
    * Xác thực access token
    * @param token Chuỗi JWT cần xác thực
    * @returns Payload đã giải mã
@@ -362,5 +380,118 @@ export class TokenService {
       where: { token },
       select: { userId: true, used: true, expiresAt: true }
     })
+  }
+
+  /**
+   * Làm mới token một cách tự động mà không cần yêu cầu người dùng đăng nhập lại
+   * Được sử dụng bởi TokenRefreshInterceptor để tự động làm mới token khi access token hết hạn
+   * @param refreshToken Refresh token đang có
+   * @param userAgent User-Agent của request hiện tại
+   * @param ip IP của request hiện tại
+   * @returns Token mới nếu thành công
+   */
+  async refreshTokenSilently(
+    refreshToken: string,
+    userAgent: string,
+    ip: string
+  ): Promise<{
+    accessToken: string
+    refreshToken?: string
+    maxAgeForRefreshTokenCookie?: number
+  } | null> {
+    try {
+      this.logger.debug('Attempting to silently refresh token')
+
+      // Tìm refresh token trong database
+      const existingRefreshToken = await this.findRefreshTokenWithUserAndDevice(refreshToken)
+
+      if (!existingRefreshToken || existingRefreshToken.used || existingRefreshToken.expiresAt <= new Date()) {
+        this.logger.debug('Refresh token invalid or expired during silent refresh')
+        return null
+      }
+
+      // Đánh dấu token đã được sử dụng
+      await this.markRefreshTokenUsed(refreshToken)
+
+      // Kiểm tra device
+      if (existingRefreshToken.device) {
+        // Trong silent refresh, chúng ta có thể thực hiện kiểm tra ít nghiêm ngặt hơn để tăng trải nghiệm người dùng
+        // Ví dụ: chỉ kiểm tra phần cơ bản của userAgent thay vì so khớp chính xác
+        const userAgentMatch =
+          this.basicDeviceFingerprint(existingRefreshToken.device.userAgent) === this.basicDeviceFingerprint(userAgent)
+
+        if (!userAgentMatch) {
+          this.logger.debug('Device fingerprint mismatch during silent refresh')
+          return null
+        }
+      } else {
+        // Không có device liên kết
+        this.logger.debug('No device associated with refresh token during silent refresh')
+        return null
+      }
+
+      // Tạo access token mới
+      const accessToken = this.signAccessToken({
+        userId: existingRefreshToken.user.id,
+        deviceId: existingRefreshToken.deviceId,
+        roleId: existingRefreshToken.user.roleId,
+        roleName: existingRefreshToken.user.role.name
+      })
+
+      // Tạo refresh token mới (tùy chọn, tùy thuộc vào chiến lược của ứng dụng)
+      // Trong nhiều trường hợp, chúng ta có thể không muốn tạo refresh token mới mỗi lần refresh ngầm
+      // để tránh nhiều token trong database
+      const shouldCreateNewRefreshToken = false // Có thể cấu hình tùy theo nhu cầu
+      let newRefreshToken: string | undefined
+      let maxAge: number | undefined
+
+      if (shouldCreateNewRefreshToken) {
+        const refreshTokenExpiresInMs = existingRefreshToken.rememberMe
+          ? envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
+          : envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
+
+        const refreshTokenExpiresAt = addMilliseconds(new Date(), refreshTokenExpiresInMs)
+        newRefreshToken = uuidv4()
+
+        await this.createRefreshToken({
+          token: newRefreshToken,
+          userId: existingRefreshToken.user.id,
+          deviceId: existingRefreshToken.deviceId,
+          expiresAt: refreshTokenExpiresAt,
+          rememberMe: existingRefreshToken.rememberMe
+        })
+
+        maxAge = refreshTokenExpiresInMs
+      }
+
+      return {
+        accessToken,
+        refreshToken: newRefreshToken,
+        maxAgeForRefreshTokenCookie: maxAge
+      }
+    } catch (error) {
+      this.logger.error('Error during silent token refresh', error)
+      return null
+    }
+  }
+
+  /**
+   * Tạo fingerprint cơ bản từ user agent để so sánh thiết bị
+   * Lấy thông tin cơ bản về loại thiết bị và trình duyệt
+   * @param userAgent User agent string
+   * @returns Fingerprint cơ bản
+   */
+  private basicDeviceFingerprint(userAgent: string): string {
+    if (!userAgent) return 'unknown'
+
+    const isMobile = /mobile|android|iphone|ipad|ipod/i.test(userAgent.toLowerCase())
+    const browserMatch = userAgent.match(/(chrome|safari|firefox|edge|opera|trident|msie)\/?\s*([\d.]+)/i)
+    const osMatch = userAgent.match(/(windows|mac|linux|android|ios|iphone|ipad)\s*([\d.]*)/i)
+
+    const deviceType = isMobile ? 'mobile' : 'desktop'
+    const browser = browserMatch ? browserMatch[1].toLowerCase() : 'unknown'
+    const os = osMatch ? osMatch[1].toLowerCase() : 'unknown'
+
+    return `${deviceType}-${os}-${browser}`
   }
 }

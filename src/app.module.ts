@@ -11,6 +11,7 @@ import { SecurityHeadersMiddleware } from './shared/middleware/security-headers.
 import { CsrfMiddleware } from './shared/middleware/csrf.middleware'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { LoggerMiddleware } from './shared/middleware/logger.middleware'
+import { TokenRefreshInterceptor } from './shared/interceptor/token-refresh.interceptor'
 
 @Module({
   imports: [
@@ -43,6 +44,10 @@ import { LoggerMiddleware } from './shared/middleware/logger.middleware'
       useClass: CustomZodValidationPipe
     },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
+    {
+      provide: APP_INTERCEPTOR, // Đăng ký TokenRefreshInterceptor ở cấp global
+      useClass: TokenRefreshInterceptor
+    },
     {
       provide: APP_GUARD, // Đăng ký ThrottlerGuard global
       useClass: ThrottlerGuard

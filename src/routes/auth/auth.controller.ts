@@ -139,23 +139,50 @@ export class AuthController {
     })
   }
 
-  @Post('google/callback')
+  @Get('google/callback')
   @IsPublic()
   @SkipThrottle()
-  async googleCallback(@Query('code') code: string, @Query('state') state: string, @Res() res: Response) {
+  async googleCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Res() res: Response,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string
+  ) {
     try {
+      // Kiểm tra các tham số bắt buộc
+      if (!code) {
+        return res.redirect(
+          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=invalid_request&errorMessage=${encodeURIComponent('Authorization code is missing')}`
+        )
+      }
+
       const data = await this.googleService.googleCallback({
         code,
-        state
+        state,
+        // Trường hợp state từ Google không chứa thông tin userAgent/IP
+        userAgent,
+        ip
       })
+
+      // Sử dụng secure cookies trong production
       this.tokenService.setTokenCookies(res, data.accessToken, data.refreshToken)
-      return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true`)
+
+      // Trả về thông tin người dùng cho frontend
+      return res.redirect(
+        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true&name=${encodeURIComponent(data.name || '')}&email=${encodeURIComponent(data.email || '')}`
+      )
     } catch (error) {
+      console.error('Google OAuth callback error:', error)
+
+      // Xử lý message lỗi một cách an toàn
+      const errorCode = error.code || 'auth_error'
       const message =
         error instanceof Error
-          ? error.message
-          : 'Đã xảy ra lỗi khi đăng nhập bằng Google, vui lòng thử lại bằng cách khác'
-      return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?errorMessage=${message}`)
+          ? encodeURIComponent(error.message)
+          : encodeURIComponent('Đã xảy ra lỗi khi đăng nhập bằng Google, vui lòng thử lại bằng cách khác')
+
+      return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=${errorCode}&errorMessage=${message}`)
     }
   }
 
