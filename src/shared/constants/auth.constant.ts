@@ -49,7 +49,6 @@ export const TokenType = {
 
 export type TokenTypeType = (typeof TokenType)[keyof typeof TokenType]
 
-// Thêm constants cho cookie-based auth
 export const CookieNames = {
   ACCESS_TOKEN: 'access_token',
   REFRESH_TOKEN: 'refresh_token',

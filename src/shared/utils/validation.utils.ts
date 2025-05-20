@@ -86,7 +86,7 @@ export function safeDate(value: any, defaultValue: Date | null = null): Date | n
 export function safeStringify(obj: any, defaultValue: string = '{}'): string {
   try {
     return JSON.stringify(obj)
-  } catch (error) {
+  } catch {
     return defaultValue
   }
 }
@@ -104,7 +104,7 @@ export function safeParse<T = any>(jsonString: string, defaultValue: T): T {
 
   try {
     return JSON.parse(jsonString) as T
-  } catch (error) {
+  } catch {
     return defaultValue
   }
 }
@@ -156,7 +156,6 @@ export function validateWithZod<T>(schema: z.ZodType<T>, data: unknown, errorMes
     return schema.parse(data)
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const formattedError = error.format()
       throw new ApiException(
         400,
         'VALIDATION_ERROR',
@@ -184,7 +183,7 @@ export function isValidJson(value: any): boolean {
   try {
     const result = JSON.parse(value)
     return isObject(result) || Array.isArray(result)
-  } catch (error) {
+  } catch {
     return false
   }
 }
@@ -275,7 +274,6 @@ export function isValidEmail(email: string): boolean {
     return false
   }
 
-  // RFC 5322 Official Standard
   const emailRegex =
     /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
   return emailRegex.test(email)
@@ -291,7 +289,6 @@ export function isValidPhone(phone: string): boolean {
     return false
   }
 
-  // Định dạng E.164 (tiêu chuẩn quốc tế)
   const phoneRegex = /^\+?[1-9]\d{1,14}$/
   return phoneRegex.test(phone.replace(/\s+/g, ''))
 }

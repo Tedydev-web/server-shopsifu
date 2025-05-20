@@ -120,7 +120,6 @@ export class TwoFactorService {
     this.logger.debug(`Verifying recovery code for user ${userId}`)
     const client = tx || this.prismaService
 
-    // Tìm tất cả recovery code của user
     const recoveryCodes = await client.recoveryCode.findMany({
       where: {
         userId: userId,

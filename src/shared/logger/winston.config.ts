@@ -21,8 +21,8 @@ const dailyRotateFileTransport = (level: string, dirname?: string) => {
         info.pid = process.pid
         return info
       })(),
-      json()
-      // prettyPrint()
+      json(),
+      prettyPrint()
     )
   })
 }

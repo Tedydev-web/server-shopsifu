@@ -19,7 +19,6 @@ export class TokenRefreshInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     return next.handle().pipe(
       catchError((error) => {
-        // Chỉ xử lý lỗi UnauthorizedException
         if (!(error instanceof UnauthorizedException)) {
           return throwError(() => error)
         }
@@ -29,23 +28,19 @@ export class TokenRefreshInterceptor implements NestInterceptor {
         const request = context.switchToHttp().getRequest<Request>()
         const response = context.switchToHttp().getResponse<Response>()
 
-        // Lấy refresh token từ cookie hoặc request body
         const refreshToken = this.tokenService.extractRefreshTokenFromRequest(request)
 
-        // Nếu không có refresh token, không thể tự động làm mới
         if (!refreshToken) {
           this.logger.debug('No refresh token available for auto-refresh')
           return throwError(() => error)
         }
 
-        // Thử làm mới token
         return this.tryRefreshToken(refreshToken, request).pipe(
           switchMap((result) => {
             if (!result.success) {
               return throwError(() => error)
             }
 
-            // Thiết lập token mới vào cookies
             if (result.tokens) {
               this.tokenService.setTokenCookies(
                 response,
@@ -55,7 +50,6 @@ export class TokenRefreshInterceptor implements NestInterceptor {
               )
             }
 
-            // Cập nhật payload trong request với thông tin mới
             request[REQUEST_USER_KEY] = {
               userId: result.payload.userId,
               deviceId: result.payload.deviceId,
@@ -65,7 +59,6 @@ export class TokenRefreshInterceptor implements NestInterceptor {
               iat: result.payload.iat
             }
 
-            // Thực hiện lại request ban đầu với token mới
             return next.handle()
           })
         )
@@ -94,7 +87,6 @@ export class TokenRefreshInterceptor implements NestInterceptor {
     payload?: any
   }> {
     return new Observable((subscriber) => {
-      // Thực hiện refresh token
       this.tokenService
         .refreshTokenSilently(refreshToken, request.headers['user-agent']?.toString() || '', request.ip || '')
         .then((result) => {
@@ -107,7 +99,6 @@ export class TokenRefreshInterceptor implements NestInterceptor {
 
           this.logger.debug('Token refreshed successfully')
 
-          // Giải mã token mới để cập nhật thông tin xác thực trong request
           this.tokenService
             .verifyAccessToken(result.accessToken)
             .then((payload) => {

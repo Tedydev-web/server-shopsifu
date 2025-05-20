@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
 import { Prisma } from '@prisma/client'
 import { normalizeAuditLogDetails, maskSensitiveFields, DEFAULT_SENSITIVE_FIELDS } from '../utils/audit-log.utils'
-import { isNullOrUndefined, isObject } from '../utils/type-guards.utils'
+import { isObject } from '../utils/type-guards.utils'
 
 export enum AuditLogStatus {
   SUCCESS = 'SUCCESS',
@@ -12,10 +12,10 @@ export enum AuditLogStatus {
 export interface AuditLogData {
   userId?: number
   userEmail?: string
-  action: string // Ví dụ: USER_LOGIN, PRODUCT_CREATED
-  entity?: string // Ví dụ: User, Product
+  action: string
+  entity?: string
   entityId?: string | number
-  details?: Prisma.JsonValue // Prisma.JsonValue cho phép object, array, string, number, boolean, null
+  details?: Prisma.JsonValue
   ipAddress?: string
   userAgent?: string
   status: AuditLogStatus
@@ -34,7 +34,7 @@ export class AuditLogService {
   private readonly logger = new Logger(AuditLogService.name)
   private readonly logQueue: AuditLogData[] = []
   private isProcessingQueue = false
-  private readonly batchSize = 20 // Số lượng log tối đa được xử lý trong một lần
+  private readonly batchSize = 20
   private readonly defaultOptions: AuditLogOptions = {
     maskSensitiveData: true,
     sensitiveFields: DEFAULT_SENSITIVE_FIELDS,
@@ -42,7 +42,6 @@ export class AuditLogService {
   }
 
   constructor(private readonly prisma: PrismaService) {
-    // Khởi tạo quy trình xử lý hàng đợi định kỳ
     setInterval(() => {
       void this.processQueue()
     }, 5000)
@@ -220,13 +219,10 @@ export class AuditLogService {
    * @param options Tùy chọn ghi log
    */
   private queueLog(data: AuditLogData, options: AuditLogOptions): void {
-    // Chuẩn bị dữ liệu log
     const preparedData = this.prepareLogData(data, options)
 
-    // Thêm vào hàng đợi
     this.logQueue.push(preparedData)
 
-    // Xử lý hàng đợi nếu đủ lớn
     if (this.logQueue.length >= this.batchSize) {
       void this.processQueue()
     }
@@ -244,7 +240,6 @@ export class AuditLogService {
     try {
       this.isProcessingQueue = true
 
-      // Lấy một batch từ hàng đợi
       const batchToProcess = this.logQueue.splice(0, this.batchSize)
 
       if (batchToProcess.length > 0) {
@@ -255,7 +250,6 @@ export class AuditLogService {
     } finally {
       this.isProcessingQueue = false
 
-      // Nếu vẫn còn log trong hàng đợi, tiếp tục xử lý
       if (this.logQueue.length > 0) {
         setImmediate(() => {
           void this.processQueue()
@@ -274,13 +268,11 @@ export class AuditLogService {
   private prepareLogData(data: AuditLogData, options: AuditLogOptions): AuditLogData {
     const preparedData = { ...data }
 
-    // Xử lý details - che giấu thông tin nhạy cảm nếu cần
     if (isObject(preparedData.details)) {
       if (options.maskSensitiveData) {
         preparedData.details = maskSensitiveFields(preparedData.details, options.sensitiveFields)
       }
 
-      // Chuẩn hóa chi tiết để đảm bảo an toàn khi lưu trữ
       preparedData.details = normalizeAuditLogDetails(preparedData.details as Record<string, any>)
     }
 

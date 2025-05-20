@@ -1,17 +1,17 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
-import { AuditLogService, AuditLogData, AuditLogStatus } from '../services/audit.service' // Giả sử bạn muốn dùng lại AuditLogService
+import { AuditLogService, AuditLogData, AuditLogStatus } from '../services/audit.service'
 import { REQUEST_USER_KEY } from '../constants/auth.constant'
 import { AccessTokenPayload } from '../types/jwt.type'
 
 @Injectable()
 export class LoggerMiddleware implements NestMiddleware {
-  private readonly builtInLogger = new Logger('HTTP') // Logger của NestJS để output ra console nếu cần
+  private readonly builtInLogger = new Logger('HTTP')
 
-  constructor(private readonly auditLogService: AuditLogService) {} // Inject AuditLogService
+  constructor(private readonly auditLogService: AuditLogService) {}
 
   use(request: Request, response: Response, next: NextFunction): void {
-    const { ip, method, originalUrl, headers: originalHeaders } = request // Đổi tên biến
+    const { ip, method, originalUrl, headers: originalHeaders } = request
     const userAgent = originalHeaders['user-agent'] || ''
     const startTime = Date.now()
 
@@ -37,9 +37,6 @@ export class LoggerMiddleware implements NestMiddleware {
 
         if (activeUser) {
           userId = activeUser.userId
-          // Example: if (userId) { const userDB = await this.prismaService.user.findUnique({ where: {id: userId}, select: {email: true}}); userEmail = userDB?.email; }
-          // This would require injecting PrismaService if you want to fetch email here.
-          // For now, userEmail might remain undefined unless fetched from token if available or not logged.
         }
 
         const allowedHeaderKeys = [
@@ -79,8 +76,6 @@ export class LoggerMiddleware implements NestMiddleware {
             filteredHeaders[key] = '[REDACTED_SENSITIVE_HEADER]'
           } else if (allowedHeaderKeys.includes(lowerKey)) {
             filteredHeaders[key] = originalHeaders[key]
-          } else {
-            // filteredHeaders[key] = '[REDACTED_OTHER_HEADER]';
           }
         }
 

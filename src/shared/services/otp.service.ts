@@ -1,10 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
-import {
-  TokenType,
-  TokenTypeType,
-  TypeOfVerificationCode,
-  TypeOfVerificationCodeType
-} from 'src/shared/constants/auth.constant'
+import { TokenType, TokenTypeType, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import envConfig from 'src/shared/config'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { EmailService } from 'src/shared/services/email.service'
@@ -14,13 +9,11 @@ import { v4 as uuidv4 } from 'uuid'
 import { generateOTP } from 'src/shared/helpers'
 import { PrismaService } from './prisma.service'
 import {
-  Prisma,
   PrismaClient,
   VerificationCode as PrismaVerificationCodeModel,
   VerificationToken as PrismaVerificationToken,
   VerificationCodeType as PrismaVerificationCodeEnum
 } from '@prisma/client'
-import { ApiException } from 'src/shared/exceptions/api.exception'
 import {
   InvalidOTPException,
   OTPExpiredException,
@@ -153,16 +146,13 @@ export class OtpService {
    * @throws FailedToSendOTPException
    */
   async sendOTP(email: string, type: TypeOfVerificationCodeType): Promise<{ message: string }> {
-    // Trước tiên, xóa các mã cũ
     await this.authRepository.deleteVerificationCodesByEmailAndType({
       email,
       type
     })
 
-    // Tạo mã OTP mới
     const code = generateOTP()
 
-    // Lưu mã OTP vào database
     await this.authRepository.createVerificationCode({
       email,
       code,
@@ -170,7 +160,6 @@ export class OtpService {
       expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
     })
 
-    // Gửi OTP qua email
     const { error } = await this.emailService.sendOTP({
       email,
       code
@@ -209,10 +198,8 @@ export class OtpService {
     metadata?: Record<string, any>
     tx: PrismaTransactionClient
   }): Promise<string> {
-    // Xóa các token OTP cũ
     await this.authRepository.deleteVerificationTokenByEmailAndType(email, type, TokenType.OTP, tx)
 
-    // Tạo token OTP mới
     const token = uuidv4()
 
     await this.authRepository.createVerificationToken(
@@ -286,7 +273,6 @@ export class OtpService {
     tx: PrismaTransactionClient,
     userId?: number
   ): Promise<string> {
-    // Xác minh mã OTP
     await this.validateVerificationCode({
       email: payload.email,
       code: payload.code,
@@ -294,16 +280,14 @@ export class OtpService {
       tx
     })
 
-    // Tạo token OTP
     const token = await this.createOtpToken({
       email: payload.email,
       type: payload.type,
       userId,
-      // deviceId được thêm bởi lớp gọi sau khi tạo hoặc tìm thiết bị
+
       tx
     })
 
-    // Xóa mã OTP đã sử dụng
     await this.deleteVerificationCode(payload.email, payload.code, payload.type, tx)
 
     return token

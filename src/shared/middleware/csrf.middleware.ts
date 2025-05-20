@@ -2,7 +2,7 @@ import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
 import csurf from 'csurf'
 import envConfig from '../config'
-import { CookieNames, SecurityHeaders } from '../constants/auth.constant'
+import { SecurityHeaders } from '../constants/auth.constant'
 
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {
@@ -51,7 +51,7 @@ export class CsrfMiddleware implements NestMiddleware {
           `CSRF Token Cookie (${envConfig.cookie.csrfToken.name} value from req.cookies): ${req.cookies?.[envConfig.cookie.csrfToken.name]}`
         )
         this.logger.error(
-          `Header value (${SecurityHeaders.CSRF_TOKEN_HEADER} from req.headers): ${req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()]}`
+          `Header value (${SecurityHeaders.CSRF_TOKEN_HEADER} from req.headers): ${String(req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()] || '')}`
         )
         res.status(403).json({
           statusCode: 403,

@@ -9,7 +9,6 @@ export class AccessTokenGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>()
 
-    // Lấy token từ cookie hoặc authorization header
     const token = this.tokenService.extractTokenFromRequest(request)
 
     if (!token) {

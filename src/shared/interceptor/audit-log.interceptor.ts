@@ -44,12 +44,10 @@ export class AuditLogInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap((result) => {
-        // Xử lý thành công
         const auditLogData = this.buildAuditLogData(auditLogOptions, args, result, userFromRequest, req, res, true)
         void this.auditLogService.record(auditLogData)
       }),
       catchError((error) => {
-        // Xử lý lỗi
         const auditLogData = this.buildAuditLogData(
           auditLogOptions,
           args,
@@ -61,7 +59,7 @@ export class AuditLogInterceptor implements NestInterceptor {
           error
         )
         void this.auditLogService.record(auditLogData)
-        throw error // Re-throw để middleware exception filter xử lý
+        throw error
       }),
       finalize(() => {
         const executionTime = Date.now() - startTime
@@ -85,12 +83,10 @@ export class AuditLogInterceptor implements NestInterceptor {
   }
 
   private getRequest(context: ExecutionContext): Request | undefined {
-    // Nếu đã được inject qua constructor
     if (this.request) {
       return this.request
     }
 
-    // Nếu là HTTP request
     if (context.getType() === 'http') {
       return context.switchToHttp().getRequest<Request>()
     }
@@ -99,7 +95,6 @@ export class AuditLogInterceptor implements NestInterceptor {
   }
 
   private getResponse(context: ExecutionContext): Response | undefined {
-    // Nếu là HTTP request
     if (context.getType() === 'http') {
       return context.switchToHttp().getResponse<Response>()
     }
@@ -123,19 +118,16 @@ export class AuditLogInterceptor implements NestInterceptor {
       status: isSuccess ? AuditLogStatus.SUCCESS : AuditLogStatus.FAILURE
     }
 
-    // Lấy userId từ options function hoặc từ request
     if (options.getUserId) {
       auditLogData.userId = options.getUserId(args)
     } else if (userFromRequest?.userId) {
       auditLogData.userId = userFromRequest.userId
     }
 
-    // Lấy userEmail từ options function
     if (options.getUserEmail) {
       auditLogData.userEmail = options.getUserEmail(args)
     }
 
-    // Lấy entity và entityId nếu được định nghĩa
     if (options.entity) {
       auditLogData.entity = options.entity
     }
@@ -144,7 +136,6 @@ export class AuditLogInterceptor implements NestInterceptor {
       auditLogData.entityId = options.getEntityId(args, result)
     }
 
-    // Lấy details với thông tin context mở rộng
     const details =
       isSuccess && options.getDetails && result
         ? options.getDetails(args, result)
@@ -152,9 +143,7 @@ export class AuditLogInterceptor implements NestInterceptor {
           ? options.getErrorDetails(args, error)
           : {}
 
-    // Thêm thông tin về request context
     if (req) {
-      // Lấy route path và method
       const routeDetails = {
         path: req.route?.path,
         method: req.method,
@@ -170,12 +159,10 @@ export class AuditLogInterceptor implements NestInterceptor {
       auditLogData.details = details
     }
 
-    // Lấy notes
     if (isSuccess && options.getNotes && result) {
       auditLogData.notes = options.getNotes(args, result)
     }
 
-    // Xử lý error message
     if (!isSuccess && error) {
       if (options.getErrorMessage) {
         auditLogData.errorMessage = options.getErrorMessage(error)
@@ -183,27 +170,22 @@ export class AuditLogInterceptor implements NestInterceptor {
         const normalizedError = normalizeErrorMessage(error)
         auditLogData.errorMessage = normalizedError.message
 
-        // Thêm chi tiết lỗi vào details nếu có
         if (normalizedError.details && auditLogData.details && isObject(auditLogData.details)) {
-          // Chuyển đổi ErrorDetailMessage[] sang JsonValue
           const errorDetailsAsJson = JSON.parse(JSON.stringify(normalizedError.details))
           auditLogData.details.errorDetails = errorDetailsAsJson
         }
       }
     }
 
-    // Thêm thông tin từ request
     if (req) {
       auditLogData.ipAddress = req.ip
       auditLogData.userAgent = req.headers['user-agent']
     }
 
-    // Thêm thông tin về thời gian thực thi
     const executionTime = Date.now() - startTime
     if (auditLogData.details && isObject(auditLogData.details)) {
       auditLogData.details.executionTimeMs = executionTime
 
-      // Thêm kích thước phản hồi nếu có
       if (res && typeof res.get === 'function') {
         const contentLength = res.get('content-length')
         if (contentLength) {

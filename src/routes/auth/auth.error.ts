@@ -102,7 +102,6 @@ export const RefreshTokenAlreadyUsedException = createApiError(
   'refreshToken'
 )
 
-// Authentication and authorization errors
 export const UnauthorizedAccessException = createApiError(
   HttpStatus.UNAUTHORIZED,
   'Unauthenticated',

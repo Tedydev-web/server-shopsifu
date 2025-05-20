@@ -21,18 +21,18 @@ import { TokenRefreshInterceptor } from './shared/interceptor/token-refresh.inte
     ThrottlerModule.forRoot([
       {
         name: 'short',
-        ttl: 1000, // 1 giây
-        limit: 3 // 3 requests mỗi giây
+        ttl: 1000,
+        limit: 3
       },
       {
         name: 'medium',
-        ttl: 10000, // 10 giây
-        limit: 20 // 20 requests mỗi 10 giây
+        ttl: 10000,
+        limit: 20
       },
       {
         name: 'long',
-        ttl: 60000, // 1 phút
-        limit: 100 // 100 requests mỗi phút
+        ttl: 60000,
+        limit: 100
       }
     ])
   ],
@@ -45,11 +45,11 @@ import { TokenRefreshInterceptor } from './shared/interceptor/token-refresh.inte
     },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
     {
-      provide: APP_INTERCEPTOR, // Đăng ký TokenRefreshInterceptor ở cấp global
+      provide: APP_INTERCEPTOR,
       useClass: TokenRefreshInterceptor
     },
     {
-      provide: APP_GUARD, // Đăng ký ThrottlerGuard global
+      provide: APP_GUARD,
       useClass: ThrottlerGuard
     }
   ]

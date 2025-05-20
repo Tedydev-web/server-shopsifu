@@ -38,7 +38,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let message: string = 'Error.Global.InternalServerError'
     let errors: DetailedErrorItem[] = []
 
-    // Log lỗi với requestId để dễ truy vết
     this.logger.error(
       `[${request.method} ${request.url}] [RequestID: ${requestId}] Exception: ${
         exception instanceof Error ? exception.message : JSON.stringify(exception)

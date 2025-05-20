@@ -7,20 +7,11 @@ import { AuditLog } from '../decorators/audit-log.decorator'
 import { AuditLogService } from './audit.service'
 import { isUniqueConstraintPrismaError, isNotFoundPrismaError } from '../utils/type-guards.utils'
 
-// Kiểu cho Prisma Transaction Client, loại bỏ các phương thức không dùng trong transaction
 type PrismaTransactionClient = Omit<
   PrismaClient,
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
 >
 
-/**
- * Dịch vụ quản lý thiết bị - phụ trách lưu trữ, xác thực và quản lý thông tin thiết bị
- * Phiên bản này tuân thủ các nguyên tắc DDD (Domain-Driven Design):
- * - Quản lý đầy đủ vòng đời thiết bị (tạo, cập nhật, tìm kiếm, xác thực)
- * - Logging chi tiết và nhất quán
- * - JSDoc đầy đủ cho tất cả phương thức
- * - Xử lý lỗi rõ ràng
- */
 @Injectable()
 export class DeviceService {
   private readonly logger = new Logger(DeviceService.name)
@@ -160,7 +151,6 @@ export class DeviceService {
           client
         )
 
-        // Ghi log không đồng bộ cho thiết bị đã tồn tại được cập nhật
         this.auditLogService.recordAsync({
           action: 'DEVICE_UPDATE',
           entity: 'Device',
@@ -181,7 +171,6 @@ export class DeviceService {
       this.logger.debug(`No matching device found for user ${data.userId}, creating new device`)
       const newDevice = await this.createDevice(data, client)
 
-      // Ghi log không đồng bộ cho thiết bị mới được tạo
       this.auditLogService.recordAsync({
         action: 'DEVICE_CREATE',
         entity: 'Device',
@@ -198,7 +187,6 @@ export class DeviceService {
 
       return newDevice
     } catch (error) {
-      // Ghi log lỗi
       this.auditLogService.recordAsync({
         action: 'DEVICE_SETUP_FAILED',
         entity: 'Device',
@@ -262,7 +250,6 @@ export class DeviceService {
       this.logger.warn(`Device ${deviceId} User-Agent mismatch: expected "${device.userAgent}", got "${userAgent}"`)
     }
 
-    // Cập nhật thông tin thiết bị bất kể kết quả xác thực
     await this.updateDevice(
       deviceId,
       {

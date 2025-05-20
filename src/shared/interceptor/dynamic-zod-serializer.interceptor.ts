@@ -20,11 +20,10 @@ export class DynamicZodSerializerInterceptor implements NestInterceptor {
           return data
         }
 
-        // Tìm schema phù hợp dựa trên predicate
         const schemaOption = this.schemas.find((option) => option.predicate(data))
 
         if (!schemaOption) {
-          return data // Không áp dụng schema nếu không có schema nào phù hợp
+          return data
         }
 
         const schema = schemaOption.schema
@@ -41,7 +40,6 @@ export class DynamicZodSerializerInterceptor implements NestInterceptor {
   }
 }
 
-// Decorator Factory
 export function DynamicZodSerializer(...schemas: SchemaOption[]) {
   return function (target: any, key: string, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value
@@ -49,7 +47,6 @@ export function DynamicZodSerializer(...schemas: SchemaOption[]) {
     descriptor.value = function (...args: any[]) {
       const result = originalMethod.apply(this, args)
 
-      // Nếu đầu ra là Promise
       if (result instanceof Promise) {
         return result.then((data) => {
           const validSchema = schemas.find((schema) => schema.predicate(data))

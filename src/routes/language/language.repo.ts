@@ -8,7 +8,6 @@ import {
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { Prisma } from '@prisma/client'
 
-// Định nghĩa kiểu cho transaction client
 type PrismaTransactionClient = Omit<
   Prisma.TransactionClient,
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
@@ -20,7 +19,6 @@ export class LanguageRepo {
 
   constructor(private readonly prismaService: PrismaService) {}
 
-  // Helper để lấy client phù hợp (transaction hoặc main)
   private getClient(prismaClient?: PrismaTransactionClient): PrismaTransactionClient | PrismaService {
     return prismaClient || this.prismaService
   }
@@ -33,15 +31,12 @@ export class LanguageRepo {
 
     const { page = 1, limit = 10, sortBy = 'id', sortOrder = 'asc', search = '', includeDeleted = false } = query || {}
 
-    // Tạo where clause theo điều kiện tìm kiếm
     const where: Prisma.LanguageWhereInput = {}
 
-    // Chỉ xem các record chưa xóa trừ khi yêu cầu xem cả đã xóa
     if (!includeDeleted) {
       where.deletedAt = null
     }
 
-    // Tìm kiếm text
     if (search) {
       where.OR = [
         { id: { contains: search, mode: 'insensitive' } },
@@ -49,10 +44,8 @@ export class LanguageRepo {
       ]
     }
 
-    // Đếm tổng số bản ghi phù hợp
     const totalItems = await client.language.count({ where })
 
-    // Lấy dữ liệu với phân trang và sorting
     const languages = await client.language.findMany({
       where,
       orderBy: { [sortBy]: sortOrder },
@@ -75,7 +68,6 @@ export class LanguageRepo {
 
     const where: Prisma.LanguageWhereUniqueInput = { id }
 
-    // Nếu không bao gồm các bản ghi đã xóa, thêm điều kiện deletedAt = null
     if (!includeDeleted) {
       where.deletedAt = null
     }
@@ -178,8 +170,6 @@ export class LanguageRepo {
   async countReferences(id: string, prismaClient?: PrismaTransactionClient): Promise<number> {
     const client = this.getClient(prismaClient)
 
-    // Đếm các bản ghi tham chiếu đến ngôn ngữ này
-    // Ví dụ: đếm các bản ghi trong ProductTranslation, CategoryTranslation, BrandTranslation...
     const [productCount, categoryCount, brandCount] = await Promise.all([
       client.productTranslation.count({ where: { languageId: id } }),
       client.categoryTranslation.count({ where: { languageId: id } }),

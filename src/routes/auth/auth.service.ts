@@ -441,7 +441,6 @@ export class AuthService {
 
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
-        // Lấy token từ body hoặc cookie
         const tokenToUse = refreshToken || (req && req.cookies && req.cookies[CookieNames.REFRESH_TOKEN])
         auditLogEntry.details.tokenProvidedInRequest = !!tokenToUse
 
@@ -455,11 +454,9 @@ export class AuthService {
           throw UnauthorizedAccessException
         }
 
-        // Lấy thông tin refresh token kèm theo thông tin user và device
         const existingRefreshToken = await this.tokenService.findRefreshTokenWithUserAndDevice(tokenToUse, tx as any)
 
         if (!existingRefreshToken || !existingRefreshToken.user) {
-          // Kiểm tra xem token có phải đã bị sử dụng hoặc hết hạn
           const potentiallyReplayedToken = await this.tokenService.findRefreshToken(tokenToUse, tx as any)
 
           if (potentiallyReplayedToken) {
@@ -472,7 +469,6 @@ export class AuthService {
               `[SECURITY AuthService refreshToken] Potentially replayed/expired token used. UserId: ${potentiallyReplayedToken.userId}. Invalidating all tokens for this user.`
             )
 
-            // Xóa tất cả token của người dùng nếu phát hiện tấn công replay
             await this.tokenService.deleteAllRefreshTokens(potentiallyReplayedToken.userId, tx as any)
             auditLogEntry.notes = 'Potential replay attack or used/expired token. All user tokens invalidated.'
           }
@@ -497,7 +493,6 @@ export class AuthService {
         }
 
         try {
-          // Đánh dấu token đã được sử dụng
           await this.tokenService.markRefreshTokenUsed(tokenToUse, tx as any)
         } catch (error) {
           if (isNotFoundPrismaError(error)) {
@@ -571,7 +566,6 @@ export class AuthService {
           throw InvalidDeviceException
         }
 
-        // Tạo cặp token mới (access token và refresh token)
         const {
           accessToken: newAccessToken,
           refreshToken: newRefreshTokenString,
@@ -588,7 +582,6 @@ export class AuthService {
         )
 
         if (res) {
-          // Cập nhật cookies với token mới
           this.tokenService.setTokenCookies(res, newAccessToken, newRefreshTokenString, maxAgeForRefreshTokenCookie)
         }
 
@@ -651,7 +644,6 @@ export class AuthService {
 
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
-        // Lấy token từ cả body và cookie
         const tokenFromBody = refreshTokenInput
         const tokenFromCookie = req?.cookies?.[CookieNames.REFRESH_TOKEN]
 
@@ -660,31 +652,26 @@ export class AuthService {
           tokenFoundInCookie: !!tokenFromCookie
         }
 
-        // Ưu tiên sử dụng token từ body, nếu không có thì dùng từ cookie
         if (tokenFromBody) {
           try {
             await this.tokenService.deleteRefreshToken(tokenFromBody, tx as any)
             auditLogEntry.details.tokenBodyDeleted = true
           } catch (error) {
-            // Ghi log nhưng không báo lỗi để tiếp tục xử lý
             this.logger.warn(`Error deleting refresh token from body: ${error.message}`)
             auditLogEntry.details.tokenBodyDeleteError = error.message
           }
         }
 
-        // Nếu có token từ cookie và khác token từ body, cũng xóa luôn
         if (tokenFromCookie && tokenFromCookie !== tokenFromBody) {
           try {
             await this.tokenService.deleteRefreshToken(tokenFromCookie, tx as any)
             auditLogEntry.details.tokenCookieDeleted = true
           } catch (error) {
-            // Ghi log nhưng không báo lỗi
             this.logger.warn(`Error deleting refresh token from cookie: ${error.message}`)
             auditLogEntry.details.tokenCookieDeleteError = error.message
           }
         }
 
-        // Luôn xóa cookie khi đăng xuất, bất kể token có tồn tại hay không
         if (res) {
           this.tokenService.clearTokenCookies(res)
           auditLogEntry.details.cookiesCleared = true
@@ -703,7 +690,6 @@ export class AuthService {
         auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
 
-      // Đảm bảo xóa cookie ngay cả khi xử lý xóa token thất bại
       if (res) {
         try {
           this.tokenService.clearTokenCookies(res)
@@ -1135,8 +1121,6 @@ export class AuthService {
             throw new HttpException('Invalid 2FA method for TOTP code.', 400)
           }
         } else if (body.type === TwoFactorMethodType.OTP && body.code) {
-          // Với OTP, không quan tâm twoFactorMethod của người dùng là gì
-          // OTP đã được xác thực khi tạo loginSessionToken, chúng ta chỉ cần kiểm tra token đã hợp lệ
           isValid2FACode = true
           auditLogEntry.details.otpVerifiedBypassTwoFactorMethod = true
         } else if (body.type === TwoFactorMethodType.RECOVERY && body.code) {

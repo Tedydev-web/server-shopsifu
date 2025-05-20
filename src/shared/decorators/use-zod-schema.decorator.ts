@@ -13,7 +13,6 @@ export function createSchemaOption<T>(schema: ZodType<T>, predicate: (data: any)
   return { schema, predicate }
 }
 
-// Một số predicate helpers phổ biến
 export const hasProperty = (property: string) => (data: any) =>
   data !== null && typeof data === 'object' && property in data
 

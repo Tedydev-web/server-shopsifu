@@ -8,12 +8,11 @@ import {
   RefreshTokenPayloadCreate
 } from 'src/shared/types/jwt.type'
 import { v4 as uuidv4 } from 'uuid'
-import { Request, Response, CookieOptions } from 'express'
-import { CookieNames } from 'src/shared/constants/auth.constant'
+import { Request, Response } from 'express'
 import { PrismaService } from './prisma.service'
 import { addMilliseconds } from 'date-fns'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
-import { Prisma, PrismaClient } from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { UnauthorizedAccessException } from 'src/routes/auth/auth.error'
 
@@ -22,14 +21,6 @@ type PrismaTransactionClient = Omit<
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
 >
 
-/**
- * Dịch vụ quản lý token - phụ trách tạo, xác thực, và lưu trữ token
- * Phiên bản được cải thiện tuân thủ best practices:
- * - Quản lý vòng đời đầy đủ của token
- * - Logging chi tiết và nhất quán
- * - JSDoc đầy đủ cho tất cả phương thức
- * - Sử dụng cấu hình tập trung từ envConfig
- */
 @Injectable()
 export class TokenService {
   private readonly logger = new Logger(TokenService.name)
@@ -205,7 +196,6 @@ export class TokenService {
       sameSite: refreshTokenConfig.sameSite
     })
 
-    // Also clear CSRF token for client
     res.clearCookie(csrfTokenConfig.name, {
       domain: csrfTokenConfig.domain,
       path: csrfTokenConfig.path,
@@ -334,7 +324,7 @@ export class TokenService {
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         this.logger.warn(`Refresh token ${token.substring(0, 8)}... not found when trying to delete`)
-        return // Không báo lỗi khi không tìm thấy token, chỉ ghi log
+        return
       }
       this.logger.error(`Error deleting refresh token: ${error.message}`, error.stack)
       throw error
@@ -417,7 +407,6 @@ export class TokenService {
     try {
       this.logger.debug('Attempting to silently refresh token')
 
-      // Tìm refresh token trong database
       const existingRefreshToken = await this.findRefreshTokenWithUserAndDevice(refreshToken)
 
       if (!existingRefreshToken || existingRefreshToken.used || existingRefreshToken.expiresAt <= new Date()) {
@@ -425,13 +414,9 @@ export class TokenService {
         return null
       }
 
-      // Đánh dấu token đã được sử dụng
       await this.markRefreshTokenUsed(refreshToken)
 
-      // Kiểm tra device
       if (existingRefreshToken.device) {
-        // Trong silent refresh, chúng ta có thể thực hiện kiểm tra ít nghiêm ngặt hơn để tăng trải nghiệm người dùng
-        // Ví dụ: chỉ kiểm tra phần cơ bản của userAgent thay vì so khớp chính xác
         const userAgentMatch =
           this.basicDeviceFingerprint(existingRefreshToken.device.userAgent) === this.basicDeviceFingerprint(userAgent)
 
@@ -440,12 +425,10 @@ export class TokenService {
           return null
         }
       } else {
-        // Không có device liên kết
         this.logger.debug('No device associated with refresh token during silent refresh')
         return null
       }
 
-      // Tạo access token mới
       const accessToken = this.signAccessToken({
         userId: existingRefreshToken.user.id,
         deviceId: existingRefreshToken.deviceId,
@@ -453,10 +436,7 @@ export class TokenService {
         roleName: existingRefreshToken.user.role.name
       })
 
-      // Tạo refresh token mới (tùy chọn, tùy thuộc vào chiến lược của ứng dụng)
-      // Trong nhiều trường hợp, chúng ta có thể không muốn tạo refresh token mới mỗi lần refresh ngầm
-      // để tránh nhiều token trong database
-      const shouldCreateNewRefreshToken = false // Có thể cấu hình tùy theo nhu cầu
+      const shouldCreateNewRefreshToken = false
       let newRefreshToken: string | undefined
       let maxAge: number | undefined
 

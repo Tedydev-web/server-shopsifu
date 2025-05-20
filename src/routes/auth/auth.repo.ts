@@ -206,7 +206,6 @@ export class AuthRepository {
     })
   }
 
-  // VerificationToken methods
   async createVerificationToken(
     data: {
       token: string
@@ -328,9 +327,9 @@ export class AuthRepository {
           lastActive: new Date()
         },
         client as PrismaTransactionClient
-      ) // Pass client here
+      )
     }
-    return this.createDevice(data, client as PrismaTransactionClient) // Pass client here
+    return this.createDevice(data, client as PrismaTransactionClient)
   }
 
   async validateDevice(
@@ -359,12 +358,11 @@ export class AuthRepository {
         ip
       },
       client as PrismaTransactionClient
-    ) // Pass client here
+    )
 
     return isUserAgentMatched
   }
 
-  // RecoveryCode methods
   async createManyRecoveryCodes(
     data: Prisma.RecoveryCodeCreateManyInput[],
     prismaClient?: PrismaTransactionClient

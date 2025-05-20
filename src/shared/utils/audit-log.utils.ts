@@ -60,7 +60,7 @@ export const DEFAULT_SENSITIVE_FIELDS = [
  * @returns Đối tượng AuditLogData đã được tạo
  */
 export function createAuditLog(context: AuditLogContext, options: CreateAuditLogOptions): AuditLogData {
-  const { request, userId, userEmail, error, result } = context
+  const { request, userId, userEmail, error } = context
   const {
     action,
     status = error ? AuditLogStatus.FAILURE : AuditLogStatus.SUCCESS,
@@ -80,7 +80,6 @@ export function createAuditLog(context: AuditLogContext, options: CreateAuditLog
     status
   }
 
-  // Set userId và userEmail từ context hoặc từ request
   if (userId) {
     auditLogData.userId = userId
   } else if (request?.[REQUEST_USER_KEY]) {
@@ -92,7 +91,6 @@ export function createAuditLog(context: AuditLogContext, options: CreateAuditLog
     auditLogData.userEmail = userEmail
   }
 
-  // Set entity và entityId nếu được cung cấp
   if (entity) {
     auditLogData.entity = entity
   }
@@ -101,10 +99,8 @@ export function createAuditLog(context: AuditLogContext, options: CreateAuditLog
     auditLogData.entityId = entityId
   }
 
-  // Tạo đối tượng details với thông tin mở rộng
   const detailsObject: Record<string, any> = details ? { ...details } : {}
 
-  // Thêm thông tin request nếu được yêu cầu
   if (includeRequest && request) {
     const requestDetails: Record<string, any> = {
       path: request.path,
@@ -113,23 +109,18 @@ export function createAuditLog(context: AuditLogContext, options: CreateAuditLog
       params: isObject(request.params) ? request.params : undefined
     }
 
-    // Chỉ thêm body nếu được yêu cầu
     if (includeRequestBody && request.body) {
-      // Tạo bản sao của body và loại bỏ thông tin nhạy cảm
       requestDetails.body = maskSensitiveData ? maskSensitiveFields(request.body, sensitiveFields) : request.body
     }
 
     detailsObject.request = requestDetails
   }
 
-  // Thêm chi tiết lỗi nếu có
   if (error) {
-    // Xử lý thông báo lỗi
     if (!errorMessage) {
       const normalizedError = normalizeErrorMessage(error)
       auditLogData.errorMessage = normalizedError.message
 
-      // Thêm chi tiết lỗi
       if (normalizedError.details) {
         detailsObject.errorDetails = normalizedError.details
       }
@@ -138,12 +129,10 @@ export function createAuditLog(context: AuditLogContext, options: CreateAuditLog
     }
   }
 
-  // Thêm notes nếu được cung cấp
   if (notes) {
     auditLogData.notes = notes
   }
 
-  // Thêm thông tin từ request
   if (request) {
     auditLogData.ipAddress = request.ip
     auditLogData.userAgent = request.headers['user-agent'] as string
@@ -172,7 +161,6 @@ export function maskSensitiveFields(obj: any, sensitiveFields: string[] = DEFAUL
   const result: Record<string, any> = {}
 
   for (const [key, value] of Object.entries(obj)) {
-    // Kiểm tra xem key có phải là trường nhạy cảm không
     if (
       sensitiveFields.some(
         (field) => key.toLowerCase() === field.toLowerCase() || key.toLowerCase().includes(field.toLowerCase())
@@ -180,7 +168,6 @@ export function maskSensitiveFields(obj: any, sensitiveFields: string[] = DEFAUL
     ) {
       result[key] = '[REDACTED]'
     } else if (isObject(value) || Array.isArray(value)) {
-      // Đệ quy cho đối tượng con
       result[key] = maskSensitiveFields(value, sensitiveFields)
     } else {
       result[key] = value
@@ -200,23 +187,20 @@ export function normalizeAuditLogDetails(details: Record<string, any>): Record<s
     return {}
   }
 
-  // Chuẩn hóa tất cả các giá trị để tránh lỗi khi lưu trữ
   const result: Record<string, any> = {}
 
   for (const [key, value] of Object.entries(details)) {
     if (value === undefined) {
-      continue // Bỏ qua undefined
+      continue
     } else if (value === null) {
       result[key] = null
     } else if (typeof value === 'function') {
-      continue // Bỏ qua function
+      continue
     } else if (isObject(value) || Array.isArray(value)) {
       try {
-        // Chuyển đổi đối tượng phức tạp thành chuỗi JSON
         const normalizedValue = JSON.parse(safeStringify(value))
         result[key] = normalizedValue
       } catch {
-        // Nếu không thể chuyển đổi, bỏ qua
         continue
       }
     } else {

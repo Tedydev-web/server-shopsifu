@@ -29,7 +29,6 @@ export class GoogleService {
   }
   getAuthorizationUrl({ userAgent, ip }: GoogleAuthStateType) {
     const scope = ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email']
-    // Chuyển Object sang string base64 an toàn bỏ lên url
     const stateString = Buffer.from(
       JSON.stringify({
         userAgent,
