@@ -46,7 +46,8 @@ const configSchema = z.object({
 
   // Cookie specific configurations
   COOKIE_PATH_ACCESS_TOKEN: z.string().default('/'),
-  COOKIE_PATH_REFRESH_TOKEN: z.string().default('/api/v1/auth'),
+  // COOKIE_PATH_REFRESH_TOKEN: z.string().default('/api/v1/auth'),
+  COOKIE_PATH_REFRESH_TOKEN: z.string().default('/'),
   COOKIE_PATH_CSRF: z.string().default('/')
 })
 
