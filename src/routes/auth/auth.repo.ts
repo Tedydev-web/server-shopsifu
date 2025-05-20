@@ -158,10 +158,13 @@ export class AuthRepository {
   deleteRefreshToken(
     uniqueObject: { token: string },
     prismaClient?: PrismaTransactionClient
-  ): Promise<RefreshTokenType> {
+  ): Promise<RefreshTokenType | null> {
     const client = this.getClient(prismaClient)
-    return client.refreshToken.delete({
-      where: uniqueObject
+    return client.refreshToken.findUnique({ where: uniqueObject }).then((token) => {
+      if (!token) {
+        return null
+      }
+      return client.refreshToken.delete({ where: uniqueObject })
     })
   }
 

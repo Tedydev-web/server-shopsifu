@@ -1,51 +1,61 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Logger, Param, Post, Put, Query } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
   CreateLanguageBodyDTO,
   GetLanguageDetailResDTO,
   GetLanguageParamsDTO,
+  GetLanguagesQueryDTO,
   GetLanguagesResDTO,
+  RestoreLanguageBodyDTO,
   UpdateLanguageBodyDTO
 } from 'src/routes/language/language.dto'
 import { LanguageService } from 'src/routes/language/language.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { SkipThrottle, Throttle } from '@nestjs/throttler'
 
 @Controller('languages')
 export class LanguageController {
+  private readonly logger = new Logger(LanguageController.name)
+
   constructor(private readonly languageService: LanguageService) {}
 
   @Get()
   @ZodSerializerDto(GetLanguagesResDTO)
-  findAll() {
-    return this.languageService.findAll()
+  @SkipThrottle()
+  findAll(@Query() query: GetLanguagesQueryDTO) {
+    this.logger.debug(`Finding all languages with query: ${JSON.stringify(query)}`)
+    return this.languageService.findAll(query)
   }
 
   @Get(':languageId')
   @ZodSerializerDto(GetLanguageDetailResDTO)
-  findById(@Param() params: GetLanguageParamsDTO) {
-    return this.languageService.findById(params.languageId)
+  @SkipThrottle()
+  findById(@Param() params: GetLanguageParamsDTO, @Query('includeDeleted') includeDeleted?: boolean) {
+    this.logger.debug(`Finding language by ID: ${params.languageId}, includeDeleted: ${includeDeleted}`)
+    return this.languageService.findById(params.languageId, includeDeleted)
   }
 
   @Post()
   @ZodSerializerDto(GetLanguageDetailResDTO)
+  @Throttle({ short: { limit: 5, ttl: 10000 } })
   create(@Body() body: CreateLanguageBodyDTO, @ActiveUser('userId') userId: number) {
+    this.logger.debug(`Creating language: ${JSON.stringify(body)}`)
     return this.languageService.create({
       data: body,
       createdById: userId
     })
   }
-  // Không cho phép cập nhật id: Vì id là mã ngôn ngữ do người dùng tạo (ví dụ: 'en', 'vi'), nó nên bất biến (immutable). Nếu cần thay đổi id, bạn nên xóa ngôn ngữ cũ và tạo mới.
-
-  // Kiểm tra soft delete: Theo nguyên tắc chung của soft delete, không nên cho phép cập nhật bản ghi đã bị xóa trừ khi có yêu cầu đặc biệt (ví dụ: khôi phục hoặc chỉnh sửa dữ liệu lịch sử).
 
   @Put(':languageId')
   @ZodSerializerDto(GetLanguageDetailResDTO)
+  @Throttle({ short: { limit: 10, ttl: 10000 } })
   update(
     @Body() body: UpdateLanguageBodyDTO,
     @Param() params: GetLanguageParamsDTO,
     @ActiveUser('userId') userId: number
   ) {
+    this.logger.debug(`Updating language ${params.languageId}: ${JSON.stringify(body)}`)
     return this.languageService.update({
       data: body,
       id: params.languageId,
@@ -55,7 +65,26 @@ export class LanguageController {
 
   @Delete(':languageId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetLanguageParamsDTO, @ActiveUser('userId') userId: number) {
-    return this.languageService.delete(params.languageId, userId)
+  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  delete(
+    @Param() params: GetLanguageParamsDTO,
+    @ActiveUser('userId') userId: number,
+    @Query('hardDelete') hardDelete?: boolean
+  ) {
+    this.logger.debug(`Deleting language ${params.languageId}, hardDelete: ${hardDelete}`)
+    return this.languageService.delete(params.languageId, userId, hardDelete)
+  }
+
+  @Post(':languageId/restore')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(GetLanguageDetailResDTO)
+  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  restore(
+    @Param() params: GetLanguageParamsDTO,
+    @Body() _: RestoreLanguageBodyDTO,
+    @ActiveUser('userId') userId: number
+  ) {
+    this.logger.debug(`Restoring language ${params.languageId}`)
+    return this.languageService.restore(params.languageId, userId)
   }
 }

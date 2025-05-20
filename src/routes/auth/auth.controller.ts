@@ -32,6 +32,8 @@ import { EmptyBodyDTO } from 'src/shared/dtos/request.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { TokenService } from 'src/shared/services/token.service'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
+import { Logger } from '@nestjs/common'
+import { CookieNames } from 'src/shared/constants/auth.constant'
 
 @Controller('auth')
 export class AuthController {
@@ -125,6 +127,21 @@ export class AuthController {
   @ZodSerializerDto(MessageResDTO)
   @Throttle({ short: { limit: 5, ttl: 10000 } })
   logout(@Body() body: LogoutBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const logger = new Logger('AuthController')
+
+    if (!body.refreshToken) {
+      logger.log('Không tìm thấy refreshToken trong body, sẽ cố gắng sử dụng token từ cookie')
+
+      const cookieToken = req.cookies?.[CookieNames.REFRESH_TOKEN]
+      if (cookieToken) {
+        logger.log('Tìm thấy refreshToken trong cookie, sẽ sử dụng để đăng xuất')
+      } else {
+        logger.log('Không tìm thấy refreshToken trong cookie, sẽ chỉ xóa cookie hiện tại')
+      }
+    } else {
+      logger.log('Sử dụng refreshToken từ body để đăng xuất')
+    }
+
     return this.authService.logout(body.refreshToken, req, res)
   }
 

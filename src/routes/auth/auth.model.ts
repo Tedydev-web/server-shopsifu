@@ -132,7 +132,11 @@ export const RoleSchema = z.object({
   updatedAt: z.date()
 })
 
-export const LogoutBodySchema = RefreshTokenBodySchema
+export const LogoutBodySchema = z
+  .object({
+    refreshToken: z.string().optional()
+  })
+  .strict()
 
 export const GoogleAuthStateSchema = DeviceSchema.pick({
   userAgent: true,

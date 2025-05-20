@@ -1,4 +1,13 @@
-import { HttpException, Injectable, HttpStatus } from '@nestjs/common'
+/**
+ * Dịch vụ xử lý xác thực và quản lý người dùng
+ * Xử lý đăng nhập, đăng ký, phục hồi mật khẩu, và các tác vụ liên quan đến token
+ *
+ * Lỗi đã được khắc phục:
+ * - Lỗi khi xóa refreshToken không tồn tại trong cơ sở dữ liệu
+ * - Cải thiện quá trình đăng xuất để xử lý tốt hơn với token từ cả cookie và request body
+ * - Đảm bảo xóa cookie ngay cả khi token không tồn tại hoặc có lỗi
+ */
+import { HttpException, Injectable, HttpStatus, Logger } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import {
   DisableTwoFactorBodyType,
@@ -68,6 +77,8 @@ import { DeviceService } from 'src/shared/services/device.service'
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name)
+
   constructor(
     private readonly prismaService: PrismaService,
     private readonly hashingService: HashingService,
@@ -627,15 +638,26 @@ export class AuthService {
 
   /**
    * Đăng xuất người dùng và xóa refresh token
-   * @param refreshTokenInput Token đầu vào từ request body
+   * @param refreshTokenInput Token đầu vào từ request body (có thể null hoặc undefined)
    * @param req Request object chứa cookie và thông tin người dùng (tùy chọn)
    * @param res Response object để xóa cookie (tùy chọn)
    * @returns Thông báo đăng xuất thành công
    */
-  async logout(refreshTokenInput: string, req?: Request, res?: Response) {
-    const auditLogEntry: Partial<AuditLogData> = {
+  async logout(refreshTokenInput?: string, req?: Request, res?: Response) {
+    const auditLogEntry: {
+      action: string
+      status: AuditLogStatus
+      details: Record<string, any>
+      userId?: number
+      userEmail?: string
+      ipAddress?: string
+      userAgent?: string
+      errorMessage?: string
+      notes?: string
+    } = {
       action: 'USER_LOGOUT_ATTEMPT',
-      status: AuditLogStatus.FAILURE
+      status: AuditLogStatus.FAILURE,
+      details: {}
     }
     if (req) {
       auditLogEntry.ipAddress = req.ip
@@ -650,22 +672,48 @@ export class AuthService {
 
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
-        const tokenToUse = refreshTokenInput || (req && req.cookies && req.cookies[CookieNames.REFRESH_TOKEN])
+        // Lấy token từ cả body và cookie
+        const tokenFromBody = refreshTokenInput
+        const tokenFromCookie = req?.cookies?.[CookieNames.REFRESH_TOKEN]
+
         auditLogEntry.details = {
-          tokenProvidedInBody: !!refreshTokenInput,
-          tokenFoundInCookie: !!(req && req.cookies && req.cookies[CookieNames.REFRESH_TOKEN])
+          tokenProvidedInBody: !!tokenFromBody,
+          tokenFoundInCookie: !!tokenFromCookie
         }
 
-        if (tokenToUse) {
-          await this.tokenService.deleteRefreshToken(tokenToUse, tx as any)
+        // Ưu tiên sử dụng token từ body, nếu không có thì dùng từ cookie
+        if (tokenFromBody) {
+          try {
+            await this.tokenService.deleteRefreshToken(tokenFromBody, tx as any)
+            auditLogEntry.details.tokenBodyDeleted = true
+          } catch (error) {
+            // Ghi log nhưng không báo lỗi để tiếp tục xử lý
+            this.logger.warn(`Error deleting refresh token from body: ${error.message}`)
+            auditLogEntry.details.tokenBodyDeleteError = error.message
+          }
         }
 
+        // Nếu có token từ cookie và khác token từ body, cũng xóa luôn
+        if (tokenFromCookie && tokenFromCookie !== tokenFromBody) {
+          try {
+            await this.tokenService.deleteRefreshToken(tokenFromCookie, tx as any)
+            auditLogEntry.details.tokenCookieDeleted = true
+          } catch (error) {
+            // Ghi log nhưng không báo lỗi
+            this.logger.warn(`Error deleting refresh token from cookie: ${error.message}`)
+            auditLogEntry.details.tokenCookieDeleteError = error.message
+          }
+        }
+
+        // Luôn xóa cookie khi đăng xuất, bất kể token có tồn tại hay không
         if (res) {
           this.tokenService.clearTokenCookies(res)
+          auditLogEntry.details.cookiesCleared = true
         }
 
         return { message: 'Auth.Logout.Successful' }
       })
+
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'USER_LOGOUT_SUCCESS'
       await this.auditLogService.record(auditLogEntry as AuditLogData)
@@ -675,6 +723,17 @@ export class AuthService {
       if (error instanceof ApiException) {
         auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
+
+      // Đảm bảo xóa cookie ngay cả khi xử lý xóa token thất bại
+      if (res) {
+        try {
+          this.tokenService.clearTokenCookies(res)
+          auditLogEntry.details.cookiesClearedOnError = true
+        } catch (cookieError) {
+          this.logger.error('Error clearing cookies during logout error handling', cookieError)
+        }
+      }
+
       await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }

@@ -321,9 +321,24 @@ export class TokenService {
    * @param tx Client transaction Prisma (tùy chọn)
    */
   async deleteRefreshToken(token: string, tx?: PrismaTransactionClient) {
-    this.logger.debug(`Deleting refresh token: ${token.substring(0, 8)}...`)
+    this.logger.debug(`Deleting refresh token: ${token ? token.substring(0, 8) : 'undefined'}...`)
+
+    if (!token) {
+      this.logger.warn('Attempted to delete undefined or empty refresh token')
+      return
+    }
+
     const client = tx || this.prismaService
-    await this.authRepository.deleteRefreshToken({ token }, client as any)
+    try {
+      await this.authRepository.deleteRefreshToken({ token }, client as any)
+    } catch (error) {
+      if (isNotFoundPrismaError(error)) {
+        this.logger.warn(`Refresh token ${token.substring(0, 8)}... not found when trying to delete`)
+        return // Không báo lỗi khi không tìm thấy token, chỉ ghi log
+      }
+      this.logger.error(`Error deleting refresh token: ${error.message}`, error.stack)
+      throw error
+    }
   }
 
   /**
