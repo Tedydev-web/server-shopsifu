@@ -17,15 +17,15 @@ export const OTPExpiredException = new ApiException(
 )
 
 export const FailedToSendOTPException = new ApiException(
-  HttpStatus.INTERNAL_SERVER_ERROR, // Hoặc SERVICE_UNAVAILABLE nếu là lỗi dịch vụ bên ngoài
+  HttpStatus.INTERNAL_SERVER_ERROR,
   'OTP_SERVICE_ERROR',
   'Error.Auth.Otp.FailedToSend'
 )
 
 // Email related errors
 export const EmailAlreadyExistsException = new ApiException(
-  HttpStatus.CONFLICT, // CONFLICT (409) phù hợp hơn UNPROCESSABLE_ENTITY (422) cho việc đã tồn tại
-  'VALIDATION_ERROR', // Hoặc 'RESOURCE_CONFLICT'
+  HttpStatus.CONFLICT, // CONFLICT (409)
+  'RESOURCE_CONFLICT',
   'Error.Auth.Email.AlreadyExists',
   [{ code: 'Error.Auth.Email.AlreadyExists', path: 'email' }]
 )
@@ -39,13 +39,12 @@ export const EmailNotFoundException = new ApiException(
 
 // Password related errors
 export const InvalidPasswordException = new ApiException(
-  HttpStatus.UNAUTHORIZED, // Unauthorized (401) khi sai pass thường hợp lý hơn
+  HttpStatus.UNAUTHORIZED, // Unauthorized (401)
   'AUTHENTICATION_FAILURE',
   'Error.Auth.Password.Invalid',
   [{ code: 'Error.Auth.Password.Invalid', path: 'password' }]
 )
 
-// Auth token related errors
 export const RefreshTokenAlreadyUsedException = new ApiException(
   HttpStatus.UNAUTHORIZED,
   'AUTHENTICATION_FAILURE',
@@ -64,7 +63,6 @@ export const InvalidLoginSessionException = new ApiException(
   'Error.Auth.Session.InvalidLogin'
 )
 
-// Cookie related errors
 export const MissingAccessTokenException = new ApiException(
   HttpStatus.UNAUTHORIZED,
   'UNAUTHENTICATED',
@@ -84,12 +82,11 @@ export const ExpiredAccessTokenException = new ApiException(
 )
 
 export const MissingRefreshTokenException = new ApiException(
-  HttpStatus.BAD_REQUEST, // Thiếu RT trong body/cookie là Bad Request từ client
+  HttpStatus.BAD_REQUEST,
   'BAD_REQUEST',
   'Error.Auth.Token.MissingRefreshToken'
 )
 
-// Google auth related errors
 export const GoogleUserInfoException = new ApiException(
   HttpStatus.INTERNAL_SERVER_ERROR,
   'EXTERNAL_SERVICE_ERROR',
@@ -100,7 +97,7 @@ export const InvalidTOTPException = new ApiException(
   HttpStatus.UNPROCESSABLE_ENTITY,
   'VALIDATION_ERROR',
   'Error.Auth.2FA.InvalidTOTP',
-  [{ code: 'Error.Auth.2FA.InvalidTOTP', path: 'totpCode' }] // Giả sử `totpCode` là path
+  [{ code: 'Error.Auth.2FA.InvalidTOTP', path: 'totpCode' }]
 )
 
 export const TOTPAlreadyEnabledException = new ApiException(
@@ -110,7 +107,7 @@ export const TOTPAlreadyEnabledException = new ApiException(
 )
 
 export const TOTPNotEnabledException = new ApiException(
-  HttpStatus.BAD_REQUEST, // Yêu cầu hành động 2FA khi chưa bật
+  HttpStatus.BAD_REQUEST,
   'PRECONDITION_FAILED',
   'Error.Auth.2FA.NotEnabled'
 )
@@ -119,10 +116,9 @@ export const InvalidRecoveryCodeException = new ApiException(
   HttpStatus.UNPROCESSABLE_ENTITY,
   'VALIDATION_ERROR',
   'Error.Auth.2FA.InvalidRecoveryCode',
-  [{ code: 'Error.Auth.2FA.InvalidRecoveryCode', path: 'code' }] // Giả sử `code` là path
+  [{ code: 'Error.Auth.2FA.InvalidRecoveryCode', path: 'code' }]
 )
 
-// OtpToken related errors
 export const InvalidOTPTokenException = new ApiException(
   HttpStatus.UNPROCESSABLE_ENTITY,
   'VALIDATION_ERROR',
@@ -138,21 +134,32 @@ export const OTPTokenExpiredException = new ApiException(
 )
 
 export const InvalidDeviceException = new ApiException(
-  HttpStatus.UNAUTHORIZED, // Hoặc FORBIDDEN nếu đã xác thực nhưng thiết bị không hợp lệ
-  'AUTHENTICATION_FAILURE', // Hoặc 'DEVICE_ERROR'
+  HttpStatus.UNAUTHORIZED,
+  'AUTHENTICATION_FAILURE',
   'Error.Auth.Device.Invalid'
 )
 
 export const DeviceMismatchException = new ApiException(
-  HttpStatus.UNAUTHORIZED, // Nghi ngờ chiếm đoạt session
+  HttpStatus.UNAUTHORIZED,
   'AUTHENTICATION_FAILURE',
-  'Error.Auth.Device.Mismatch'
-  // [{ code: 'Error.Auth.Device.Mismatch', path: 'device' }] // path có thể không rõ ràng ở đây
+  'Error.Auth.Device.Mismatch',
+  [{ code: 'Error.Auth.Device.Mismatch', path: 'device' }]
 )
 
-// Thêm các exceptions mới cho lỗi thiết bị
 export const DeviceSetupFailedException = (messageKey = 'Error.Auth.Device.SetupFailed') =>
   new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'DEVICE_SETUP_FAILED', messageKey, [{ code: messageKey }])
 
 export const DeviceAssociationFailedException = (messageKey = 'Error.Auth.Device.AssociationFailed') =>
   new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'DEVICE_ASSOCIATION_FAILED', messageKey, [{ code: messageKey }])
+
+export const PasswordsDoNotMatchException = new ApiException(
+  HttpStatus.UNPROCESSABLE_ENTITY,
+  'VALIDATION_ERROR',
+  'Error.Auth.Password.Mismatch'
+)
+
+export const InvalidCodeFormatException = new ApiException(
+  HttpStatus.UNPROCESSABLE_ENTITY,
+  'VALIDATION_ERROR',
+  'Error.Auth.2FA.InvalidCodeFormat'
+)

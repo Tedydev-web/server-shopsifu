@@ -12,7 +12,6 @@ import {
   VerificationCode as PrismaVerificationCodeModel
 } from '@prisma/client'
 
-// Kiểu cho Prisma Transaction Client, loại bỏ các phương thức không dùng trong transaction
 type PrismaTransactionClient = Omit<
   PrismaClient,
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
@@ -153,7 +152,7 @@ export class AuthRepository {
         id: deviceId
       },
       data
-    }) as unknown as Promise<DeviceType> // Type assertion might be needed if Prisma types are too complex for direct inference
+    }) as unknown as Promise<DeviceType>
   }
 
   deleteRefreshToken(

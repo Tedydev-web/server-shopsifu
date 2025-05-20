@@ -150,7 +150,6 @@ export class AuthController {
     @Ip() ip: string
   ) {
     try {
-      // Kiểm tra các tham số bắt buộc
       if (!code) {
         return res.redirect(
           `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=invalid_request&errorMessage=${encodeURIComponent('Authorization code is missing')}`
@@ -160,22 +159,18 @@ export class AuthController {
       const data = await this.googleService.googleCallback({
         code,
         state,
-        // Trường hợp state từ Google không chứa thông tin userAgent/IP
         userAgent,
         ip
       })
 
-      // Sử dụng secure cookies trong production
       this.tokenService.setTokenCookies(res, data.accessToken, data.refreshToken)
 
-      // Trả về thông tin người dùng cho frontend
       return res.redirect(
         `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true&name=${encodeURIComponent(data.name || '')}&email=${encodeURIComponent(data.email || '')}`
       )
     } catch (error) {
       console.error('Google OAuth callback error:', error)
 
-      // Xử lý message lỗi một cách an toàn
       const errorCode = error.code || 'auth_error'
       const message =
         error instanceof Error

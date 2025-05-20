@@ -1,6 +1,7 @@
 import { TwoFactorMethodType, TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
 import { UserSchema } from 'src/shared/models/shared-user.model'
 import { z } from 'zod'
+import { PasswordsDoNotMatchException, InvalidCodeFormatException } from './auth.error' // Import new exceptions
 
 export const RegisterBodySchema = UserSchema.pick({
   email: true,
@@ -15,9 +16,10 @@ export const RegisterBodySchema = UserSchema.pick({
   .strict()
   .superRefine(({ confirmPassword, password }, ctx) => {
     if (confirmPassword !== password) {
+      // Use the new exception
       ctx.addIssue({
-        code: 'custom',
-        message: 'Password and confirm password must match',
+        code: z.ZodIssueCode.custom,
+        message: PasswordsDoNotMatchException.message, // Use message from exception
         path: ['confirmPassword']
       })
     }
@@ -152,8 +154,8 @@ export const ResetPasswordBodySchema = z
   .superRefine(({ confirmNewPassword, newPassword }, ctx) => {
     if (confirmNewPassword !== newPassword) {
       ctx.addIssue({
-        code: 'custom',
-        message: 'Mật khẩu và mật khẩu xác nhận phải giống nhau',
+        code: z.ZodIssueCode.custom, // Corrected code property
+        message: PasswordsDoNotMatchException.message, // Use message from exception
         path: ['confirmNewPassword']
       })
     }
@@ -200,10 +202,11 @@ export const TwoFactorVerifyBodySchema = z
       } else if (data.type === TwoFactorMethodType.RECOVERY) {
         return data.code.length >= 10 // Recovery code dài hơn (ví dụ: XXXX-XXXX-XXXX)
       }
-      return true
+      return true // Should not happen with enum, but as a fallback
     },
     {
-      message: 'Mã xác thực không đúng định dạng',
+      // Use the new exception
+      message: InvalidCodeFormatException.message, // Use message from exception
       path: ['code']
     }
   )
