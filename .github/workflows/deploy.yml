@@ -169,7 +169,7 @@ jobs:
             --arg color "$COLOR" \
             '{
               embeds: [{
-                title: "🚀 Thông báo triển khai",
+                title: "🚀 SERVER - Thông báo triển khai ✨",
                 color: ($color | tonumber),
                 fields: [
                   { name: "Trạng thái", value: "\($icon) \($status)", inline: true },

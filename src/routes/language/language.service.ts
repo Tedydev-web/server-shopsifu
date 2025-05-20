@@ -64,7 +64,7 @@ export class LanguageService {
     action: 'LANGUAGE_GET_BY_ID',
     entity: 'Language',
     getEntityId: (params) => params[0],
-    getDetails: (params, result) => ({
+    getDetails: (params) => ({
       languageId: params[0],
       includeDeleted: params[1] || false
     })
@@ -244,7 +244,7 @@ export class LanguageService {
     entity: 'Language',
     getEntityId: (params) => params[0],
     getUserId: (params) => params[1],
-    getDetails: (params, result) => ({
+    getDetails: (params) => ({
       isHardDelete: params[2] || false,
       languageId: params[0]
     })
@@ -324,7 +324,7 @@ export class LanguageService {
     entity: 'Language',
     getEntityId: (params) => params[0],
     getUserId: (params) => params[1],
-    getDetails: (params, result) => ({
+    getDetails: (params) => ({
       languageId: params[0]
     })
   })

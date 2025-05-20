@@ -38,7 +38,6 @@ export const GetLanguageParamsSchema = z
   })
   .strict()
 
-// Schema cho query params để filtering, sorting và pagination
 export const GetLanguagesQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().optional().default(1),

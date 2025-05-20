@@ -1,7 +1,7 @@
 import { TwoFactorMethodType, TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
 import { UserSchema } from 'src/shared/models/shared-user.model'
 import { z } from 'zod'
-import { PasswordsDoNotMatchException, InvalidCodeFormatException } from './auth.error' // Import new exceptions
+import { PasswordsDoNotMatchException, InvalidCodeFormatException } from './auth.error'
 
 export const RegisterBodySchema = UserSchema.pick({
   email: true,
@@ -16,10 +16,9 @@ export const RegisterBodySchema = UserSchema.pick({
   .strict()
   .superRefine(({ confirmPassword, password }, ctx) => {
     if (confirmPassword !== password) {
-      // Use the new exception
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: PasswordsDoNotMatchException.message, // Use message from exception
+        message: PasswordsDoNotMatchException.message,
         path: ['confirmPassword']
       })
     }
@@ -198,19 +197,17 @@ export const TwoFactorVerifyBodySchema = z
   .strict()
   .refine(
     (data) => {
-      // Kiểm tra độ dài code dựa vào type
       if (data.code.length === 0) return false
 
       if (data.type === TwoFactorMethodType.TOTP || data.type === TwoFactorMethodType.OTP) {
-        return data.code.length === 6 // OTP và TOTP luôn có 6 ký tự
+        return data.code.length === 6
       } else if (data.type === TwoFactorMethodType.RECOVERY) {
-        return data.code.length >= 10 // Recovery code dài hơn (ví dụ: XXXX-XXXX-XXXX)
+        return data.code.length >= 10
       }
-      return true // Should not happen with enum, but as a fallback
+      return true
     },
     {
-      // Use the new exception
-      message: InvalidCodeFormatException.message, // Use message from exception
+      message: InvalidCodeFormatException.message,
       path: ['code']
     }
   )

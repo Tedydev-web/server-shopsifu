@@ -56,23 +56,18 @@ export class GoogleService {
     ip?: string
   }) {
     try {
-      // 1. Lấy state từ url - ưu tiên state từ URL trước
       try {
         if (state) {
           const clientInfo = JSON.parse(Buffer.from(state, 'base64').toString()) as GoogleAuthStateType
-          // Chỉ sử dụng giá trị từ state nếu tham số trực tiếp không được cung cấp
           userAgent = clientInfo.userAgent || userAgent
           ip = clientInfo.ip || ip
         }
       } catch (error) {
         console.error('Error parsing state', error)
-        // Giữ nguyên giá trị userAgent và ip được truyền vào
       }
-      // 2. Dùng code để lấy token
       const { tokens } = await this.oauth2Client.getToken(code)
       this.oauth2Client.setCredentials(tokens)
 
-      // 3. Lấy thông tin google user
       const oauth2 = google.oauth2({
         auth: this.oauth2Client,
         version: 'v2'
@@ -85,7 +80,6 @@ export class GoogleService {
       let user = await this.authRepository.findUniqueUserIncludeRole({
         email: data.email
       })
-      // Nếu không có user tức là người mới, vậy nên sẽ tiến hành đăng ký
       if (!user) {
         const clientRoleId = await this.rolesService.getClientRoleId()
         const randomPassword = uuidv4()
@@ -100,19 +94,16 @@ export class GoogleService {
         })
       }
 
-      // Kiểm tra user không null trước khi sử dụng
       if (!user) {
         throw new Error('Không thể tạo hoặc tìm thấy người dùng')
       }
 
-      // Sử dụng DeviceService thay vì AuthRepository
       const device = await this.deviceService.createDevice({
         userId: user.id,
         userAgent,
         ip
       })
 
-      // Tạo token để sử dụng cho cookie
       const authTokens = await this.authService.generateTokens({
         userId: user.id,
         deviceId: device.id,
@@ -120,7 +111,6 @@ export class GoogleService {
         roleName: user.role.name
       })
 
-      // Trả về cả thông tin người dùng và token
       return {
         userId: user.id,
         email: user.email,

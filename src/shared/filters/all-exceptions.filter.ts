@@ -52,15 +52,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = exception.message
       console.log('ApiException details:', JSON.stringify(exception.details))
 
-      // Chuyển đổi từ exception.details sang format errors mong muốn
       errors = exception.details.map((detail) => {
-        // Nếu không có path, sử dụng errorCode để xác định field (nếu có thể)
         let field = detail.path || ''
         if (!field && detail.code) {
-          // Cố gắng trích xuất field từ detail.code nếu có định dạng Error.Domain.Field.Type
           const codeParts = detail.code.split('.')
           if (codeParts.length >= 3) {
-            // Lấy phần thứ 3 của mã lỗi như là field (ví dụ: Error.Auth.Password.Invalid -> Password)
             field = codeParts[2].toLowerCase()
           }
         }
@@ -121,7 +117,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = `Error.Global.Http.${httpStatus}`
       }
     } else {
-      // Lỗi không xác định
       message = 'Error.Global.InternalServerError'
       errors = [{ field: '', message: 'Error.Global.InternalServerError' }]
     }

@@ -1,12 +1,10 @@
 import { HttpStatus } from '@nestjs/common'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 
-// Factory function để tạo exception với ít code hơn
 function createApiError(status: HttpStatus, errorType: string, errorCode: string, fieldPath?: string) {
   return new ApiException(status, errorType, errorCode, [{ code: errorCode, path: fieldPath }])
 }
 
-// OTP related errors
 export const InvalidOTPException = createApiError(
   HttpStatus.UNPROCESSABLE_ENTITY,
   'ValidationError',
@@ -27,7 +25,6 @@ export const FailedToSendOTPException = createApiError(
   'Error.Auth.Otp.FailedToSend'
 )
 
-// Email related errors
 export const EmailAlreadyExistsException = createApiError(
   HttpStatus.CONFLICT,
   'ResourceConflict',
@@ -42,7 +39,6 @@ export const EmailNotFoundException = createApiError(
   'email'
 )
 
-// Password related errors
 export const InvalidPasswordException = createApiError(
   HttpStatus.UNPROCESSABLE_ENTITY,
   'ValidationError',
@@ -57,7 +53,6 @@ export const PasswordsDoNotMatchException = createApiError(
   'password'
 )
 
-// Token related errors
 export const MissingAccessTokenException = createApiError(
   HttpStatus.UNAUTHORIZED,
   'Unauthenticated',
@@ -122,7 +117,6 @@ export const InvalidLoginSessionException = createApiError(
   'Error.Auth.Session.InvalidLogin'
 )
 
-// 2FA related errors
 export const InvalidTOTPException = createApiError(
   HttpStatus.UNPROCESSABLE_ENTITY,
   'ValidationError',
@@ -156,7 +150,6 @@ export const InvalidCodeFormatException = createApiError(
   'code'
 )
 
-// OTP token related errors
 export const InvalidOTPTokenException = createApiError(
   HttpStatus.UNPROCESSABLE_ENTITY,
   'ValidationError',
@@ -171,7 +164,6 @@ export const OTPTokenExpiredException = createApiError(
   'otpToken'
 )
 
-// Device related errors
 export const InvalidDeviceException = createApiError(
   HttpStatus.UNAUTHORIZED,
   'Unauthenticated',
@@ -200,7 +192,6 @@ export const DeviceAssociationFailedException = createApiError(
   'device'
 )
 
-// Factory methods for custom messages
 export function createDeviceSetupFailedException(messageKey = 'Error.Auth.Device.SetupFailed') {
   return createApiError(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', messageKey, 'device')
 }
@@ -209,7 +200,6 @@ export function createDeviceAssociationFailedException(messageKey = 'Error.Auth.
   return createApiError(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', messageKey, 'device')
 }
 
-// External service errors
 export const GoogleUserInfoException = createApiError(
   HttpStatus.INTERNAL_SERVER_ERROR,
   'InternalServerError',
