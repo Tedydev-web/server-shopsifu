@@ -4,23 +4,14 @@ import envConfig from 'src/shared/config'
 import { PrismaService } from './prisma.service'
 import { Prisma, PrismaClient, RecoveryCode } from '@prisma/client'
 import { HashingService } from './hashing.service'
-import { TwoFactorMethodType, TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
-import { InvalidRecoveryCodeException, InvalidTOTPException } from 'src/routes/auth/auth.error'
+import { TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
+import { InvalidRecoveryCodeException } from 'src/routes/auth/auth.error'
 
-// Kiểu cho Prisma Transaction Client, loại bỏ các phương thức không dùng trong transaction
 type PrismaTransactionClient = Omit<
   PrismaClient,
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
 >
 
-/**
- * Dịch vụ quản lý xác thực hai yếu tố - phụ trách tạo, xác thực, và quản lý TOTP và recovery codes
- * Phiên bản cải thiện tuân thủ best practices:
- * - Quản lý đầy đủ các phương thức xác thực hai yếu tố
- * - Logging chi tiết và nhất quán
- * - JSDoc đầy đủ cho tất cả phương thức
- * - Xử lý các use case khác nhau
- */
 @Injectable()
 export class TwoFactorService {
   private readonly logger = new Logger(TwoFactorService.name)
@@ -129,22 +120,21 @@ export class TwoFactorService {
     this.logger.debug(`Verifying recovery code for user ${userId}`)
     const client = tx || this.prismaService
 
-    const userWithRecoveryCodes = await client.user.findUnique({
-      where: { id: userId },
-      include: { RecoveryCode: true }
+    // Tìm tất cả recovery code của user
+    const recoveryCodes = await client.recoveryCode.findMany({
+      where: {
+        userId: userId,
+        used: false
+      }
     })
 
-    if (
-      !userWithRecoveryCodes ||
-      !userWithRecoveryCodes.RecoveryCode ||
-      userWithRecoveryCodes.RecoveryCode.length === 0
-    ) {
+    if (!recoveryCodes || recoveryCodes.length === 0) {
       this.logger.warn(`No recovery codes found for user ${userId}`)
       throw InvalidRecoveryCodeException
     }
 
     let matchedCodeEntry: RecoveryCode | null = null
-    for (const rcEntry of userWithRecoveryCodes.RecoveryCode) {
+    for (const rcEntry of recoveryCodes) {
       if (await this.hashingService.compare(recoveryCodeInput, rcEntry.code)) {
         matchedCodeEntry = rcEntry
         break
@@ -182,7 +172,7 @@ export class TwoFactorService {
 
     return client.recoveryCode.findMany({
       where: {
-        userId,
+        userId: userId,
         used: false
       }
     })
@@ -199,7 +189,7 @@ export class TwoFactorService {
     const client = tx || this.prismaService
 
     return client.recoveryCode.deleteMany({
-      where: { userId }
+      where: { userId: userId }
     })
   }
 
@@ -230,7 +220,7 @@ export class TwoFactorService {
         twoFactorSecret: data.twoFactorSecret,
         twoFactorMethod: data.twoFactorMethod,
         twoFactorVerifiedAt: data.twoFactorVerifiedAt
-      }
+      } as any
     })
   }
 
@@ -245,14 +235,15 @@ export class TwoFactorService {
     const client = tx || this.prismaService
 
     const user = await client.user.findUnique({
-      where: { id: userId },
-      select: {
-        twoFactorEnabled: true,
-        twoFactorMethod: true,
-        twoFactorVerifiedAt: true
-      }
+      where: { id: userId }
     })
 
-    return user
+    if (!user) return null
+
+    return {
+      twoFactorEnabled: user.twoFactorEnabled || false,
+      twoFactorMethod: user.twoFactorMethod,
+      twoFactorVerifiedAt: user.twoFactorVerifiedAt
+    }
   }
 }

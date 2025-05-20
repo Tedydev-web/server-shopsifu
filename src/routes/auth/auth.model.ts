@@ -158,8 +158,8 @@ export const ResetPasswordBodySchema = z
   .superRefine(({ confirmNewPassword, newPassword }, ctx) => {
     if (confirmNewPassword !== newPassword) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom, // Corrected code property
-        message: PasswordsDoNotMatchException.message, // Use message from exception
+        code: z.ZodIssueCode.custom,
+        message: PasswordsDoNotMatchException.message,
         path: ['confirmNewPassword']
       })
     }

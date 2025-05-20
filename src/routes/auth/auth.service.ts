@@ -1,12 +1,3 @@
-/**
- * Dịch vụ xử lý xác thực và quản lý người dùng
- * Xử lý đăng nhập, đăng ký, phục hồi mật khẩu, và các tác vụ liên quan đến token
- *
- * Lỗi đã được khắc phục:
- * - Lỗi khi xóa refreshToken không tồn tại trong cơ sở dữ liệu
- * - Cải thiện quá trình đăng xuất để xử lý tốt hơn với token từ cả cookie và request body
- * - Đảm bảo xóa cookie ngay cả khi token không tồn tại hoặc có lỗi
- */
 import { HttpException, Injectable, HttpStatus, Logger } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import {
@@ -1155,15 +1146,24 @@ export class AuthService {
             auditLogEntry.details.reason = 'INVALID_2FA_METHOD_FOR_TOTP_CODE'
             throw new HttpException('Invalid 2FA method for TOTP code.', 400)
           }
+        } else if (body.type === TwoFactorMethodType.OTP && body.code) {
+          // Với OTP, không quan tâm twoFactorMethod của người dùng là gì
+          // OTP đã được xác thực khi tạo loginSessionToken, chúng ta chỉ cần kiểm tra token đã hợp lệ
+          isValid2FACode = true
+          auditLogEntry.details.otpVerifiedBypassTwoFactorMethod = true
         } else if (body.type === TwoFactorMethodType.RECOVERY && body.code) {
           await this.twoFactorService.verifyRecoveryCode(user.id, body.code, tx as any)
           isValid2FACode = true
           auditLogEntry.details.recoveryCodeUsed = true
         } else {
           await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
-          auditLogEntry.errorMessage = 'Either a TOTP code or a recovery code (with correct type) must be provided.'
+          auditLogEntry.errorMessage =
+            'Either a TOTP code or an OTP code or a recovery code (with correct type) must be provided.'
           auditLogEntry.details.reason = 'MISSING_2FA_CODE_OR_INVALID_TYPE'
-          throw new HttpException('Either a TOTP code or a recovery code (with correct type) must be provided.', 400)
+          throw new HttpException(
+            'Either a TOTP code or an OTP code or a recovery code (with correct type) must be provided.',
+            400
+          )
         }
 
         if (!isValid2FACode) {
