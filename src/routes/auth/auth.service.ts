@@ -278,9 +278,9 @@ export class AuthService {
           include: { role: true }
         })
         if (!user) {
-          auditLogEntry.errorMessage = InvalidLoginSessionException.message
+          auditLogEntry.errorMessage = EmailNotFoundException.message
           auditLogEntry.details.reason = 'USER_NOT_FOUND'
-          throw InvalidLoginSessionException
+          throw EmailNotFoundException
         }
         auditLogEntry.userId = user.id
 
