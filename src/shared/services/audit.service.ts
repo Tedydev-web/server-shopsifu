@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
 import { Prisma } from '@prisma/client'
 import { normalizeAuditLogDetails, maskSensitiveFields, DEFAULT_SENSITIVE_FIELDS } from '../utils/audit-log.utils'
-import { isNullOrUndefined, isObject } from '../utils/type-guards'
+import { isNullOrUndefined, isObject } from '../utils/type-guards.utils'
 
 export enum AuditLogStatus {
   SUCCESS = 'SUCCESS',

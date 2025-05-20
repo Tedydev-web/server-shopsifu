@@ -17,7 +17,7 @@ import { REQUEST } from '@nestjs/core'
 import { Request, Response } from 'express'
 import { REQUEST_USER_KEY } from '../constants/auth.constant'
 import { AccessTokenPayload } from '../types/jwt.type'
-import { isNullOrUndefined, isObject, normalizeErrorMessage, isApiException } from '../utils/type-guards'
+import { isObject, normalizeErrorMessage } from '../utils/type-guards.utils'
 
 @Injectable({ scope: Scope.REQUEST })
 export class AuditLogInterceptor implements NestInterceptor {
@@ -215,4 +215,3 @@ export class AuditLogInterceptor implements NestInterceptor {
     return auditLogData
   }
 }
- 

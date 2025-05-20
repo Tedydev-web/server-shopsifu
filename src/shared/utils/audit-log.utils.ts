@@ -2,7 +2,7 @@ import { Request } from 'express'
 import { REQUEST_USER_KEY } from '../constants/auth.constant'
 import { AuditLogStatus, AuditLogData } from '../services/audit.service'
 import { AccessTokenPayload } from '../types/jwt.type'
-import { isObject, normalizeErrorMessage, isApiException } from '../utils/type-guards'
+import { isObject, normalizeErrorMessage, isApiException } from './type-guards.utils'
 import { safeStringify } from './validation.utils'
 
 /**

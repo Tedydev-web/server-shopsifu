@@ -10,7 +10,7 @@ import {
 } from 'src/routes/auth/auth.error'
 import { AuditLog } from '../decorators/audit-log.decorator'
 import { AuditLogService } from './audit.service'
-import { isUniqueConstraintPrismaError, isNotFoundPrismaError } from '../utils/type-guards'
+import { isUniqueConstraintPrismaError, isNotFoundPrismaError } from '../utils/type-guards.utils'
 
 // Kiểu cho Prisma Transaction Client, loại bỏ các phương thức không dùng trong transaction
 type PrismaTransactionClient = Omit<

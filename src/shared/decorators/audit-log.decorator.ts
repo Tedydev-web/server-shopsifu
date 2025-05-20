@@ -30,4 +30,4 @@ export interface AuditLogOptions {
  * async login(credentials) { ... }
  * ```
  */
-export const AuditLog = (options: AuditLogOptions) => SetMetadata(AUDIT_LOG_KEY, options) 
+export const AuditLog = (options: AuditLogOptions) => SetMetadata(AUDIT_LOG_KEY, options)

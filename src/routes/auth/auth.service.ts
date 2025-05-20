@@ -12,17 +12,15 @@ import {
 } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { RolesService } from 'src/routes/auth/roles.service'
-import { generateOTP, isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
+import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from 'src/shared/services/token.service'
 import ms from 'ms'
 import {
   TokenType,
-  TokenTypeType,
   TwoFactorMethodType,
   TypeOfVerificationCode,
-  TypeOfVerificationCodeType,
   CookieNames,
   REQUEST_USER_KEY
 } from 'src/shared/constants/auth.constant'
@@ -31,20 +29,16 @@ import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/j
 import {
   EmailAlreadyExistsException,
   EmailNotFoundException,
-  FailedToSendOTPException,
   InvalidLoginSessionException,
-  InvalidOTPException,
   InvalidOTPTokenException,
   InvalidPasswordException,
   InvalidTOTPException,
-  OTPExpiredException,
   OTPTokenExpiredException,
   TOTPAlreadyEnabledException,
   TOTPNotEnabledException,
   UnauthorizedAccessException,
   DeviceMismatchException,
   InvalidDeviceException,
-  InvalidRecoveryCodeException,
   DeviceSetupFailedException,
   DeviceAssociationFailedException
 } from 'src/routes/auth/auth.error'
@@ -54,12 +48,7 @@ import envConfig from 'src/shared/config'
 import { Response } from 'express'
 import { Request } from 'express'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import {
-  Prisma,
-  RecoveryCode as PrismaRecoveryCode,
-  VerificationToken as PrismaVerificationToken,
-  VerificationCodeType as PrismaVerificationCodeEnum
-} from '@prisma/client'
+import { Prisma, VerificationToken as PrismaVerificationToken } from '@prisma/client'
 import { TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
 import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/shared/services/audit.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'

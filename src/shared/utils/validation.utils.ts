@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { isNonEmptyArray, isNonEmptyObject, isNonEmptyString, isNullOrUndefined, isObject } from './type-guards'
+import { isNonEmptyArray, isNonEmptyString, isNullOrUndefined, isObject } from './type-guards.utils'
 import { ApiException } from '../exceptions/api.exception'
 
 /**

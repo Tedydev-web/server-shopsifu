@@ -1,5 +1,5 @@
 import { HttpStatus } from '@nestjs/common'
-import { ApiException, ErrorDetailMessage } from 'src/shared/exceptions/api.exception'
+import { ApiException } from 'src/shared/exceptions/api.exception'
 
 // Lỗi khi đã tồn tại ngôn ngữ
 export const LanguageAlreadyExistsException = new ApiException(

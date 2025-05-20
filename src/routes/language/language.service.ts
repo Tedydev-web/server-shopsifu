@@ -85,7 +85,7 @@ export class LanguageService {
         throw LanguageDeletedException(id)
       } else {
         throw LanguageNotFoundException(id)
-    }
+      }
     }
 
     return language
@@ -132,8 +132,8 @@ export class LanguageService {
 
         return this.languageRepo.create(
           {
-        createdById,
-        data
+            createdById,
+            data
           },
           tx
         )
@@ -195,7 +195,7 @@ export class LanguageService {
       const updatedLanguage = await this.prismaService.$transaction(async (tx) => {
         // Kiểm tra sự tồn tại của ngôn ngữ
         const existingLanguage = await this.languageRepo.findById(id, false, tx)
-      if (!existingLanguage) {
+        if (!existingLanguage) {
           // Kiểm tra xem đã bị xóa chưa
           const deletedLanguage = await this.languageRepo.findById(id, true, tx)
           if (deletedLanguage) {
@@ -206,14 +206,14 @@ export class LanguageService {
             auditLogEntry.errorMessage = LanguageNotFoundException(id).message
             auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND'
             throw LanguageNotFoundException(id)
-      }
+          }
         }
 
         return this.languageRepo.update(
           {
-        id,
-        updatedById,
-        data
+            id,
+            updatedById,
+            data
           },
           tx
         )
@@ -265,7 +265,7 @@ export class LanguageService {
       await this.prismaService.$transaction(async (tx) => {
         // Kiểm tra sự tồn tại của ngôn ngữ
         const existingLanguage = await this.languageRepo.findById(id, !isHardDelete, tx)
-      if (!existingLanguage) {
+        if (!existingLanguage) {
           if (!isHardDelete) {
             // Kiểm tra xem đã bị xóa chưa (chỉ khi là soft delete)
             const deletedLanguage = await this.languageRepo.findById(id, true, tx)
