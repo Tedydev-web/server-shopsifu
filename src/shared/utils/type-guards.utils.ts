@@ -78,7 +78,7 @@ export function isNonEmptyObject(value: any): value is Record<string, any> {
  * @param arr Mảng cần kiểm tra
  * @returns Boolean và type predicate
  */
-export function isNonEmptyArray<T>(arr: T[] | any): arr is T[] {
+export function isNonEmptyArray<T>(arr: T[]): arr is T[] {
   return Array.isArray(arr) && arr.length > 0
 }
 

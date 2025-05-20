@@ -29,7 +29,6 @@ import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/j
 import {
   EmailAlreadyExistsException,
   EmailNotFoundException,
-  InvalidLoginSessionException,
   InvalidOTPTokenException,
   InvalidPasswordException,
   InvalidTOTPException,
@@ -117,7 +116,7 @@ export class AuthService {
             )
             deviceId = device.id
           } catch (error) {
-            auditLogEntry.errorMessage = DeviceSetupFailedException().message
+            auditLogEntry.errorMessage = DeviceSetupFailedException.message
             auditLogEntry.notes = 'Device creation/finding failed during OTP verification'
             console.error('Could not create or find device in verifyCode', error)
           }
@@ -309,9 +308,9 @@ export class AuthService {
             auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
           } catch (error) {
             console.error('[DEBUG AuthService login - 2FA flow] Error creating/finding device:', error)
-            auditLogEntry.errorMessage = DeviceSetupFailedException().message
+            auditLogEntry.errorMessage = DeviceSetupFailedException.message
             auditLogEntry.details.deviceError = 'DeviceSetupFailed'
-            throw DeviceSetupFailedException()
+            throw DeviceSetupFailedException
           }
 
           await this.authRepository.createVerificationToken(
@@ -351,16 +350,16 @@ export class AuthService {
           auditLogEntry.details.twoFactorFlow = false
         } catch (error) {
           console.error('[DEBUG AuthService login - Direct login] Error creating/finding device:', error)
-          auditLogEntry.errorMessage = DeviceSetupFailedException().message
+          auditLogEntry.errorMessage = DeviceSetupFailedException.message
           auditLogEntry.details.deviceError = 'DeviceSetupFailed'
-          throw DeviceSetupFailedException()
+          throw DeviceSetupFailedException
         }
 
         if (!deviceId) {
           console.error('[DEBUG AuthService login - Direct login] Device ID is undefined after creation attempt.')
           auditLogEntry.errorMessage = 'Device ID is undefined after creation attempt (direct login)'
           auditLogEntry.details.deviceError = 'DeviceIDUndefined'
-          throw DeviceSetupFailedException()
+          throw DeviceSetupFailedException
         }
 
         const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.generateTokens(
@@ -1178,9 +1177,9 @@ export class AuthService {
             auditLogEntry.details.newDeviceCreated = true
           } catch (error) {
             console.error('Error creating device in verifyTwoFactor:', error)
-            auditLogEntry.errorMessage = DeviceAssociationFailedException().message
+            auditLogEntry.errorMessage = DeviceAssociationFailedException.message
             auditLogEntry.details.deviceError = 'DeviceCreationFailureIn2FAVerify'
-            throw DeviceAssociationFailedException()
+            throw DeviceAssociationFailedException
           }
         } else if (deviceId && body.userAgent && body.ip) {
           const isValidDevice = await this.deviceService.validateDevice(deviceId, body.userAgent, body.ip, tx as any)
@@ -1195,9 +1194,9 @@ export class AuthService {
 
         if (!deviceId) {
           await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
-          auditLogEntry.errorMessage = DeviceAssociationFailedException().message
+          auditLogEntry.errorMessage = DeviceAssociationFailedException.message
           auditLogEntry.details.deviceError = 'DeviceIDMissingIn2FAVerify'
-          throw DeviceAssociationFailedException()
+          throw DeviceAssociationFailedException
         }
         auditLogEntry.details.finalDeviceId = deviceId
 

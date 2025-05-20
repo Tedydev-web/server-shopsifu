@@ -1,165 +1,218 @@
 import { HttpStatus } from '@nestjs/common'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 
+// Factory function để tạo exception với ít code hơn
+function createApiError(status: HttpStatus, errorType: string, errorCode: string, fieldPath?: string) {
+  return new ApiException(status, errorType, errorCode, [{ code: errorCode, path: fieldPath }])
+}
+
 // OTP related errors
-export const InvalidOTPException = new ApiException(
+export const InvalidOTPException = createApiError(
   HttpStatus.UNPROCESSABLE_ENTITY,
-  'VALIDATION_ERROR',
+  'ValidationError',
   'Error.Auth.Otp.Invalid',
-  [{ code: 'Error.Auth.Otp.Invalid', path: 'code' }]
+  'code'
 )
 
-export const OTPExpiredException = new ApiException(
+export const OTPExpiredException = createApiError(
   HttpStatus.UNPROCESSABLE_ENTITY,
-  'VALIDATION_ERROR',
+  'ValidationError',
   'Error.Auth.Otp.Expired',
-  [{ code: 'Error.Auth.Otp.Expired', path: 'code' }]
+  'code'
 )
 
-export const FailedToSendOTPException = new ApiException(
+export const FailedToSendOTPException = createApiError(
   HttpStatus.INTERNAL_SERVER_ERROR,
-  'OTP_SERVICE_ERROR',
+  'InternalServerError',
   'Error.Auth.Otp.FailedToSend'
 )
 
 // Email related errors
-export const EmailAlreadyExistsException = new ApiException(
-  HttpStatus.CONFLICT, // CONFLICT (409)
-  'RESOURCE_CONFLICT',
+export const EmailAlreadyExistsException = createApiError(
+  HttpStatus.CONFLICT,
+  'ResourceConflict',
   'Error.Auth.Email.AlreadyExists',
-  [{ code: 'Error.Auth.Email.AlreadyExists', path: 'email' }]
+  'email'
 )
 
-export const EmailNotFoundException = new ApiException(
+export const EmailNotFoundException = createApiError(
   HttpStatus.NOT_FOUND,
-  'RESOURCE_NOT_FOUND',
+  'ResourceNotFound',
   'Error.Auth.Email.NotFound',
-  [{ code: 'Error.Auth.Email.NotFound', path: 'email' }]
+  'email'
 )
 
 // Password related errors
-export const InvalidPasswordException = new ApiException(
-  HttpStatus.UNAUTHORIZED, // Unauthorized (401)
-  'AUTHENTICATION_FAILURE',
+export const InvalidPasswordException = createApiError(
+  HttpStatus.UNPROCESSABLE_ENTITY,
+  'ValidationError',
   'Error.Auth.Password.Invalid',
-  [{ code: 'Error.Auth.Password.Invalid', path: 'password' }]
+  'password'
 )
 
-export const RefreshTokenAlreadyUsedException = new ApiException(
-  HttpStatus.UNAUTHORIZED,
-  'AUTHENTICATION_FAILURE',
-  'Error.Auth.Token.RefreshTokenAlreadyUsed'
+export const PasswordsDoNotMatchException = createApiError(
+  HttpStatus.UNPROCESSABLE_ENTITY,
+  'ValidationError',
+  'Error.Auth.Password.Mismatch',
+  'password'
 )
 
-export const UnauthorizedAccessException = new ApiException(
+// Token related errors
+export const MissingAccessTokenException = createApiError(
   HttpStatus.UNAUTHORIZED,
-  'UNAUTHENTICATED',
+  'Unauthenticated',
+  'Error.Auth.Token.MissingAccessToken',
+  'accessToken'
+)
+
+export const InvalidAccessTokenException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Token.InvalidAccessToken',
+  'accessToken'
+)
+
+export const ExpiredAccessTokenException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Token.ExpiredAccessToken',
+  'accessToken'
+)
+
+export const MissingRefreshTokenException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Token.MissingRefreshToken',
+  'refreshToken'
+)
+
+export const InvalidRefreshTokenException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Token.InvalidRefreshToken',
+  'refreshToken'
+)
+
+export const ExpiredRefreshTokenException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Token.ExpiredRefreshToken',
+  'refreshToken'
+)
+
+export const RefreshTokenAlreadyUsedException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Token.RefreshTokenAlreadyUsed',
+  'refreshToken'
+)
+
+// Authentication and authorization errors
+export const UnauthorizedAccessException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
   'Error.Auth.Access.Unauthorized'
 )
 
-export const InvalidLoginSessionException = new ApiException(
+export const AccessDeniedException = createApiError(HttpStatus.FORBIDDEN, 'Forbidden', 'Error.Auth.Access.Denied')
+
+export const InvalidLoginSessionException = createApiError(
   HttpStatus.UNAUTHORIZED,
-  'AUTHENTICATION_FAILURE',
+  'Unauthenticated',
   'Error.Auth.Session.InvalidLogin'
 )
 
-export const MissingAccessTokenException = new ApiException(
-  HttpStatus.UNAUTHORIZED,
-  'UNAUTHENTICATED',
-  'Error.Auth.Token.MissingAccessToken'
-)
-
-export const InvalidAccessTokenException = new ApiException(
-  HttpStatus.UNAUTHORIZED,
-  'UNAUTHENTICATED',
-  'Error.Auth.Token.InvalidAccessToken'
-)
-
-export const ExpiredAccessTokenException = new ApiException(
-  HttpStatus.UNAUTHORIZED,
-  'UNAUTHENTICATED',
-  'Error.Auth.Token.ExpiredAccessToken'
-)
-
-export const MissingRefreshTokenException = new ApiException(
-  HttpStatus.BAD_REQUEST,
-  'BAD_REQUEST',
-  'Error.Auth.Token.MissingRefreshToken'
-)
-
-export const GoogleUserInfoException = new ApiException(
-  HttpStatus.INTERNAL_SERVER_ERROR,
-  'EXTERNAL_SERVICE_ERROR',
-  'Error.Auth.Google.UserInfoFailed'
-)
-
-export const InvalidTOTPException = new ApiException(
+// 2FA related errors
+export const InvalidTOTPException = createApiError(
   HttpStatus.UNPROCESSABLE_ENTITY,
-  'VALIDATION_ERROR',
+  'ValidationError',
   'Error.Auth.2FA.InvalidTOTP',
-  [{ code: 'Error.Auth.2FA.InvalidTOTP', path: 'totpCode' }]
+  'totpCode'
 )
 
-export const TOTPAlreadyEnabledException = new ApiException(
+export const TOTPAlreadyEnabledException = createApiError(
   HttpStatus.CONFLICT,
-  'STATE_CONFLICT',
+  'ResourceConflict',
   'Error.Auth.2FA.AlreadyEnabled'
 )
 
-export const TOTPNotEnabledException = new ApiException(
-  HttpStatus.BAD_REQUEST,
-  'PRECONDITION_FAILED',
+export const TOTPNotEnabledException = createApiError(
+  HttpStatus.PRECONDITION_FAILED,
+  'PreconditionFailed',
   'Error.Auth.2FA.NotEnabled'
 )
 
-export const InvalidRecoveryCodeException = new ApiException(
+export const InvalidRecoveryCodeException = createApiError(
   HttpStatus.UNPROCESSABLE_ENTITY,
-  'VALIDATION_ERROR',
+  'ValidationError',
   'Error.Auth.2FA.InvalidRecoveryCode',
-  [{ code: 'Error.Auth.2FA.InvalidRecoveryCode', path: 'code' }]
+  'code'
 )
 
-export const InvalidOTPTokenException = new ApiException(
+export const InvalidCodeFormatException = createApiError(
   HttpStatus.UNPROCESSABLE_ENTITY,
-  'VALIDATION_ERROR',
+  'ValidationError',
+  'Error.Auth.2FA.InvalidCodeFormat',
+  'code'
+)
+
+// OTP token related errors
+export const InvalidOTPTokenException = createApiError(
+  HttpStatus.UNPROCESSABLE_ENTITY,
+  'ValidationError',
   'Error.Auth.OtpToken.Invalid',
-  [{ code: 'Error.Auth.OtpToken.Invalid', path: 'otpToken' }]
+  'otpToken'
 )
 
-export const OTPTokenExpiredException = new ApiException(
+export const OTPTokenExpiredException = createApiError(
   HttpStatus.UNPROCESSABLE_ENTITY,
-  'VALIDATION_ERROR',
+  'ValidationError',
   'Error.Auth.OtpToken.Expired',
-  [{ code: 'Error.Auth.OtpToken.Expired', path: 'otpToken' }]
+  'otpToken'
 )
 
-export const InvalidDeviceException = new ApiException(
+// Device related errors
+export const InvalidDeviceException = createApiError(
   HttpStatus.UNAUTHORIZED,
-  'AUTHENTICATION_FAILURE',
-  'Error.Auth.Device.Invalid'
+  'Unauthenticated',
+  'Error.Auth.Device.Invalid',
+  'device'
 )
 
-export const DeviceMismatchException = new ApiException(
+export const DeviceMismatchException = createApiError(
   HttpStatus.UNAUTHORIZED,
-  'AUTHENTICATION_FAILURE',
+  'Unauthenticated',
   'Error.Auth.Device.Mismatch',
-  [{ code: 'Error.Auth.Device.Mismatch', path: 'device' }]
+  'device'
 )
 
-export const DeviceSetupFailedException = (messageKey = 'Error.Auth.Device.SetupFailed') =>
-  new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'DEVICE_SETUP_FAILED', messageKey, [{ code: messageKey }])
-
-export const DeviceAssociationFailedException = (messageKey = 'Error.Auth.Device.AssociationFailed') =>
-  new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'DEVICE_ASSOCIATION_FAILED', messageKey, [{ code: messageKey }])
-
-export const PasswordsDoNotMatchException = new ApiException(
-  HttpStatus.UNPROCESSABLE_ENTITY,
-  'VALIDATION_ERROR',
-  'Error.Auth.Password.Mismatch'
+export const DeviceSetupFailedException = createApiError(
+  HttpStatus.INTERNAL_SERVER_ERROR,
+  'InternalServerError',
+  'Error.Auth.Device.SetupFailed',
+  'device'
 )
 
-export const InvalidCodeFormatException = new ApiException(
-  HttpStatus.UNPROCESSABLE_ENTITY,
-  'VALIDATION_ERROR',
-  'Error.Auth.2FA.InvalidCodeFormat'
+export const DeviceAssociationFailedException = createApiError(
+  HttpStatus.INTERNAL_SERVER_ERROR,
+  'InternalServerError',
+  'Error.Auth.Device.AssociationFailed',
+  'device'
+)
+
+// Factory methods for custom messages
+export function createDeviceSetupFailedException(messageKey = 'Error.Auth.Device.SetupFailed') {
+  return createApiError(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', messageKey, 'device')
+}
+
+export function createDeviceAssociationFailedException(messageKey = 'Error.Auth.Device.AssociationFailed') {
+  return createApiError(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', messageKey, 'device')
+}
+
+// External service errors
+export const GoogleUserInfoException = createApiError(
+  HttpStatus.INTERNAL_SERVER_ERROR,
+  'InternalServerError',
+  'Error.Auth.Google.UserInfoFailed',
+  'googleApi'
 )

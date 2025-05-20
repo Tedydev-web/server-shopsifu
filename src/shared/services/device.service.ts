@@ -2,12 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
 import { Prisma, PrismaClient, Device } from '@prisma/client'
 import { DeviceType } from 'src/routes/auth/auth.model'
-import {
-  DeviceAssociationFailedException,
-  DeviceMismatchException,
-  DeviceSetupFailedException,
-  InvalidDeviceException
-} from 'src/routes/auth/auth.error'
+import { DeviceSetupFailedException } from 'src/routes/auth/auth.error'
 import { AuditLog } from '../decorators/audit-log.decorator'
 import { AuditLogService } from './audit.service'
 import { isUniqueConstraintPrismaError, isNotFoundPrismaError } from '../utils/type-guards.utils'
@@ -223,7 +218,7 @@ export class DeviceService {
       })
 
       this.logger.error(`Error in findOrCreateDevice for user ${data.userId}: ${error.message}`, error.stack)
-      throw DeviceSetupFailedException()
+      throw DeviceSetupFailedException
     }
   }
 
