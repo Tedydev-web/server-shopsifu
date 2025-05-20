@@ -27,7 +27,7 @@ export const RegisterBodySchema = UserSchema.pick({
 
 export const RegisterResSchema = UserSchema.omit({
   password: true,
-  totpSecret: true
+  twoFactorSecret: true
 })
 
 export const VerificationCodeSchema = z.object({

@@ -50,7 +50,7 @@ export const DEFAULT_SENSITIVE_FIELDS = [
   'ccv',
   'pin',
   'otp',
-  'totpSecret'
+  'twoFactorSecret'
 ]
 
 /**

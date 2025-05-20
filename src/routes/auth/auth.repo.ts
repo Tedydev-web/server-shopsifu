@@ -28,13 +28,13 @@ export class AuthRepository {
   async createUser(
     user: Pick<UserType, 'email' | 'name' | 'password' | 'phoneNumber' | 'roleId'>,
     prismaClient?: PrismaTransactionClient
-  ): Promise<Omit<UserType, 'password' | 'totpSecret'>> {
+  ): Promise<Omit<UserType, 'password' | 'twoFactorSecret'>> {
     const client = this.getClient(prismaClient)
     return client.user.create({
       data: user,
       omit: {
         password: true,
-        totpSecret: true
+        twoFactorSecret: true
       }
     })
   }

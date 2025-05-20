@@ -229,8 +229,7 @@ export class TwoFactorService {
         twoFactorEnabled: data.twoFactorEnabled,
         twoFactorSecret: data.twoFactorSecret,
         twoFactorMethod: data.twoFactorMethod,
-        twoFactorVerifiedAt: data.twoFactorVerifiedAt,
-        totpSecret: data.twoFactorSecret // Đồng bộ totpSecret với twoFactorSecret
+        twoFactorVerifiedAt: data.twoFactorVerifiedAt
       }
     })
   }
