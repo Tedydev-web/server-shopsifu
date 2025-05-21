@@ -38,15 +38,6 @@ export class OtpService {
     private readonly emailService: EmailService
   ) {}
 
-  /**
-   * Xác minh mã OTP 6 số
-   * @param email Email người dùng
-   * @param code Mã OTP 6 số
-   * @param type Loại mã xác thực (đăng ký, quên mật khẩu, v.v.)
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Đối tượng VerificationCode nếu hợp lệ
-   * @throws InvalidOTPException, OTPExpiredException
-   */
   async validateVerificationCode({
     email,
     code,
@@ -82,17 +73,6 @@ export class OtpService {
     return verificationCode
   }
 
-  /**
-   * Xác minh token OTP (token sau khi xác minh mã 6 số)
-   * @param token Token OTP
-   * @param email Email người dùng
-   * @param type Loại mã xác thực
-   * @param tokenType Loại token
-   * @param deviceId ID thiết bị (tùy chọn)
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns VerificationToken nếu hợp lệ
-   * @throws InvalidOTPTokenException, OTPTokenExpiredException, DeviceMismatchException
-   */
   async validateVerificationToken({
     token,
     email,
@@ -138,13 +118,6 @@ export class OtpService {
     return verificationToken
   }
 
-  /**
-   * Gửi mã OTP 6 số qua email
-   * @param email Email người dùng
-   * @param type Loại mã xác thực
-   * @returns Kết quả gửi email
-   * @throws FailedToSendOTPException
-   */
   async sendOTP(email: string, type: TypeOfVerificationCodeType): Promise<{ message: string }> {
     await this.authRepository.deleteVerificationCodesByEmailAndType({
       email,
@@ -173,16 +146,6 @@ export class OtpService {
     return { message: 'Auth.Otp.SentSuccessfully' }
   }
 
-  /**
-   * Tạo token OTP sau khi xác minh mã 6 số thành công
-   * @param email Email người dùng
-   * @param type Loại mã xác thực
-   * @param userId ID người dùng (tùy chọn)
-   * @param deviceId ID thiết bị (tùy chọn)
-   * @param metadata Thông tin bổ sung (tùy chọn)
-   * @param tx Client transaction Prisma (bắt buộc)
-   * @returns Token OTP
-   */
   async createOtpToken({
     email,
     type,
@@ -219,24 +182,11 @@ export class OtpService {
     return token
   }
 
-  /**
-   * Xóa token OTP
-   * @param token Token OTP cần xóa
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Kết quả xóa token
-   */
   async deleteOtpToken(token: string, tx?: PrismaTransactionClient): Promise<void> {
     const client = tx || this.prismaService
     await this.authRepository.deleteVerificationToken({ token }, client as any)
   }
 
-  /**
-   * Xóa mã xác thực 6 số
-   * @param email Email người dùng
-   * @param code Mã xác thực 6 số
-   * @param type Loại mã xác thực
-   * @param tx Client transaction Prisma (tùy chọn)
-   */
   async deleteVerificationCode(
     email: string,
     code: string,
@@ -256,12 +206,6 @@ export class OtpService {
     )
   }
 
-  /**
-   * Xác minh mã OTP và tạo token OTP
-   * @param payload Thông tin cần xác minh (email, code, type, userAgent, ip)
-   * @param tx Client transaction Prisma (bắt buộc)
-   * @returns Token OTP
-   */
   async verifyOTPAndCreateToken(
     payload: {
       email: string
@@ -293,12 +237,6 @@ export class OtpService {
     return token
   }
 
-  /**
-   * Chỉ tìm kiếm token xác thực mà không thực hiện validate (hữu ích cho việc lấy thông tin token trước khi validate)
-   * @param token Token cần tìm
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Token xác thực nếu tìm thấy, null nếu không
-   */
   async findVerificationToken(token: string, tx?: PrismaTransactionClient): Promise<PrismaVerificationToken | null> {
     const client = tx || this.prismaService
     return (await this.authRepository.findUniqueVerificationToken(

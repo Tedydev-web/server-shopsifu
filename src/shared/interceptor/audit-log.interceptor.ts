@@ -11,7 +11,7 @@ import {
 import { Reflector } from '@nestjs/core'
 import { Observable } from 'rxjs'
 import { tap, catchError, finalize } from 'rxjs/operators'
-import { AuditLogService, AuditLogStatus, AuditLogData } from '../services/audit.service'
+import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { AUDIT_LOG_KEY, AuditLogOptions } from '../decorators/audit-log.decorator'
 import { REQUEST } from '@nestjs/core'
 import { Request, Response } from 'express'

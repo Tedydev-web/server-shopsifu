@@ -1,8 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { PrismaService } from './prisma.service'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { AuditLogRepository } from './audit-log.repo'
+import { AuditLogQueryType, AuditLogType } from './audit-log.model'
+import { PaginatedResponseType } from 'src/shared/models/pagination.model'
 import { Prisma } from '@prisma/client'
-import { normalizeAuditLogDetails, maskSensitiveFields, DEFAULT_SENSITIVE_FIELDS } from '../utils/audit-log.utils'
-import { isObject } from '../utils/type-guards.utils'
+import {
+  normalizeAuditLogDetails,
+  maskSensitiveFields,
+  DEFAULT_SENSITIVE_FIELDS
+} from 'src/shared/utils/audit-log.utils'
+import { isObject } from 'src/shared/utils/type-guards.utils'
 
 export enum AuditLogStatus {
   SUCCESS = 'SUCCESS',
@@ -41,18 +48,67 @@ export class AuditLogService {
     skipErrors: true
   }
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly auditLogRepository: AuditLogRepository,
+    private readonly prismaService: PrismaService
+  ) {
     setInterval(() => {
       void this.processQueue()
     }, 5000)
   }
 
-  /**
-   * Ghi log audit (đồng bộ)
-   * @param data Dữ liệu log
-   * @param options Tùy chọn ghi log
-   * @returns Promise<void>
-   */
+  async findAll(query: AuditLogQueryType): Promise<PaginatedResponseType<AuditLogType>> {
+    await this.record({
+      action: 'AUDIT_LOG_VIEW_LIST',
+      status: AuditLogStatus.SUCCESS,
+      details: { query }
+    })
+
+    return this.auditLogRepository.findAll(query)
+  }
+
+  async findById(id: number): Promise<AuditLogType | null> {
+    const log = await this.auditLogRepository.findById(id)
+
+    await this.record({
+      action: 'AUDIT_LOG_VIEW_DETAIL',
+      entity: 'AuditLog',
+      entityId: id,
+      status: AuditLogStatus.SUCCESS
+    })
+
+    return log
+  }
+
+  async getDistinctActions(): Promise<string[]> {
+    return this.auditLogRepository.getDistinctActions()
+  }
+
+  async getDistinctEntities(): Promise<string[]> {
+    return this.auditLogRepository.getDistinctEntities()
+  }
+
+  async getStats() {
+    const [totalLogs, totalSuccessLogs, totalFailureLogs, totalEntities] = await Promise.all([
+      this.prismaService.auditLog.count(),
+      this.prismaService.auditLog.count({ where: { status: AuditLogStatus.SUCCESS } }),
+      this.prismaService.auditLog.count({ where: { status: AuditLogStatus.FAILURE } }),
+      this.prismaService.auditLog
+        .groupBy({
+          by: ['entity'],
+          _count: true
+        })
+        .then((results) => results.length)
+    ])
+
+    return {
+      totalLogs,
+      totalSuccessLogs,
+      totalFailureLogs,
+      totalEntities
+    }
+  }
+
   async record(data: AuditLogData, options: AuditLogOptions = this.defaultOptions): Promise<void> {
     try {
       const { userId, entityId, details, ...otherAuditData } = this.prepareLogData(data, options)
@@ -67,7 +123,7 @@ export class AuditLogService {
         createInputData.user = { connect: { id: userId } }
       }
 
-      await this.prisma.auditLog.create({ data: createInputData })
+      await this.prismaService.auditLog.create({ data: createInputData })
     } catch (error) {
       this.logger.error(`Failed to record audit log: ${error.message}`, error.stack)
       if (!options.skipErrors) {
@@ -76,11 +132,6 @@ export class AuditLogService {
     }
   }
 
-  /**
-   * Ghi log audit không chặn luồng chính
-   * @param data Dữ liệu log
-   * @param options Tùy chọn ghi log
-   */
   recordAsync(data: AuditLogData, options: AuditLogOptions = this.defaultOptions): void {
     try {
       this.queueLog(data, options)
@@ -89,19 +140,13 @@ export class AuditLogService {
     }
   }
 
-  /**
-   * Ghi nhiều log audit trong một lần
-   * @param dataArray Mảng dữ liệu log
-   * @param options Tùy chọn ghi log
-   * @returns Promise<void>
-   */
   async recordBatch(dataArray: AuditLogData[], options: AuditLogOptions = this.defaultOptions): Promise<void> {
     if (!Array.isArray(dataArray) || dataArray.length === 0) {
       return
     }
 
     try {
-      await this.prisma.$transaction(async (tx) => {
+      await this.prismaService.$transaction(async (tx) => {
         for (const data of dataArray) {
           const { userId, entityId, details, ...otherAuditData } = this.prepareLogData(data, options)
 
@@ -126,12 +171,6 @@ export class AuditLogService {
     }
   }
 
-  /**
-   * Ghi log thành công
-   * @param action Hành động
-   * @param data Dữ liệu bổ sung
-   * @param options Tùy chọn ghi log
-   */
   success(
     action: string,
     data: Omit<AuditLogData, 'action' | 'status'>,
@@ -147,12 +186,6 @@ export class AuditLogService {
     )
   }
 
-  /**
-   * Ghi log thất bại
-   * @param action Hành động
-   * @param data Dữ liệu bổ sung
-   * @param options Tùy chọn ghi log
-   */
   failure(
     action: string,
     data: Omit<AuditLogData, 'action' | 'status'>,
@@ -168,13 +201,6 @@ export class AuditLogService {
     )
   }
 
-  /**
-   * Ghi log thành công đồng bộ
-   * @param action Hành động
-   * @param data Dữ liệu bổ sung
-   * @param options Tùy chọn ghi log
-   * @returns Promise<void>
-   */
   async successSync(
     action: string,
     data: Omit<AuditLogData, 'action' | 'status'>,
@@ -190,13 +216,6 @@ export class AuditLogService {
     )
   }
 
-  /**
-   * Ghi log thất bại đồng bộ
-   * @param action Hành động
-   * @param data Dữ liệu bổ sung
-   * @param options Tùy chọn ghi log
-   * @returns Promise<void>
-   */
   async failureSync(
     action: string,
     data: Omit<AuditLogData, 'action' | 'status'>,
@@ -212,12 +231,6 @@ export class AuditLogService {
     )
   }
 
-  /**
-   * Thêm log vào hàng đợi
-   * @private
-   * @param data Dữ liệu log
-   * @param options Tùy chọn ghi log
-   */
   private queueLog(data: AuditLogData, options: AuditLogOptions): void {
     const preparedData = this.prepareLogData(data, options)
 
@@ -228,10 +241,6 @@ export class AuditLogService {
     }
   }
 
-  /**
-   * Xử lý hàng đợi log
-   * @private
-   */
   private async processQueue(): Promise<void> {
     if (this.isProcessingQueue || this.logQueue.length === 0) {
       return
@@ -258,13 +267,6 @@ export class AuditLogService {
     }
   }
 
-  /**
-   * Chuẩn bị dữ liệu log trước khi ghi
-   * @private
-   * @param data Dữ liệu log
-   * @param options Tùy chọn ghi log
-   * @returns Dữ liệu log đã chuẩn bị
-   */
   private prepareLogData(data: AuditLogData, options: AuditLogOptions): AuditLogData {
     const preparedData = { ...data }
 

@@ -49,7 +49,7 @@ import { Request } from 'express'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { Prisma, VerificationToken as PrismaVerificationToken } from '@prisma/client'
 import { TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
-import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/shared/services/audit.service'
+import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { OtpService } from 'src/shared/services/otp.service'
 import { DeviceService } from 'src/shared/services/device.service'
@@ -404,13 +404,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Tạo cặp access token và refresh token mới
-   * @param payload Dữ liệu người dùng cần nhúng vào token
-   * @param prismaTx Client transaction Prisma (tùy chọn)
-   * @param rememberMe Có ghi nhớ đăng nhập không (tùy chọn)
-   * @returns Object chứa accessToken, refreshToken và maxAgeForRefreshTokenCookie
-   */
   async generateTokens(
     { userId, deviceId, roleId, roleName }: AccessTokenPayloadCreate,
     prismaTx?: Prisma.TransactionClient,
@@ -419,13 +412,6 @@ export class AuthService {
     return this.tokenService.generateTokens({ userId, deviceId, roleId, roleName }, prismaTx as any, rememberMe)
   }
 
-  /**
-   * Làm mới access token dựa trên refresh token hợp lệ
-   * @param data Thông tin refreshToken, userAgent và IP
-   * @param req Request object để truy xuất cookie nếu cần
-   * @param res Response object để cập nhật cookie
-   * @returns Object chứa accessToken mới
-   */
   async refreshToken(
     { refreshToken, userAgent, ip }: RefreshTokenBodyType & { userAgent: string; ip: string },
     req?: Request,
@@ -608,13 +594,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Đăng xuất người dùng và xóa refresh token
-   * @param refreshTokenInput Token đầu vào từ request body (có thể null hoặc undefined)
-   * @param req Request object chứa cookie và thông tin người dùng (tùy chọn)
-   * @param res Response object để xóa cookie (tùy chọn)
-   * @returns Thông báo đăng xuất thành công
-   */
   async logout(refreshTokenInput?: string, req?: Request, res?: Response) {
     const auditLogEntry: {
       action: string

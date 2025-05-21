@@ -4,7 +4,7 @@ import { Prisma, PrismaClient, Device } from '@prisma/client'
 import { DeviceType } from 'src/routes/auth/auth.model'
 import { DeviceSetupFailedException } from 'src/routes/auth/auth.error'
 import { AuditLog } from '../decorators/audit-log.decorator'
-import { AuditLogService } from './audit.service'
+import { AuditLogService } from 'src/routes/audit-log/audit-log.service'
 import { isUniqueConstraintPrismaError, isNotFoundPrismaError } from '../utils/type-guards.utils'
 
 type PrismaTransactionClient = Omit<
@@ -21,12 +21,6 @@ export class DeviceService {
     private readonly auditLogService: AuditLogService
   ) {}
 
-  /**
-   * Tạo thiết bị mới
-   * @param data Thông tin thiết bị cần tạo
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Thiết bị đã được tạo
-   */
   @AuditLog({
     action: 'DEVICE_CREATE',
     entity: 'Device',
@@ -46,13 +40,6 @@ export class DeviceService {
     })
   }
 
-  /**
-   * Cập nhật thông tin thiết bị
-   * @param deviceId ID thiết bị
-   * @param data Thông tin cần cập nhật
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Thiết bị sau khi cập nhật
-   */
   async updateDevice(deviceId: number, data: Partial<DeviceType>, tx?: PrismaTransactionClient): Promise<Device> {
     this.logger.debug(`Updating device ${deviceId}`)
     const client = tx || this.prismaService
@@ -65,12 +52,6 @@ export class DeviceService {
     })
   }
 
-  /**
-   * Tìm thiết bị dựa trên ID
-   * @param deviceId ID thiết bị
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Thiết bị nếu tìm thấy, null nếu không
-   */
   async findDeviceById(deviceId: number, tx?: PrismaTransactionClient): Promise<Device | null> {
     this.logger.debug(`Finding device with ID ${deviceId}`)
     const client = tx || this.prismaService
@@ -82,13 +63,6 @@ export class DeviceService {
     })
   }
 
-  /**
-   * Tìm thiết bị hoạt động cho người dùng với userAgent cụ thể
-   * @param userId ID người dùng
-   * @param userAgent User-Agent của thiết bị
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Thiết bị nếu tìm thấy, null nếu không
-   */
   async findActiveDeviceByUserAgent(
     userId: number,
     userAgent: string,
@@ -106,13 +80,6 @@ export class DeviceService {
     })
   }
 
-  /**
-   * Tìm hoặc tạo thiết bị mới
-   * @param data Thông tin thiết bị
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Thiết bị (đã tìm thấy hoặc mới tạo)
-   * @throws DeviceSetupFailedException nếu có lỗi trong quá trình thiết lập
-   */
   @AuditLog({
     action: 'DEVICE_FIND_OR_CREATE',
     entity: 'Device',
@@ -210,14 +177,6 @@ export class DeviceService {
     }
   }
 
-  /**
-   * Xác thực thiết bị dựa trên User-Agent và IP
-   * @param deviceId ID thiết bị
-   * @param userAgent User-Agent hiện tại
-   * @param ip Địa chỉ IP hiện tại
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns true nếu thiết bị hợp lệ, false nếu không
-   */
   @AuditLog({
     action: 'DEVICE_VALIDATE',
     entity: 'Device',
@@ -262,12 +221,6 @@ export class DeviceService {
     return isUserAgentMatched
   }
 
-  /**
-   * Vô hiệu hóa thiết bị
-   * @param deviceId ID thiết bị
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Thiết bị đã bị vô hiệu hóa
-   */
   @AuditLog({
     action: 'DEVICE_DEACTIVATE',
     entity: 'Device',
@@ -280,13 +233,6 @@ export class DeviceService {
     return this.updateDevice(deviceId, { isActive: false }, client)
   }
 
-  /**
-   * Vô hiệu hóa tất cả thiết bị của người dùng
-   * @param userId ID người dùng
-   * @param excludeDeviceId ID thiết bị muốn loại trừ (tùy chọn)
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Số lượng thiết bị đã vô hiệu hóa
-   */
   @AuditLog({
     action: 'DEVICE_DEACTIVATE_ALL',
     getUserId: (args) => args[0],
@@ -322,12 +268,6 @@ export class DeviceService {
     })
   }
 
-  /**
-   * Lấy danh sách thiết bị hoạt động của người dùng
-   * @param userId ID người dùng
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Danh sách thiết bị hoạt động
-   */
   @AuditLog({
     action: 'DEVICE_LIST',
     getUserId: (args) => args[0],
@@ -350,13 +290,6 @@ export class DeviceService {
     })
   }
 
-  /**
-   * Kiểm tra xem thiết bị có thuộc về người dùng không
-   * @param deviceId ID thiết bị
-   * @param userId ID người dùng
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns true nếu thiết bị thuộc về người dùng, false nếu không
-   */
   async isDeviceOwnedByUser(deviceId: number, userId: number, tx?: PrismaTransactionClient): Promise<boolean> {
     this.logger.debug(`Checking if device ${deviceId} is owned by user ${userId}`)
     const client = tx || this.prismaService

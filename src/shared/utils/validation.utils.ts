@@ -2,12 +2,6 @@ import { z } from 'zod'
 import { isNonEmptyArray, isNonEmptyString, isNullOrUndefined, isObject } from './type-guards.utils'
 import { ApiException } from '../exceptions/api.exception'
 
-/**
- * Chuyển đổi giá trị thành chuỗi an toàn, loại bỏ undefined và null
- * @param value Giá trị cần chuyển đổi
- * @param defaultValue Giá trị mặc định khi value là null hoặc undefined
- * @returns Chuỗi đã được chuyển đổi
- */
 export function safeString(value: any, defaultValue: string = ''): string {
   if (isNullOrUndefined(value)) {
     return defaultValue
@@ -16,12 +10,6 @@ export function safeString(value: any, defaultValue: string = ''): string {
   return String(value)
 }
 
-/**
- * Chuyển đổi giá trị thành số an toàn
- * @param value Giá trị cần chuyển đổi
- * @param defaultValue Giá trị mặc định khi chuyển đổi thất bại
- * @returns Số đã được chuyển đổi hoặc giá trị mặc định
- */
 export function safeNumber(value: any, defaultValue: number = 0): number {
   if (isNullOrUndefined(value)) {
     return defaultValue
@@ -31,12 +19,6 @@ export function safeNumber(value: any, defaultValue: number = 0): number {
   return isNaN(num) ? defaultValue : num
 }
 
-/**
- * Chuyển đổi giá trị thành boolean an toàn
- * @param value Giá trị cần chuyển đổi
- * @param defaultValue Giá trị mặc định khi value là null hoặc undefined
- * @returns Boolean đã được chuyển đổi
- */
 export function safeBoolean(value: any, defaultValue: boolean = false): boolean {
   if (isNullOrUndefined(value)) {
     return defaultValue
@@ -58,12 +40,6 @@ export function safeBoolean(value: any, defaultValue: boolean = false): boolean 
   return Boolean(value)
 }
 
-/**
- * Chuyển đổi an toàn giá trị thành đối tượng Date
- * @param value Giá trị cần chuyển đổi
- * @param defaultValue Giá trị mặc định khi chuyển đổi thất bại
- * @returns Đối tượng Date hoặc null
- */
 export function safeDate(value: any, defaultValue: Date | null = null): Date | null {
   if (isNullOrUndefined(value)) {
     return defaultValue
@@ -77,12 +53,6 @@ export function safeDate(value: any, defaultValue: Date | null = null): Date | n
   return isNaN(date.getTime()) ? defaultValue : date
 }
 
-/**
- * Chuyển đổi đối tượng thành chuỗi JSON an toàn
- * @param obj Đối tượng cần chuyển đổi
- * @param defaultValue Giá trị mặc định khi chuyển đổi thất bại
- * @returns Chuỗi JSON
- */
 export function safeStringify(obj: any, defaultValue: string = '{}'): string {
   try {
     return JSON.stringify(obj)
@@ -91,12 +61,6 @@ export function safeStringify(obj: any, defaultValue: string = '{}'): string {
   }
 }
 
-/**
- * Phân tích chuỗi JSON thành đối tượng an toàn
- * @param jsonString Chuỗi JSON cần phân tích
- * @param defaultValue Giá trị mặc định khi phân tích thất bại
- * @returns Đối tượng đã được phân tích
- */
 export function safeParse<T = any>(jsonString: string, defaultValue: T): T {
   if (!isNonEmptyString(jsonString)) {
     return defaultValue
@@ -109,13 +73,6 @@ export function safeParse<T = any>(jsonString: string, defaultValue: T): T {
   }
 }
 
-/**
- * Trích xuất giá trị an toàn từ đối tượng theo đường dẫn
- * @param obj Đối tượng nguồn
- * @param path Đường dẫn đến giá trị (e.g., 'user.profile.name')
- * @param defaultValue Giá trị mặc định khi không tìm thấy
- * @returns Giá trị được trích xuất hoặc giá trị mặc định
- */
 export function getNestedValue<T = any>(obj: any, path: string, defaultValue: T): T {
   if (!isObject(obj) || !isNonEmptyString(path)) {
     return defaultValue
@@ -134,23 +91,10 @@ export function getNestedValue<T = any>(obj: any, path: string, defaultValue: T)
   return isNullOrUndefined(value) ? defaultValue : value
 }
 
-/**
- * Lọc mảng để loại bỏ các giá trị null hoặc undefined
- * @param array Mảng đầu vào
- * @returns Mảng đã lọc
- */
 export function filterNullish<T>(array: (T | null | undefined)[]): T[] {
   return array.filter((item): item is T => !isNullOrUndefined(item))
 }
 
-/**
- * Xác thực đối tượng với schema Zod và ném ra ngoại lệ API nếu không hợp lệ
- * @param schema Schema Zod
- * @param data Dữ liệu cần xác thực
- * @param errorMessage Thông báo lỗi tùy chỉnh
- * @returns Dữ liệu đã được xác thực và ép kiểu
- * @throws ApiException nếu xác thực thất bại
- */
 export function validateWithZod<T>(schema: z.ZodType<T>, data: unknown, errorMessage?: string): T {
   try {
     return schema.parse(data)
@@ -170,11 +114,6 @@ export function validateWithZod<T>(schema: z.ZodType<T>, data: unknown, errorMes
   }
 }
 
-/**
- * Kiểm tra một giá trị có phải là một đối tượng JSON hợp lệ không
- * @param value Giá trị cần kiểm tra
- * @returns Boolean
- */
 export function isValidJson(value: any): boolean {
   if (!isNonEmptyString(value)) {
     return false
@@ -188,11 +127,6 @@ export function isValidJson(value: any): boolean {
   }
 }
 
-/**
- * Chuẩn hóa chuỗi (loại bỏ dấu, khoảng trắng thừa, v.v.)
- * @param text Chuỗi cần chuẩn hóa
- * @returns Chuỗi đã được chuẩn hóa
- */
 export function normalizeString(text: string): string {
   if (!isNonEmptyString(text)) {
     return ''
@@ -205,12 +139,6 @@ export function normalizeString(text: string): string {
     .replace(/\s+/g, ' ')
 }
 
-/**
- * Trích xuất đối tượng với chỉ các thuộc tính được chỉ định
- * @param obj Đối tượng nguồn
- * @param keys Danh sách khóa cần giữ lại
- * @returns Đối tượng mới chỉ với các thuộc tính được chỉ định
- */
 export function pick<T extends Record<string, any>, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
   if (!isObject(obj) || !isNonEmptyArray(keys)) {
     return {} as Pick<T, K>
@@ -227,12 +155,6 @@ export function pick<T extends Record<string, any>, K extends keyof T>(obj: T, k
   )
 }
 
-/**
- * Trích xuất đối tượng loại bỏ các thuộc tính được chỉ định
- * @param obj Đối tượng nguồn
- * @param keys Danh sách khóa cần loại bỏ
- * @returns Đối tượng mới không có các thuộc tính bị loại bỏ
- */
 export function omit<T extends Record<string, any>, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
   if (!isObject(obj)) {
     return {} as Omit<T, K>
@@ -250,11 +172,6 @@ export function omit<T extends Record<string, any>, K extends keyof T>(obj: T, k
   return result
 }
 
-/**
- * Trả về một phần tử ngẫu nhiên từ mảng
- * @param array Mảng đầu vào
- * @returns Phần tử ngẫu nhiên hoặc undefined nếu mảng rỗng
- */
 export function getRandomElement<T>(array: T[]): T | undefined {
   if (!isNonEmptyArray(array)) {
     return undefined
@@ -264,11 +181,6 @@ export function getRandomElement<T>(array: T[]): T | undefined {
   return array[randomIndex]
 }
 
-/**
- * Xác thực chuỗi email
- * @param email Chuỗi email cần xác thực
- * @returns Boolean
- */
 export function isValidEmail(email: string): boolean {
   if (!isNonEmptyString(email)) {
     return false
@@ -279,11 +191,6 @@ export function isValidEmail(email: string): boolean {
   return emailRegex.test(email)
 }
 
-/**
- * Xác thực số điện thoại (định dạng quốc tế)
- * @param phone Chuỗi số điện thoại cần xác thực
- * @returns Boolean
- */
 export function isValidPhone(phone: string): boolean {
   if (!isNonEmptyString(phone)) {
     return false
@@ -293,12 +200,6 @@ export function isValidPhone(phone: string): boolean {
   return phoneRegex.test(phone.replace(/\s+/g, ''))
 }
 
-/**
- * Kiểm tra xem một giá trị có phải là giá trị enum hợp lệ không
- * @param value Giá trị cần kiểm tra
- * @param enumObject Đối tượng enum
- * @returns Boolean
- */
 export function isValidEnum<T extends Record<string, string | number>>(value: any, enumObject: T): value is T[keyof T] {
   if (isNullOrUndefined(value)) {
     return false

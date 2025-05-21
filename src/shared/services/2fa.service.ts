@@ -21,13 +21,6 @@ export class TwoFactorService {
     private readonly hashingService: HashingService
   ) {}
 
-  /**
-   * Tạo đối tượng TOTP với các thiết lập chuẩn
-   * @private
-   * @param email Email người dùng làm label cho TOTP
-   * @param secret Secret key (tùy chọn)
-   * @returns Đối tượng TOTP đã cấu hình
-   */
   private createTOTP(email: string, secret?: string) {
     return new OTPAuth.TOTP({
       issuer: envConfig.APP_NAME,
@@ -39,11 +32,6 @@ export class TwoFactorService {
     })
   }
 
-  /**
-   * Tạo secret key và URI cho TOTP
-   * @param email Email người dùng
-   * @returns Secret key và URI để tạo QR code
-   */
   generateTOTPSecret(email: string) {
     this.logger.debug(`Generating TOTP secret for user: ${email}`)
     const totp = this.createTOTP(email)
@@ -53,11 +41,6 @@ export class TwoFactorService {
     }
   }
 
-  /**
-   * Xác thực mã TOTP
-   * @param data Dữ liệu xác thực gồm email, mã và secret
-   * @returns True nếu xác thực thành công, ngược lại là false
-   */
   verifyTOTP({ email, token, secret }: { email: string; secret: string; token: string }): boolean {
     this.logger.debug(`Verifying TOTP for user: ${email}`)
     const totp = this.createTOTP(email, secret)
@@ -65,11 +48,6 @@ export class TwoFactorService {
     return delta !== null
   }
 
-  /**
-   * Tạo danh sách recovery codes mới
-   * @param count Số lượng mã cần tạo (mặc định: 8)
-   * @returns Danh sách recovery codes dưới dạng chuỗi
-   */
   generateRecoveryCodes(count: number = 8): string[] {
     this.logger.debug(`Generating ${count} recovery codes`)
     const codes: string[] = []
@@ -81,13 +59,6 @@ export class TwoFactorService {
     return codes
   }
 
-  /**
-   * Lưu recovery codes vào database
-   * @param userId ID người dùng
-   * @param recoveryCodes Danh sách recovery codes
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Kết quả tạo các recovery codes
-   */
   async saveRecoveryCodes(
     userId: number,
     recoveryCodes: string[],
@@ -108,14 +79,6 @@ export class TwoFactorService {
     })
   }
 
-  /**
-   * Xác thực recovery code
-   * @param userId ID người dùng
-   * @param recoveryCodeInput Mã recovery code cần xác thực
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Recovery code đã được xác thực
-   * @throws InvalidRecoveryCodeException nếu mã không hợp lệ hoặc đã được sử dụng
-   */
   async verifyRecoveryCode(userId: number, recoveryCodeInput: string, tx?: PrismaTransactionClient) {
     this.logger.debug(`Verifying recovery code for user ${userId}`)
     const client = tx || this.prismaService
@@ -159,12 +122,6 @@ export class TwoFactorService {
     return matchedCodeEntry
   }
 
-  /**
-   * Lấy danh sách recovery codes chưa sử dụng của người dùng
-   * @param userId ID người dùng
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Danh sách recovery codes chưa sử dụng
-   */
   async getUnusedRecoveryCodes(userId: number, tx?: PrismaTransactionClient) {
     this.logger.debug(`Getting unused recovery codes for user ${userId}`)
     const client = tx || this.prismaService
@@ -177,12 +134,6 @@ export class TwoFactorService {
     })
   }
 
-  /**
-   * Xóa tất cả recovery codes của người dùng
-   * @param userId ID người dùng
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Kết quả xóa recovery codes
-   */
   async deleteAllRecoveryCodes(userId: number, tx?: PrismaTransactionClient) {
     this.logger.debug(`Deleting all recovery codes for user ${userId}`)
     const client = tx || this.prismaService
@@ -192,13 +143,6 @@ export class TwoFactorService {
     })
   }
 
-  /**
-   * Cập nhật trạng thái xác thực hai yếu tố của người dùng
-   * @param userId ID người dùng
-   * @param data Dữ liệu cập nhật
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Người dùng đã được cập nhật
-   */
   async updateUserTwoFactorStatus(
     userId: number,
     data: {
@@ -223,12 +167,6 @@ export class TwoFactorService {
     })
   }
 
-  /**
-   * Kiểm tra xem người dùng đã bật xác thực hai yếu tố chưa
-   * @param userId ID người dùng
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Thông tin trạng thái xác thực hai yếu tố
-   */
   async getUserTwoFactorStatus(userId: number, tx?: PrismaTransactionClient) {
     this.logger.debug(`Getting 2FA status for user ${userId}`)
     const client = tx || this.prismaService

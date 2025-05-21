@@ -3,7 +3,6 @@ import { PrismaService } from '../services/prisma.service'
 import { PaginationOptions, PaginatedResponseType, createPaginatedResponse } from '../models/pagination.model'
 import { Prisma } from '@prisma/client'
 
-// Type cho Prisma Transaction Client
 export type PrismaTransactionClient = Omit<
   Prisma.TransactionClient,
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
@@ -33,25 +32,20 @@ export abstract class BaseRepository<T> {
     const client = this.getClient(prismaClient)
     const { page = 1, limit = 10, sortBy, sortOrder = 'asc', search, includeDeleted = false } = query
 
-    // Deep clone the where clause to avoid modifying the original
     const whereClause = { ...where }
 
-    // Handle soft-deleted items
     if (!includeDeleted && 'deletedAt' in (client[model] as any)) {
       whereClause.deletedAt = null
     }
 
-    // Apply search if provided and contains searchable fields
     if (search && this.getSearchableFields().length > 0) {
       whereClause.OR = this.getSearchableFields().map((field) => ({
         [field]: { contains: search, mode: 'insensitive' }
       }))
     }
 
-    // Count total items matching the criteria
     const totalItems = await client[model].count({ where: whereClause })
 
-    // Fetch the data with pagination
     const data = await client[model].findMany({
       where: whereClause,
       ...(include && Object.keys(include).length > 0 && { include }),
@@ -70,12 +64,10 @@ export abstract class BaseRepository<T> {
     })
   }
 
-  // Override in child classes to specify which fields are searchable
   protected getSearchableFields(): string[] {
     return []
   }
 
-  // Advanced cursor-based pagination for better performance with large datasets
   protected async paginateWithCursor<Entity>(
     model: string,
     cursorField: string = 'id',
@@ -92,10 +84,8 @@ export abstract class BaseRepository<T> {
   }> {
     const client = this.getClient(prismaClient)
 
-    // Prepare cursor condition if cursor value is provided
     const cursor = cursorValue ? { [cursorField]: cursorValue } : undefined
 
-    // Fetch one more item than requested to determine if there are more items
     const data = await client[model].findMany({
       where,
       ...(include && Object.keys(include).length > 0 && { include }),
@@ -107,7 +97,6 @@ export abstract class BaseRepository<T> {
     const hasMore = data.length > limit
     const items = hasMore ? data.slice(0, limit) : data
 
-    // Get the cursor value from the last item
     const nextCursor = hasMore && items.length > 0 ? items[items.length - 1][cursorField] : null
 
     return {

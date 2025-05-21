@@ -1,13 +1,10 @@
 import { Request } from 'express'
 import { REQUEST_USER_KEY } from '../constants/auth.constant'
-import { AuditLogStatus, AuditLogData } from '../services/audit.service'
+import { AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { AccessTokenPayload } from '../types/jwt.type'
 import { isObject, normalizeErrorMessage, isApiException } from './type-guards.utils'
 import { safeStringify } from './validation.utils'
 
-/**
- * Interface mô tả tùy chọn để tạo một audit log
- */
 export interface CreateAuditLogOptions {
   action: string
   status?: AuditLogStatus
@@ -22,9 +19,6 @@ export interface CreateAuditLogOptions {
   sensitiveFields?: string[]
 }
 
-/**
- * Interface mô tả ngữ cảnh để tạo audit log từ request HTTP
- */
 export interface AuditLogContext {
   request?: Request
   userId?: number
@@ -33,9 +27,6 @@ export interface AuditLogContext {
   result?: any
 }
 
-/**
- * Danh sách các trường nhạy cảm cần che giấu mặc định
- */
 export const DEFAULT_SENSITIVE_FIELDS = [
   'password',
   'passwordConfirm',
@@ -53,12 +44,6 @@ export const DEFAULT_SENSITIVE_FIELDS = [
   'twoFactorSecret'
 ]
 
-/**
- * Tạo đối tượng AuditLogData từ request và các tùy chọn khác
- * @param context Ngữ cảnh của audit log
- * @param options Tùy chọn tạo audit log
- * @returns Đối tượng AuditLogData đã được tạo
- */
 export function createAuditLog(context: AuditLogContext, options: CreateAuditLogOptions): AuditLogData {
   const { request, userId, userEmail, error } = context
   const {
@@ -143,12 +128,6 @@ export function createAuditLog(context: AuditLogContext, options: CreateAuditLog
   return auditLogData
 }
 
-/**
- * Che giấu thông tin nhạy cảm trong đối tượng
- * @param obj Đối tượng cần che giấu thông tin
- * @param sensitiveFields Danh sách trường nhạy cảm
- * @returns Đối tượng đã che giấu thông tin
- */
 export function maskSensitiveFields(obj: any, sensitiveFields: string[] = DEFAULT_SENSITIVE_FIELDS): any {
   if (!isObject(obj) && !Array.isArray(obj)) {
     return obj
@@ -177,11 +156,6 @@ export function maskSensitiveFields(obj: any, sensitiveFields: string[] = DEFAUL
   return result
 }
 
-/**
- * Chuẩn hóa chi tiết audit log để đảm bảo an toàn khi lưu trữ
- * @param details Chi tiết cần chuẩn hóa
- * @returns Chi tiết đã được chuẩn hóa
- */
 export function normalizeAuditLogDetails(details: Record<string, any>): Record<string, any> {
   if (!isObject(details)) {
     return {}
@@ -211,11 +185,6 @@ export function normalizeAuditLogDetails(details: Record<string, any>): Record<s
   return result
 }
 
-/**
- * Trích xuất thông tin người dùng từ request
- * @param req Request object
- * @returns Thông tin người dùng (userId và userEmail)
- */
 export function extractUserFromRequest(req: Request): { userId?: number; userEmail?: string } {
   if (!req) {
     return {}
@@ -231,11 +200,6 @@ export function extractUserFromRequest(req: Request): { userId?: number; userEma
   }
 }
 
-/**
- * Chuẩn hóa thông tin lỗi cho audit log
- * @param error Đối tượng lỗi
- * @returns Thông tin lỗi đã chuẩn hóa
- */
 export function normalizeErrorForAuditLog(error: any): { message: string; details?: Record<string, any> } {
   if (isApiException(error)) {
     return {

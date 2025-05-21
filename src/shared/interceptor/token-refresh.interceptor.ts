@@ -6,10 +6,6 @@ import { Request, Response } from 'express'
 import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
 import { Logger } from '@nestjs/common'
 
-/**
- * Interceptor để tự động làm mới token khi access token hết hạn
- * Giúp người dùng không bị đăng xuất nếu refresh token vẫn còn hiệu lực
- */
 @Injectable()
 export class TokenRefreshInterceptor implements NestInterceptor {
   private readonly logger = new Logger(TokenRefreshInterceptor.name)
@@ -66,14 +62,6 @@ export class TokenRefreshInterceptor implements NestInterceptor {
     )
   }
 
-  /**
-   * Thử làm mới token sử dụng refresh token
-   * @param refreshToken Refresh token để làm mới
-   * @param request Request object
-   * @param response Response object
-   * @param originalError Lỗi ban đầu
-   * @returns Observable với kết quả làm mới token
-   */
   private tryRefreshToken(
     refreshToken: string,
     request: Request

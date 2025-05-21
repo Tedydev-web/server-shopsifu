@@ -31,11 +31,6 @@ export class TokenService {
     private readonly authRepository: AuthRepository
   ) {}
 
-  /**
-   * Tạo và ký access token
-   * @param payload Dữ liệu cần nhúng vào token
-   * @returns Chuỗi JWT đã ký
-   */
   signAccessToken(payload: AccessTokenPayloadCreate) {
     this.logger.debug(`Signing access token for user ${payload.userId}`)
     return this.jwtService.sign(
@@ -48,11 +43,6 @@ export class TokenService {
     )
   }
 
-  /**
-   * Tạo và ký refresh token
-   * @param payload Dữ liệu cần nhúng vào token
-   * @returns Chuỗi JWT đã ký
-   */
   signRefreshToken(payload: RefreshTokenPayloadCreate) {
     this.logger.debug(`Signing refresh token for user ${payload.userId}`)
     return this.jwtService.sign(
@@ -65,12 +55,6 @@ export class TokenService {
     )
   }
 
-  /**
-   * Tạo và ký access token với thời hạn ngắn (10 giây)
-   * Chỉ dùng cho mục đích thử nghiệm
-   * @param payload Dữ liệu cần nhúng vào token
-   * @returns Chuỗi JWT đã ký có thời hạn 10 giây
-   */
   signShortLivedToken(payload: AccessTokenPayloadCreate) {
     this.logger.debug(`Signing short-lived access token for testing purposes: userId=${payload.userId}`)
     return this.jwtService.sign(
@@ -83,53 +67,26 @@ export class TokenService {
     )
   }
 
-  /**
-   * Xác thực access token
-   * @param token Chuỗi JWT cần xác thực
-   * @returns Payload đã giải mã
-   */
   verifyAccessToken(token: string): Promise<AccessTokenPayload> {
     return this.jwtService.verifyAsync(token, {
       secret: envConfig.ACCESS_TOKEN_SECRET
     })
   }
 
-  /**
-   * Xác thực refresh token
-   * @param token Chuỗi JWT cần xác thực
-   * @returns Payload đã giải mã
-   */
   verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
     return this.jwtService.verifyAsync(token, {
       secret: envConfig.REFRESH_TOKEN_SECRET
     })
   }
 
-  /**
-   * Trích xuất access token từ request (cookie hoặc header)
-   * @param req Request object
-   * @returns Token nếu tìm thấy, null nếu không
-   */
   extractTokenFromRequest(req: Request): string | null {
     return req.cookies?.[envConfig.cookie.accessToken.name] || this.extractTokenFromHeader(req)
   }
 
-  /**
-   * Trích xuất refresh token từ request (cookie hoặc body)
-   * @param req Request object
-   * @returns Token nếu tìm thấy, null nếu không
-   */
   extractRefreshTokenFromRequest(req: Request): string | null {
     return req.cookies?.[envConfig.cookie.refreshToken.name] || req.body?.refreshToken
   }
 
-  /**
-   * Đặt cookies cho access token và refresh token
-   * @param res Response object
-   * @param accessToken Access token
-   * @param refreshToken Refresh token
-   * @param maxAgeForRefreshTokenCookie Thời gian sống của refresh token cookie (tùy chọn)
-   */
   setTokenCookies(res: Response, accessToken: string, refreshToken: string, maxAgeForRefreshTokenCookie?: number) {
     const accessTokenConfig = envConfig.cookie.accessToken
     const refreshTokenConfig = envConfig.cookie.refreshToken
@@ -171,10 +128,6 @@ export class TokenService {
     }
   }
 
-  /**
-   * Xóa tất cả token cookies
-   * @param res Response object
-   */
   clearTokenCookies(res: Response) {
     const accessTokenConfig = envConfig.cookie.accessToken
     const refreshTokenConfig = envConfig.cookie.refreshToken
@@ -207,24 +160,11 @@ export class TokenService {
     this.logger.debug('All token cookies cleared successfully')
   }
 
-  /**
-   * Trích xuất token từ Authorization header
-   * @private
-   * @param req Request object
-   * @returns Token nếu tìm thấy, null nếu không
-   */
   private extractTokenFromHeader(req: Request): string | null {
     const [type, token] = req.headers.authorization?.split(' ') || []
     return type === 'Bearer' ? token : null
   }
 
-  /**
-   * Tạo cặp access token và refresh token mới
-   * @param payload Dữ liệu người dùng cần nhúng vào token
-   * @param prismaTx Client transaction Prisma (tùy chọn)
-   * @param rememberMe Có ghi nhớ đăng nhập không (tùy chọn)
-   * @returns Object chứa accessToken, refreshToken và maxAgeForRefreshTokenCookie
-   */
   async generateTokens(
     { userId, deviceId, roleId, roleName }: AccessTokenPayloadCreate,
     prismaTx?: PrismaTransactionClient,
@@ -267,12 +207,6 @@ export class TokenService {
     }
   }
 
-  /**
-   * Tạo refresh token trong cơ sở dữ liệu
-   * @param data Dữ liệu refresh token
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Refresh token đã tạo
-   */
   async createRefreshToken(
     data: { token: string; userId: number; expiresAt: Date; deviceId: number; rememberMe: boolean },
     tx?: PrismaTransactionClient
@@ -282,11 +216,6 @@ export class TokenService {
     return this.authRepository.createRefreshToken(data, client as any)
   }
 
-  /**
-   * Đánh dấu refresh token đã được sử dụng
-   * @param token Token cần đánh dấu
-   * @param tx Client transaction Prisma (tùy chọn)
-   */
   async markRefreshTokenUsed(token: string, tx?: PrismaTransactionClient) {
     this.logger.debug(`Marking refresh token as used: ${token.substring(0, 8)}...`)
     const client = tx || this.prismaService
@@ -305,11 +234,6 @@ export class TokenService {
     }
   }
 
-  /**
-   * Xóa refresh token cụ thể
-   * @param token Token cần xóa
-   * @param tx Client transaction Prisma (tùy chọn)
-   */
   async deleteRefreshToken(token: string, tx?: PrismaTransactionClient) {
     this.logger.debug(`Deleting refresh token: ${token ? token.substring(0, 8) : 'undefined'}...`)
 
@@ -331,11 +255,6 @@ export class TokenService {
     }
   }
 
-  /**
-   * Xóa tất cả refresh token của người dùng
-   * @param userId ID người dùng
-   * @param tx Client transaction Prisma (tùy chọn)
-   */
   async deleteAllRefreshTokens(userId: number, tx?: PrismaTransactionClient) {
     this.logger.debug(`Deleting all refresh tokens for user ${userId}`)
     const client = tx || this.prismaService
@@ -344,12 +263,6 @@ export class TokenService {
     })
   }
 
-  /**
-   * Tìm refresh token trong cơ sở dữ liệu kèm thông tin người dùng và thiết bị
-   * @param token Token cần tìm
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Refresh token kèm thông tin nếu tìm thấy
-   */
   async findRefreshTokenWithUserAndDevice(token: string, tx?: PrismaTransactionClient) {
     this.logger.debug(`Finding refresh token with user and device: ${token.substring(0, 8)}...`)
     const client = tx || this.prismaService
@@ -372,12 +285,6 @@ export class TokenService {
     })
   }
 
-  /**
-   * Tìm refresh token trong cơ sở dữ liệu
-   * @param token Token cần tìm
-   * @param tx Client transaction Prisma (tùy chọn)
-   * @returns Thông tin cơ bản của refresh token nếu tìm thấy
-   */
   async findRefreshToken(token: string, tx?: PrismaTransactionClient) {
     this.logger.debug(`Finding refresh token: ${token.substring(0, 8)}...`)
     const client = tx || this.prismaService
@@ -387,14 +294,6 @@ export class TokenService {
     })
   }
 
-  /**
-   * Làm mới token một cách tự động mà không cần yêu cầu người dùng đăng nhập lại
-   * Được sử dụng bởi TokenRefreshInterceptor để tự động làm mới token khi access token hết hạn
-   * @param refreshToken Refresh token đang có
-   * @param userAgent User-Agent của request hiện tại
-   * @param ip IP của request hiện tại
-   * @returns Token mới nếu thành công
-   */
   async refreshTokenSilently(
     refreshToken: string,
     userAgent: string,
@@ -470,12 +369,6 @@ export class TokenService {
     }
   }
 
-  /**
-   * Tạo fingerprint cơ bản từ user agent để so sánh thiết bị
-   * Lấy thông tin cơ bản về loại thiết bị và trình duyệt
-   * @param userAgent User agent string
-   * @returns Fingerprint cơ bản
-   */
   private basicDeviceFingerprint(userAgent: string): string {
     if (!userAgent) return 'unknown'
 

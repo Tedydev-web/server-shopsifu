@@ -2,7 +2,6 @@ import { z } from 'zod'
 import { InvalidLanguageFormatException } from './language.error'
 import { BasePaginationQuerySchema, createPaginatedResponseSchema } from 'src/shared/models/pagination.model'
 
-// Regex để kiểm tra định dạng language ID (ví dụ: 'en', 'vi', 'en-US')
 const LANGUAGE_ID_REGEX = /^[a-z]{2}(-[A-Z]{2})?$/
 
 export const LanguageSchema = z.object({
@@ -35,7 +34,10 @@ export const GetLanguageParamsSchema = z
 
 export const GetLanguagesQuerySchema = BasePaginationQuerySchema.extend({
   sortBy: z.enum(['id', 'name', 'createdAt', 'updatedAt']).optional().default('id'),
-  includeDeleted: z.coerce.boolean().optional().default(false)
+  includeDeleted: z.coerce.boolean().optional().default(false),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  all: z.coerce.boolean().optional().default(false)
 }).strict()
 
 export const GetLanguageDetailResSchema = LanguageSchema

@@ -13,7 +13,7 @@ import {
   LanguageInUseException
 } from 'src/routes/language/language.error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
-import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/shared/services/audit.service'
+import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
@@ -43,7 +43,7 @@ export class LanguageService {
     const { languages, totalItems } = await this.languageRepo.findAll(query)
 
     const page = query?.page || 1
-    const limit = query?.limit || 10
+    const limit = query?.all ? 1000 : query?.limit || 10
     const totalPages = Math.ceil(totalItems / limit)
 
     return {

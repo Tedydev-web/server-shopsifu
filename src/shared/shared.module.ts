@@ -10,13 +10,13 @@ import { AuthenticationGuard } from 'src/shared/guards/authentication.guard'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { EmailService } from 'src/shared/services/email.service'
 import { TwoFactorService } from 'src/shared/services/2fa.service'
-import { AuditLogService } from './services/audit.service'
 import { OtpService } from './services/otp.service'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { DeviceService } from './services/device.service'
 import { AuditLogInterceptor } from './interceptor/audit-log.interceptor'
 import { TokenRefreshInterceptor } from './interceptor/token-refresh.interceptor'
 import { CacheService } from './services/cache.service'
+import { AuditLogModule } from 'src/routes/audit-log/audit-log.module'
 
 const sharedServices = [
   PrismaService,
@@ -25,7 +25,6 @@ const sharedServices = [
   EmailService,
   SharedUserRepository,
   TwoFactorService,
-  AuditLogService,
   OtpService,
   AuthRepository,
   DeviceService,
@@ -52,6 +51,6 @@ const sharedServices = [
     }
   ],
   exports: sharedServices,
-  imports: [JwtModule]
+  imports: [JwtModule, AuditLogModule]
 })
 export class SharedModule {}

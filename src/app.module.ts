@@ -7,6 +7,7 @@ import { APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
 import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import { LanguageModule } from './routes/language/language.module'
+import { AuditLogModule } from './routes/audit-log/audit-log.module'
 import { SecurityHeadersMiddleware } from './shared/middleware/security-headers.middleware'
 import { CsrfMiddleware } from './shared/middleware/csrf.middleware'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
@@ -18,6 +19,7 @@ import { TokenRefreshInterceptor } from './shared/interceptor/token-refresh.inte
     SharedModule,
     AuthModule,
     LanguageModule,
+    AuditLogModule,
     ThrottlerModule.forRoot([
       {
         name: 'short',

@@ -1,6 +1,6 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
-import { AuditLogService, AuditLogData, AuditLogStatus } from '../services/audit.service'
+import { AuditLogService, AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { REQUEST_USER_KEY } from '../constants/auth.constant'
 import { AccessTokenPayload } from '../types/jwt.type'
 

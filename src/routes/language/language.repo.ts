@@ -9,7 +9,6 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 import { Prisma } from '@prisma/client'
 import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { CacheService } from 'src/shared/services/cache.service'
-import { PaginatedResponseType } from 'src/shared/models/pagination.model'
 
 @Injectable()
 export class LanguageRepo extends BaseRepository<LanguageType> {
@@ -24,24 +23,82 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
     query?: GetLanguagesQueryType,
     prismaClient?: PrismaTransactionClient
   ): Promise<{ languages: LanguageType[]; totalItems: number }> {
-    const { page = 1, limit = 10, sortBy = 'id', sortOrder = 'asc', search = '', includeDeleted = false } = query || {}
+    const {
+      page = 1,
+      limit = 1,
+      sortBy = 'id',
+      sortOrder = 'asc',
+      search = '',
+      includeDeleted = false,
+      startDate,
+      endDate,
+      all = false
+    } = query || {}
 
-    // Tạo cache key dựa trên query params
-    const cacheKey = `languages:list:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${includeDeleted}`
+    const where: any = {}
 
-    // Sử dụng cache cho trường hợp read-heavy
-    const result = await this.cacheService.getOrSet(
-      cacheKey,
-      async () => {
-        return this.paginateQuery<LanguageType>(
-          'language',
-          { page, limit, sortBy, sortOrder, search, includeDeleted },
-          {},
-          {},
-          prismaClient
-        )
+    if (search) {
+      where.OR = this.getSearchableFields().map((field) => ({
+        [field]: { contains: search, mode: 'insensitive' }
+      }))
+    }
+
+    if (!includeDeleted) {
+      where.deletedAt = null
+    }
+
+    if (startDate || endDate) {
+      where.createdAt = {}
+      if (startDate) where.createdAt.gte = new Date(startDate)
+      if (endDate) where.createdAt.lte = new Date(endDate)
+    }
+
+    const shouldCache = !all && limit <= 100
+    const cacheKey = shouldCache
+      ? `languages:list:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${includeDeleted}:${startDate || ''}:${endDate || ''}:${all}`
+      : null
+
+    const effectiveLimit = all ? 1000 : limit
+
+    if (shouldCache && cacheKey) {
+      return this.cacheService.getOrSet(
+        cacheKey,
+        async () => {
+          const result = await this.paginateQuery<LanguageType>(
+            'language',
+            {
+              page,
+              limit: effectiveLimit,
+              sortBy,
+              sortOrder,
+              search
+            },
+            where,
+            {},
+            prismaClient
+          )
+
+          return {
+            languages: result.data,
+            totalItems: result.totalItems
+          }
+        },
+        30000
+      )
+    }
+
+    const result = await this.paginateQuery<LanguageType>(
+      'language',
+      {
+        page,
+        limit: effectiveLimit,
+        sortBy,
+        sortOrder,
+        search
       },
-      30000 // Cache trong 30 giây
+      where,
+      {},
+      prismaClient
     )
 
     return {
@@ -68,7 +125,7 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
         }
         return client.language.findUnique({ where })
       },
-      30000 // Cache trong 30 giây
+      30000
     )
   }
 
@@ -87,7 +144,6 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
       }
     })
 
-    // Invalidate cache sau khi tạo mới
     this.cacheService.invalidate('languages:list')
 
     return result
@@ -120,7 +176,6 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
       }
     })
 
-    // Invalidate cache sau khi cập nhật
     this.cacheService.invalidate(`language:${id}`)
     this.cacheService.invalidate('languages:list')
 
@@ -143,7 +198,6 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
       }
     })
 
-    // Invalidate cache sau khi xóa mềm
     this.cacheService.invalidate(`language:${id}`)
     this.cacheService.invalidate('languages:list')
 
@@ -159,7 +213,6 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
       where: { id }
     })
 
-    // Invalidate cache sau khi xóa cứng
     this.cacheService.invalidate(`language:${id}`)
     this.cacheService.invalidate('languages:list')
 
@@ -184,7 +237,6 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
       }
     })
 
-    // Invalidate cache sau khi khôi phục
     this.cacheService.invalidate(`language:${id}`)
     this.cacheService.invalidate('languages:list')
 
@@ -206,11 +258,10 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
         ])
         return productCount + categoryCount + brandCount
       },
-      60000 // Cache trong 1 phút
+      60000
     )
   }
 
-  // Implement getSearchableFields từ BaseRepository
   protected getSearchableFields(): string[] {
     return ['id', 'name']
   }
