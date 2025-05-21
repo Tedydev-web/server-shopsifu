@@ -25,9 +25,9 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
   ): Promise<{ languages: LanguageType[]; totalItems: number }> {
     const {
       page = 1,
-      limit = 1,
-      sortBy = 'id',
-      sortOrder = 'asc',
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
       search = '',
       includeDeleted = false,
       startDate,

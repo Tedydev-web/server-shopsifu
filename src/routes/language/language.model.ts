@@ -33,7 +33,8 @@ export const GetLanguageParamsSchema = z
   .strict()
 
 export const GetLanguagesQuerySchema = BasePaginationQuerySchema.extend({
-  sortBy: z.enum(['id', 'name', 'createdAt', 'updatedAt']).optional().default('id'),
+  sortBy: z.enum(['id', 'name', 'createdAt', 'updatedAt']).optional().default('createdAt'),
+  sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
   includeDeleted: z.coerce.boolean().optional().default(false),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
