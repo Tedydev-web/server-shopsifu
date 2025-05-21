@@ -1,38 +1,41 @@
 import { HttpStatus } from '@nestjs/common'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 
-export const LanguageAlreadyExistsException = new ApiException(
+function createApiError(
+  status: HttpStatus,
+  errorType: string,
+  errorCode: string,
+  fieldPath?: string,
+  args?: Record<string, any>
+) {
+  return new ApiException(status, errorType, errorCode, [{ code: errorCode, path: fieldPath, args }])
+}
+
+export const LanguageAlreadyExistsException = createApiError(
   HttpStatus.CONFLICT,
-  'RESOURCE_CONFLICT',
+  'ResourceConflict',
   'Error.Language.AlreadyExists',
-  [{ code: 'Error.Language.AlreadyExists', path: 'id' }]
+  'id'
 )
 
 export const LanguageNotFoundException = (languageId: string) =>
-  new ApiException(HttpStatus.NOT_FOUND, 'RESOURCE_NOT_FOUND', 'Error.Language.NotFound', [
-    { code: 'Error.Language.NotFound', path: 'languageId', args: { id: languageId } }
-  ])
+  createApiError(HttpStatus.NOT_FOUND, 'ResourceNotFound', 'Error.Language.NotFound', 'languageId', { id: languageId })
 
 export const LanguageDeletedException = (languageId: string) =>
-  new ApiException(HttpStatus.GONE, 'RESOURCE_DELETED', 'Error.Language.Deleted', [
-    { code: 'Error.Language.Deleted', path: 'languageId', args: { id: languageId } }
-  ])
+  createApiError(HttpStatus.GONE, 'ResourceDeleted', 'Error.Language.Deleted', 'languageId', { id: languageId })
 
 export const LanguageInUseException = (languageId: string) =>
-  new ApiException(HttpStatus.CONFLICT, 'RESOURCE_IN_USE', 'Error.Language.InUse', [
-    { code: 'Error.Language.InUse', path: 'languageId', args: { id: languageId } }
-  ])
+  createApiError(HttpStatus.CONFLICT, 'ResourceInUse', 'Error.Language.InUse', 'languageId', { id: languageId })
 
-export const InvalidLanguageFormatException = new ApiException(
+export const InvalidLanguageFormatException = createApiError(
   HttpStatus.UNPROCESSABLE_ENTITY,
-  'VALIDATION_ERROR',
+  'ValidationError',
   'Error.Language.InvalidFormat',
-  [{ code: 'Error.Language.InvalidFormat', path: 'id' }]
+  'id'
 )
 
-export const LanguageActionForbiddenException = new ApiException(
+export const LanguageActionForbiddenException = createApiError(
   HttpStatus.FORBIDDEN,
-  'FORBIDDEN',
-  'Error.Language.ActionForbidden',
-  [{ code: 'Error.Language.ActionForbidden' }]
+  'Forbidden',
+  'Error.Language.ActionForbidden'
 )

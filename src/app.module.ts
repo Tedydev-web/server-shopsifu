@@ -13,6 +13,7 @@ import { CsrfMiddleware } from './shared/middleware/csrf.middleware'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { LoggerMiddleware } from './shared/middleware/logger.middleware'
 import { TokenRefreshInterceptor } from './shared/interceptor/token-refresh.interceptor'
+import { PermissionModule } from './routes/permission/permission.module'
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { TokenRefreshInterceptor } from './shared/interceptor/token-refresh.inte
     AuthModule,
     LanguageModule,
     AuditLogModule,
+    PermissionModule,
     ThrottlerModule.forRoot([
       {
         name: 'short',
