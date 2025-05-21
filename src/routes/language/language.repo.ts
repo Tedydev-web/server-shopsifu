@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import {
   CreateLanguageBodyType,
   LanguageType,
@@ -7,55 +7,46 @@ import {
 } from 'src/routes/language/language.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { Prisma } from '@prisma/client'
-
-type PrismaTransactionClient = Omit<
-  Prisma.TransactionClient,
-  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
->
+import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
+import { CacheService } from 'src/shared/services/cache.service'
+import { PaginatedResponseType } from 'src/shared/models/pagination.model'
 
 @Injectable()
-export class LanguageRepo {
-  private readonly logger = new Logger(LanguageRepo.name)
-
-  constructor(private readonly prismaService: PrismaService) {}
-
-  private getClient(prismaClient?: PrismaTransactionClient): PrismaTransactionClient | PrismaService {
-    return prismaClient || this.prismaService
+export class LanguageRepo extends BaseRepository<LanguageType> {
+  constructor(
+    protected readonly prismaService: PrismaService,
+    private readonly cacheService: CacheService
+  ) {
+    super(prismaService, LanguageRepo.name)
   }
 
   async findAll(
     query?: GetLanguagesQueryType,
     prismaClient?: PrismaTransactionClient
   ): Promise<{ languages: LanguageType[]; totalItems: number }> {
-    const client = this.getClient(prismaClient)
-
     const { page = 1, limit = 10, sortBy = 'id', sortOrder = 'asc', search = '', includeDeleted = false } = query || {}
 
-    const where: Prisma.LanguageWhereInput = {}
+    // Tạo cache key dựa trên query params
+    const cacheKey = `languages:list:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${includeDeleted}`
 
-    if (!includeDeleted) {
-      where.deletedAt = null
-    }
-
-    if (search) {
-      where.OR = [
-        { id: { contains: search, mode: 'insensitive' } },
-        { name: { contains: search, mode: 'insensitive' } }
-      ]
-    }
-
-    const totalItems = await client.language.count({ where })
-
-    const languages = await client.language.findMany({
-      where,
-      orderBy: { [sortBy]: sortOrder },
-      skip: (page - 1) * limit,
-      take: limit
-    })
+    // Sử dụng cache cho trường hợp read-heavy
+    const result = await this.cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        return this.paginateQuery<LanguageType>(
+          'language',
+          { page, limit, sortBy, sortOrder, search, includeDeleted },
+          {},
+          {},
+          prismaClient
+        )
+      },
+      30000 // Cache trong 30 giây
+    )
 
     return {
-      languages,
-      totalItems
+      languages: result.data,
+      totalItems: result.totalItems
     }
   }
 
@@ -66,15 +57,19 @@ export class LanguageRepo {
   ): Promise<LanguageType | null> {
     const client = this.getClient(prismaClient)
 
-    const where: Prisma.LanguageWhereUniqueInput = { id }
+    const cacheKey = `language:${id}:${includeDeleted}`
 
-    if (!includeDeleted) {
-      where.deletedAt = null
-    }
-
-    return client.language.findUnique({
-      where
-    })
+    return this.cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const where: Prisma.LanguageWhereUniqueInput = { id }
+        if (!includeDeleted) {
+          where.deletedAt = null
+        }
+        return client.language.findUnique({ where })
+      },
+      30000 // Cache trong 30 giây
+    )
   }
 
   async create(
@@ -85,12 +80,17 @@ export class LanguageRepo {
 
     this.logger.debug(`Creating language: ${JSON.stringify(data)}`)
 
-    return client.language.create({
+    const result = await client.language.create({
       data: {
         ...data,
         createdById
       }
     })
+
+    // Invalidate cache sau khi tạo mới
+    this.cacheService.invalidate('languages:list')
+
+    return result
   }
 
   async update(
@@ -109,7 +109,7 @@ export class LanguageRepo {
 
     this.logger.debug(`Updating language ${id}: ${JSON.stringify(data)}`)
 
-    return client.language.update({
+    const result = await client.language.update({
       where: {
         id,
         deletedAt: null
@@ -119,6 +119,12 @@ export class LanguageRepo {
         updatedById
       }
     })
+
+    // Invalidate cache sau khi cập nhật
+    this.cacheService.invalidate(`language:${id}`)
+    this.cacheService.invalidate('languages:list')
+
+    return result
   }
 
   async softDelete(id: string, deletedById: number, prismaClient?: PrismaTransactionClient): Promise<LanguageType> {
@@ -126,7 +132,7 @@ export class LanguageRepo {
 
     this.logger.debug(`Soft deleting language: ${id}`)
 
-    return client.language.update({
+    const result = await client.language.update({
       where: {
         id,
         deletedAt: null
@@ -136,6 +142,12 @@ export class LanguageRepo {
         updatedById: deletedById
       }
     })
+
+    // Invalidate cache sau khi xóa mềm
+    this.cacheService.invalidate(`language:${id}`)
+    this.cacheService.invalidate('languages:list')
+
+    return result
   }
 
   async hardDelete(id: string, prismaClient?: PrismaTransactionClient): Promise<LanguageType> {
@@ -143,9 +155,15 @@ export class LanguageRepo {
 
     this.logger.debug(`Hard deleting language: ${id}`)
 
-    return client.language.delete({
+    const result = await client.language.delete({
       where: { id }
     })
+
+    // Invalidate cache sau khi xóa cứng
+    this.cacheService.invalidate(`language:${id}`)
+    this.cacheService.invalidate('languages:list')
+
+    return result
   }
 
   async restore(id: string, updatedById: number, prismaClient?: PrismaTransactionClient): Promise<LanguageType> {
@@ -153,7 +171,7 @@ export class LanguageRepo {
 
     this.logger.debug(`Restoring language: ${id}`)
 
-    return client.language.update({
+    const result = await client.language.update({
       where: {
         id,
         NOT: {
@@ -165,17 +183,35 @@ export class LanguageRepo {
         updatedById
       }
     })
+
+    // Invalidate cache sau khi khôi phục
+    this.cacheService.invalidate(`language:${id}`)
+    this.cacheService.invalidate('languages:list')
+
+    return result
   }
 
   async countReferences(id: string, prismaClient?: PrismaTransactionClient): Promise<number> {
     const client = this.getClient(prismaClient)
 
-    const [productCount, categoryCount, brandCount] = await Promise.all([
-      client.productTranslation.count({ where: { languageId: id } }),
-      client.categoryTranslation.count({ where: { languageId: id } }),
-      client.brandTranslation.count({ where: { languageId: id } })
-    ])
+    const cacheKey = `language:${id}:references`
 
-    return productCount + categoryCount + brandCount
+    return this.cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const [productCount, categoryCount, brandCount] = await Promise.all([
+          client.productTranslation.count({ where: { languageId: id } }),
+          client.categoryTranslation.count({ where: { languageId: id } }),
+          client.brandTranslation.count({ where: { languageId: id } })
+        ])
+        return productCount + categoryCount + brandCount
+      },
+      60000 // Cache trong 1 phút
+    )
+  }
+
+  // Implement getSearchableFields từ BaseRepository
+  protected getSearchableFields(): string[] {
+    return ['id', 'name']
   }
 }

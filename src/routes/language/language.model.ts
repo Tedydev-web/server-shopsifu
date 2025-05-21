@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { InvalidLanguageFormatException } from './language.error'
+import { BasePaginationQuerySchema, createPaginatedResponseSchema } from 'src/shared/models/pagination.model'
 
 // Regex để kiểm tra định dạng language ID (ví dụ: 'en', 'vi', 'en-US')
 const LANGUAGE_ID_REGEX = /^[a-z]{2}(-[A-Z]{2})?$/
@@ -19,13 +20,7 @@ export const LanguageSchema = z.object({
   updatedAt: z.date()
 })
 
-export const GetLanguagesResSchema = z.object({
-  data: z.array(LanguageSchema),
-  totalItems: z.number(),
-  page: z.number().optional(),
-  limit: z.number().optional(),
-  totalPages: z.number().optional()
-})
+export const GetLanguagesResSchema = createPaginatedResponseSchema(LanguageSchema)
 
 export const GetLanguageParamsSchema = z
   .object({
@@ -38,16 +33,10 @@ export const GetLanguageParamsSchema = z
   })
   .strict()
 
-export const GetLanguagesQuerySchema = z
-  .object({
-    page: z.coerce.number().int().positive().optional().default(1),
-    limit: z.coerce.number().int().positive().max(100).optional().default(10),
-    sortBy: z.enum(['id', 'name', 'createdAt', 'updatedAt']).optional().default('id'),
-    sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
-    search: z.string().optional(),
-    includeDeleted: z.coerce.boolean().optional().default(false)
-  })
-  .strict()
+export const GetLanguagesQuerySchema = BasePaginationQuerySchema.extend({
+  sortBy: z.enum(['id', 'name', 'createdAt', 'updatedAt']).optional().default('id'),
+  includeDeleted: z.coerce.boolean().optional().default(false)
+}).strict()
 
 export const GetLanguageDetailResSchema = LanguageSchema
 

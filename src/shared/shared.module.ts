@@ -16,6 +16,7 @@ import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { DeviceService } from './services/device.service'
 import { AuditLogInterceptor } from './interceptor/audit-log.interceptor'
 import { TokenRefreshInterceptor } from './interceptor/token-refresh.interceptor'
+import { CacheService } from './services/cache.service'
 
 const sharedServices = [
   PrismaService,
@@ -27,7 +28,8 @@ const sharedServices = [
   AuditLogService,
   OtpService,
   AuthRepository,
-  DeviceService
+  DeviceService,
+  CacheService
 ]
 
 @Global()

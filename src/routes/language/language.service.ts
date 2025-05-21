@@ -17,6 +17,7 @@ import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/shared/servic
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
+import { PaginatedResponseType } from 'src/shared/models/pagination.model'
 
 @Injectable()
 export class LanguageService {
@@ -36,13 +37,7 @@ export class LanguageService {
       itemCount: result.data.length
     })
   })
-  async findAll(query?: GetLanguagesQueryType): Promise<{
-    data: LanguageType[]
-    totalItems: number
-    page?: number
-    limit?: number
-    totalPages?: number
-  }> {
+  async findAll(query?: GetLanguagesQueryType): Promise<PaginatedResponseType<LanguageType>> {
     this.logger.debug(`Finding all languages with query: ${JSON.stringify(query)}`)
 
     const { languages, totalItems } = await this.languageRepo.findAll(query)
