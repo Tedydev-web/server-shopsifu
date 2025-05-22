@@ -7,8 +7,7 @@ import envConfig from 'src/shared/config'
 import {
   AbsoluteSessionLifetimeExceededException,
   DeviceMissingSessionCreationTimeException,
-  InvalidDeviceException,
-  ReAuthenticationRequiredException
+  InvalidDeviceException
 } from 'src/routes/auth/auth.error'
 import { AuditLogService } from 'src/routes/audit-log/audit-log.service'
 import { ApiException } from '../exceptions/api.exception'
@@ -97,25 +96,6 @@ export class AccessTokenGuard implements CanActivate {
         throw DeviceMissingSessionCreationTimeException
       }
 
-      // 2. Check Re-authentication After Inactivity
-      const timeSinceLastActiveMs = new Date().getTime() - new Date(device.lastActive).getTime()
-      if (timeSinceLastActiveMs > envConfig.MAX_SESSION_INACTIVITY_MS) {
-        this.auditLogService.recordAsync({
-          action: 'ACCESS_TOKEN_GUARD_DENY',
-          userId,
-          status: 'FAILURE' as any,
-          ipAddress: request.ip,
-          userAgent: request.headers['user-agent'],
-          errorMessage: `Re-authentication required due to inactivity. Device ID: ${deviceId}. Last active: ${device.lastActive.toISOString()}`,
-          details: {
-            reason: 'RE_AUTHENTICATION_REQUIRED_INACTIVITY',
-            deviceId,
-            lastActive: device.lastActive.toISOString()
-          }
-        })
-        throw ReAuthenticationRequiredException
-      }
-
       // If we reach here, all checks passed.
       // We are NOT updating device.lastActive here to avoid excessive DB writes on every request.
       // lastActive is updated during login, token refresh, etc.
@@ -126,7 +106,6 @@ export class AccessTokenGuard implements CanActivate {
         error instanceof ApiException &&
         (error.message === AbsoluteSessionLifetimeExceededException.message ||
           error.message === DeviceMissingSessionCreationTimeException.message ||
-          error.message === ReAuthenticationRequiredException.message ||
           error.message === InvalidDeviceException.message)
       ) {
         throw error

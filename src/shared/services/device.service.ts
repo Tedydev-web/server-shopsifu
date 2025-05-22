@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
 import { Prisma, PrismaClient, Device } from '@prisma/client'
-import { DeviceType } from 'src/routes/auth/auth.model'
 import { DeviceSetupFailedException } from 'src/routes/auth/auth.error'
 import { AuditLog } from '../decorators/audit-log.decorator'
 import { AuditLogService } from 'src/routes/audit-log/audit-log.service'
 import { isUniqueConstraintPrismaError, isNotFoundPrismaError } from '../utils/type-guards.utils'
+import envConfig from 'src/shared/config'
 
 type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -24,15 +24,12 @@ export class DeviceService {
   @AuditLog({
     action: 'DEVICE_CREATE',
     entity: 'Device',
-    getUserId: (args) => args[0]?.userId,
+    getUserId: (args) => args[0]?.user?.connect?.id,
     getEntityId: (_, result) => result?.id,
     getDetails: (args) => ({ userAgent: args[0]?.userAgent, ip: args[0]?.ip })
   })
-  async createDevice(
-    data: Pick<DeviceType, 'userId' | 'userAgent' | 'ip'> & Partial<Pick<DeviceType, 'lastActive' | 'isActive'>>,
-    tx?: PrismaTransactionClient
-  ): Promise<Device> {
-    this.logger.debug(`Creating new device for user ${data.userId}`)
+  async createDevice(data: Prisma.DeviceCreateInput, tx?: PrismaTransactionClient): Promise<Device> {
+    this.logger.debug(`Creating new device for user ${data.user?.connect?.id}`)
     const client = tx || this.prismaService
 
     return client.device.create({
@@ -40,7 +37,7 @@ export class DeviceService {
     })
   }
 
-  async updateDevice(deviceId: number, data: Partial<DeviceType>, tx?: PrismaTransactionClient): Promise<Device> {
+  async updateDevice(deviceId: number, data: Prisma.DeviceUpdateInput, tx?: PrismaTransactionClient): Promise<Device> {
     this.logger.debug(`Updating device ${deviceId}`)
     const client = tx || this.prismaService
 
@@ -88,7 +85,7 @@ export class DeviceService {
     getDetails: (args, result) => ({
       userAgent: args[0]?.userAgent,
       ip: args[0]?.ip,
-      isNewDevice: result?.createdAt === result?.lastActive
+      isNewDevice: result?.createdAt.getTime() === result?.lastActive.getTime()
     }),
     getErrorDetails: (args) => ({
       userAgent: args[0]?.userAgent,
@@ -96,7 +93,7 @@ export class DeviceService {
     })
   })
   async findOrCreateDevice(
-    data: Pick<DeviceType, 'userId' | 'userAgent' | 'ip'>,
+    data: { userId: number; userAgent: string; ip: string },
     tx?: PrismaTransactionClient
   ): Promise<Device> {
     try {
@@ -109,14 +106,23 @@ export class DeviceService {
         this.logger.debug(
           `Found existing device ${existingDevice.id} for user ${data.userId}, updating last active timestamp`
         )
-        const updatedDevice = await this.updateDevice(
-          existingDevice.id,
-          {
-            ip: data.ip,
-            lastActive: new Date()
-          },
-          client
-        )
+        const updateData: Prisma.DeviceUpdateInput = {
+          ip: data.ip,
+          lastActive: new Date()
+        }
+
+        // Check if absolute session lifetime has been exceeded
+        if (existingDevice.sessionCreatedAt && envConfig.ABSOLUTE_SESSION_LIFETIME_MS > 0) {
+          const sessionAgeMs = new Date().getTime() - new Date(existingDevice.sessionCreatedAt).getTime()
+          if (sessionAgeMs > envConfig.ABSOLUTE_SESSION_LIFETIME_MS) {
+            this.logger.warn(
+              `Device ${existingDevice.id} for user ${data.userId} exceeded absolute session lifetime. Resetting sessionCreatedAt.`
+            )
+            updateData.sessionCreatedAt = new Date() // Reset session lifetime
+          }
+        }
+
+        const updatedDevice = await this.updateDevice(existingDevice.id, updateData, client)
 
         this.auditLogService.recordAsync({
           action: 'DEVICE_UPDATE',
@@ -136,7 +142,15 @@ export class DeviceService {
       }
 
       this.logger.debug(`No matching device found for user ${data.userId}, creating new device`)
-      const newDevice = await this.createDevice(data, client)
+      const newDevice = await this.createDevice(
+        {
+          user: { connect: { id: data.userId } },
+          userAgent: data.userAgent,
+          ip: data.ip,
+          sessionCreatedAt: new Date() // Ensure new devices also get sessionCreatedAt
+        },
+        client
+      )
 
       this.auditLogService.recordAsync({
         action: 'DEVICE_CREATE',
@@ -304,5 +318,47 @@ export class DeviceService {
     })
 
     return device?.userId === userId
+  }
+
+  @AuditLog({
+    action: 'DEVICE_TRUST',
+    entity: 'Device',
+    getUserId: (args) => args[1], // userId is the second argument
+    getEntityId: (args) => args[0], // deviceId is the first argument
+    getDetails: (args) => ({ deviceId: args[0], userId: args[1] })
+  })
+  async trustDevice(deviceId: number, userId: number, tx?: PrismaTransactionClient): Promise<Device> {
+    this.logger.debug(`Trusting device ${deviceId} for user ${userId}`)
+    const client = tx || this.prismaService
+
+    const device = await this.findDeviceById(deviceId, client)
+    if (!device) {
+      this.logger.warn(`Device ${deviceId} not found when trying to trust.`)
+      throw new Error(`Device with ID ${deviceId} not found.`)
+    }
+
+    if (device.userId !== userId) {
+      this.logger.warn(
+        `User ${userId} attempted to trust device ${deviceId} not belonging to them (belongs to user ${device.userId}).`
+      )
+      throw new Error(`Device does not belong to user.`)
+    }
+
+    return this.updateDevice(deviceId, { isTrusted: true }, client)
+  }
+
+  isSessionValid(device: Device): boolean {
+    if (!device.sessionCreatedAt || envConfig.ABSOLUTE_SESSION_LIFETIME_MS <= 0) {
+      // If no session creation time or no absolute lifetime configured, session is considered valid (or handled by other means)
+      return true
+    }
+    const sessionAgeMs = new Date().getTime() - new Date(device.sessionCreatedAt).getTime()
+    const isValid = sessionAgeMs <= envConfig.ABSOLUTE_SESSION_LIFETIME_MS
+    if (!isValid) {
+      this.logger.warn(
+        `Device ${device.id} for user ${device.userId} session created at ${device.sessionCreatedAt} has exceeded absolute lifetime of ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}ms.`
+      )
+    }
+    return isValid
   }
 }

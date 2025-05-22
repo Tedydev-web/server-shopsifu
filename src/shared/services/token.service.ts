@@ -1,12 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import envConfig from 'src/shared/config'
-import {
-  AccessTokenPayload,
-  AccessTokenPayloadCreate,
-  RefreshTokenPayload,
-  RefreshTokenPayloadCreate
-} from 'src/shared/types/jwt.type'
+import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import { v4 as uuidv4 } from 'uuid'
 import { Request, Response } from 'express'
 import { PrismaService } from './prisma.service'
@@ -43,18 +38,6 @@ export class TokenService {
     )
   }
 
-  signRefreshToken(payload: RefreshTokenPayloadCreate) {
-    this.logger.debug(`Signing refresh token for user ${payload.userId}`)
-    return this.jwtService.sign(
-      { ...payload, uuid: uuidv4() },
-      {
-        secret: envConfig.REFRESH_TOKEN_SECRET,
-        expiresIn: envConfig.REFRESH_TOKEN_EXPIRES_IN,
-        algorithm: 'HS256'
-      }
-    )
-  }
-
   signShortLivedToken(payload: AccessTokenPayloadCreate) {
     this.logger.debug(`Signing short-lived access token for testing purposes: userId=${payload.userId}`)
     return this.jwtService.sign(
@@ -70,12 +53,6 @@ export class TokenService {
   verifyAccessToken(token: string): Promise<AccessTokenPayload> {
     return this.jwtService.verifyAsync(token, {
       secret: envConfig.ACCESS_TOKEN_SECRET
-    })
-  }
-
-  verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
-    return this.jwtService.verifyAsync(token, {
-      secret: envConfig.REFRESH_TOKEN_SECRET
     })
   }
 
@@ -260,6 +237,14 @@ export class TokenService {
     const client = tx || this.prismaService
     await client.refreshToken.deleteMany({
       where: { userId }
+    })
+  }
+
+  async deleteAllRefreshTokensForDevice(deviceId: number, tx?: PrismaTransactionClient) {
+    this.logger.debug(`Deleting all refresh tokens for device ${deviceId}`)
+    const client = tx || this.prismaService
+    await client.refreshToken.deleteMany({
+      where: { deviceId }
     })
   }
 

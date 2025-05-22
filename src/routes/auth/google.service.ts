@@ -27,19 +27,22 @@ export class GoogleService {
       envConfig.GOOGLE_REDIRECT_URI
     )
   }
-  getAuthorizationUrl({ userAgent, ip }: GoogleAuthStateType) {
+  getAuthorizationUrl({ userAgent, ip, rememberMe }: GoogleAuthStateType & { rememberMe?: boolean }) {
     const scope = ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email']
-    const stateString = Buffer.from(
-      JSON.stringify({
-        userAgent,
-        ip
-      })
-    ).toString('base64')
+    const stateObject: GoogleAuthStateType & { rememberMe?: boolean } = {
+      userAgent,
+      ip
+    }
+    if (rememberMe !== undefined) {
+      stateObject.rememberMe = rememberMe
+    }
+    const stateString = Buffer.from(JSON.stringify(stateObject)).toString('base64')
     const url = this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope,
       include_granted_scopes: true,
-      state: stateString
+      state: stateString,
+      prompt: 'select_account'
     })
     return { url }
   }
@@ -54,12 +57,16 @@ export class GoogleService {
     userAgent?: string
     ip?: string
   }) {
+    let rememberMe: boolean | undefined = undefined
     try {
       try {
         if (state) {
-          const clientInfo = JSON.parse(Buffer.from(state, 'base64').toString()) as GoogleAuthStateType
+          const clientInfo = JSON.parse(Buffer.from(state, 'base64').toString()) as GoogleAuthStateType & {
+            rememberMe?: boolean
+          }
           userAgent = clientInfo.userAgent || userAgent
           ip = clientInfo.ip || ip
+          rememberMe = clientInfo.rememberMe
         }
       } catch (error) {
         console.error('Error parsing state', error)
@@ -97,18 +104,74 @@ export class GoogleService {
         throw new Error('Không thể tạo hoặc tìm thấy người dùng')
       }
 
-      const device = await this.deviceService.createDevice({
+      const device = await this.deviceService.findOrCreateDevice({
         userId: user.id,
         userAgent,
         ip
       })
 
-      const authTokens = await this.authService.generateTokens({
-        userId: user.id,
-        deviceId: device.id,
-        roleId: user.roleId,
-        roleName: user.role.name
-      })
+      // Kiểm tra session hợp lệ
+      if (!this.deviceService.isSessionValid(device)) {
+        // Nếu session không hợp lệ, không cần 2FA, client nên xử lý như một lỗi đăng nhập
+        // hoặc yêu cầu đăng nhập lại. Chúng ta sẽ không cấp token.
+        // Có thể throw một lỗi cụ thể ở đây nếu cần.
+        console.warn(
+          `[GoogleService googleCallback] Absolute session lifetime exceeded for user ${user.id}, device ${device.id}.`
+        )
+        // Để đơn giản, ở đây sẽ throw lỗi chung, client sẽ redirect về trang lỗi/login
+        throw new Error('Error.Auth.Session.AbsoluteLifetimeExceeded')
+      }
+
+      // Kiểm tra 2FA
+      if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod) {
+        if (device.isTrusted) {
+          // Thiết bị tin cậy và session hợp lệ, bỏ qua 2FA
+          console.debug(
+            `[GoogleService googleCallback] Device ${device.id} is trusted for user ${user.id}. Skipping 2FA.`
+          )
+        } else {
+          // Thiết bị không tin cậy, yêu cầu 2FA
+          const loginSessionToken = await this.authService.createLoginSessionToken({
+            email: user.email,
+            userId: user.id,
+            deviceId: device.id,
+            rememberMe: rememberMe
+          })
+          return {
+            message: 'Auth.Login.2FARequired',
+            loginSessionToken: loginSessionToken,
+            twoFactorMethod: user.twoFactorMethod,
+            isGoogleAuth: true,
+            askToTrustDevice: true // Gợi ý cho client
+          }
+        }
+      }
+
+      const authTokens = await this.authService.generateTokens(
+        {
+          userId: user.id,
+          deviceId: device.id,
+          roleId: user.roleId,
+          roleName: user.role.name
+        },
+        undefined, // Không có transaction client ở đây
+        rememberMe
+      )
+
+      // Nếu người dùng chọn "Remember Me" và thiết bị chưa được tin cậy
+      if (rememberMe && !device.isTrusted) {
+        try {
+          await this.deviceService.trustDevice(device.id, user.id)
+          console.debug(
+            `[GoogleService googleCallback] Device ${device.id} trusted for user ${user.id} due to rememberMe selection.`
+          )
+        } catch (trustError) {
+          console.error(
+            `[GoogleService googleCallback] Failed to trust device ${device.id} for user ${user.id}`,
+            trustError
+          )
+        }
+      }
 
       return {
         userId: user.id,

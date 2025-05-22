@@ -10,11 +10,12 @@ export interface AccessTokenPayload extends AccessTokenPayloadCreate {
   iat: number
 }
 
-export interface RefreshTokenPayloadCreate {
-  userId: number
-}
+// Removed RefreshTokenPayloadCreate and RefreshTokenPayload as Refresh Tokens are UUIDs, not JWTs
+// export interface RefreshTokenPayloadCreate {
+//   userId: number
+// }
 
-export interface RefreshTokenPayload extends RefreshTokenPayloadCreate {
-  exp: number
-  iat: number
-}
+// export interface RefreshTokenPayload extends RefreshTokenPayloadCreate {
+//   exp: number
+//   iat: number
+// }

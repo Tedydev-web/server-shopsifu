@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Req, Res } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Req, Res, Logger } from '@nestjs/common'
 import { Response, Request } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
@@ -32,11 +32,12 @@ import { EmptyBodyDTO } from 'src/shared/dtos/request.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { TokenService } from 'src/shared/services/token.service'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
-import { Logger } from '@nestjs/common'
 import { CookieNames } from 'src/shared/constants/auth.constant'
 
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name)
+
   constructor(
     private readonly authService: AuthService,
     private readonly googleService: GoogleService,
@@ -142,10 +143,12 @@ export class AuthController {
   @IsPublic()
   @ZodSerializerDto(GetAuthorizationUrlResDTO)
   @SkipThrottle()
-  getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string) {
+  getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string, @Query('rememberMe') rememberMe?: string) {
+    const shouldRemember = rememberMe === 'true'
     return this.googleService.getAuthorizationUrl({
       userAgent,
-      ip
+      ip,
+      rememberMe: shouldRemember
     })
   }
 
@@ -173,10 +176,31 @@ export class AuthController {
         ip
       })
 
-      this.tokenService.setTokenCookies(res, data.accessToken, data.refreshToken)
+      // Nếu googleCallback trả về loginSessionToken, nghĩa là cần 2FA
+      if ('loginSessionToken' in data && data.loginSessionToken) {
+        const queryParams = new URLSearchParams({
+          twoFactorRequired: 'true',
+          loginSessionToken: data.loginSessionToken,
+          twoFactorMethod: data.twoFactorMethod as string
+        })
+        if (data.isGoogleAuth) {
+          queryParams.set('source', 'google')
+        }
+        return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?${queryParams.toString()}`)
+      }
 
+      // Nếu không cần 2FA, data sẽ chứa accessToken và refreshToken
+      if ('accessToken' in data && data.accessToken && 'refreshToken' in data && data.refreshToken) {
+        this.tokenService.setTokenCookies(res, data.accessToken, data.refreshToken)
+        return res.redirect(
+          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true&name=${encodeURIComponent(data.name || '')}&email=${encodeURIComponent(data.email || '')}`
+        )
+      }
+
+      // Trường hợp không mong muốn
+      this.logger.error('[AuthController googleCallback] Unexpected data structure from GoogleService', data)
       return res.redirect(
-        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true&name=${encodeURIComponent(data.name || '')}&email=${encodeURIComponent(data.email || '')}`
+        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=internal_error&errorMessage=${encodeURIComponent('Lỗi không xác định từ máy chủ.')}`
       )
     } catch (error) {
       console.error('Google OAuth callback error:', error)

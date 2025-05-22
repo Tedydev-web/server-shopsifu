@@ -176,6 +176,7 @@ model Device {
   createdAt          DateTime            @default(now())
   sessionCreatedAt   DateTime            @default(now())
   isActive           Boolean             @default(true)
+  isTrusted          Boolean             @default(false)
   refreshTokens      RefreshToken[]
   verificationTokens VerificationToken[]
 }

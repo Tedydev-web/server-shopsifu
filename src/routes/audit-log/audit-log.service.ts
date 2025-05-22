@@ -58,11 +58,16 @@ export class AuditLogService {
   }
 
   async findAll(query: AuditLogQueryType): Promise<PaginatedResponseType<AuditLogType>> {
-    await this.record({
-      action: 'AUDIT_LOG_VIEW_LIST',
-      status: AuditLogStatus.SUCCESS,
-      details: { query }
-    })
+    try {
+      await this.record({
+        action: 'AUDIT_LOG_VIEW_LIST',
+        status: AuditLogStatus.SUCCESS,
+        details: { query }
+      })
+    } catch (error) {
+      this.logger.error('Failed to record audit log during findAll', error.stack)
+      // Không ném lại lỗi để không làm gián đoạn chức năng chính của findAll
+    }
 
     return this.auditLogRepository.findAll(query)
   }
@@ -70,12 +75,17 @@ export class AuditLogService {
   async findById(id: number): Promise<AuditLogType | null> {
     const log = await this.auditLogRepository.findById(id)
 
-    await this.record({
-      action: 'AUDIT_LOG_VIEW_DETAIL',
-      entity: 'AuditLog',
-      entityId: id,
-      status: AuditLogStatus.SUCCESS
-    })
+    try {
+      await this.record({
+        action: 'AUDIT_LOG_VIEW_DETAIL',
+        entity: 'AuditLog',
+        entityId: id,
+        status: AuditLogStatus.SUCCESS
+      })
+    } catch (error) {
+      this.logger.error('Failed to record audit log during findById', error.stack)
+      // Không ném lại lỗi để không làm gián đoạn chức năng chính của findById
+    }
 
     return log
   }

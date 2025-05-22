@@ -39,7 +39,6 @@ const configSchema = z.object({
   CSRF_SECRET: z.string(), // Secret specifically for CSRF token generation and verification by csurf
   REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN: z.string().default('14d'),
   ABSOLUTE_SESSION_LIFETIME: z.string().default('30d'),
-  MAX_SESSION_INACTIVITY: z.string().default('30m'),
   API_HOST_URL: z.string(),
   API_LOCAL_URL: z.string(),
   FRONTEND_HOST_URL: z.string(),
@@ -92,7 +91,6 @@ const envConfig = {
   REFRESH_TOKEN_COOKIE_MAX_AGE: ms(parsedConfig.REFRESH_TOKEN_EXPIRES_IN),
   REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE: ms(parsedConfig.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN),
   ABSOLUTE_SESSION_LIFETIME_MS: ms(parsedConfig.ABSOLUTE_SESSION_LIFETIME),
-  MAX_SESSION_INACTIVITY_MS: ms(parsedConfig.MAX_SESSION_INACTIVITY),
 
   cookie: {
     accessToken: {

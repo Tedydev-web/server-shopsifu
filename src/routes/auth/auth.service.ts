@@ -3,7 +3,6 @@ import { addMilliseconds } from 'date-fns'
 import {
   DisableTwoFactorBodyType,
   LoginBodyType,
-  RefreshTokenBodyType,
   RegisterBodyType,
   ResetPasswordBodyType,
   SendOTPBodyType,
@@ -39,7 +38,8 @@ import {
   DeviceMismatchException,
   InvalidDeviceException,
   DeviceSetupFailedException,
-  DeviceAssociationFailedException
+  DeviceAssociationFailedException,
+  AbsoluteSessionLifetimeExceededException
 } from 'src/routes/auth/auth.error'
 import { TwoFactorService } from 'src/shared/services/2fa.service'
 import { v4 as uuidv4 } from 'uuid'
@@ -47,7 +47,7 @@ import envConfig from 'src/shared/config'
 import { Response } from 'express'
 import { Request } from 'express'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { Prisma, VerificationToken as PrismaVerificationToken } from '@prisma/client'
+import { Prisma, VerificationToken as PrismaVerificationToken, Device } from '@prisma/client'
 import { TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
 import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
@@ -291,53 +291,9 @@ export class AuthService {
           throw InvalidPasswordException
         }
 
-        if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod) {
-          const otpToken = uuidv4()
-          let deviceId: number | undefined = undefined
-          try {
-            const device = await this.deviceService.findOrCreateDevice(
-              {
-                userId: user.id,
-                userAgent: body.userAgent,
-                ip: body.ip
-              },
-              tx as any
-            )
-            deviceId = device.id
-            auditLogEntry.details.deviceId = deviceId
-            auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
-          } catch (error) {
-            console.error('[DEBUG AuthService login - 2FA flow] Error creating/finding device:', error)
-            auditLogEntry.errorMessage = DeviceSetupFailedException.message
-            auditLogEntry.details.deviceError = 'DeviceSetupFailed'
-            throw DeviceSetupFailedException
-          }
-
-          await this.authRepository.createVerificationToken(
-            {
-              token: otpToken,
-              email: user.email,
-              type: TypeOfVerificationCode.LOGIN_2FA,
-              tokenType: TokenType.OTP,
-              userId: user.id,
-              deviceId,
-              metadata: JSON.stringify({ rememberMe: body.rememberMe }),
-              expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
-            },
-            tx
-          )
-          auditLogEntry.status = AuditLogStatus.SUCCESS
-          auditLogEntry.notes = '2FA required'
-          return {
-            message: 'Auth.Login.2FARequired',
-            loginSessionToken: otpToken,
-            twoFactorMethod: user.twoFactorMethod
-          }
-        }
-
-        let deviceId: number | undefined
+        let device: Device
         try {
-          const device = await this.deviceService.findOrCreateDevice(
+          device = await this.deviceService.findOrCreateDevice(
             {
               userId: user.id,
               userAgent: body.userAgent,
@@ -345,27 +301,60 @@ export class AuthService {
             },
             tx as any
           )
-          deviceId = device.id
-          auditLogEntry.details.deviceId = deviceId
-          auditLogEntry.details.twoFactorFlow = false
+          auditLogEntry.details.deviceId = device.id
         } catch (error) {
-          console.error('[DEBUG AuthService login - Direct login] Error creating/finding device:', error)
+          console.error('[DEBUG AuthService login] Error creating/finding device:', error)
           auditLogEntry.errorMessage = DeviceSetupFailedException.message
           auditLogEntry.details.deviceError = 'DeviceSetupFailed'
           throw DeviceSetupFailedException
         }
 
-        if (!deviceId) {
-          console.error('[DEBUG AuthService login - Direct login] Device ID is undefined after creation attempt.')
-          auditLogEntry.errorMessage = 'Device ID is undefined after creation attempt (direct login)'
-          auditLogEntry.details.deviceError = 'DeviceIDUndefined'
-          throw DeviceSetupFailedException
+        if (!this.deviceService.isSessionValid(device)) {
+          this.logger.warn(
+            `[SECURITY AuthService login] Absolute session lifetime exceeded for user ${user.id}, device ${device.id}. Forcing re-login.`
+          )
+          await this.tokenService.deleteAllRefreshTokensForDevice(device.id, tx as any)
+          auditLogEntry.errorMessage = AbsoluteSessionLifetimeExceededException.message
+          auditLogEntry.details.reason = 'ABSOLUTE_SESSION_LIFETIME_EXCEEDED_LOGIN'
+          auditLogEntry.notes = `All refresh tokens for device ${device.id} invalidated due to absolute session lifetime exceeded during login.`
+          throw AbsoluteSessionLifetimeExceededException
+        }
+
+        if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod) {
+          auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
+          if (device.isTrusted) {
+            this.logger.debug(`Device ${device.id} is trusted for user ${user.id}. Skipping 2FA.`)
+            auditLogEntry.notes = '2FA skipped: Trusted device.'
+          } else {
+            const otpToken = uuidv4()
+            await this.authRepository.createVerificationToken(
+              {
+                token: otpToken,
+                email: user.email,
+                type: TypeOfVerificationCode.LOGIN_2FA,
+                tokenType: TokenType.OTP,
+                userId: user.id,
+                deviceId: device.id,
+                metadata: JSON.stringify({ rememberMe: body.rememberMe }),
+                expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
+              },
+              tx
+            )
+            auditLogEntry.status = AuditLogStatus.SUCCESS
+            auditLogEntry.notes = '2FA required: Device not trusted.'
+            return {
+              message: 'Auth.Login.2FARequired',
+              loginSessionToken: otpToken,
+              twoFactorMethod: user.twoFactorMethod,
+              askToTrustDevice: true
+            }
+          }
         }
 
         const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.generateTokens(
           {
             userId: user.id,
-            deviceId: deviceId,
+            deviceId: device.id,
             roleId: user.roleId,
             roleName: user.role.name
           },
@@ -379,6 +368,18 @@ export class AuthService {
           console.warn(
             '[DEBUG AuthService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
           )
+        }
+
+        // Nếu người dùng chọn "Remember Me" và thiết bị chưa được tin cậy, hãy tin cậy nó
+        if (body.rememberMe && !device.isTrusted) {
+          try {
+            await this.deviceService.trustDevice(device.id, user.id, tx as any)
+            auditLogEntry.notes = (auditLogEntry.notes ? auditLogEntry.notes + '; ' : '') + 'Device trusted.'
+            this.logger.debug(`Device ${device.id} trusted for user ${user.id} due to rememberMe selection.`)
+          } catch (trustError) {
+            this.logger.error(`Failed to trust device ${device.id} for user ${user.id}`, trustError)
+            auditLogEntry.notes = (auditLogEntry.notes ? auditLogEntry.notes + '; ' : '') + 'Failed to trust device.'
+          }
         }
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
@@ -481,13 +482,13 @@ export class AuthService {
             this.logger.warn(
               `[SECURITY AuthService refreshToken] Absolute session lifetime exceeded for user ${existingRefreshToken.userId}, device ${existingRefreshToken.deviceId}. Session created at: ${existingRefreshToken.device.sessionCreatedAt}`
             )
-            await this.tokenService.deleteAllRefreshTokens(existingRefreshToken.userId, tx as any)
+            await this.tokenService.deleteAllRefreshTokensForDevice(existingRefreshToken.deviceId, tx as any)
             if (res) {
               this.tokenService.clearTokenCookies(res)
             }
             auditLogEntry.errorMessage = 'Error.Auth.Session.AbsoluteLifetimeExceeded'
             auditLogEntry.details.reason = 'ABSOLUTE_SESSION_LIFETIME_EXCEEDED'
-            auditLogEntry.notes = 'All user tokens invalidated due to absolute session lifetime exceeded.'
+            auditLogEntry.notes = `All refresh tokens for device ${existingRefreshToken.deviceId} invalidated due to absolute session lifetime exceeded.`
             throw new ApiException(
               HttpStatus.UNAUTHORIZED,
               'Unauthenticated',
@@ -499,13 +500,13 @@ export class AuthService {
           this.logger.warn(
             `[SECURITY AuthService refreshToken] Device ${existingRefreshToken.deviceId} for user ${existingRefreshToken.userId} is missing sessionCreatedAt. Forcing re-authentication.`
           )
-          await this.tokenService.deleteAllRefreshTokens(existingRefreshToken.userId, tx as any)
+          await this.tokenService.deleteAllRefreshTokensForDevice(existingRefreshToken.deviceId, tx as any)
           if (res) {
             this.tokenService.clearTokenCookies(res)
           }
           auditLogEntry.errorMessage = 'Error.Auth.Device.MissingSessionCreationTime'
           auditLogEntry.details.reason = 'DEVICE_MISSING_SESSION_CREATION_TIME'
-          auditLogEntry.notes = 'All user tokens invalidated due to missing session creation time on device.'
+          auditLogEntry.notes = `All refresh tokens for device ${existingRefreshToken.deviceId} invalidated due to missing session creation time on device.`
           throw new ApiException(
             HttpStatus.UNAUTHORIZED,
             'Unauthenticated',
@@ -605,6 +606,31 @@ export class AuthService {
 
         if (res) {
           this.tokenService.setTokenCookies(res, newAccessToken, newRefreshTokenString, maxAgeForRefreshTokenCookie)
+        }
+
+        // Nếu người dùng chọn "Remember Me" (từ loginSessionToken) và thiết bị chưa được tin cậy, hãy tin cậy nó
+        if (shouldRememberUser && currentDeviceId && !deviceFromRefreshToken?.isTrusted) {
+          try {
+            // Cần lấy lại thông tin device đầy đủ nếu deviceFromRefreshToken không có sẵn hoặc không đủ tin cậy
+            const currentDevice = await this.deviceService.findDeviceById(currentDeviceId, tx as any)
+            if (currentDevice && !currentDevice.isTrusted) {
+              await this.deviceService.trustDevice(currentDeviceId, userFromRefreshToken.id, tx as any)
+              auditLogEntry.notes =
+                (auditLogEntry.notes ? auditLogEntry.notes + '; ' : '') + 'Device trusted after 2FA.'
+              this.logger.debug(
+                `Device ${currentDeviceId} trusted for user ${userFromRefreshToken.id} after 2FA due to rememberMe selection.`
+              )
+            } else if (currentDevice && currentDevice.isTrusted) {
+              this.logger.debug(`Device ${currentDeviceId} was already trusted for user ${userFromRefreshToken.id}.`)
+            }
+          } catch (trustError) {
+            this.logger.error(
+              `Failed to trust device ${currentDeviceId} for user ${userFromRefreshToken.id} after 2FA`,
+              trustError
+            )
+            auditLogEntry.notes =
+              (auditLogEntry.notes ? auditLogEntry.notes + '; ' : '') + 'Failed to trust device after 2FA.'
+          }
         }
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
@@ -1214,6 +1240,31 @@ export class AuthService {
         if (res) {
           this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
         }
+
+        // Nếu người dùng chọn "Remember Me" (từ loginSessionToken) và thiết bị chưa được tin cậy, hãy tin cậy nó
+        if (rememberMe && verificationToken.deviceId) {
+          try {
+            const deviceForTrustCheck = await this.deviceService.findDeviceById(verificationToken.deviceId, tx as any)
+            if (deviceForTrustCheck && !deviceForTrustCheck.isTrusted) {
+              await this.deviceService.trustDevice(verificationToken.deviceId, user.id, tx as any)
+              auditLogEntry.notes =
+                (auditLogEntry.notes ? auditLogEntry.notes + '; ' : '') + 'Device trusted after 2FA.'
+              this.logger.debug(
+                `Device ${verificationToken.deviceId} trusted for user ${user.id} after 2FA due to rememberMe selection.`
+              )
+            } else if (deviceForTrustCheck && deviceForTrustCheck.isTrusted) {
+              this.logger.debug(`Device ${verificationToken.deviceId} was already trusted for user ${user.id}.`)
+            }
+          } catch (trustError) {
+            this.logger.error(
+              `Failed to trust device ${verificationToken.deviceId} for user ${user.id} after 2FA`,
+              trustError
+            )
+            auditLogEntry.notes =
+              (auditLogEntry.notes ? auditLogEntry.notes + '; ' : '') + 'Failed to trust device after 2FA.'
+          }
+        }
+
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.action = '2FA_VERIFY_SUCCESS'
         auditLogEntry.details.rememberMeApplied = rememberMe
@@ -1237,5 +1288,41 @@ export class AuthService {
       await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
+  }
+
+  async createLoginSessionToken(
+    {
+      email,
+      userId,
+      deviceId,
+      rememberMe
+    }: {
+      email: string
+      userId: number
+      deviceId: number
+      rememberMe?: boolean
+    },
+    tx?: Prisma.TransactionClient
+  ): Promise<string> {
+    const otpToken = uuidv4()
+    const metadata: Record<string, any> = {}
+    if (rememberMe !== undefined) {
+      metadata.rememberMe = rememberMe
+    }
+
+    await this.authRepository.createVerificationToken(
+      {
+        token: otpToken,
+        email,
+        userId,
+        deviceId,
+        type: TypeOfVerificationCode.LOGIN_2FA,
+        tokenType: TokenType.OTP,
+        metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : undefined,
+        expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
+      },
+      tx
+    )
+    return otpToken
   }
 }

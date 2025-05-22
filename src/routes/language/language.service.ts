@@ -138,17 +138,24 @@ export class LanguageService {
 
       return newLanguage
     } catch (error) {
-      auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during language creation'
+      if (!auditLogEntry.errorMessage) {
+        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during language creation'
+      }
+
       if (error instanceof ApiException) {
-        auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        if (auditLogEntry.errorMessage === 'Unknown error during language creation') {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
+        throw error
       } else if (isUniqueConstraintPrismaError(error)) {
         auditLogEntry.details.reason = 'LANGUAGE_ID_ALREADY_EXISTS'
         auditLogEntry.errorMessage = LanguageAlreadyExistsException.message
         await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw LanguageAlreadyExistsException
       }
+
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw error
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
 
@@ -216,15 +223,22 @@ export class LanguageService {
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
         auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during language update'
-        if (error instanceof ApiException) {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        } else if (isNotFoundPrismaError(error)) {
-          auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_PRISMA_ERROR'
-          auditLogEntry.errorMessage = LanguageNotFoundException(id).message
-        }
       }
+
+      if (error instanceof ApiException) {
+        if (auditLogEntry.errorMessage === 'Unknown error during language update') {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
+        throw error
+      } else if (isNotFoundPrismaError(error)) {
+        auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_PRISMA_ERROR'
+        auditLogEntry.errorMessage = LanguageNotFoundException(id).message
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw LanguageNotFoundException(id)
+      }
+
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw error
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
 
@@ -292,15 +306,22 @@ export class LanguageService {
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
         auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during language delete'
-        if (error instanceof ApiException) {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        } else if (isNotFoundPrismaError(error)) {
-          auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_PRISMA_ERROR'
-          auditLogEntry.errorMessage = LanguageNotFoundException(id).message
-        }
       }
+
+      if (error instanceof ApiException) {
+        if (auditLogEntry.errorMessage === 'Unknown error during language delete') {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
+        throw error
+      } else if (isNotFoundPrismaError(error)) {
+        auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_PRISMA_ERROR'
+        auditLogEntry.errorMessage = LanguageNotFoundException(id).message
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw LanguageNotFoundException(id)
+      }
+
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw error
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
 
@@ -353,12 +374,22 @@ export class LanguageService {
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
         auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during language restore'
-        if (error instanceof ApiException) {
+      }
+
+      if (error instanceof ApiException) {
+        if (auditLogEntry.errorMessage === 'Unknown error during language restore') {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
+        throw error
+      } else if (isNotFoundPrismaError(error)) {
+        auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_PRISMA_ERROR_ON_RESTORE'
+        auditLogEntry.errorMessage = LanguageNotFoundException(id).message
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw LanguageNotFoundException(id)
       }
+
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw error
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
 }

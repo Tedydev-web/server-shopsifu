@@ -149,14 +149,18 @@ export class PermissionService {
       auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during permission creation'
       if (error instanceof ApiException) {
         auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        // Không ghi log ở đây, để hàm gọi ghi log
+        throw error
       } else if (isUniqueConstraintPrismaError(error)) {
         auditLogEntry.details.reason = 'PATH_METHOD_COMBINATION_EXISTS'
         auditLogEntry.errorMessage = PathMethodCombinationExistsException.message
         await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw PathMethodCombinationExistsException
       }
+      // Ghi log cho các lỗi chưa được xử lý cụ thể
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw error
+      // Ném một lỗi chung nếu không phải là các lỗi đã được xử lý ở trên
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
 
@@ -240,18 +244,31 @@ export class PermissionService {
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
         auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during permission update'
-        if (error instanceof ApiException) {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        } else if (isNotFoundPrismaError(error)) {
-          auditLogEntry.details.reason = 'PERMISSION_NOT_FOUND_PRISMA_ERROR'
-          auditLogEntry.errorMessage = PermissionNotFoundException(id).message
-        } else if (isUniqueConstraintPrismaError(error)) {
-          auditLogEntry.details.reason = 'PATH_METHOD_COMBINATION_EXISTS'
-          auditLogEntry.errorMessage = PathMethodCombinationExistsException.message
-        }
       }
+
+      if (error instanceof ApiException) {
+        // Nếu đã là ApiException, ghi log và ném lại
+        if (!auditLogEntry.errorMessage || auditLogEntry.errorMessage === 'Unknown error during permission update') {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw error
+      } else if (isNotFoundPrismaError(error)) {
+        auditLogEntry.details.reason = 'PERMISSION_NOT_FOUND_PRISMA_ERROR'
+        auditLogEntry.errorMessage = PermissionNotFoundException(id).message
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw PermissionNotFoundException(id)
+      } else if (isUniqueConstraintPrismaError(error)) {
+        auditLogEntry.details.reason = 'PATH_METHOD_COMBINATION_EXISTS'
+        auditLogEntry.errorMessage = PathMethodCombinationExistsException.message
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw PathMethodCombinationExistsException
+      }
+
+      // Ghi log cho các lỗi không mong muốn khác
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw error
+      // Ném một lỗi chung nếu không phải là các lỗi đã được xử lý ở trên
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
 
@@ -294,12 +311,11 @@ export class PermissionService {
           throw PermissionNotFoundException(id)
         }
 
-        // Kiểm tra xem permission có đang được sử dụng bởi role nào không
-        const rolesCount = await this.permissionRepo.countRoles(id, tx)
-        if (rolesCount > 0) {
+        const roleCount = await this.permissionRepo.countRoles(id, tx)
+        if (roleCount > 0) {
           auditLogEntry.errorMessage = PermissionInUseException(id).message
           auditLogEntry.details.reason = 'PERMISSION_IN_USE'
-          auditLogEntry.details.rolesCount = rolesCount
+          auditLogEntry.details.roleCount = roleCount
           throw PermissionInUseException(id)
         }
 
@@ -320,15 +336,23 @@ export class PermissionService {
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
         auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during permission delete'
-        if (error instanceof ApiException) {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        } else if (isNotFoundPrismaError(error)) {
-          auditLogEntry.details.reason = 'PERMISSION_NOT_FOUND_PRISMA_ERROR'
-          auditLogEntry.errorMessage = PermissionNotFoundException(id).message
-        }
       }
+
+      if (error instanceof ApiException) {
+        if (!auditLogEntry.errorMessage || auditLogEntry.errorMessage === 'Unknown error during permission delete') {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw error
+      } else if (isNotFoundPrismaError(error)) {
+        auditLogEntry.details.reason = 'PERMISSION_NOT_FOUND_PRISMA_ERROR'
+        auditLogEntry.errorMessage = PermissionNotFoundException(id).message
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw PermissionNotFoundException(id)
+      }
+
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw error
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
 
@@ -370,20 +394,6 @@ export class PermissionService {
           ])
         }
 
-        // Kiểm tra xem đã tồn tại permission với path và method giống nhau chưa
-        const existingPermission = await this.permissionRepo.findByPathAndMethod(
-          deletedPermission.path,
-          deletedPermission.method,
-          false,
-          tx
-        )
-
-        if (existingPermission) {
-          auditLogEntry.details.reason = 'PATH_METHOD_COMBINATION_EXISTS'
-          auditLogEntry.errorMessage = PathMethodCombinationExistsException.message
-          throw PathMethodCombinationExistsException
-        }
-
         return this.permissionRepo.restore(id, updatedById, tx)
       })
 
@@ -395,12 +405,23 @@ export class PermissionService {
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
         auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during permission restore'
-        if (error instanceof ApiException) {
+      }
+
+      if (error instanceof ApiException) {
+        if (!auditLogEntry.errorMessage || auditLogEntry.errorMessage === 'Unknown error during permission restore') {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw error
+      } else if (isNotFoundPrismaError(error)) {
+        auditLogEntry.details.reason = 'PERMISSION_NOT_FOUND_PRISMA_ERROR'
+        auditLogEntry.errorMessage = PermissionNotFoundException(id).message
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw PermissionNotFoundException(id)
       }
+
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw error
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
 }
