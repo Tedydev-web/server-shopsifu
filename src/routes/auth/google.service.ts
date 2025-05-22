@@ -116,7 +116,7 @@ export class GoogleService {
         // hoặc yêu cầu đăng nhập lại. Chúng ta sẽ không cấp token.
         // Có thể throw một lỗi cụ thể ở đây nếu cần.
         console.warn(
-          `[GoogleService googleCallback] Absolute session lifetime exceeded for user ${user.id}, device ${device.id}.`
+          `[GoogleService googleCallback] Absolute session lifetime exceeded for user ${String(user.id)}, device ${String(device.id)}.`
         )
         // Để đơn giản, ở đây sẽ throw lỗi chung, client sẽ redirect về trang lỗi/login
         throw new Error('Error.Auth.Session.AbsoluteLifetimeExceeded')
@@ -127,7 +127,7 @@ export class GoogleService {
         if (device.isTrusted) {
           // Thiết bị tin cậy và session hợp lệ, bỏ qua 2FA
           console.debug(
-            `[GoogleService googleCallback] Device ${device.id} is trusted for user ${user.id}. Skipping 2FA.`
+            `[GoogleService googleCallback] Device ${String(device.id)} is trusted for user ${String(user.id)}. Skipping 2FA.`
           )
         } else {
           // Thiết bị không tin cậy, yêu cầu 2FA
@@ -163,11 +163,11 @@ export class GoogleService {
         try {
           await this.deviceService.trustDevice(device.id, user.id)
           console.debug(
-            `[GoogleService googleCallback] Device ${device.id} trusted for user ${user.id} due to rememberMe selection.`
+            `[GoogleService googleCallback] Device ${String(device.id)} trusted for user ${String(user.id)} due to rememberMe selection.`
           )
         } catch (trustError) {
           console.error(
-            `[GoogleService googleCallback] Failed to trust device ${device.id} for user ${user.id}`,
+            `[GoogleService googleCallback] Failed to trust device ${String(device.id)} for user ${String(user.id)}`,
             trustError
           )
         }
