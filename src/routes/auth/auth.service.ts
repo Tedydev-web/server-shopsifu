@@ -474,6 +474,46 @@ export class AuthService {
           originalTokenExpiresAt: existingRefreshToken.expiresAt
         }
 
+        // >>> START ABSOLUTE SESSION LIFETIME CHECK
+        if (existingRefreshToken.device && existingRefreshToken.device.sessionCreatedAt) {
+          const sessionAgeMs = new Date().getTime() - new Date(existingRefreshToken.device.sessionCreatedAt).getTime()
+          if (sessionAgeMs > envConfig.ABSOLUTE_SESSION_LIFETIME_MS) {
+            this.logger.warn(
+              `[SECURITY AuthService refreshToken] Absolute session lifetime exceeded for user ${existingRefreshToken.userId}, device ${existingRefreshToken.deviceId}. Session created at: ${existingRefreshToken.device.sessionCreatedAt}`
+            )
+            await this.tokenService.deleteAllRefreshTokens(existingRefreshToken.userId, tx as any)
+            if (res) {
+              this.tokenService.clearTokenCookies(res)
+            }
+            auditLogEntry.errorMessage = 'Error.Auth.Session.AbsoluteLifetimeExceeded'
+            auditLogEntry.details.reason = 'ABSOLUTE_SESSION_LIFETIME_EXCEEDED'
+            auditLogEntry.notes = 'All user tokens invalidated due to absolute session lifetime exceeded.'
+            throw new ApiException(
+              HttpStatus.UNAUTHORIZED,
+              'Unauthenticated',
+              'Error.Auth.Session.AbsoluteLifetimeExceeded'
+            )
+          }
+        } else if (existingRefreshToken.device) {
+          // This case should ideally not happen if all new devices get sessionCreatedAt
+          this.logger.warn(
+            `[SECURITY AuthService refreshToken] Device ${existingRefreshToken.deviceId} for user ${existingRefreshToken.userId} is missing sessionCreatedAt. Forcing re-authentication.`
+          )
+          await this.tokenService.deleteAllRefreshTokens(existingRefreshToken.userId, tx as any)
+          if (res) {
+            this.tokenService.clearTokenCookies(res)
+          }
+          auditLogEntry.errorMessage = 'Error.Auth.Device.MissingSessionCreationTime'
+          auditLogEntry.details.reason = 'DEVICE_MISSING_SESSION_CREATION_TIME'
+          auditLogEntry.notes = 'All user tokens invalidated due to missing session creation time on device.'
+          throw new ApiException(
+            HttpStatus.UNAUTHORIZED,
+            'Unauthenticated',
+            'Error.Auth.Device.MissingSessionCreationTime'
+          )
+        }
+        // <<< END ABSOLUTE SESSION LIFETIME CHECK
+
         try {
           await this.tokenService.markRefreshTokenUsed(tokenToUse, tx as any)
         } catch (error) {

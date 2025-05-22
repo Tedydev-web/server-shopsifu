@@ -205,3 +205,15 @@ export const GoogleUserInfoException = createApiError(
   'Error.Auth.Google.UserInfoFailed',
   'googleApi'
 )
+
+export const AbsoluteSessionLifetimeExceededException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Session.AbsoluteLifetimeExceeded'
+)
+
+export const DeviceMissingSessionCreationTimeException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Device.MissingSessionCreationTime'
+)

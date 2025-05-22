@@ -174,6 +174,7 @@ model Device {
   ip                 String
   lastActive         DateTime            @updatedAt
   createdAt          DateTime            @default(now())
+  sessionCreatedAt   DateTime            @default(now())
   isActive           Boolean             @default(true)
   refreshTokens      RefreshToken[]
   verificationTokens VerificationToken[]
