@@ -25,6 +25,22 @@ export class AuthRepository {
     return prismaClient || this.prismaService
   }
 
+  // Helper function, similar to the one in TokenService
+  private basicDeviceFingerprint(userAgent: string | null | undefined): string {
+    const uaToProcess = userAgent || '' // Normalize null, undefined to empty string
+
+    const lowerUserAgent = uaToProcess.toLowerCase()
+    const isMobile = /mobile|android|iphone|ipad|ipod/i.test(lowerUserAgent)
+    const browserMatch = lowerUserAgent.match(/(chrome|safari|firefox|edge|opera|trident|msie)\/?[\\s]*([\\d.]+)/i)
+    const osMatch = lowerUserAgent.match(/(windows|mac|linux|android|ios|iphone|ipad)\\s*([\\d.]*)/i)
+
+    const deviceType = isMobile ? 'mobile' : 'desktop'
+    const browser = browserMatch ? browserMatch[1].toLowerCase() : 'unknown'
+    const os = osMatch ? osMatch[1].toLowerCase() : 'unknown'
+
+    return `${deviceType}-${os}-${browser}`
+  }
+
   async createUser(
     user: Pick<UserType, 'email' | 'name' | 'password' | 'phoneNumber' | 'roleId'>,
     prismaClient?: PrismaTransactionClient
@@ -349,7 +365,9 @@ export class AuthRepository {
       return false
     }
 
-    const isUserAgentMatched = device.userAgent === userAgent
+    const currentFingerprint = this.basicDeviceFingerprint(userAgent)
+    const storedFingerprint = this.basicDeviceFingerprint(device.userAgent)
+    const isFingerprintMatched = currentFingerprint === storedFingerprint
 
     await this.updateDevice(
       deviceId,
@@ -360,7 +378,7 @@ export class AuthRepository {
       client as PrismaTransactionClient
     )
 
-    return isUserAgentMatched
+    return isFingerprintMatched
   }
 
   async createManyRecoveryCodes(

@@ -412,11 +412,7 @@ export class AuthService {
     return this.tokenService.generateTokens({ userId, deviceId, roleId, roleName }, prismaTx as any, rememberMe)
   }
 
-  async refreshToken(
-    { refreshToken, userAgent, ip }: RefreshTokenBodyType & { userAgent: string; ip: string },
-    req?: Request,
-    res?: Response
-  ) {
+  async refreshToken({ userAgent, ip }: { userAgent: string; ip: string }, req: Request, res?: Response) {
     const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
       action: 'REFRESH_TOKEN_ATTEMPT',
       ipAddress: ip,
@@ -427,7 +423,7 @@ export class AuthService {
 
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
-        const tokenToUse = refreshToken || (req && req.cookies && req.cookies[CookieNames.REFRESH_TOKEN])
+        const tokenToUse = req?.cookies?.[CookieNames.REFRESH_TOKEN]
         auditLogEntry.details.tokenProvidedInRequest = !!tokenToUse
 
         if (!tokenToUse) {
@@ -594,7 +590,7 @@ export class AuthService {
     }
   }
 
-  async logout(refreshTokenInput?: string, req?: Request, res?: Response) {
+  async logout(req: Request, res: Response) {
     const auditLogEntry: {
       action: string
       status: AuditLogStatus
@@ -623,25 +619,13 @@ export class AuthService {
 
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
-        const tokenFromBody = refreshTokenInput
         const tokenFromCookie = req?.cookies?.[CookieNames.REFRESH_TOKEN]
 
         auditLogEntry.details = {
-          tokenProvidedInBody: !!tokenFromBody,
           tokenFoundInCookie: !!tokenFromCookie
         }
 
-        if (tokenFromBody) {
-          try {
-            await this.tokenService.deleteRefreshToken(tokenFromBody, tx as any)
-            auditLogEntry.details.tokenBodyDeleted = true
-          } catch (error) {
-            this.logger.warn(`Error deleting refresh token from body: ${error.message}`)
-            auditLogEntry.details.tokenBodyDeleteError = error.message
-          }
-        }
-
-        if (tokenFromCookie && tokenFromCookie !== tokenFromBody) {
+        if (tokenFromCookie) {
           try {
             await this.tokenService.deleteRefreshToken(tokenFromCookie, tx as any)
             auditLogEntry.details.tokenCookieDeleted = true

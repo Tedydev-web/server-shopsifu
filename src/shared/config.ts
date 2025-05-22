@@ -34,9 +34,9 @@ const configSchema = z.object({
   APP_NAME: z.string().default('Shopsifu'),
   LOGIN_SESSION_TOKEN_EXPIRES_IN: z.string().default('15m'),
   OTP_TOKEN_EXPIRES_IN: z.string().default('15m'),
-  COOKIE_SECRET: z.string(),
+  COOKIE_SECRET: z.string(), // Used for signing cookies, including the CSRF secret cookie if not overridden
   COOKIE_ROOT_DOMAIN: z.string().optional(),
-  CSRF_SECRET: z.string(),
+  CSRF_SECRET: z.string(), // Secret specifically for CSRF token generation and verification by csurf
   REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN: z.string().default('14d'),
   API_HOST_URL: z.string(),
   API_LOCAL_URL: z.string(),

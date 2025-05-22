@@ -1,18 +1,17 @@
-import { Controller, Get, Query, Param, HttpStatus, ParseIntPipe } from '@nestjs/common'
+import { Controller, Get, Query, Param, HttpStatus, ParseIntPipe, UseGuards } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { SkipThrottle } from '@nestjs/throttler'
-import { Auth } from 'src/shared/decorators/auth.decorator'
-import { AuthType } from 'src/shared/constants/auth.constant'
-import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+
 import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
+import { Roles } from 'src/shared/decorators/roles.decorator'
+import { RolesGuard } from 'src/shared/guards/roles.guard'
 
 import { AuditLogService } from './audit-log.service'
 import { AuditLogQueryDTO, AuditLogResponseDTO } from './audit-log.dto'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { RoleName } from 'src/shared/constants/role.constant'
 
 @Controller('audit-logs')
-@Auth([AuthType.Bearer])
+@UseGuards(RolesGuard)
 export class AuditLogController {
   constructor(private readonly auditLogService: AuditLogService) {}
 
@@ -24,11 +23,8 @@ export class AuditLogController {
     getUserId: ([_, _query, _param, req]) => req?.user?.userId,
     getDetails: ([_, query]) => ({ query })
   })
-  findAll(@Query() query: AuditLogQueryDTO, @ActiveUser('roleName') roleName: string) {
-    if (roleName !== RoleName.Admin) {
-      throw new ApiException(HttpStatus.FORBIDDEN, 'FORBIDDEN', 'Error.AuditLog.AccessDenied')
-    }
-
+  @Roles('Admin')
+  findAll(@Query() query: AuditLogQueryDTO) {
     return this.auditLogService.findAll(query)
   }
 
@@ -38,31 +34,22 @@ export class AuditLogController {
     action: 'AUDIT_LOG_VIEW_STATS',
     getUserId: ([_, _query, _param, req]) => req?.user?.userId
   })
-  getStats(@ActiveUser('roleName') roleName: string) {
-    if (roleName !== RoleName.Admin) {
-      throw new ApiException(HttpStatus.FORBIDDEN, 'FORBIDDEN', 'Error.AuditLog.AccessDenied')
-    }
-
+  @Roles('Admin')
+  getStats() {
     return this.auditLogService.getStats()
   }
 
   @Get('actions')
   @SkipThrottle()
-  getActions(@ActiveUser('roleName') roleName: string) {
-    if (roleName !== RoleName.Admin) {
-      throw new ApiException(HttpStatus.FORBIDDEN, 'FORBIDDEN', 'Error.AuditLog.AccessDenied')
-    }
-
+  @Roles('Admin')
+  getActions() {
     return this.auditLogService.getDistinctActions()
   }
 
   @Get('entities')
   @SkipThrottle()
-  getEntities(@ActiveUser('roleName') roleName: string) {
-    if (roleName !== RoleName.Admin) {
-      throw new ApiException(HttpStatus.FORBIDDEN, 'FORBIDDEN', 'Error.AuditLog.AccessDenied')
-    }
-
+  @Roles('Admin')
+  getEntities() {
     return this.auditLogService.getDistinctEntities()
   }
 
@@ -74,11 +61,8 @@ export class AuditLogController {
     getEntityId: ([params]) => Number(params?.id),
     getUserId: ([_, _query, _param, req]) => req?.user?.userId
   })
-  async findOne(@Param('id', ParseIntPipe) id: number, @ActiveUser('roleName') roleName: string) {
-    if (roleName !== RoleName.Admin) {
-      throw new ApiException(HttpStatus.FORBIDDEN, 'FORBIDDEN', 'Error.AuditLog.AccessDenied')
-    }
-
+  @Roles('Admin')
+  async findOne(@Param('id', ParseIntPipe) id: number) {
     const log = await this.auditLogService.findById(id)
 
     if (!log) {

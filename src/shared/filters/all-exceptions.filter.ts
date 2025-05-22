@@ -4,6 +4,7 @@ import { ZodError } from 'zod'
 import { ZodValidationException, ZodSerializationException } from 'nestjs-zod'
 import { ApiException } from '../exceptions/api.exception'
 import { v4 as uuidv4 } from 'uuid'
+import envConfig from '../config'
 
 interface DetailedErrorItem {
   field?: string
@@ -49,26 +50,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
       httpStatus = exception.getStatus()
       errorCode = exception.errorCode
       message = exception.message
-      console.log('ApiException details:', JSON.stringify(exception.details))
 
-      errors = exception.details.map((detail) => {
-        let field = detail.path || ''
-        if (!field && detail.code) {
-          const codeParts = detail.code.split('.')
-          if (codeParts.length >= 3) {
-            field = codeParts[2].toLowerCase()
-          }
-        }
+      errors = exception.details.map((detail) => ({
+        field: detail.path || '',
+        message: detail.code,
+        args: detail.args
+      }))
 
-        return {
-          field,
-          message: detail.code
-        }
-      })
-
-      console.log('Mapped errors:', JSON.stringify(errors))
-      if (errors.length === 0) {
-        errors = [{ field: '', message: exception.message }]
+      if (errors.length === 0 && message) {
+        errors = [{ field: '', message }]
       }
     } else if (exception instanceof ZodValidationException) {
       httpStatus = HttpStatus.UNPROCESSABLE_ENTITY
@@ -103,9 +93,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
             if (typeof detailError === 'string') {
               return { field: '', message: detailError }
             }
-            const i18nKey = `Error.Validation.${detailError.path}.${detailError.code}`
+            const fieldPath = detailError.property || detailError.path || ''
+            const constraintKeys = detailError.constraints ? Object.keys(detailError.constraints) : []
+            const firstConstraintKey = constraintKeys.length > 0 ? constraintKeys[0] : 'invalid'
+            const i18nKey = `Error.Validation.${fieldPath ? fieldPath + '.' : ''}${firstConstraintKey}`
             return {
-              field: detailError.path || '',
+              field: fieldPath,
               message: i18nKey
             }
           })
@@ -115,13 +108,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
       } else {
         message = `Error.Global.Http.${httpStatus}`
       }
+      if (errors.length === 0) {
+        errors = [{ field: '', message }]
+      }
     } else {
       message = 'Error.Global.InternalServerError'
       errors = [{ field: '', message: 'Error.Global.InternalServerError' }]
     }
 
+    const errorBaseUrl = envConfig.NODE_ENV === 'production' ? envConfig.API_HOST_URL : envConfig.API_LOCAL_URL
+
     const responseBody: ErrorResponse = {
-      type: `https://api.shopsifu.live/errors/${errorCode.toLowerCase().replace(/_/g, '-')}`,
+      type: `${errorBaseUrl}/errors/${errorCode.toLowerCase().replace(/_/g, '-')}`,
       title: this.mapHttpStatusToText(httpStatus),
       status: httpStatus,
       timestamp,

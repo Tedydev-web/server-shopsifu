@@ -4,6 +4,8 @@ export const RoleName = {
   Seller: 'SELLER'
 } as const
 
+export type RoleNameValue = (typeof RoleName)[keyof typeof RoleName]
+
 export const HTTPMethod = {
   GET: 'GET',
   POST: 'POST',

@@ -85,7 +85,7 @@ export class CsrfMiddleware implements NestMiddleware {
 
   private csrfTokenExtractor(req: Request): string {
     this.logger.debug(`CSRF Extractor - Attempting to extract token for: ${req.method} ${req.path}`)
-    const tokenFromHeader = req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()] || req.headers['x-csrf-token']
+    const tokenFromHeader = req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()]
     const tokenFromBodyOrQuery = req.body?._csrf || req.query?._csrf
 
     let token = tokenFromHeader || tokenFromBodyOrQuery

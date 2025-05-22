@@ -89,11 +89,7 @@ export const VerifyCodeResSchema = z.object({
   otpToken: z.string()
 })
 
-export const RefreshTokenBodySchema = z
-  .object({
-    refreshToken: z.string()
-  })
-  .strict()
+export const RefreshTokenBodySchema = z.object({}).strict()
 
 export const AccessTokenResSchema = z.object({
   accessToken: z.string()
@@ -131,11 +127,7 @@ export const RoleSchema = z.object({
   updatedAt: z.date()
 })
 
-export const LogoutBodySchema = z
-  .object({
-    refreshToken: z.string().optional()
-  })
-  .strict()
+export const LogoutBodySchema = z.object({}).strict()
 
 export const GoogleAuthStateSchema = DeviceSchema.pick({
   userAgent: true,

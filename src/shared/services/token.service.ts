@@ -370,6 +370,10 @@ export class TokenService {
   }
 
   private basicDeviceFingerprint(userAgent: string): string {
+    // This function creates a very basic fingerprint of the client device
+    // based on the User-Agent string. It's not foolproof and can be spoofed,
+    // but serves as a simple check to detect significant changes in client environment
+    // (e.g., switching from a mobile browser to a desktop browser) during token refresh.
     if (!userAgent) return 'unknown'
 
     const isMobile = /mobile|android|iphone|ipad|ipod/i.test(userAgent.toLowerCase())

@@ -105,7 +105,7 @@ export class AuthController {
   @ZodSerializerDto(RefreshTokenResDTO)
   @Throttle({ medium: { limit: 10, ttl: 60000 } })
   refreshToken(
-    @Body() body: RefreshTokenBodyDTO,
+    @Body() _: RefreshTokenBodyDTO,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
     @Req() req: Request,
@@ -113,7 +113,6 @@ export class AuthController {
   ) {
     return this.authService.refreshToken(
       {
-        refreshToken: body.refreshToken,
         userAgent,
         ip
       },
@@ -126,23 +125,17 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
   @Throttle({ short: { limit: 5, ttl: 10000 } })
-  logout(@Body() body: LogoutBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  logout(@Body() _: LogoutBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const logger = new Logger('AuthController')
 
-    if (!body.refreshToken) {
-      logger.log('Không tìm thấy refreshToken trong body, sẽ cố gắng sử dụng token từ cookie')
-
-      const cookieToken = req.cookies?.[CookieNames.REFRESH_TOKEN]
-      if (cookieToken) {
-        logger.log('Tìm thấy refreshToken trong cookie, sẽ sử dụng để đăng xuất')
-      } else {
-        logger.log('Không tìm thấy refreshToken trong cookie, sẽ chỉ xóa cookie hiện tại')
-      }
+    const cookieToken = req.cookies?.[CookieNames.REFRESH_TOKEN]
+    if (cookieToken) {
+      logger.log('Tìm thấy refreshToken trong cookie, sẽ sử dụng để đăng xuất')
     } else {
-      logger.log('Sử dụng refreshToken từ body để đăng xuất')
+      logger.log('Không tìm thấy refreshToken trong cookie, sẽ chỉ xóa cookie hiện tại')
     }
 
-    return this.authService.logout(body.refreshToken, req, res)
+    return this.authService.logout(req, res)
   }
 
   @Get('google-link')

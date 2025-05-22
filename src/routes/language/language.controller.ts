@@ -1,4 +1,17 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Logger, Param, Post, Put, Query } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  Param,
+  Post,
+  Put,
+  Query,
+  UseGuards
+} from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
   CreateLanguageBodyDTO,
@@ -13,8 +26,12 @@ import { LanguageService } from 'src/routes/language/language.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
+import { Roles } from 'src/shared/decorators/roles.decorator'
+import { RolesGuard } from 'src/shared/guards/roles.guard'
+import { IsPublic } from 'src/shared/decorators/auth.decorator'
 
 @Controller('languages')
+@UseGuards(RolesGuard)
 export class LanguageController {
   private readonly logger = new Logger(LanguageController.name)
 
@@ -23,6 +40,7 @@ export class LanguageController {
   @Get()
   @ZodSerializerDto(GetLanguagesResDTO)
   @SkipThrottle()
+  @IsPublic()
   findAll(@Query() query: GetLanguagesQueryDTO) {
     this.logger.debug(`Finding all languages with query: ${JSON.stringify(query)}`)
     return this.languageService.findAll(query)
@@ -31,6 +49,7 @@ export class LanguageController {
   @Get(':languageId')
   @ZodSerializerDto(GetLanguageDetailResDTO)
   @SkipThrottle()
+  @IsPublic()
   findById(@Param() params: GetLanguageParamsDTO, @Query('includeDeleted') includeDeleted?: boolean) {
     this.logger.debug(`Finding language by ID: ${params.languageId}, includeDeleted: ${includeDeleted}`)
     return this.languageService.findById(params.languageId, includeDeleted)
@@ -39,6 +58,7 @@ export class LanguageController {
   @Post()
   @ZodSerializerDto(GetLanguageDetailResDTO)
   @Throttle({ short: { limit: 5, ttl: 10000 } })
+  @Roles('Admin')
   create(@Body() body: CreateLanguageBodyDTO, @ActiveUser('userId') userId: number) {
     this.logger.debug(`Creating language: ${JSON.stringify(body)}`)
     return this.languageService.create({
@@ -50,6 +70,7 @@ export class LanguageController {
   @Put(':languageId')
   @ZodSerializerDto(GetLanguageDetailResDTO)
   @Throttle({ short: { limit: 10, ttl: 10000 } })
+  @Roles('Admin')
   update(
     @Body() body: UpdateLanguageBodyDTO,
     @Param() params: GetLanguageParamsDTO,
@@ -66,6 +87,7 @@ export class LanguageController {
   @Delete(':languageId')
   @ZodSerializerDto(MessageResDTO)
   @Throttle({ short: { limit: 5, ttl: 10000 } })
+  @Roles('Admin')
   delete(
     @Param() params: GetLanguageParamsDTO,
     @ActiveUser('userId') userId: number,
@@ -79,6 +101,7 @@ export class LanguageController {
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(GetLanguageDetailResDTO)
   @Throttle({ short: { limit: 5, ttl: 10000 } })
+  @Roles('Admin')
   restore(
     @Param() params: GetLanguageParamsDTO,
     @Body() _: RestoreLanguageBodyDTO,
