@@ -217,3 +217,9 @@ export const DeviceMissingSessionCreationTimeException = createApiError(
   'Unauthenticated',
   'Error.Auth.Device.MissingSessionCreationTime'
 )
+
+export const ReAuthenticationRequiredException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'ReAuthenticationRequired',
+  'Error.Auth.Session.ReAuthenticationRequired'
+)
