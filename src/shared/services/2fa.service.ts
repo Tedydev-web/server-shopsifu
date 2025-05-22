@@ -1,11 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import * as OTPAuth from 'otpauth'
 import envConfig from 'src/shared/config'
 import { PrismaService } from './prisma.service'
-import { Prisma, PrismaClient, RecoveryCode } from '@prisma/client'
+import { Prisma, PrismaClient, RecoveryCode, User } from '@prisma/client'
 import { HashingService } from './hashing.service'
-import { TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
+import { TwoFactorMethodType, TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
 import { InvalidRecoveryCodeException } from 'src/routes/auth/auth.error'
+import { ApiException } from 'src/shared/exceptions/api.exception'
 
 type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -146,25 +147,42 @@ export class TwoFactorService {
   async updateUserTwoFactorStatus(
     userId: number,
     data: {
-      twoFactorEnabled: boolean
+      twoFactorEnabled?: boolean
       twoFactorSecret?: string | null
       twoFactorMethod?: TwoFactorMethodTypeType | null
       twoFactorVerifiedAt?: Date | null
     },
     tx?: PrismaTransactionClient
   ) {
-    this.logger.debug(`Updating 2FA status for user ${userId}: enabled=${data.twoFactorEnabled}`)
     const client = tx || this.prismaService
+    const updateData: Prisma.UserUpdateInput = {}
 
-    return client.user.update({
-      where: { id: userId },
-      data: {
-        twoFactorEnabled: data.twoFactorEnabled,
-        twoFactorSecret: data.twoFactorSecret,
-        twoFactorMethod: data.twoFactorMethod,
-        twoFactorVerifiedAt: data.twoFactorVerifiedAt
-      } as any
-    })
+    if (data.twoFactorEnabled !== undefined) updateData.twoFactorEnabled = data.twoFactorEnabled
+    if (Object.prototype.hasOwnProperty.call(data, 'twoFactorSecret')) updateData.twoFactorSecret = data.twoFactorSecret
+    if (Object.prototype.hasOwnProperty.call(data, 'twoFactorMethod')) {
+      updateData.twoFactorMethod = data.twoFactorMethod
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'twoFactorVerifiedAt'))
+      updateData.twoFactorVerifiedAt = data.twoFactorVerifiedAt
+
+    if (Object.keys(updateData).length === 0) {
+      this.logger.warn(`updateUserTwoFactorStatus called for user ${userId} with no data to update.`)
+      const currentUser = await client.user.findUnique({ where: { id: userId } })
+      if (!currentUser) {
+        throw new ApiException(HttpStatus.NOT_FOUND, 'ResourceNotFound', 'Error.User.NotFound')
+      }
+      return currentUser
+    }
+
+    try {
+      return await client.user.update({
+        where: { id: userId },
+        data: updateData
+      })
+    } catch (error) {
+      this.logger.error(`Error updating 2FA status for user ${userId}:`, error)
+      throw error
+    }
   }
 
   async getUserTwoFactorStatus(userId: number, tx?: PrismaTransactionClient) {

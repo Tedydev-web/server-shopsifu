@@ -964,13 +964,14 @@ export class AuthService {
           throw InvalidTOTPException
         }
 
+        const currentTime = new Date()
         await this.twoFactorService.updateUserTwoFactorStatus(
           userId,
           {
             twoFactorEnabled: true,
             twoFactorSecret: tempTwoFactorSecret,
             twoFactorMethod: TwoFactorMethodType.TOTP as TwoFactorMethodTypeType,
-            twoFactorVerifiedAt: new Date()
+            twoFactorVerifiedAt: currentTime
           },
           tx as any
         )
@@ -1118,212 +1119,252 @@ export class AuthService {
       status: AuditLogStatus.FAILURE,
       details: {
         loginSessionTokenProvided: !!body.loginSessionToken,
-        verificationTypeAttempted: body.type,
+        clientVerificationTypeAttempted: body.type,
         codeProvided: !!body.code
       }
     }
 
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
-        const initialVerificationToken = await this.otpService.findVerificationToken(body.loginSessionToken, tx)
+        // Step 1: Fetch and perform initial validation of the loginSessionToken
+        const dbLoginSessionTokenRecord = await this.otpService.findVerificationToken(body.loginSessionToken, tx)
 
-        if (initialVerificationToken) {
-          auditLogEntry.userEmail = initialVerificationToken.email
-          if (initialVerificationToken.userId) {
-            auditLogEntry.userId = initialVerificationToken.userId
+        if (dbLoginSessionTokenRecord) {
+          auditLogEntry.userEmail = dbLoginSessionTokenRecord.email
+          if (dbLoginSessionTokenRecord.userId) {
+            auditLogEntry.userId = dbLoginSessionTokenRecord.userId
           }
         }
 
-        if (!initialVerificationToken || !initialVerificationToken.email) {
-          auditLogEntry.errorMessage = InvalidOTPTokenException.message
-          auditLogEntry.details.reason = 'INVALID_LOGIN_SESSION_TOKEN'
-          throw InvalidOTPTokenException
+        if (
+          !dbLoginSessionTokenRecord ||
+          !dbLoginSessionTokenRecord.email ||
+          (dbLoginSessionTokenRecord && dbLoginSessionTokenRecord.expiresAt < new Date()) ||
+          dbLoginSessionTokenRecord.tokenType !== TokenType.OTP // Assuming login session tokens are of type OTP
+        ) {
+          if (dbLoginSessionTokenRecord) {
+            await this.otpService.deleteOtpToken(body.loginSessionToken, tx) // Clean up invalid/expired token
+          }
+          auditLogEntry.errorMessage =
+            dbLoginSessionTokenRecord && dbLoginSessionTokenRecord.expiresAt < new Date()
+              ? OTPTokenExpiredException.message
+              : InvalidOTPTokenException.message
+          auditLogEntry.details.reason = 'INVALID_OR_EXPIRED_LOGIN_SESSION_TOKEN'
+          throw dbLoginSessionTokenRecord && dbLoginSessionTokenRecord.expiresAt < new Date()
+            ? OTPTokenExpiredException
+            : InvalidOTPTokenException
         }
 
+        const actualSessionType = dbLoginSessionTokenRecord.type as TypeOfVerificationCode
+        const sessionEmail = dbLoginSessionTokenRecord.email
+        const sessionUserId = dbLoginSessionTokenRecord.userId
+        const sessionDeviceId = dbLoginSessionTokenRecord.deviceId
         let rememberMe = false
-        if (initialVerificationToken.metadata) {
+        if (dbLoginSessionTokenRecord.metadata) {
           try {
-            const parsedMetadata = JSON.parse(initialVerificationToken.metadata)
+            const parsedMetadata = JSON.parse(dbLoginSessionTokenRecord.metadata)
             if (typeof parsedMetadata.rememberMe === 'boolean') {
               rememberMe = parsedMetadata.rememberMe
             }
             auditLogEntry.details.rememberMeSettingFromToken = rememberMe
           } catch (e) {
-            console.warn('[AuthService verifyTwoFactor] Could not parse metadata from token', e)
-            auditLogEntry.notes = 'Error parsing metadata from token.'
+            this.logger.warn('[AuthService verifyTwoFactor] Could not parse metadata from token', e)
+            auditLogEntry.notes = 'Error parsing metadata from login session token.'
           }
         }
+        auditLogEntry.details.actualSessionType = actualSessionType
+        auditLogEntry.details.sessionUserId = sessionUserId
+        auditLogEntry.details.sessionDeviceId = sessionDeviceId
 
-        const verificationToken = await this.otpService.validateVerificationToken({
-          token: body.loginSessionToken,
-          email: initialVerificationToken.email,
-          type: TypeOfVerificationCode.LOGIN_2FA,
-          tokenType: TokenType.OTP,
-          deviceId: initialVerificationToken.deviceId ?? undefined,
-          tx
-        })
-        auditLogEntry.userEmail = verificationToken.email
-        if (verificationToken.userId) {
-          auditLogEntry.userId = verificationToken.userId
-        }
-
+        // Step 2: Fetch user details
         const user = await tx.user.findUnique({
-          where: { email: verificationToken.email },
+          where: { email: sessionEmail },
           include: { role: true }
         })
 
-        if (!user || !user.twoFactorEnabled || !user.twoFactorSecret || !user.twoFactorMethod) {
+        if (!user) {
           await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
-          auditLogEntry.errorMessage = TOTPNotEnabledException.message
-          auditLogEntry.details.reason = '2FA_NOT_ENABLED_FOR_USER'
-          throw TOTPNotEnabledException
+          auditLogEntry.errorMessage = EmailNotFoundException.message
+          auditLogEntry.details.reason = 'USER_NOT_FOUND_FOR_SESSION'
+          throw EmailNotFoundException
         }
-        auditLogEntry.details.userTwoFactorMethod = user.twoFactorMethod
+        // Ensure userId matches if both are present (should always match if sessionUserId is from a valid token)
+        if (sessionUserId && sessionUserId !== user.id) {
+          await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
+          auditLogEntry.errorMessage = 'User ID mismatch between session token and fetched user.'
+          auditLogEntry.details.reason = 'USER_ID_MISMATCH'
+          throw new ApiException(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            'InternalServerError',
+            'Error.Auth.Session.UserIdMismatch'
+          )
+        }
+        auditLogEntry.userId = user.id // Overwrite/confirm userId from user record
 
-        let isValid2FACode = false
-        if (body.type === TwoFactorMethodType.TOTP && body.code) {
-          if (user.twoFactorMethod === TwoFactorMethodType.TOTP) {
-            isValid2FACode = this.twoFactorService.verifyTOTP({
+        // Step 3: Validate the code (OTP/TOTP/Recovery) based on actualSessionType
+        let isCodeValid = false
+
+        if (actualSessionType === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
+          if (body.type !== TwoFactorMethodType.OTP) {
+            await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
+            auditLogEntry.errorMessage = 'Invalid verification method for untrusted device OTP session.'
+            auditLogEntry.details.reason = 'INVALID_VERIFICATION_METHOD_FOR_UNTRUSTED_DEVICE_OTP'
+            throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.2FA.InvalidMethodForSession')
+          }
+          try {
+            await this.otpService.validateVerificationCode({
+              email: user.email,
+              code: body.code,
+              type: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
+              tx
+            })
+            isCodeValid = true
+            await this.otpService.deleteVerificationCode(
+              user.email,
+              body.code,
+              TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
+              tx
+            )
+            auditLogEntry.details.otpForUntrustedDeviceVerified = true
+          } catch (error) {
+            await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
+            auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Invalid OTP for untrusted device.'
+            if (error instanceof ApiException) auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+            auditLogEntry.details.reason = 'INVALID_OTP_FOR_UNTRUSTED_DEVICE'
+            throw error
+          }
+        } else if (actualSessionType === TypeOfVerificationCode.LOGIN_2FA) {
+          if (!user.twoFactorEnabled || !user.twoFactorSecret || !user.twoFactorMethod) {
+            await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
+            auditLogEntry.errorMessage = TOTPNotEnabledException.message
+            auditLogEntry.details.reason = '2FA_NOT_ENABLED_FOR_USER'
+            throw TOTPNotEnabledException
+          }
+          auditLogEntry.details.userTwoFactorMethod = user.twoFactorMethod
+
+          if (body.type === TwoFactorMethodType.TOTP) {
+            if (user.twoFactorMethod !== TwoFactorMethodType.TOTP) {
+              await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
+              auditLogEntry.errorMessage = 'User 2FA method is not TOTP.'
+              auditLogEntry.details.reason = 'USER_2FA_METHOD_NOT_TOTP'
+              throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.2FA.MethodMismatch.TOTP')
+            }
+            isCodeValid = this.twoFactorService.verifyTOTP({
               email: user.email,
               token: body.code,
               secret: user.twoFactorSecret
             })
-          } else {
-            await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
-            auditLogEntry.errorMessage = 'Invalid 2FA method for TOTP code.'
-            auditLogEntry.details.reason = 'INVALID_2FA_METHOD_FOR_TOTP_CODE'
-            throw new HttpException('Invalid 2FA method for TOTP code.', 400)
-          }
-        } else if (body.type === TwoFactorMethodType.OTP && body.code) {
-          if (verificationToken.type === (TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP as string)) {
+          } else if (body.type === TwoFactorMethodType.RECOVERY) {
             try {
-              await this.otpService.validateVerificationCode({
-                email: user.email,
-                code: body.code,
-                type: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
-                tx
-              })
-              isValid2FACode = true
-              auditLogEntry.details.otpForUntrustedDeviceVerified = true
-              await this.otpService.deleteVerificationCode(
-                user.email,
-                body.code,
-                TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
-                tx
-              )
+              await this.twoFactorService.verifyRecoveryCode(user.id, body.code, tx as any)
+              isCodeValid = true
+              auditLogEntry.details.recoveryCodeUsed = true
             } catch (error) {
               await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
-              auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Invalid OTP for untrusted device.'
-              if (error instanceof ApiException) {
-                auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-              }
-              auditLogEntry.details.reason = 'INVALID_OTP_FOR_UNTRUSTED_DEVICE'
+              auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Invalid recovery code.'
+              if (error instanceof ApiException) auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+              auditLogEntry.details.reason = 'INVALID_RECOVERY_CODE'
               throw error
             }
           } else {
             await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
-            auditLogEntry.errorMessage = 'Invalid OTP verification flow.'
-            auditLogEntry.details.reason = 'INVALID_OTP_FLOW_FOR_SESSION_TOKEN'
-            auditLogEntry.details.sessionTokenType = verificationToken.type as string
-            throw new HttpException('Invalid OTP verification flow.', HttpStatus.BAD_REQUEST)
+            auditLogEntry.errorMessage = 'Unsupported 2FA verification type for this session.'
+            auditLogEntry.details.reason = 'UNSUPPORTED_2FA_VERIFICATION_TYPE'
+            throw new ApiException(
+              HttpStatus.BAD_REQUEST,
+              'ValidationError',
+              'Error.Auth.2FA.UnsupportedTypeForSession'
+            )
           }
-        } else if (body.type === TwoFactorMethodType.RECOVERY && body.code) {
-          await this.twoFactorService.verifyRecoveryCode(user.id, body.code, tx as any)
-          isValid2FACode = true
-          auditLogEntry.details.recoveryCodeUsed = true
+          if (!isCodeValid) {
+            await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
+            auditLogEntry.errorMessage = InvalidTOTPException.message // Generic for failed TOTP/Recovery attempt
+            auditLogEntry.details.reason =
+              body.type === TwoFactorMethodType.RECOVERY
+                ? 'INVALID_RECOVERY_CODE_FINAL_CHECK'
+                : 'INVALID_TOTP_CODE_FINAL_CHECK'
+            throw InvalidTOTPException
+          }
         } else {
           await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
-          auditLogEntry.errorMessage =
-            'Either a TOTP code or an OTP code or a recovery code (with correct type) must be provided.'
-          auditLogEntry.details.reason = 'MISSING_2FA_CODE_OR_INVALID_TYPE'
-          throw new HttpException(
-            'Either a TOTP code or an OTP code or a recovery code (with correct type) must be provided.',
-            400
+          auditLogEntry.errorMessage = 'Invalid login session type.'
+          auditLogEntry.details.reason = 'INVALID_LOGIN_SESSION_TYPE'
+          throw new ApiException(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            'InternalServerError',
+            'Error.Auth.Session.InvalidType'
           )
         }
 
-        if (!isValid2FACode) {
-          await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
-          auditLogEntry.errorMessage = InvalidTOTPException.message
-          auditLogEntry.details.reason =
-            body.type === TwoFactorMethodType.RECOVERY ? 'INVALID_RECOVERY_CODE' : 'INVALID_TOTP_CODE'
-          throw InvalidTOTPException
-        }
-
-        let deviceId = verificationToken.deviceId
+        // Step 4: Device validation and token generation
+        let finalDeviceId = sessionDeviceId
         let currentDeviceIsTrusted = false
-        let finalAskToTrustDevice = true
 
-        if (!deviceId && body.userAgent && body.ip) {
+        if (!finalDeviceId && body.userAgent && body.ip) {
           try {
             const device = await this.deviceService.findOrCreateDevice(
-              {
-                userId: user.id,
-                userAgent: body.userAgent,
-                ip: body.ip
-              },
+              { userId: user.id, userAgent: body.userAgent, ip: body.ip },
               tx as any
             )
-            deviceId = device.id
+            finalDeviceId = device.id
             currentDeviceIsTrusted = device.isTrusted
-            auditLogEntry.details.newDeviceCreatedOrFound = true
+            auditLogEntry.details.deviceCreatedOrFoundPostVerification = true
           } catch (error) {
-            console.error('Error creating/finding device in verifyTwoFactor:', error)
+            await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
+            this.logger.error('Error creating/finding device post-verification:', error)
             auditLogEntry.errorMessage = DeviceAssociationFailedException.message
-            auditLogEntry.details.deviceError = 'DeviceCreationFailureIn2FAVerify'
+            auditLogEntry.details.deviceError = 'DeviceAssociationFailurePostVerification'
             throw DeviceAssociationFailedException
           }
-        } else if (deviceId && body.userAgent && body.ip) {
-          const isValidDevice = await this.deviceService.validateDevice(deviceId, body.userAgent, body.ip, tx as any)
+        } else if (finalDeviceId && body.userAgent && body.ip) {
+          const isValidDevice = await this.deviceService.validateDevice(
+            finalDeviceId,
+            body.userAgent,
+            body.ip,
+            tx as any
+          )
           if (!isValidDevice) {
             await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
             auditLogEntry.errorMessage = DeviceMismatchException.message
-            auditLogEntry.details.deviceError = 'DeviceMismatchIn2FAVerify'
+            auditLogEntry.details.deviceError = 'DeviceMismatchPostVerification'
             throw DeviceMismatchException
           }
-          auditLogEntry.details.existingDeviceValidated = true
-          const device = await this.deviceService.findDeviceById(deviceId, tx as any)
-          if (device) {
-            currentDeviceIsTrusted = device.isTrusted
-          }
+          const device = await this.deviceService.findDeviceById(finalDeviceId, tx as any)
+          if (device) currentDeviceIsTrusted = device.isTrusted
+          auditLogEntry.details.existingDeviceValidatedPostVerification = true
         }
 
-        if (!deviceId) {
+        if (!finalDeviceId) {
           await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
           auditLogEntry.errorMessage = DeviceAssociationFailedException.message
-          auditLogEntry.details.deviceError = 'DeviceIDMissingIn2FAVerify'
+          auditLogEntry.details.deviceError = 'FinalDeviceIDMissingPostVerification'
           throw DeviceAssociationFailedException
         }
-        auditLogEntry.details.finalDeviceId = deviceId
-        finalAskToTrustDevice = !currentDeviceIsTrusted
+        auditLogEntry.details.finalDeviceId = finalDeviceId
+        const finalAskToTrustDevice = !currentDeviceIsTrusted
 
-        await this.twoFactorService.updateUserTwoFactorStatus(
-          user.id,
-          {
-            twoFactorEnabled: true,
-            twoFactorVerifiedAt: new Date(),
-            twoFactorMethod: user.twoFactorMethod,
-            twoFactorSecret: user.twoFactorSecret
-          },
-          tx as any
-        )
+        // Step 5: Update user status if 2FA was completed
+        if (actualSessionType === TypeOfVerificationCode.LOGIN_2FA) {
+          const currentTime = new Date()
+          await this.twoFactorService.updateUserTwoFactorStatus(
+            user.id,
+            { twoFactorVerifiedAt: currentTime },
+            tx as any
+          )
+        }
 
+        // Step 6: Generate and set tokens
         const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.generateTokens(
-          {
-            userId: user.id,
-            deviceId: deviceId,
-            roleId: user.roleId,
-            roleName: user.role.name
-          },
+          { userId: user.id, deviceId: finalDeviceId, roleId: user.roleId, roleName: user.role.name },
           tx,
           rememberMe
         )
-
-        await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
-
         if (res) {
           this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
         }
+
+        // Step 7: Clean up the used login session token
+        await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.action = '2FA_VERIFY_SUCCESS'
@@ -1342,9 +1383,7 @@ export class AuthService {
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
         auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during 2FA verification'
-        if (error instanceof ApiException) {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        }
+        if (error instanceof ApiException) auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
       await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error

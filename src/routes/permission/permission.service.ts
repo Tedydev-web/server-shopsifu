@@ -102,7 +102,7 @@ export class PermissionService {
     data: CreatePermissionBodyType
     createdById: number
   }): Promise<PermissionType> {
-    this.logger.debug(`Creating permission: ${JSON.stringify(data)}`)
+      this.logger.debug(`Creating permission: ${JSON.stringify(data)}`)
     try {
       const newPermission = await this.prismaService.$transaction(async (tx) => {
         const existingPermission = await this.permissionRepo.findByPathAndMethod(data.path, data.method, true, tx)
@@ -154,7 +154,7 @@ export class PermissionService {
     data: UpdatePermissionBodyType
     updatedById: number
   }): Promise<PermissionType> {
-    this.logger.debug(`Updating permission ${id}: ${JSON.stringify(data)}`)
+      this.logger.debug(`Updating permission ${id}: ${JSON.stringify(data)}`)
     try {
       const updatedPermission = await this.prismaService.$transaction(async (tx) => {
         const existingPermission = await this.permissionRepo.findById(id, false, tx)
@@ -214,7 +214,7 @@ export class PermissionService {
     })
   })
   async delete(id: number, deletedById: number, isHardDelete: boolean = false): Promise<{ message: string }> {
-    this.logger.debug(`Deleting permission ${id} (${isHardDelete ? 'hard' : 'soft'} delete)`)
+      this.logger.debug(`Deleting permission ${id} (${isHardDelete ? 'hard' : 'soft'} delete)`)
     try {
       await this.prismaService.$transaction(async (tx) => {
         const existingPermission = await this.permissionRepo.findById(id, !isHardDelete, tx)
@@ -264,7 +264,7 @@ export class PermissionService {
     })
   })
   async restore(id: number, updatedById: number): Promise<PermissionType> {
-    this.logger.debug(`Restoring permission ${id}`)
+      this.logger.debug(`Restoring permission ${id}`)
     try {
       const restoredPermission = await this.prismaService.$transaction(async (tx) => {
         const deletedPermission = await this.permissionRepo.findById(id, true, tx)
