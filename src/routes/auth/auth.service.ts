@@ -487,7 +487,7 @@ export class AuthService {
           const sessionAgeMs = new Date().getTime() - new Date(existingRefreshToken.device.sessionCreatedAt).getTime()
           if (sessionAgeMs > envConfig.ABSOLUTE_SESSION_LIFETIME_MS) {
             this.logger.warn(
-              `[SECURITY AuthService refreshToken] Absolute session lifetime exceeded for user ${existingRefreshToken.userId}, device ${existingRefreshToken.deviceId}. Session created at: ${existingRefreshToken.device.sessionCreatedAt}`
+              `[SECURITY AuthService refreshToken] Absolute session lifetime exceeded for user ${existingRefreshToken.userId}, device ${existingRefreshToken.deviceId}. Session created at: ${existingRefreshToken.device.sessionCreatedAt?.toISOString()}`
             )
             await this.tokenService.deleteAllRefreshTokensForDevice(existingRefreshToken.deviceId, tx as any)
             if (res) {
