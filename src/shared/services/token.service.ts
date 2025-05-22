@@ -10,6 +10,7 @@ import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { PrismaClient } from '@prisma/client'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { UnauthorizedAccessException } from 'src/routes/auth/auth.error'
+import { Prisma } from '@prisma/client'
 
 type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -232,11 +233,20 @@ export class TokenService {
     }
   }
 
-  async deleteAllRefreshTokens(userId: number, tx?: PrismaTransactionClient) {
-    this.logger.debug(`Deleting all refresh tokens for user ${userId}`)
+  async deleteAllRefreshTokens(userId: number, tx?: PrismaTransactionClient, excludeTokenString?: string) {
+    this.logger.debug(
+      `Deleting all refresh tokens for user ${userId}` +
+        (excludeTokenString ? ` excluding token ${excludeTokenString.substring(0, 8)}...` : '')
+    )
     const client = tx || this.prismaService
+    const whereClause: Prisma.RefreshTokenWhereInput = { userId }
+    if (excludeTokenString) {
+      whereClause.NOT = {
+        token: excludeTokenString
+      }
+    }
     await client.refreshToken.deleteMany({
-      where: { userId }
+      where: whereClause
     })
   }
 
@@ -275,7 +285,7 @@ export class TokenService {
     const client = tx || this.prismaService
     return client.refreshToken.findUnique({
       where: { token },
-      select: { userId: true, used: true, expiresAt: true }
+      select: { userId: true, used: true, expiresAt: true, deviceId: true, rememberMe: true }
     })
   }
 

@@ -17,7 +17,9 @@ import {
   UserProfileResSchema,
   VerifyCodeBodySchema,
   VerifyCodeResSchema,
-  AccessTokenResSchema
+  AccessTokenResSchema,
+  TrustDeviceBodySchema,
+  RememberMeBodySchema
 } from 'src/routes/auth/auth.model'
 
 export class RegisterBodyDTO extends createZodDto(RegisterBodySchema) {}
@@ -57,3 +59,7 @@ export class VerifyCodeResDTO extends createZodDto(VerifyCodeResSchema) {}
 export class TwoFactorVerifyBodyDTO extends createZodDto(TwoFactorVerifyBodySchema) {}
 
 export class UserProfileResDTO extends createZodDto(UserProfileResSchema) {}
+
+export class TrustDeviceBodyDTO extends createZodDto(TrustDeviceBodySchema) {}
+
+export class RememberMeBodyDTO extends createZodDto(RememberMeBodySchema) {}

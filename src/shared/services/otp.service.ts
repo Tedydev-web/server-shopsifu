@@ -101,7 +101,7 @@ export class OtpService {
 
     if (
       verificationToken.email !== email ||
-      (verificationToken.type as string) !== type ||
+      verificationToken.type !== (type as PrismaVerificationCodeEnum) ||
       verificationToken.tokenType !== tokenType
     ) {
       throw InvalidOTPTokenException
@@ -129,7 +129,7 @@ export class OtpService {
     await this.authRepository.createVerificationCode({
       email,
       code,
-      type,
+      type: type as PrismaVerificationCodeEnum,
       expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
     })
 
@@ -169,7 +169,7 @@ export class OtpService {
       {
         token,
         email,
-        type,
+        type: type as PrismaVerificationCodeEnum,
         tokenType: TokenType.OTP,
         userId,
         deviceId,
@@ -228,7 +228,6 @@ export class OtpService {
       email: payload.email,
       type: payload.type,
       userId,
-
       tx
     })
 

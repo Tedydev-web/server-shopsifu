@@ -17,7 +17,9 @@ import {
   VerifyCodeBodyDTO,
   VerifyCodeResDTO,
   TwoFactorConfirmSetupBodyDTO,
-  TwoFactorConfirmSetupResDTO
+  TwoFactorConfirmSetupResDTO,
+  TrustDeviceBodyDTO,
+  RememberMeBodyDTO
 } from 'src/routes/auth/auth.dto'
 import { UserProfileResSchema, LoginSessionResSchema } from 'src/routes/auth/auth.model'
 import { UseZodSchemas, hasProperty } from 'src/shared/decorators/use-zod-schema.decorator'
@@ -33,6 +35,7 @@ import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { TokenService } from 'src/shared/services/token.service'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
 import { CookieNames } from 'src/shared/constants/auth.constant'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Controller('auth')
 export class AuthController {
@@ -143,12 +146,10 @@ export class AuthController {
   @IsPublic()
   @ZodSerializerDto(GetAuthorizationUrlResDTO)
   @SkipThrottle()
-  getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string, @Query('rememberMe') rememberMe?: string) {
-    const shouldRemember = rememberMe === 'true'
+  getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string, @Query('rememberMe') _rememberMe?: string) {
     return this.googleService.getAuthorizationUrl({
       userAgent,
-      ip,
-      rememberMe: shouldRemember
+      ip
     })
   }
 
@@ -270,5 +271,47 @@ export class AuthController {
       },
       res
     )
+  }
+
+  @Post('trust-device')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(MessageResDTO)
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  trustDevice(
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Body() _body: TrustDeviceBodyDTO,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string
+  ) {
+    return this.authService.trustDevice(activeUser, ip, userAgent)
+  }
+
+  @Post('remember-me')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(MessageResDTO)
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  setRememberMe(
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Body() body: RememberMeBodyDTO,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string
+  ) {
+    return this.authService.setRememberMe(activeUser, body.rememberMe, req, res, ip, userAgent)
+  }
+
+  @Post('logout-all')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(MessageResDTO)
+  @Throttle({ short: { limit: 3, ttl: 60000 } }) // Can adjust throttling as needed
+  logoutFromAllDevices(
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string
+  ) {
+    return this.authService.logoutFromAllDevices(activeUser, ip, userAgent, req, res)
   }
 }

@@ -10,6 +10,7 @@ import envConfig from 'src/shared/config'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { v4 as uuidv4 } from 'uuid'
 import { DeviceService } from 'src/shared/services/device.service'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
 
 @Injectable()
 export class GoogleService {
@@ -27,14 +28,11 @@ export class GoogleService {
       envConfig.GOOGLE_REDIRECT_URI
     )
   }
-  getAuthorizationUrl({ userAgent, ip, rememberMe }: GoogleAuthStateType & { rememberMe?: boolean }) {
+  getAuthorizationUrl({ userAgent, ip }: Omit<GoogleAuthStateType, 'rememberMe'>) {
     const scope = ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email']
-    const stateObject: GoogleAuthStateType & { rememberMe?: boolean } = {
+    const stateObject: Omit<GoogleAuthStateType, 'rememberMe'> = {
       userAgent,
       ip
-    }
-    if (rememberMe !== undefined) {
-      stateObject.rememberMe = rememberMe
     }
     const stateString = Buffer.from(JSON.stringify(stateObject)).toString('base64')
     const url = this.oauth2Client.generateAuthUrl({
@@ -57,16 +55,15 @@ export class GoogleService {
     userAgent?: string
     ip?: string
   }) {
-    let rememberMe: boolean | undefined = undefined
     try {
       try {
         if (state) {
-          const clientInfo = JSON.parse(Buffer.from(state, 'base64').toString()) as GoogleAuthStateType & {
-            rememberMe?: boolean
-          }
+          const clientInfo = JSON.parse(Buffer.from(state, 'base64').toString()) as Omit<
+            GoogleAuthStateType,
+            'rememberMe'
+          >
           userAgent = clientInfo.userAgent || userAgent
           ip = clientInfo.ip || ip
-          rememberMe = clientInfo.rememberMe
         }
       } catch (error) {
         console.error('Error parsing state', error)
@@ -135,14 +132,13 @@ export class GoogleService {
             email: user.email,
             userId: user.id,
             deviceId: device.id,
-            rememberMe: rememberMe
+            type: TypeOfVerificationCode.LOGIN_2FA
           })
           return {
             message: 'Auth.Login.2FARequired',
             loginSessionToken: loginSessionToken,
             twoFactorMethod: user.twoFactorMethod,
-            isGoogleAuth: true,
-            askToTrustDevice: true // Gợi ý cho client
+            isGoogleAuth: true
           }
         }
       }
@@ -155,29 +151,15 @@ export class GoogleService {
           roleName: user.role.name
         },
         undefined, // Không có transaction client ở đây
-        rememberMe
+        false // Explicitly set rememberMe to false for Google login initial token generation
       )
-
-      // Nếu người dùng chọn "Remember Me" và thiết bị chưa được tin cậy
-      if (rememberMe && !device.isTrusted) {
-        try {
-          await this.deviceService.trustDevice(device.id, user.id)
-          console.debug(
-            `[GoogleService googleCallback] Device ${String(device.id)} trusted for user ${String(user.id)} due to rememberMe selection.`
-          )
-        } catch (trustError) {
-          console.error(
-            `[GoogleService googleCallback] Failed to trust device ${String(device.id)} for user ${String(user.id)}`,
-            trustError
-          )
-        }
-      }
 
       return {
         userId: user.id,
         email: user.email,
         name: user.name,
         role: user.role.name,
+        askToTrustDevice: !device.isTrusted,
         ...authTokens
       }
     } catch (error) {

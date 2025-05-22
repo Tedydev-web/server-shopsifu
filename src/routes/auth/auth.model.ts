@@ -33,13 +33,7 @@ export const VerificationCodeSchema = z.object({
   id: z.number(),
   email: z.string().email(),
   code: z.string().length(6),
-  type: z.enum([
-    TypeOfVerificationCode.REGISTER,
-    TypeOfVerificationCode.FORGOT_PASSWORD,
-    TypeOfVerificationCode.LOGIN,
-    TypeOfVerificationCode.DISABLE_2FA,
-    TypeOfVerificationCode.SETUP_2FA
-  ]),
+  type: z.nativeEnum(TypeOfVerificationCode),
   expiresAt: z.date(),
   createdAt: z.date()
 })
@@ -62,7 +56,8 @@ export const LoginResSchema = z.object({
   userId: z.number(),
   email: z.string().email(),
   name: z.string(),
-  role: z.string()
+  role: z.string(),
+  askToTrustDevice: z.boolean().optional()
 })
 
 export const LoginSessionResSchema = z.object({
@@ -75,13 +70,7 @@ export const VerifyCodeBodySchema = z
   .object({
     email: z.string().email(),
     code: z.string().length(6),
-    type: z.enum([
-      TypeOfVerificationCode.REGISTER,
-      TypeOfVerificationCode.FORGOT_PASSWORD,
-      TypeOfVerificationCode.LOGIN,
-      TypeOfVerificationCode.DISABLE_2FA,
-      TypeOfVerificationCode.SETUP_2FA
-    ])
+    type: z.nativeEnum(TypeOfVerificationCode)
   })
   .strict()
 
@@ -211,7 +200,8 @@ export const UserProfileResSchema = z.object({
   userId: z.number(),
   email: z.string().email(),
   name: z.string(),
-  role: z.string()
+  role: z.string(),
+  askToTrustDevice: z.boolean().optional()
 })
 
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>
@@ -239,3 +229,22 @@ export type LoginSessionResType = z.infer<typeof LoginSessionResSchema>
 export type TwoFactorVerifyBodyType = z.infer<typeof TwoFactorVerifyBodySchema>
 export type UserProfileResType = z.infer<typeof UserProfileResSchema>
 export type AccessTokenResType = z.infer<typeof AccessTokenResSchema>
+
+// Schemas for new endpoints
+export const TrustDeviceBodySchema = z
+  .object({
+    // deviceId: z.number().int().positive() // Removed deviceId
+    // Không cần userId ở body vì sẽ lấy từ active user
+    // Body sẽ rỗng, chỉ cần endpoint được gọi với AT hợp lệ
+  })
+  .strict()
+
+export const RememberMeBodySchema = z
+  .object({
+    rememberMe: z.boolean()
+    // Không cần userId hay deviceId ở body vì sẽ lấy từ active user và refresh token
+  })
+  .strict()
+
+export type TrustDeviceBodyType = z.infer<typeof TrustDeviceBodySchema>
+export type RememberMeBodyType = z.infer<typeof RememberMeBodySchema>

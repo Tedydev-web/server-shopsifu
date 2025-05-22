@@ -102,30 +102,15 @@ export class PermissionService {
     data: CreatePermissionBodyType
     createdById: number
   }): Promise<PermissionType> {
-    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
-      action: 'PERMISSION_CREATE_ATTEMPT',
-      userId: createdById,
-      entity: 'Permission',
-      status: AuditLogStatus.FAILURE,
-      details: { providedData: data }
-    }
-
+    this.logger.debug(`Creating permission: ${JSON.stringify(data)}`)
     try {
-      this.logger.debug(`Creating permission: ${JSON.stringify(data)}`)
-
       const newPermission = await this.prismaService.$transaction(async (tx) => {
-        // Kiểm tra xem đã tồn tại permission với path và method giống nhau chưa
         const existingPermission = await this.permissionRepo.findByPathAndMethod(data.path, data.method, true, tx)
 
         if (existingPermission) {
           if (existingPermission.deletedAt) {
-            auditLogEntry.details.reason = 'PERMISSION_DELETED_EXISTS'
-            auditLogEntry.entityId = existingPermission.id.toString()
-            auditLogEntry.errorMessage = PermissionDeletedException(existingPermission.id).message
             throw PermissionDeletedException(existingPermission.id)
           } else {
-            auditLogEntry.details.reason = 'PATH_METHOD_COMBINATION_EXISTS'
-            auditLogEntry.errorMessage = PathMethodCombinationExistsException.message
             throw PathMethodCombinationExistsException
           }
         }
@@ -138,28 +123,14 @@ export class PermissionService {
           tx
         )
       })
-
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'PERMISSION_CREATE_SUCCESS'
-      auditLogEntry.entityId = newPermission.id.toString()
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-
       return newPermission
     } catch (error) {
-      auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during permission creation'
       if (error instanceof ApiException) {
-        auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        // Không ghi log ở đây, để hàm gọi ghi log
         throw error
       } else if (isUniqueConstraintPrismaError(error)) {
-        auditLogEntry.details.reason = 'PATH_METHOD_COMBINATION_EXISTS'
-        auditLogEntry.errorMessage = PathMethodCombinationExistsException.message
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw PathMethodCombinationExistsException
       }
-      // Ghi log cho các lỗi chưa được xử lý cụ thể
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      // Ném một lỗi chung nếu không phải là các lỗi đã được xử lý ở trên
+      this.logger.error(`Unexpected error during permission creation: ${error.message}`, error.stack)
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
@@ -183,34 +154,19 @@ export class PermissionService {
     data: UpdatePermissionBodyType
     updatedById: number
   }): Promise<PermissionType> {
-    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
-      action: 'PERMISSION_UPDATE_ATTEMPT',
-      userId: updatedById,
-      entity: 'Permission',
-      entityId: id.toString(),
-      status: AuditLogStatus.FAILURE,
-      details: { updatedData: data }
-    }
-
+    this.logger.debug(`Updating permission ${id}: ${JSON.stringify(data)}`)
     try {
-      this.logger.debug(`Updating permission ${id}: ${JSON.stringify(data)}`)
-
       const updatedPermission = await this.prismaService.$transaction(async (tx) => {
         const existingPermission = await this.permissionRepo.findById(id, false, tx)
         if (!existingPermission) {
           const deletedPermission = await this.permissionRepo.findById(id, true, tx)
           if (deletedPermission) {
-            auditLogEntry.errorMessage = PermissionDeletedException(id).message
-            auditLogEntry.details.reason = 'PERMISSION_ALREADY_DELETED'
             throw PermissionDeletedException(id)
           } else {
-            auditLogEntry.errorMessage = PermissionNotFoundException(id).message
-            auditLogEntry.details.reason = 'PERMISSION_NOT_FOUND'
             throw PermissionNotFoundException(id)
           }
         }
 
-        // Kiểm tra xem path và method đã tồn tại chưa nếu người dùng cập nhật path hoặc method
         if (data.path || data.method) {
           const path = data.path || existingPermission.path
           const method = data.method || existingPermission.method
@@ -219,8 +175,6 @@ export class PermissionService {
             const duplicatePermission = await this.permissionRepo.findByPathAndMethod(path, method, false, tx)
 
             if (duplicatePermission && duplicatePermission.id !== id) {
-              auditLogEntry.details.reason = 'PATH_METHOD_COMBINATION_EXISTS'
-              auditLogEntry.errorMessage = PathMethodCombinationExistsException.message
               throw PathMethodCombinationExistsException
             }
           }
@@ -235,39 +189,16 @@ export class PermissionService {
           tx
         )
       })
-
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'PERMISSION_UPDATE_SUCCESS'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-
       return updatedPermission
     } catch (error) {
-      if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during permission update'
-      }
-
       if (error instanceof ApiException) {
-        // Nếu đã là ApiException, ghi log và ném lại
-        if (!auditLogEntry.errorMessage || auditLogEntry.errorMessage === 'Unknown error during permission update') {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        }
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw error
       } else if (isNotFoundPrismaError(error)) {
-        auditLogEntry.details.reason = 'PERMISSION_NOT_FOUND_PRISMA_ERROR'
-        auditLogEntry.errorMessage = PermissionNotFoundException(id).message
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw PermissionNotFoundException(id)
       } else if (isUniqueConstraintPrismaError(error)) {
-        auditLogEntry.details.reason = 'PATH_METHOD_COMBINATION_EXISTS'
-        auditLogEntry.errorMessage = PathMethodCombinationExistsException.message
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw PathMethodCombinationExistsException
       }
-
-      // Ghi log cho các lỗi không mong muốn khác
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      // Ném một lỗi chung nếu không phải là các lỗi đã được xử lý ở trên
+      this.logger.error(`Unexpected error during permission update: ${error.message}`, error.stack)
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
@@ -283,39 +214,22 @@ export class PermissionService {
     })
   })
   async delete(id: number, deletedById: number, isHardDelete: boolean = false): Promise<{ message: string }> {
-    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
-      action: 'PERMISSION_DELETE_ATTEMPT',
-      userId: deletedById,
-      entity: 'Permission',
-      entityId: id.toString(),
-      status: AuditLogStatus.FAILURE,
-      details: { deleteType: isHardDelete ? 'hard' : 'soft' }
-    }
-
+    this.logger.debug(`Deleting permission ${id} (${isHardDelete ? 'hard' : 'soft'} delete)`)
     try {
-      this.logger.debug(`Deleting permission ${id} (${isHardDelete ? 'hard' : 'soft'} delete)`)
-
       await this.prismaService.$transaction(async (tx) => {
         const existingPermission = await this.permissionRepo.findById(id, !isHardDelete, tx)
         if (!existingPermission) {
           if (!isHardDelete) {
             const deletedPermission = await this.permissionRepo.findById(id, true, tx)
             if (deletedPermission) {
-              auditLogEntry.errorMessage = PermissionDeletedException(id).message
-              auditLogEntry.details.reason = 'PERMISSION_ALREADY_DELETED'
               throw PermissionDeletedException(id)
             }
           }
-          auditLogEntry.errorMessage = PermissionNotFoundException(id).message
-          auditLogEntry.details.reason = 'PERMISSION_NOT_FOUND'
           throw PermissionNotFoundException(id)
         }
 
         const roleCount = await this.permissionRepo.countRoles(id, tx)
         if (roleCount > 0) {
-          auditLogEntry.errorMessage = PermissionInUseException(id).message
-          auditLogEntry.details.reason = 'PERMISSION_IN_USE'
-          auditLogEntry.details.roleCount = roleCount
           throw PermissionInUseException(id)
         }
 
@@ -326,32 +240,16 @@ export class PermissionService {
         }
       })
 
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = isHardDelete ? 'PERMISSION_HARD_DELETE_SUCCESS' : 'PERMISSION_SOFT_DELETE_SUCCESS'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-
       return {
         message: isHardDelete ? 'Permission.HardDelete.Success' : 'Permission.SoftDelete.Success'
       }
     } catch (error) {
-      if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during permission delete'
-      }
-
       if (error instanceof ApiException) {
-        if (!auditLogEntry.errorMessage || auditLogEntry.errorMessage === 'Unknown error during permission delete') {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        }
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw error
       } else if (isNotFoundPrismaError(error)) {
-        auditLogEntry.details.reason = 'PERMISSION_NOT_FOUND_PRISMA_ERROR'
-        auditLogEntry.errorMessage = PermissionNotFoundException(id).message
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw PermissionNotFoundException(id)
       }
-
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      this.logger.error(`Unexpected error during permission delete: ${error.message}`, error.stack)
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
@@ -366,29 +264,15 @@ export class PermissionService {
     })
   })
   async restore(id: number, updatedById: number): Promise<PermissionType> {
-    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
-      action: 'PERMISSION_RESTORE_ATTEMPT',
-      userId: updatedById,
-      entity: 'Permission',
-      entityId: id.toString(),
-      status: AuditLogStatus.FAILURE,
-      details: { permissionId: id }
-    }
-
+    this.logger.debug(`Restoring permission ${id}`)
     try {
-      this.logger.debug(`Restoring permission ${id}`)
-
       const restoredPermission = await this.prismaService.$transaction(async (tx) => {
         const deletedPermission = await this.permissionRepo.findById(id, true, tx)
         if (!deletedPermission) {
-          auditLogEntry.errorMessage = PermissionNotFoundException(id).message
-          auditLogEntry.details.reason = 'PERMISSION_NOT_FOUND'
           throw PermissionNotFoundException(id)
         }
 
         if (!deletedPermission.deletedAt) {
-          auditLogEntry.errorMessage = 'Permission is not deleted'
-          auditLogEntry.details.reason = 'PERMISSION_NOT_DELETED'
           throw new ApiException(HttpStatus.BAD_REQUEST, 'BAD_REQUEST', 'Error.Permission.NotDeleted', [
             { code: 'Error.Permission.NotDeleted', path: 'permissionId', args: { id } }
           ])
@@ -396,31 +280,14 @@ export class PermissionService {
 
         return this.permissionRepo.restore(id, updatedById, tx)
       })
-
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'PERMISSION_RESTORE_SUCCESS'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-
       return restoredPermission
     } catch (error) {
-      if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during permission restore'
-      }
-
       if (error instanceof ApiException) {
-        if (!auditLogEntry.errorMessage || auditLogEntry.errorMessage === 'Unknown error during permission restore') {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        }
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw error
       } else if (isNotFoundPrismaError(error)) {
-        auditLogEntry.details.reason = 'PERMISSION_NOT_FOUND_PRISMA_ERROR'
-        auditLogEntry.errorMessage = PermissionNotFoundException(id).message
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw PermissionNotFoundException(id)
       }
-
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      this.logger.error(`Unexpected error during permission restore: ${error.message}`, error.stack)
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }

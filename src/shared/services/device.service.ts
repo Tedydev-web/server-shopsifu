@@ -107,8 +107,8 @@ export class DeviceService {
           `Found existing device ${existingDevice.id} for user ${data.userId}, updating last active timestamp`
         )
         const updateData: Prisma.DeviceUpdateInput = {
-          ip: data.ip,
-          lastActive: new Date()
+            ip: data.ip,
+            lastActive: new Date()
         }
 
         // Check if absolute session lifetime has been exceeded

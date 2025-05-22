@@ -226,7 +226,7 @@ export class AuthRepository {
     data: {
       token: string
       email: string
-      type: TypeOfVerificationCodeType
+      type: PrismaVerificationCodeEnum
       tokenType: TokenTypeType
       expiresAt: Date
       userId?: number
@@ -239,7 +239,7 @@ export class AuthRepository {
     const createData: Prisma.VerificationTokenCreateInput = {
       token: data.token,
       email: data.email,
-      type: data.type as PrismaVerificationCodeEnum,
+      type: data.type,
       tokenType: data.tokenType,
       expiresAt: data.expiresAt,
       metadata: data.metadata

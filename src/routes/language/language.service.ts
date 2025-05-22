@@ -96,28 +96,15 @@ export class LanguageService {
     })
   })
   async create({ data, createdById }: { data: CreateLanguageBodyType; createdById: number }): Promise<LanguageType> {
-    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
-      action: 'LANGUAGE_CREATE_ATTEMPT',
-      userId: createdById,
-      entity: 'Language',
-      entityId: data.id,
-      status: AuditLogStatus.FAILURE,
-      details: { providedData: data }
-    }
+    this.logger.debug(`Creating language: ${JSON.stringify(data)}`)
 
     try {
-      this.logger.debug(`Creating language: ${JSON.stringify(data)}`)
-
       const newLanguage = await this.prismaService.$transaction(async (tx) => {
         const existingLanguage = await this.languageRepo.findById(data.id, true, tx)
         if (existingLanguage) {
           if (existingLanguage.deletedAt) {
-            auditLogEntry.details.reason = 'LANGUAGE_DELETED_EXISTS'
-            auditLogEntry.errorMessage = LanguageDeletedException(data.id).message
             throw LanguageDeletedException(data.id)
           } else {
-            auditLogEntry.details.reason = 'LANGUAGE_ALREADY_EXISTS'
-            auditLogEntry.errorMessage = LanguageAlreadyExistsException.message
             throw LanguageAlreadyExistsException
           }
         }
@@ -130,31 +117,14 @@ export class LanguageService {
           tx
         )
       })
-
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'LANGUAGE_CREATE_SUCCESS'
-      auditLogEntry.entityId = newLanguage.id
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-
       return newLanguage
     } catch (error) {
-      if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during language creation'
-      }
-
       if (error instanceof ApiException) {
-        if (auditLogEntry.errorMessage === 'Unknown error during language creation') {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        }
         throw error
       } else if (isUniqueConstraintPrismaError(error)) {
-        auditLogEntry.details.reason = 'LANGUAGE_ID_ALREADY_EXISTS'
-        auditLogEntry.errorMessage = LanguageAlreadyExistsException.message
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw LanguageAlreadyExistsException
       }
-
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      this.logger.error(`Unexpected error during language creation: ${error.message}`, error.stack)
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
@@ -178,29 +148,15 @@ export class LanguageService {
     data: UpdateLanguageBodyType
     updatedById: number
   }): Promise<LanguageType> {
-    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
-      action: 'LANGUAGE_UPDATE_ATTEMPT',
-      userId: updatedById,
-      entity: 'Language',
-      entityId: id,
-      status: AuditLogStatus.FAILURE,
-      details: { updatedData: data }
-    }
-
+    this.logger.debug(`Updating language ${id}: ${JSON.stringify(data)}`)
     try {
-      this.logger.debug(`Updating language ${id}: ${JSON.stringify(data)}`)
-
       const updatedLanguage = await this.prismaService.$transaction(async (tx) => {
         const existingLanguage = await this.languageRepo.findById(id, false, tx)
         if (!existingLanguage) {
           const deletedLanguage = await this.languageRepo.findById(id, true, tx)
           if (deletedLanguage) {
-            auditLogEntry.errorMessage = LanguageDeletedException(id).message
-            auditLogEntry.details.reason = 'LANGUAGE_ALREADY_DELETED'
             throw LanguageDeletedException(id)
           } else {
-            auditLogEntry.errorMessage = LanguageNotFoundException(id).message
-            auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND'
             throw LanguageNotFoundException(id)
           }
         }
@@ -214,30 +170,14 @@ export class LanguageService {
           tx
         )
       })
-
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'LANGUAGE_UPDATE_SUCCESS'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-
       return updatedLanguage
     } catch (error) {
-      if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during language update'
-      }
-
       if (error instanceof ApiException) {
-        if (auditLogEntry.errorMessage === 'Unknown error during language update') {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        }
         throw error
       } else if (isNotFoundPrismaError(error)) {
-        auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_PRISMA_ERROR'
-        auditLogEntry.errorMessage = LanguageNotFoundException(id).message
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw LanguageNotFoundException(id)
       }
-
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      this.logger.error(`Unexpected error during language update: ${error.message}`, error.stack)
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
@@ -253,39 +193,23 @@ export class LanguageService {
     })
   })
   async delete(id: string, deletedById: number, isHardDelete: boolean = false): Promise<{ message: string }> {
-    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
-      action: 'LANGUAGE_DELETE_ATTEMPT',
-      userId: deletedById,
-      entity: 'Language',
-      entityId: id,
-      status: AuditLogStatus.FAILURE,
-      details: { deleteType: isHardDelete ? 'hard' : 'soft' }
-    }
+    this.logger.debug(`Deleting language ${id} (${isHardDelete ? 'hard' : 'soft'} delete)`)
 
     try {
-      this.logger.debug(`Deleting language ${id} (${isHardDelete ? 'hard' : 'soft'} delete)`)
-
       await this.prismaService.$transaction(async (tx) => {
         const existingLanguage = await this.languageRepo.findById(id, !isHardDelete, tx)
         if (!existingLanguage) {
           if (!isHardDelete) {
             const deletedLanguage = await this.languageRepo.findById(id, true, tx)
             if (deletedLanguage) {
-              auditLogEntry.errorMessage = LanguageDeletedException(id).message
-              auditLogEntry.details.reason = 'LANGUAGE_ALREADY_DELETED'
               throw LanguageDeletedException(id)
             }
           }
-          auditLogEntry.errorMessage = LanguageNotFoundException(id).message
-          auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND'
           throw LanguageNotFoundException(id)
         }
 
         const referenceCount = await this.languageRepo.countReferences(id, tx)
         if (referenceCount > 0) {
-          auditLogEntry.errorMessage = LanguageInUseException(id).message
-          auditLogEntry.details.reason = 'LANGUAGE_IN_USE'
-          auditLogEntry.details.referenceCount = referenceCount
           throw LanguageInUseException(id)
         }
 
@@ -296,31 +220,16 @@ export class LanguageService {
         }
       })
 
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = isHardDelete ? 'LANGUAGE_HARD_DELETE_SUCCESS' : 'LANGUAGE_SOFT_DELETE_SUCCESS'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-
       return {
         message: isHardDelete ? 'Language.HardDelete.Success' : 'Language.SoftDelete.Success'
       }
     } catch (error) {
-      if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during language delete'
-      }
-
       if (error instanceof ApiException) {
-        if (auditLogEntry.errorMessage === 'Unknown error during language delete') {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        }
         throw error
       } else if (isNotFoundPrismaError(error)) {
-        auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_PRISMA_ERROR'
-        auditLogEntry.errorMessage = LanguageNotFoundException(id).message
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw LanguageNotFoundException(id)
       }
-
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      this.logger.error(`Unexpected error during language delete: ${error.message}`, error.stack)
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }
@@ -335,29 +244,16 @@ export class LanguageService {
     })
   })
   async restore(id: string, updatedById: number): Promise<LanguageType> {
-    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Record<string, any> } = {
-      action: 'LANGUAGE_RESTORE_ATTEMPT',
-      userId: updatedById,
-      entity: 'Language',
-      entityId: id,
-      status: AuditLogStatus.FAILURE,
-      details: { languageId: id }
-    }
+    this.logger.debug(`Restoring language ${id}`)
 
     try {
-      this.logger.debug(`Restoring language ${id}`)
-
       const restoredLanguage = await this.prismaService.$transaction(async (tx) => {
         const deletedLanguage = await this.languageRepo.findById(id, true, tx)
         if (!deletedLanguage) {
-          auditLogEntry.errorMessage = LanguageNotFoundException(id).message
-          auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND'
           throw LanguageNotFoundException(id)
         }
 
         if (!deletedLanguage.deletedAt) {
-          auditLogEntry.errorMessage = 'Language is not deleted'
-          auditLogEntry.details.reason = 'LANGUAGE_NOT_DELETED'
           throw new ApiException(HttpStatus.BAD_REQUEST, 'BAD_REQUEST', 'Error.Language.NotDeleted', [
             { code: 'Error.Language.NotDeleted', path: 'languageId', args: { id } }
           ])
@@ -366,29 +262,14 @@ export class LanguageService {
         return this.languageRepo.restore(id, updatedById, tx)
       })
 
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'LANGUAGE_RESTORE_SUCCESS'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-
       return restoredLanguage
     } catch (error) {
-      if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during language restore'
-      }
-
       if (error instanceof ApiException) {
-        if (auditLogEntry.errorMessage === 'Unknown error during language restore') {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        }
         throw error
       } else if (isNotFoundPrismaError(error)) {
-        auditLogEntry.details.reason = 'LANGUAGE_NOT_FOUND_PRISMA_ERROR_ON_RESTORE'
-        auditLogEntry.errorMessage = LanguageNotFoundException(id).message
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw LanguageNotFoundException(id)
       }
-
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      this.logger.error(`Unexpected error during language restore: ${error.message}`, error.stack)
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Unexpected')
     }
   }

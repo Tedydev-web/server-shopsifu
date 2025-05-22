@@ -15,14 +15,15 @@ export const ConditionGuard = {
 
 export type ConditionGuardType = (typeof ConditionGuard)[keyof typeof ConditionGuard]
 
-export const TypeOfVerificationCode = {
-  REGISTER: 'REGISTER',
-  FORGOT_PASSWORD: 'FORGOT_PASSWORD',
-  LOGIN: 'LOGIN',
-  LOGIN_2FA: 'LOGIN_2FA',
-  DISABLE_2FA: 'DISABLE_2FA',
-  SETUP_2FA: 'SETUP_2FA'
-} as const
+export enum TypeOfVerificationCode {
+  REGISTER = 'REGISTER',
+  RESET_PASSWORD = 'RESET_PASSWORD',
+  LOGIN = 'LOGIN',
+  LOGIN_2FA = 'LOGIN_2FA',
+  DISABLE_2FA = 'DISABLE_2FA',
+  SETUP_2FA = 'SETUP_2FA',
+  LOGIN_UNTRUSTED_DEVICE_OTP = 'LOGIN_UNTRUSTED_DEVICE_OTP'
+}
 
 export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof typeof TypeOfVerificationCode]
 

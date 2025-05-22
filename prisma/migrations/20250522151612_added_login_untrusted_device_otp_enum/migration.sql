@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "VerificationCodeType" ADD VALUE 'LOGIN_UNTRUSTED_DEVICE_OTP';
