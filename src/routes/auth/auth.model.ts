@@ -230,6 +230,11 @@ export type TwoFactorVerifyBodyType = z.infer<typeof TwoFactorVerifyBodySchema>
 export type UserProfileResType = z.infer<typeof UserProfileResSchema>
 export type AccessTokenResType = z.infer<typeof AccessTokenResSchema>
 
+// Schema for successful token refresh without returning the token in body
+export const RefreshTokenSuccessResSchema = z.object({
+  message: z.string()
+})
+
 // Schemas for new endpoints
 export const TrustDeviceBodySchema = z
   .object({
@@ -248,3 +253,5 @@ export const RememberMeBodySchema = z
 
 export type TrustDeviceBodyType = z.infer<typeof TrustDeviceBodySchema>
 export type RememberMeBodyType = z.infer<typeof RememberMeBodySchema>
+
+export type RefreshTokenSuccessResType = z.infer<typeof RefreshTokenSuccessResSchema>

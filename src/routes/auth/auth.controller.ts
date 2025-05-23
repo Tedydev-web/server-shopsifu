@@ -19,7 +19,8 @@ import {
   TwoFactorConfirmSetupBodyDTO,
   TwoFactorConfirmSetupResDTO,
   TrustDeviceBodyDTO,
-  RememberMeBodyDTO
+  RememberMeBodyDTO,
+  RefreshTokenSuccessResDTO
 } from 'src/routes/auth/auth.dto'
 import { UserProfileResSchema, LoginSessionResSchema } from 'src/routes/auth/auth.model'
 import { UseZodSchemas, hasProperty } from 'src/shared/decorators/use-zod-schema.decorator'
@@ -106,7 +107,7 @@ export class AuthController {
   @Post('refresh-token')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(RefreshTokenResDTO)
+  @ZodSerializerDto(RefreshTokenSuccessResDTO)
   @Throttle({ medium: { limit: 10, ttl: 60000 } })
   refreshToken(
     @Body() _: RefreshTokenBodyDTO,

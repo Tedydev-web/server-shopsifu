@@ -642,7 +642,7 @@ export class AuthService {
         auditLogEntry.details.newRefreshTokenRememberMe = shouldRememberUser
 
         return {
-          accessToken: newAccessToken
+          message: 'Auth.Token.RefreshedSuccessfully'
         }
       })
       await this.auditLogService.record(auditLogEntry as AuditLogData)

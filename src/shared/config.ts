@@ -18,7 +18,7 @@ const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test', 'staging']).default('development'),
   DATABASE_URL: z.string(),
   ACCESS_TOKEN_SECRET: z.string(),
-  ACCESS_TOKEN_EXPIRES_IN: z.string().default('1m'),
+  ACCESS_TOKEN_EXPIRES_IN: z.string().default('10m'),
   REFRESH_TOKEN_SECRET: z.string(),
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('1d'),
   SECRET_API_KEY: z.string(),
