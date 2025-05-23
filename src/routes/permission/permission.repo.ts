@@ -4,7 +4,6 @@ import {
   PermissionType,
   UpdatePermissionBodyType,
   GetPermissionsQueryType,
-  HTTPMethod,
   HTTPMethodType
 } from 'src/routes/permission/permission.model'
 import { PrismaService } from 'src/shared/services/prisma.service'

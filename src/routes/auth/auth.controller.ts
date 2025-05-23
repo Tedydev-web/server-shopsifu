@@ -7,7 +7,6 @@ import {
   LoginBodyDTO,
   LogoutBodyDTO,
   RefreshTokenBodyDTO,
-  RefreshTokenResDTO,
   RegisterBodyDTO,
   RegisterResDTO,
   ResetPasswordBodyDTO,
@@ -147,7 +146,7 @@ export class AuthController {
   @IsPublic()
   @ZodSerializerDto(GetAuthorizationUrlResDTO)
   @SkipThrottle()
-  getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string, @Query('rememberMe') _rememberMe?: string) {
+  getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string) {
     return this.googleService.getAuthorizationUrl({
       userAgent,
       ip

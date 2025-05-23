@@ -107,8 +107,8 @@ export class DeviceService {
           `Found existing device ${existingDevice.id} for user ${data.userId}, updating last active timestamp`
         )
         const updateData: Prisma.DeviceUpdateInput = {
-            ip: data.ip,
-            lastActive: new Date()
+          ip: data.ip,
+          lastActive: new Date()
         }
 
         // Check if absolute session lifetime has been exceeded
@@ -356,7 +356,7 @@ export class DeviceService {
     const isValid = sessionAgeMs <= envConfig.ABSOLUTE_SESSION_LIFETIME_MS
     if (!isValid) {
       this.logger.warn(
-        `Device ${device.id} for user ${device.userId} session created at ${device.sessionCreatedAt} has exceeded absolute lifetime of ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}ms.`
+        `Device ${device.id} for user ${device.userId} session created at ${device.sessionCreatedAt?.toISOString()} has exceeded absolute lifetime of ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}ms.`
       )
     }
     return isValid

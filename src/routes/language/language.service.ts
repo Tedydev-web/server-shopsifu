@@ -13,7 +13,7 @@ import {
   LanguageInUseException
 } from 'src/routes/language/language.error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
-import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
+import { AuditLogService } from 'src/routes/audit-log/audit-log.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
@@ -96,7 +96,7 @@ export class LanguageService {
     })
   })
   async create({ data, createdById }: { data: CreateLanguageBodyType; createdById: number }): Promise<LanguageType> {
-      this.logger.debug(`Creating language: ${JSON.stringify(data)}`)
+    this.logger.debug(`Creating language: ${JSON.stringify(data)}`)
 
     try {
       const newLanguage = await this.prismaService.$transaction(async (tx) => {
@@ -148,7 +148,7 @@ export class LanguageService {
     data: UpdateLanguageBodyType
     updatedById: number
   }): Promise<LanguageType> {
-      this.logger.debug(`Updating language ${id}: ${JSON.stringify(data)}`)
+    this.logger.debug(`Updating language ${id}: ${JSON.stringify(data)}`)
     try {
       const updatedLanguage = await this.prismaService.$transaction(async (tx) => {
         const existingLanguage = await this.languageRepo.findById(id, false, tx)
@@ -172,9 +172,9 @@ export class LanguageService {
       })
       return updatedLanguage
     } catch (error) {
-        if (error instanceof ApiException) {
+      if (error instanceof ApiException) {
         throw error
-        } else if (isNotFoundPrismaError(error)) {
+      } else if (isNotFoundPrismaError(error)) {
         throw LanguageNotFoundException(id)
       }
       this.logger.error(`Unexpected error during language update: ${error.message}`, error.stack)
@@ -193,7 +193,7 @@ export class LanguageService {
     })
   })
   async delete(id: string, deletedById: number, isHardDelete: boolean = false): Promise<{ message: string }> {
-      this.logger.debug(`Deleting language ${id} (${isHardDelete ? 'hard' : 'soft'} delete)`)
+    this.logger.debug(`Deleting language ${id} (${isHardDelete ? 'hard' : 'soft'} delete)`)
 
     try {
       await this.prismaService.$transaction(async (tx) => {
@@ -224,9 +224,9 @@ export class LanguageService {
         message: isHardDelete ? 'Language.HardDelete.Success' : 'Language.SoftDelete.Success'
       }
     } catch (error) {
-        if (error instanceof ApiException) {
+      if (error instanceof ApiException) {
         throw error
-        } else if (isNotFoundPrismaError(error)) {
+      } else if (isNotFoundPrismaError(error)) {
         throw LanguageNotFoundException(id)
       }
       this.logger.error(`Unexpected error during language delete: ${error.message}`, error.stack)
@@ -244,7 +244,7 @@ export class LanguageService {
     })
   })
   async restore(id: string, updatedById: number): Promise<LanguageType> {
-      this.logger.debug(`Restoring language ${id}`)
+    this.logger.debug(`Restoring language ${id}`)
 
     try {
       const restoredLanguage = await this.prismaService.$transaction(async (tx) => {
@@ -264,7 +264,7 @@ export class LanguageService {
 
       return restoredLanguage
     } catch (error) {
-        if (error instanceof ApiException) {
+      if (error instanceof ApiException) {
         throw error
       } else if (isNotFoundPrismaError(error)) {
         throw LanguageNotFoundException(id)

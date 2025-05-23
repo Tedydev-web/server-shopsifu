@@ -7,9 +7,7 @@ import {
   ResetPasswordBodyType,
   SendOTPBodyType,
   TwoFactorVerifyBodyType,
-  VerifyCodeBodyType,
-  TrustDeviceBodyType,
-  RememberMeBodyType
+  VerifyCodeBodyType
 } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { RolesService } from 'src/routes/auth/roles.service'
