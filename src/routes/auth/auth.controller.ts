@@ -304,7 +304,7 @@ export class AuthController {
   @Post('logout-all')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 3, ttl: 60000 } }) // Can adjust throttling as needed
+  @Throttle({ short: { limit: 3, ttl: 60000 } })
   logoutFromAllDevices(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Req() req: Request,

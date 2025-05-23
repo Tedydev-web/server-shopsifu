@@ -14,6 +14,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { LoggerMiddleware } from './shared/middleware/logger.middleware'
 import { TokenRefreshInterceptor } from './shared/interceptor/token-refresh.interceptor'
 import { PermissionModule } from './routes/permission/permission.module'
+import { RoleModule } from './routes/role/role.module';
 
 @Module({
   imports: [
@@ -38,7 +39,8 @@ import { PermissionModule } from './routes/permission/permission.module'
         ttl: 60000,
         limit: 100
       }
-    ])
+    ]),
+    RoleModule
   ],
   controllers: [AppController],
   providers: [

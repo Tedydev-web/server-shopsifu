@@ -1124,7 +1124,6 @@ export class AuthService {
 
     try {
       const result = await this.prismaService.$transaction(async (tx) => {
-        // Step 1: Fetch and perform initial validation of the loginSessionToken
         const dbLoginSessionTokenRecord = await this.otpService.findVerificationToken(body.loginSessionToken, tx)
 
         if (dbLoginSessionTokenRecord) {
@@ -1138,10 +1137,10 @@ export class AuthService {
           !dbLoginSessionTokenRecord ||
           !dbLoginSessionTokenRecord.email ||
           (dbLoginSessionTokenRecord && dbLoginSessionTokenRecord.expiresAt < new Date()) ||
-          dbLoginSessionTokenRecord.tokenType !== TokenType.OTP // Assuming login session tokens are of type OTP
+          dbLoginSessionTokenRecord.tokenType !== TokenType.OTP
         ) {
           if (dbLoginSessionTokenRecord) {
-            await this.otpService.deleteOtpToken(body.loginSessionToken, tx) // Clean up invalid/expired token
+            await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
           }
           auditLogEntry.errorMessage =
             dbLoginSessionTokenRecord && dbLoginSessionTokenRecord.expiresAt < new Date()
@@ -1174,7 +1173,6 @@ export class AuthService {
         auditLogEntry.details.sessionUserId = sessionUserId
         auditLogEntry.details.sessionDeviceId = sessionDeviceId
 
-        // Step 2: Fetch user details
         const user = await tx.user.findUnique({
           where: { email: sessionEmail },
           include: { role: true }
@@ -1186,7 +1184,6 @@ export class AuthService {
           auditLogEntry.details.reason = 'USER_NOT_FOUND_FOR_SESSION'
           throw EmailNotFoundException
         }
-        // Ensure userId matches if both are present (should always match if sessionUserId is from a valid token)
         if (sessionUserId && sessionUserId !== user.id) {
           await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
           auditLogEntry.errorMessage = 'User ID mismatch between session token and fetched user.'
@@ -1197,9 +1194,8 @@ export class AuthService {
             'Error.Auth.Session.UserIdMismatch'
           )
         }
-        auditLogEntry.userId = user.id // Overwrite/confirm userId from user record
+        auditLogEntry.userId = user.id
 
-        // Step 3: Validate the code (OTP/TOTP/Recovery) based on actualSessionType
         let isCodeValid = false
 
         if (actualSessionType === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
@@ -1294,7 +1290,6 @@ export class AuthService {
           )
         }
 
-        // Step 4: Device validation and token generation
         let finalDeviceId = sessionDeviceId
         let currentDeviceIsTrusted = false
 
@@ -1341,7 +1336,6 @@ export class AuthService {
         auditLogEntry.details.finalDeviceId = finalDeviceId
         const finalAskToTrustDevice = !currentDeviceIsTrusted
 
-        // Step 5: Update user status if 2FA was completed
         if (actualSessionType === TypeOfVerificationCode.LOGIN_2FA) {
           const currentTime = new Date()
           await this.twoFactorService.updateUserTwoFactorStatus(
@@ -1351,7 +1345,6 @@ export class AuthService {
           )
         }
 
-        // Step 6: Generate and set tokens
         const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.generateTokens(
           { userId: user.id, deviceId: finalDeviceId, roleId: user.roleId, roleName: user.role.name },
           tx,
@@ -1361,7 +1354,6 @@ export class AuthService {
           this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
         }
 
-        // Step 7: Clean up the used login session token
         await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
