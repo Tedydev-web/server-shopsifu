@@ -1,9 +1,8 @@
 import { z } from 'zod'
 import { BasePaginationQuerySchema, createPaginatedResponseSchema } from 'src/shared/models/pagination.model'
 import { HTTPMethod as PrismaHTTPMethod } from '@prisma/client'
-import { HTTPMethod } from 'src/shared/constants/role.constant'
+import { HTTPMethod } from 'src/shared/constants/http.constant'
 
-export { HTTPMethod } from 'src/shared/constants/role.constant'
 export type HTTPMethodType = keyof typeof HTTPMethod
 
 export const PermissionSchema = z.object({

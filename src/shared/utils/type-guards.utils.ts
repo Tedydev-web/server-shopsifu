@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { ApiException, ErrorDetailMessage } from '../exceptions/api.exception'
+import { randomInt } from 'crypto'
 
 export function isUniqueConstraintPrismaError(error: any): error is Prisma.PrismaClientKnownRequestError {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
@@ -80,4 +81,12 @@ export function normalizeErrorMessage(
     message: defaultMessage,
     details: [{ code: defaultCode }]
   }
+}
+
+/**
+ * Tạo một mã OTP ngẫu nhiên 6 số
+ * @returns Chuỗi 6 số từ 100000 đến 999999
+ */
+export const generateOTP = () => {
+  return String(randomInt(100000, 1000000))
 }

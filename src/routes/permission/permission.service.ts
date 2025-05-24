@@ -12,7 +12,7 @@ import {
   PermissionInUseException,
   PathMethodCombinationExistsException
 } from 'src/routes/permission/permission.error'
-import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
+import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/utils/type-guards.utils'
 import { AuditLogService } from 'src/routes/audit-log/audit-log.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { PrismaService } from 'src/shared/services/prisma.service'

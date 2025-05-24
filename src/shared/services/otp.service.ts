@@ -6,7 +6,7 @@ import { EmailService } from 'src/shared/services/email.service'
 import { addMilliseconds } from 'date-fns'
 import ms from 'ms'
 import { v4 as uuidv4 } from 'uuid'
-import { generateOTP } from 'src/shared/helpers'
+import { generateOTP } from 'src/shared/utils/type-guards.utils'
 import { PrismaService } from './prisma.service'
 import {
   PrismaClient,
