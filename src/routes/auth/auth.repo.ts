@@ -11,6 +11,8 @@ import {
   User,
   VerificationCode as PrismaVerificationCodeModel
 } from '@prisma/client'
+import { DeviceService } from 'src/shared/services/device.service'
+import { CacheService } from 'src/shared/services/cache.service'
 
 type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -19,26 +21,14 @@ type PrismaTransactionClient = Omit<
 
 @Injectable()
 export class AuthRepository {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    protected readonly prismaService: PrismaService,
+    private readonly cacheService: CacheService,
+    private readonly deviceService: DeviceService
+  ) {}
 
   private getClient(prismaClient?: PrismaTransactionClient): PrismaTransactionClient | PrismaService {
     return prismaClient || this.prismaService
-  }
-
-  // Helper function, similar to the one in TokenService
-  private basicDeviceFingerprint(userAgent: string | null | undefined): string {
-    const uaToProcess = userAgent || '' // Normalize null, undefined to empty string
-
-    const lowerUserAgent = uaToProcess.toLowerCase()
-    const isMobile = /mobile|android|iphone|ipad|ipod/i.test(lowerUserAgent)
-    const browserMatch = lowerUserAgent.match(/(chrome|safari|firefox|edge|opera|trident|msie)\/?[\\s]*([\\d.]+)/i)
-    const osMatch = lowerUserAgent.match(/(windows|mac|linux|android|ios|iphone|ipad)\\s*([\\d.]*)/i)
-
-    const deviceType = isMobile ? 'mobile' : 'desktop'
-    const browser = browserMatch ? browserMatch[1].toLowerCase() : 'unknown'
-    const os = osMatch ? osMatch[1].toLowerCase() : 'unknown'
-
-    return `${deviceType}-${os}-${browser}`
   }
 
   async createUser(
@@ -365,8 +355,8 @@ export class AuthRepository {
       return false
     }
 
-    const currentFingerprint = this.basicDeviceFingerprint(userAgent)
-    const storedFingerprint = this.basicDeviceFingerprint(device.userAgent)
+    const currentFingerprint = this.deviceService.basicDeviceFingerprint(userAgent)
+    const storedFingerprint = this.deviceService.basicDeviceFingerprint(device.userAgent)
     const isFingerprintMatched = currentFingerprint === storedFingerprint
 
     await this.updateDevice(

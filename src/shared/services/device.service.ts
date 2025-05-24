@@ -21,6 +21,26 @@ export class DeviceService {
     private readonly auditLogService: AuditLogService
   ) {}
 
+  /**
+   * Tạo fingerprint cơ bản cho thiết bị dựa trên User-Agent
+   * Phương thức này cung cấp một cách để nhanh chóng so sánh thiết bị
+   * mà không cần lưu trữ thông tin nhạy cảm
+   */
+  basicDeviceFingerprint(userAgent: string | null | undefined): string {
+    const uaToProcess = userAgent || '' // Chuẩn hóa null, undefined thành chuỗi rỗng
+
+    const lowerUserAgent = uaToProcess.toLowerCase()
+    const isMobile = /mobile|android|iphone|ipad|ipod/i.test(lowerUserAgent)
+    const browserMatch = lowerUserAgent.match(/(chrome|safari|firefox|edge|opera|trident|msie)\/?[\\s]*([\\d.]+)/i)
+    const osMatch = lowerUserAgent.match(/(windows|mac|linux|android|ios|iphone|ipad)\\s*([\\d.]*)/i)
+
+    const deviceType = isMobile ? 'mobile' : 'desktop'
+    const browser = browserMatch ? browserMatch[1].toLowerCase() : 'unknown'
+    const os = osMatch ? osMatch[1].toLowerCase() : 'unknown'
+
+    return `${deviceType}-${os}-${browser}`
+  }
+
   @AuditLog({
     action: 'DEVICE_CREATE',
     entity: 'Device',

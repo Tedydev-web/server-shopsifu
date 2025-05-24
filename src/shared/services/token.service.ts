@@ -11,6 +11,7 @@ import { PrismaClient } from '@prisma/client'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { UnauthorizedAccessException } from 'src/routes/auth/auth.error'
 import { Prisma } from '@prisma/client'
+import { DeviceService } from './device.service'
 
 type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -24,7 +25,8 @@ export class TokenService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly prismaService: PrismaService,
-    private readonly authRepository: AuthRepository
+    private readonly authRepository: AuthRepository,
+    private readonly deviceService: DeviceService
   ) {}
 
   signAccessToken(payload: AccessTokenPayloadCreate) {
@@ -312,7 +314,8 @@ export class TokenService {
 
       if (existingRefreshToken.device) {
         const userAgentMatch =
-          this.basicDeviceFingerprint(existingRefreshToken.device.userAgent) === this.basicDeviceFingerprint(userAgent)
+          this.deviceService.basicDeviceFingerprint(existingRefreshToken.device.userAgent) ===
+          this.deviceService.basicDeviceFingerprint(userAgent)
 
         if (!userAgentMatch) {
           this.logger.debug('Device fingerprint mismatch during silent refresh')
@@ -362,23 +365,5 @@ export class TokenService {
       this.logger.error('Error during silent token refresh', error)
       return null
     }
-  }
-
-  private basicDeviceFingerprint(userAgent: string): string {
-    // This function creates a very basic fingerprint of the client device
-    // based on the User-Agent string. It's not foolproof and can be spoofed,
-    // but serves as a simple check to detect significant changes in client environment
-    // (e.g., switching from a mobile browser to a desktop browser) during token refresh.
-    if (!userAgent) return 'unknown'
-
-    const isMobile = /mobile|android|iphone|ipad|ipod/i.test(userAgent.toLowerCase())
-    const browserMatch = userAgent.match(/(chrome|safari|firefox|edge|opera|trident|msie)\/?\s*([\d.]+)/i)
-    const osMatch = userAgent.match(/(windows|mac|linux|android|ios|iphone|ipad)\s*([\d.]*)/i)
-
-    const deviceType = isMobile ? 'mobile' : 'desktop'
-    const browser = browserMatch ? browserMatch[1].toLowerCase() : 'unknown'
-    const os = osMatch ? osMatch[1].toLowerCase() : 'unknown'
-
-    return `${deviceType}-${os}-${browser}`
   }
 }
