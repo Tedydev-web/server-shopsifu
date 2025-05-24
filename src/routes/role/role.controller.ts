@@ -24,11 +24,11 @@ import {
   AssignPermissionsToRoleBodyDTO
 } from 'src/routes/role/role.dto'
 import { RoleService } from 'src/routes/role/role.service'
-import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { ActiveUser } from '../auth/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
-import { Roles } from 'src/shared/decorators/roles.decorator'
-import { RolesGuard } from 'src/shared/guards/roles.guard'
+import { Roles } from 'src/routes/auth/decorators/roles.decorator'
+import { RolesGuard } from '../auth/guards/roles.guard'
 
 @Controller('roles')
 @UseGuards(RolesGuard)

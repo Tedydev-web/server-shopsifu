@@ -23,11 +23,11 @@ import {
   UpdatePermissionBodyDTO
 } from 'src/routes/permission/permission.dto'
 import { PermissionService } from 'src/routes/permission/permission.service'
-import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { ActiveUser } from '../auth/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
-import { Roles } from 'src/shared/decorators/roles.decorator'
-import { RolesGuard } from 'src/shared/guards/roles.guard'
+import { Roles } from '../auth/decorators/roles.decorator'
+import { RolesGuard } from '../auth/guards/roles.guard'
 
 @Controller('permissions')
 @UseGuards(RolesGuard)

@@ -1,16 +1,17 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common'
 import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
-import { TokenService } from 'src/shared/services/token.service'
+import { TokenService } from 'src/routes/auth/providers/token.service'
 import { Request } from 'express'
-import { DeviceService } from 'src/shared/services/device.service'
+import { DeviceService } from 'src/routes/auth/providers/device.service'
 import envConfig from 'src/shared/config'
 import {
   AbsoluteSessionLifetimeExceededException,
   DeviceMissingSessionCreationTimeException,
   InvalidDeviceException
 } from 'src/routes/auth/auth.error'
-import { AuditLogService } from 'src/routes/audit-log/audit-log.service'
-import { ApiException } from '../exceptions/api.exception'
+import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
+import { ApiException } from 'src/shared/exceptions/api.exception'
+import { Prisma } from '@prisma/client'
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
@@ -35,15 +36,14 @@ export class AccessTokenGuard implements CanActivate {
       const { userId, deviceId } = decodedAccessToken
 
       if (!deviceId) {
-        // This case should ideally not happen if tokens always include deviceId
         this.auditLogService.recordAsync({
           action: 'ACCESS_TOKEN_GUARD_DENY',
           userId,
-          status: 'FAILURE' as any,
+          status: AuditLogStatus.FAILURE,
           ipAddress: request.ip,
-          userAgent: request.headers['user-agent'],
+          userAgent: request.headers['user-agent'] as string,
           errorMessage: 'Missing deviceId in access token payload.',
-          details: { reason: 'MISSING_DEVICE_ID_IN_TOKEN' }
+          details: { reason: 'MISSING_DEVICE_ID_IN_TOKEN' } as Prisma.JsonObject
         })
         throw InvalidDeviceException
       }
@@ -54,51 +54,45 @@ export class AccessTokenGuard implements CanActivate {
         this.auditLogService.recordAsync({
           action: 'ACCESS_TOKEN_GUARD_DENY',
           userId,
-          status: 'FAILURE' as any,
+          status: AuditLogStatus.FAILURE,
           ipAddress: request.ip,
-          userAgent: request.headers['user-agent'],
+          userAgent: request.headers['user-agent'] as string,
           errorMessage: `Device not found or inactive. Device ID: ${deviceId}`,
-          details: { reason: 'DEVICE_NOT_FOUND_OR_INACTIVE', deviceId }
+          details: { reason: 'DEVICE_NOT_FOUND_OR_INACTIVE', deviceId } as Prisma.JsonObject
         })
         throw InvalidDeviceException
       }
 
-      // 1. Check Absolute Session Lifetime
       if (device.sessionCreatedAt) {
         const sessionAgeMs = new Date().getTime() - new Date(device.sessionCreatedAt).getTime()
         if (sessionAgeMs > envConfig.ABSOLUTE_SESSION_LIFETIME_MS) {
           this.auditLogService.recordAsync({
             action: 'ACCESS_TOKEN_GUARD_DENY',
             userId,
-            status: 'FAILURE' as any,
+            status: AuditLogStatus.FAILURE,
             ipAddress: request.ip,
-            userAgent: request.headers['user-agent'],
+            userAgent: request.headers['user-agent'] as string,
             errorMessage: `Absolute session lifetime exceeded. Device ID: ${deviceId}. Session created at: ${device.sessionCreatedAt.toISOString()}`,
             details: {
               reason: 'ABSOLUTE_SESSION_LIFETIME_EXCEEDED',
               deviceId,
               sessionCreatedAt: device.sessionCreatedAt.toISOString()
-            }
+            } as Prisma.JsonObject
           })
           throw AbsoluteSessionLifetimeExceededException
         }
       } else {
-        // This case should ideally not happen
         this.auditLogService.recordAsync({
           action: 'ACCESS_TOKEN_GUARD_DENY',
           userId,
-          status: 'FAILURE' as any,
+          status: AuditLogStatus.FAILURE,
           ipAddress: request.ip,
-          userAgent: request.headers['user-agent'],
+          userAgent: request.headers['user-agent'] as string,
           errorMessage: `Device is missing sessionCreatedAt. Device ID: ${deviceId}. Forcing re-authentication.`,
-          details: { reason: 'DEVICE_MISSING_SESSION_CREATION_TIME', deviceId }
+          details: { reason: 'DEVICE_MISSING_SESSION_CREATION_TIME', deviceId } as Prisma.JsonObject
         })
         throw DeviceMissingSessionCreationTimeException
       }
-
-      // If we reach here, all checks passed.
-      // We are NOT updating device.lastActive here to avoid excessive DB writes on every request.
-      // lastActive is updated during login, token refresh, etc.
 
       return true
     } catch (error) {
@@ -110,21 +104,21 @@ export class AccessTokenGuard implements CanActivate {
       ) {
         throw error
       }
-      // For other errors (e.g., token expired, invalid token format from verifyAccessToken)
       this.auditLogService.recordAsync({
         action: 'ACCESS_TOKEN_GUARD_DENY',
         userId: (request[REQUEST_USER_KEY] as any)?.userId,
-        status: 'FAILURE' as any,
+        status: AuditLogStatus.FAILURE,
         ipAddress: request.ip,
-        userAgent: request.headers['user-agent'],
+        userAgent: request.headers['user-agent'] as string,
         errorMessage: error instanceof Error ? error.message : 'Invalid or expired access token.',
-        details: { reason: 'INVALID_OR_EXPIRED_ACCESS_TOKEN', originalError: error?.constructor?.name }
+        details: {
+          reason: 'INVALID_OR_EXPIRED_ACCESS_TOKEN',
+          originalError: error?.constructor?.name
+        } as Prisma.JsonObject
       })
       throw new UnauthorizedException('Error.Auth.Token.InvalidOrExpiredAccessToken')
     }
   }
 }
 
-// Need to define MissingAccessTokenException if it's not already globally available
-// For now, assuming it's a specific UnauthorizedException message
 const MissingAccessTokenException = new UnauthorizedException('Error.Auth.Token.MissingAccessToken')

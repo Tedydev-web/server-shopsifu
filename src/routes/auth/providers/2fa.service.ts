@@ -1,17 +1,13 @@
 import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import * as OTPAuth from 'otpauth'
 import envConfig from 'src/shared/config'
-import { PrismaService } from './prisma.service'
-import { HashingService } from './hashing.service'
-import { TwoFactorMethodTypeType } from 'src/shared/constants/auth.constant'
-import { Prisma, PrismaClient, RecoveryCode } from '@prisma/client'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { HashingService } from 'src/shared/services/hashing.service'
+import { TwoFactorMethodTypeType } from '../constants/auth.constants'
+import { Prisma, RecoveryCode } from '@prisma/client'
 import { InvalidRecoveryCodeException } from 'src/routes/auth/auth.error'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-
-type PrismaTransactionClient = Omit<
-  PrismaClient,
-  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
->
+import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 
 @Injectable()
 export class TwoFactorService {

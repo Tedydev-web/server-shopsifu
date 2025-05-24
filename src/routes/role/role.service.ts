@@ -22,7 +22,7 @@ import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
 import { PaginatedResponseType } from 'src/shared/models/pagination.model'
 import { PermissionRepo } from 'src/routes/permission/permission.repo'
 import { PermissionNotFoundException } from 'src/routes/permission/permission.error'
-import { RoleName, RoleNameValue } from 'src/shared/constants/role.constant'
+import { RoleName, RoleNameValue } from 'src/routes/auth/constants/role.constant'
 
 const SYSTEM_ROLES: readonly RoleNameValue[] = [RoleName.Admin, RoleName.Client] as const
 

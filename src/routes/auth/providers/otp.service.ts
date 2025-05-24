@@ -1,15 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { TokenType, TokenTypeType, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
+import { TokenType, TokenTypeType, TypeOfVerificationCodeType } from '../constants/auth.constants'
 import envConfig from 'src/shared/config'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
-import { EmailService } from 'src/shared/services/email.service'
+import { EmailService } from './email.service'
 import { addMilliseconds } from 'date-fns'
 import ms from 'ms'
 import { v4 as uuidv4 } from 'uuid'
-import { generateOTP } from 'src/shared/utils/type-guards.utils'
-import { PrismaService } from './prisma.service'
+import { generateOTP } from 'src/routes/auth/utils/otp.utils'
+import { PrismaService } from 'src/shared/services/prisma.service'
 import {
-  PrismaClient,
   VerificationCode as PrismaVerificationCodeModel,
   VerificationToken as PrismaVerificationToken,
   VerificationCodeType as PrismaVerificationCodeEnum
@@ -22,11 +21,7 @@ import {
   OTPTokenExpiredException,
   DeviceMismatchException
 } from 'src/routes/auth/auth.error'
-
-type PrismaTransactionClient = Omit<
-  PrismaClient,
-  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
->
+import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 
 @Injectable()
 export class OtpService {
@@ -59,7 +54,7 @@ export class OtpService {
           type: type as PrismaVerificationCodeEnum
         }
       },
-      client as any
+      client
     )
 
     if (!verificationCode) {
@@ -90,10 +85,7 @@ export class OtpService {
   }): Promise<PrismaVerificationToken> {
     const client = tx || this.prismaService
 
-    const verificationToken = (await this.authRepository.findUniqueVerificationToken(
-      { token },
-      client as any
-    )) as PrismaVerificationToken | null
+    const verificationToken = await this.authRepository.findUniqueVerificationToken({ token }, client)
 
     if (!verificationToken) {
       throw InvalidOTPTokenException
@@ -184,7 +176,7 @@ export class OtpService {
 
   async deleteOtpToken(token: string, tx?: PrismaTransactionClient): Promise<void> {
     const client = tx || this.prismaService
-    await this.authRepository.deleteVerificationToken({ token }, client as any)
+    await this.authRepository.deleteVerificationToken({ token }, client)
   }
 
   async deleteVerificationCode(
@@ -202,7 +194,7 @@ export class OtpService {
           type: type as PrismaVerificationCodeEnum
         }
       },
-      client as any
+      client
     )
   }
 
@@ -238,9 +230,6 @@ export class OtpService {
 
   async findVerificationToken(token: string, tx?: PrismaTransactionClient): Promise<PrismaVerificationToken | null> {
     const client = tx || this.prismaService
-    return (await this.authRepository.findUniqueVerificationToken(
-      { token },
-      client as any
-    )) as PrismaVerificationToken | null
+    return await this.authRepository.findUniqueVerificationToken({ token }, client)
   }
 }

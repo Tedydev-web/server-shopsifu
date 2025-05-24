@@ -2,8 +2,8 @@ import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@
 import { Reflector } from '@nestjs/core'
 import { ROLES_KEY } from '../decorators/roles.decorator'
 import { RoleNameValue } from '../constants/role.constant'
-import { AccessTokenPayload } from '../types/jwt.type'
-import { REQUEST_USER_KEY } from '../constants/auth.constant'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -21,7 +21,7 @@ export class RolesGuard implements CanActivate {
     const user = request[REQUEST_USER_KEY] as AccessTokenPayload | undefined
 
     if (!user || !user.roleName) {
-      throw new ForbiddenException('Error.Auth.Access.Denied') // User or roleName missing
+      throw new ForbiddenException('Error.Auth.Access.Denied')
     }
 
     const userRole = user.roleName as RoleNameValue

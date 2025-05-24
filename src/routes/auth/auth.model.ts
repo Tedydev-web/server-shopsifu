@@ -1,4 +1,4 @@
-import { TwoFactorMethodType, TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
+import { TwoFactorMethodType, TypeOfVerificationCode } from './constants/auth.constants'
 import { UserSchema } from 'src/shared/models/shared-user.model'
 import { z } from 'zod'
 import { PasswordsDoNotMatchException, InvalidCodeFormatException } from './auth.error'
@@ -150,8 +150,8 @@ export const ResetPasswordBodySchema = z
 
 export const DisableTwoFactorBodySchema = z
   .object({
-    type: z.enum([TwoFactorMethodType.TOTP, TwoFactorMethodType.OTP]),
-    code: z.string().length(6)
+    type: z.enum([TwoFactorMethodType.TOTP, TwoFactorMethodType.OTP, TwoFactorMethodType.RECOVERY] as const),
+    code: z.string().min(6)
   })
   .strict()
 export const TwoFactorSetupResSchema = z.object({

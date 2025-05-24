@@ -4,19 +4,14 @@ import envConfig from 'src/shared/config'
 import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import { v4 as uuidv4 } from 'uuid'
 import { Request, Response } from 'express'
-import { PrismaService } from './prisma.service'
+import { PrismaService } from 'src/shared/services/prisma.service'
 import { addMilliseconds } from 'date-fns'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
-import { PrismaClient } from '@prisma/client'
 import { isNotFoundPrismaError } from 'src/shared/utils/type-guards.utils'
 import { UnauthorizedAccessException } from 'src/routes/auth/auth.error'
 import { Prisma } from '@prisma/client'
 import { DeviceService } from './device.service'
-
-type PrismaTransactionClient = Omit<
-  PrismaClient,
-  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
->
+import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 
 @Injectable()
 export class TokenService {
@@ -177,7 +172,7 @@ export class TokenService {
         expiresAt: refreshTokenExpiresAt,
         rememberMe: !!rememberMe
       },
-      client as any
+      client
     )
 
     return {
@@ -193,7 +188,7 @@ export class TokenService {
   ) {
     this.logger.debug(`Creating refresh token for user ${data.userId}, deviceId ${data.deviceId}`)
     const client = tx || this.prismaService
-    return this.authRepository.createRefreshToken(data, client as any)
+    return this.authRepository.createRefreshToken(data, client)
   }
 
   async markRefreshTokenUsed(token: string, tx?: PrismaTransactionClient) {
@@ -224,7 +219,7 @@ export class TokenService {
 
     const client = tx || this.prismaService
     try {
-      await this.authRepository.deleteRefreshToken({ token }, client as any)
+      await this.authRepository.deleteRefreshToken({ token }, client)
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         this.logger.warn(`Refresh token ${token.substring(0, 8)}... not found when trying to delete`)

@@ -3,8 +3,8 @@ import { ZodSerializerDto } from 'nestjs-zod'
 import { SkipThrottle } from '@nestjs/throttler'
 
 import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
-import { Roles } from 'src/shared/decorators/roles.decorator'
-import { RolesGuard } from 'src/shared/guards/roles.guard'
+import { Roles } from '../auth/decorators/roles.decorator'
+import { RolesGuard } from '../auth/guards/roles.guard'
 
 import { AuditLogService } from './audit-log.service'
 import { AuditLogQueryDTO, AuditLogResponseDTO } from './audit-log.dto'

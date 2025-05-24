@@ -12,9 +12,9 @@ import { SecurityHeadersMiddleware } from './shared/middleware/security-headers.
 import { CsrfMiddleware } from './shared/middleware/csrf.middleware'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { LoggerMiddleware } from './shared/middleware/logger.middleware'
-import { TokenRefreshInterceptor } from './shared/interceptor/token-refresh.interceptor'
+import { TokenRefreshInterceptor } from './routes/auth/interceptors/token-refresh.interceptor'
 import { PermissionModule } from './routes/permission/permission.module'
-import { RoleModule } from './routes/role/role.module';
+import { RoleModule } from './routes/role/role.module'
 
 @Module({
   imports: [

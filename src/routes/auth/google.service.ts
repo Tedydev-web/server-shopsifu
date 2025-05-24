@@ -9,8 +9,11 @@ import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { v4 as uuidv4 } from 'uuid'
-import { DeviceService } from 'src/shared/services/device.service'
-import { TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
+import { DeviceService } from './providers/device.service'
+import { TypeOfVerificationCode } from './constants/auth.constants'
+import { OtpService } from './providers/otp.service'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 
 @Injectable()
 export class GoogleService {
@@ -20,7 +23,9 @@ export class GoogleService {
     private readonly hashingService: HashingService,
     private readonly rolesService: RolesService,
     private readonly authService: AuthService,
-    private readonly deviceService: DeviceService
+    private readonly deviceService: DeviceService,
+    private readonly otpService: OtpService,
+    private readonly prismaService: PrismaService
   ) {
     this.oauth2Client = new google.auth.OAuth2(
       envConfig.GOOGLE_CLIENT_ID,
@@ -128,12 +133,17 @@ export class GoogleService {
           )
         } else {
           // Thiết bị không tin cậy, yêu cầu 2FA
-          const loginSessionToken = await this.authService.createLoginSessionToken({
-            email: user.email,
-            userId: user.id,
-            deviceId: device.id,
-            type: TypeOfVerificationCode.LOGIN_2FA
+          const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
+            return this.otpService.createOtpToken({
+              email: user.email,
+              type: TypeOfVerificationCode.LOGIN_2FA,
+              userId: user.id,
+              deviceId: device.id,
+              metadata: { rememberMe: false },
+              tx
+            })
           })
+
           return {
             message: 'Auth.Login.2FARequired',
             loginSessionToken: loginSessionToken,

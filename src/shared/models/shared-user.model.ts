@@ -1,4 +1,4 @@
-import { TwoFactorMethodType } from 'src/shared/constants/auth.constant'
+import { TwoFactorMethodType } from '../../routes/auth/constants/auth.constants'
 import { UserStatus as PrismaUserStatus } from '@prisma/client'
 import { z } from 'zod'
 

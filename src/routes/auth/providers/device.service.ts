@@ -1,16 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { PrismaService } from './prisma.service'
-import { Prisma, PrismaClient, Device } from '@prisma/client'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { Prisma, Device } from '@prisma/client'
 import { DeviceSetupFailedException } from 'src/routes/auth/auth.error'
-import { AuditLog } from '../decorators/audit-log.decorator'
+import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
 import { AuditLogService } from 'src/routes/audit-log/audit-log.service'
-import { isUniqueConstraintPrismaError, isNotFoundPrismaError } from '../utils/type-guards.utils'
+import { isUniqueConstraintPrismaError, isNotFoundPrismaError } from 'src/shared/utils/type-guards.utils'
 import envConfig from 'src/shared/config'
-
-type PrismaTransactionClient = Omit<
-  PrismaClient,
-  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
->
+import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 
 @Injectable()
 export class DeviceService {

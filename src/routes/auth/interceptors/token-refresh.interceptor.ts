@@ -1,9 +1,9 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler, UnauthorizedException } from '@nestjs/common'
 import { Observable, throwError } from 'rxjs'
 import { catchError, switchMap } from 'rxjs/operators'
-import { TokenService } from '../services/token.service'
+import { TokenService } from '../providers/token.service'
 import { Request, Response } from 'express'
-import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
+import { REQUEST_USER_KEY } from '../../../shared/constants/auth.constant'
 import { Logger } from '@nestjs/common'
 
 @Injectable()

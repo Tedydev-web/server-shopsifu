@@ -23,12 +23,12 @@ import {
   UpdateLanguageBodyDTO
 } from 'src/routes/language/language.dto'
 import { LanguageService } from 'src/routes/language/language.service'
-import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { ActiveUser } from '../auth/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
-import { Roles } from 'src/shared/decorators/roles.decorator'
-import { RolesGuard } from 'src/shared/guards/roles.guard'
-import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { Roles } from '../../routes/auth/decorators/roles.decorator'
+import { RolesGuard } from '../auth/guards/roles.guard'
+import { IsPublic } from '../../routes/auth/decorators/auth.decorator'
 
 @Controller('languages')
 @UseGuards(RolesGuard)

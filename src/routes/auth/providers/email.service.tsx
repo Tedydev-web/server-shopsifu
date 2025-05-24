@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Resend } from 'resend'
 import envConfig from 'src/shared/config'
 import * as React from 'react'
-import OTPEmail from 'emails/otp'
+import OTPEmail from '../../../../emails/otp' // Updated import path
 
 @Injectable()
 export class EmailService {
@@ -19,4 +19,4 @@ export class EmailService {
       react: <OTPEmail otpCode={payload.code} title={subject} />
     })
   }
-}
+} 

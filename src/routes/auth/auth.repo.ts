@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { DeviceType, RefreshTokenType, RoleType } from 'src/routes/auth/auth.model'
-import { TokenTypeType, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
+import { TokenTypeType, TypeOfVerificationCodeType } from './constants/auth.constants'
 import { UserType } from 'src/shared/models/shared-user.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import {
@@ -9,9 +9,12 @@ import {
   RecoveryCode,
   VerificationCodeType as PrismaVerificationCodeEnum,
   User,
-  VerificationCode as PrismaVerificationCodeModel
+  VerificationCode as PrismaVerificationCodeModel,
+  Device,
+  RefreshToken,
+  VerificationToken
 } from '@prisma/client'
-import { DeviceService } from 'src/shared/services/device.service'
+import { DeviceService } from 'src/routes/auth/providers/device.service'
 import { CacheService } from 'src/shared/services/cache.service'
 
 type PrismaTransactionClient = Omit<
@@ -36,7 +39,7 @@ export class AuthRepository {
     prismaClient?: PrismaTransactionClient
   ): Promise<Omit<UserType, 'password' | 'twoFactorSecret'>> {
     const client = this.getClient(prismaClient)
-    return client.user.create({
+    return await client.user.create({
       data: user,
       omit: {
         password: true,
@@ -50,7 +53,7 @@ export class AuthRepository {
     prismaClient?: PrismaTransactionClient
   ): Promise<UserType & { role: RoleType }> {
     const client = this.getClient(prismaClient)
-    return client.user.create({
+    return await client.user.create({
       data: user,
       include: {
         role: true
@@ -89,22 +92,22 @@ export class AuthRepository {
     })
   }
 
-  createRefreshToken(
+  async createRefreshToken(
     data: { token: string; userId: number; expiresAt: Date; deviceId: number; rememberMe: boolean },
     prismaClient?: PrismaTransactionClient
-  ) {
+  ): Promise<RefreshToken> {
     const client = this.getClient(prismaClient)
-    return client.refreshToken.create({
+    return await client.refreshToken.create({
       data
     })
   }
 
-  createDevice(
+  async createDevice(
     data: Pick<DeviceType, 'userId' | 'userAgent' | 'ip'> & Partial<Pick<DeviceType, 'lastActive' | 'isActive'>>,
     prismaClient?: PrismaTransactionClient
-  ) {
+  ): Promise<Device> {
     const client = this.getClient(prismaClient)
-    return client.device.create({
+    return await client.device.create({
       data
     })
   }
@@ -114,7 +117,7 @@ export class AuthRepository {
     prismaClient?: PrismaTransactionClient
   ): Promise<(UserType & { role: RoleType }) | null> {
     const client = this.getClient(prismaClient)
-    return client.user.findUnique({
+    return await client.user.findUnique({
       where: uniqueObject,
       include: {
         role: true
@@ -129,7 +132,7 @@ export class AuthRepository {
     prismaClient?: PrismaTransactionClient
   ): Promise<(RefreshTokenType & { user: UserType & { role: RoleType } }) | null> {
     const client = this.getClient(prismaClient)
-    return client.refreshToken.findUnique({
+    return await client.refreshToken.findUnique({
       where: {
         token: uniqueObject.token,
         used: false,
@@ -147,43 +150,42 @@ export class AuthRepository {
     })
   }
 
-  updateDevice(
+  async updateDevice(
     deviceId: number,
     data: Partial<DeviceType>,
     prismaClient?: PrismaTransactionClient
-  ): Promise<DeviceType> {
+  ): Promise<Device> {
     const client = this.getClient(prismaClient)
-    return client.device.update({
+    return await client.device.update({
       where: {
         id: deviceId
       },
       data
-    }) as unknown as Promise<DeviceType>
-  }
-
-  deleteRefreshToken(
-    uniqueObject: { token: string },
-    prismaClient?: PrismaTransactionClient
-  ): Promise<RefreshTokenType | null> {
-    const client = this.getClient(prismaClient)
-    return client.refreshToken.findUnique({ where: uniqueObject }).then((token) => {
-      if (!token) {
-        return null
-      }
-      return client.refreshToken.delete({ where: uniqueObject })
     })
   }
 
-  updateUser(
+  async deleteRefreshToken(
+    uniqueObject: { token: string },
+    prismaClient?: PrismaTransactionClient
+  ): Promise<RefreshToken | null> {
+    const client = this.getClient(prismaClient)
+    const token = await client.refreshToken.findUnique({ where: uniqueObject })
+    if (!token) {
+      return null
+    }
+    return await client.refreshToken.delete({ where: uniqueObject })
+  }
+
+  async updateUser(
     where: Prisma.UserWhereUniqueInput,
     data: Prisma.UserUpdateInput,
     prismaClient?: PrismaTransactionClient
-  ): Promise<UserType> {
+  ): Promise<User> {
     const client = this.getClient(prismaClient)
-    return client.user.update({
+    return await client.user.update({
       where,
       data
-    }) as Promise<UserType>
+    })
   }
 
   async deleteVerificationCode(
@@ -224,7 +226,7 @@ export class AuthRepository {
       metadata?: string
     },
     prismaClient?: PrismaTransactionClient
-  ): Promise<PrismaVerificationCodeModel> {
+  ): Promise<VerificationToken> {
     const client = this.getClient(prismaClient)
     const createData: Prisma.VerificationTokenCreateInput = {
       token: data.token,
@@ -242,19 +244,19 @@ export class AuthRepository {
       createData.device = { connect: { id: data.deviceId } }
     }
 
-    return (await client.verificationToken.create({
+    return await client.verificationToken.create({
       data: createData
-    })) as unknown as PrismaVerificationCodeModel
+    })
   }
 
   async findUniqueVerificationToken(
     uniqueObject: { token: string },
     prismaClient?: PrismaTransactionClient
-  ): Promise<PrismaVerificationCodeModel | null> {
+  ): Promise<VerificationToken | null> {
     const client = this.getClient(prismaClient)
-    return (await client.verificationToken.findUnique({
+    return await client.verificationToken.findUnique({
       where: uniqueObject
-    })) as unknown as PrismaVerificationCodeModel | null
+    })
   }
 
   async findVerificationTokens(
@@ -264,36 +266,36 @@ export class AuthRepository {
       tokenType: TokenTypeType
     },
     prismaClient?: PrismaTransactionClient
-  ): Promise<PrismaVerificationCodeModel[]> {
+  ): Promise<VerificationToken[]> {
     const client = this.getClient(prismaClient)
-    return (await client.verificationToken.findMany({
+    return await client.verificationToken.findMany({
       where: {
         email: filter.email,
         type: filter.type as PrismaVerificationCodeEnum,
         tokenType: filter.tokenType
       }
-    })) as unknown as PrismaVerificationCodeModel[]
+    })
   }
 
   async updateVerificationToken(
     data: { token: string; metadata?: string },
     prismaClient?: PrismaTransactionClient
-  ): Promise<PrismaVerificationCodeModel> {
+  ): Promise<VerificationToken> {
     const client = this.getClient(prismaClient)
-    return (await client.verificationToken.update({
+    return await client.verificationToken.update({
       where: { token: data.token },
       data: { metadata: data.metadata }
-    })) as unknown as PrismaVerificationCodeModel
+    })
   }
 
   async deleteVerificationToken(
     uniqueObject: { token: string },
     prismaClient?: PrismaTransactionClient
-  ): Promise<PrismaVerificationCodeModel> {
+  ): Promise<VerificationToken> {
     const client = this.getClient(prismaClient)
-    return (await client.verificationToken.delete({
+    return await client.verificationToken.delete({
       where: uniqueObject
-    })) as unknown as PrismaVerificationCodeModel
+    })
   }
 
   async deleteVerificationTokenByEmailAndType(
@@ -315,7 +317,7 @@ export class AuthRepository {
   async findOrCreateDevice(
     data: Pick<DeviceType, 'userId' | 'userAgent' | 'ip'>,
     prismaClient?: PrismaTransactionClient
-  ): Promise<DeviceType> {
+  ): Promise<Device> {
     const client = this.getClient(prismaClient)
     const existingDevice = await client.device.findFirst({
       where: {
@@ -326,7 +328,7 @@ export class AuthRepository {
     })
 
     if (existingDevice) {
-      return this.updateDevice(
+      return await this.updateDevice(
         existingDevice.id,
         {
           ip: data.ip,
@@ -335,7 +337,7 @@ export class AuthRepository {
         client as PrismaTransactionClient
       )
     }
-    return this.createDevice(data, client as PrismaTransactionClient)
+    return await this.createDevice(data, client as PrismaTransactionClient)
   }
 
   async validateDevice(
