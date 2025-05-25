@@ -287,7 +287,7 @@ export class AuthenticationService extends BaseAuthService {
         email: user.email,
         name: user.name,
         role: user.role.name,
-        askToTrustDevice: shouldAskToTrustDevice
+        isDeviceTrustedInSession: sessionData.isTrusted === 'true' || sessionData.isTrusted === true
       }
     } catch (error) {
       if (!auditLogEntry.errorMessage) {

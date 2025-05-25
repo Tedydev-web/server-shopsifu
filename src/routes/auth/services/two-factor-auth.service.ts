@@ -399,21 +399,15 @@ export class TwoFactorAuthService extends BaseAuthService {
           ;(auditLogEntry.details as Prisma.JsonObject).rememberMe = rememberMe
         }
 
-        const shouldAskToTrustDevice = !rememberMe && !isLoginFor2FA && !isLoginForUntrustedDevice
-
         return {
           userId: user.id,
           email: user.email,
           name: user.name,
           role: user.role.name,
-          message: shouldAskToTrustDevice
-            ? this.i18nService.translate('error.Auth.2FA.Verify.AskToTrustDevice', {
-                lang: I18nContext.current()?.lang
-              })
-            : this.i18nService.translate('error.Auth.2FA.Verify.Success', {
-                lang: I18nContext.current()?.lang
-              }),
-          askToTrustDevice: shouldAskToTrustDevice
+          message: this.i18nService.translate('error.Auth.2FA.Verify.Success', {
+            lang: I18nContext.current()?.lang
+          }),
+          isDeviceTrustedInSession: sessionData.isTrusted === 'true' || sessionData.isTrusted === true
         }
       })
 
