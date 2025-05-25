@@ -217,3 +217,17 @@ export const DeviceMissingSessionCreationTimeException = createApiError(
   'Unauthenticated',
   'Error.Auth.Device.MissingSessionCreationTime'
 )
+
+export const SessionNotFoundException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Session.NotFound',
+  'sessionId'
+)
+
+export const MismatchedSessionTokenException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Session.MismatchedToken',
+  'session'
+)

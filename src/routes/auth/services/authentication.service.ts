@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, HttpStatus } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { LoginBodyType, RegisterBodyType } from 'src/routes/auth/auth.model'
 import { Response, Request } from 'express'
@@ -13,12 +13,16 @@ import {
 import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { isUniqueConstraintPrismaError } from 'src/shared/utils/type-guards.utils'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { Device } from '@prisma/client'
+import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
+import { Device, User, Role } from '@prisma/client'
 import { TypeOfVerificationCode, TwoFactorMethodType } from '../constants/auth.constants'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
 import { I18nContext } from 'nestjs-i18n'
+import { v4 as uuidv4 } from 'uuid'
+import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
+import envConfig from 'src/shared/config'
+import ms from 'ms'
 
 @Injectable()
 export class AuthenticationService extends BaseAuthService {
@@ -131,130 +135,161 @@ export class AuthenticationService extends BaseAuthService {
       } as Prisma.JsonObject
     }
     try {
-      const result = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
-        const user = await tx.user.findUnique({
-          where: { email: body.email },
-          include: { role: true }
+      const user = await this.prismaService.user.findUnique({
+        where: { email: body.email },
+        include: { role: true }
+      })
+      if (!user) {
+        auditLogEntry.errorMessage = EmailNotFoundException.message
+        auditLogEntry.details.reason = 'USER_NOT_FOUND'
+        throw EmailNotFoundException
+      }
+      auditLogEntry.userId = user.id
+
+      const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
+      if (!isPasswordMatch) {
+        this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
+        auditLogEntry.errorMessage = InvalidPasswordException.message
+        auditLogEntry.details.reason = 'INVALID_PASSWORD'
+        throw InvalidPasswordException
+      }
+
+      let device: Device
+      try {
+        device = await this.deviceService.findOrCreateDevice({
+          userId: user.id,
+          userAgent: body.userAgent,
+          ip: body.ip
         })
-        if (!user) {
-          auditLogEntry.errorMessage = EmailNotFoundException.message
-          auditLogEntry.details.reason = 'USER_NOT_FOUND'
-          throw EmailNotFoundException
-        }
-        auditLogEntry.userId = user.id
+        auditLogEntry.details.deviceId = device.id
+      } catch (error) {
+        this.logger.error('[DEBUG AuthenticationService login] Error creating/finding device:', error)
+        auditLogEntry.errorMessage = DeviceSetupFailedException.message
+        auditLogEntry.details.deviceError = 'DeviceSetupFailed'
+        throw DeviceSetupFailedException
+      }
 
-        const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
-        if (!isPasswordMatch) {
-          this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
-          auditLogEntry.errorMessage = InvalidPasswordException.message
-          auditLogEntry.details.reason = 'INVALID_PASSWORD'
-          throw InvalidPasswordException
-        }
+      if (!this.deviceService.isSessionValid(device)) {
+        this.logger.warn(
+          `[SECURITY AuthenticationService login] Absolute session lifetime exceeded for user ${user.id}, device ${device.id}. Forcing re-login.`
+        )
+        auditLogEntry.errorMessage = AbsoluteSessionLifetimeExceededException.message
+        auditLogEntry.details.reason = 'ABSOLUTE_SESSION_LIFETIME_EXCEEDED_LOGIN'
+        auditLogEntry.notes = `All sessions for device ${device.id} should be invalidated due to absolute session lifetime exceeded during login.`
+        throw AbsoluteSessionLifetimeExceededException
+      }
 
-        let device: Device
-        try {
-          device = await this.deviceService.findOrCreateDevice(
-            {
-              userId: user.id,
-              userAgent: body.userAgent,
-              ip: body.ip
-            },
-            tx
-          )
-          auditLogEntry.details.deviceId = device.id
-        } catch (error) {
-          this.logger.error('[DEBUG AuthenticationService login] Error creating/finding device:', error)
-          auditLogEntry.errorMessage = DeviceSetupFailedException.message
-          auditLogEntry.details.deviceError = 'DeviceSetupFailed'
-          throw DeviceSetupFailedException
-        }
+      const shouldAskToTrustDevice = !device.isTrusted
+      const sessionId = uuidv4()
+      const now = new Date()
 
-        if (!this.deviceService.isSessionValid(device)) {
-          this.logger.warn(
-            `[SECURITY AuthenticationService login] Absolute session lifetime exceeded for user ${user.id}, device ${device.id}. Forcing re-login.`
-          )
-          await this.tokenService.deleteAllRefreshTokensForDevice(device.id, tx)
-          auditLogEntry.errorMessage = AbsoluteSessionLifetimeExceededException.message
-          auditLogEntry.details.reason = 'ABSOLUTE_SESSION_LIFETIME_EXCEEDED_LOGIN'
-          auditLogEntry.notes = `All refresh tokens for device ${device.id} invalidated due to absolute session lifetime exceeded during login.`
-          throw AbsoluteSessionLifetimeExceededException
-        }
-
-        const shouldAskToTrustDevice = !device.isTrusted
-
-        if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
-          auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
-          const loginSessionToken = await this.otpService.createOtpToken({
+      if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
+        auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
+        const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
+          return this.otpService.createOtpToken({
             email: user.email,
             type: TypeOfVerificationCode.LOGIN_2FA,
             userId: user.id,
             deviceId: device.id,
-            metadata: { rememberMe: body.rememberMe },
+            metadata: { rememberMe: body.rememberMe, sessionId },
             tx
           })
-          auditLogEntry.status = AuditLogStatus.SUCCESS
-          auditLogEntry.notes = '2FA required: Device not trusted.'
-          const message = await this.i18nService.translate('error.Auth.Login.2FARequired', {
-            lang: I18nContext.current()?.lang
-          })
-          return {
-            message,
-            loginSessionToken: loginSessionToken,
-            twoFactorMethod: user.twoFactorMethod
-          }
-        } else if (!user.twoFactorEnabled && !device.isTrusted) {
-          await this.otpService.sendOTP(user.email, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
-          const loginSessionToken = await this.otpService.createOtpToken({
+        })
+
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.notes = '2FA required: Device not trusted.'
+        const message = await this.i18nService.translate('error.Auth.Login.2FARequired', {
+          lang: I18nContext.current()?.lang
+        })
+        return {
+          message,
+          loginSessionToken: loginSessionToken,
+          twoFactorMethod: user.twoFactorMethod
+        }
+      } else if (!device.isTrusted) {
+        await this.otpService.sendOTP(user.email, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
+        const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
+          return this.otpService.createOtpToken({
             email: user.email,
             type: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
             userId: user.id,
             deviceId: device.id,
-            metadata: { rememberMe: body.rememberMe },
+            metadata: { rememberMe: body.rememberMe, sessionId },
             tx
           })
-          auditLogEntry.status = AuditLogStatus.SUCCESS
-          auditLogEntry.notes = 'Device verification OTP required: Device not trusted and 2FA not enabled.'
-          const message = await this.i18nService.translate('error.Auth.Login.DeviceVerificationOtpRequired', {
-            lang: I18nContext.current()?.lang
-          })
-          return {
-            message,
-            loginSessionToken: loginSessionToken,
-            twoFactorMethod: TwoFactorMethodType.OTP
-          }
-        }
+        })
 
-        const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.tokenService.generateTokens(
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.notes = 'Device verification OTP required: Device not trusted.'
+        const message = await this.i18nService.translate('error.Auth.Login.DeviceVerificationOtpRequired', {
+          lang: I18nContext.current()?.lang
+        })
+        return {
+          message,
+          loginSessionToken: loginSessionToken,
+          twoFactorMethod: TwoFactorMethodType.OTP
+        }
+      }
+
+      const sessionData: Record<string, string | number | boolean> = {
+        userId: user.id,
+        deviceId: device.id,
+        ipAddress: body.ip,
+        userAgent: body.userAgent,
+        createdAt: now.toISOString(),
+        lastActiveAt: now.toISOString(),
+        isTrusted: device.isTrusted,
+        rememberMe: body.rememberMe || false,
+        roleId: user.roleId,
+        roleName: user.role.name
+      }
+
+      const { accessToken, refreshToken, maxAgeForRefreshTokenCookie, accessTokenJti } =
+        await this.tokenService.generateTokens(
           {
             userId: user.id,
             deviceId: device.id,
             roleId: user.roleId,
-            roleName: user.role.name
+            roleName: user.role.name,
+            sessionId
           },
-          tx,
+          undefined,
           body.rememberMe
         )
 
-        if (res) {
-          this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
-        } else {
-          this.logger.warn(
-            '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
-          )
-        }
+      sessionData.currentAccessTokenJti = accessTokenJti
+      sessionData.currentRefreshTokenJti = refreshToken
 
-        auditLogEntry.status = AuditLogStatus.SUCCESS
-        auditLogEntry.action = 'USER_LOGIN_SUCCESS'
-        return {
-          userId: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role.name,
-          askToTrustDevice: shouldAskToTrustDevice
-        }
+      const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
+      const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
+
+      const absoluteSessionLifetimeSeconds = Math.floor(envConfig.ABSOLUTE_SESSION_LIFETIME_MS / 1000)
+
+      await this.redisService.pipeline((pipeline) => {
+        pipeline.hmset(sessionKey, sessionData)
+        pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
+        pipeline.sadd(userSessionsKey, sessionId)
+        return pipeline
       })
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      return result
+
+      if (res) {
+        this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
+      } else {
+        this.logger.warn(
+          '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
+        )
+      }
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'USER_LOGIN_SUCCESS'
+      auditLogEntry.details.sessionId = sessionId
+      return {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role.name,
+        askToTrustDevice: shouldAskToTrustDevice
+      }
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
         auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during login'
@@ -269,34 +304,50 @@ export class AuthenticationService extends BaseAuthService {
 
   async logout(req: Request, res: Response) {
     const accessToken = this.tokenService.extractTokenFromRequest(req)
-    const refreshToken = this.tokenService.extractRefreshTokenFromRequest(req)
+    const refreshTokenJti = this.tokenService.extractRefreshTokenFromRequest(req)
     const auditLogEntry: AuditLogData = {
       action: 'USER_LOGOUT',
       status: AuditLogStatus.SUCCESS,
       details: {
         accessTokenProvided: !!accessToken,
-        refreshTokenProvided: !!refreshToken
+        refreshTokenJtiProvided: !!refreshTokenJti
       } as Prisma.JsonObject
     }
+
+    let sessionIdFromAccessToken: string | undefined = undefined
 
     try {
       if (accessToken) {
         const decoded = await this.tokenService.verifyAccessToken(accessToken).catch(() => null)
         if (decoded) {
           auditLogEntry.userId = decoded.userId
+          sessionIdFromAccessToken = decoded.sessionId
           if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
             ;(auditLogEntry.details as Prisma.JsonObject).deviceId = decoded.deviceId
+            ;(auditLogEntry.details as Prisma.JsonObject).sessionId = decoded.sessionId
+            ;(auditLogEntry.details as Prisma.JsonObject).accessTokenJti = decoded.jti
           }
-          if (refreshToken) {
-            await this.tokenService.deleteRefreshToken(refreshToken)
-          } else {
-            auditLogEntry.notes = 'No refresh token provided during logout'
+          await this.tokenService.invalidateAccessTokenJti(decoded.jti, decoded.exp)
+        }
+      }
+
+      if (sessionIdFromAccessToken) {
+        await this.tokenService.invalidateSession(sessionIdFromAccessToken, 'USER_LOGOUT')
+        auditLogEntry.notes = `Session ${sessionIdFromAccessToken} invalidated via access token.`
+      } else if (refreshTokenJti) {
+        const sessionIdFromRefreshToken = await this.tokenService.findSessionIdByRefreshTokenJti(refreshTokenJti)
+        if (sessionIdFromRefreshToken) {
+          await this.tokenService.invalidateSession(sessionIdFromRefreshToken, 'USER_LOGOUT_WITH_REFRESH_TOKEN')
+          auditLogEntry.notes = `Session ${sessionIdFromRefreshToken} invalidated via refresh token JTI ${refreshTokenJti}.`
+          if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+            ;(auditLogEntry.details as Prisma.JsonObject).sessionIdFromRt = sessionIdFromRefreshToken
           }
         } else {
-          auditLogEntry.notes = 'Invalid access token provided during logout'
+          await this.tokenService.invalidateRefreshTokenJti(refreshTokenJti, 'UNKNOWN_SESSION_FOR_RT_ON_LOGOUT')
+          auditLogEntry.notes = `Refresh token JTI ${refreshTokenJti} blacklisted during logout as no active session found.`
         }
       } else {
-        auditLogEntry.notes = 'No access token provided during logout'
+        auditLogEntry.notes = 'No access token session or refresh token JTI provided during logout.'
       }
 
       this.tokenService.clearTokenCookies(res)
@@ -306,7 +357,6 @@ export class AuthenticationService extends BaseAuthService {
       })
       return { message }
     } catch (error) {
-      // Even if there's an error, we want to clear cookies
       this.tokenService.clearTokenCookies(res)
       auditLogEntry.errorMessage = error.message
       auditLogEntry.status = AuditLogStatus.FAILURE
@@ -340,25 +390,60 @@ export class AuthenticationService extends BaseAuthService {
 
     try {
       const result = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
-        // Invalidate current refresh token
-        const currentRefreshToken = this.tokenService.extractRefreshTokenFromRequest(req)
-        if (currentRefreshToken) {
-          await this.tokenService.deleteRefreshToken(currentRefreshToken, tx)
+        const currentRefreshTokenJti = this.tokenService.extractRefreshTokenFromRequest(req)
+        const accessToken = this.tokenService.extractTokenFromRequest(req)
+        let currentSessionId = activeUser.sessionId
+
+        if (!currentSessionId && accessToken) {
+          try {
+            const decoded = await this.tokenService.verifyAccessToken(accessToken)
+            currentSessionId = decoded.sessionId
+          } catch (e) {
+            this.logger.warn('Could not decode access token to get sessionId for setRememberMe')
+            throw new ApiException(HttpStatus.BAD_REQUEST, 'MissingSessionId', 'Error.Auth.Session.MissingSessionId')
+          }
         }
 
-        // Generate new tokens with updated remember me preference
-        const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.tokenService.generateTokens(
+        if (!currentSessionId) {
+          this.logger.error('Session ID is missing in setRememberMe. Cannot proceed.')
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'MissingSessionId', 'Error.Auth.Session.MissingSessionId')
+        }
+
+        if (currentRefreshTokenJti) {
+          const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${currentSessionId}`
+          const sessionDetails = await this.redisService.hgetall(sessionKey)
+
+          if (sessionDetails && sessionDetails.currentRefreshTokenJti === currentRefreshTokenJti) {
+            await this.tokenService.invalidateRefreshTokenJti(currentRefreshTokenJti, currentSessionId)
+          }
+        }
+
+        const {
+          accessToken: newAccessToken,
+          refreshToken: newRefreshTokenJti,
+          maxAgeForRefreshTokenCookie,
+          accessTokenJti: newAccessTokenJti
+        } = await this.tokenService.generateTokens(
           {
             userId: activeUser.userId,
             deviceId: activeUser.deviceId,
             roleId: activeUser.roleId,
-            roleName: activeUser.roleName
+            roleName: activeUser.roleName,
+            sessionId: currentSessionId
           },
-          tx,
+          undefined,
           rememberMe
         )
 
-        this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
+        const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${currentSessionId}`
+        await this.redisService.hset(sessionKey, {
+          rememberMe: rememberMe.toString(),
+          currentRefreshTokenJti: newRefreshTokenJti,
+          currentAccessTokenJti: newAccessTokenJti,
+          lastActiveAt: new Date().toISOString()
+        })
+
+        this.tokenService.setTokenCookies(res, newAccessToken, newRefreshTokenJti, maxAgeForRefreshTokenCookie)
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
         const message = await this.i18nService.translate('error.Auth.RememberMe.Set', {

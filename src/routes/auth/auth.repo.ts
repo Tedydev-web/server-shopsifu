@@ -11,11 +11,9 @@ import {
   User,
   VerificationCode as PrismaVerificationCodeModel,
   Device,
-  RefreshToken,
   VerificationToken
 } from '@prisma/client'
 import { DeviceService } from 'src/routes/auth/providers/device.service'
-import { CacheService } from 'src/shared/services/cache.service'
 
 type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -26,7 +24,6 @@ type PrismaTransactionClient = Omit<
 export class AuthRepository {
   constructor(
     protected readonly prismaService: PrismaService,
-    private readonly cacheService: CacheService,
     private readonly deviceService: DeviceService
   ) {}
 
@@ -92,16 +89,6 @@ export class AuthRepository {
     })
   }
 
-  async createRefreshToken(
-    data: { token: string; userId: number; expiresAt: Date; deviceId: number; rememberMe: boolean },
-    prismaClient?: PrismaTransactionClient
-  ): Promise<RefreshToken> {
-    const client = this.getClient(prismaClient)
-    return await client.refreshToken.create({
-      data
-    })
-  }
-
   async createDevice(
     data: Pick<DeviceType, 'userId' | 'userAgent' | 'ip'> & Partial<Pick<DeviceType, 'lastActive' | 'isActive'>>,
     prismaClient?: PrismaTransactionClient
@@ -125,31 +112,6 @@ export class AuthRepository {
     })
   }
 
-  async findUniqueRefreshTokenIncludeUserRole(
-    uniqueObject: {
-      token: string
-    },
-    prismaClient?: PrismaTransactionClient
-  ): Promise<(RefreshTokenType & { user: UserType & { role: RoleType } }) | null> {
-    const client = this.getClient(prismaClient)
-    return await client.refreshToken.findUnique({
-      where: {
-        token: uniqueObject.token,
-        used: false,
-        expiresAt: {
-          gt: new Date()
-        }
-      },
-      include: {
-        user: {
-          include: {
-            role: true
-          }
-        }
-      }
-    })
-  }
-
   async updateDevice(
     deviceId: number,
     data: Partial<DeviceType>,
@@ -162,18 +124,6 @@ export class AuthRepository {
       },
       data
     })
-  }
-
-  async deleteRefreshToken(
-    uniqueObject: { token: string },
-    prismaClient?: PrismaTransactionClient
-  ): Promise<RefreshToken | null> {
-    const client = this.getClient(prismaClient)
-    const token = await client.refreshToken.findUnique({ where: uniqueObject })
-    if (!token) {
-      return null
-    }
-    return await client.refreshToken.delete({ where: uniqueObject })
   }
 
   async updateUser(

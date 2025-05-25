@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Inject } from '@nestjs/common'
 import {
   CreateLanguageBodyType,
   LanguageType,
@@ -8,103 +8,71 @@ import {
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { Prisma } from '@prisma/client'
 import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
-import { CacheService } from 'src/shared/services/cache.service'
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager'
 
 @Injectable()
 export class LanguageRepo extends BaseRepository<LanguageType> {
   constructor(
     protected readonly prismaService: PrismaService,
-    private readonly cacheService: CacheService
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {
     super(prismaService, LanguageRepo.name)
+  }
+
+  private async invalidateLanguageItemCache(id: string) {
+    await this.cacheManager.del(`language:${id}`)
+    await this.cacheManager.del(`language:${id}:includeDeleted`)
+    // Note: Invalidating list caches (e.g., languages:list:*) is more complex
+    // as cacheManager.del does not support patterns directly.
+    // For now, list caches will expire based on their TTL.
+    // A more advanced strategy would involve SCAN + DEL if using Redis directly,
+    // or versioning cache keys for lists.
+  }
+
+  private async invalidateAllLanguageListsCache() {
+    // This is a placeholder. In a real scenario with Redis,
+    // you might use SCAN and DEL to remove keys matching a pattern like 'languages:list:*'.
+    // For now, we accept that list caches will expire based on TTL or be stale until then.
+    this.logger.warn('invalidateAllLanguageListsCache called - specific list invalidation is preferred.')
+    // Example: If we knew all possible pagination/filter keys, we could delete them.
+    // Or, use a versioned key for lists that changes on any CUD operation.
   }
 
   async findAll(
     query?: GetLanguagesQueryType,
     prismaClient?: PrismaTransactionClient
   ): Promise<{ languages: LanguageType[]; totalItems: number }> {
-    const {
-      page = 1,
-      limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-      search = '',
-      includeDeleted = false,
-      startDate,
-      endDate,
-      all = false
-    } = query || {}
+    const { page = 1, limit = 10, sortBy = 'id', sortOrder = 'asc', search = '', includeDeleted = false } = query || {}
 
-    const where: any = {}
-
+    const where: Prisma.LanguageWhereInput = {}
     if (search) {
-      where.OR = this.getSearchableFields().map((field) => ({
-        [field]: { contains: search, mode: 'insensitive' }
-      }))
+      where.OR = [
+        { id: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } }
+      ]
     }
-
     if (!includeDeleted) {
       where.deletedAt = null
     }
 
-    if (startDate || endDate) {
-      where.createdAt = {}
-      if (startDate) where.createdAt.gte = new Date(startDate)
-      if (endDate) where.createdAt.lte = new Date(endDate)
-    }
+    const cacheKey = `languages:list:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${includeDeleted}`
+    const cachedLanguages = await this.cacheManager.get<{ languages: LanguageType[]; totalItems: number }>(cacheKey)
+    if (cachedLanguages) return cachedLanguages
 
-    const shouldCache = !all && limit <= 100
-    const cacheKey = shouldCache
-      ? `languages:list:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${includeDeleted}:${startDate || ''}:${endDate || ''}:${all}`
-      : null
+    const client = this.getClient(prismaClient)
 
-    const effectiveLimit = all ? 1000 : limit
-
-    if (shouldCache && cacheKey) {
-      return this.cacheService.getOrSet(
-        cacheKey,
-        async () => {
-          const result = await this.paginateQuery<LanguageType>(
-            'language',
-            {
-              page,
-              limit: effectiveLimit,
-              sortBy,
-              sortOrder,
-              search
-            },
-            where,
-            {},
-            prismaClient
-          )
-
-          return {
-            languages: result.data,
-            totalItems: result.totalItems
-          }
-        },
-        30000
-      )
-    }
-
-    const result = await this.paginateQuery<LanguageType>(
-      'language',
-      {
-        page,
-        limit: effectiveLimit,
-        sortBy,
-        sortOrder,
-        search
-      },
+    const languagesPromise = client.language.findMany({
       where,
-      {},
-      prismaClient
-    )
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { [sortBy]: sortOrder }
+    })
+    const totalItemsPromise = client.language.count({ where })
 
-    return {
-      languages: result.data,
-      totalItems: result.totalItems
-    }
+    const [languages, totalItems] = await Promise.all([languagesPromise, totalItemsPromise])
+
+    await this.cacheManager.set(cacheKey, { languages, totalItems }, 60000)
+    return { languages, totalItems }
   }
 
   async findById(
@@ -113,20 +81,15 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
     prismaClient?: PrismaTransactionClient
   ): Promise<LanguageType | null> {
     const client = this.getClient(prismaClient)
+    const cacheKey = `language:${id}${includeDeleted ? ':includeDeleted' : ''}`
+    const cachedLanguage = await this.cacheManager.get<LanguageType | null>(cacheKey)
+    if (cachedLanguage !== undefined) return cachedLanguage
 
-    const cacheKey = `language:${id}:${includeDeleted}`
-
-    return this.cacheService.getOrSet(
-      cacheKey,
-      async () => {
-        const where: Prisma.LanguageWhereUniqueInput = { id }
-        if (!includeDeleted) {
-          where.deletedAt = null
-        }
-        return client.language.findUnique({ where })
-      },
-      30000
-    )
+    const language = await client.language.findUnique({
+      where: { id, ...(includeDeleted ? {} : { deletedAt: null }) }
+    })
+    await this.cacheManager.set(cacheKey, language, 300000)
+    return language
   }
 
   async create(
@@ -134,18 +97,13 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
     prismaClient?: PrismaTransactionClient
   ): Promise<LanguageType> {
     const client = this.getClient(prismaClient)
-
-    this.logger.debug(`Creating language: ${JSON.stringify(data)}`)
-
     const result = await client.language.create({
       data: {
         ...data,
         createdById
       }
     })
-
-    this.cacheService.invalidate('languages:list')
-
+    await this.invalidateAllLanguageListsCache()
     return result
   }
 
@@ -162,104 +120,77 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
     prismaClient?: PrismaTransactionClient
   ): Promise<LanguageType> {
     const client = this.getClient(prismaClient)
-
-    this.logger.debug(`Updating language ${id}: ${JSON.stringify(data)}`)
-
     const result = await client.language.update({
-      where: {
-        id,
-        deletedAt: null
-      },
+      where: { id },
       data: {
         ...data,
-        updatedById
+        updatedById,
+        updatedAt: new Date()
       }
     })
-
-    this.cacheService.invalidate(`language:${id}`)
-    this.cacheService.invalidate('languages:list')
-
+    await this.invalidateLanguageItemCache(id)
+    await this.invalidateAllLanguageListsCache()
     return result
   }
 
   async softDelete(id: string, deletedById: number, prismaClient?: PrismaTransactionClient): Promise<LanguageType> {
     const client = this.getClient(prismaClient)
-
-    this.logger.debug(`Soft deleting language: ${id}`)
-
     const result = await client.language.update({
-      where: {
-        id,
-        deletedAt: null
-      },
+      where: { id },
       data: {
         deletedAt: new Date(),
-        updatedById: deletedById
+        deletedById
       }
     })
-
-    this.cacheService.invalidate(`language:${id}`)
-    this.cacheService.invalidate('languages:list')
-
+    await this.invalidateLanguageItemCache(id)
+    await this.invalidateAllLanguageListsCache()
     return result
   }
 
   async hardDelete(id: string, prismaClient?: PrismaTransactionClient): Promise<LanguageType> {
     const client = this.getClient(prismaClient)
-
-    this.logger.debug(`Hard deleting language: ${id}`)
-
-    const result = await client.language.delete({
-      where: { id }
-    })
-
-    this.cacheService.invalidate(`language:${id}`)
-    this.cacheService.invalidate('languages:list')
-
+    const result = await client.language.delete({ where: { id } })
+    await this.invalidateLanguageItemCache(id)
+    await this.invalidateAllLanguageListsCache()
     return result
   }
 
   async restore(id: string, updatedById: number, prismaClient?: PrismaTransactionClient): Promise<LanguageType> {
     const client = this.getClient(prismaClient)
-
-    this.logger.debug(`Restoring language: ${id}`)
-
     const result = await client.language.update({
-      where: {
-        id,
-        NOT: {
-          deletedAt: null
-        }
-      },
+      where: { id },
       data: {
         deletedAt: null,
-        updatedById
+        deletedById: null,
+        updatedById,
+        updatedAt: new Date()
       }
     })
-
-    this.cacheService.invalidate(`language:${id}`)
-    this.cacheService.invalidate('languages:list')
-
+    await this.invalidateLanguageItemCache(id)
+    await this.invalidateAllLanguageListsCache()
     return result
   }
 
   async countReferences(id: string, prismaClient?: PrismaTransactionClient): Promise<number> {
     const client = this.getClient(prismaClient)
-
     const cacheKey = `language:${id}:references`
 
-    return this.cacheService.getOrSet(
-      cacheKey,
-      async () => {
-        const [productCount, categoryCount, brandCount] = await Promise.all([
-          client.productTranslation.count({ where: { languageId: id } }),
-          client.categoryTranslation.count({ where: { languageId: id } }),
-          client.brandTranslation.count({ where: { languageId: id } })
-        ])
-        return productCount + categoryCount + brandCount
-      },
-      60000
-    )
+    const cachedValue = await this.cacheManager.get<number>(cacheKey)
+    if (cachedValue !== undefined && cachedValue !== null) {
+      return cachedValue
+    }
+
+    const freshValue = await (async () => {
+      const [productCount, categoryCount, brandCount] = await Promise.all([
+        client.productTranslation.count({ where: { languageId: id } }),
+        client.categoryTranslation.count({ where: { languageId: id } }),
+        client.brandTranslation.count({ where: { languageId: id } })
+      ])
+      return productCount + categoryCount + brandCount
+    })()
+
+    await this.cacheManager.set(cacheKey, freshValue, 60000) // TTL from original getOrSet
+    return freshValue
   }
 
   protected getSearchableFields(): string[] {

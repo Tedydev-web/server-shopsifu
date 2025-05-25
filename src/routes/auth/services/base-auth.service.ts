@@ -11,6 +11,7 @@ import { AuditLogService } from 'src/routes/audit-log/audit-log.service'
 import { OtpService } from '../providers/otp.service'
 import { DeviceService } from '../providers/device.service'
 import { RolesService } from '../roles.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 
 @Injectable()
 export class BaseAuthService {
@@ -28,7 +29,8 @@ export class BaseAuthService {
     protected readonly auditLogService: AuditLogService,
     protected readonly otpService: OtpService,
     protected readonly deviceService: DeviceService,
-    protected readonly i18nService: I18nService
+    protected readonly i18nService: I18nService,
+    protected readonly redisService: RedisService
   ) {
     this.logger = new Logger(this.constructor.name)
   }

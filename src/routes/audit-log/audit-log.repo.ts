@@ -1,16 +1,16 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Inject } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
-import { CacheService } from 'src/shared/services/cache.service'
 import { AuditLogQueryType, AuditLogType } from './audit-log.model'
 import { PaginatedResponseType } from 'src/shared/models/pagination.model'
 import { AuditLogStatus } from './audit-log.service'
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager'
 
 @Injectable()
 export class AuditLogRepository extends BaseRepository<AuditLogType> {
   constructor(
     protected readonly prismaService: PrismaService,
-    private readonly cacheService: CacheService
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {
     super(prismaService, AuditLogRepository.name)
   }
@@ -61,27 +61,27 @@ export class AuditLogRepository extends BaseRepository<AuditLogType> {
     const effectiveLimit = all ? 1000 : limit
 
     if (shouldCache && cacheKey) {
-      return this.cacheService.getOrSet(
-        cacheKey,
-        () =>
-          this.paginateQuery(
-            'auditLog',
-            {
-              page,
-              limit: effectiveLimit,
-              sortBy,
-              sortOrder,
-              search
-            },
-            where,
-            { user: true },
-            prismaClient
-          ),
-        10000
+      const cachedData = await this.cacheManager.get<PaginatedResponseType<AuditLogType>>(cacheKey)
+      if (cachedData) return cachedData
+
+      const result = await this.paginateQuery<AuditLogType>(
+        'auditLog',
+        {
+          page,
+          limit: effectiveLimit,
+          sortBy,
+          sortOrder,
+          search
+        },
+        where,
+        { user: true },
+        prismaClient
       )
+      await this.cacheManager.set(cacheKey, result, 10000)
+      return result
     }
 
-    return this.paginateQuery(
+    return this.paginateQuery<AuditLogType>(
       'auditLog',
       {
         page,
@@ -101,81 +101,74 @@ export class AuditLogRepository extends BaseRepository<AuditLogType> {
 
     const cacheKey = `audit-log:${id}`
 
-    return this.cacheService.getOrSet(
-      cacheKey,
-      async () => {
-        const result = await client.auditLog.findUnique({
-          where: { id },
-          include: { user: true }
-        })
+    const cachedLog = await this.cacheManager.get<AuditLogType>(cacheKey)
+    if (cachedLog) return cachedLog
 
-        if (!result) return null
+    const result = await client.auditLog.findUnique({
+      where: { id },
+      include: { user: true }
+    })
 
-        const auditLog: AuditLogType = {
-          id: result.id,
-          timestamp: result.timestamp,
-          userId: result.userId,
-          userEmail: result.userEmail || result.user?.email || null,
-          action: result.action,
-          entity: result.entity,
-          entityId: result.entityId,
-          ipAddress: result.ipAddress,
-          userAgent: result.userAgent,
-          status: result.status as AuditLogStatus,
-          errorMessage: result.errorMessage,
-          details: result.details,
-          notes: result.notes
-        }
+    if (!result) return null
 
-        return auditLog
-      },
-      30000
-    )
+    const auditLog: AuditLogType = {
+      id: result.id,
+      timestamp: result.timestamp,
+      userId: result.userId,
+      userEmail: result.userEmail || result.user?.email || null,
+      action: result.action,
+      entity: result.entity,
+      entityId: result.entityId,
+      ipAddress: result.ipAddress,
+      userAgent: result.userAgent,
+      status: result.status as AuditLogStatus,
+      errorMessage: result.errorMessage,
+      details: result.details,
+      notes: result.notes
+    }
+    await this.cacheManager.set(cacheKey, auditLog, 30000)
+    return auditLog
   }
 
   async getDistinctActions(prismaClient?: PrismaTransactionClient): Promise<string[]> {
     const client = this.getClient(prismaClient)
-
     const cacheKey = 'audit-logs:actions:distinct'
 
-    return this.cacheService.getOrSet(
-      cacheKey,
-      async () => {
-        const result = await client.auditLog.groupBy({
-          by: ['action'],
-          orderBy: {
-            action: 'asc'
-          }
-        })
-        return result.map((item) => item.action)
-      },
-      300000
-    )
+    const cachedActions = await this.cacheManager.get<string[]>(cacheKey)
+    if (cachedActions) return cachedActions
+
+    const result = await client.auditLog.groupBy({
+      by: ['action'],
+      orderBy: {
+        action: 'asc'
+      }
+    })
+    const actions = result.map((item) => item.action)
+    await this.cacheManager.set(cacheKey, actions, 300000)
+    return actions
   }
 
   async getDistinctEntities(prismaClient?: PrismaTransactionClient): Promise<string[]> {
     const client = this.getClient(prismaClient)
-
     const cacheKey = 'audit-logs:entities:distinct'
 
-    return this.cacheService.getOrSet(
-      cacheKey,
-      async () => {
-        const result = await client.auditLog.groupBy({
-          by: ['entity'],
-          where: {
-            entity: {
-              not: null
-            }
-          },
-          orderBy: {
-            entity: 'asc'
-          }
-        })
-        return result.map((item) => item.entity as string).filter(Boolean)
+    const cachedEntities = await this.cacheManager.get<string[]>(cacheKey)
+    if (cachedEntities) return cachedEntities
+
+    const result = await client.auditLog.groupBy({
+      by: ['entity'],
+      where: {
+        entity: {
+          not: null
+        }
       },
-      300000
-    )
+      orderBy: {
+        entity: 'asc'
+      }
+    })
+    const entities = result.map((item) => item.entity as string).filter(Boolean)
+    await this.cacheManager.set(cacheKey, entities, 300000)
+    return entities
   }
 
   protected getSearchableFields(): string[] {

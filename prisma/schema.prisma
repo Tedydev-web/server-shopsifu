@@ -41,7 +41,6 @@ model User {
   roleId              Int
   role                Role                 @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   devices             Device[]
-  refreshTokens       RefreshToken[]
   verificationTokens  VerificationToken[]
   twoFactorEnabled    Boolean?             @default(false)
   twoFactorSecret     String?              @db.VarChar(1000)
@@ -177,24 +176,7 @@ model Device {
   sessionCreatedAt   DateTime            @default(now())
   isActive           Boolean             @default(true)
   isTrusted          Boolean             @default(false)
-  refreshTokens      RefreshToken[]
   verificationTokens VerificationToken[]
-}
-
-model RefreshToken {
-  id         Int      @id @default(autoincrement())
-  token      String   @unique
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  deviceId   Int
-  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  used       Boolean  @default(false)
-  rememberMe Boolean  @default(false)
-
-  @@index([userId])
-  @@index([deviceId])
 }
 
 model Permission {

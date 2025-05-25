@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, HttpStatus } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { v4 as uuidv4 } from 'uuid'
 import { TokenType, TwoFactorMethodType, TypeOfVerificationCode } from '../constants/auth.constants'
@@ -15,6 +15,9 @@ import { Response } from 'express'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
 import { I18nContext } from 'nestjs-i18n'
+import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
+import envConfig from 'src/shared/config'
+import ms from 'ms'
 
 @Injectable()
 export class TwoFactorAuthService extends BaseAuthService {
@@ -146,7 +149,7 @@ export class TwoFactorAuthService extends BaseAuthService {
       }
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
-      const message = await this.i18nService.translate('error.Auth.2FA.Confirm.Success', {
+      const message = this.i18nService.translate('error.Auth.2FA.Confirm.Success', {
         lang: I18nContext.current()?.lang
       })
       return {
@@ -221,7 +224,7 @@ export class TwoFactorAuthService extends BaseAuthService {
       }
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
-      const message = await this.i18nService.translate('error.Auth.2FA.Disabled', {
+      const message = this.i18nService.translate('error.Auth.2FA.Disabled', {
         lang: I18nContext.current()?.lang
       })
       return { message }
@@ -315,30 +318,74 @@ export class TwoFactorAuthService extends BaseAuthService {
           throw DeviceMismatchException
         }
 
-        // Extract rememberMe from session token metadata
+        // Extract rememberMe and sessionId from session token metadata
         let rememberMe = false
+        let sessionIdFromToken: string | undefined = undefined
         if (sessionToken.metadata) {
           try {
             const metadata = JSON.parse(sessionToken.metadata)
             rememberMe = !!metadata.rememberMe
+            sessionIdFromToken = metadata.sessionId
           } catch (error) {
-            this.logger.warn('Could not parse metadata for rememberMe preference', error)
+            this.logger.warn('Could not parse metadata for rememberMe/sessionId preference', error)
           }
         }
 
-        // Generate tokens
-        const { accessToken, refreshToken, maxAgeForRefreshTokenCookie } = await this.tokenService.generateTokens(
-          {
-            userId: user.id,
-            deviceId: device.id,
-            roleId: user.roleId,
-            roleName: user.role.name
-          },
-          tx,
-          rememberMe
-        )
+        if (!sessionIdFromToken) {
+          this.logger.error(
+            'Session ID is missing in loginSessionToken metadata. Cannot proceed with 2FA verification.'
+          )
+          auditLogEntry.errorMessage = 'Missing sessionId in loginSessionToken metadata.'
+          throw new ApiException(
+            HttpStatus.BAD_REQUEST,
+            'MissingSessionId',
+            'Error.Auth.Session.MissingSessionIdInToken'
+          )
+        }
 
-        // Delete the session token
+        const now = new Date()
+        const sessionData: Record<string, string | number | boolean> = {
+          userId: user.id,
+          deviceId: device.id,
+          ipAddress: body.ip,
+          userAgent: body.userAgent,
+          createdAt: now.toISOString(),
+          lastActiveAt: now.toISOString(),
+          isTrusted: device.isTrusted,
+          rememberMe: rememberMe,
+          roleId: user.roleId,
+          roleName: user.role.name
+        }
+
+        // Generate tokens
+        const { accessToken, refreshToken, maxAgeForRefreshTokenCookie, accessTokenJti } =
+          await this.tokenService.generateTokens(
+            {
+              userId: user.id,
+              deviceId: device.id,
+              roleId: user.roleId,
+              roleName: user.role.name,
+              sessionId: sessionIdFromToken
+            },
+            tx,
+            rememberMe
+          )
+
+        sessionData.currentAccessTokenJti = accessTokenJti
+        sessionData.currentRefreshTokenJti = refreshToken
+
+        const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionIdFromToken}`
+        const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
+        const absoluteSessionLifetimeSeconds = Math.floor(ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS) / 1000)
+
+        await this.redisService.pipeline((pipeline) => {
+          pipeline.hmset(sessionKey, sessionData)
+          pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
+          pipeline.sadd(userSessionsKey, sessionIdFromToken)
+          return pipeline
+        })
+
+        // Delete the session token from Prisma
         await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
 
         if (res) {
@@ -360,10 +407,10 @@ export class TwoFactorAuthService extends BaseAuthService {
           name: user.name,
           role: user.role.name,
           message: shouldAskToTrustDevice
-            ? await this.i18nService.translate('error.Auth.2FA.Verify.AskToTrustDevice', {
+            ? this.i18nService.translate('error.Auth.2FA.Verify.AskToTrustDevice', {
                 lang: I18nContext.current()?.lang
               })
-            : await this.i18nService.translate('error.Auth.2FA.Verify.Success', {
+            : this.i18nService.translate('error.Auth.2FA.Verify.Success', {
                 lang: I18nContext.current()?.lang
               }),
           askToTrustDevice: shouldAskToTrustDevice

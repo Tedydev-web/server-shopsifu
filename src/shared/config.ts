@@ -48,7 +48,15 @@ const configSchema = z.object({
   COOKIE_PATH_ACCESS_TOKEN: z.string().default('/'),
 
   COOKIE_PATH_REFRESH_TOKEN: z.string().default('/'),
-  COOKIE_PATH_CSRF: z.string().default('/')
+  COOKIE_PATH_CSRF: z.string().default('/'),
+
+  // Redis Configuration
+  REDIS_HOST: z.string().default('127.0.0.1'),
+  REDIS_PORT: z.coerce.number().default(6379),
+  REDIS_PASSWORD: z.string().optional().default(''), // Cung cấp giá trị mặc định là chuỗi rỗng
+  REDIS_DB: z.coerce.number().default(0),
+  REDIS_KEY_PREFIX: z.string().default('shopsifu:'),
+  REDIS_DEFAULT_TTL_MS: z.coerce.number().default(60000)
 })
 
 const configServer = configSchema.safeParse(process.env)
@@ -86,7 +94,7 @@ switch (nodeEnv) {
 }
 
 const envConfig = {
-  ...parsedConfig,
+  ...parsedConfig, // Các biến từ process.env đã được parse và validate, bao gồm cả Redis vars
   ACCESS_TOKEN_COOKIE_MAX_AGE: ms(parsedConfig.ACCESS_TOKEN_EXPIRES_IN),
   REFRESH_TOKEN_COOKIE_MAX_AGE: ms(parsedConfig.REFRESH_TOKEN_EXPIRES_IN),
   REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE: ms(parsedConfig.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN),

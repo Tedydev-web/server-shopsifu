@@ -204,21 +204,27 @@ export class AuthController {
       }
 
       // Nếu không cần 2FA, data sẽ chứa accessToken và refreshToken
-      if ('accessToken' in data && data.accessToken && 'refreshToken' in data && data.refreshToken) {
-        this.tokenService.setTokenCookies(res, data.accessToken, data.refreshToken)
+      if (data && data.accessToken) {
+        // Chuyển hướng thành công với thông tin người dùng
+        this.tokenService.setTokenCookies(res, data.accessToken, data.refreshToken, data.maxAgeForRefreshTokenCookie)
+        // res.redirect(
+        //   `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true&name=${encodeURIComponent(data.user.name || '')}&email=${encodeURIComponent(data.user.email || '')}`
+        // );
+        // Để đơn giản, trả về JSON sau khi set cookie
+        res.status(HttpStatus.OK).json({
+          message: 'Google login successful, tokens set in cookies.',
+          user: data.user
+        })
+      } else {
+        // Xử lý lỗi nếu không có accessToken (dù googleService nên throw error trước đó)
+        const unknownErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
+          lang: currentLang
+        })
+        this.logger.error('[AuthController googleCallback] Unexpected data structure from GoogleService', data)
         return res.redirect(
-          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true&name=${encodeURIComponent(data.name || '')}&email=${encodeURIComponent(data.email || '')}`
+          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=internal_error&errorMessage=${encodeURIComponent(unknownErrorMessage)}`
         )
       }
-
-      // Trường hợp không mong muốn
-      const unknownErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
-        lang: currentLang
-      })
-      this.logger.error('[AuthController googleCallback] Unexpected data structure from GoogleService', data)
-      return res.redirect(
-        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=internal_error&errorMessage=${encodeURIComponent(unknownErrorMessage)}`
-      )
     } catch (error) {
       this.logger.error('Google OAuth callback error in controller:', error.stack, error.message)
       const genericErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {

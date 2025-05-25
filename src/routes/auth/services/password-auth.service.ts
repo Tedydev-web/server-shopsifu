@@ -44,15 +44,11 @@ export class PasswordAuthService extends BaseAuthService {
 
         const hashedPassword = await this.hashingService.hash(body.newPassword)
 
-        await tx.user.update({
-          where: { id: user.id },
-          data: { password: hashedPassword }
-        })
+        await this.authRepository.updateUser({ id: user.id }, { password: hashedPassword }, tx)
 
-        // Remove all refresh tokens for security
-        await this.tokenService.deleteAllRefreshTokens(user.id, tx)
+        // Invalidate all sessions for this user
+        await this.tokenService.invalidateAllUserSessions(user.id, 'PASSWORD_RESET')
 
-        // Delete the verification token
         await this.otpService.deleteOtpToken(body.otpToken, tx)
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
@@ -100,13 +96,10 @@ export class PasswordAuthService extends BaseAuthService {
         }
 
         const hashedNewPassword = await this.hashingService.hash(newPassword)
-        await tx.user.update({
-          where: { id: userId },
-          data: { password: hashedNewPassword }
-        })
+        await this.authRepository.updateUser({ id: userId }, { password: hashedNewPassword }, tx)
 
-        // For security, invalidate all refresh tokens except the current one
-        await this.tokenService.deleteAllRefreshTokens(userId, tx)
+        // Invalidate all sessions for this user
+        await this.tokenService.invalidateAllUserSessions(userId, 'PASSWORD_CHANGED')
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.action = 'CHANGE_PASSWORD_SUCCESS'

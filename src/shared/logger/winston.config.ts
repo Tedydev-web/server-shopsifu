@@ -2,10 +2,14 @@ import { WinstonModule, utilities as nestWinstonModuleUtilities } from 'nest-win
 import * as winston from 'winston'
 import DailyRotateFile from 'winston-daily-rotate-file'
 import envConfig from '../config'
+import { format, transports } from 'winston'
+import path from 'path'
 
-const { errors, combine, json, timestamp, ms, prettyPrint } = winston.format
+const { errors, combine, json, timestamp, ms, prettyPrint, printf, colorize, uncolorize } = winston.format
 
-const dailyRotateFileTransport = (level: string, dirname?: string) => {
+const logFormat = printf(({ level, message, timestamp: ts, stack }) => `[${ts}] ${level}: ${stack || message}`)
+
+export const dailyRotateFileTransport = (level: string, dirname?: string) => {
   return new DailyRotateFile({
     level,
     dirname: dirname || `logs/${level}`,
@@ -14,37 +18,32 @@ const dailyRotateFileTransport = (level: string, dirname?: string) => {
     zippedArchive: true,
     maxSize: '20m',
     maxFiles: '14d',
-    format: combine(
-      errors({ stack: true }),
-      timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSSZ' }),
-      winston.format((info) => {
-        info.pid = process.pid
-        return info
-      })(),
-      json(),
-      prettyPrint()
-    )
+    format: combine(errors({ stack: true }), timestamp(), json(), prettyPrint())
+  })
+}
+
+export const consoleTransport = () => {
+  return new winston.transports.Console({
+    level: envConfig.NODE_ENV === 'production' ? 'info' : 'silly',
+    format:
+      envConfig.NODE_ENV === 'production'
+        ? combine(timestamp(), ms(), errors({ stack: true }), json())
+        : combine(
+            errors({ stack: true }),
+            timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+            ms(),
+            nestWinstonModuleUtilities.format.nestLike('Shopsifu', {
+              colors: true,
+              prettyPrint: true
+            })
+          )
   })
 }
 
 export const winstonLogger = WinstonModule.createLogger({
   levels: winston.config.npm.levels,
   transports: [
-    new winston.transports.Console({
-      level: envConfig.NODE_ENV === 'production' ? 'info' : 'silly',
-      format:
-        envConfig.NODE_ENV === 'production'
-          ? combine(timestamp(), ms(), errors({ stack: true }), json())
-          : combine(
-              errors({ stack: true }),
-              timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-              ms(),
-              nestWinstonModuleUtilities.format.nestLike('Shopsifu', {
-                colors: true,
-                prettyPrint: true
-              })
-            )
-    }),
+    consoleTransport(),
     dailyRotateFileTransport('error'),
     dailyRotateFileTransport('info', 'logs/combined')
   ],

@@ -1,9 +1,10 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common'
+import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common'
+import { ConfigModule } from '@nestjs/config'
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { SharedModule } from 'src/shared/shared.module'
 import { AuthModule } from 'src/routes/auth/auth.module'
-import { APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
+import { APP_GUARD, APP_INTERCEPTOR, APP_PIPE, APP_FILTER } from '@nestjs/core'
 import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import { LanguageModule } from './routes/language/language.module'
@@ -15,35 +16,33 @@ import { LoggerMiddleware } from './shared/middleware/logger.middleware'
 import { TokenRefreshInterceptor } from './routes/auth/interceptors/token-refresh.interceptor'
 import { PermissionModule } from './routes/permission/permission.module'
 import { RoleModule } from './routes/role/role.module'
-import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
+import { AcceptLanguageResolver, I18nModule, QueryResolver, HeaderResolver } from 'nestjs-i18n'
 import path from 'path'
+import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
+import { AuthenticationGuard } from './shared/guards/authentication.guard'
+import { AuditLogInterceptor } from './shared/interceptor/audit-log.interceptor'
+import envConfig from './shared/config'
+import { WinstonModule } from 'nest-winston'
+import { dailyRotateFileTransport, consoleTransport } from './shared/logger/winston.config'
+import { RedisProviderModule } from './shared/providers/redis/redis.module'
 
 @Module({
   imports: [
-    SharedModule,
-    AuthModule,
-    LanguageModule,
-    AuditLogModule,
-    PermissionModule,
-    I18nModule.forRoot({
-      fallbackLanguage: 'en',
-      loaderOptions: {
-        path: path.join(__dirname, 'i18n'),
-        watch: true
-      },
-      resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
-      typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [() => envConfig],
+      cache: true
     }),
     ThrottlerModule.forRoot([
       {
         name: 'short',
         ttl: 1000,
-        limit: 3
+        limit: 10
       },
       {
         name: 'medium',
         ttl: 10000,
-        limit: 20
+        limit: 40
       },
       {
         name: 'long',
@@ -51,7 +50,24 @@ import path from 'path'
         limit: 100
       }
     ]),
-    RoleModule
+    I18nModule.forRoot({
+      fallbackLanguage: 'en',
+      loaderOptions: {
+        path: path.join(__dirname, '../i18n/'),
+        watch: true
+      },
+      resolvers: [new QueryResolver(['lang', 'l']), AcceptLanguageResolver, new HeaderResolver(['x-lang'])]
+    }),
+    WinstonModule.forRoot({
+      transports: [consoleTransport(), dailyRotateFileTransport('error'), dailyRotateFileTransport('info')]
+    }),
+    SharedModule,
+    RedisProviderModule,
+    AuthModule,
+    AuditLogModule,
+    RoleModule,
+    PermissionModule,
+    LanguageModule
   ],
   controllers: [AppController],
   providers: [
@@ -62,18 +78,16 @@ import path from 'path'
     },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
     {
-      provide: APP_INTERCEPTOR,
-      useClass: TokenRefreshInterceptor
-    },
-    {
       provide: APP_GUARD,
       useClass: ThrottlerGuard
-    }
+    },
+    { provide: APP_FILTER, useClass: AllExceptionsFilter }
   ]
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(LoggerMiddleware).forRoutes('*')
-    consumer.apply(SecurityHeadersMiddleware).forRoutes('*').apply(CsrfMiddleware).forRoutes('*')
+    consumer.apply(SecurityHeadersMiddleware).forRoutes('*')
+    consumer.apply(CsrfMiddleware).forRoutes({ path: '*', method: RequestMethod.ALL })
   }
 }

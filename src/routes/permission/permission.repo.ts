@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Inject } from '@nestjs/common'
 import {
   CreatePermissionBodyType,
   PermissionType,
@@ -9,108 +9,76 @@ import {
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { Prisma } from '@prisma/client'
 import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
-import { CacheService } from 'src/shared/services/cache.service'
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager'
 
 @Injectable()
 export class PermissionRepo extends BaseRepository<PermissionType> {
   constructor(
     protected readonly prismaService: PrismaService,
-    private readonly cacheService: CacheService
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {
     super(prismaService, PermissionRepo.name)
+  }
+
+  private async invalidatePermissionItemCache(id: number) {
+    await this.cacheManager.del(`permission:${id}`)
+    await this.cacheManager.del(`permission:${id}:includeDeleted`)
+    // Consider list cache invalidation strategy (e.g., versioning, or specific key deletion)
+  }
+
+  private async invalidateAllPermissionListsCache() {
+    this.logger.warn(
+      'invalidateAllPermissionListsCache called - specific list invalidation or versioning is preferred.'
+    )
+    // Example: await this.cacheManager.del('permissions:list:all');
+    // Or implement more granular list key invalidation if possible.
   }
 
   async findAll(
     query?: GetPermissionsQueryType,
     prismaClient?: PrismaTransactionClient
   ): Promise<{ permissions: PermissionType[]; totalItems: number }> {
+    const client = this.getClient(prismaClient)
     const {
       page = 1,
       limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
+      sortBy = 'id',
+      sortOrder = 'asc',
       search = '',
       includeDeleted = false,
-      method,
-      startDate,
-      endDate,
       all = false
     } = query || {}
 
-    const where: any = {}
-
+    const where: Prisma.PermissionWhereInput = {}
     if (search) {
-      where.OR = this.getSearchableFields().map((field) => ({
-        [field]: { contains: search, mode: 'insensitive' }
-      }))
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { path: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ]
     }
-
     if (!includeDeleted) {
       where.deletedAt = null
     }
 
-    if (method) {
-      where.method = method
-    }
+    const effectiveLimit = all ? 10000 : limit // Allow fetching more if 'all' is true, up to a reasonable max
+    const cacheKey = `permissions:list:${page}:${effectiveLimit}:${sortBy}:${sortOrder}:${search}:${includeDeleted}:${all}`
 
-    if (startDate || endDate) {
-      where.createdAt = {}
-      if (startDate) where.createdAt.gte = new Date(startDate)
-      if (endDate) where.createdAt.lte = new Date(endDate)
-    }
+    const cachedResult = await this.cacheManager.get<{ permissions: PermissionType[]; totalItems: number }>(cacheKey)
+    if (cachedResult) return cachedResult
 
-    const shouldCache = !all && limit <= 100
-    const cacheKey = shouldCache
-      ? `permissions:list:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${includeDeleted}:${method || ''}:${startDate || ''}:${endDate || ''}:${all}`
-      : null
-
-    const effectiveLimit = all ? 1000 : limit
-
-    if (shouldCache && cacheKey) {
-      return this.cacheService.getOrSet(
-        cacheKey,
-        async () => {
-          const result = await this.paginateQuery<PermissionType>(
-            'permission',
-            {
-              page,
-              limit: effectiveLimit,
-              sortBy,
-              sortOrder,
-              search
-            },
-            where,
-            {},
-            prismaClient
-          )
-
-          return {
-            permissions: result.data,
-            totalItems: result.totalItems
-          }
-        },
-        30000
-      )
-    }
-
-    const result = await this.paginateQuery<PermissionType>(
-      'permission',
-      {
-        page,
-        limit: effectiveLimit,
-        sortBy,
-        sortOrder,
-        search
-      },
+    const permissionsPromise = client.permission.findMany({
       where,
-      {},
-      prismaClient
-    )
+      skip: all ? undefined : (page - 1) * limit,
+      take: effectiveLimit,
+      orderBy: { [sortBy]: sortOrder }
+    })
+    const totalItemsPromise = client.permission.count({ where })
 
-    return {
-      permissions: result.data,
-      totalItems: result.totalItems
-    }
+    const [permissions, totalItems] = await Promise.all([permissionsPromise, totalItemsPromise])
+
+    await this.cacheManager.set(cacheKey, { permissions, totalItems }, 60000)
+    return { permissions, totalItems }
   }
 
   async findById(
@@ -119,20 +87,15 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
     prismaClient?: PrismaTransactionClient
   ): Promise<PermissionType | null> {
     const client = this.getClient(prismaClient)
+    const cacheKey = `permission:${id}${includeDeleted ? ':includeDeleted' : ''}`
+    const cachedPermission = await this.cacheManager.get<PermissionType | null>(cacheKey)
+    if (cachedPermission !== undefined) return cachedPermission
 
-    const cacheKey = `permission:${id}:${includeDeleted}`
-
-    return this.cacheService.getOrSet(
-      cacheKey,
-      async () => {
-        const where: Prisma.PermissionWhereUniqueInput = { id }
-        if (!includeDeleted) {
-          where.deletedAt = null as any
-        }
-        return client.permission.findUnique({ where })
-      },
-      30000
-    )
+    const permission = await client.permission.findUnique({
+      where: { id, ...(includeDeleted ? {} : { deletedAt: null }) }
+    })
+    await this.cacheManager.set(cacheKey, permission, 300000)
+    return permission
   }
 
   async findByPathAndMethod(
@@ -142,23 +105,23 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
     prismaClient?: PrismaTransactionClient
   ): Promise<PermissionType | null> {
     const client = this.getClient(prismaClient)
-
     const cacheKey = `permission:path:${path}:method:${method}:${includeDeleted}`
 
-    return this.cacheService.getOrSet(
-      cacheKey,
-      async () => {
-        const where: Prisma.PermissionWhereInput = {
-          path,
-          method
-        }
-        if (!includeDeleted) {
-          where.deletedAt = null
-        }
-        return client.permission.findFirst({ where })
-      },
-      30000
-    )
+    const cachedPermission = await this.cacheManager.get<PermissionType | null>(cacheKey)
+    if (cachedPermission !== undefined) {
+      return cachedPermission
+    }
+
+    const where: Prisma.PermissionWhereInput = {
+      path,
+      method
+    }
+    if (!includeDeleted) {
+      where.deletedAt = null
+    }
+    const permission = await client.permission.findFirst({ where })
+    await this.cacheManager.set(cacheKey, permission, 30000) // TTL from original getOrSet
+    return permission
   }
 
   async create(
@@ -176,7 +139,7 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
       }
     })
 
-    this.cacheService.invalidate('permissions:list')
+    await this.invalidateAllPermissionListsCache()
 
     return result
   }
@@ -208,8 +171,8 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
       }
     })
 
-    this.cacheService.invalidate(`permission:${id}`)
-    this.cacheService.invalidate('permissions:list')
+    await this.invalidatePermissionItemCache(id)
+    await this.invalidateAllPermissionListsCache()
 
     return result
   }
@@ -230,8 +193,8 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
       }
     })
 
-    this.cacheService.invalidate(`permission:${id}`)
-    this.cacheService.invalidate('permissions:list')
+    await this.invalidatePermissionItemCache(id)
+    await this.invalidateAllPermissionListsCache()
 
     return result
   }
@@ -245,8 +208,8 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
       where: { id }
     })
 
-    this.cacheService.invalidate(`permission:${id}`)
-    this.cacheService.invalidate('permissions:list')
+    await this.invalidatePermissionItemCache(id)
+    await this.invalidateAllPermissionListsCache()
 
     return result
   }
@@ -269,28 +232,28 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
       }
     })
 
-    this.cacheService.invalidate(`permission:${id}`)
-    this.cacheService.invalidate('permissions:list')
+    await this.invalidatePermissionItemCache(id)
+    await this.invalidateAllPermissionListsCache()
 
     return result
   }
 
   async countRoles(id: number, prismaClient?: PrismaTransactionClient): Promise<number> {
     const client = this.getClient(prismaClient)
-
     const cacheKey = `permission:${id}:roles`
 
-    return this.cacheService.getOrSet(
-      cacheKey,
-      async () => {
-        const permission = await client.permission.findUnique({
-          where: { id },
-          include: { roles: { select: { id: true } } }
-        })
-        return permission?.roles.length || 0
-      },
-      60000
-    )
+    const cachedCount = await this.cacheManager.get<number>(cacheKey)
+    if (cachedCount !== undefined && cachedCount !== null) {
+      return cachedCount
+    }
+
+    const permission = await client.permission.findUnique({
+      where: { id },
+      include: { roles: { select: { id: true } } }
+    })
+    const count = permission?.roles.length || 0
+    await this.cacheManager.set(cacheKey, count, 60000) // TTL from original getOrSet
+    return count
   }
 
   protected getSearchableFields(): string[] {

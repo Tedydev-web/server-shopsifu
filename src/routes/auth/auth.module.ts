@@ -8,7 +8,6 @@ import { AuditLogModule } from 'src/routes/audit-log/audit-log.module'
 import { AuthenticationService } from './services/authentication.service'
 import { TwoFactorAuthService } from './services/two-factor-auth.service'
 import { OtpAuthService } from './services/otp-auth.service'
-import { TokenAuthService } from './services/token-auth.service'
 import { DeviceAuthService } from './services/device-auth.service'
 import { PasswordAuthService } from './services/password-auth.service'
 import { BaseAuthService } from './services/base-auth.service'
@@ -45,7 +44,6 @@ const authProviders = [
     AuthenticationService,
     TwoFactorAuthService,
     OtpAuthService,
-    TokenAuthService,
     DeviceAuthService,
     PasswordAuthService,
     ...authProviders,

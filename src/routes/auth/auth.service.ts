@@ -48,9 +48,9 @@ import { DeviceService } from 'src/routes/auth/providers/device.service'
 import { AuthenticationService } from './services/authentication.service'
 import { TwoFactorAuthService } from './services/two-factor-auth.service'
 import { OtpAuthService } from './services/otp-auth.service'
-import { TokenAuthService } from './services/token-auth.service'
 import { DeviceAuthService } from './services/device-auth.service'
 import { PasswordAuthService } from './services/password-auth.service'
+import envConfig from 'src/shared/config'
 
 @Injectable()
 export class AuthService {
@@ -71,7 +71,6 @@ export class AuthService {
     private readonly authenticationService: AuthenticationService,
     private readonly twoFactorAuthService: TwoFactorAuthService,
     private readonly otpAuthService: OtpAuthService,
-    private readonly tokenAuthService: TokenAuthService,
     private readonly deviceAuthService: DeviceAuthService,
     private readonly passwordAuthService: PasswordAuthService
   ) {}
@@ -97,11 +96,37 @@ export class AuthService {
   }
 
   async refreshToken({ userAgent, ip }: { userAgent: string; ip: string }, req: Request, res?: Response) {
-    return this.tokenAuthService.refreshToken({ userAgent, ip }, req, res)
+    const clientRefreshTokenJti = this.tokenService.extractRefreshTokenFromRequest(req)
+    if (!clientRefreshTokenJti) {
+      throw InvalidRefreshTokenException
+    }
+    const result = await this.tokenService.refreshTokenSilently(clientRefreshTokenJti, userAgent, ip)
+    if (!result || !result.accessToken) {
+      throw InvalidRefreshTokenException
+    }
+    if (res && result.refreshToken) {
+      this.tokenService.setTokenCookies(
+        res,
+        result.accessToken,
+        result.refreshToken,
+        result.maxAgeForRefreshTokenCookie
+      )
+    } else if (res) {
+      const accessTokenConfig = envConfig.cookie.accessToken
+      res.cookie(accessTokenConfig.name, result.accessToken, {
+        path: accessTokenConfig.path,
+        domain: accessTokenConfig.domain,
+        maxAge: accessTokenConfig.maxAge,
+        httpOnly: accessTokenConfig.httpOnly,
+        secure: accessTokenConfig.secure,
+        sameSite: accessTokenConfig.sameSite
+      })
+    }
+    return { accessToken: result.accessToken }
   }
 
-  async generateTokens(payload: AccessTokenPayloadCreate, prismaTx?: any, rememberMe?: boolean) {
-    return this.tokenAuthService.generateTokens(payload, prismaTx, rememberMe)
+  async generateTokens(payload: AccessTokenPayloadCreate, _prismaTx?: any, rememberMe?: boolean) {
+    return this.tokenService.generateTokens(payload, undefined, rememberMe)
   }
 
   async logoutFromAllDevices(

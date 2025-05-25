@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { OAuth2Client } from 'google-auth-library'
 import { google } from 'googleapis'
 import { GoogleAuthStateType } from 'src/routes/auth/auth.model'
@@ -9,12 +9,16 @@ import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { v4 as uuidv4 } from 'uuid'
-import { DeviceService } from './providers/device.service'
+import { DeviceService } from 'src/routes/auth/providers/device.service'
 import { TypeOfVerificationCode } from './constants/auth.constants'
-import { OtpService } from './providers/otp.service'
+import { OtpService } from 'src/routes/auth/providers/otp.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { I18nService, I18nContext } from 'nestjs-i18n'
+import { TokenService } from 'src/routes/auth/providers/token.service'
+import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import ms from 'ms'
 
 @Injectable()
 export class GoogleService {
@@ -27,7 +31,9 @@ export class GoogleService {
     private readonly deviceService: DeviceService,
     private readonly otpService: OtpService,
     private readonly prismaService: PrismaService,
-    private readonly i18nService: I18nService
+    private readonly i18nService: I18nService,
+    private readonly tokenService: TokenService,
+    private readonly redisService: RedisService
   ) {
     this.oauth2Client = new google.auth.OAuth2(
       envConfig.GOOGLE_CLIENT_ID,
@@ -79,40 +85,59 @@ export class GoogleService {
       const { tokens } = await this.oauth2Client.getToken(code)
       this.oauth2Client.setCredentials(tokens)
 
-      const oauth2 = google.oauth2({
-        auth: this.oauth2Client,
-        version: 'v2'
+      const ticket = await this.oauth2Client.verifyIdToken({
+        idToken: tokens.id_token!,
+        audience: envConfig.GOOGLE_CLIENT_ID
       })
-      const { data } = await oauth2.userinfo.get()
-      if (!data.email) {
+
+      const payload = ticket.getPayload()
+      if (!payload || !payload.email) {
         throw GoogleUserInfoException
       }
 
-      let user = await this.authRepository.findUniqueUserIncludeRole({
-        email: data.email
-      })
-      if (!user) {
-        const clientRoleId = await this.rolesService.getClientRoleId()
-        const randomPassword = uuidv4()
-        const hashedPassword = await this.hashingService.hash(randomPassword)
-        user = await this.authRepository.createUserIncludeRole({
-          email: data.email,
-          name: data.name ?? '',
-          password: hashedPassword,
-          roleId: clientRoleId,
-          phoneNumber: '',
-          avatar: data.picture ?? null
-        })
+      let decodedState: GoogleAuthStateType | null = null
+      try {
+        decodedState = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'))
+      } catch (error) {
+        // Bỏ qua lỗi parse state, sử dụng userAgent và ip từ tham số
       }
 
+      const effectiveUserAgent = decodedState?.userAgent || userAgent
+      const effectiveIp = decodedState?.ip || ip
+      const rememberMe = decodedState?.rememberMe || false
+
+      let user = await this.prismaService.user.findUnique({
+        where: { email: payload.email },
+        include: { role: true }
+      })
+
+      const clientRoleId = await this.rolesService.getClientRoleId()
+
       if (!user) {
-        throw new Error('Không thể tạo hoặc tìm thấy người dùng')
+        user = await this.prismaService.user.create({
+          data: {
+            email: payload.email!,
+            name: payload.name || 'Google User',
+            password: await this.hashingService.hash(uuidv4()),
+            phoneNumber: '', // payload.phone_number is not standard, initialize as empty
+            avatar: payload.picture,
+            status: 'ACTIVE',
+            roleId: clientRoleId
+          },
+          include: { role: true }
+        })
+      } else if (!user.role) {
+        user = await this.prismaService.user.update({
+          where: { id: user.id },
+          data: { roleId: clientRoleId },
+          include: { role: true }
+        })
       }
 
       const device = await this.deviceService.findOrCreateDevice({
         userId: user.id,
-        userAgent,
-        ip
+        userAgent: effectiveUserAgent,
+        ip: effectiveIp
       })
 
       // Kiểm tra session hợp lệ
@@ -164,24 +189,61 @@ export class GoogleService {
         }
       }
 
-      const authTokens = await this.authService.generateTokens(
-        {
-          userId: user.id,
-          deviceId: device.id,
-          roleId: user.roleId,
-          roleName: user.role.name
-        },
-        undefined, // Không có transaction client ở đây
-        false // Explicitly set rememberMe to false for Google login initial token generation
-      )
+      // Tạo session mới
+      const sessionId = uuidv4()
+      const now = new Date()
+
+      const sessionData: Record<string, string | number | boolean> = {
+        userId: user.id,
+        deviceId: device.id,
+        ipAddress: effectiveIp,
+        userAgent: effectiveUserAgent,
+        createdAt: now.toISOString(),
+        lastActiveAt: now.toISOString(),
+        isTrusted: device.isTrusted, // Google login có thể coi là trusted hoặc cần flow riêng
+        rememberMe: rememberMe,
+        roleId: user.roleId,
+        roleName: user.role.name
+      }
+
+      // Gọi TokenService trực tiếp
+      const { accessToken, refreshToken, maxAgeForRefreshTokenCookie, accessTokenJti } =
+        await this.tokenService.generateTokens(
+          {
+            userId: user.id,
+            deviceId: device.id,
+            roleId: user.roleId,
+            roleName: user.role.name,
+            sessionId // Thêm sessionId
+          },
+          undefined, // Không có transaction Prisma ở đây
+          rememberMe
+        )
+
+      sessionData.currentAccessTokenJti = accessTokenJti
+      sessionData.currentRefreshTokenJti = refreshToken
+
+      const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
+      const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
+      const absoluteSessionLifetimeSeconds = Math.floor(envConfig.ABSOLUTE_SESSION_LIFETIME_MS / 1000)
+
+      await this.redisService.pipeline((pipeline) => {
+        pipeline.hmset(sessionKey, sessionData)
+        pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
+        pipeline.sadd(userSessionsKey, sessionId)
+        return pipeline
+      })
 
       return {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role.name,
-        askToTrustDevice: !device.isTrusted,
-        ...authTokens
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role.name
+        },
+        accessToken,
+        refreshToken,
+        maxAgeForRefreshTokenCookie
       }
     } catch (error) {
       console.error('Error in googleCallback', error)
