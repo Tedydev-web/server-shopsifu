@@ -149,6 +149,38 @@ export class TwoFactorAuthService extends BaseAuthService {
       }
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
+      // Send security alert email
+      const userForEmail = await this.sharedUserRepository.findUnique({ id: userId })
+      if (userForEmail) {
+        const lang = I18nContext.current()?.lang || 'en'
+        try {
+          await this.emailService.sendSecurityAlertEmail({
+            to: userForEmail.email,
+            userName: userForEmail.name,
+            alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.TwoFactorEnabled', { lang }),
+            alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.TwoFactorEnabled', { lang }),
+            mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.TwoFactorEnabled', { lang }),
+            actionDetails: [
+              {
+                label: this.i18nService.translate('email.Email.Field.Time', { lang }),
+                value: new Date().toLocaleString(lang)
+              }
+              // IP and Device might not be directly available here unless passed down
+            ],
+            secondaryMessage: this.i18nService.translate(
+              'email.Email.SecurityAlert.SecondaryMessage.2FA.NotYouEnable',
+              { lang }
+            )
+            // No specific button for this alert, user is informed.
+          })
+        } catch (emailError) {
+          this.logger.error(
+            `Failed to send 2FA enabled security alert to ${userForEmail.email}: ${emailError.message}`,
+            emailError.stack
+          )
+        }
+      }
+
       const message = this.i18nService.translate('error.Auth.2FA.Confirm.Success', {
         lang: I18nContext.current()?.lang
       })
@@ -223,6 +255,44 @@ export class TwoFactorAuthService extends BaseAuthService {
         ;(auditLogEntry.details as Prisma.JsonObject).verificationMethod = data.type
       }
       await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+      // Send security alert email
+      const userForEmailDisable = await this.sharedUserRepository.findUnique({ id: data.userId })
+      if (userForEmailDisable) {
+        const lang = I18nContext.current()?.lang || 'en'
+        try {
+          await this.emailService.sendSecurityAlertEmail({
+            to: userForEmailDisable.email,
+            userName: userForEmailDisable.name,
+            alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.TwoFactorDisabled', { lang }),
+            alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.TwoFactorDisabled', { lang }),
+            mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.TwoFactorDisabled', {
+              lang
+            }),
+            actionDetails: [
+              {
+                label: this.i18nService.translate('email.Email.Field.Time', { lang }),
+                value: new Date().toLocaleString(lang)
+              },
+              {
+                label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }),
+                value: data.ip || 'N/A'
+              }
+            ],
+            secondaryMessage: this.i18nService.translate(
+              'email.Email.SecurityAlert.SecondaryMessage.2FA.NotYouDisable',
+              { lang }
+            ),
+            actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.Enable2FA', { lang }),
+            actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security` // TODO: Update with actual URL
+          })
+        } catch (emailError) {
+          this.logger.error(
+            `Failed to send 2FA disabled security alert to ${userForEmailDisable.email}: ${emailError.message}`,
+            emailError.stack
+          )
+        }
+      }
 
       const message = this.i18nService.translate('error.Auth.2FA.Disabled', {
         lang: I18nContext.current()?.lang
@@ -321,13 +391,18 @@ export class TwoFactorAuthService extends BaseAuthService {
         // Extract rememberMe and sessionId from session token metadata
         let rememberMe = false
         let sessionIdFromToken: string | undefined = undefined
+        let geoCountryFromToken: string | undefined = undefined
+        let geoCityFromToken: string | undefined = undefined
+
         if (sessionToken.metadata) {
           try {
             const metadata = JSON.parse(sessionToken.metadata)
             rememberMe = !!metadata.rememberMe
             sessionIdFromToken = metadata.sessionId
+            geoCountryFromToken = metadata.geoCountry
+            geoCityFromToken = metadata.geoCity
           } catch (error) {
-            this.logger.warn('Could not parse metadata for rememberMe/sessionId preference', error)
+            this.logger.warn('Could not parse metadata for rememberMe/sessionId/geo preference', error)
           }
         }
 
@@ -344,7 +419,23 @@ export class TwoFactorAuthService extends BaseAuthService {
         }
 
         const now = new Date()
-        const sessionData: Record<string, string | number | boolean> = {
+        // Lookup geolocation if not found in token metadata
+        let finalGeoCountry = geoCountryFromToken
+        let finalGeoCity = geoCityFromToken
+
+        if (!finalGeoCountry && body.ip) {
+          const geoLocation = this.geolocationService.lookup(body.ip)
+          if (geoLocation) {
+            finalGeoCountry = geoLocation.country
+            finalGeoCity = geoLocation.city
+            if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+              ;(auditLogEntry.details as Prisma.JsonObject).location =
+                `${finalGeoCity || 'N/A'}, ${finalGeoCountry || 'N/A'}`
+            }
+          }
+        }
+
+        const sessionData: Record<string, string | number | boolean | undefined | null> = {
           userId: user.id,
           deviceId: device.id,
           ipAddress: body.ip,
@@ -354,11 +445,13 @@ export class TwoFactorAuthService extends BaseAuthService {
           isTrusted: device.isTrusted,
           rememberMe: rememberMe,
           roleId: user.roleId,
-          roleName: user.role.name
+          roleName: user.role.name,
+          geoCountry: finalGeoCountry,
+          geoCity: finalGeoCity
         }
 
         // Generate tokens
-        const { accessToken, refreshToken, maxAgeForRefreshTokenCookie, accessTokenJti } =
+        const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
           await this.tokenService.generateTokens(
             {
               userId: user.id,
@@ -372,16 +465,22 @@ export class TwoFactorAuthService extends BaseAuthService {
           )
 
         sessionData.currentAccessTokenJti = accessTokenJti
-        sessionData.currentRefreshTokenJti = refreshToken
+        sessionData.currentRefreshTokenJti = refreshTokenJti
 
         const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionIdFromToken}`
         const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
+        const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
+
         const absoluteSessionLifetimeSeconds = Math.floor(ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS) / 1000)
+        const refreshTokenTTL = maxAgeForRefreshTokenCookie
+          ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
+          : absoluteSessionLifetimeSeconds
 
         await this.redisService.pipeline((pipeline) => {
-          pipeline.hmset(sessionKey, sessionData)
+          pipeline.hmset(sessionKey, sessionData as Record<string, string>)
           pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
           pipeline.sadd(userSessionsKey, sessionIdFromToken)
+          pipeline.set(refreshTokenJtiToSessionKey, sessionIdFromToken, 'EX', refreshTokenTTL)
           return pipeline
         })
 
@@ -389,7 +488,7 @@ export class TwoFactorAuthService extends BaseAuthService {
         await this.otpService.deleteOtpToken(body.loginSessionToken, tx)
 
         if (res) {
-          this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
+          this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
         }
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
@@ -397,6 +496,48 @@ export class TwoFactorAuthService extends BaseAuthService {
         if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
           ;(auditLogEntry.details as Prisma.JsonObject).verificationMethod = body.type
           ;(auditLogEntry.details as Prisma.JsonObject).rememberMe = rememberMe
+        }
+
+        // Send security alert email if this was a login for an untrusted device
+        if (isLoginForUntrustedDevice) {
+          const lang = I18nContext.current()?.lang || 'en'
+          const locationInfo =
+            finalGeoCity && finalGeoCountry ? `${finalGeoCity}, ${finalGeoCountry}` : body.ip || 'N/A'
+          try {
+            await this.emailService.sendSecurityAlertEmail({
+              to: user.email,
+              userName: user.name,
+              alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.NewDeviceLogin', { lang }),
+              alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.NewDeviceLogin', { lang }),
+              mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.NewDeviceLogin', { lang }),
+              actionDetails: [
+                {
+                  label: this.i18nService.translate('email.Email.Field.Time', { lang }),
+                  value: new Date().toLocaleString(lang)
+                },
+                { label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }), value: body.ip },
+                {
+                  label: this.i18nService.translate('email.Email.Field.Device', { lang }),
+                  value: body.userAgent
+                },
+                {
+                  label: this.i18nService.translate('email.Email.Field.Location', { lang }),
+                  value: locationInfo
+                }
+              ],
+              secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.NotYou', {
+                lang
+              }),
+              actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
+                lang
+              }),
+              // TODO: Update with actual URL to account security page
+              actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
+            })
+          } catch (emailError) {
+            this.logger.error(`Failed to send new device login security alert to ${user.email}: ${emailError.message}`)
+            // Do not let email failure block the login flow
+          }
         }
 
         return {

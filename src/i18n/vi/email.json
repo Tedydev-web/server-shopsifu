@@ -1,0 +1,44 @@
+{
+  "Email.SecurityAlert.Subject.Default": "Cảnh báo bảo mật",
+  "Email.SecurityAlert.Subject.NewDeviceLogin": "Phát hiện đăng nhập từ thiết bị mới",
+  "Email.SecurityAlert.Subject.PasswordChanged": "Đổi mật khẩu thành công",
+  "Email.SecurityAlert.Subject.PasswordReset": "Đặt lại mật khẩu thành công",
+  "Email.SecurityAlert.Subject.TwoFactorEnabled": "Đã bật xác thực hai yếu tố",
+  "Email.SecurityAlert.Subject.TwoFactorDisabled": "Đã tắt xác thực hai yếu tố",
+
+  "Email.SecurityAlert.Title.NewDeviceLogin": "Đăng nhập mới vào tài khoản Shopsifu của bạn",
+  "Email.SecurityAlert.Title.PasswordChanged": "Mật khẩu tài khoản Shopsifu của bạn đã được thay đổi",
+  "Email.SecurityAlert.Title.PasswordReset": "Mật khẩu tài khoản Shopsifu của bạn đã được đặt lại",
+  "Email.SecurityAlert.Title.TwoFactorEnabled": "Xác thực hai yếu tố (2FA) đã được bật cho tài khoản của bạn",
+  "Email.SecurityAlert.Title.TwoFactorDisabled": "Xác thực hai yếu tố (2FA) đã được tắt cho tài khoản của bạn",
+
+  "Email.SecurityAlert.MainMessage.NewDeviceLogin": "Chúng tôi phát hiện một lượt đăng nhập mới vào tài khoản Shopsifu của bạn từ một thiết bị lạ. Nếu đây là bạn, bạn có thể bỏ qua email này. Nếu bạn không nhận ra hoạt động này, vui lòng bảo vệ tài khoản của bạn ngay lập tức.",
+  "Email.SecurityAlert.MainMessage.PasswordChanged": "Mật khẩu cho tài khoản Shopsifu của bạn đã được thay đổi thành công. Nếu bạn đã thực hiện thay đổi này, không cần hành động gì thêm.",
+  "Email.SecurityAlert.MainMessage.PasswordReset": "Mật khẩu cho tài khoản Shopsifu của bạn đã được đặt lại thành công. Nếu bạn đã thực hiện thay đổi này, không cần hành động gì thêm.",
+  "Email.SecurityAlert.MainMessage.TwoFactorEnabled": "Xác thực hai yếu tố (2FA) đã được bật thành công cho tài khoản Shopsifu của bạn. Tài khoản của bạn hiện đã an toàn hơn.",
+  "Email.SecurityAlert.MainMessage.TwoFactorDisabled": "Xác thực hai yếu tố (2FA) đã được tắt cho tài khoản Shopsifu của bạn. Chúng tôi khuyên bạn nên bật lại 2FA để giữ an toàn cho tài khoản.",
+
+  "Email.SecurityAlert.SecondaryMessage.NotYou": "Nếu đây không phải là bạn, vui lòng bảo vệ tài khoản của bạn ngay lập tức. Điều này có thể bao gồm việc thay đổi mật khẩu và xem lại hoạt động tài khoản của bạn.",
+  "Email.SecurityAlert.SecondaryMessage.Password.NotYou": "Nếu bạn không thực hiện thay đổi này, vui lòng liên hệ với nhóm hỗ trợ của chúng tôi ngay lập tức và bảo vệ tài khoản của bạn.",
+  "Email.SecurityAlert.SecondaryMessage.2FA.NotYouEnable": "Nếu bạn không bật 2FA, vui lòng liên hệ với nhóm hỗ trợ của chúng tôi ngay lập tức và xem lại cài đặt bảo mật tài khoản của bạn.",
+  "Email.SecurityAlert.SecondaryMessage.2FA.NotYouDisable": "Nếu bạn không tắt 2FA, vui lòng liên hệ với nhóm hỗ trợ của chúng tôi ngay lập tức và bật lại để bảo vệ tài khoản của bạn.",
+
+  "Email.SecurityAlert.Button.ReviewActivity": "Xem lại hoạt động đăng nhập",
+  "Email.SecurityAlert.Button.ChangePassword": "Thay đổi mật khẩu",
+  "Email.SecurityAlert.Button.SecureAccount": "Bảo vệ tài khoản của bạn",
+  "Email.SecurityAlert.Button.Enable2FA": "Bật 2FA",
+
+  "Email.Field.Time": "Thời gian",
+  "Email.Field.IPAddress": "Địa chỉ IP",
+  "Email.Field.Device": "Thiết bị (User Agent)",
+  "Email.Field.Location": "Vị trí ước tính",
+
+  "Email.OTPSubject.Register": "Shopsifu - Xác minh đăng ký tài khoản của bạn",
+  "Email.OTPSubject.ResetPassword": "Shopsifu - Đặt lại mật khẩu của bạn (Mã OTP)",
+  "Email.OTPSubject.LoginUntrustedDevice": "Shopsifu - Xác minh đăng nhập từ thiết bị mới",
+  "Email.OTPSubject.Default": "Shopsifu - Mã OTP của bạn",
+
+  "Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation": "Phát hiện đăng nhập từ vị trí mới trên thiết bị tin cậy",
+  "Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation": "Đăng nhập từ vị trí mới trên thiết bị tin cậy của bạn",
+  "Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation": "Chúng tôi phát hiện một lượt đăng nhập vào tài khoản Shopsifu của bạn từ thiết bị tin cậy nhưng ở một vị trí mới. Nếu đây là bạn, bạn có thể bỏ qua email này. Nếu bạn không nhận ra hoạt động này, vui lòng xem lại hoạt động tài khoản và bảo vệ tài khoản nếu cần."
+}

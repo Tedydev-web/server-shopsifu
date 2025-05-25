@@ -8,6 +8,7 @@ import { EmailNotFoundException } from 'src/routes/auth/auth.error'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
 import { I18nContext } from 'nestjs-i18n'
+import envConfig from 'src/shared/config'
 
 @Injectable()
 export class PasswordAuthService extends BaseAuthService {
@@ -58,6 +59,68 @@ export class PasswordAuthService extends BaseAuthService {
         }
       })
 
+      // Send security alert email
+      const userForEmail = await this.sharedUserRepository.findUnique({ email: body.email })
+      if (userForEmail) {
+        const lang = I18nContext.current()?.lang || 'en'
+        let locationInfo = body.ip || 'N/A'
+        let auditLocationInfo = 'N/A'
+        if (body.ip) {
+          const geoLocation = this.geolocationService.lookup(body.ip)
+          if (geoLocation) {
+            locationInfo = `${geoLocation.city || 'Unknown'}, ${geoLocation.country || 'N/A'}`
+            auditLocationInfo = locationInfo
+            if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+              ;(auditLogEntry.details as Prisma.JsonObject).location = auditLocationInfo
+            }
+          }
+        }
+
+        try {
+          await this.emailService.sendSecurityAlertEmail({
+            to: userForEmail.email,
+            userName: userForEmail.name,
+            alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.PasswordReset', {
+              lang
+            }) as string,
+            alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.PasswordReset', { lang }) as string,
+            mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.PasswordReset', {
+              lang
+            }) as string,
+            actionDetails: [
+              {
+                label: this.i18nService.translate('email.Email.Field.Time', { lang }) as string,
+                value: new Date().toLocaleString(lang)
+              },
+              {
+                label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }) as string,
+                value: body.ip || 'N/A'
+              },
+              {
+                label: this.i18nService.translate('email.Email.Field.Device', { lang }) as string,
+                value: body.userAgent || 'N/A'
+              },
+              {
+                label: this.i18nService.translate('email.Email.Field.Location', { lang }) as string,
+                value: locationInfo
+              }
+            ],
+            secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.Password.NotYou', {
+              lang
+            }) as string,
+            actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
+              lang
+            }) as string,
+            actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
+          })
+        } catch (emailError) {
+          this.logger.error(
+            `Failed to send password reset security alert to ${userForEmail.email}: ${emailError.message}`,
+            emailError.stack
+          )
+        }
+      }
+
       await this.auditLogService.record(auditLogEntry as AuditLogData)
       const message = await this.i18nService.translate('error.Auth.Password.ResetSuccess', {
         lang: I18nContext.current()?.lang
@@ -107,6 +170,70 @@ export class PasswordAuthService extends BaseAuthService {
           ;(auditLogEntry.details as Prisma.JsonObject).refreshTokensRevoked = true
         }
       })
+
+      // Send security alert email
+      const userForEmailAfterChange = await this.sharedUserRepository.findUnique({ id: userId })
+      if (userForEmailAfterChange) {
+        const lang = I18nContext.current()?.lang || 'en'
+        let locationInfo = ip || 'N/A'
+        let auditLocationInfo = 'N/A'
+        if (ip) {
+          const geoLocation = this.geolocationService.lookup(ip)
+          if (geoLocation) {
+            locationInfo = `${geoLocation.city || 'Unknown'}, ${geoLocation.country || 'N/A'}`
+            auditLocationInfo = locationInfo
+            if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+              ;(auditLogEntry.details as Prisma.JsonObject).location = auditLocationInfo
+            }
+          }
+        }
+
+        try {
+          await this.emailService.sendSecurityAlertEmail({
+            to: userForEmailAfterChange.email,
+            userName: userForEmailAfterChange.name,
+            alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.PasswordChanged', {
+              lang
+            }) as string,
+            alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.PasswordChanged', {
+              lang
+            }) as string,
+            mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.PasswordChanged', {
+              lang
+            }) as string,
+            actionDetails: [
+              {
+                label: this.i18nService.translate('email.Email.Field.Time', { lang }) as string,
+                value: new Date().toLocaleString(lang)
+              },
+              {
+                label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }) as string,
+                value: ip || 'N/A'
+              },
+              {
+                label: this.i18nService.translate('email.Email.Field.Device', { lang }) as string,
+                value: userAgent || 'N/A'
+              },
+              {
+                label: this.i18nService.translate('email.Email.Field.Location', { lang }) as string,
+                value: locationInfo
+              }
+            ],
+            secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.Password.NotYou', {
+              lang
+            }) as string,
+            actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
+              lang
+            }) as string,
+            actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
+          })
+        } catch (emailError) {
+          this.logger.error(
+            `Failed to send password change security alert to ${userForEmailAfterChange.email}: ${emailError.message}`,
+            emailError.stack
+          )
+        }
+      }
 
       await this.auditLogService.record(auditLogEntry as AuditLogData)
       const message = await this.i18nService.translate('error.Auth.Password.ChangeSuccess', {

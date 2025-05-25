@@ -183,7 +183,7 @@ export class TokenService {
 
     return {
       accessToken,
-      refreshToken: refreshTokenJti,
+      refreshTokenJti: refreshTokenJti,
       maxAgeForRefreshTokenCookie: refreshTokenExpiresInMs,
       accessTokenJti
     }

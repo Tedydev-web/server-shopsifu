@@ -22,6 +22,8 @@ import { I18nContext } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import envConfig from 'src/shared/config'
+import ms from 'ms'
+import { GeolocationData } from 'src/shared/services/geolocation.service'
 
 @Injectable()
 export class AuthenticationService extends BaseAuthService {
@@ -182,6 +184,12 @@ export class AuthenticationService extends BaseAuthService {
       const sessionId = uuidv4()
       const now = new Date()
 
+      // Lookup geolocation
+      const geoLocation: GeolocationData | null = this.geolocationService.lookup(body.ip)
+      if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && geoLocation) {
+        auditLogEntry.details.location = `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
+      }
+
       if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
         auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
         const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
@@ -190,7 +198,14 @@ export class AuthenticationService extends BaseAuthService {
             type: TypeOfVerificationCode.LOGIN_2FA,
             userId: user.id,
             deviceId: device.id,
-            metadata: { rememberMe: body.rememberMe, sessionId },
+            metadata: {
+              rememberMe: body.rememberMe,
+              sessionId,
+              ip: body.ip,
+              userAgent: body.userAgent,
+              geoCountry: geoLocation?.country,
+              geoCity: geoLocation?.city
+            },
             tx
           })
         })
@@ -213,7 +228,14 @@ export class AuthenticationService extends BaseAuthService {
             type: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
             userId: user.id,
             deviceId: device.id,
-            metadata: { rememberMe: body.rememberMe, sessionId },
+            metadata: {
+              rememberMe: body.rememberMe,
+              sessionId,
+              ip: body.ip,
+              userAgent: body.userAgent,
+              geoCountry: geoLocation?.country,
+              geoCity: geoLocation?.city
+            },
             tx
           })
         })
@@ -230,7 +252,7 @@ export class AuthenticationService extends BaseAuthService {
         }
       }
 
-      const sessionData: Record<string, string | number | boolean> = {
+      const sessionData: Record<string, string | number | boolean | undefined | null> = {
         userId: user.id,
         deviceId: device.id,
         ipAddress: body.ip,
@@ -238,12 +260,14 @@ export class AuthenticationService extends BaseAuthService {
         createdAt: now.toISOString(),
         lastActiveAt: now.toISOString(),
         isTrusted: device.isTrusted,
-        rememberMe: body.rememberMe || false,
+        rememberMe: body.rememberMe,
         roleId: user.roleId,
-        roleName: user.role.name
+        roleName: user.role.name,
+        geoCountry: geoLocation?.country,
+        geoCity: geoLocation?.city
       }
 
-      const { accessToken, refreshToken, maxAgeForRefreshTokenCookie, accessTokenJti } =
+      const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
         await this.tokenService.generateTokens(
           {
             userId: user.id,
@@ -252,31 +276,112 @@ export class AuthenticationService extends BaseAuthService {
             roleName: user.role.name,
             sessionId
           },
-          undefined,
+          this.prismaService,
           body.rememberMe
         )
 
       sessionData.currentAccessTokenJti = accessTokenJti
-      sessionData.currentRefreshTokenJti = refreshToken
+      sessionData.currentRefreshTokenJti = refreshTokenJti
+      sessionData.accessTokenExp = this.jwtService.decode(accessToken).exp
+      sessionData.maxLifetimeExpiresAt = new Date(Date.now() + ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS)).toISOString()
 
       const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
       const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
+      const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
 
-      const absoluteSessionLifetimeSeconds = Math.floor(envConfig.ABSOLUTE_SESSION_LIFETIME_MS / 1000)
+      const absoluteSessionLifetimeSeconds = Math.floor(ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS) / 1000)
+      const refreshTokenTTL = maxAgeForRefreshTokenCookie
+        ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
+        : absoluteSessionLifetimeSeconds
 
       await this.redisService.pipeline((pipeline) => {
-        pipeline.hmset(sessionKey, sessionData)
+        pipeline.hmset(sessionKey, sessionData as Record<string, string>)
         pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
         pipeline.sadd(userSessionsKey, sessionId)
+        pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
         return pipeline
       })
 
       if (res) {
-        this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
+        this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
       } else {
         this.logger.warn(
           '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
         )
+      }
+
+      // Send email if login from new location on a trusted device
+      if (device.isTrusted && geoLocation && geoLocation.country && geoLocation.city) {
+        const knownLocationsKey = `${REDIS_KEY_PREFIX.USER_KNOWN_LOCATIONS}${user.id}`
+        const locationString = `${geoLocation.city?.toLowerCase()}_${geoLocation.country?.toLowerCase()}`
+
+        this.logger.debug(`Attempting to SADD location: ${locationString} to key: ${knownLocationsKey}`)
+        const isNewLocation = await this.redisService.sadd(knownLocationsKey, locationString)
+        this.logger.debug(`SADD result for location ${locationString}: ${isNewLocation}`)
+
+        if (isNewLocation === 1) {
+          this.logger.warn(
+            `New login location detected for user ${user.id} on trusted device ${device.id}: ${locationString}. Sending alert.`
+          )
+          auditLogEntry.notes = (
+            (auditLogEntry.notes ? auditLogEntry.notes + '; ' : '') +
+            `New trusted device login location: ${locationString}. Alert email sent.`
+          ).trim()
+
+          const i18nCtx = I18nContext.current()
+          this.logger.debug('[AuthenticationService.login] I18nContext for new location email:', i18nCtx)
+          const lang = i18nCtx?.lang || 'en'
+          try {
+            await this.emailService.sendSecurityAlertEmail({
+              to: user.email,
+              userName: user.name,
+              alertSubject: this.i18nService.translate(
+                'email.Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation',
+                { lang }
+              ) as string,
+              alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation', {
+                lang
+              }) as string,
+              mainMessage: this.i18nService.translate(
+                'email.Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation',
+                { lang }
+              ) as string,
+              actionDetails: [
+                {
+                  label: this.i18nService.translate('email.Email.Field.Time', { lang }) as string,
+                  value: new Date().toLocaleString(lang)
+                },
+                {
+                  label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }) as string,
+                  value: body.ip
+                },
+                {
+                  label: this.i18nService.translate('email.Email.Field.Device', { lang }) as string,
+                  value: body.userAgent
+                },
+                {
+                  label: this.i18nService.translate('email.Email.Field.Location', { lang }) as string,
+                  value: `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
+                }
+              ],
+              secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.NotYou', {
+                lang
+              }) as string,
+              actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
+                lang
+              }) as string,
+              actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
+            })
+          } catch (emailError) {
+            const errorMessage = emailError instanceof Error ? emailError.message : String(emailError)
+            const errorStack = emailError instanceof Error ? emailError.stack : undefined
+            this.logger.error(
+              `Failed to send new trusted device login location alert to ${user.email}: ${errorMessage}`,
+              errorStack
+            )
+            // Do not let email failure block the login flow
+          }
+        }
       }
 
       auditLogEntry.status = AuditLogStatus.SUCCESS
@@ -287,13 +392,24 @@ export class AuthenticationService extends BaseAuthService {
         email: user.email,
         name: user.name,
         role: user.role.name,
-        isDeviceTrustedInSession: sessionData.isTrusted === 'true' || sessionData.isTrusted === true
+        isDeviceTrustedInSession: device.isTrusted
       }
     } catch (error) {
+      this.logger.error('[AuthenticationService.login] Caught error:', error, typeof error)
       if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during login'
         if (error instanceof ApiException) {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        } else if (error instanceof Error) {
+          auditLogEntry.errorMessage = error.message
+        } else if (typeof error === 'string') {
+          auditLogEntry.errorMessage = error
+        } else {
+          try {
+            auditLogEntry.errorMessage = JSON.stringify(error)
+          } catch (stringifyError) {
+            this.logger.error('[AuthenticationService.login] Failed to stringify caught error:', stringifyError)
+            auditLogEntry.errorMessage = 'Unknown error during login (non-serializable error object)'
+          }
         }
       }
       await this.auditLogService.record(auditLogEntry as AuditLogData)
@@ -419,7 +535,7 @@ export class AuthenticationService extends BaseAuthService {
 
         const {
           accessToken: newAccessToken,
-          refreshToken: newRefreshTokenJti,
+          refreshTokenJti: newRefreshTokenJti,
           maxAgeForRefreshTokenCookie,
           accessTokenJti: newAccessTokenJti
         } = await this.tokenService.generateTokens(

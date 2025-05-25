@@ -12,6 +12,8 @@ import { OtpService } from '../providers/otp.service'
 import { DeviceService } from '../providers/device.service'
 import { RolesService } from '../roles.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { GeolocationService } from 'src/shared/services/geolocation.service'
+import { JwtService } from '@nestjs/jwt'
 
 @Injectable()
 export class BaseAuthService {
@@ -30,7 +32,9 @@ export class BaseAuthService {
     protected readonly otpService: OtpService,
     protected readonly deviceService: DeviceService,
     protected readonly i18nService: I18nService,
-    protected readonly redisService: RedisService
+    protected readonly redisService: RedisService,
+    protected readonly geolocationService: GeolocationService,
+    protected readonly jwtService: JwtService
   ) {
     this.logger = new Logger(this.constructor.name)
   }

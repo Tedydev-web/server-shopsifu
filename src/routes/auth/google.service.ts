@@ -202,7 +202,7 @@ export class GoogleService {
       }
 
       // Gọi TokenService trực tiếp
-      const { accessToken, refreshToken, maxAgeForRefreshTokenCookie, accessTokenJti } =
+      const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
         await this.tokenService.generateTokens(
           {
             userId: user.id,
@@ -216,7 +216,7 @@ export class GoogleService {
         )
 
       sessionData.currentAccessTokenJti = accessTokenJti
-      sessionData.currentRefreshTokenJti = refreshToken
+      sessionData.currentRefreshTokenJti = refreshTokenJti
 
       const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
       const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
@@ -237,7 +237,7 @@ export class GoogleService {
           role: user.role.name
         },
         accessToken,
-        refreshToken,
+        refreshTokenJti,
         maxAgeForRefreshTokenCookie
       }
     } catch (error) {

@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { TokenType, TokenTypeType, TypeOfVerificationCodeType } from '../constants/auth.constants'
+import {
+  TokenType,
+  TokenTypeType,
+  TypeOfVerificationCode,
+  TypeOfVerificationCodeType
+} from '../constants/auth.constants'
 import envConfig from 'src/shared/config'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { EmailService } from './email.service'
@@ -22,6 +27,7 @@ import {
   DeviceMismatchException
 } from 'src/routes/auth/auth.error'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
+import { I18nContext, I18nService } from 'nestjs-i18n'
 
 @Injectable()
 export class OtpService {
@@ -30,7 +36,8 @@ export class OtpService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly authRepository: AuthRepository,
-    private readonly emailService: EmailService
+    private readonly emailService: EmailService,
+    private readonly i18nService: I18nService
   ) {}
 
   async validateVerificationCode({
@@ -125,9 +132,27 @@ export class OtpService {
       expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
     })
 
+    const lang = I18nContext.current()?.lang || 'en'
+    let titleKey: string
+    switch (type) {
+      case TypeOfVerificationCode.REGISTER:
+        titleKey = 'email.Email.OTPSubject.Register'
+        break
+      case TypeOfVerificationCode.RESET_PASSWORD:
+        titleKey = 'email.Email.OTPSubject.ResetPassword'
+        break
+      case TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP:
+        titleKey = 'email.Email.OTPSubject.LoginUntrustedDevice'
+        break
+      default:
+        titleKey = 'email.Email.OTPSubject.Default'
+    }
+    const title = this.i18nService.translate(titleKey, { lang }) as string
+
     const { error } = await this.emailService.sendOTP({
       email,
-      code
+      code,
+      title
     })
 
     if (error) {

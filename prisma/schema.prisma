@@ -602,6 +602,7 @@ model AuditLog {
   errorMessage String?
   details      Json?
   notes        String?
+  geoLocation  Json?
 
   user User? @relation(fields: [userId], references: [id])
 

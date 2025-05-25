@@ -15,7 +15,8 @@ export const AuditLogSchema = z.object({
   status: z.nativeEnum(AuditLogStatus),
   errorMessage: z.string().nullable(),
   details: z.any().nullable(),
-  notes: z.string().nullable()
+  notes: z.string().nullable(),
+  geoLocation: z.any().nullable()
 })
 
 export const AuditLogQuerySchema = BasePaginationQuerySchema.extend({

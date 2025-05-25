@@ -10,6 +10,7 @@ import {
   DEFAULT_SENSITIVE_FIELDS
 } from 'src/shared/utils/audit-log.utils'
 import { isObject } from 'src/shared/utils/type-guards.utils'
+import { GeolocationService } from 'src/shared/services/geolocation.service'
 
 export enum AuditLogStatus {
   SUCCESS = 'SUCCESS',
@@ -28,6 +29,7 @@ export interface AuditLogData {
   status: AuditLogStatus
   errorMessage?: string
   notes?: string
+  geoLocation?: Prisma.JsonValue
 }
 
 export interface AuditLogOptions {
@@ -50,7 +52,8 @@ export class AuditLogService {
 
   constructor(
     private readonly auditLogRepository: AuditLogRepository,
-    private readonly prismaService: PrismaService
+    private readonly prismaService: PrismaService,
+    private readonly geolocationService: GeolocationService
   ) {
     setInterval(() => {
       void this.processQueue()
@@ -99,12 +102,13 @@ export class AuditLogService {
 
   async record(data: AuditLogData, options: AuditLogOptions = this.defaultOptions): Promise<void> {
     try {
-      const { userId, entityId, details, ...otherAuditData } = this.prepareLogData(data, options)
+      const { userId, entityId, details, geoLocation, ...otherAuditData } = this.prepareLogData(data, options)
 
       const createInputData: Prisma.AuditLogCreateInput = {
         ...otherAuditData,
         entityId: entityId?.toString(),
-        details: details === null ? Prisma.DbNull : details
+        details: details === null ? Prisma.DbNull : details,
+        geoLocation: geoLocation === null ? Prisma.DbNull : geoLocation === undefined ? undefined : geoLocation
       }
 
       if (userId) {
@@ -139,12 +143,13 @@ export class AuditLogService {
     try {
       await this.prismaService.$transaction(async (tx) => {
         for (const data of dataArray) {
-          const { userId, entityId, details, ...otherAuditData } = this.prepareLogData(data, options)
+          const { userId, entityId, details, geoLocation, ...otherAuditData } = this.prepareLogData(data, options)
 
           const createInputData: Prisma.AuditLogCreateInput = {
             ...otherAuditData,
             entityId: entityId?.toString(),
-            details: details === null ? Prisma.DbNull : details
+            details: details === null ? Prisma.DbNull : details,
+            geoLocation: geoLocation === null ? Prisma.DbNull : geoLocation === undefined ? undefined : geoLocation
           }
 
           if (userId) {
@@ -274,6 +279,25 @@ export class AuditLogService {
       }
 
       preparedData.details = normalizeAuditLogDetails(preparedData.details as Record<string, any>)
+    }
+
+    if (preparedData.ipAddress) {
+      try {
+        const geoLocationResult = this.geolocationService.lookup(preparedData.ipAddress)
+        if (geoLocationResult) {
+          // Assign directly, Prisma will handle the JsonValue type.
+          preparedData.geoLocation = geoLocationResult as unknown as Prisma.JsonValue
+        } else {
+          // If lookup returns null (e.g., IP not found, no error), set geoLocation to null in preparedData.
+          // This will be converted to Prisma.DbNull later if needed.
+          preparedData.geoLocation = null
+        }
+      } catch (geoError) {
+        this.logger.warn(`Failed to lookup geolocation for IP ${preparedData.ipAddress}: ${geoError.message}`)
+        preparedData.geoLocation = { error: 'Geolocation lookup failed' } as unknown as Prisma.JsonValue
+      }
+    } else {
+      preparedData.geoLocation = undefined // No IP, so no geo data.
     }
 
     return preparedData

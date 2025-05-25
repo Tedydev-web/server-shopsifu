@@ -9,6 +9,9 @@ import { ZodSerializerInterceptor } from 'nestjs-zod'
 import CustomZodValidationPipe from './pipes/custom-zod-validation.pipe'
 import { AuditLogInterceptor } from './interceptor/audit-log.interceptor'
 import { AuditLogModule } from 'src/routes/audit-log/audit-log.module'
+import { CacheModule } from '@nestjs/cache-manager'
+import { ConfigService } from '@nestjs/config'
+import { GeolocationService } from './services/geolocation.service'
 
 const SHARED_PIPES = [
   {
@@ -29,7 +32,20 @@ const SHARED_SERVICES = [PrismaService, HashingService]
 
 @Global()
 @Module({
-  imports: [AuditLogModule],
+  imports: [
+    AuditLogModule,
+    CacheModule.registerAsync({
+      isGlobal: true,
+      useFactory: async (configService: ConfigService) => ({
+        store: 'redis',
+        host: configService.get<string>('REDIS_HOST'),
+        port: configService.get<number>('REDIS_PORT'),
+        password: configService.get<string>('REDIS_PASSWORD'),
+        ttl: configService.get<number>('CACHE_TTL', 60)
+      }),
+      inject: [ConfigService]
+    })
+  ],
   providers: [
     ...SHARED_SERVICES,
     ...CONCRETE_GUARDS, // Provide concrete guards
@@ -39,9 +55,10 @@ const SHARED_SERVICES = [PrismaService, HashingService]
       // Register AuthenticationGuard as a global APP_GUARD
       provide: APP_GUARD,
       useClass: AuthenticationGuard
-    }
+    },
+    GeolocationService
   ],
   // Export concrete services and guards for other modules to inject if needed
-  exports: [...SHARED_SERVICES, ...CONCRETE_GUARDS]
+  exports: [...SHARED_SERVICES, ...CONCRETE_GUARDS, CacheModule, APIKeyGuard, GeolocationService]
 })
 export class SharedModule {}

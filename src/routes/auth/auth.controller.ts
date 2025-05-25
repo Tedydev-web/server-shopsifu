@@ -210,7 +210,7 @@ export class AuthController {
       // Nếu không cần 2FA, data sẽ chứa accessToken và refreshToken
       if (data && data.accessToken) {
         // Chuyển hướng thành công với thông tin người dùng
-        this.tokenService.setTokenCookies(res, data.accessToken, data.refreshToken, data.maxAgeForRefreshTokenCookie)
+        this.tokenService.setTokenCookies(res, data.accessToken, data.refreshTokenJti, data.maxAgeForRefreshTokenCookie)
         // res.redirect(
         //   `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true&name=${encodeURIComponent(data.user.name || '')}&email=${encodeURIComponent(data.user.email || '')}`
         // );
