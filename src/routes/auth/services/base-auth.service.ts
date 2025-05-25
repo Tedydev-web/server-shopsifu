@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { I18nService, I18nContext } from 'nestjs-i18n'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { AuthRepository } from '../auth.repo'
 import { SharedUserRepository } from '../repositories/shared-user.repo'
@@ -26,7 +27,8 @@ export class BaseAuthService {
     protected readonly twoFactorService: TwoFactorService,
     protected readonly auditLogService: AuditLogService,
     protected readonly otpService: OtpService,
-    protected readonly deviceService: DeviceService
+    protected readonly deviceService: DeviceService,
+    protected readonly i18nService: I18nService
   ) {
     this.logger = new Logger(this.constructor.name)
   }

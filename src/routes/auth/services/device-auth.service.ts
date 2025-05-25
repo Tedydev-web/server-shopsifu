@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
+import { I18nContext } from 'nestjs-i18n'
 
 @Injectable()
 export class DeviceAuthService extends BaseAuthService {
@@ -31,7 +32,10 @@ export class DeviceAuthService extends BaseAuthService {
       }
 
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      return { message: 'Device has been trusted successfully.' }
+      const message = await this.i18nService.translate('Auth.Device.Trusted', {
+        lang: I18nContext.current()?.lang
+      })
+      return { message }
     } catch (error) {
       auditLogEntry.errorMessage = error.message
       await this.auditLogService.record(auditLogEntry as AuditLogData)

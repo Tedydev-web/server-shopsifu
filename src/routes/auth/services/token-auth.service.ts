@@ -9,6 +9,7 @@ import { UnauthorizedAccessException } from '../auth.error'
 import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import envConfig from 'src/shared/config'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
+import { I18nContext } from 'nestjs-i18n'
 
 @Injectable()
 export class TokenAuthService extends BaseAuthService {
@@ -179,7 +180,10 @@ export class TokenAuthService extends BaseAuthService {
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.action = 'REFRESH_TOKEN_SUCCESS'
 
-        return { message: 'Token refreshed successfully.' }
+        const message = await this.i18nService.translate('error.Auth.Token.Refreshed', {
+          lang: I18nContext.current()?.lang
+        })
+        return { message }
       })
 
       await this.auditLogService.record(auditLogEntry as AuditLogData)

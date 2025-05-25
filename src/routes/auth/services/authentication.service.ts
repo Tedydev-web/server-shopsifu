@@ -18,6 +18,7 @@ import { Device } from '@prisma/client'
 import { TypeOfVerificationCode, TwoFactorMethodType } from '../constants/auth.constants'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
+import { I18nContext } from 'nestjs-i18n'
 
 @Injectable()
 export class AuthenticationService extends BaseAuthService {
@@ -193,8 +194,11 @@ export class AuthenticationService extends BaseAuthService {
           })
           auditLogEntry.status = AuditLogStatus.SUCCESS
           auditLogEntry.notes = '2FA required: Device not trusted.'
+          const message = await this.i18nService.translate('error.Auth.Login.2FARequired', {
+            lang: I18nContext.current()?.lang
+          })
           return {
-            message: 'Auth.Login.2FARequired',
+            message,
             loginSessionToken: loginSessionToken,
             twoFactorMethod: user.twoFactorMethod
           }
@@ -210,8 +214,11 @@ export class AuthenticationService extends BaseAuthService {
           })
           auditLogEntry.status = AuditLogStatus.SUCCESS
           auditLogEntry.notes = 'Device verification OTP required: Device not trusted and 2FA not enabled.'
+          const message = await this.i18nService.translate('error.Auth.Login.DeviceVerificationOtpRequired', {
+            lang: I18nContext.current()?.lang
+          })
           return {
-            message: 'Auth.Login.DeviceVerificationOtpRequired',
+            message,
             loginSessionToken: loginSessionToken,
             twoFactorMethod: TwoFactorMethodType.OTP
           }
@@ -294,14 +301,20 @@ export class AuthenticationService extends BaseAuthService {
 
       this.tokenService.clearTokenCookies(res)
       await this.auditLogService.record(auditLogEntry)
-      return { message: 'Logged out successfully.' }
+      const message = await this.i18nService.translate('error.Auth.Logout.Success', {
+        lang: I18nContext.current()?.lang
+      })
+      return { message }
     } catch (error) {
       // Even if there's an error, we want to clear cookies
       this.tokenService.clearTokenCookies(res)
       auditLogEntry.errorMessage = error.message
       auditLogEntry.status = AuditLogStatus.FAILURE
       await this.auditLogService.record(auditLogEntry)
-      return { message: 'Logout processed. Cookies cleared.' }
+      const message = await this.i18nService.translate('error.Auth.Logout.Processed', {
+        lang: I18nContext.current()?.lang
+      })
+      return { message }
     }
   }
 
@@ -348,9 +361,12 @@ export class AuthenticationService extends BaseAuthService {
         this.tokenService.setTokenCookies(res, accessToken, refreshToken, maxAgeForRefreshTokenCookie)
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
+        const message = await this.i18nService.translate('error.Auth.RememberMe.Set', {
+          lang: I18nContext.current()?.lang
+        })
         return {
           success: true,
-          rememberMe
+          message
         }
       })
 

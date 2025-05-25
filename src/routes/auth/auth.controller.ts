@@ -130,13 +130,11 @@ export class AuthController {
   @ZodSerializerDto(MessageResDTO)
   @Throttle({ short: { limit: 5, ttl: 10000 } })
   logout(@Body() _: LogoutBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const logger = new Logger('AuthController')
-
     const cookieToken = req.cookies?.[CookieNames.REFRESH_TOKEN]
     if (cookieToken) {
-      logger.log('Tìm thấy refreshToken trong cookie, sẽ sử dụng để đăng xuất')
+      this.logger.log('Refresh token found in cookie, will be used for logout')
     } else {
-      logger.log('Không tìm thấy refreshToken trong cookie, sẽ chỉ xóa cookie hiện tại')
+      this.logger.log('Refresh token not found in cookie, will only clear current cookies')
     }
 
     return this.authService.logout(req, res)
@@ -201,16 +199,16 @@ export class AuthController {
       // Trường hợp không mong muốn
       this.logger.error('[AuthController googleCallback] Unexpected data structure from GoogleService', data)
       return res.redirect(
-        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=internal_error&errorMessage=${encodeURIComponent('Lỗi không xác định từ máy chủ.')}`
+        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=internal_error&errorMessage=${encodeURIComponent('Unknown server error.')}`
       )
     } catch (error) {
-      console.error('Google OAuth callback error:', error)
+      this.logger.error('Google OAuth callback error:', error.stack, error.message)
 
       const errorCode = error.code || 'auth_error'
       const message =
         error instanceof Error
           ? encodeURIComponent(error.message)
-          : encodeURIComponent('Đã xảy ra lỗi khi đăng nhập bằng Google, vui lòng thử lại bằng cách khác')
+          : encodeURIComponent('An error occurred while logging in with Google, please try another method.')
 
       return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=${errorCode}&errorMessage=${message}`)
     }

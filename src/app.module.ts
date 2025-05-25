@@ -15,6 +15,8 @@ import { LoggerMiddleware } from './shared/middleware/logger.middleware'
 import { TokenRefreshInterceptor } from './routes/auth/interceptors/token-refresh.interceptor'
 import { PermissionModule } from './routes/permission/permission.module'
 import { RoleModule } from './routes/role/role.module'
+import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
+import path from 'path'
 
 @Module({
   imports: [
@@ -23,6 +25,15 @@ import { RoleModule } from './routes/role/role.module'
     LanguageModule,
     AuditLogModule,
     PermissionModule,
+    I18nModule.forRoot({
+      fallbackLanguage: 'en',
+      loaderOptions: {
+        path: path.join(__dirname, 'i18n'),
+        watch: true
+      },
+      resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
+      typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
+    }),
     ThrottlerModule.forRoot([
       {
         name: 'short',

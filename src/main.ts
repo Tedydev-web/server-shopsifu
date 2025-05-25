@@ -5,8 +5,9 @@ import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import envConfig from './shared/config'
 import { winstonLogger } from './shared/logger/winston.config'
-import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
 import { SecurityHeaders } from './shared/constants/auth.constant'
+import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
+import { I18nService } from 'nestjs-i18n'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -46,8 +47,10 @@ async function bootstrap() {
     })
   )
 
+  // Đảm bảo AllExceptionsFilter được áp dụng với đúng dependencies
   const httpAdapterHost = app.get(HttpAdapterHost)
-  app.useGlobalFilters(new AllExceptionsFilter(httpAdapterHost))
+  const i18n = app.get<I18nService>(I18nService)
+  app.useGlobalFilters(new AllExceptionsFilter(httpAdapterHost, i18n))
 
   app.setGlobalPrefix('api/v1')
 

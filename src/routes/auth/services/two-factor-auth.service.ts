@@ -14,6 +14,7 @@ import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.ser
 import { Response } from 'express'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
+import { I18nContext } from 'nestjs-i18n'
 
 @Injectable()
 export class TwoFactorAuthService extends BaseAuthService {
@@ -139,14 +140,17 @@ export class TwoFactorAuthService extends BaseAuthService {
       })
 
       auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'CONFIRM_2FA_SETUP_SUCCESS'
+      auditLogEntry.action = '2FA_CONFIRM_SUCCESS'
       if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
         ;(auditLogEntry.details as Prisma.JsonObject).recoveryCodesGenerated = recoveryCodes.length
       }
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
+      const message = await this.i18nService.translate('error.Auth.2FA.Confirm.Success', {
+        lang: I18nContext.current()?.lang
+      })
       return {
-        message: 'Two-factor authentication has been enabled.',
+        message,
         recoveryCodes
       }
     } catch (error) {
@@ -211,13 +215,16 @@ export class TwoFactorAuthService extends BaseAuthService {
       await this.twoFactorService.deleteAllRecoveryCodes(data.userId)
 
       auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'DISABLE_2FA_SUCCESS'
+      auditLogEntry.action = '2FA_DISABLE_SUCCESS'
       if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
         ;(auditLogEntry.details as Prisma.JsonObject).verificationMethod = data.type
       }
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
-      return { message: 'Two-factor authentication has been disabled successfully.' }
+      const message = await this.i18nService.translate('error.Auth.2FA.Disabled', {
+        lang: I18nContext.current()?.lang
+      })
+      return { message }
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
         auditLogEntry.errorMessage = error.message
@@ -339,17 +346,27 @@ export class TwoFactorAuthService extends BaseAuthService {
         }
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
-        auditLogEntry.action = 'VERIFY_2FA_SUCCESS'
+        auditLogEntry.action = '2FA_VERIFY_SUCCESS'
         if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
           ;(auditLogEntry.details as Prisma.JsonObject).verificationMethod = body.type
           ;(auditLogEntry.details as Prisma.JsonObject).rememberMe = rememberMe
         }
 
+        const shouldAskToTrustDevice = !rememberMe && !isLoginFor2FA && !isLoginForUntrustedDevice
+
         return {
           userId: user.id,
           email: user.email,
           name: user.name,
-          role: user.role.name
+          role: user.role.name,
+          message: shouldAskToTrustDevice
+            ? await this.i18nService.translate('error.Auth.2FA.Verify.AskToTrustDevice', {
+                lang: I18nContext.current()?.lang
+              })
+            : await this.i18nService.translate('error.Auth.2FA.Verify.Success', {
+                lang: I18nContext.current()?.lang
+              }),
+          askToTrustDevice: shouldAskToTrustDevice
         }
       })
 

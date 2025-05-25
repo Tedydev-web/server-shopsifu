@@ -7,6 +7,7 @@ import { ApiException } from 'src/shared/exceptions/api.exception'
 import { EmailNotFoundException } from 'src/routes/auth/auth.error'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
+import { I18nContext } from 'nestjs-i18n'
 
 @Injectable()
 export class PasswordAuthService extends BaseAuthService {
@@ -62,7 +63,10 @@ export class PasswordAuthService extends BaseAuthService {
       })
 
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      return { success: true }
+      const message = await this.i18nService.translate('error.Auth.Password.ResetSuccess', {
+        lang: I18nContext.current()?.lang
+      })
+      return { message }
     } catch (error) {
       auditLogEntry.errorMessage = error.message
       if (error instanceof ApiException) {
@@ -112,7 +116,10 @@ export class PasswordAuthService extends BaseAuthService {
       })
 
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      return { success: true }
+      const message = await this.i18nService.translate('error.Auth.Password.ChangeSuccess', {
+        lang: I18nContext.current()?.lang
+      })
+      return { message }
     } catch (error) {
       auditLogEntry.errorMessage = error.message
       if (error instanceof ApiException) {

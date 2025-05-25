@@ -7,6 +7,7 @@ import { EmailAlreadyExistsException, EmailNotFoundException } from 'src/routes/
 import { DeviceSetupFailedException } from '../auth.error'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
+import { I18nContext } from 'nestjs-i18n'
 
 @Injectable()
 export class OtpAuthService extends BaseAuthService {
@@ -21,7 +22,11 @@ export class OtpAuthService extends BaseAuthService {
       throw EmailNotFoundException
     }
 
-    return this.otpService.sendOTP(body.email, body.type)
+    await this.otpService.sendOTP(body.email, body.type)
+    const message = await this.i18nService.translate('error.Auth.Otp.SentSuccessfully', {
+      lang: I18nContext.current()?.lang
+    })
+    return { message }
   }
 
   async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string }) {
