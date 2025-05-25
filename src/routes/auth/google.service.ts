@@ -14,6 +14,7 @@ import { TypeOfVerificationCode } from './constants/auth.constants'
 import { OtpService } from './providers/otp.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
+import { I18nService, I18nContext } from 'nestjs-i18n'
 
 @Injectable()
 export class GoogleService {
@@ -25,7 +26,8 @@ export class GoogleService {
     private readonly authService: AuthService,
     private readonly deviceService: DeviceService,
     private readonly otpService: OtpService,
-    private readonly prismaService: PrismaService
+    private readonly prismaService: PrismaService,
+    private readonly i18nService: I18nService
   ) {
     this.oauth2Client = new google.auth.OAuth2(
       envConfig.GOOGLE_CLIENT_ID,
@@ -60,6 +62,7 @@ export class GoogleService {
     userAgent?: string
     ip?: string
   }) {
+    const currentLang = I18nContext.current()?.lang
     try {
       try {
         if (state) {
@@ -120,8 +123,16 @@ export class GoogleService {
         console.warn(
           `[GoogleService googleCallback] Absolute session lifetime exceeded for user ${String(user.id)}, device ${String(device.id)}.`
         )
-        // Để đơn giản, ở đây sẽ throw lỗi chung, client sẽ redirect về trang lỗi/login
-        throw new Error('Error.Auth.Session.AbsoluteLifetimeExceeded')
+        // Thay vì throw, trả về cấu trúc lỗi để controller xử lý redirect
+        const sessionExpiredMessage = await this.i18nService.translate(
+          'error.Error.Auth.Session.AbsoluteLifetimeExceeded',
+          { lang: currentLang }
+        )
+        return {
+          errorCode: 'session_expired',
+          errorMessage: sessionExpiredMessage,
+          redirectToError: true
+        }
       }
 
       // Kiểm tra 2FA
@@ -174,7 +185,20 @@ export class GoogleService {
       }
     } catch (error) {
       console.error('Error in googleCallback', error)
-      throw error
+      const errorCode = (error as any).code || 'auth_error'
+      const defaultMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
+        lang: currentLang
+      })
+      const errorMessage =
+        error instanceof Error
+          ? encodeURIComponent(error.message) // Giữ lại thông báo lỗi cụ thể nếu có
+          : encodeURIComponent(defaultMessage)
+
+      return {
+        errorCode,
+        errorMessage,
+        redirectToError: true
+      }
     }
   }
 }

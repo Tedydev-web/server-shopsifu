@@ -60,5 +60,7 @@
   "HttpStatus.Title.PreconditionFailed": "Điều Kiện Tiên Quyết Thất Bại",
   "HttpStatus.Title.InternalServerError": "Lỗi Máy Chủ Nội Bộ",
   "HttpStatus.Title.ServiceUnavailable": "Dịch Vụ Không Khả Dụng",
-  "HttpStatus.Title.HttpError": "Lỗi HTTP"
+  "HttpStatus.Title.HttpError": "Lỗi HTTP",
+  "Error.Auth.Google.CallbackErrorGeneric": "Đã xảy ra lỗi khi đăng nhập bằng Google. Vui lòng thử lại hoặc sử dụng phương thức khác.",
+  "Error.Auth.Google.MissingCode": "Thiếu mã ủy quyền từ Google callback."
 }

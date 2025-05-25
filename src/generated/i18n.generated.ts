@@ -68,6 +68,8 @@ export type I18nTranslations = {
         "HttpStatus.Title.InternalServerError": string;
         "HttpStatus.Title.ServiceUnavailable": string;
         "HttpStatus.Title.HttpError": string;
+        "Error.Auth.Google.CallbackErrorGeneric": string;
+        "Error.Auth.Google.MissingCode": string;
     };
 };
 /* prettier-ignore */

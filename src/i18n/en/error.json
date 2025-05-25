@@ -60,5 +60,7 @@
   "HttpStatus.Title.PreconditionFailed": "Precondition Failed",
   "HttpStatus.Title.InternalServerError": "Internal Server Error",
   "HttpStatus.Title.ServiceUnavailable": "Service Unavailable",
-  "HttpStatus.Title.HttpError": "Http Error"
+  "HttpStatus.Title.HttpError": "Http Error",
+  "Error.Auth.Google.CallbackErrorGeneric": "An error occurred while logging in with Google. Please try again or use another method.",
+  "Error.Auth.Google.MissingCode": "Authorization code is missing from Google callback."
 }

@@ -37,7 +37,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     key: any,
     lang: string | undefined,
     args?: any,
-    defaultMessageKey: string = 'Error.Global.Unknown'
+    defaultMessageKey: string = 'error.Error.Global.Unknown'
   ): Promise<string> {
     // Nếu key không phải string hoặc rỗng, sử dụng defaultMessageKey
     if (typeof key !== 'string' || !key) {

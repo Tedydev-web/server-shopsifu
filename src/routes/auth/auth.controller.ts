@@ -36,6 +36,8 @@ import { TokenService } from 'src/routes/auth/providers/token.service'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
 import { CookieNames } from 'src/shared/constants/auth.constant'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { I18nContext } from 'nestjs-i18n'
+import { I18nService } from 'nestjs-i18n'
 
 @Controller('auth')
 export class AuthController {
@@ -44,7 +46,8 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly googleService: GoogleService,
-    private readonly tokenService: TokenService
+    private readonly tokenService: TokenService,
+    private readonly i18nService: I18nService
   ) {}
 
   @Post('register')
@@ -161,10 +164,14 @@ export class AuthController {
     @UserAgent() userAgent: string,
     @Ip() ip: string
   ) {
+    const currentLang = I18nContext.current()?.lang
     try {
       if (!code) {
+        const missingCodeMessage = await this.i18nService.translate('error.Error.Auth.Google.MissingCode', {
+          lang: currentLang
+        })
         return res.redirect(
-          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=invalid_request&errorMessage=${encodeURIComponent('Authorization code is missing')}`
+          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=invalid_request&errorMessage=${encodeURIComponent(missingCodeMessage)}`
         )
       }
 
@@ -174,6 +181,14 @@ export class AuthController {
         userAgent,
         ip
       })
+
+      // Nếu googleService trả về lỗi để redirect
+      if (data.redirectToError) {
+        this.logger.error(`[AuthController googleCallback] Error from GoogleService: ${data.errorMessage}`)
+        return res.redirect(
+          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=${data.errorCode}&errorMessage=${encodeURIComponent(data.errorMessage)}`
+        )
+      }
 
       // Nếu googleCallback trả về loginSessionToken, nghĩa là cần 2FA
       if ('loginSessionToken' in data && data.loginSessionToken) {
@@ -197,18 +212,21 @@ export class AuthController {
       }
 
       // Trường hợp không mong muốn
+      const unknownErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
+        lang: currentLang
+      })
       this.logger.error('[AuthController googleCallback] Unexpected data structure from GoogleService', data)
       return res.redirect(
-        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=internal_error&errorMessage=${encodeURIComponent('Unknown server error.')}`
+        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=internal_error&errorMessage=${encodeURIComponent(unknownErrorMessage)}`
       )
     } catch (error) {
-      this.logger.error('Google OAuth callback error:', error.stack, error.message)
-
-      const errorCode = error.code || 'auth_error'
+      this.logger.error('Google OAuth callback error in controller:', error.stack, error.message)
+      const genericErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
+        lang: currentLang
+      })
+      const errorCode = error.code || 'auth_error_controller'
       const message =
-        error instanceof Error
-          ? encodeURIComponent(error.message)
-          : encodeURIComponent('An error occurred while logging in with Google, please try another method.')
+        error instanceof Error ? encodeURIComponent(error.message) : encodeURIComponent(genericErrorMessage)
 
       return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=${errorCode}&errorMessage=${message}`)
     }

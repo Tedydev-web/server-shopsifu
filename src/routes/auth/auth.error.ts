@@ -2,7 +2,7 @@ import { HttpStatus } from '@nestjs/common'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 
 function createApiError(status: HttpStatus, errorType: string, errorCode: string, fieldPath?: string) {
-  return new ApiException(status, errorType, errorCode, [{ code: errorCode, path: fieldPath }])
+  return new ApiException(status, errorType, `error.${errorCode}`, [{ code: `error.${errorCode}`, path: fieldPath }])
 }
 
 export const InvalidOTPException = createApiError(
