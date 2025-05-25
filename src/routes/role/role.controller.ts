@@ -57,7 +57,7 @@ export class RoleController {
 
   @Post()
   @ZodSerializerDto(GetRoleDetailResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 } })
   @Roles('Admin')
   create(@Body() body: CreateRoleBodyDTO, @ActiveUser('userId') userId: number) {
     this.logger.debug(`Creating role: ${JSON.stringify(body)} by user ${userId}`)
@@ -69,7 +69,7 @@ export class RoleController {
 
   @Put(':roleId')
   @ZodSerializerDto(GetRoleDetailResDTO)
-  @Throttle({ short: { limit: 10, ttl: 10000 } })
+  // @Throttle({ short: { limit: 10, ttl: 10000 } })
   @Roles('Admin')
   update(@Body() body: UpdateRoleBodyDTO, @Param() params: GetRoleParamsDTO, @ActiveUser('userId') userId: number) {
     this.logger.debug(`Updating role ${params.roleId}: ${JSON.stringify(body)} by user ${userId}`)
@@ -82,7 +82,7 @@ export class RoleController {
 
   @Post(':roleId/assign-permissions')
   @ZodSerializerDto(GetRoleDetailResDTO)
-  @Throttle({ short: { limit: 10, ttl: 10000 } })
+  // @Throttle({ short: { limit: 10, ttl: 10000 } })
   @Roles('Admin')
   assignPermissions(
     @Param() params: GetRoleParamsDTO,
@@ -102,7 +102,7 @@ export class RoleController {
   @Delete(':roleId')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 } })
   @Roles('Admin')
   delete(
     @Param() params: GetRoleParamsDTO,
@@ -116,7 +116,7 @@ export class RoleController {
   @Post(':roleId/restore')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(GetRoleDetailResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 } })
   @Roles('Admin')
   restore(@Param() params: GetRoleParamsDTO, @Body() _: RestoreRoleBodyDTO, @ActiveUser('userId') userId: number) {
     this.logger.debug(`Restoring role ${params.roleId} by user ${userId}`)

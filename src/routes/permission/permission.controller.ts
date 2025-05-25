@@ -56,7 +56,7 @@ export class PermissionController {
 
   @Post()
   @ZodSerializerDto(GetPermissionDetailResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 } })
   @Roles('Admin')
   create(@Body() body: CreatePermissionBodyDTO, @ActiveUser('userId') userId: number) {
     this.logger.debug(`Creating permission: ${JSON.stringify(body)}`)
@@ -68,7 +68,7 @@ export class PermissionController {
 
   @Put(':permissionId')
   @ZodSerializerDto(GetPermissionDetailResDTO)
-  @Throttle({ short: { limit: 10, ttl: 10000 } })
+  // @Throttle({ short: { limit: 10, ttl: 10000 } })
   @Roles('Admin')
   update(
     @Body() body: UpdatePermissionBodyDTO,
@@ -85,7 +85,7 @@ export class PermissionController {
 
   @Delete(':permissionId')
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 } })
   @Roles('Admin')
   delete(
     @Param() params: GetPermissionParamsDTO,
@@ -99,7 +99,7 @@ export class PermissionController {
   @Post(':permissionId/restore')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(GetPermissionDetailResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 } })
   @Roles('Admin')
   restore(
     @Param() params: GetPermissionParamsDTO,

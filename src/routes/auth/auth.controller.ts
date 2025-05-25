@@ -57,7 +57,7 @@ export class AuthController {
   @Post('register')
   @IsPublic()
   @ZodSerializerDto(RegisterResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 }, long: { limit: 20, ttl: 60000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 }, long: { limit: 20, ttl: 60000 } })
   register(@Body() body: RegisterBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
     return this.authService.register({
       ...body,
@@ -69,7 +69,7 @@ export class AuthController {
   @Post('send-otp')
   @IsPublic()
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })
+  // @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })
   sendOTP(@Body() body: SendOTPBodyDTO) {
     return this.authService.sendOTP(body)
   }
@@ -77,7 +77,7 @@ export class AuthController {
   @Post('verify-code')
   @IsPublic()
   @ZodSerializerDto(VerifyCodeResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 }, long: { limit: 30, ttl: 60000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 }, long: { limit: 30, ttl: 60000 } })
   verifyCode(@Body() body: VerifyCodeBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
     return this.authService.verifyCode({
       ...body,
@@ -93,7 +93,7 @@ export class AuthController {
     { schema: UserProfileResSchema, predicate: hasProperty('userId') },
     { schema: LoginSessionResSchema, predicate: hasProperty('otpToken') }
   )
-  @Throttle({ short: { limit: 5, ttl: 60000 }, medium: { limit: 20, ttl: 300000 } })
+  // @Throttle({ short: { limit: 5, ttl: 60000 }, medium: { limit: 20, ttl: 300000 } })
   login(
     @Body() body: LoginBodyDTO,
     @UserAgent() userAgent: string,
@@ -114,7 +114,7 @@ export class AuthController {
   @IsPublic()
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(RefreshTokenSuccessResDTO)
-  @Throttle({ medium: { limit: 10, ttl: 60000 } })
+  // @Throttle({ medium: { limit: 10, ttl: 60000 } })
   refreshToken(
     @Body() _: RefreshTokenBodyDTO,
     @UserAgent() userAgent: string,
@@ -135,7 +135,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 } })
   logout(@Body() _: LogoutBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const cookieToken = req.cookies?.[CookieNames.REFRESH_TOKEN]
     if (cookieToken) {
@@ -245,7 +245,7 @@ export class AuthController {
   @Post('reset-password')
   @IsPublic()
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })
+  // @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })
   resetPassword(@Body() body: ResetPasswordBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
     return this.authService.resetPassword({
       ...body,
@@ -256,21 +256,21 @@ export class AuthController {
 
   @Post('2fa/setup')
   @ZodSerializerDto(TwoFactorSetupResDTO)
-  @Throttle({ short: { limit: 3, ttl: 60000 } })
+  // @Throttle({ short: { limit: 3, ttl: 60000 } })
   setupTwoFactorAuth(@Body() _: EmptyBodyDTO, @ActiveUser('userId') userId: number) {
     return this.authService.setupTwoFactorAuth(userId)
   }
 
   @Post('2fa/confirm-setup')
   @ZodSerializerDto(TwoFactorConfirmSetupResDTO)
-  @Throttle({ short: { limit: 3, ttl: 60000 } })
+  // @Throttle({ short: { limit: 3, ttl: 60000 } })
   confirmTwoFactorSetup(@Body() body: TwoFactorConfirmSetupBodyDTO, @ActiveUser('userId') userId: number) {
     return this.authService.confirmTwoFactorSetup(userId, body.setupToken, body.totpCode)
   }
 
   @Post('2fa/disable')
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 3, ttl: 60000 } })
+  // @Throttle({ short: { limit: 3, ttl: 60000 } })
   disableTwoFactorAuth(@Body() body: DisableTwoFactorBodyDTO, @ActiveUser('userId') userId: number) {
     return this.authService.disableTwoFactorAuth({
       ...body,
@@ -282,7 +282,7 @@ export class AuthController {
   @IsPublic()
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(UserProfileResSchema)
-  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  // @Throttle({ short: { limit: 5, ttl: 60000 } })
   verifyTwoFactor(
     @Body() body: TwoFactorVerifyBodyDTO,
     @UserAgent() userAgent: string,
@@ -302,7 +302,7 @@ export class AuthController {
   @Post('trust-device')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  // @Throttle({ short: { limit: 5, ttl: 60000 } })
   trustDevice(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() _body: TrustDeviceBodyDTO,
@@ -315,7 +315,7 @@ export class AuthController {
   @Post('remember-me')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  // @Throttle({ short: { limit: 5, ttl: 60000 } })
   setRememberMe(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: RememberMeBodyDTO,
@@ -330,7 +330,7 @@ export class AuthController {
   @Post('logout-all')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 3, ttl: 60000 } })
+  // @Throttle({ short: { limit: 3, ttl: 60000 } })
   logoutFromAllDevices(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Req() req: Request,
@@ -344,7 +344,7 @@ export class AuthController {
   @Post('untrust-device')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  // @Throttle({ short: { limit: 5, ttl: 60000 } })
   untrustDevice(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() _body: UntrustDeviceBodyDTO,
@@ -357,7 +357,7 @@ export class AuthController {
   @Post('logout-device')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  // @Throttle({ short: { limit: 5, ttl: 60000 } })
   logoutFromDevice(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: LogoutFromDeviceBodyDTO,

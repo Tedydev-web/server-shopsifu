@@ -17,6 +17,7 @@ import { Prisma } from '@prisma/client'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { AUTH_TYPE_KEY } from 'src/routes/auth/decorators/auth.decorator'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
@@ -43,7 +44,7 @@ export class AccessTokenGuard implements CanActivate {
       throw MissingAccessTokenException
     }
 
-    let decodedAccessToken: any
+    let decodedAccessToken: AccessTokenPayload | undefined = undefined
 
     try {
       decodedAccessToken = await this.tokenService.verifyAccessToken(token)

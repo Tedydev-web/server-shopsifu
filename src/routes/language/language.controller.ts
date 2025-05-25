@@ -57,7 +57,7 @@ export class LanguageController {
 
   @Post()
   @ZodSerializerDto(GetLanguageDetailResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 } })
   @Roles('Admin')
   create(@Body() body: CreateLanguageBodyDTO, @ActiveUser('userId') userId: number) {
     this.logger.debug(`Creating language: ${JSON.stringify(body)}`)
@@ -69,7 +69,7 @@ export class LanguageController {
 
   @Put(':languageId')
   @ZodSerializerDto(GetLanguageDetailResDTO)
-  @Throttle({ short: { limit: 10, ttl: 10000 } })
+  // @Throttle({ short: { limit: 10, ttl: 10000 } })
   @Roles('Admin')
   update(
     @Body() body: UpdateLanguageBodyDTO,
@@ -86,7 +86,7 @@ export class LanguageController {
 
   @Delete(':languageId')
   @ZodSerializerDto(MessageResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 } })
   @Roles('Admin')
   delete(
     @Param() params: GetLanguageParamsDTO,
@@ -100,7 +100,7 @@ export class LanguageController {
   @Post(':languageId/restore')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(GetLanguageDetailResDTO)
-  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  // @Throttle({ short: { limit: 5, ttl: 10000 } })
   @Roles('Admin')
   restore(
     @Param() params: GetLanguageParamsDTO,
