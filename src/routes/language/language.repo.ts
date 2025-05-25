@@ -9,12 +9,14 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 import { Prisma } from '@prisma/client'
 import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 
 @Injectable()
 export class LanguageRepo extends BaseRepository<LanguageType> {
   constructor(
     protected readonly prismaService: PrismaService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private readonly redisService: RedisService
   ) {
     super(prismaService, LanguageRepo.name)
   }
@@ -22,20 +24,23 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
   private async invalidateLanguageItemCache(id: string) {
     await this.cacheManager.del(`language:${id}`)
     await this.cacheManager.del(`language:${id}:includeDeleted`)
-    // Note: Invalidating list caches (e.g., languages:list:*) is more complex
-    // as cacheManager.del does not support patterns directly.
-    // For now, list caches will expire based on their TTL.
-    // A more advanced strategy would involve SCAN + DEL if using Redis directly,
-    // or versioning cache keys for lists.
+    await this.invalidateAllLanguageListsCache()
   }
 
   private async invalidateAllLanguageListsCache() {
-    // This is a placeholder. In a real scenario with Redis,
-    // you might use SCAN and DEL to remove keys matching a pattern like 'languages:list:*'.
-    // For now, we accept that list caches will expire based on TTL or be stale until then.
-    this.logger.warn('invalidateAllLanguageListsCache called - specific list invalidation is preferred.')
-    // Example: If we knew all possible pagination/filter keys, we could delete them.
-    // Or, use a versioned key for lists that changes on any CUD operation.
+    this.logger.debug('Invalidating all language list caches with pattern language:list:*')
+    try {
+      const pattern = 'language:list:*' // Define the pattern directly
+      const keys = await this.redisService.findKeys(pattern) // Use the defined pattern
+      if (keys.length > 0) {
+        await this.redisService.del(keys) // Use redisService.del to delete keys found
+        this.logger.debug(`Invalidated ${keys.length} language list cache keys matching pattern ${pattern}.`)
+      } else {
+        this.logger.debug(`No language list cache keys found to invalidate with pattern ${pattern}.`)
+      }
+    } catch (error) {
+      this.logger.error('Error invalidating language list caches:', error)
+    }
   }
 
   async findAll(

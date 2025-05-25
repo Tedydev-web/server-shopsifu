@@ -16,6 +16,8 @@
   "Auth.2FA.Confirm.Success": "2FA has been confirmed and enabled. Please save your recovery codes.",
   "Auth.2FA.Verify.Success": "2FA verification successful.",
   "Auth.2FA.Verify.AskToTrustDevice": "2FA verification successful. Would you like to trust this device?",
+  "Auth.Device.Untrusted": "Device has been untrusted successfully.",
+  "Auth.Device.LogoutSpecificSuccess": "Successfully logged out from the specified device.",
   "Error.Auth.Otp.Invalid": "Invalid OTP provided.",
   "Error.Auth.Otp.Expired": "OTP has expired.",
   "Error.Auth.Otp.FailedToSend": "Failed to send OTP. Please try again later.",

@@ -1,12 +1,11 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
 import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
 import { TokenService } from 'src/routes/auth/providers/token.service'
 import { Request } from 'express'
-import { DeviceService } from 'src/routes/auth/providers/device.service'
 import envConfig from 'src/shared/config'
 import {
   AbsoluteSessionLifetimeExceededException,
-  DeviceMissingSessionCreationTimeException,
   InvalidDeviceException,
   InvalidAccessTokenException,
   SessionNotFoundException,
@@ -17,17 +16,26 @@ import { ApiException } from 'src/shared/exceptions/api.exception'
 import { Prisma } from '@prisma/client'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
-import ms from 'ms'
+import { AUTH_TYPE_KEY } from 'src/routes/auth/decorators/auth.decorator'
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
   constructor(
+    private readonly reflector: Reflector,
     private readonly tokenService: TokenService,
-    private readonly deviceService: DeviceService,
     private readonly auditLogService: AuditLogService,
     private readonly redisService: RedisService
   ) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(AUTH_TYPE_KEY, [
+      context.getHandler(),
+      context.getClass()
+    ])
+
+    if (isPublic) {
+      return true
+    }
+
     const request = context.switchToHttp().getRequest<Request>()
     const token = this.tokenService.extractTokenFromRequest(request)
 
@@ -41,7 +49,7 @@ export class AccessTokenGuard implements CanActivate {
       decodedAccessToken = await this.tokenService.verifyAccessToken(token)
       request[REQUEST_USER_KEY] = decodedAccessToken
 
-      const { userId, deviceId, sessionId, jti: accessTokenJti, exp: accessTokenExp } = decodedAccessToken
+      const { userId, deviceId, sessionId, jti: accessTokenJti } = decodedAccessToken
 
       if (!sessionId || !accessTokenJti) {
         this.auditLogService.recordAsync({

@@ -112,6 +112,9 @@ export class AuditLogService {
       }
 
       await this.prismaService.auditLog.create({ data: createInputData })
+      // Invalidate caches after successful recording
+      await this.auditLogRepository.invalidateAllAuditLogListsCache()
+      await this.auditLogRepository.invalidateAuditLogDistinctCache()
     } catch (error) {
       this.logger.error(`Failed to record audit log: ${error.message}`, error.stack)
       if (!options.skipErrors) {
@@ -151,6 +154,9 @@ export class AuditLogService {
           await tx.auditLog.create({ data: createInputData })
         }
       })
+      // Invalidate caches after batch success
+      await this.auditLogRepository.invalidateAllAuditLogListsCache()
+      await this.auditLogRepository.invalidateAuditLogDistinctCache()
     } catch (error) {
       this.logger.error(`Failed to record batch audit logs: ${error.message}`, error.stack)
       if (!options.skipErrors) {
@@ -241,6 +247,10 @@ export class AuditLogService {
 
       if (batchToProcess.length > 0) {
         await this.recordBatch(batchToProcess)
+        // Invalidate caches after batch success
+        await this.auditLogRepository.invalidateAllAuditLogListsCache()
+        await this.auditLogRepository.invalidateAuditLogDistinctCache()
+        this.logger.debug(`Processed and invalidated cache for ${batchToProcess.length} audit logs.`)
       }
     } catch (error) {
       this.logger.error(`Failed to process audit log queue: ${error.message}`, error.stack)

@@ -13,8 +13,8 @@ import {
 import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { isUniqueConstraintPrismaError } from 'src/shared/utils/type-guards.utils'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
-import { Device, User, Role } from '@prisma/client'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { Device } from '@prisma/client'
 import { TypeOfVerificationCode, TwoFactorMethodType } from '../constants/auth.constants'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
@@ -22,7 +22,6 @@ import { I18nContext } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import envConfig from 'src/shared/config'
-import ms from 'ms'
 
 @Injectable()
 export class AuthenticationService extends BaseAuthService {
@@ -389,7 +388,7 @@ export class AuthenticationService extends BaseAuthService {
     }
 
     try {
-      const result = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
+      const result = await this.prismaService.$transaction(async (_tx) => {
         const currentRefreshTokenJti = this.tokenService.extractRefreshTokenFromRequest(req)
         const accessToken = this.tokenService.extractTokenFromRequest(req)
         let currentSessionId = activeUser.sessionId
@@ -398,7 +397,7 @@ export class AuthenticationService extends BaseAuthService {
           try {
             const decoded = await this.tokenService.verifyAccessToken(accessToken)
             currentSessionId = decoded.sessionId
-          } catch (e) {
+          } catch (_e) {
             this.logger.warn('Could not decode access token to get sessionId for setRememberMe')
             throw new ApiException(HttpStatus.BAD_REQUEST, 'MissingSessionId', 'Error.Auth.Session.MissingSessionId')
           }

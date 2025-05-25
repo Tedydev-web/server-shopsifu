@@ -2,12 +2,8 @@ import { WinstonModule, utilities as nestWinstonModuleUtilities } from 'nest-win
 import * as winston from 'winston'
 import DailyRotateFile from 'winston-daily-rotate-file'
 import envConfig from '../config'
-import { format, transports } from 'winston'
-import path from 'path'
 
-const { errors, combine, json, timestamp, ms, prettyPrint, printf, colorize, uncolorize } = winston.format
-
-const logFormat = printf(({ level, message, timestamp: ts, stack }) => `[${ts}] ${level}: ${stack || message}`)
+const { errors, combine, json, timestamp, ms, prettyPrint } = winston.format
 
 export const dailyRotateFileTransport = (level: string, dirname?: string) => {
   return new DailyRotateFile({

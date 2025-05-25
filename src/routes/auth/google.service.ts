@@ -1,9 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { OAuth2Client } from 'google-auth-library'
 import { google } from 'googleapis'
 import { GoogleAuthStateType } from 'src/routes/auth/auth.model'
-import { AuthRepository } from 'src/routes/auth/auth.repo'
-import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleUserInfoException } from 'src/routes/auth/auth.error'
 import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
@@ -18,16 +16,13 @@ import { I18nService, I18nContext } from 'nestjs-i18n'
 import { TokenService } from 'src/routes/auth/providers/token.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import ms from 'ms'
 
 @Injectable()
 export class GoogleService {
   private oauth2Client: OAuth2Client
   constructor(
-    private readonly authRepository: AuthRepository,
     private readonly hashingService: HashingService,
     private readonly rolesService: RolesService,
-    private readonly authService: AuthService,
     private readonly deviceService: DeviceService,
     private readonly otpService: OtpService,
     private readonly prismaService: PrismaService,
@@ -79,8 +74,8 @@ export class GoogleService {
           userAgent = clientInfo.userAgent || userAgent
           ip = clientInfo.ip || ip
         }
-      } catch (error) {
-        console.error('Error parsing state', error)
+      } catch (parseError) {
+        console.error('Error parsing state', parseError)
       }
       const { tokens } = await this.oauth2Client.getToken(code)
       this.oauth2Client.setCredentials(tokens)
@@ -98,7 +93,7 @@ export class GoogleService {
       let decodedState: GoogleAuthStateType | null = null
       try {
         decodedState = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'))
-      } catch (error) {
+      } catch (_error) {
         // Bỏ qua lỗi parse state, sử dụng userAgent và ip từ tham số
       }
 
@@ -116,7 +111,7 @@ export class GoogleService {
       if (!user) {
         user = await this.prismaService.user.create({
           data: {
-            email: payload.email!,
+            email: payload.email,
             name: payload.name || 'Google User',
             password: await this.hashingService.hash(uuidv4()),
             phoneNumber: '', // payload.phone_number is not standard, initialize as empty
@@ -247,7 +242,7 @@ export class GoogleService {
       }
     } catch (error) {
       console.error('Error in googleCallback', error)
-      const errorCode = (error as any).code || 'auth_error'
+      const errorCode = error.code || 'auth_error'
       const defaultMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
         lang: currentLang
       })

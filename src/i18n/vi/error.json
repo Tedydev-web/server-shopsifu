@@ -16,6 +16,8 @@
   "Auth.2FA.Confirm.Success": "2FA đã được xác nhận và kích hoạt. Vui lòng lưu lại các mã khôi phục của bạn.",
   "Auth.2FA.Verify.Success": "Xác minh 2FA thành công.",
   "Auth.2FA.Verify.AskToTrustDevice": "Xác minh 2FA thành công. Bạn có muốn tin cậy thiết bị này không?",
+  "Auth.Device.Untrusted": "Thiết bị đã được bỏ tin cậy thành công.",
+  "Auth.Device.LogoutSpecificSuccess": "Đăng xuất khỏi thiết bị chỉ định thành công.",
   "Error.Auth.Otp.Invalid": "Mã OTP không hợp lệ.",
   "Error.Auth.Otp.Expired": "Mã OTP đã hết hạn.",
   "Error.Auth.Otp.FailedToSend": "Gửi mã OTP thất bại. Vui lòng thử lại sau.",

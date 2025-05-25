@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client'
 import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager'
 import { PaginatedResponseType } from 'src/shared/models/pagination.model'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 
 @Injectable()
 export class RoleRepo extends BaseRepository<RoleType> {
@@ -20,31 +21,43 @@ export class RoleRepo extends BaseRepository<RoleType> {
 
   constructor(
     protected readonly prismaService: PrismaService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private readonly redisService: RedisService
   ) {
     super(prismaService, RoleRepo.name)
   }
 
   private getRoleCacheKey(id: number, includeDeleted: boolean = false): string {
-    return `role:${id}${includeDeleted ? ':includeDeleted' : ''}`
+    return `role:${id}:${includeDeleted ? 'withDeleted' : 'active'}`
   }
 
   private getRoleWithPermissionsCacheKey(id: number, includeDeleted: boolean = false): string {
-    return `role:${id}:withPermissions${includeDeleted ? ':includeDeleted' : ''}`
+    return `role:${id}:permissions:${includeDeleted ? 'withDeleted' : 'active'}`
   }
 
   private getRoleListCacheKey(query?: GetRolesQueryType): string {
-    const {
-      page = 1,
-      limit = 10,
-      sortBy = 'id',
-      sortOrder = 'asc',
-      search = '',
-      includeDeleted = false,
-      all = false
-    } = query || {}
-    const effectiveLimit = all ? 10000 : limit // Define effectiveLimit based on 'all' flag
-    return `roles:list:${page}:${effectiveLimit}:${sortBy}:${sortOrder}:${search}:${includeDeleted}:${all}`
+    if (
+      !query ||
+      Object.keys(query).length === 0 ||
+      (query.page === 1 &&
+        query.limit === 10 &&
+        !query.search &&
+        !query.sortBy &&
+        !query.sortOrder &&
+        !query.isActive &&
+        !query.all)
+    ) {
+      return 'role:list:default' // Default key for the first page with default params
+    }
+    const queryParams = new URLSearchParams()
+    if (query.page) queryParams.append('page', query.page.toString())
+    if (query.limit) queryParams.append('limit', query.limit.toString())
+    if (query.sortBy) queryParams.append('sortBy', query.sortBy)
+    if (query.sortOrder) queryParams.append('sortOrder', query.sortOrder)
+    if (query.search) queryParams.append('search', query.search)
+    if (query.isActive !== undefined) queryParams.append('isActive', query.isActive.toString())
+    if (query.all) queryParams.append('all', query.all.toString())
+    return `role:list:${queryParams.toString()}`
   }
 
   private getRoleByNameCacheKey(name: string): string {
@@ -52,23 +65,35 @@ export class RoleRepo extends BaseRepository<RoleType> {
   }
 
   private getRoleReferencesCountCacheKey(id: number): string {
-    return `role:${id}:references:count`
+    return `role:${id}:referencesCount`
   }
 
-  private invalidateRoleListCache() {
-    this.cacheManager.del('roles:list')
+  private async invalidateRoleListCache() {
+    this.logger.debug('Invalidating all role list caches with pattern role:list:*')
+    try {
+      const pattern = 'role:list:*' // Define the pattern directly
+      const keys = await this.redisService.findKeys(pattern) // Use the defined pattern
+      if (keys.length > 0) {
+        await this.redisService.del(keys) // Use redisService.del to delete keys found
+        this.logger.debug(`Invalidated ${keys.length} role list cache keys matching pattern ${pattern}.`)
+      } else {
+        this.logger.debug(`No role list cache keys found to invalidate with pattern ${pattern}.`)
+      }
+    } catch (error) {
+      this.logger.error('Error invalidating role list caches:', error)
+    }
   }
 
-  private invalidateRoleCache(id: number) {
-    this.cacheManager.del(this.getRoleCacheKey(id))
-    this.cacheManager.del(this.getRoleCacheKey(id, true))
-    this.cacheManager.del(this.getRoleWithPermissionsCacheKey(id))
-    this.cacheManager.del(this.getRoleWithPermissionsCacheKey(id, true))
-    this.invalidateRoleListCache()
+  private async invalidateRoleCache(id: number) {
+    await this.cacheManager.del(this.getRoleCacheKey(id))
+    await this.cacheManager.del(this.getRoleCacheKey(id, true))
+    await this.cacheManager.del(this.getRoleWithPermissionsCacheKey(id))
+    await this.cacheManager.del(this.getRoleWithPermissionsCacheKey(id, true))
+    await this.invalidateRoleListCache()
   }
 
-  private invalidateRoleNameCache(name: string) {
-    this.cacheManager.del(this.getRoleByNameCacheKey(name))
+  private async invalidateRoleNameCache(name: string) {
+    await this.cacheManager.del(this.getRoleByNameCacheKey(name))
   }
 
   async findAll(
@@ -206,8 +231,8 @@ export class RoleRepo extends BaseRepository<RoleType> {
       include: { permissions: true }
     })
 
-    this.invalidateRoleListCache()
-    if (result.name) this.invalidateRoleNameCache(result.name)
+    await this.invalidateRoleListCache()
+    if (result.name) await this.invalidateRoleNameCache(result.name)
     return result
   }
 
@@ -224,11 +249,11 @@ export class RoleRepo extends BaseRepository<RoleType> {
     prismaClient?: PrismaTransactionClient
   ): Promise<RoleType> {
     const client = this.getClient(prismaClient)
-    const { permissionIds, ...roleData } = data
+    const { ...roleData } = data // Removed permissionIds from here as it's handled by assignPermissions
 
     const currentRole = await client.role.findUnique({ where: { id } })
     if (currentRole && currentRole.name !== roleData.name && roleData.name) {
-      this.invalidateRoleNameCache(currentRole.name)
+      await this.invalidateRoleNameCache(currentRole.name)
     }
 
     const result = await client.role.update({
@@ -243,8 +268,8 @@ export class RoleRepo extends BaseRepository<RoleType> {
       },
       include: { permissions: true }
     })
-    this.invalidateRoleCache(id)
-    if (result.name) this.invalidateRoleNameCache(result.name)
+    await this.invalidateRoleCache(id)
+    if (result.name) await this.invalidateRoleNameCache(result.name)
     return result
   }
 
@@ -273,8 +298,8 @@ export class RoleRepo extends BaseRepository<RoleType> {
       },
       include: { permissions: true }
     })
-    this.invalidateRoleCache(roleId)
-    if (result.name) this.invalidateRoleNameCache(result.name)
+    await this.invalidateRoleCache(roleId)
+    if (result.name) await this.invalidateRoleNameCache(result.name)
     return result
   }
 
@@ -294,8 +319,8 @@ export class RoleRepo extends BaseRepository<RoleType> {
       include: { permissions: true }
     })
 
-    this.invalidateRoleCache(id)
-    if (result.name) this.invalidateRoleNameCache(result.name)
+    await this.invalidateRoleCache(id)
+    if (result.name) await this.invalidateRoleNameCache(result.name)
     return result
   }
 
@@ -304,8 +329,8 @@ export class RoleRepo extends BaseRepository<RoleType> {
 
     const result = await client.role.delete({ where: { id }, include: { permissions: true } })
 
-    this.invalidateRoleCache(id)
-    if (result.name) this.invalidateRoleNameCache(result.name)
+    await this.invalidateRoleCache(id)
+    if (result.name) await this.invalidateRoleNameCache(result.name)
     return result
   }
 
@@ -328,8 +353,8 @@ export class RoleRepo extends BaseRepository<RoleType> {
       include: { permissions: true }
     })
 
-    this.invalidateRoleCache(id)
-    if (result.name) this.invalidateRoleNameCache(result.name)
+    await this.invalidateRoleCache(id)
+    if (result.name) await this.invalidateRoleNameCache(result.name)
     return result
   }
 

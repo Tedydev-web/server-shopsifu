@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { I18nService, I18nContext } from 'nestjs-i18n'
+import { I18nService } from 'nestjs-i18n'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { AuthRepository } from '../auth.repo'
 import { SharedUserRepository } from '../repositories/shared-user.repo'

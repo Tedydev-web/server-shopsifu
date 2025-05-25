@@ -19,7 +19,9 @@ import {
   TwoFactorConfirmSetupResDTO,
   TrustDeviceBodyDTO,
   RememberMeBodyDTO,
-  RefreshTokenSuccessResDTO
+  RefreshTokenSuccessResDTO,
+  UntrustDeviceBodyDTO,
+  LogoutFromDeviceBodyDTO
 } from 'src/routes/auth/auth.dto'
 import { UserProfileResSchema, LoginSessionResSchema } from 'src/routes/auth/auth.model'
 import { UseZodSchemas, hasProperty } from 'src/shared/decorators/use-zod-schema.decorator'
@@ -38,6 +40,7 @@ import { CookieNames } from 'src/shared/constants/auth.constant'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { I18nContext } from 'nestjs-i18n'
 import { I18nService } from 'nestjs-i18n'
+import { DeviceAuthService } from 'src/routes/auth/services/device-auth.service'
 
 @Controller('auth')
 export class AuthController {
@@ -47,7 +50,8 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly googleService: GoogleService,
     private readonly tokenService: TokenService,
-    private readonly i18nService: I18nService
+    private readonly i18nService: I18nService,
+    private readonly deviceAuthService: DeviceAuthService
   ) {}
 
   @Post('register')
@@ -335,5 +339,31 @@ export class AuthController {
     @UserAgent() userAgent: string
   ) {
     return this.authService.logoutFromAllDevices(activeUser, ip, userAgent, req, res)
+  }
+
+  @Post('untrust-device')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(MessageResDTO)
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  untrustDevice(
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Body() _body: UntrustDeviceBodyDTO,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string
+  ) {
+    return this.deviceAuthService.untrustDevice(activeUser, ip, userAgent)
+  }
+
+  @Post('logout-device')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(MessageResDTO)
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  logoutFromDevice(
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Body() body: LogoutFromDeviceBodyDTO,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string
+  ) {
+    return this.deviceAuthService.logoutFromDevice(activeUser, body.deviceId, ip, userAgent)
   }
 }

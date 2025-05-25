@@ -20,8 +20,8 @@ export class AuditLogController {
   @SkipThrottle()
   @AuditLog({
     action: 'AUDIT_LOG_VIEW_LIST',
-    getUserId: ([_, _query, _param, req]) => req?.user?.userId,
-    getDetails: ([_, query]) => ({ query })
+    getUserId: ([, , , req]) => req?.user?.userId,
+    getDetails: ([, query]) => ({ query })
   })
   @Roles('Admin')
   findAll(@Query() query: AuditLogQueryDTO) {
@@ -32,7 +32,7 @@ export class AuditLogController {
   @SkipThrottle()
   @AuditLog({
     action: 'AUDIT_LOG_VIEW_STATS',
-    getUserId: ([_, _query, _param, req]) => req?.user?.userId
+    getUserId: ([, , , req]) => req?.user?.userId
   })
   @Roles('Admin')
   getStats() {
@@ -59,7 +59,7 @@ export class AuditLogController {
     action: 'AUDIT_LOG_VIEW_DETAIL',
     entity: 'AuditLog',
     getEntityId: ([params]) => Number(params?.id),
-    getUserId: ([_, _query, _param, req]) => req?.user?.userId
+    getUserId: ([, , , req]) => req?.user?.userId
   })
   @Roles('Admin')
   async findOne(@Param('id', ParseIntPipe) id: number) {

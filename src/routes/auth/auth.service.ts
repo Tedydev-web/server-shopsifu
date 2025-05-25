@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import {
   DisableTwoFactorBodyType,
   LoginBodyType,
@@ -15,33 +15,11 @@ import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from 'src/routes/auth/providers/token.service'
 import { EmailService } from 'src/routes/auth/providers/email.service'
 import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
-import {
-  EmailAlreadyExistsException,
-  EmailNotFoundException,
-  InvalidOTPTokenException,
-  InvalidPasswordException,
-  InvalidTOTPException,
-  OTPTokenExpiredException,
-  TOTPAlreadyEnabledException,
-  TOTPNotEnabledException,
-  UnauthorizedAccessException,
-  DeviceMismatchException,
-  InvalidDeviceException,
-  DeviceSetupFailedException,
-  DeviceAssociationFailedException,
-  AbsoluteSessionLifetimeExceededException,
-  InvalidRefreshTokenException
-} from 'src/routes/auth/auth.error'
+import { InvalidRefreshTokenException } from 'src/routes/auth/auth.error'
 import { TwoFactorService } from 'src/routes/auth/providers/2fa.service'
 import { Response } from 'express'
 import { Request } from 'express'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import {
-  Prisma,
-  VerificationToken as PrismaVerificationToken,
-  Device,
-  VerificationCodeType as PrismaClientVerificationCodeType
-} from '@prisma/client'
 import { AuditLogService } from 'src/routes/audit-log/audit-log.service'
 import { OtpService } from 'src/routes/auth/providers/otp.service'
 import { DeviceService } from 'src/routes/auth/providers/device.service'
@@ -54,8 +32,6 @@ import envConfig from 'src/shared/config'
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name)
-
   constructor(
     private readonly prismaService: PrismaService,
     private readonly hashingService: HashingService,

@@ -4,11 +4,6 @@ import envConfig from 'src/shared/config'
 import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import { v4 as uuidv4 } from 'uuid'
 import { Request, Response } from 'express'
-import { PrismaService } from 'src/shared/services/prisma.service'
-import { addMilliseconds, differenceInSeconds } from 'date-fns'
-import { AuthRepository } from 'src/routes/auth/auth.repo'
-import { isNotFoundPrismaError } from 'src/shared/utils/type-guards.utils'
-import { UnauthorizedAccessException } from 'src/routes/auth/auth.error'
 import { Prisma } from '@prisma/client'
 import { DeviceService } from './device.service'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
@@ -17,14 +12,22 @@ import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import ms from 'ms'
 import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 
+interface CookieConfig {
+  name: string
+  path: string
+  domain?: string
+  maxAge: number
+  httpOnly: boolean
+  secure: boolean
+  sameSite: 'lax' | 'strict' | 'none' | boolean
+}
+
 @Injectable()
 export class TokenService {
   private readonly logger = new Logger(TokenService.name)
 
   constructor(
     private readonly jwtService: JwtService,
-    private readonly prismaService: PrismaService,
-    private readonly authRepository: AuthRepository,
     private readonly deviceService: DeviceService,
     private readonly redisService: RedisService,
     private readonly auditLogService: AuditLogService
@@ -64,45 +67,35 @@ export class TokenService {
     return req.cookies?.[envConfig.cookie.refreshToken.name] || req.body?.refreshToken
   }
 
+  private _setCookie(
+    res: Response,
+    name: string,
+    value: string,
+    config: Omit<CookieConfig, 'name'>,
+    effectiveMaxAge?: number
+  ) {
+    const maxAgeToUse = effectiveMaxAge ?? config.maxAge
+    if (value && maxAgeToUse > 0) {
+      res.cookie(name, value, {
+        path: config.path,
+        domain: config.domain,
+        maxAge: maxAgeToUse,
+        httpOnly: config.httpOnly,
+        secure: config.secure,
+        sameSite: config.sameSite
+      })
+      this.logger.debug(`${name} cookie set successfully with maxAge: ${maxAgeToUse}`)
+    } else {
+      this.logger.warn(`res.cookie SKIPPED for ${name}. Reason:`, !value ? `${name} missing` : 'MaxAge not positive')
+    }
+  }
+
   setTokenCookies(res: Response, accessToken: string, refreshToken: string, maxAgeForRefreshTokenCookie?: number) {
     const accessTokenConfig = envConfig.cookie.accessToken
     const refreshTokenConfig = envConfig.cookie.refreshToken
 
-    const actualRefreshTokenMaxAge = maxAgeForRefreshTokenCookie ?? refreshTokenConfig.maxAge
-
-    if (accessToken && accessTokenConfig.maxAge > 0) {
-      res.cookie(accessTokenConfig.name, accessToken, {
-        path: accessTokenConfig.path,
-        domain: accessTokenConfig.domain,
-        maxAge: accessTokenConfig.maxAge,
-        httpOnly: accessTokenConfig.httpOnly,
-        secure: accessTokenConfig.secure,
-        sameSite: accessTokenConfig.sameSite
-      })
-      this.logger.debug('Access token cookie set successfully')
-    } else {
-      this.logger.warn(
-        'res.cookie SKIPPED for access_token. Reason:',
-        !accessToken ? 'AccessToken missing' : 'MaxAge not positive'
-      )
-    }
-
-    if (refreshToken && actualRefreshTokenMaxAge > 0) {
-      res.cookie(refreshTokenConfig.name, refreshToken, {
-        path: refreshTokenConfig.path,
-        domain: refreshTokenConfig.domain,
-        maxAge: actualRefreshTokenMaxAge,
-        httpOnly: refreshTokenConfig.httpOnly,
-        secure: refreshTokenConfig.secure,
-        sameSite: refreshTokenConfig.sameSite
-      })
-      this.logger.debug('Refresh token cookie set successfully with maxAge:', actualRefreshTokenMaxAge)
-    } else {
-      this.logger.warn(
-        'res.cookie SKIPPED for refresh_token. Reason:',
-        !refreshToken ? 'RefreshToken missing' : 'MaxAge not positive'
-      )
-    }
+    this._setCookie(res, accessTokenConfig.name, accessToken, accessTokenConfig)
+    this._setCookie(res, refreshTokenConfig.name, refreshToken, refreshTokenConfig, maxAgeForRefreshTokenCookie)
   }
 
   clearTokenCookies(res: Response) {
@@ -369,28 +362,28 @@ export class TokenService {
     await this.redisService.hset(sessionKey, 'lastActiveAt', now.toISOString())
     this.logger.debug(`Session ${sessionId} last active time updated.`)
 
-    const accessTokenJti = uuidv4()
+    const newAccessTokenJti = uuidv4()
     const newAccessToken = this.signAccessToken({
       userId: parseInt(sessionDetails.userId, 10),
       deviceId: parseInt(sessionDetails.deviceId, 10),
       roleId: parseInt(sessionDetails.roleId, 10),
       roleName: sessionDetails.roleName,
       sessionId: sessionId,
-      jti: accessTokenJti
+      jti: newAccessTokenJti
     })
+    await this.redisService.hset(sessionKey, 'currentAccessTokenJti', newAccessTokenJti)
+    auditLogDetails.newAccessTokenJti = newAccessTokenJti
 
-    await this.redisService.hset(sessionKey, 'currentAccessTokenJti', accessTokenJti)
-
-    const shouldRotateRefreshToken = false
-    let newRefreshTokenJti: string | undefined = clientRefreshTokenJti
-    let maxAgeForCookie: number | undefined =
-      parseInt(sessionDetails.maxAgeForRefreshTokenCookie, 10) || envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
+    const shouldRotateRefreshToken = true
+    let newRefreshTokenJti: string | undefined = undefined
+    let maxAgeForCookie: number | undefined = undefined
 
     if (shouldRotateRefreshToken) {
-      const oldRtTtl = await this.redisService.ttl(
-        `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${clientRefreshTokenJti}`
-      )
-      await this.markRefreshTokenJtiAsUsed(clientRefreshTokenJti, sessionId, oldRtTtl > 0 ? oldRtTtl : undefined)
+      this.logger.debug(`Rotating refresh token for session ${sessionId}. Old RT JTI: ${clientRefreshTokenJti}`)
+      const oldRtKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${clientRefreshTokenJti}`
+      const oldRtTtl = await this.redisService.ttl(oldRtKey)
+      const blacklistTtl = oldRtTtl > 0 ? oldRtTtl : 300
+      await this.markRefreshTokenJtiAsUsed(clientRefreshTokenJti, sessionId, blacklistTtl)
 
       newRefreshTokenJti = uuidv4()
       const rememberMe = sessionDetails.rememberMe === 'true'
@@ -401,18 +394,36 @@ export class TokenService {
       }
       const newRtTtlSeconds = maxAgeForCookie > 0 ? Math.floor(maxAgeForCookie / 1000) : 0
 
-      await this.redisService.set(
-        `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${newRefreshTokenJti}`,
-        sessionId,
-        newRtTtlSeconds
-      )
-      await this.redisService.hset(sessionKey, 'currentRefreshTokenJti', newRefreshTokenJti)
-      await this.redisService.sadd(
-        `${REDIS_KEY_PREFIX.DEVICE_REFRESH_TOKENS}${sessionDetails.deviceId}`,
-        newRefreshTokenJti
-      )
+      if (newRtTtlSeconds > 0) {
+        await this.redisService.set(
+          `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${newRefreshTokenJti}`,
+          sessionId,
+          newRtTtlSeconds
+        )
+      } else {
+        await this.redisService.set(
+          `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${newRefreshTokenJti}`,
+          sessionId,
+          Math.floor(envConfig.ABSOLUTE_SESSION_LIFETIME_MS / 1000)
+        )
+      }
 
+      await this.redisService.hset(sessionKey, 'currentRefreshTokenJti', newRefreshTokenJti)
+      if (sessionDetails.deviceId) {
+        await this.redisService.sadd(
+          `${REDIS_KEY_PREFIX.DEVICE_REFRESH_TOKENS}${sessionDetails.deviceId}`,
+          newRefreshTokenJti
+        )
+      }
       this.logger.log(`Rotated Refresh Token for session ${sessionId}. New RT JTI: ${newRefreshTokenJti}`)
+      auditLogDetails.rotatedToNewRefreshTokenJti = newRefreshTokenJti
+    } else {
+      newRefreshTokenJti = clientRefreshTokenJti
+      maxAgeForCookie =
+        parseInt(sessionDetails.maxAgeForRefreshTokenCookie, 10) || envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
+      this.logger.debug(
+        `Refresh token rotation is OFF. Reusing RT JTI: ${clientRefreshTokenJti} for session ${sessionId}`
+      )
     }
 
     this.auditLogService.recordAsync({
@@ -423,8 +434,9 @@ export class TokenService {
       userAgent,
       details: {
         ...auditLogDetails,
-        newAccessTokenJti: accessTokenJti,
-        returnedNewRefreshToken: shouldRotateRefreshToken ? newRefreshTokenJti : undefined
+        accessToken: newAccessToken,
+        refreshToken: shouldRotateRefreshToken ? newRefreshTokenJti : undefined,
+        maxAgeForRefreshTokenCookie: shouldRotateRefreshToken ? maxAgeForCookie : undefined
       }
     })
 
@@ -441,25 +453,27 @@ export class TokenService {
     const sessionDetails = await this.redisService.hgetall(sessionKey)
 
     if (!sessionDetails || Object.keys(sessionDetails).length === 0) {
-      this.logger.warn(`Session ${sessionId} not found or already invalidated.`)
+      this.logger.warn(`Attempted to invalidate a non-existent session: ${sessionId}`)
       return
     }
 
-    const { userId, deviceId, currentAccessTokenJti, currentRefreshTokenJti } = sessionDetails
+    const userId = parseInt(sessionDetails.userId, 10)
+    const currentAccessTokenJti = sessionDetails.currentAccessTokenJti
+    const currentRefreshTokenJti = sessionDetails.currentRefreshTokenJti
 
     if (currentAccessTokenJti) {
-      let atExp = 0
       await this.invalidateAccessTokenJti(currentAccessTokenJti, Math.floor(Date.now() / 1000) + 60)
     }
     if (currentRefreshTokenJti) {
       await this.invalidateRefreshTokenJti(currentRefreshTokenJti, sessionId)
     }
 
+    const deletePipeline = this.redisService.client.pipeline()
     if (userId) {
-      await this.redisService.srem(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`, sessionId)
+      deletePipeline.srem(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`, sessionId)
     }
-
-    await this.redisService.del(sessionKey)
+    deletePipeline.del(sessionKey)
+    await deletePipeline.exec()
 
     this.logger.log(`Session ${sessionId} and associated tokens have been invalidated.`)
   }
@@ -470,21 +484,13 @@ export class TokenService {
     const sessionIds = await this.redisService.smembers(userSessionsKey)
 
     if (sessionIds && sessionIds.length > 0) {
-      const pipeline = this.redisService.client.pipeline() // Get a raw pipeline
+      const pipeline = this.redisService.client.pipeline()
       for (const sessionId of sessionIds) {
         const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-        // Invalidate associated tokens (AT JTI, RT JTI)
-        // This logic is simplified here; ideally, hgetall for each session might be too slow for many sessions.
-        // A more optimized approach might involve storing JTIs differently or accepting some staleness.
-        // For now, we will delete the session and blacklist based on what we can.
-        // This part needs careful consideration for performance with many sessions.
-
-        // Quick blacklist of RTs if their JTIs are stored in a way that can be bulk-retrieved or patterned.
-        // Assuming currentRefreshTokenJti is in session details:
         const currentRefreshTokenJti = await this.redisService.hget(sessionKey, 'currentRefreshTokenJti')
         if (currentRefreshTokenJti) {
           const rtKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${currentRefreshTokenJti}`
-          const ttl = await this.redisService.ttl(rtKey) // Use TTL if available
+          const ttl = await this.redisService.ttl(rtKey)
           const blacklistTtlSeconds = ttl > 0 ? ttl : Math.floor(ms(envConfig.REFRESH_TOKEN_EXPIRES_IN) / 1000)
           if (blacklistTtlSeconds > 0) {
             pipeline.set(
@@ -499,17 +505,13 @@ export class TokenService {
           pipeline.del(rtKey)
         }
 
-        const currentAccessTokenJti = await this.redisService.hget(sessionKey, 'currentAccessTokenJti')
-        if (currentAccessTokenJti) {
-          // Access token expiry is usually short, so blacklisting until its natural expiry is fine.
-          // We need its expiry time (exp) to set TTL for blacklist. This is not in sessionDetails directly.
-          // For simplicity in bulk, we might use a default short TTL for AT blacklist or rely on session deletion.
-          // Here, we'll just rely on session deletion to make ATs invalid when guard checks session.
-        }
+        // const currentAccessTokenJti = await this.redisService.hget(sessionKey, 'currentAccessTokenJti') // Commented out/removed as AT JTI handling is through session deletion
+        // if (currentAccessTokenJti) {
+        // } // Removed empty block
 
-        pipeline.del(sessionKey) // Delete session details
+        pipeline.del(sessionKey)
       }
-      pipeline.del(userSessionsKey) // Delete the set of user sessions
+      pipeline.del(userSessionsKey)
       await pipeline.exec()
       this.logger.log(`Invalidated ${sessionIds.length} sessions for user ${userId}.`)
     } else {

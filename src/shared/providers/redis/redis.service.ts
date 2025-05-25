@@ -21,8 +21,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy() {
-    this.redisClient.quit()
-    this.logger.log('Redis client connection closed.')
+    this.logger.log('Closing Redis connection...')
+    void this.redisClient.quit()
   }
 
   get client(): Redis {
@@ -31,57 +31,57 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   // --- Generic Commands ---
   async get(key: RedisKey): Promise<string | null> {
-    return this.redisClient.get(key)
+    return await this.redisClient.get(key)
   }
 
   async set(key: RedisKey, value: RedisValue, ttlSeconds?: number): Promise<'OK'> {
     if (ttlSeconds) {
-      return this.redisClient.set(key, value, 'EX', ttlSeconds)
+      return await this.redisClient.set(key, value, 'EX', ttlSeconds)
     }
-    return this.redisClient.set(key, value)
+    return await this.redisClient.set(key, value)
   }
 
   async del(keys: RedisKey | RedisKey[]): Promise<number> {
     const keysToDelete = Array.isArray(keys) ? keys : [keys]
     if (keysToDelete.length === 0) return 0
-    return this.redisClient.del(keysToDelete)
+    return await this.redisClient.del(keysToDelete)
   }
 
   async exists(keys: RedisKey | RedisKey[]): Promise<number> {
     const keysToCheck = Array.isArray(keys) ? keys : [keys]
     if (keysToCheck.length === 0) return 0
-    return this.redisClient.exists(keysToCheck)
+    return await this.redisClient.exists(keysToCheck)
   }
 
   async expire(key: RedisKey, seconds: number): Promise<number> {
-    return this.redisClient.expire(key, seconds)
+    return await this.redisClient.expire(key, seconds)
   }
 
   async ttl(key: RedisKey): Promise<number> {
-    return this.redisClient.ttl(key)
+    return await this.redisClient.ttl(key)
   }
 
   async incr(key: RedisKey): Promise<number> {
-    return this.redisClient.incr(key)
+    return await this.redisClient.incr(key)
   }
 
   async decr(key: RedisKey): Promise<number> {
-    return this.redisClient.decr(key)
+    return await this.redisClient.decr(key)
   }
 
   // --- Hash Commands ---
   async hget(key: RedisKey, field: string): Promise<string | null> {
-    return this.redisClient.hget(key, field)
+    return await this.redisClient.hget(key, field)
   }
 
   async hset(key: RedisKey, field: string, value: RedisValue): Promise<number>
   async hset(key: RedisKey, data: Record<string, RedisValue>): Promise<number>
   async hset(key: RedisKey, fieldOrData: string | Record<string, RedisValue>, value?: RedisValue): Promise<number> {
     if (typeof fieldOrData === 'string' && value !== undefined) {
-      return this.redisClient.hset(key, fieldOrData, value)
+      return await this.redisClient.hset(key, fieldOrData, value)
     }
     if (typeof fieldOrData === 'object') {
-      return this.redisClient.hset(key, fieldOrData)
+      return await this.redisClient.hset(key, fieldOrData)
     }
     // Should not happen with TypeScript, but as a safeguard
     throw new Error('Invalid arguments for hset')
@@ -89,85 +89,85 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async hmget(key: RedisKey, fields: string[]): Promise<(string | null)[]> {
     if (fields.length === 0) return []
-    return this.redisClient.hmget(key, ...fields)
+    return await this.redisClient.hmget(key, ...fields)
   }
 
   async hgetall(key: RedisKey): Promise<Record<string, string>> {
-    return this.redisClient.hgetall(key)
+    return await this.redisClient.hgetall(key)
   }
 
   async hdel(key: RedisKey, fields: string | string[]): Promise<number> {
     const fieldsToDelete = Array.isArray(fields) ? fields : [fields]
     if (fieldsToDelete.length === 0) return 0
-    return this.redisClient.hdel(key, ...fieldsToDelete)
+    return await this.redisClient.hdel(key, ...fieldsToDelete)
   }
 
   async hincrby(key: RedisKey, field: string, increment: number): Promise<number> {
-    return this.redisClient.hincrby(key, field, increment)
+    return await this.redisClient.hincrby(key, field, increment)
   }
 
   // --- Set Commands ---
   async sadd(key: RedisKey, members: RedisValue | RedisValue[]): Promise<number> {
     const membersToAdd = Array.isArray(members) ? members : [members]
     if (membersToAdd.length === 0) return 0
-    return this.redisClient.sadd(key, ...membersToAdd)
+    return await this.redisClient.sadd(key, ...membersToAdd)
   }
 
   async srem(key: RedisKey, members: RedisValue | RedisValue[]): Promise<number> {
     const membersToRemove = Array.isArray(members) ? members : [members]
     if (membersToRemove.length === 0) return 0
-    return this.redisClient.srem(key, ...membersToRemove)
+    return await this.redisClient.srem(key, ...membersToRemove)
   }
 
   async smembers(key: RedisKey): Promise<string[]> {
-    return this.redisClient.smembers(key)
+    return await this.redisClient.smembers(key)
   }
 
   async sismember(key: RedisKey, member: RedisValue): Promise<number> {
-    return this.redisClient.sismember(key, member)
+    return await this.redisClient.sismember(key, member)
   }
 
   async scard(key: RedisKey): Promise<number> {
-    return this.redisClient.scard(key)
+    return await this.redisClient.scard(key)
   }
 
   // --- List Commands ---
   async lpush(key: RedisKey, elements: RedisValue | RedisValue[]): Promise<number> {
     const elementsToPush = Array.isArray(elements) ? elements : [elements]
     if (elementsToPush.length === 0) return 0
-    return this.redisClient.lpush(key, ...elementsToPush)
+    return await this.redisClient.lpush(key, ...elementsToPush)
   }
 
   async rpush(key: RedisKey, elements: RedisValue | RedisValue[]): Promise<number> {
     const elementsToPush = Array.isArray(elements) ? elements : [elements]
     if (elementsToPush.length === 0) return 0
-    return this.redisClient.rpush(key, ...elementsToPush)
+    return await this.redisClient.rpush(key, ...elementsToPush)
   }
 
   async lpop(key: RedisKey): Promise<string | null>
   async lpop(key: RedisKey, count: number): Promise<string[]>
   async lpop(key: RedisKey, count?: number): Promise<string | null | string[]> {
     if (count !== undefined) {
-      return this.redisClient.lpop(key, count)
+      return await this.redisClient.lpop(key, count)
     }
-    return this.redisClient.lpop(key)
+    return await this.redisClient.lpop(key)
   }
 
   async rpop(key: RedisKey): Promise<string | null>
   async rpop(key: RedisKey, count: number): Promise<string[]>
   async rpop(key: RedisKey, count?: number): Promise<string | null | string[]> {
     if (count !== undefined) {
-      return this.redisClient.rpop(key, count)
+      return await this.redisClient.rpop(key, count)
     }
-    return this.redisClient.rpop(key)
+    return await this.redisClient.rpop(key)
   }
 
   async llen(key: RedisKey): Promise<number> {
-    return this.redisClient.llen(key)
+    return await this.redisClient.llen(key)
   }
 
   async lrange(key: RedisKey, start: number, stop: number): Promise<string[]> {
-    return this.redisClient.lrange(key, start, stop)
+    return await this.redisClient.lrange(key, start, stop)
   }
 
   // --- JSON specific (if using RedisJSON module, otherwise serialize/deserialize manually) ---
@@ -186,7 +186,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async setJson(key: RedisKey, value: any, ttlSeconds?: number): Promise<'OK'> {
     try {
       const jsonString = JSON.stringify(value)
-      return this.set(key, jsonString, ttlSeconds)
+      return await this.set(key, jsonString, ttlSeconds)
     } catch (error) {
       this.logger.error(`Failed to stringify JSON for key ${String(key)}:`, error)
       throw new Error('Failed to stringify JSON for Redis')
@@ -216,7 +216,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const foundKeys: string[] = []
     let cursor = 0
     do {
-      const [nextCursor, keys] = await this.scan(cursor, pattern, 100) // Scan 100 keys at a time
+      const [nextCursor, keys] = await this.scan(cursor, pattern, 100)
       keys.forEach((key) => foundKeys.push(key))
       cursor = parseInt(nextCursor, 10)
     } while (cursor !== 0)
@@ -230,7 +230,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async deleteKeysByPattern(pattern: string): Promise<number> {
     const keysToDelete = await this.findKeys(pattern)
     if (keysToDelete.length > 0) {
-      return this.del(keysToDelete)
+      return await this.del(keysToDelete)
     }
     return 0
   }
@@ -247,7 +247,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     fn: (pipeline: ReturnType<Redis['pipeline']>) => ReturnType<Redis['pipeline']>
   ): Promise<[Error | null, any][] | null> {
     const pipeline = this.redisClient.pipeline()
-    return fn(pipeline).exec()
+    return await fn(pipeline).exec()
   }
 
   /**
@@ -263,6 +263,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     this.logger.warn(
       `Executing FLUSHDB on database ${this.redisClient.options.db}. This will delete all keys in the current DB.`
     )
-    return this.redisClient.flushdb()
+    return await this.redisClient.flushdb()
   }
 }

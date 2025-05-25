@@ -5,14 +5,45 @@ import { AuditLogQueryType, AuditLogType } from './audit-log.model'
 import { PaginatedResponseType } from 'src/shared/models/pagination.model'
 import { AuditLogStatus } from './audit-log.service'
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 
 @Injectable()
 export class AuditLogRepository extends BaseRepository<AuditLogType> {
   constructor(
     protected readonly prismaService: PrismaService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private readonly redisService: RedisService
   ) {
     super(prismaService, AuditLogRepository.name)
+  }
+
+  public async invalidateAllAuditLogListsCache(): Promise<void> {
+    this.logger.debug('Invalidating all audit log list caches with pattern audit-logs:*')
+    try {
+      const pattern = 'audit-logs:*'
+      const keys = await this.redisService.findKeys(pattern)
+      if (keys.length > 0) {
+        await this.redisService.del(keys)
+        this.logger.debug(`Invalidated ${keys.length} audit log list cache keys matching pattern ${pattern}.`)
+      } else {
+        this.logger.debug(`No audit log list cache keys found to invalidate with pattern ${pattern}.`)
+      }
+    } catch (error) {
+      this.logger.error('Error invalidating audit log list caches:', error)
+    }
+  }
+
+  public async invalidateAuditLogDistinctCache(): Promise<void> {
+    this.logger.debug('Invalidating audit log distinct caches...')
+    try {
+      const distinctKeys = ['audit-logs:actions:distinct', 'audit-logs:entities:distinct']
+      for (const key of distinctKeys) {
+        await this.cacheManager.del(key)
+      }
+      this.logger.debug(`Invalidated distinct audit log caches: ${distinctKeys.join(', ')}`)
+    } catch (error) {
+      this.logger.error('Error invalidating distinct audit log caches:', error)
+    }
   }
 
   async findAll(

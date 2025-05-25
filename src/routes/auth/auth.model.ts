@@ -255,3 +255,15 @@ export type TrustDeviceBodyType = z.infer<typeof TrustDeviceBodySchema>
 export type RememberMeBodyType = z.infer<typeof RememberMeBodySchema>
 
 export type RefreshTokenSuccessResType = z.infer<typeof RefreshTokenSuccessResSchema>
+
+// Schema for new device management endpoints
+export const UntrustDeviceBodySchema = z.object({}).strict() // Empty body
+
+export const LogoutFromDeviceBodySchema = z
+  .object({
+    deviceId: z.number().int().positive()
+  })
+  .strict()
+
+export type UntrustDeviceBodyType = z.infer<typeof UntrustDeviceBodySchema>
+export type LogoutFromDeviceBodyType = z.infer<typeof LogoutFromDeviceBodySchema>

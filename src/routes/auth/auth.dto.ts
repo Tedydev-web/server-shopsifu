@@ -20,7 +20,9 @@ import {
   AccessTokenResSchema,
   TrustDeviceBodySchema,
   RememberMeBodySchema,
-  RefreshTokenSuccessResSchema
+  RefreshTokenSuccessResSchema,
+  UntrustDeviceBodySchema,
+  LogoutFromDeviceBodySchema
 } from 'src/routes/auth/auth.model'
 
 export class RegisterBodyDTO extends createZodDto(RegisterBodySchema) {}
@@ -66,3 +68,7 @@ export class TrustDeviceBodyDTO extends createZodDto(TrustDeviceBodySchema) {}
 export class RememberMeBodyDTO extends createZodDto(RememberMeBodySchema) {}
 
 export class RefreshTokenSuccessResDTO extends createZodDto(RefreshTokenSuccessResSchema) {}
+
+export class UntrustDeviceBodyDTO extends createZodDto(UntrustDeviceBodySchema) {}
+
+export class LogoutFromDeviceBodyDTO extends createZodDto(LogoutFromDeviceBodySchema) {}

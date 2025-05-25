@@ -10,12 +10,14 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 import { Prisma } from '@prisma/client'
 import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 
 @Injectable()
 export class PermissionRepo extends BaseRepository<PermissionType> {
   constructor(
     protected readonly prismaService: PrismaService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private readonly redisService: RedisService
   ) {
     super(prismaService, PermissionRepo.name)
   }
@@ -23,15 +25,23 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
   private async invalidatePermissionItemCache(id: number) {
     await this.cacheManager.del(`permission:${id}`)
     await this.cacheManager.del(`permission:${id}:includeDeleted`)
-    // Consider list cache invalidation strategy (e.g., versioning, or specific key deletion)
+    await this.invalidateAllPermissionListsCache()
   }
 
   private async invalidateAllPermissionListsCache() {
-    this.logger.warn(
-      'invalidateAllPermissionListsCache called - specific list invalidation or versioning is preferred.'
-    )
-    // Example: await this.cacheManager.del('permissions:list:all');
-    // Or implement more granular list key invalidation if possible.
+    this.logger.debug('Invalidating all permission list caches with pattern permission:list:*')
+    try {
+      const pattern = 'permission:list:*'
+      const keys = await this.redisService.findKeys(pattern)
+      if (keys.length > 0) {
+        await this.redisService.del(keys)
+        this.logger.debug(`Invalidated ${keys.length} permission list cache keys matching pattern ${pattern}.`)
+      } else {
+        this.logger.debug(`No permission list cache keys found to invalidate with pattern ${pattern}.`)
+      }
+    } catch (error) {
+      this.logger.error('Error invalidating permission list caches:', error)
+    }
   }
 
   async findAll(
@@ -172,7 +182,6 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
     })
 
     await this.invalidatePermissionItemCache(id)
-    await this.invalidateAllPermissionListsCache()
 
     return result
   }
@@ -194,7 +203,6 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
     })
 
     await this.invalidatePermissionItemCache(id)
-    await this.invalidateAllPermissionListsCache()
 
     return result
   }
@@ -209,7 +217,6 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
     })
 
     await this.invalidatePermissionItemCache(id)
-    await this.invalidateAllPermissionListsCache()
 
     return result
   }
@@ -233,7 +240,6 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
     })
 
     await this.invalidatePermissionItemCache(id)
-    await this.invalidateAllPermissionListsCache()
 
     return result
   }
