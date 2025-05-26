@@ -90,31 +90,56 @@ export class AuthController {
   @IsPublic()
   @ZodSerializerDto(RegisterResDTO)
   // @Throttle({ short: { limit: 5, ttl: 10000 }, long: { limit: 20, ttl: 60000 } })
-  register(@Body() body: RegisterBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
-    return this.authService.register({
-      ...body,
-      userAgent,
-      ip
-    })
+  register(
+    @Body() body: RegisterBodyDTO,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    const sltCookie = req.cookies?.[CookieNames.SLT_TOKEN]
+    return this.authService.register(
+      {
+        ...body,
+        userAgent,
+        ip,
+        sltCookie
+      },
+      res
+    )
   }
 
   @Post('send-otp')
   @IsPublic()
   @ZodSerializerDto(MessageResDTO)
   // @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })
-  sendOTP(@Body() body: SendOTPBodyDTO) {
-    return this.authService.sendOTP(body)
+  sendOTP(
+    @Body() body: SendOTPBodyDTO,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    return this.authService.sendOTP(
+      {
+        ...body,
+        ipAddress: ip,
+        userAgent
+      },
+      res
+    )
   }
 
   @Post('verify-code')
   @IsPublic()
   @ZodSerializerDto(VerifyCodeResDTO)
   // @Throttle({ short: { limit: 5, ttl: 10000 }, long: { limit: 30, ttl: 60000 } })
-  verifyCode(@Body() body: VerifyCodeBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
+  verifyCode(@Body() body: VerifyCodeBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string, @Req() req: Request) {
+    const sltCookie = req.cookies?.[CookieNames.SLT_TOKEN]
     return this.authService.verifyCode({
       ...body,
       userAgent,
-      ip
+      ip,
+      sltCookie
     })
   }
 
@@ -269,12 +294,23 @@ export class AuthController {
   @IsPublic()
   @ZodSerializerDto(MessageResDTO)
   // @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })
-  resetPassword(@Body() body: ResetPasswordBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
-    return this.authService.resetPassword({
-      ...body,
-      userAgent,
-      ip
-    })
+  resetPassword(
+    @Body() body: ResetPasswordBodyDTO,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    const sltCookie = req.cookies?.[CookieNames.SLT_TOKEN]
+    return this.authService.resetPassword(
+      {
+        ...body,
+        userAgent,
+        ip,
+        sltCookie
+      },
+      res
+    )
   }
 
   @Post('2fa/setup')
@@ -310,13 +346,16 @@ export class AuthController {
     @Body() body: TwoFactorVerifyBodyDTO,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ) {
+    const sltCookie = req.cookies?.[CookieNames.SLT_TOKEN]
     return this.authService.verifyTwoFactor(
       {
         ...body,
         userAgent,
-        ip
+        ip,
+        sltCookie
       },
       res
     )

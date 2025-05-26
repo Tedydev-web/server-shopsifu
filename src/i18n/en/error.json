@@ -49,6 +49,7 @@
   "Error.Auth.Google.UserInfoFailed": "Failed to retrieve user information from Google.",
   "Error.Auth.Session.AbsoluteLifetimeExceeded": "Your session has expired due to reaching its maximum lifetime. Please log in again.",
   "Error.Auth.Device.MissingSessionCreationTime": "Device session creation time is missing. Please re-authenticate.",
+  "Error.Auth.Otp.TooManyAttempts": "You have made too many incorrect OTP attempts. Please try again later or request a new OTP.",
   "Error.Global.Unknown": "An unknown error occurred.",
   "Error.Global.ValidationFailed": "Validation failed. Please check your input.",
   "Error.Global.SerializationFailed": "Data serialization failed. Please try again.",
@@ -76,5 +77,8 @@
   "Error.Auth.Session.InvalidRevokeOperation": "Invalid session revocation operation. Please provide valid parameters.",
   "Error.Auth.Session.RevokedRemotely": "Your session has been revoked. Please log in again.",
   "Error.Auth.Session.MaxSessionsReached": "You have reached the maximum number of active sessions. Some old or untrusted sessions/devices may have been automatically logged out. Please review your active sessions.",
-  "Error.Auth.Device.MaxDevicesReached": "You have reached the maximum number of allowed devices. Some old or untrusted devices may have been automatically removed. Please review your devices."
+  "Error.Auth.Device.MaxDevicesReached": "You have reached the maximum number of allowed devices. Some old or untrusted devices may have been automatically removed. Please review your devices.",
+  "Error.Auth.Otp.UnsupportedTypeForAnonymousFlow": "The selected OTP type is not supported for anonymous requests. Please ensure you are using a valid flow.",
+  "Auth.Otp.VerifiedSuccessfully": "OTP has been verified successfully.",
+  "Error.Auth.Otp.NotVerified": "OTP has not been verified for the current operation. Please verify OTP first."
 }

@@ -18,7 +18,8 @@ export type ConditionGuardType = (typeof ConditionGuard)[keyof typeof ConditionG
 export const CookieNames = {
   ACCESS_TOKEN: 'access_token',
   REFRESH_TOKEN: 'refresh_token',
-  CSRF_TOKEN: 'xsrf-token'
+  CSRF_TOKEN: 'xsrf-token',
+  SLT_TOKEN: 'slt_token'
 } as const
 
 export type CookieNamesType = (typeof CookieNames)[keyof typeof CookieNames]

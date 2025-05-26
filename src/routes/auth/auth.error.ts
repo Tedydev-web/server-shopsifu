@@ -171,10 +171,9 @@ export const InvalidDeviceException = createApiError(
 )
 
 export const DeviceMismatchException = createApiError(
-  HttpStatus.UNAUTHORIZED,
-  'Unauthenticated',
-  'Error.Auth.Device.Mismatch',
-  'device'
+  HttpStatus.BAD_REQUEST,
+  'DeviceMismatch',
+  'Error.Auth.Device.Mismatch'
 )
 
 export const DeviceSetupFailedException = createApiError(
@@ -189,6 +188,12 @@ export const DeviceAssociationFailedException = createApiError(
   'InternalServerError',
   'Error.Auth.Device.AssociationFailed',
   'device'
+)
+
+export const TooManyOTPAttemptsException = createApiError(
+  HttpStatus.TOO_MANY_REQUESTS,
+  'TooManyOtpAttempts',
+  'Error.Auth.Otp.TooManyAttempts'
 )
 
 export function createDeviceSetupFailedException(messageKey = 'Error.Auth.Device.SetupFailed') {

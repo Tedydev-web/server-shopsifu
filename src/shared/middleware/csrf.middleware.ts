@@ -1,32 +1,55 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
-import csurf from 'csurf'
-import envConfig from '../config'
+import csrf from 'csurf'
+import envConfig from 'src/shared/config'
 import { SecurityHeaders } from '../constants/auth.constant'
 
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {
   private readonly logger = new Logger(CsrfMiddleware.name)
-  private readonly csrfProtection: any
+  private csrfProtection: (req: Request, res: Response, next: NextFunction) => void
 
   constructor() {
-    const csrfSecretCookieConfig = envConfig.cookie.csrfSecret
-    this.csrfProtection = csurf({
+    const csrfSecretCookieConfig = envConfig.cookie.csrfSecretCookie
+    if (!csrfSecretCookieConfig || !csrfSecretCookieConfig.name) {
+      this.logger.error('CSRF secret cookie configuration or name is missing in envConfig.cookie')
+      throw new Error('CSRF secret cookie configuration error')
+    }
+    if (!envConfig.COOKIE_SECRET) {
+      this.logger.error('COOKIE_SECRET is not defined in envConfig. Cannot initialize CSRF protection.')
+      throw new Error('COOKIE_SECRET is not defined for CSRF protection')
+    }
+    if (!envConfig.cookie.csrfToken || !envConfig.cookie.csrfToken.name) {
+      this.logger.error('CSRF token cookie configuration or name is missing in envConfig.cookie.csrfToken')
+      throw new Error('CSRF token cookie configuration error')
+    }
+
+    this.csrfProtection = csrf({
       cookie: {
-        key: csrfSecretCookieConfig.name,
-        httpOnly: csrfSecretCookieConfig.httpOnly,
-        secure: csrfSecretCookieConfig.secure,
-        sameSite: csrfSecretCookieConfig.sameSite,
-        signed: csrfSecretCookieConfig.signed,
-        path: csrfSecretCookieConfig.path,
-        domain: csrfSecretCookieConfig.domain
+        key: envConfig.cookie.csrfSecretCookie.name,
+        path: envConfig.cookie.csrfSecretCookie.path,
+        httpOnly: envConfig.cookie.csrfSecretCookie.httpOnly,
+        secure: envConfig.cookie.csrfSecretCookie.secure,
+        sameSite: envConfig.cookie.csrfSecretCookie.sameSite as 'strict' | 'lax' | 'none' | boolean,
+        domain: envConfig.cookie.csrfSecretCookie.domain,
+        signed: true
       },
-      ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
-      value: (req: Request) => this.csrfTokenExtractor(req)
-    })
+      value: (req: Request) => {
+        const token = req.headers['x-csrf-token'] || req.headers['X-CSRF-Token'] || req.body._csrf
+        const tokenFromHeader = req.headers['x-xsrf-token'] as string
+        const tokenFromBody = req.body?._csrf as string // if forms are used with _csrf field
+        return tokenFromHeader || tokenFromBody
+      }
+    }) as (req: Request, res: Response, next: NextFunction) => void
+    this.logger.verbose(
+      `CSRF Middleware initialized. CSRF Secret Cookie Name: ${envConfig.cookie.csrfSecretCookie.name}, CSRF Token Cookie Name: ${envConfig.cookie.csrfToken.name}` // Đã sửa
+    )
   }
 
   use(req: Request, res: Response, next: NextFunction) {
+    this.logger.debug(`[CsrfMiddleware ENTRY] Cookies: ${JSON.stringify(req.cookies)}`)
+    this.logger.debug(`[CsrfMiddleware ENTRY] Signed Cookies: ${JSON.stringify(req.signedCookies)}`)
+
     this.logger.debug(`CSRF Middleware - Incoming request: ${req.method} ${req.path}`)
 
     if (
@@ -40,60 +63,33 @@ export class CsrfMiddleware implements NestMiddleware {
 
     this.csrfProtection(req, res, (err: any) => {
       if (err) {
-        this.logger.error(
-          `CSRF Protection Error: ${err.code === 'EBADCSRFTOKEN' ? 'Invalid CSRF token' : err.message}`,
-          err.stack
-        )
-        this.logger.error(
-          `CSRF Secret Cookie (${envConfig.cookie.csrfSecret.name} value from req.signedCookies): ${req.signedCookies?.[envConfig.cookie.csrfSecret.name]}`
-        )
-        this.logger.error(
-          `CSRF Token Cookie (${envConfig.cookie.csrfToken.name} value from req.cookies): ${req.cookies?.[envConfig.cookie.csrfToken.name]}`
-        )
-        this.logger.error(
-          `Header value (${SecurityHeaders.CSRF_TOKEN_HEADER} from req.headers): ${String(req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()] || '')}`
-        )
-        res.status(403).json({
-          statusCode: 403,
-          message: 'Invalid CSRF token',
-          error: 'Forbidden'
-        })
-        return
+        this.logger.warn(`CSRF Error: ${err.code} - ${err.message} for ${req.method} ${req.originalUrl}`)
+        // Gửi lỗi CSRF chuẩn
+        return res.status(403).json({ message: 'Invalid CSRF token', code: err.code || 'EBADCSRFTOKEN' })
       }
 
-      const csrfTokenVal = req.csrfToken?.()
-      if (csrfTokenVal) {
+      this.logger.debug(
+        `CSRF Protection Executed. Tokens: req.csrfToken()=${req.csrfToken()}, XSRF-TOKEN Cookie (from client)=${req.cookies?.[envConfig.cookie.csrfToken.name]}, ` +
+          `CSRF Secret Cookie (${envConfig.cookie.csrfSecretCookie.name} value from req.signedCookies): ${req.signedCookies?.[envConfig.cookie.csrfSecretCookie.name]}` // Đã sửa
+      )
+
+      // Đảm bảo XSRF-TOKEN cookie được gửi cho client nếu nó chưa có hoặc đã thay đổi
+      const csrfToken = req.csrfToken()
+      const clientXsrfToken = req.cookies?.[envConfig.cookie.csrfToken.name]
+
+      if (csrfToken && csrfToken !== clientXsrfToken) {
         const csrfTokenCookieConfig = envConfig.cookie.csrfToken
-        res.setHeader(SecurityHeaders.CSRF_TOKEN_HEADER, csrfTokenVal)
-        res.cookie(csrfTokenCookieConfig.name, csrfTokenVal, {
+        res.cookie(csrfTokenCookieConfig.name, csrfToken, {
           httpOnly: csrfTokenCookieConfig.httpOnly,
-          sameSite: csrfTokenCookieConfig.sameSite,
           secure: csrfTokenCookieConfig.secure,
+          sameSite: csrfTokenCookieConfig.sameSite, // Đã sửa lỗi type ở config.ts
           path: csrfTokenCookieConfig.path,
           domain: csrfTokenCookieConfig.domain
+          // Không set maxAge cho XSRF-TOKEN cookie, để nó là session cookie
         })
-        this.logger.debug(
-          `CSRF Middleware - CSRF token (${csrfTokenCookieConfig.name}) set for client: ${csrfTokenVal}`
-        )
-      } else {
-        this.logger.warn(`CSRF Middleware - req.csrfToken() did not return a token for path: ${req.path}`)
+        this.logger.debug(`XSRF-TOKEN cookie set/updated for client with value: ${csrfToken}`)
       }
-
       next()
     })
-  }
-
-  private csrfTokenExtractor(req: Request): string {
-    this.logger.debug(`CSRF Extractor - Attempting to extract token for: ${req.method} ${req.path}`)
-    const tokenFromHeader = req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()]
-    const tokenFromBodyOrQuery = req.body?._csrf || req.query?._csrf
-
-    let token = tokenFromHeader || tokenFromBodyOrQuery
-
-    if (Array.isArray(token)) {
-      token = token[0]
-    }
-    this.logger.debug(`CSRF Extractor - Token found in request (presence): ${!!token}`)
-    return (token as string) || ''
   }
 }

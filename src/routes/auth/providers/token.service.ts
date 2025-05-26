@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import envConfig from 'src/shared/config'
 import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
@@ -11,6 +11,12 @@ import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import ms from 'ms'
 import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
+import {
+  InvalidRefreshTokenException,
+  SessionNotFoundException,
+  AbsoluteSessionLifetimeExceededException,
+  DeviceMismatchException
+} from '../auth.error'
 
 interface CookieConfig {
   name: string
@@ -37,8 +43,8 @@ export class TokenService {
     this.logger.debug(`Signing access token for user ${payload.userId}, session ${payload.sessionId}`)
     return this.jwtService.sign(payload, {
       secret: envConfig.ACCESS_TOKEN_SECRET,
-      expiresIn: envConfig.ACCESS_TOKEN_EXPIRES_IN,
-      algorithm: 'HS256'
+      expiresIn: envConfig.ACCESS_TOKEN_EXPIRY,
+      jwtid: payload.jti
     })
   }
 
@@ -48,8 +54,8 @@ export class TokenService {
     )
     return this.jwtService.sign(payload, {
       secret: envConfig.ACCESS_TOKEN_SECRET,
-      expiresIn: '30s',
-      algorithm: 'HS256'
+      expiresIn: '5m',
+      jwtid: payload.jti
     })
   }
 
@@ -109,38 +115,45 @@ export class TokenService {
   clearTokenCookies(res: Response) {
     const accessTokenConfig = envConfig.cookie.accessToken
     const refreshTokenConfig = envConfig.cookie.refreshToken
-    const csrfTokenConfig = envConfig.cookie.csrfToken
 
+    this.logger.debug(`Clearing access token cookie (${accessTokenConfig.name})`)
     res.clearCookie(accessTokenConfig.name, {
-      domain: accessTokenConfig.domain,
       path: accessTokenConfig.path,
+      domain: accessTokenConfig.domain,
       httpOnly: accessTokenConfig.httpOnly,
       secure: accessTokenConfig.secure,
       sameSite: accessTokenConfig.sameSite
     })
 
+    this.logger.debug(`Clearing refresh token cookie (${refreshTokenConfig.name})`)
     res.clearCookie(refreshTokenConfig.name, {
-      domain: refreshTokenConfig.domain,
       path: refreshTokenConfig.path,
+      domain: refreshTokenConfig.domain,
       httpOnly: refreshTokenConfig.httpOnly,
       secure: refreshTokenConfig.secure,
       sameSite: refreshTokenConfig.sameSite
     })
-
-    res.clearCookie(csrfTokenConfig.name, {
-      domain: csrfTokenConfig.domain,
-      path: csrfTokenConfig.path,
-      httpOnly: csrfTokenConfig.httpOnly,
-      secure: csrfTokenConfig.secure,
-      sameSite: csrfTokenConfig.sameSite
-    })
-
-    this.logger.debug('All token cookies cleared successfully')
   }
 
-  private extractTokenFromHeader(req: Request): string | null {
-    const [type, tokenValue] = req.headers.authorization?.split(' ') || []
-    return type === 'Bearer' ? tokenValue : null
+  clearSltCookie(res: Response) {
+    const sltTokenConfig = envConfig.cookie.sltToken
+    if (sltTokenConfig) {
+      this.logger.debug(`Clearing SLT token cookie (${sltTokenConfig.name})`)
+      res.clearCookie(sltTokenConfig.name, {
+        path: sltTokenConfig.path,
+        domain: sltTokenConfig.domain,
+        httpOnly: sltTokenConfig.httpOnly,
+        secure: sltTokenConfig.secure,
+        sameSite: sltTokenConfig.sameSite
+      })
+    } else {
+      this.logger.warn('SLT token cookie configuration not found, cannot clear SLT cookie.')
+    }
+  }
+
+  public extractTokenFromHeader(req: Request): string | null {
+    const [type, token] = req.headers.authorization?.split(' ') ?? []
+    return type === 'Bearer' ? token : null
   }
 
   async generateTokens(
@@ -167,9 +180,9 @@ export class TokenService {
 
     let refreshTokenExpiresInMs: number
     if (rememberMe) {
-      refreshTokenExpiresInMs = envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
+      refreshTokenExpiresInMs = envConfig.cookie.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
     } else {
-      refreshTokenExpiresInMs = envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
+      refreshTokenExpiresInMs = envConfig.cookie.REFRESH_TOKEN_COOKIE_MAX_AGE
     }
     const refreshTokenExpiresInSeconds = Math.floor(refreshTokenExpiresInMs / 1000)
 
@@ -185,8 +198,10 @@ export class TokenService {
       currentRefreshTokenJti: refreshTokenJti
     })
     const sessionTtl = await this.redisService.ttl(sessionKey)
-    if (sessionTtl < 0 || sessionTtl < refreshTokenExpiresInSeconds) {
-      await this.redisService.expire(sessionKey, Math.floor(envConfig.ABSOLUTE_SESSION_LIFETIME_MS / 1000))
+    const refreshTokenConfiguredExpirySeconds = ms(envConfig.REFRESH_TOKEN_EXPIRY) / 1000
+    if (sessionTtl < refreshTokenConfiguredExpirySeconds) {
+      const remainingAbsoluteLife = envConfig.ABSOLUTE_SESSION_LIFETIME_MS - Date.now()
+      await this.redisService.expire(sessionKey, Math.floor(remainingAbsoluteLife / 1000))
     }
 
     return {
@@ -199,11 +214,9 @@ export class TokenService {
 
   async markRefreshTokenJtiAsUsed(refreshTokenJti: string, sessionId: string, ttlSeconds?: number) {
     this.logger.debug(`Marking refresh token JTI as used (blacklisting): ${refreshTokenJti}`)
-    await this.redisService.set(
-      `${REDIS_KEY_PREFIX.REFRESH_TOKEN_BLACKLIST}${refreshTokenJti}`,
-      'revoked:used',
-      ttlSeconds
-    )
+    const key = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${refreshTokenJti}`
+    const effectiveTtl = ttlSeconds && ttlSeconds > 0 ? ttlSeconds : ms(envConfig.REFRESH_TOKEN_EXPIRY) / 1000
+    await this.redisService.set(key, sessionId, Math.ceil(effectiveTtl))
     await this.redisService.del(`${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`)
 
     const sessionDetails = await this.redisService.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`)
@@ -222,7 +235,7 @@ export class TokenService {
     await this.redisService.set(
       `${REDIS_KEY_PREFIX.REFRESH_TOKEN_BLACKLIST}${refreshTokenJti}`,
       'revoked:logout',
-      ttl > 0 ? ttl : ms(envConfig.REFRESH_TOKEN_EXPIRES_IN) / 1000
+      ttl > 0 ? ttl : ms(envConfig.REFRESH_TOKEN_EXPIRY) / 1000
     )
     await this.redisService.del(rtKey)
 
@@ -396,9 +409,9 @@ export class TokenService {
       newRefreshTokenJti = uuidv4()
       const rememberMe = sessionDetails.rememberMe === 'true'
       if (rememberMe) {
-        maxAgeForCookie = Number(envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE)
+        maxAgeForCookie = Number(envConfig.cookie.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE)
       } else {
-        maxAgeForCookie = Number(envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE)
+        maxAgeForCookie = Number(envConfig.cookie.REFRESH_TOKEN_COOKIE_MAX_AGE)
       }
       const newRtTtlSeconds = maxAgeForCookie > 0 ? Math.floor(maxAgeForCookie / 1000) : 0
 
@@ -428,7 +441,7 @@ export class TokenService {
     } else {
       newRefreshTokenJti = clientRefreshTokenJti
       maxAgeForCookie =
-        parseInt(sessionDetails.maxAgeForRefreshTokenCookie, 10) || envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
+        parseInt(sessionDetails.maxAgeForRefreshTokenCookie, 10) || envConfig.cookie.REFRESH_TOKEN_COOKIE_MAX_AGE
       this.logger.debug(
         `Refresh token rotation is OFF. Reusing RT JTI: ${clientRefreshTokenJti} for session ${sessionId}`
       )
@@ -483,10 +496,9 @@ export class TokenService {
     if (currentRefreshTokenJti) {
       const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${currentRefreshTokenJti}`
       pipeline.del(refreshTokenJtiToSessionKey)
-      const usedRefreshTokenKey = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${currentRefreshTokenJti}`
-      const refreshTokenTTL =
-        (envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE || envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE) / 1000
-      pipeline.set(usedRefreshTokenKey, `INVALIDATED:${reason}`, 'EX', refreshTokenTTL)
+      const rtBlacklistKey = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${currentRefreshTokenJti}`
+      const rtExpirySeconds = ms(envConfig.REFRESH_TOKEN_EXPIRY) / 1000
+      pipeline.set(rtBlacklistKey, sessionId, 'EX', Math.ceil(rtExpirySeconds))
     }
 
     if (currentAccessTokenJti && accessTokenExp) {
@@ -521,47 +533,74 @@ export class TokenService {
   }
 
   async invalidateAllUserSessions(userId: number, reason: string = 'UNKNOWN_BULK_INVALIDATION') {
-    this.logger.warn(`[TokenService] Invalidating all sessions for user ${userId}. Reason: ${reason}`)
     const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
     const sessionIds = await this.redisService.smembers(userSessionsKey)
+    let invalidatedCount = 0
 
-    if (!sessionIds || sessionIds.length === 0) {
-      this.logger.log(`[TokenService] No active sessions found for user ${userId} to invalidate.`)
-      return
+    if (sessionIds.length === 0) {
+      this.logger.debug(`No active sessions found for user ${userId} to invalidate.`)
+      return { invalidatedCount }
     }
 
     const pipeline = this.redisService.client.pipeline()
-    let invalidatedCount = 0
+    const jtisToBlacklist: Array<{ jti: string; exp: number }> = []
 
     for (const sessionId of sessionIds) {
-      await this._addSessionInvalidationToPipeline(pipeline, sessionId, reason)
-      invalidatedCount++
+      const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
+      const sessionData = await this.redisService.hgetall(sessionDetailsKey)
+
+      if (sessionData && sessionData.currentRefreshTokenJti && sessionData.currentAccessTokenJti) {
+        const refreshTokenJti = sessionData.currentRefreshTokenJti
+        const accessTokenJti = sessionData.currentAccessTokenJti
+        const accessTokenExp = Number(sessionData.accessTokenExp) // Assuming accessTokenExp is stored
+
+        // Add JTI to a list for blacklisting after removing session details
+        if (accessTokenJti && accessTokenExp && accessTokenExp * 1000 > Date.now()) {
+          jtisToBlacklist.push({ jti: accessTokenJti, exp: accessTokenExp })
+        }
+        // For refresh tokens, they are typically long-lived; blacklisting their JTI is key.
+        // We don't necessarily need their expiry here for blacklisting, as the JTI itself is the target.
+        // However, if we were to store a TTL with the blacklist entry, we'd need it.
+        // For now, direct blacklisting of JTI (e.g. via SADD to a blacklist set or a key with a long TTL)
+
+        pipeline.del(sessionDetailsKey) // Delete session details from Redis
+        pipeline.srem(userSessionsKey, sessionId) // Remove session ID from user's set of sessions
+
+        // Mark refresh token JTI as used (blacklisted)
+        const rtBlacklistKey = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${refreshTokenJti}`
+        const rtExpirySeconds = ms(envConfig.REFRESH_TOKEN_EXPIRY) / 1000 // Use configured TTL
+        pipeline.set(rtBlacklistKey, sessionId, 'EX', Math.ceil(rtExpirySeconds))
+
+        invalidatedCount++
+        this.logger.log(`Session ${sessionId} for user ${userId} marked for invalidation. Reason: ${reason}`)
+      } else {
+        this.logger.warn(
+          `Session data incomplete or missing for session ${sessionId}, user ${userId}. Removing from set.`
+        )
+        pipeline.srem(userSessionsKey, sessionId) // Clean up inconsistent entry
+      }
     }
+
+    // Blacklist access tokens
+    for (const item of jtisToBlacklist) {
+      const blacklistKey = `${REDIS_KEY_PREFIX.ACCESS_TOKEN_BLACKLIST}${item.jti}`
+      const ttl = item.exp - Math.floor(Date.now() / 1000)
+      if (ttl > 0) {
+        pipeline.set(blacklistKey, 'invalidated', 'EX', ttl)
+      }
+    }
+
+    await pipeline.exec()
 
     if (invalidatedCount > 0) {
-      const results = await pipeline.exec()
-      if (results) {
-        results.forEach(([err, result], index) => {
-          if (err) {
-            this.logger.error(`Error in invalidateAllUserSessions pipeline (command ${index}): ${err.message}`)
-          }
-        })
-        this.logger.log(
-          `[TokenService] Pipeline executed for invalidating ${invalidatedCount} sessions for user ${userId}. Reason: ${reason}.`
-        )
-      } else {
-        this.logger.error(`invalidateAllUserSessions pipeline execution returned null for user ${userId}.`)
-      }
-    } else {
-      this.logger.log(`[TokenService] No sessions were actually marked for invalidation for user ${userId}.`)
+      this.logger.log(`Successfully invalidated ${invalidatedCount} sessions for user ${userId}. Reason: ${reason}`)
+      this.auditLogService.recordAsync({
+        action: 'BULK_SESSION_INVALIDATION',
+        userId,
+        status: AuditLogStatus.SUCCESS,
+        details: { invalidatedCount, reason } as Prisma.JsonObject
+      })
     }
-
-    this.auditLogService.recordAsync({
-      userId,
-      action: 'ALL_SESSIONS_INVALIDATED',
-      status: AuditLogStatus.SUCCESS,
-      details: { reason, invalidatedCount } as Prisma.JsonObject,
-      notes: `All ${invalidatedCount} sessions for user ${userId} were invalidated.`
-    })
+    return { invalidatedCount }
   }
 }

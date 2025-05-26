@@ -30,10 +30,10 @@ export class GoogleService {
     private readonly tokenService: TokenService,
     private readonly redisService: RedisService
   ) {
-    this.oauth2Client = new google.auth.OAuth2(
+    this.oauth2Client = new OAuth2Client(
       envConfig.GOOGLE_CLIENT_ID,
       envConfig.GOOGLE_CLIENT_SECRET,
-      envConfig.GOOGLE_REDIRECT_URI
+      envConfig.GOOGLE_SERVER_REDIRECT_URI
     )
   }
   getAuthorizationUrl({ userAgent, ip }: Omit<GoogleAuthStateType, 'rememberMe'>) {
@@ -145,12 +145,12 @@ export class GoogleService {
         } else {
           // Thiết bị không tin cậy, yêu cầu 2FA
           const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
-            return this.otpService.createOtpToken({
+            return this.otpService.createLoginSessionToken({
               email: user.email,
               type: TypeOfVerificationCode.LOGIN_2FA,
               userId: user.id,
               deviceId: device.id,
-              metadata: { rememberMe: false },
+              metadata: { rememberMe: false, isGoogleAuth: true },
               tx
             })
           })

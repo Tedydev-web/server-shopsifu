@@ -7,12 +7,10 @@ import {
   Prisma,
   PrismaClient,
   RecoveryCode,
-  VerificationCodeType as PrismaVerificationCodeEnum,
   User,
-  VerificationCode as PrismaVerificationCodeModel,
   Device,
-  VerificationToken,
-  UserStatus
+  UserStatus,
+  VerificationCodeType as PrismaVerificationCodeEnum
 } from '@prisma/client'
 import { DeviceService } from 'src/routes/auth/providers/device.service'
 
@@ -66,37 +64,6 @@ export class AuthRepository {
     })
   }
 
-  async createVerificationCode(
-    payload: Pick<PrismaVerificationCodeModel, 'email' | 'code' | 'type' | 'expiresAt'>,
-    prismaClient?: PrismaTransactionClient
-  ): Promise<PrismaVerificationCodeModel> {
-    const client = this.getClient(prismaClient)
-    return await client.verificationCode.upsert({
-      where: {
-        email_code_type: {
-          email: payload.email,
-          code: payload.code,
-          type: payload.type
-        }
-      },
-      create: payload,
-      update: {
-        code: payload.code,
-        expiresAt: payload.expiresAt
-      }
-    })
-  }
-
-  async findUniqueVerificationCode(
-    uniqueValue: Prisma.VerificationCodeWhereUniqueInput,
-    prismaClient?: PrismaTransactionClient
-  ): Promise<PrismaVerificationCodeModel | null> {
-    const client = this.getClient(prismaClient)
-    return await client.verificationCode.findUnique({
-      where: uniqueValue
-    })
-  }
-
   async createDevice(
     data: Pick<DeviceType, 'userId' | 'userAgent' | 'ip'> & Partial<Pick<DeviceType, 'lastActive' | 'isActive'>>,
     prismaClient?: PrismaTransactionClient
@@ -143,132 +110,6 @@ export class AuthRepository {
     return await client.user.update({
       where,
       data
-    })
-  }
-
-  async deleteVerificationCode(
-    uniqueValue: Prisma.VerificationCodeWhereUniqueInput,
-    prismaClient?: PrismaTransactionClient
-  ): Promise<PrismaVerificationCodeModel> {
-    const client = this.getClient(prismaClient)
-    return await client.verificationCode.delete({
-      where: uniqueValue
-    })
-  }
-
-  async deleteVerificationCodesByEmailAndType(
-    data: {
-      email: string
-      type: TypeOfVerificationCodeType
-    },
-    prismaClient?: PrismaTransactionClient
-  ): Promise<Prisma.BatchPayload> {
-    const client = this.getClient(prismaClient)
-    return await client.verificationCode.deleteMany({
-      where: {
-        email: data.email,
-        type: data.type as PrismaVerificationCodeEnum
-      }
-    })
-  }
-
-  async createVerificationToken(
-    data: {
-      token: string
-      email: string
-      type: PrismaVerificationCodeEnum
-      tokenType: TokenTypeType
-      expiresAt: Date
-      userId?: number
-      deviceId?: number
-      metadata?: string
-    },
-    prismaClient?: PrismaTransactionClient
-  ): Promise<VerificationToken> {
-    const client = this.getClient(prismaClient)
-    const createData: Prisma.VerificationTokenCreateInput = {
-      token: data.token,
-      email: data.email,
-      type: data.type,
-      tokenType: data.tokenType,
-      expiresAt: data.expiresAt,
-      metadata: data.metadata
-    }
-
-    if (data.userId !== undefined) {
-      createData.user = { connect: { id: data.userId } }
-    }
-    if (data.deviceId !== undefined) {
-      createData.device = { connect: { id: data.deviceId } }
-    }
-
-    return await client.verificationToken.create({
-      data: createData
-    })
-  }
-
-  async findUniqueVerificationToken(
-    uniqueObject: { token: string },
-    prismaClient?: PrismaTransactionClient
-  ): Promise<VerificationToken | null> {
-    const client = this.getClient(prismaClient)
-    return await client.verificationToken.findUnique({
-      where: uniqueObject
-    })
-  }
-
-  async findVerificationTokens(
-    filter: {
-      email: string
-      type: TypeOfVerificationCodeType
-      tokenType: TokenTypeType
-    },
-    prismaClient?: PrismaTransactionClient
-  ): Promise<VerificationToken[]> {
-    const client = this.getClient(prismaClient)
-    return await client.verificationToken.findMany({
-      where: {
-        email: filter.email,
-        type: filter.type as PrismaVerificationCodeEnum,
-        tokenType: filter.tokenType
-      }
-    })
-  }
-
-  async updateVerificationToken(
-    data: { token: string; metadata?: string },
-    prismaClient?: PrismaTransactionClient
-  ): Promise<VerificationToken> {
-    const client = this.getClient(prismaClient)
-    return await client.verificationToken.update({
-      where: { token: data.token },
-      data: { metadata: data.metadata }
-    })
-  }
-
-  async deleteVerificationToken(
-    uniqueObject: { token: string },
-    prismaClient?: PrismaTransactionClient
-  ): Promise<VerificationToken> {
-    const client = this.getClient(prismaClient)
-    return await client.verificationToken.delete({
-      where: uniqueObject
-    })
-  }
-
-  async deleteVerificationTokenByEmailAndType(
-    email: string,
-    type: TypeOfVerificationCodeType,
-    tokenType: TokenTypeType,
-    prismaClient?: PrismaTransactionClient
-  ): Promise<Prisma.BatchPayload> {
-    const client = this.getClient(prismaClient)
-    return await client.verificationToken.deleteMany({
-      where: {
-        email,
-        type: type as PrismaVerificationCodeEnum,
-        tokenType
-      }
     })
   }
 

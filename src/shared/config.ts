@@ -1,9 +1,9 @@
-import z from 'zod'
+import { z } from 'zod'
 import fs from 'fs'
 import path from 'path'
 import { config } from 'dotenv'
 import ms from 'ms'
-import { CookieNames } from 'src/shared/constants/auth.constant'
+// import { CookieOptions } from 'express' // For SameSite type // Removed as CookieOptions is not strictly needed with explicit types
 
 config({
   path: '.env'
@@ -14,133 +14,235 @@ if (!fs.existsSync(path.resolve('.env'))) {
   process.exit(1)
 }
 
-const configSchema = z.object({
+// Zod schema for environment variables
+const EnvSchema = z.object({
+  // App
   NODE_ENV: z.enum(['development', 'production', 'test', 'staging']).default('development'),
-  DATABASE_URL: z.string(),
-  ACCESS_TOKEN_SECRET: z.string(),
-  ACCESS_TOKEN_EXPIRES_IN: z.string().default('10m'),
-  REFRESH_TOKEN_SECRET: z.string(),
-  REFRESH_TOKEN_EXPIRES_IN: z.string().default('1d'),
-  SECRET_API_KEY: z.string(),
-  ADMIN_NAME: z.string(),
-  ADMIN_PASSWORD: z.string(),
-  ADMIN_EMAIL: z.string(),
-  ADMIN_PHONE_NUMBER: z.string(),
-  RESEND_API_KEY: z.string(),
+  PORT: z.coerce.number().int().positive().default(3000),
+  API_HOST_URL: z.string().url().default('http://localhost:3000'),
+  API_LOCAL_URL: z.string().url().default('http://localhost:3000'),
+  FRONTEND_HOST_URL: z.string().url().default('http://localhost:3001'),
+  FRONTEND_LOCAL_URL: z.string().url().default('http://localhost:3001'),
+  APP_NAME: z.string().default('Shopsifu'),
+
+  // Database
+  DATABASE_URL: z.string().url(),
+
+  // JWT & Cookies
+  ACCESS_TOKEN_SECRET: z.string().min(32),
+  REFRESH_TOKEN_SECRET: z.string().min(32),
+  VERIFICATION_JWT_SECRET: z.string().min(32).default('default_verification_jwt_secret_32_chars'),
+  SLT_JWT_SECRET: z.string().min(32).default('default_slt_jwt_secret_must_be_32_chars_long'),
+  ACCESS_TOKEN_EXPIRY: z.string().default('15m'),
+  REFRESH_TOKEN_EXPIRY: z.string().default('7d'),
+  VERIFICATION_JWT_EXPIRES_IN: z.string().default('10m'),
+  REMEMBER_ME_REFRESH_TOKEN_EXPIRY: z.string().default('30d'),
+  SLT_JWT_EXPIRES_IN: z.string().default('5m'),
+  SLT_EXPIRY_SECONDS: z.coerce.number().int().positive().default(300),
+  ABSOLUTE_SESSION_LIFETIME_MS: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null || val === '') {
+        return undefined
+      }
+      const num = Number(val)
+      if (Number.isInteger(num) && num > 0) {
+        return num
+      }
+      return undefined
+    },
+    z
+      .number()
+      .int()
+      .positive()
+      .default(30 * 24 * 60 * 60 * 1000)
+  ),
+  COOKIE_SECRET: z.string().min(32),
+  COOKIE_DOMAIN: z.string().optional(),
+
+  // CSRF
+  CSRF_SECRET: z.string().min(32),
+
+  // Google OAuth
   GOOGLE_CLIENT_ID: z.string(),
   GOOGLE_CLIENT_SECRET: z.string(),
-  GOOGLE_REDIRECT_URI: z.string(),
-  GOOGLE_CLIENT_REDIRECT_URI: z.string(),
-  APP_NAME: z.string().default('Shopsifu'),
-  LOGIN_SESSION_TOKEN_EXPIRES_IN: z.string().default('15m'),
-  OTP_TOKEN_EXPIRES_IN: z.string().default('15m'),
-  COOKIE_SECRET: z.string(), // Used for signing cookies, including the CSRF secret cookie if not overridden
-  COOKIE_ROOT_DOMAIN: z.string().optional(),
-  CSRF_SECRET: z.string(), // Secret specifically for CSRF token generation and verification by csurf
-  REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN: z.string().default('14d'),
-  ABSOLUTE_SESSION_LIFETIME: z.string().default('30d'),
-  API_HOST_URL: z.string(),
-  API_LOCAL_URL: z.string(),
-  FRONTEND_HOST_URL: z.string(),
-  FRONTEND_LOCAL_URL: z.string(),
-  PORT: z.string().default('3000'),
+  GOOGLE_SERVER_REDIRECT_URI: z.string().url(),
+  GOOGLE_CLIENT_REDIRECT_URI: z.string().url(),
 
-  COOKIE_PATH_ACCESS_TOKEN: z.string().default('/'),
+  // Email (Resend)
+  RESEND_API_KEY: z.string(),
+  EMAIL_FROM_ADDRESS: z.string().email(),
 
-  COOKIE_PATH_REFRESH_TOKEN: z.string().default('/'),
-  COOKIE_PATH_CSRF: z.string().default('/'),
+  // Redis
+  REDIS_HOST: z.string().default('localhost'),
+  REDIS_PORT: z.coerce.number().int().positive().default(6379),
+  REDIS_PASSWORD: z.string().optional(),
+  REDIS_DB: z.coerce.number().int().min(0).default(0),
 
-  // Redis Configuration
-  REDIS_HOST: z.string().default('127.0.0.1'),
-  REDIS_PORT: z.coerce.number().default(6379),
-  REDIS_PASSWORD: z.string().optional().default(''), // Cung cấp giá trị mặc định là chuỗi rỗng
-  REDIS_DB: z.coerce.number().default(0),
-  REDIS_KEY_PREFIX: z.string().default('shopsifu:'),
-  REDIS_DEFAULT_TTL_MS: z.coerce.number().default(60000),
+  // Rate Limiting
+  THROTTLE_TTL: z.coerce.number().int().positive().default(60),
+  THROTTLE_LIMIT: z.coerce.number().int().positive().default(20),
 
-  // Session and Device Limits
-  MAX_ACTIVE_SESSIONS_PER_USER: z.coerce.number().int().positive().optional().default(10),
-  MAX_DEVICES_PER_USER: z.coerce.number().int().positive().optional().default(5)
+  // Cache
+  CACHE_TTL: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 60),
+
+  // Geolocation
+  GEOIP_LITE_COUNTRY_DB_PATH: z.string().optional(),
+  GEOIP_LITE_CITY_DB_PATH: z.string().optional(),
+
+  // Admin
+  ADMIN_EMAIL: z.string().email().default('admin@shopsifu.com'),
+  ADMIN_DEFAULT_PASSWORD: z.string().min(6).default('Admin@123'),
+  ADMIN_NAME: z.string().default('Shopsifu Admin'),
+  ADMIN_DEFAULT_PHONE_NUMBER: z.string().default('0000000000'),
+
+  // Logging
+  LOG_LEVEL: z.enum(['log', 'error', 'warn', 'debug', 'verbose']).default('debug'),
+
+  // Other
+  OTP_EXPIRES_IN: z.string().default('10m'),
+  OTP_EXPIRY_SECONDS: z.coerce.number().int().positive().default(300),
+  OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+
+  MAX_SESSIONS_PER_USER: z.coerce.number().int().positive().default(10),
+  MAX_DEVICES_PER_USER: z.coerce.number().int().positive().default(5),
+  SESSION_INACTIVITY_TIMEOUT_MS: z.coerce.number().int().positive().default(ms('30m')),
+  SECRET_API_KEY: z.string().optional(),
+  FEATURE_FLAG_ENABLE_DETAILED_ERROR_LOGGING: z
+    .preprocess((val) => String(val).toLowerCase() === 'true', z.boolean())
+    .default(true),
+  REDIS_KEY_PREFIX: z.string().optional().default('shopsifu:'),
+  REDIS_DEFAULT_TTL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 60 * 1000)
 })
 
-const configServer = configSchema.safeParse(process.env)
+export type EnvConfigType = z.infer<typeof EnvSchema>
 
-if (!configServer.success) {
-  console.log('Các giá trị khai báo trong file .env không hợp lệ')
-  console.error(configServer.error.format())
-  process.exit(1)
+// Type for cookie configurations within envConfig
+interface CommonCookieOptionsType {
+  httpOnly: boolean
+  secure: boolean
+  path: string
+  sameSite: 'strict' | 'lax'
+  domain?: string
 }
 
-const parsedConfig = configServer.data
-const nodeEnv = parsedConfig.NODE_ENV
-
-let cookieSecure: boolean
-let cookieSameSite: 'lax' | 'strict' | 'none'
-let cookieDomain: string | undefined
-
-switch (nodeEnv) {
-  case 'production':
-    cookieSecure = true
-    cookieSameSite = 'lax'
-    cookieDomain = parsedConfig.COOKIE_ROOT_DOMAIN || undefined
-    break
-  case 'staging':
-    cookieSecure = true
-    cookieSameSite = 'none'
-    cookieDomain = parsedConfig.COOKIE_ROOT_DOMAIN || undefined
-    break
-  case 'development':
-  default:
-    cookieSecure = false
-    cookieSameSite = 'lax'
-    cookieDomain = parsedConfig.COOKIE_ROOT_DOMAIN || 'localhost'
-    break
+interface FullCookieOptionsType extends CommonCookieOptionsType {
+  name: string
+  maxAge: number // in milliseconds
 }
 
-const envConfig = {
-  ...parsedConfig, // Các biến từ process.env đã được parse và validate, bao gồm cả Redis vars
-  ACCESS_TOKEN_COOKIE_MAX_AGE: ms(parsedConfig.ACCESS_TOKEN_EXPIRES_IN),
-  REFRESH_TOKEN_COOKIE_MAX_AGE: ms(parsedConfig.REFRESH_TOKEN_EXPIRES_IN),
-  REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE: ms(parsedConfig.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN),
-  ABSOLUTE_SESSION_LIFETIME_MS: ms(parsedConfig.ABSOLUTE_SESSION_LIFETIME),
+interface CsrfTokenCookieOptionsType {
+  // Specifically for the XSRF-TOKEN cookie
+  name: string
+  httpOnly: boolean // Should be false for XSRF-TOKEN
+  secure: boolean
+  path: string
+  sameSite: 'strict' | 'lax'
+  domain?: string
+  // maxAge is not typically set for XSRF-TOKEN cookie by csurf, it's session-based or managed by the csrfSecretCookie
+}
 
+let envConfigSingleton: EnvConfigType & {
   cookie: {
-    accessToken: {
-      name: CookieNames.ACCESS_TOKEN,
-      path: parsedConfig.COOKIE_PATH_ACCESS_TOKEN,
-      domain: cookieDomain,
-      maxAge: ms(parsedConfig.ACCESS_TOKEN_EXPIRES_IN),
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: cookieSameSite
-    },
-    refreshToken: {
-      name: CookieNames.REFRESH_TOKEN,
-      path: parsedConfig.COOKIE_PATH_REFRESH_TOKEN,
-      domain: cookieDomain,
-      maxAge: ms(parsedConfig.REFRESH_TOKEN_EXPIRES_IN),
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: cookieSameSite
-    },
-    csrfToken: {
-      name: CookieNames.CSRF_TOKEN,
-      path: parsedConfig.COOKIE_PATH_CSRF,
-      domain: cookieDomain,
-      httpOnly: false,
-      secure: cookieSecure,
-      sameSite: cookieSameSite
-    },
-    csrfSecret: {
-      name: '_csrf',
-      path: parsedConfig.COOKIE_PATH_CSRF,
-      domain: cookieDomain,
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: cookieSameSite,
-      signed: true
+    accessToken: FullCookieOptionsType
+    refreshToken: FullCookieOptionsType
+    sltToken: FullCookieOptionsType
+    csrfToken: CsrfTokenCookieOptionsType
+    csrfSecretCookie: FullCookieOptionsType
+    REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE: number
+    REFRESH_TOKEN_COOKIE_MAX_AGE: number
+  }
+}
+
+function createEnvConfig(env: Record<string, string | undefined>) {
+  const validatedEnv = EnvSchema.parse(env)
+
+  const nodeEnv = validatedEnv.NODE_ENV
+  const cookieSecure = nodeEnv === 'production' || nodeEnv === 'staging'
+  const cookieDomain = validatedEnv.COOKIE_DOMAIN || undefined
+
+  const commonBaseCookieOptions: Omit<CommonCookieOptionsType, 'domain' | 'sameSite'> = {
+    httpOnly: true,
+    secure: cookieSecure,
+    path: '/'
+  }
+
+  const accessTokenMaxAge = ms(validatedEnv.ACCESS_TOKEN_EXPIRY)
+  const refreshTokenMaxAge = ms(validatedEnv.REFRESH_TOKEN_EXPIRY)
+  const sltTokenMaxAge = ms(validatedEnv.SLT_JWT_EXPIRES_IN)
+  const rememberMeRefreshTokenMaxAge = ms(validatedEnv.REMEMBER_ME_REFRESH_TOKEN_EXPIRY)
+
+  const accessTokenCookie: FullCookieOptionsType = {
+    name: 'access_token',
+    ...commonBaseCookieOptions,
+    sameSite: 'lax' as const,
+    maxAge: accessTokenMaxAge,
+    domain: cookieDomain
+  }
+
+  const refreshTokenCookie: FullCookieOptionsType = {
+    name: 'refresh_token',
+    ...commonBaseCookieOptions,
+    sameSite: 'strict' as const,
+    maxAge: refreshTokenMaxAge,
+    domain: cookieDomain
+  }
+
+  const sltTokenCookie: FullCookieOptionsType = {
+    name: 'slt_token',
+    ...commonBaseCookieOptions,
+    sameSite: 'strict' as const,
+    maxAge: sltTokenMaxAge,
+    domain: cookieDomain
+  }
+
+  const csrfTokenCookie: CsrfTokenCookieOptionsType = {
+    name: 'xsrf-token',
+    httpOnly: false,
+    secure: cookieSecure,
+    path: '/',
+    sameSite: 'strict' as const,
+    domain: cookieDomain
+  }
+
+  const csrfSecretCookie: FullCookieOptionsType = {
+    name: '_csrf',
+    ...commonBaseCookieOptions,
+    sameSite: 'strict' as const,
+    maxAge: ms('1y'),
+    domain: cookieDomain
+  }
+
+  return {
+    ...validatedEnv,
+    cookie: {
+      accessToken: accessTokenCookie,
+      refreshToken: refreshTokenCookie,
+      sltToken: sltTokenCookie,
+      csrfToken: csrfTokenCookie,
+      csrfSecretCookie: csrfSecretCookie,
+      REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE: rememberMeRefreshTokenMaxAge,
+      REFRESH_TOKEN_COOKIE_MAX_AGE: refreshTokenMaxAge
     }
   }
 }
 
-export default envConfig
+try {
+  envConfigSingleton = createEnvConfig(process.env)
+} catch (error) {
+  if (error instanceof z.ZodError) {
+    console.error('Environment variable validation error:', error.issues)
+    process.exit(1)
+  }
+  console.error('Unknown error during environment variable validation:', error)
+  process.exit(1)
+}
+
+export default envConfigSingleton

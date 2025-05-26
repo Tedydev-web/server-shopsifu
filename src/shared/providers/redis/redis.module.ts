@@ -5,6 +5,7 @@ import Redis, { RedisOptions } from 'ioredis'
 import envConfig from 'src/shared/config'
 import { IORedisKey } from './redis.constants'
 import { RedisService } from './redis.service'
+import { ConfigService } from '@nestjs/config'
 
 const redisClientFactory: Provider = {
   provide: IORedisKey,
@@ -59,32 +60,16 @@ const redisClientFactory: Provider = {
   imports: [
     CacheModule.registerAsync({
       isGlobal: true,
-      useFactory: async () => {
-        const logger = new Logger('CacheManagerRedisStore')
-        try {
-          const store = await redisStore({
-            socket: {
-              host: envConfig.REDIS_HOST,
-              port: envConfig.REDIS_PORT,
-              connectTimeout: 10000
-            },
-            password: envConfig.REDIS_PASSWORD || undefined,
-            database: envConfig.REDIS_DB,
-            ttl: envConfig.REDIS_DEFAULT_TTL_MS,
-            keyPrefix: envConfig.REDIS_KEY_PREFIX ? `${envConfig.REDIS_KEY_PREFIX}cache:` : 'cache:'
-          })
-          logger.log('CacheManager with Redis store configured successfully.')
-          return {
-            store: store
-          }
-        } catch (error) {
-          logger.error('Failed to configure CacheManager with Redis store:', error)
-          // Fallback to in-memory store or handle error as needed
-          return {
-            store: 'memory'
-          }
-        }
-      }
+      useFactory: (configService: ConfigService) => ({
+        store: redisStore,
+        host: configService.get<string>('REDIS_HOST'),
+        port: configService.get<number>('REDIS_PORT'),
+        password: configService.get<string>('REDIS_PASSWORD'),
+        db: configService.get<number>('REDIS_DB'),
+        ttl: envConfig.REDIS_DEFAULT_TTL_MS,
+        keyPrefix: envConfig.REDIS_KEY_PREFIX ? `${envConfig.REDIS_KEY_PREFIX}cache:` : 'cache:'
+      }),
+      inject: [ConfigService]
     })
   ],
   providers: [redisClientFactory, RedisService],

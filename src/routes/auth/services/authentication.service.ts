@@ -1,6 +1,6 @@
 import { Injectable, HttpStatus, Logger } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
-import { LoginBodyType, RegisterBodyType } from 'src/routes/auth/auth.model'
+import { LoginBodyType, RegisterBodyType, TwoFactorVerifyBodyType } from 'src/routes/auth/auth.model'
 import { Response, Request } from 'express'
 import {
   AbsoluteSessionLifetimeExceededException,
@@ -39,6 +39,7 @@ import { OtpService } from '../providers/otp.service'
 import { DeviceService } from '../providers/device.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { JwtService } from '@nestjs/jwt'
+import { CookieNames } from 'src/shared/constants/auth.constant'
 
 @Injectable()
 export class AuthenticationService extends BaseAuthService {
@@ -81,58 +82,64 @@ export class AuthenticationService extends BaseAuthService {
     )
   }
 
-  async register(body: RegisterBodyType & { userAgent?: string; ip?: string }) {
+  async register(body: RegisterBodyType & { userAgent?: string; ip?: string; sltCookie?: string }, res: Response) {
     const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'USER_REGISTER_ATTEMPT',
+      action: 'USER_REGISTER_ATTEMPT_WITH_SLT',
       userEmail: body.email,
       ipAddress: body.ip,
       userAgent: body.userAgent,
       status: AuditLogStatus.FAILURE,
       details: {
-        otpTokenProvided: !!body.otpToken,
         nameProvided: !!body.name,
-        phoneNumberProvided: !!body.phoneNumber
+        phoneNumberProvided: !!body.phoneNumber,
+        sltCookieProvided: !!body.sltCookie
       }
     }
 
+    if (!body.sltCookie) {
+      auditLogEntry.errorMessage = 'Missing SLT cookie for registration.'
+      auditLogEntry.details.reason = 'MISSING_SLT_COOKIE_REGISTER'
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Session.InvalidLogin') // Or a more specific error like 'Error.Auth.MissingRegistrationContext'
+    }
+
     try {
+      const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
+        body.sltCookie,
+        body.ip!,
+        body.userAgent!,
+        TypeOfVerificationCode.REGISTER
+      )
+
+      auditLogEntry.details.sltJti = sltContext.sltJti
+      auditLogEntry.details.sltPurpose = sltContext.purpose
+      auditLogEntry.details.sltEmail = sltContext.email
+
+      if (!sltContext.metadata?.otpVerified || sltContext.metadata.otpVerified !== '1') {
+        auditLogEntry.errorMessage = 'OTP not verified for registration via SLT context.'
+        auditLogEntry.details.reason = 'OTP_NOT_VERIFIED_IN_SLT_REGISTER'
+        // Do not finalize SLT here, user might need to re-verify OTP for this SLT if it's still valid
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.NotVerified') // Create this i18n key
+      }
+
+      if (sltContext.email !== body.email) {
+        auditLogEntry.errorMessage = 'Email mismatch between SLT context and registration body.'
+        auditLogEntry.details.reason = 'EMAIL_MISMATCH_SLT_VS_BODY_REGISTER'
+        // Consider finalizing SLT if email mismatch is a hard stop to prevent reuse with wrong data
+        // await this.otpService.finalizeSlt(sltContext.sltJti);
+        // if (res) this.tokenService.clearSltCookie(res); // Requires res to be passed or handled differently
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Email.Mismatch')
+      }
+
       const user = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
-        const verificationToken = await this.otpService.validateVerificationToken({
-          token: body.otpToken,
-          email: body.email,
-          type: TypeOfVerificationCode.REGISTER,
-          tokenType: 'OTP',
-          tx
-        })
-
-        if (verificationToken.userId) {
-          auditLogEntry.userId = verificationToken.userId
-        }
-        auditLogEntry.details.verificationTokenDeviceId = verificationToken.deviceId
-
-        if (verificationToken.deviceId && body.userAgent && body.ip) {
-          const isValidDevice = await this.deviceService.validateDevice(
-            verificationToken.deviceId,
-            body.userAgent,
-            body.ip,
-            tx
-          )
-          if (!isValidDevice) {
-            auditLogEntry.errorMessage = DeviceMismatchException.message
-            auditLogEntry.details.reason = 'DEVICE_MISMATCH_ON_REGISTER'
-            auditLogEntry.details.validatedDeviceId = verificationToken.deviceId
-            throw DeviceMismatchException
-          }
-          auditLogEntry.details.deviceValidatedOnRegister = true
-        }
-
         const clientRoleId = await this.rolesService.getClientRoleId()
         const hashedPassword = await this.hashingService.hash(body.password)
 
         const existingUserCheck = await tx.user.findUnique({ where: { email: body.email }, select: { id: true } })
         if (existingUserCheck) {
           auditLogEntry.errorMessage = EmailAlreadyExistsException.message
-          auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK'
+          auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK_SLT'
+          throw EmailAlreadyExistsException // This will rollback transaction
         }
 
         const createdUser = await this.authRepository.createUser(
@@ -146,27 +153,76 @@ export class AuthenticationService extends BaseAuthService {
           },
           tx
         )
-
-        auditLogEntry.userId = createdUser.id
-        auditLogEntry.status = AuditLogStatus.SUCCESS
-        auditLogEntry.action = 'USER_REGISTER_SUCCESS'
-        auditLogEntry.details.roleIdAssigned = clientRoleId
-
-        await this.otpService.deleteOtpToken(body.otpToken, tx)
-
+        auditLogEntry.userId = createdUser.id // Set userId for audit log upon successful creation
         return createdUser
       })
+
+      // Finalize SLT and clear cookie outside transaction, after user creation is successful
+      await this.otpService.finalizeSlt(sltContext.sltJti)
+      this.tokenService.clearSltCookie(res) // `res` is now a parameter
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'USER_REGISTER_SUCCESS_WITH_SLT'
+      auditLogEntry.details.roleIdAssigned = await this.rolesService.getClientRoleId()
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      return user
+
+      // Automatically log in the user after successful registration
+      this.logger.debug(
+        `User ${user.email} registered successfully. Proceeding to login. IP: ${body.ip}, UA: ${body.userAgent}`
+      )
+      // Call the main login logic to create session and tokens
+      // This will internally handle device creation/finding and session management
+      const loginResult = await this.login(
+        {
+          email: user.email,
+          password: body.password, // Use the original password for login logic
+          rememberMe: false, // Default to no rememberMe on registration, can be set later
+          userAgent: body.userAgent!,
+          ip: body.ip!
+        },
+        res
+      )
+      // The login method itself will set cookies and return user profile.
+      // The register endpoint might just return the user profile part or a success message.
+
+      // Note: The `login` method above will record its own audit logs for the login part.
+      // We might want to adjust the response from register to reflect that login also occurred.
+
+      return {
+        // Return data consistent with what login would return if successful, or a specific registration success DTO
+        userId: loginResult.userId,
+        email: loginResult.email,
+        name: loginResult.name,
+        role: loginResult.role,
+        isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession,
+        currentDeviceId: loginResult.currentDeviceId
+        // message: 'Registration successful and logged in.' // Or use a DTO
+      }
     } catch (error) {
       if (
         isUniqueConstraintPrismaError(error) ||
-        (auditLogEntry.details.reason === 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK' && !auditLogEntry.errorMessage)
+        (auditLogEntry.details.reason === 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK_SLT' && !auditLogEntry.errorMessage)
       ) {
         auditLogEntry.errorMessage = EmailAlreadyExistsException.message
-        auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS'
+        auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS_SLT'
+        if (body.sltCookie) {
+          // If SLT was involved and registration failed due to existing email, finalize SLT
+          try {
+            const sltContextForCleanup = await this.otpService.validateSltFromCookieAndGetContext(
+              body.sltCookie,
+              body.ip!,
+              body.userAgent!,
+              TypeOfVerificationCode.REGISTER
+            )
+            await this.otpService.finalizeSlt(sltContextForCleanup.sltJti)
+            this.tokenService.clearSltCookie(res)
+          } catch (cleanupError) {
+            this.logger.error(`Error finalizing SLT during registration failure (email exists): ${cleanupError}`)
+          }
+        }
       } else if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during registration'
+        auditLogEntry.errorMessage =
+          error instanceof Error ? error.message : 'Unknown error during registration with SLT'
         if (error instanceof ApiException) {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
@@ -237,62 +293,77 @@ export class AuthenticationService extends BaseAuthService {
 
       if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
         auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
-        const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
-          return this.otpService.createOtpToken({
-            email: user.email,
-            type: TypeOfVerificationCode.LOGIN_2FA,
-            userId: user.id,
-            deviceId: device.id,
-            metadata: {
-              rememberMe: body.rememberMe,
-              sessionId,
-              ip: body.ip,
-              userAgent: body.userAgent,
-              geoCountry: geoLocation?.country,
-              geoCity: geoLocation?.city
-            },
-            tx
-          })
-        })
-
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.notes = '2FA required: Device not trusted.'
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+        const sltJwt = await this.otpService.initiateOtpWithSltCookie({
+          email: user.email,
+          userId: user.id,
+          deviceId: device.id,
+          ipAddress: body.ip,
+          userAgent: body.userAgent,
+          purpose: TypeOfVerificationCode.LOGIN_2FA,
+          metadata: { rememberMe: body.rememberMe, initiatedFrom: 'login' }
+        })
+
+        if (res) {
+          const sltCookieConfig = envConfig.cookie.sltToken
+          res.cookie(sltCookieConfig.name, sltJwt, {
+            path: sltCookieConfig.path,
+            domain: sltCookieConfig.domain,
+            maxAge: sltCookieConfig.maxAge,
+            httpOnly: sltCookieConfig.httpOnly,
+            secure: sltCookieConfig.secure,
+            sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+          })
+          this.logger.debug(`[Login] SLT token cookie (${sltCookieConfig.name}) set for 2FA.`)
+        } else {
+          this.logger.warn('[Login] Response object (res) not available to set SLT cookie for 2FA.')
+        }
+
         const message = await this.i18nService.translate('Auth.Login.2FARequired', {
           lang: I18nContext.current()?.lang
         })
         return {
           message,
-          loginSessionToken: loginSessionToken,
           twoFactorMethod: user.twoFactorMethod
         }
       } else if (!device.isTrusted) {
-        await this.otpService.sendOTP(user.email, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
-        const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
-          return this.otpService.createOtpToken({
-            email: user.email,
-            type: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
-            userId: user.id,
-            deviceId: device.id,
-            metadata: {
-              rememberMe: body.rememberMe,
-              sessionId,
-              ip: body.ip,
-              userAgent: body.userAgent,
-              geoCountry: geoLocation?.country,
-              geoCity: geoLocation?.city
-            },
-            tx
-          })
-        })
-
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.notes = 'Device verification OTP required: Device not trusted.'
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+        const sltJwt = await this.otpService.initiateOtpWithSltCookie({
+          email: user.email,
+          userId: user.id,
+          deviceId: device.id,
+          ipAddress: body.ip,
+          userAgent: body.userAgent,
+          purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
+          metadata: { rememberMe: body.rememberMe, initiatedFrom: 'login' }
+        })
+
+        if (res) {
+          const sltCookieConfig = envConfig.cookie.sltToken
+          res.cookie(sltCookieConfig.name, sltJwt, {
+            path: sltCookieConfig.path,
+            domain: sltCookieConfig.domain,
+            maxAge: sltCookieConfig.maxAge,
+            httpOnly: sltCookieConfig.httpOnly,
+            secure: sltCookieConfig.secure,
+            sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+          })
+          this.logger.debug(`[Login] SLT token cookie (${sltCookieConfig.name}) set for untrusted device OTP.`)
+        } else {
+          this.logger.warn('[Login] Response object (res) not available to set SLT cookie for untrusted device OTP.')
+        }
+
         const message = await this.i18nService.translate('Auth.Login.DeviceVerificationOtpRequired', {
           lang: I18nContext.current()?.lang
         })
         return {
           message,
-          loginSessionToken: loginSessionToken,
           twoFactorMethod: TwoFactorMethodType.OTP
         }
       }
@@ -330,27 +401,32 @@ export class AuthenticationService extends BaseAuthService {
       const decodedToken = this.jwtService.decode(accessToken)
       sessionData.accessTokenExp = decodedToken.exp
 
-      let absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
-      if (isNaN(absoluteSessionLifetimeMs)) {
-        this.logger.warn(
-          `[AuthenticationService.login] Invalid ABSOLUTE_SESSION_LIFETIME_MS detected (NaN): ${envConfig.ABSOLUTE_SESSION_LIFETIME}. Falling back to 30 days.`
+      let effectiveAbsoluteSessionLifetimeSeconds: number
+
+      const absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
+      if (isNaN(absoluteSessionLifetimeMs) || absoluteSessionLifetimeMs <= 0) {
+        this.logger.error(
+          `[AuthenticationService.login] Invalid ABSOLUTE_SESSION_LIFETIME_MS detected (NaN or non-positive): ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}. Falling back to 30 days.`
         )
-        absoluteSessionLifetimeMs = ms('30d') // Fallback to a known good value
+        effectiveAbsoluteSessionLifetimeSeconds = 30 * 24 * 60 * 60 // 30 days in seconds
+      } else {
+        effectiveAbsoluteSessionLifetimeSeconds = Math.floor(ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS) / 1000)
       }
-      sessionData.maxLifetimeExpiresAt = new Date(Date.now() + absoluteSessionLifetimeMs).toISOString()
+      sessionData.maxLifetimeExpiresAt = new Date(
+        Date.now() + effectiveAbsoluteSessionLifetimeSeconds * 1000
+      ).toISOString()
 
       const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
       const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
       const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
 
-      const absoluteSessionLifetimeSeconds = Math.floor(ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS) / 1000)
       const refreshTokenTTL = maxAgeForRefreshTokenCookie
         ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
-        : absoluteSessionLifetimeSeconds
+        : effectiveAbsoluteSessionLifetimeSeconds
 
       await this.redisService.pipeline((pipeline) => {
         pipeline.hmset(sessionKey, sessionData as Record<string, string>)
-        pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
+        pipeline.expire(sessionKey, effectiveAbsoluteSessionLifetimeSeconds)
         pipeline.sadd(userSessionsKey, sessionId)
         pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
         return pipeline
@@ -472,7 +548,8 @@ export class AuthenticationService extends BaseAuthService {
         name: user.name,
         role: user.role.name,
         isDeviceTrustedInSession: device.isTrusted,
-        currentDeviceId: device.id
+        currentDeviceId: device.id,
+        askToTrustDevice: shouldAskToTrustDevice
       }
     } catch (error) {
       this.logger.error('[AuthenticationService.login] Caught error:', error, typeof error)
@@ -498,76 +575,119 @@ export class AuthenticationService extends BaseAuthService {
   }
 
   async logout(req: Request, res: Response) {
-    const accessToken = this.tokenService.extractTokenFromRequest(req)
-    const refreshTokenJti = this.tokenService.extractRefreshTokenFromRequest(req)
-    const auditLogEntry: AuditLogData = {
-      action: 'USER_LOGOUT',
-      status: AuditLogStatus.SUCCESS,
-      details: {
-        accessTokenProvided: !!accessToken,
-        refreshTokenJtiProvided: !!refreshTokenJti
-      } as Prisma.JsonObject
+    const auditLogEntry: Partial<AuditLogData> = {
+      action: 'USER_LOGOUT_ATTEMPT',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string,
+      status: AuditLogStatus.FAILURE
     }
 
-    let sessionIdFromAccessToken: string | undefined = undefined
+    const refreshTokenFromCookie = this.tokenService.extractRefreshTokenFromRequest(req)
+    let activeUserFromToken: AccessTokenPayload | undefined = undefined
 
     try {
+      const accessToken = this.tokenService.extractTokenFromHeader(req) // Try to get AT for logging userId
       if (accessToken) {
-        const decoded = await this.tokenService.verifyAccessToken(accessToken).catch(() => null)
-        if (decoded) {
-          auditLogEntry.userId = decoded.userId
-          sessionIdFromAccessToken = decoded.sessionId
-          if (
-            auditLogEntry.details &&
-            typeof auditLogEntry.details === 'object' &&
-            !Array.isArray(auditLogEntry.details)
-          ) {
-            auditLogEntry.details.deviceId = decoded.deviceId
-            auditLogEntry.details.sessionId = decoded.sessionId
-            auditLogEntry.details.accessTokenJti = decoded.jti
+        try {
+          activeUserFromToken = await this.tokenService.verifyAccessToken(accessToken) // verify even if expired for userId
+          auditLogEntry.userId = activeUserFromToken.userId
+          if (activeUserFromToken.sessionId) {
+            auditLogEntry.details = {
+              ...(auditLogEntry.details as object),
+              sessionId: activeUserFromToken.sessionId
+            } as Prisma.JsonObject
           }
-          await this.tokenService.invalidateAccessTokenJti(decoded.jti, decoded.exp)
+        } catch (e) {
+          this.logger.debug('Could not decode access token during logout, proceeding with refresh token only.')
         }
       }
 
-      if (sessionIdFromAccessToken) {
-        await this.tokenService.invalidateSession(sessionIdFromAccessToken, 'USER_LOGOUT')
-        auditLogEntry.notes = `Session ${sessionIdFromAccessToken} invalidated via access token.`
-      } else if (refreshTokenJti) {
-        const sessionIdFromRefreshToken = await this.tokenService.findSessionIdByRefreshTokenJti(refreshTokenJti)
-        if (sessionIdFromRefreshToken) {
-          await this.tokenService.invalidateSession(sessionIdFromRefreshToken, 'USER_LOGOUT_WITH_REFRESH_TOKEN')
-          auditLogEntry.notes = `Session ${sessionIdFromRefreshToken} invalidated via refresh token JTI ${refreshTokenJti}.`
-          if (
-            auditLogEntry.details &&
-            typeof auditLogEntry.details === 'object' &&
-            !Array.isArray(auditLogEntry.details)
-          ) {
-            auditLogEntry.details.sessionIdFromRt = sessionIdFromRefreshToken
-          }
-        } else {
-          await this.tokenService.invalidateRefreshTokenJti(refreshTokenJti, 'UNKNOWN_SESSION_FOR_RT_ON_LOGOUT')
-          auditLogEntry.notes = `Refresh token JTI ${refreshTokenJti} blacklisted during logout as no active session found.`
+      if (!refreshTokenFromCookie) {
+        this.logger.log('Logout called without refresh token cookie. Clearing only client-side cookies.')
+        this.tokenService.clearTokenCookies(res) // Clear any lingering http-only cookies
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.notes = 'Logout processed: No refresh token, client cookies cleared.'
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        const message = await this.i18nService.translate('Auth.Logout.Processed', {
+          lang: I18nContext.current()?.lang
+        })
+        return { message }
+      }
+
+      const sessionId = await this.tokenService.findSessionIdByRefreshTokenJti(refreshTokenFromCookie)
+      if (sessionId) {
+        auditLogEntry.details = {
+          ...(auditLogEntry.details as object),
+          sessionIdBeingLoggedOut: sessionId
+        } as Prisma.JsonObject
+        if (activeUserFromToken && activeUserFromToken.sessionId !== sessionId) {
+          this.logger.warn(
+            `Logout for session ${sessionId} initiated by user with active session ${activeUserFromToken.sessionId}. This is unusual for standard logout.`
+          )
+          auditLogEntry.notes = 'Logout for a session different from the active AT session.'
         }
+        await this.tokenService.invalidateSession(sessionId, 'USER_LOGOUT')
+        await this.tokenService.markRefreshTokenJtiAsUsed(refreshTokenFromCookie, sessionId) // Mark as used after invalidating session
       } else {
-        auditLogEntry.notes = 'No access token session or refresh token JTI provided during logout.'
+        // If session not found by RT JTI, it might have been already invalidated or RT is stale.
+        // Still proceed to mark RT JTI as used to prevent replay if it's a known JTI.
+        // We don't have a session ID here, so pass a placeholder or handle it in markRefreshTokenJtiAsUsed
+        await this.tokenService.markRefreshTokenJtiAsUsed(refreshTokenFromCookie, 'UNKNOWN_SESSION_ON_LOGOUT')
+        this.logger.warn(
+          `Session ID not found for refresh token JTI during logout. Refresh token JTI: ${refreshTokenFromCookie.substring(0, 10)}...`
+        )
+        auditLogEntry.notes = 'Session not found for refresh token, but RT JTI marked as used.'
       }
 
       this.tokenService.clearTokenCookies(res)
-      await this.auditLogService.record(auditLogEntry)
+      // Clear SLT cookie as well, if it exists, during logout
+      const sltCookieConfig = envConfig.cookie.sltToken
+      res.clearCookie(sltCookieConfig.name, { path: sltCookieConfig.path, domain: sltCookieConfig.domain })
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS // Set success before final record if all goes well
+      auditLogEntry.action = 'USER_LOGOUT_SUCCESS'
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+
       const message = await this.i18nService.translate('Auth.Logout.Success', {
         lang: I18nContext.current()?.lang
       })
       return { message }
     } catch (error) {
+      // Ensure all fields are set for the audit log in case of an error
+      const finalErrorAuditLog: AuditLogData = {
+        action: auditLogEntry.action || 'USER_LOGOUT_EXCEPTION',
+        status: AuditLogStatus.FAILURE,
+        userId: auditLogEntry.userId,
+        userEmail: auditLogEntry.userEmail,
+        ipAddress: auditLogEntry.ipAddress || req?.ip,
+        userAgent: auditLogEntry.userAgent || (req?.headers['user-agent'] as string),
+        errorMessage: error instanceof Error ? error.message : String(error),
+        details: (auditLogEntry.details || { errorType: error?.constructor?.name }) as Prisma.JsonObject,
+        notes: auditLogEntry.notes || 'Exception during logout process',
+        entity: auditLogEntry.entity,
+        entityId: auditLogEntry.entityId,
+        geoLocation: auditLogEntry.geoLocation as Prisma.JsonObject | undefined
+      }
+      // Record the error audit log
+      await this.auditLogService.record(finalErrorAuditLog)
+
+      // Log the error with its own stack trace
+      this.logger.error(
+        `Logout failed: ${finalErrorAuditLog.errorMessage}`,
+        error instanceof Error ? error.stack : undefined,
+        `Audit Details: ${JSON.stringify(finalErrorAuditLog.details)}`
+      )
+
+      // Clear cookies as a safety measure even on error
       this.tokenService.clearTokenCookies(res)
-      auditLogEntry.errorMessage = error.message
-      auditLogEntry.status = AuditLogStatus.FAILURE
-      await this.auditLogService.record(auditLogEntry)
-      const message = await this.i18nService.translate('Auth.Logout.Processed', {
-        lang: I18nContext.current()?.lang
+      const sltCookieConfigOnError = envConfig.cookie.sltToken // Re-declare for scope
+      res.clearCookie(sltCookieConfigOnError.name, {
+        path: sltCookieConfigOnError.path,
+        domain: sltCookieConfigOnError.domain
       })
-      return { message }
+
+      // Re-throw the original error or a generic one
+      throw error
     }
   }
 
@@ -608,8 +728,8 @@ export class AuthenticationService extends BaseAuthService {
     }
 
     const newMaxAgeForRefreshTokenCookie = rememberMe
-      ? envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
-      : envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
+      ? envConfig.cookie.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
+      : envConfig.cookie.REFRESH_TOKEN_COOKIE_MAX_AGE
 
     // Update the cookie with the new maxAge
     this.tokenService.setTokenCookies(res, '', currentRefreshTokenJti, newMaxAgeForRefreshTokenCookie, true)
@@ -638,5 +758,242 @@ export class AuthenticationService extends BaseAuthService {
       lang: I18nContext.current()?.lang
     })
     return { message }
+  }
+
+  async completeLoginWithUntrustedDeviceOtp(
+    body: TwoFactorVerifyBodyType & { userAgent: string; ip: string; sltCookie?: string },
+    res?: Response
+  ) {
+    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
+      action: 'LOGIN_UNTRUSTED_DEVICE_OTP_VERIFY_ATTEMPT',
+      ipAddress: body.ip,
+      userAgent: body.userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: {
+        sltCookieProvided: !!body.sltCookie,
+        codeProvided: !!body.code,
+        rememberMeFromClient: body.rememberMe
+      }
+    }
+
+    if (!body.sltCookie) {
+      auditLogEntry.errorMessage = 'Missing SLT cookie for untrusted device OTP login.'
+      auditLogEntry.details.reason = 'MISSING_SLT_COOKIE'
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.OtpToken.Invalid')
+    }
+
+    try {
+      const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
+        body.sltCookie,
+        body.ip,
+        body.userAgent,
+        TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP
+      )
+
+      auditLogEntry.userId = sltContext.userId
+      auditLogEntry.userEmail = sltContext.email
+      auditLogEntry.details.sltJti = sltContext.sltJti
+      auditLogEntry.details.sltPurpose = sltContext.purpose
+      auditLogEntry.details.sltDeviceId = sltContext.deviceId
+      auditLogEntry.details.sltRememberMe = sltContext.metadata?.rememberMe
+
+      if (!sltContext.email || !sltContext.userId || !sltContext.deviceId) {
+        auditLogEntry.errorMessage = 'Invalid SLT context data (missing email, userId, or deviceId).'
+        auditLogEntry.details.reason = 'INVALID_SLT_CONTEXT_DATA'
+        await this.otpService.finalizeSlt(sltContext.sltJti) // Finalize invalid context
+        if (res) this.tokenService.clearSltCookie(res)
+        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
+      }
+
+      if (!body.code) {
+        auditLogEntry.errorMessage = 'OTP code is missing.'
+        auditLogEntry.details.reason = 'MISSING_OTP_CODE'
+        // Do not finalize SLT here as user might retry with code
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.Invalid')
+      }
+
+      await this.otpService.verifyOtpOnly(
+        sltContext.email,
+        body.code,
+        TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
+        sltContext.userId,
+        body.ip,
+        body.userAgent
+      )
+      auditLogEntry.details.otpVerified = true
+
+      // OTP is valid, finalize SLT and clear cookie
+      await this.otpService.finalizeSlt(sltContext.sltJti)
+      if (res) {
+        this.tokenService.clearSltCookie(res)
+      }
+
+      const user = await this.sharedUserRepository.findUniqueWithRole({ id: sltContext.userId })
+      if (!user) {
+        auditLogEntry.errorMessage = `User not found (ID: ${sltContext.userId}) after OTP verification.`
+        auditLogEntry.details.reason = 'USER_NOT_FOUND_POST_OTP_VERIFY'
+        throw EmailNotFoundException // Or a more generic server error
+      }
+
+      const device = await this.deviceService.findDeviceById(sltContext.deviceId)
+      if (!device) {
+        auditLogEntry.errorMessage = `Device not found (ID: ${sltContext.deviceId}) after OTP verification.`
+        auditLogEntry.details.reason = 'DEVICE_NOT_FOUND_POST_OTP_VERIFY'
+        throw DeviceSetupFailedException // Or a more generic server error
+      }
+
+      // Trust the device as OTP verification was successful for it
+      const trustedDevice = await this.deviceService.trustDevice(device.id, user.id)
+      auditLogEntry.details.deviceTrustedPostOtp = trustedDevice.isTrusted
+
+      const sessionId = uuidv4()
+      const now = new Date()
+      const rememberMe = sltContext.metadata?.rememberMe === true || body.rememberMe === true
+      auditLogEntry.details.finalRememberMe = rememberMe
+
+      const geoLocation: GeolocationData | null = this.geolocationService.lookup(body.ip)
+      if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && geoLocation) {
+        auditLogEntry.details.location = `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
+      }
+
+      const sessionData: Record<string, string | number | boolean | undefined | null> = {
+        userId: user.id,
+        deviceId: trustedDevice.id,
+        ipAddress: body.ip,
+        userAgent: body.userAgent,
+        createdAt: now.toISOString(),
+        lastActiveAt: now.toISOString(),
+        isTrusted: true, // Device is now trusted for this session
+        rememberMe: rememberMe,
+        roleId: user.role.id,
+        roleName: user.role.name,
+        geoCountry: geoLocation?.country,
+        geoCity: geoLocation?.city
+      }
+
+      const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
+        await this.tokenService.generateTokens(
+          {
+            userId: user.id,
+            deviceId: trustedDevice.id,
+            roleId: user.role.id,
+            roleName: user.role.name,
+            sessionId
+          },
+          this.prismaService,
+          rememberMe
+        )
+
+      sessionData.currentAccessTokenJti = accessTokenJti
+      sessionData.currentRefreshTokenJti = refreshTokenJti
+      const decodedToken = this.jwtService.decode(accessToken)
+      if (decodedToken && typeof decodedToken === 'object' && 'exp' in decodedToken) {
+        sessionData.accessTokenExp = decodedToken.exp
+      }
+
+      let effectiveAbsoluteSessionLifetimeSeconds: number
+
+      const absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
+      if (isNaN(absoluteSessionLifetimeMs) || absoluteSessionLifetimeMs <= 0) {
+        this.logger.error(
+          `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Invalid ABSOLUTE_SESSION_LIFETIME_MS: ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}. Falling back to 30 days.`
+        )
+        effectiveAbsoluteSessionLifetimeSeconds = 30 * 24 * 60 * 60 // 30 days in seconds
+      } else {
+        effectiveAbsoluteSessionLifetimeSeconds = Math.floor(ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS) / 1000)
+      }
+      sessionData.maxLifetimeExpiresAt = new Date(
+        Date.now() + effectiveAbsoluteSessionLifetimeSeconds * 1000
+      ).toISOString()
+
+      const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
+      const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
+      const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
+
+      const refreshTokenTTL =
+        maxAgeForRefreshTokenCookie && maxAgeForRefreshTokenCookie > 0
+          ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
+          : effectiveAbsoluteSessionLifetimeSeconds
+
+      await this.redisService.pipeline((pipeline) => {
+        pipeline.hmset(sessionKey, sessionData as Record<string, string>)
+        pipeline.expire(sessionKey, effectiveAbsoluteSessionLifetimeSeconds)
+        pipeline.sadd(userSessionsKey, sessionId)
+        pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
+        return pipeline
+      })
+
+      if (res) {
+        this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
+      } else {
+        this.logger.warn(
+          '[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Response object (res) is NOT present. Cookies will not be set.'
+        )
+      }
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'LOGIN_UNTRUSTED_DEVICE_OTP_VERIFY_SUCCESS'
+      auditLogEntry.details.sessionId = sessionId
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+      this.sessionManagementService
+        .enforceSessionAndDeviceLimits(user.id, sessionId, trustedDevice.id)
+        .catch((limitError) => {
+          this.logger.error(
+            `Error enforcing session/device limits for user ${user.id} after untrusted device OTP login: ${limitError.message}`,
+            limitError.stack
+          )
+        })
+
+      return {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role.name,
+        isDeviceTrustedInSession: true, // Device is now trusted
+        currentDeviceId: trustedDevice.id
+      }
+    } catch (error) {
+      this.logger.error(
+        `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Error during OTP verification or login completion for user ${auditLogEntry.userEmail || 'unknown'}:`,
+        error
+      )
+      if (!auditLogEntry.errorMessage) {
+        if (error instanceof ApiException) {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        } else if (error instanceof Error) {
+          auditLogEntry.errorMessage = error.message
+        } else {
+          auditLogEntry.errorMessage = 'Unknown error during untrusted device OTP login completion'
+        }
+      }
+      // If SLT context might still be active due to an error before finalizeSlt was called
+      if (body.sltCookie && !auditLogEntry.details.otpVerified) {
+        try {
+          const sltContextForCleanup = await this.otpService.validateSltFromCookieAndGetContext(
+            body.sltCookie,
+            body.ip,
+            body.userAgent
+            // No expected purpose, just get it for cleanup if it's still valid
+          )
+          if (sltContextForCleanup && sltContextForCleanup.sltJti) {
+            await this.otpService.finalizeSlt(sltContextForCleanup.sltJti)
+            this.logger.debug('SLT context finalized during error handling.')
+            if (res) this.tokenService.clearSltCookie(res)
+          }
+        } catch (cleanupError) {
+          this.logger.error('Error during SLT context cleanup in error handler:', cleanupError)
+        }
+      } else if (res && auditLogEntry.details.otpVerified === undefined) {
+        // If OTP was not verified (or attempt didn't happen) AND SLT was provided, client might still have cookie
+        // However, if OTP was verified and then something else failed, finalizeSlt + clearSltCookie should have run.
+        // This is a safety net for cases where the error occurs before OTP verification logic, but after SLT validation attempt
+        this.tokenService.clearSltCookie(res)
+      }
+
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
   }
 }

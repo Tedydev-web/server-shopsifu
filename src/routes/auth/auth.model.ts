@@ -10,8 +10,7 @@ export const RegisterBodySchema = UserSchema.pick({
   phoneNumber: true
 })
   .extend({
-    confirmPassword: z.string().min(6).max(100),
-    otpToken: z.string()
+    confirmPassword: z.string().min(6).max(100)
   })
   .strict()
   .superRefine(({ confirmPassword, password }, ctx) => {
@@ -75,7 +74,7 @@ export const VerifyCodeBodySchema = z
   .strict()
 
 export const VerifyCodeResSchema = z.object({
-  otpToken: z.string()
+  message: z.string()
 })
 
 export const RefreshTokenBodySchema = z.object({}).strict()
@@ -132,8 +131,6 @@ export const GetAuthorizationUrlResSchema = z.object({
 
 export const ResetPasswordBodySchema = z
   .object({
-    email: z.string().email(),
-    otpToken: z.string(),
     newPassword: z.string().min(6).max(100),
     confirmNewPassword: z.string().min(6).max(100)
   })
@@ -150,10 +147,27 @@ export const ResetPasswordBodySchema = z
 
 export const DisableTwoFactorBodySchema = z
   .object({
-    type: z.enum([TwoFactorMethodType.TOTP, TwoFactorMethodType.OTP, TwoFactorMethodType.RECOVERY] as const),
-    code: z.string().min(6)
+    otpToken: z.string().optional(),
+    totpCode: z.string().length(6).optional()
   })
   .strict()
+  .superRefine((data, ctx) => {
+    if (!data.otpToken && !data.totpCode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Either otpToken or totpCode must be provided.',
+        path: ['otpToken']
+      })
+    }
+    if (data.otpToken && data.totpCode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide either otpToken or totpCode, not both.',
+        path: ['otpToken']
+      })
+    }
+  })
+
 export const TwoFactorSetupResSchema = z.object({
   secret: z.string(),
   uri: z.string(),
@@ -174,27 +188,28 @@ export const TwoFactorConfirmSetupResSchema = z.object({
 
 export const TwoFactorVerifyBodySchema = z
   .object({
-    loginSessionToken: z.string(),
-    type: z.enum([TwoFactorMethodType.TOTP, TwoFactorMethodType.OTP, TwoFactorMethodType.RECOVERY]),
-    code: z.string()
+    email: z.string().email().optional(),
+    code: z.string().length(6).optional(),
+    recoveryCode: z.string().min(10).optional(),
+    rememberMe: z.boolean().optional().default(false)
   })
   .strict()
-  .refine(
-    (data) => {
-      if (data.code.length === 0) return false
-
-      if (data.type === TwoFactorMethodType.TOTP || data.type === TwoFactorMethodType.OTP) {
-        return data.code.length === 6
-      } else if (data.type === TwoFactorMethodType.RECOVERY) {
-        return data.code.length >= 10
-      }
-      return true
-    },
-    {
-      message: InvalidCodeFormatException.message,
-      path: ['code']
+  .superRefine((data, ctx) => {
+    if (!data.code && !data.recoveryCode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Either code or recoveryCode must be provided.',
+        path: ['code']
+      })
     }
-  )
+    if (data.code && data.recoveryCode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide either code or recoveryCode, not both.',
+        path: ['code']
+      })
+    }
+  })
 
 export const UserProfileResSchema = z.object({
   userId: z.number(),

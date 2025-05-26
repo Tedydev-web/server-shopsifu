@@ -616,34 +616,35 @@ export class SessionManagementService extends BaseAuthService {
     sessionLimitApplied: boolean
   }> {
     this.sessionManagementLogger.debug(
-      `Enforcing session/device limits for user ${userId}. Exclude session: ${currentSessionIdToExclude}, Exclude device: ${currentDeviceIdToExclude}`
+      `Enforcing session and device limits for user ${userId}. Current session: ${currentSessionIdToExclude}, current device: ${currentDeviceIdToExclude}`
     )
     let devicesRemovedCount = 0
-    let sessionsRevokedByDeviceLimit = 0
-    let sessionsRevokedBySessionLimit = 0
+    let sessionsRevokedCount = 0
     let deviceLimitApplied = false
     let sessionLimitApplied = false
 
-    const maxDevices = envConfig.MAX_DEVICES_PER_USER
-    const maxSessions = envConfig.MAX_ACTIVE_SESSIONS_PER_USER
+    // Enforce max active sessions
+    const maxSessions = envConfig.MAX_SESSIONS_PER_USER // Corrected from MAX_ACTIVE_SESSIONS_PER_USER
+    const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
+    const allSessionIds = await this.redisService.smembers(userSessionsKey)
 
     // --- Device Limit Enforcement ---
-    if (maxDevices > 0) {
+    if (maxSessions > 0) {
       const userDevices = await this.prismaService.device.findMany({
         where: { userId, isActive: true },
         orderBy: { lastActive: 'asc' } // Oldest first
       })
 
-      if (userDevices.length > maxDevices) {
+      if (userDevices.length > maxSessions) {
         deviceLimitApplied = true
         const devicesToPotentiallyRemove = userDevices.filter((d) => d.id !== currentDeviceIdToExclude)
         let numDevicesToRemove =
-          devicesToPotentiallyRemove.length - (maxDevices - (userDevices.length - devicesToPotentiallyRemove.length))
+          devicesToPotentiallyRemove.length - (maxSessions - (userDevices.length - devicesToPotentiallyRemove.length))
         //This calculation ensures we only consider removable devices to reach the target count.
 
         if (numDevicesToRemove > 0) {
           this.sessionManagementLogger.log(
-            `User ${userId} has ${userDevices.length} active devices, exceeding limit of ${maxDevices}. Attempting to remove ${numDevicesToRemove} devices.`
+            `User ${userId} has ${userDevices.length} active devices, exceeding limit of ${maxSessions}. Attempting to remove ${numDevicesToRemove} devices.`
           )
 
           // Separate by trust status and sort: untrusted first, then by lastActive
@@ -666,7 +667,7 @@ export class SessionManagementService extends BaseAuthService {
             for (const sessionId of deviceSessions) {
               try {
                 await this.tokenService.invalidateSession(sessionId, 'DEVICE_LIMIT_EXCEEDED')
-                sessionsRevokedByDeviceLimit++
+                sessionsRevokedCount++
               } catch (e) {
                 this.sessionManagementLogger.error(
                   `Failed to invalidate session ${sessionId} for device ${device.id} during device limit enforcement: ${e.message}`
@@ -699,7 +700,7 @@ export class SessionManagementService extends BaseAuthService {
               status: AuditLogStatus.SUCCESS,
               entity: 'Device',
               details: {
-                maxDevices,
+                maxSessions,
                 currentDeviceCount: userDevices.length,
                 removedDevices: devicesActuallyRemoved.map((d) => ({
                   id: d.id,
@@ -707,7 +708,7 @@ export class SessionManagementService extends BaseAuthService {
                   isTrusted: d.isTrusted,
                   lastActive: d.lastActive.toISOString()
                 })),
-                sessionsRevokedRelatedToDevices: sessionsRevokedByDeviceLimit
+                sessionsRevokedRelatedToDevices: sessionsRevokedCount
               } as Prisma.JsonObject,
               notes: `Automatically removed ${devicesActuallyRemoved.length} devices and related sessions due to exceeding device limit.`
             })
@@ -768,7 +769,7 @@ export class SessionManagementService extends BaseAuthService {
                 `Revoking session ${session.sessionId} (on device ${session.deviceId}, trusted: ${session.isDeviceTrusted}, lastActive: ${session.lastActiveAt.toISOString()}) for user ${userId} due to session limit.`
               )
               await this.tokenService.invalidateSession(session.sessionId, 'SESSION_LIMIT_EXCEEDED')
-              sessionsRevokedBySessionLimit++
+              sessionsRevokedCount++
               sessionsActuallyRevokedIds.push(session.sessionId)
             } catch (e) {
               this.sessionManagementLogger.error(
@@ -797,7 +798,7 @@ export class SessionManagementService extends BaseAuthService {
 
     return {
       devicesRemovedCount,
-      sessionsRevokedCount: sessionsRevokedByDeviceLimit + sessionsRevokedBySessionLimit,
+      sessionsRevokedCount,
       deviceLimitApplied,
       sessionLimitApplied
     }

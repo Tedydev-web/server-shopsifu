@@ -37,11 +37,10 @@ model User {
   password            String               @db.VarChar(500)
   phoneNumber         String               @db.VarChar(50)
   avatar              String?              @db.VarChar(1000)
-  status              UserStatus           @default(INACTIVE)
+  status              UserStatus           @default(ACTIVE)
   roleId              Int
   role                Role                 @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   devices             Device[]
-  verificationTokens  VerificationToken[]
   twoFactorEnabled    Boolean?             @default(false)
   twoFactorSecret     String?              @db.VarChar(1000)
   twoFactorMethod     TwoFactorMethodType?
@@ -153,18 +152,6 @@ model UserTranslation {
   @@index([deletedAt])
 }
 
-model VerificationCode {
-  id        Int                  @id @default(autoincrement())
-  email     String               @db.VarChar(500)
-  code      String               @db.VarChar(50)
-  type      VerificationCodeType
-  expiresAt DateTime
-  createdAt DateTime             @default(now())
-
-  @@unique([email, code, type])
-  @@index([expiresAt])
-}
-
 model Device {
   id                 Int                 @id @default(autoincrement())
   userId             Int
@@ -177,7 +164,6 @@ model Device {
   createdAt          DateTime            @default(now())
   isActive           Boolean             @default(true)
   isTrusted          Boolean             @default(false)
-  verificationTokens VerificationToken[]
 
   @@index([userId, fingerprint])
   @@index([userId, lastActive])
@@ -207,7 +193,7 @@ model Permission {
 
 model Role {
   id          Int          @id @default(autoincrement())
-  name        String       @db.VarChar(500)
+  name        String       @unique @db.VarChar(500)
   description String       @default("")
   isActive    Boolean      @default(true)
   permissions Permission[]
@@ -520,24 +506,6 @@ model Message {
 
   readAt    DateTime?
   createdAt DateTime  @default(now())
-}
-
-model VerificationToken {
-  id        Int                  @id @default(autoincrement())
-  token     String               @unique @db.VarChar(1000)
-  userId    Int?
-  user      User?                @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  email     String               @db.VarChar(500)
-  deviceId  Int?
-  device    Device?              @relation(fields: [deviceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  type      VerificationCodeType
-  tokenType String               @db.VarChar(50)
-  metadata  String?              @db.Text
-  expiresAt DateTime
-  createdAt DateTime             @default(now())
-
-  @@index([email, type])
-  @@index([expiresAt])
 }
 
 model RecoveryCode {
