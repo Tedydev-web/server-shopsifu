@@ -11,3 +11,4 @@ export const REDIS_KEY_PREFIX = {
   DEVICE_REFRESH_TOKENS: 'device_refresh_tokens:', // Set: device:{deviceId}:refreshTokens -> Set<refreshTokenJti>
   USER_KNOWN_LOCATIONS: 'user_known_locations:' // Added for tracking known user login locations
 }
+ 

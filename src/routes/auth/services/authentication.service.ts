@@ -137,50 +137,50 @@ export class AuthenticationService extends BaseAuthService {
     }
     try {
       const user = await this.prismaService.user.findUnique({
-        where: { email: body.email },
-        include: { role: true }
-      })
-      if (!user) {
-        auditLogEntry.errorMessage = EmailNotFoundException.message
-        auditLogEntry.details.reason = 'USER_NOT_FOUND'
-        throw EmailNotFoundException
-      }
-      auditLogEntry.userId = user.id
-
-      const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
-      if (!isPasswordMatch) {
-        this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
-        auditLogEntry.errorMessage = InvalidPasswordException.message
-        auditLogEntry.details.reason = 'INVALID_PASSWORD'
-        throw InvalidPasswordException
-      }
-
-      let device: Device
-      try {
-        device = await this.deviceService.findOrCreateDevice({
-          userId: user.id,
-          userAgent: body.userAgent,
-          ip: body.ip
+          where: { email: body.email },
+          include: { role: true }
         })
-        auditLogEntry.details.deviceId = device.id
-      } catch (error) {
-        this.logger.error('[DEBUG AuthenticationService login] Error creating/finding device:', error)
-        auditLogEntry.errorMessage = DeviceSetupFailedException.message
-        auditLogEntry.details.deviceError = 'DeviceSetupFailed'
-        throw DeviceSetupFailedException
-      }
+        if (!user) {
+          auditLogEntry.errorMessage = EmailNotFoundException.message
+          auditLogEntry.details.reason = 'USER_NOT_FOUND'
+          throw EmailNotFoundException
+        }
+        auditLogEntry.userId = user.id
 
-      if (!this.deviceService.isSessionValid(device)) {
-        this.logger.warn(
-          `[SECURITY AuthenticationService login] Absolute session lifetime exceeded for user ${user.id}, device ${device.id}. Forcing re-login.`
-        )
-        auditLogEntry.errorMessage = AbsoluteSessionLifetimeExceededException.message
-        auditLogEntry.details.reason = 'ABSOLUTE_SESSION_LIFETIME_EXCEEDED_LOGIN'
+        const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
+        if (!isPasswordMatch) {
+          this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
+          auditLogEntry.errorMessage = InvalidPasswordException.message
+          auditLogEntry.details.reason = 'INVALID_PASSWORD'
+          throw InvalidPasswordException
+        }
+
+        let device: Device
+        try {
+        device = await this.deviceService.findOrCreateDevice({
+              userId: user.id,
+              userAgent: body.userAgent,
+              ip: body.ip
+        })
+          auditLogEntry.details.deviceId = device.id
+        } catch (error) {
+          this.logger.error('[DEBUG AuthenticationService login] Error creating/finding device:', error)
+          auditLogEntry.errorMessage = DeviceSetupFailedException.message
+          auditLogEntry.details.deviceError = 'DeviceSetupFailed'
+          throw DeviceSetupFailedException
+        }
+
+        if (!this.deviceService.isSessionValid(device)) {
+          this.logger.warn(
+            `[SECURITY AuthenticationService login] Absolute session lifetime exceeded for user ${user.id}, device ${device.id}. Forcing re-login.`
+          )
+          auditLogEntry.errorMessage = AbsoluteSessionLifetimeExceededException.message
+          auditLogEntry.details.reason = 'ABSOLUTE_SESSION_LIFETIME_EXCEEDED_LOGIN'
         auditLogEntry.notes = `All sessions for device ${device.id} should be invalidated due to absolute session lifetime exceeded during login.`
-        throw AbsoluteSessionLifetimeExceededException
-      }
+          throw AbsoluteSessionLifetimeExceededException
+        }
 
-      const shouldAskToTrustDevice = !device.isTrusted
+        const shouldAskToTrustDevice = !device.isTrusted
       const sessionId = uuidv4()
       const now = new Date()
 
@@ -190,8 +190,8 @@ export class AuthenticationService extends BaseAuthService {
         auditLogEntry.details.location = `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
       }
 
-      if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
-        auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
+        if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
+          auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
         const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
           return this.otpService.createOtpToken({
             email: user.email,
@@ -210,18 +210,18 @@ export class AuthenticationService extends BaseAuthService {
           })
         })
 
-        auditLogEntry.status = AuditLogStatus.SUCCESS
-        auditLogEntry.notes = '2FA required: Device not trusted.'
-        const message = await this.i18nService.translate('error.Auth.Login.2FARequired', {
-          lang: I18nContext.current()?.lang
-        })
-        return {
-          message,
-          loginSessionToken: loginSessionToken,
-          twoFactorMethod: user.twoFactorMethod
-        }
+          auditLogEntry.status = AuditLogStatus.SUCCESS
+          auditLogEntry.notes = '2FA required: Device not trusted.'
+          const message = await this.i18nService.translate('error.Auth.Login.2FARequired', {
+            lang: I18nContext.current()?.lang
+          })
+          return {
+            message,
+            loginSessionToken: loginSessionToken,
+            twoFactorMethod: user.twoFactorMethod
+          }
       } else if (!device.isTrusted) {
-        await this.otpService.sendOTP(user.email, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
+          await this.otpService.sendOTP(user.email, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
         const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
           return this.otpService.createOtpToken({
             email: user.email,
@@ -240,17 +240,17 @@ export class AuthenticationService extends BaseAuthService {
           })
         })
 
-        auditLogEntry.status = AuditLogStatus.SUCCESS
+          auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.notes = 'Device verification OTP required: Device not trusted.'
-        const message = await this.i18nService.translate('error.Auth.Login.DeviceVerificationOtpRequired', {
-          lang: I18nContext.current()?.lang
-        })
-        return {
-          message,
-          loginSessionToken: loginSessionToken,
-          twoFactorMethod: TwoFactorMethodType.OTP
+          const message = await this.i18nService.translate('error.Auth.Login.DeviceVerificationOtpRequired', {
+            lang: I18nContext.current()?.lang
+          })
+          return {
+            message,
+            loginSessionToken: loginSessionToken,
+            twoFactorMethod: TwoFactorMethodType.OTP
+          }
         }
-      }
 
       const sessionData: Record<string, string | number | boolean | undefined | null> = {
         userId: user.id,
@@ -283,7 +283,15 @@ export class AuthenticationService extends BaseAuthService {
       sessionData.currentAccessTokenJti = accessTokenJti
       sessionData.currentRefreshTokenJti = refreshTokenJti
       sessionData.accessTokenExp = this.jwtService.decode(accessToken).exp
-      sessionData.maxLifetimeExpiresAt = new Date(Date.now() + ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS)).toISOString()
+
+      let absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
+      if (isNaN(absoluteSessionLifetimeMs)) {
+        this.logger.warn(
+          `[AuthenticationService.login] Invalid ABSOLUTE_SESSION_LIFETIME_MS detected (NaN): ${envConfig.ABSOLUTE_SESSION_LIFETIME}. Falling back to 30 days.`
+        )
+        absoluteSessionLifetimeMs = ms('30d') // Fallback to a known good value
+      }
+      sessionData.maxLifetimeExpiresAt = new Date(Date.now() + absoluteSessionLifetimeMs).toISOString()
 
       const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
       const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
@@ -302,13 +310,13 @@ export class AuthenticationService extends BaseAuthService {
         return pipeline
       })
 
-      if (res) {
+        if (res) {
         this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
-      } else {
-        this.logger.warn(
-          '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
-        )
-      }
+        } else {
+          this.logger.warn(
+            '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
+          )
+        }
 
       // Send email if login from new location on a trusted device
       if (device.isTrusted && geoLocation && geoLocation.country && geoLocation.city) {
@@ -384,16 +392,16 @@ export class AuthenticationService extends BaseAuthService {
         }
       }
 
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'USER_LOGIN_SUCCESS'
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = 'USER_LOGIN_SUCCESS'
       auditLogEntry.details.sessionId = sessionId
-      return {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role.name,
+        return {
+          userId: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role.name,
         isDeviceTrustedInSession: device.isTrusted
-      }
+        }
     } catch (error) {
       this.logger.error('[AuthenticationService.login] Caught error:', error, typeof error)
       if (!auditLogEntry.errorMessage) {

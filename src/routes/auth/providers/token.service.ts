@@ -36,9 +36,9 @@ export class TokenService {
   signAccessToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>) {
     this.logger.debug(`Signing access token for user ${payload.userId}, session ${payload.sessionId}`)
     return this.jwtService.sign(payload, {
-      secret: envConfig.ACCESS_TOKEN_SECRET,
-      expiresIn: envConfig.ACCESS_TOKEN_EXPIRES_IN,
-      algorithm: 'HS256'
+        secret: envConfig.ACCESS_TOKEN_SECRET,
+        expiresIn: envConfig.ACCESS_TOKEN_EXPIRES_IN,
+        algorithm: 'HS256'
     })
   }
 
@@ -47,9 +47,9 @@ export class TokenService {
       `Signing short-lived access token for testing purposes: userId=${payload.userId}, session ${payload.sessionId}`
     )
     return this.jwtService.sign(payload, {
-      secret: envConfig.ACCESS_TOKEN_SECRET,
+        secret: envConfig.ACCESS_TOKEN_SECRET,
       expiresIn: '30s',
-      algorithm: 'HS256'
+        algorithm: 'HS256'
     })
   }
 
@@ -278,8 +278,8 @@ export class TokenService {
         errorMessage: 'Refresh token JTI is blacklisted.',
         details: auditLogDetails
       })
-      return null
-    }
+        return null
+      }
 
     const sessionId = await this.findSessionIdByRefreshTokenJti(clientRefreshTokenJti)
     if (!sessionId) {
@@ -313,8 +313,8 @@ export class TokenService {
         errorMessage: 'Session not found in Redis or is empty.',
         details: auditLogDetails
       })
-      return null
-    }
+          return null
+        }
     auditLogDetails.sessionUserId = parseInt(sessionDetails.userId, 10)
     auditLogDetails.sessionDeviceId = parseInt(sessionDetails.deviceId, 10)
 
@@ -334,8 +334,8 @@ export class TokenService {
         errorMessage: 'Provided refresh token JTI does not match the current one in session. Session invalidated.',
         details: auditLogDetails
       })
-      return null
-    }
+        return null
+      }
 
     const expectedUserAgentFingerprint = this.deviceService.basicDeviceFingerprint(sessionDetails.userAgent)
     const currentUserAgentFingerprint = this.deviceService.basicDeviceFingerprint(userAgent)
@@ -440,11 +440,11 @@ export class TokenService {
       }
     })
 
-    return {
+      return {
       accessToken: newAccessToken,
       refreshToken: shouldRotateRefreshToken ? newRefreshTokenJti : undefined,
       maxAgeForRefreshTokenCookie: shouldRotateRefreshToken ? maxAgeForCookie : undefined
-    }
+      }
   }
 
   async invalidateSession(sessionId: string, reason: string = 'UNKNOWN') {

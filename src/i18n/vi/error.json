@@ -64,5 +64,11 @@
   "HttpStatus.Title.ServiceUnavailable": "Dịch Vụ Không Khả Dụng",
   "HttpStatus.Title.HttpError": "Lỗi HTTP",
   "Error.Auth.Google.CallbackErrorGeneric": "Đã xảy ra lỗi khi đăng nhập bằng Google. Vui lòng thử lại hoặc sử dụng phương thức khác.",
-  "Error.Auth.Google.MissingCode": "Thiếu mã ủy quyền từ Google callback."
+  "Error.Auth.Google.MissingCode": "Thiếu mã ủy quyền từ Google callback.",
+  "Auth.Session.RevokedSuccessfully": "Phiên đã được thu hồi thành công.",
+  "Error.Auth.Session.CannotRevokeCurrent": "Bạn không thể thu hồi phiên hoạt động hiện tại của mình. Vui lòng sử dụng chức năng đăng xuất.",
+  "Error.Auth.Session.NotFound": "Không tìm thấy phiên hoặc bạn không có quyền thu hồi phiên này.",
+  "Error.Auth.Session.MissingSessionIdInToken": "Thiếu định danh phiên trong siêu dữ liệu token. Không thể hoàn thành hành động.",
+  "Auth.Device.NameUpdatedSuccessfully": "Tên thiết bị đã được cập nhật thành công.",
+  "Error.Auth.Device.NotFoundForUser": "Không tìm thấy thiết bị hoặc thiết bị không thuộc về người dùng được chỉ định."
 }

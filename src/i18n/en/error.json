@@ -64,5 +64,11 @@
   "HttpStatus.Title.ServiceUnavailable": "Service Unavailable",
   "HttpStatus.Title.HttpError": "Http Error",
   "Error.Auth.Google.CallbackErrorGeneric": "An error occurred while logging in with Google. Please try again or use another method.",
-  "Error.Auth.Google.MissingCode": "Authorization code is missing from Google callback."
+  "Error.Auth.Google.MissingCode": "Authorization code is missing from Google callback.",
+  "Auth.Session.RevokedSuccessfully": "Session has been revoked successfully.",
+  "Error.Auth.Session.CannotRevokeCurrent": "You cannot revoke your current active session. Please use the logout feature.",
+  "Error.Auth.Session.NotFound": "Session not found or you do not have permission to revoke it.",
+  "Error.Auth.Session.MissingSessionIdInToken": "Session identifier is missing in the token metadata. Action cannot be completed.",
+  "Auth.Device.NameUpdatedSuccessfully": "Device name has been updated successfully.",
+  "Error.Auth.Device.NotFoundForUser": "Device not found or it does not belong to the specified user."
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import {
   DisableTwoFactorBodyType,
   LoginBodyType,
@@ -17,18 +17,18 @@ import { EmailService } from 'src/routes/auth/providers/email.service'
 import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import { InvalidRefreshTokenException } from 'src/routes/auth/auth.error'
 import { TwoFactorService } from 'src/routes/auth/providers/2fa.service'
-import { Response } from 'express'
-import { Request } from 'express'
+import { Response, Request } from 'express'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { AuditLogService } from 'src/routes/audit-log/audit-log.service'
+import { AuditLogService, AuditLogData, AuditLogStatus } from '../audit-log/audit-log.service'
 import { OtpService } from 'src/routes/auth/providers/otp.service'
 import { DeviceService } from 'src/routes/auth/providers/device.service'
 import { AuthenticationService } from './services/authentication.service'
 import { TwoFactorAuthService } from './services/two-factor-auth.service'
 import { OtpAuthService } from './services/otp-auth.service'
-import { DeviceAuthService } from './services/device-auth.service'
 import { PasswordAuthService } from './services/password-auth.service'
 import envConfig from 'src/shared/config'
+import { I18nService, I18nContext } from 'nestjs-i18n'
+import { Prisma } from '@prisma/client'
 
 @Injectable()
 export class AuthService {
@@ -47,9 +47,11 @@ export class AuthService {
     private readonly authenticationService: AuthenticationService,
     private readonly twoFactorAuthService: TwoFactorAuthService,
     private readonly otpAuthService: OtpAuthService,
-    private readonly deviceAuthService: DeviceAuthService,
-    private readonly passwordAuthService: PasswordAuthService
+    private readonly passwordAuthService: PasswordAuthService,
+    private readonly i18nService: I18nService
   ) {}
+
+  private readonly logger = new Logger(AuthService.name)
 
   async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string }) {
     return this.otpAuthService.verifyCode(body)
@@ -72,52 +74,89 @@ export class AuthService {
   }
 
   async refreshToken({ userAgent, ip }: { userAgent: string; ip: string }, req: Request, res?: Response) {
-    const clientRefreshTokenJti = this.tokenService.extractRefreshTokenFromRequest(req)
-    if (!clientRefreshTokenJti) {
-      throw InvalidRefreshTokenException
+    this.logger.debug(`Refresh token request from IP: ${ip}, User-Agent: ${userAgent}`)
+
+    const refreshTokenFromCookie = this.tokenService.extractRefreshTokenFromRequest(req)
+
+    if (!refreshTokenFromCookie) {
+      this.logger.warn('Refresh token not found in request for silent refresh.')
+      // Consider throwing an error or returning a specific response if no refresh token
+      // For now, relying on tokenService.refreshTokenSilently to handle this implicitly
     }
-    const result = await this.tokenService.refreshTokenSilently(clientRefreshTokenJti, userAgent, ip)
-    if (!result || !result.accessToken) {
-      throw InvalidRefreshTokenException
-    }
-    if (res && result.refreshToken) {
+
+    const result = await this.tokenService.refreshTokenSilently(refreshTokenFromCookie || '', userAgent, ip)
+
+    if (result && result.accessToken && res) {
       this.tokenService.setTokenCookies(
         res,
         result.accessToken,
-        result.refreshToken,
+        result.refreshToken || '',
         result.maxAgeForRefreshTokenCookie
       )
-    } else if (res) {
-      const accessTokenConfig = envConfig.cookie.accessToken
-      res.cookie(accessTokenConfig.name, result.accessToken, {
-        path: accessTokenConfig.path,
-        domain: accessTokenConfig.domain,
-        maxAge: accessTokenConfig.maxAge,
-        httpOnly: accessTokenConfig.httpOnly,
-        secure: accessTokenConfig.secure,
-        sameSite: accessTokenConfig.sameSite
+      const message = await this.i18nService.translate('Auth.Token.Refreshed', {
+        lang: I18nContext.current()?.lang
       })
+      return { message, accessToken: result.accessToken }
+    } else {
+      // If refresh failed, ensure cookies are cleared if res is available
+      if (res) {
+        this.tokenService.clearTokenCookies(res)
+      }
+      const message = await this.i18nService.translate('Error.Auth.Token.RefreshFailed', {
+        lang: I18nContext.current()?.lang
+      })
+      // Consider throwing an appropriate HTTP exception here, e.g., UnauthorizedException
+      return { message, error: 'RefreshFailed' } // Or throw new UnauthorizedException(message)
     }
-    return { accessToken: result.accessToken }
   }
 
   async generateTokens(payload: AccessTokenPayloadCreate, _prismaTx?: any, rememberMe?: boolean) {
-    return this.tokenService.generateTokens(payload, undefined, rememberMe)
+    return this.tokenService.generateTokens(payload, _prismaTx, rememberMe)
   }
 
   async logoutFromAllDevices(
     activeUser: AccessTokenPayload,
     ip: string,
     userAgent: string,
-    req: Request,
+    _req: Request, // _req is not used in the new logic
     res: Response
   ) {
-    await this.deviceAuthService.logoutFromAllDevices(activeUser, ip, userAgent)
-    return this.authenticationService.logout(req, res)
-  }
+    const auditLogEntry: Partial<AuditLogData> = {
+      action: 'LOGOUT_ALL_DEVICES_ATTEMPT',
+      userId: activeUser.userId,
+      ipAddress: ip,
+      userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: {
+        currentSessionId: activeUser.sessionId,
+        currentDeviceId: activeUser.deviceId
+      } as Prisma.JsonObject
+    }
 
-  async trustDevice(activeUser: AccessTokenPayload, ip: string, userAgent: string) {
-    return this.deviceAuthService.trustDevice(activeUser, ip, userAgent)
+    try {
+      // Invalidate all other sessions for this user
+      // The reason 'USER_REQUEST_LOGOUT_ALL_EXCLUDING_CURRENT' implies that the current session might be handled differently or next.
+      await this.tokenService.invalidateAllUserSessions(activeUser.userId, 'USER_REQUEST_LOGOUT_ALL_EXCLUDING_CURRENT')
+
+      // Now, invalidate the current session and clear cookies for the user initiating the action
+      await this.tokenService.invalidateSession(activeUser.sessionId, 'CURRENT_SESSION_LOGOUT_AFTER_LOGOUT_ALL')
+      this.tokenService.clearTokenCookies(res)
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'LOGOUT_ALL_DEVICES_SUCCESS'
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+      const message = await this.i18nService.translate('error.Auth.Logout.AllDevicesSuccess', {
+        lang: I18nContext.current()?.lang
+      })
+      return { message }
+    } catch (error) {
+      auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      // Clear cookies even on error as a safety measure
+      this.tokenService.clearTokenCookies(res)
+      throw error
+    }
   }
 
   async setRememberMe(

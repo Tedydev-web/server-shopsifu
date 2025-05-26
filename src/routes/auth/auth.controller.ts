@@ -1,4 +1,20 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Req, Res, Logger } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Ip,
+  Post,
+  Query,
+  Req,
+  Res,
+  Logger,
+  Param,
+  Patch,
+  Delete,
+  UseGuards
+} from '@nestjs/common'
 import { Response, Request } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
@@ -17,13 +33,19 @@ import {
   VerifyCodeResDTO,
   TwoFactorConfirmSetupBodyDTO,
   TwoFactorConfirmSetupResDTO,
-  TrustDeviceBodyDTO,
   RememberMeBodyDTO,
-  RefreshTokenSuccessResDTO,
-  UntrustDeviceBodyDTO,
-  LogoutFromDeviceBodyDTO
+  RefreshTokenSuccessResDTO
 } from 'src/routes/auth/auth.dto'
-import { UserProfileResSchema, LoginSessionResSchema } from 'src/routes/auth/auth.model'
+import {
+  GetActiveSessionsResDTO,
+  RevokeSessionParamsDTO,
+  GetDevicesResDTO,
+  DeviceIdParamsDTO,
+  UpdateDeviceNameBodyDTO,
+  TrustDeviceBodyDTO as SessionTrustDeviceBodyDTO,
+  UntrustDeviceBodyDTO as SessionUntrustDeviceBodyDTO
+} from './dtos/session-management.dto'
+import { UserProfileResSchema, LoginSessionResSchema } from './auth.model'
 import { UseZodSchemas, hasProperty } from 'src/shared/decorators/use-zod-schema.decorator'
 
 import { AuthService } from 'src/routes/auth/auth.service'
@@ -40,7 +62,9 @@ import { CookieNames } from 'src/shared/constants/auth.constant'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { I18nContext } from 'nestjs-i18n'
 import { I18nService } from 'nestjs-i18n'
-import { DeviceAuthService } from 'src/routes/auth/services/device-auth.service'
+import { SessionManagementService } from 'src/routes/auth/services/session-management.service'
+import { AccessTokenGuard } from './guards/access-token.guard'
+import { RolesGuard } from './guards/roles.guard'
 
 @Controller('auth')
 export class AuthController {
@@ -51,7 +75,7 @@ export class AuthController {
     private readonly googleService: GoogleService,
     private readonly tokenService: TokenService,
     private readonly i18nService: I18nService,
-    private readonly deviceAuthService: DeviceAuthService
+    private readonly sessionManagementService: SessionManagementService
   ) {}
 
   @Post('register')
@@ -186,7 +210,6 @@ export class AuthController {
         ip
       })
 
-      // Nếu googleService trả về lỗi để redirect
       if (data.redirectToError) {
         this.logger.error(`[AuthController googleCallback] Error from GoogleService: ${data.errorMessage}`)
         return res.redirect(
@@ -194,7 +217,6 @@ export class AuthController {
         )
       }
 
-      // Nếu googleCallback trả về loginSessionToken, nghĩa là cần 2FA
       if ('loginSessionToken' in data && data.loginSessionToken) {
         const queryParams = new URLSearchParams({
           twoFactorRequired: 'true',
@@ -207,20 +229,13 @@ export class AuthController {
         return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?${queryParams.toString()}`)
       }
 
-      // Nếu không cần 2FA, data sẽ chứa accessToken và refreshToken
       if (data && data.accessToken) {
-        // Chuyển hướng thành công với thông tin người dùng
         this.tokenService.setTokenCookies(res, data.accessToken, data.refreshTokenJti, data.maxAgeForRefreshTokenCookie)
-        // res.redirect(
-        //   `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true&name=${encodeURIComponent(data.user.name || '')}&email=${encodeURIComponent(data.user.email || '')}`
-        // );
-        // Để đơn giản, trả về JSON sau khi set cookie
         res.status(HttpStatus.OK).json({
           message: 'Google login successful, tokens set in cookies.',
           user: data.user
         })
       } else {
-        // Xử lý lỗi nếu không có accessToken (dù googleService nên throw error trước đó)
         const unknownErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
           lang: currentLang
         })
@@ -278,7 +293,7 @@ export class AuthController {
     })
   }
 
-  @Post('2fa/verify')
+  @Post('login/verify')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(UserProfileResSchema)
@@ -297,19 +312,6 @@ export class AuthController {
       },
       res
     )
-  }
-
-  @Post('trust-device')
-  @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(MessageResDTO)
-  // @Throttle({ short: { limit: 5, ttl: 60000 } })
-  trustDevice(
-    @ActiveUser() activeUser: AccessTokenPayload,
-    @Body() _body: TrustDeviceBodyDTO,
-    @Ip() ip: string,
-    @UserAgent() userAgent: string
-  ) {
-    return this.authService.trustDevice(activeUser, ip, userAgent)
   }
 
   @Post('remember-me')
@@ -341,29 +343,89 @@ export class AuthController {
     return this.authService.logoutFromAllDevices(activeUser, ip, userAgent, req, res)
   }
 
-  @Post('untrust-device')
-  @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(MessageResDTO)
-  // @Throttle({ short: { limit: 5, ttl: 60000 } })
-  untrustDevice(
-    @ActiveUser() activeUser: AccessTokenPayload,
-    @Body() _body: UntrustDeviceBodyDTO,
-    @Ip() ip: string,
-    @UserAgent() userAgent: string
-  ) {
-    return this.deviceAuthService.untrustDevice(activeUser, ip, userAgent)
+  @Get('sessions')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @ZodSerializerDto(GetActiveSessionsResDTO)
+  async getActiveSessions(@ActiveUser() activeUser: AccessTokenPayload) {
+    this.logger.debug(
+      `User ${activeUser.userId} fetching active sessions. Current session: ${activeUser.sessionId}, current device: ${activeUser.deviceId}`
+    )
+    const rawSessions = await this.sessionManagementService.getActiveSessions(
+      activeUser.userId,
+      activeUser.sessionId,
+      activeUser.deviceId
+    )
+    this.logger.debug(
+      `Raw active sessions from service - IsArray: ${Array.isArray(rawSessions)}, Value: ${JSON.stringify(rawSessions, null, 2)}`
+    )
+    return rawSessions
   }
 
-  @Post('logout-device')
+  @Delete('sessions/:sessionId')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  // @Throttle({ short: { limit: 5, ttl: 60000 } })
-  logoutFromDevice(
+  revokeSession(@ActiveUser() activeUser: AccessTokenPayload, @Param() params: RevokeSessionParamsDTO) {
+    return this.sessionManagementService.revokeSession(activeUser.userId, params.sessionId, activeUser.sessionId)
+  }
+
+  @Get('devices')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @ZodSerializerDto(GetDevicesResDTO)
+  async getManagedDevices(@ActiveUser('userId') userId: number) {
+    this.logger.debug(`User ${userId} fetching managed devices.`)
+    const rawDevices = await this.sessionManagementService.getManagedDevices(userId)
+    this.logger.debug(
+      `Raw managed devices from service - IsArray: ${Array.isArray(rawDevices)}, Value: ${JSON.stringify(rawDevices, null, 2)}`
+    )
+    return rawDevices
+  }
+
+  @Patch('devices/:deviceId/name')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(MessageResDTO)
+  updateDeviceName(
+    @ActiveUser('userId') userId: number,
+    @Param() params: DeviceIdParamsDTO,
+    @Body() body: UpdateDeviceNameBodyDTO
+  ) {
+    return this.sessionManagementService.updateDeviceName(userId, params.deviceId, body.name)
+  }
+
+  @Post('devices/:deviceId/trust')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(MessageResDTO)
+  trustManagedDevice(
+    @ActiveUser('userId') userId: number,
+    @Param() params: DeviceIdParamsDTO,
+    @Body() _body: SessionTrustDeviceBodyDTO
+  ) {
+    return this.sessionManagementService.trustManagedDevice(userId, params.deviceId)
+  }
+
+  @Post('devices/:deviceId/untrust')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(MessageResDTO)
+  untrustManagedDevice(
+    @ActiveUser('userId') userId: number,
+    @Param() params: DeviceIdParamsDTO,
+    @Body() _body: SessionUntrustDeviceBodyDTO
+  ) {
+    return this.sessionManagementService.untrustManagedDevice(userId, params.deviceId)
+  }
+
+  @Post('devices/:deviceId/logout')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(MessageResDTO)
+  logoutFromManagedDevice(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Body() body: LogoutFromDeviceBodyDTO,
+    @Param() params: DeviceIdParamsDTO,
     @Ip() ip: string,
     @UserAgent() userAgent: string
   ) {
-    return this.deviceAuthService.logoutFromDevice(activeUser, body.deviceId, ip, userAgent)
+    return this.sessionManagementService.logoutFromManagedDevice(activeUser.userId, params.deviceId, {
+      userId: activeUser.userId,
+      ipAddress: ip,
+      userAgent: userAgent
+    })
   }
 }

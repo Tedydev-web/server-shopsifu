@@ -18,11 +18,8 @@ import {
   VerifyCodeBodySchema,
   VerifyCodeResSchema,
   AccessTokenResSchema,
-  TrustDeviceBodySchema,
   RememberMeBodySchema,
-  RefreshTokenSuccessResSchema,
-  UntrustDeviceBodySchema,
-  LogoutFromDeviceBodySchema
+  RefreshTokenSuccessResSchema
 } from 'src/routes/auth/auth.model'
 
 export class RegisterBodyDTO extends createZodDto(RegisterBodySchema) {}
@@ -63,12 +60,6 @@ export class TwoFactorVerifyBodyDTO extends createZodDto(TwoFactorVerifyBodySche
 
 export class UserProfileResDTO extends createZodDto(UserProfileResSchema) {}
 
-export class TrustDeviceBodyDTO extends createZodDto(TrustDeviceBodySchema) {}
-
 export class RememberMeBodyDTO extends createZodDto(RememberMeBodySchema) {}
 
 export class RefreshTokenSuccessResDTO extends createZodDto(RefreshTokenSuccessResSchema) {}
-
-export class UntrustDeviceBodyDTO extends createZodDto(UntrustDeviceBodySchema) {}
-
-export class LogoutFromDeviceBodyDTO extends createZodDto(LogoutFromDeviceBodySchema) {}
