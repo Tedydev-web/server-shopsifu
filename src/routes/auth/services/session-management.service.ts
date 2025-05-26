@@ -26,88 +26,163 @@ export class SessionManagementService extends BaseAuthService {
     const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
     const sessionIds = await this.redisService.smembers(userSessionsKey)
     const activeSessions: ActiveSessionType[] = []
+    const sessionDetailsList: Array<Record<string, string> & { originalSessionId: string }> = []
+    const deviceIdsToFetch = new Set<number>()
 
-    for (const sessionId of sessionIds) {
-      const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-      const sessionDetails = await this.redisService.hgetall(sessionKey)
+    if (sessionIds.length === 0) {
+      return []
+    }
 
-      if (sessionDetails && Object.keys(sessionDetails).length > 0) {
-        // Validate required fields from Redis before proceeding
-        if (
-          !sessionDetails.createdAt ||
-          !sessionDetails.lastActiveAt ||
-          !sessionDetails.deviceId ||
-          !sessionDetails.userId
-        ) {
-          this.sessionManagementLogger.warn(
-            `Session ${sessionId} for user ${sessionDetails.userId || 'UNKNOWN'} is missing critical details (createdAt, lastActiveAt, userId, or deviceId) in Redis. Skipping.`
-          )
-          continue // Skip this problematic session
-        }
+    // Bước 1: Lấy tất cả chi tiết session từ Redis
+    const redisPipeline = this.redisService.client.pipeline()
+    sessionIds.forEach((sessionId) => {
+      redisPipeline.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`)
+    })
+    const results = await redisPipeline.exec()
 
-        // Validate date strings
-        const loggedInAtDate = new Date(sessionDetails.createdAt)
-        const lastActiveAtDate = new Date(sessionDetails.lastActiveAt)
+    if (!results) {
+      this.sessionManagementLogger.warn(`Pipeline to fetch session details for user ${userId} returned null.`)
+      return []
+    }
 
-        if (isNaN(loggedInAtDate.getTime()) || isNaN(lastActiveAtDate.getTime())) {
-          this.sessionManagementLogger.warn(
-            `Session ${sessionId} for user ${sessionDetails.userId} has invalid date formats for createdAt ('${sessionDetails.createdAt}') or lastActiveAt ('${sessionDetails.lastActiveAt}') in Redis. Skipping.`
-          )
-          continue
-        }
-
-        const deviceIdFromSession = parseInt(sessionDetails.deviceId, 10)
-        let deviceName: string | null = null
-        let dbDevice: Device | null = null
-
-        if (!isNaN(deviceIdFromSession)) {
-          dbDevice = await this.prismaService.device.findUnique({ where: { id: deviceIdFromSession } })
-          deviceName = dbDevice?.name || null
-        }
-
-        const uaParser = new UAParser(sessionDetails.userAgent)
-        const browser = uaParser.getBrowser()
-        const os = uaParser.getOS()
-        const deviceTypeParsed = uaParser.getDevice().type || 'unknown'
-
-        const location = sessionDetails.ipAddress ? this.geolocationService.lookup(sessionDetails.ipAddress) : null
-        const locationString = location
-          ? `${location.city || 'Unknown City'}, ${location.country || 'Unknown Country'}`
-          : 'Location unknown'
-
-        const ipAddr = sessionDetails.ipAddress
-        let validIpAddress: string | null = null
-        if (ipAddr && ipAddr.trim() !== '') {
-          // Use Zod to validate if it's a valid IP for consistency with the schema
-          // We'll use a try-catch here as we don't want to break the loop for one bad IP.
-          try {
-            z.string().ip().parse(ipAddr) // This will throw if ipAddr is not a valid IP
-            validIpAddress = ipAddr
-          } catch (e) {
-            this.sessionManagementLogger.warn(
-              `Session ${sessionId} for user ${sessionDetails.userId} has an invalid IP address format ('${ipAddr}') in Redis. Setting to null.`
-            )
-            // validIpAddress remains null
-          }
-        }
-
-        activeSessions.push({
-          sessionId: sessionId,
-          device: {
-            id: deviceIdFromSession,
-            name: deviceName,
-            type: deviceTypeParsed as 'desktop' | 'mobile' | 'tablet' | 'unknown',
-            os: os.name && os.version ? `${os.name} ${os.version}` : os.name || null,
-            browser: browser.name && browser.version ? `${browser.name} ${browser.version}` : browser.name || null,
-            isCurrentDevice: deviceIdFromSession === currentDeviceId && sessionId === currentSessionId
-          },
-          ipAddress: validIpAddress,
-          location: locationString,
-          loggedInAt: loggedInAtDate.toISOString(),
-          lastActiveAt: lastActiveAtDate.toISOString(),
-          isCurrentSession: sessionId === currentSessionId
-        })
+    for (let i = 0; i < results.length; i++) {
+      const pipelineItem = results[i]
+      if (!pipelineItem) {
+        this.sessionManagementLogger.warn(`Pipeline result item at index ${i} for user ${userId} is null. Skipping.`)
+        continue
       }
+
+      const [err, dataFromRedis] = pipelineItem // dataFromRedis is 'any'
+
+      if (err) {
+        this.sessionManagementLogger.warn(
+          `Error in Redis pipeline for session ${sessionIds[i]} (user ${userId}): ${err.message}. Skipping.`
+        )
+        continue
+      }
+
+      if (typeof dataFromRedis !== 'object' || dataFromRedis === null) {
+        this.sessionManagementLogger.warn(
+          `Invalid data type for session ${sessionIds[i]} (user ${userId}): expected object, got ${typeof dataFromRedis}. Skipping.`
+        )
+        continue
+      }
+
+      const sessionDetails = dataFromRedis as Record<string, string>
+
+      if (Object.keys(sessionDetails).length === 0) {
+        this.sessionManagementLogger.warn(`Empty session data for session ${sessionIds[i]} (user ${userId}). Skipping.`)
+        continue
+      }
+
+      if (
+        !sessionDetails.createdAt ||
+        !sessionDetails.lastActiveAt ||
+        !sessionDetails.deviceId ||
+        !sessionDetails.userId ||
+        parseInt(sessionDetails.userId, 10) !== userId
+      ) {
+        this.sessionManagementLogger.warn(
+          `Session ${sessionIds[i]} for user ${
+            sessionDetails.userId || 'UNKNOWN'
+          } is missing critical details or userId mismatch. Skipping.`
+        )
+        continue
+      }
+      sessionDetailsList.push({ ...sessionDetails, originalSessionId: sessionIds[i] })
+      const deviceIdFromSession = parseInt(sessionDetails.deviceId, 10)
+      if (!isNaN(deviceIdFromSession)) {
+        deviceIdsToFetch.add(deviceIdFromSession)
+      }
+    }
+
+    // Bước 2: Lấy tất cả device info từ DB một lần
+    let devicesMap = new Map<number, Device>()
+    if (deviceIdsToFetch.size > 0) {
+      const dbDevices = await this.prismaService.device.findMany({
+        where: {
+          id: { in: Array.from(deviceIdsToFetch) },
+          userId: userId // Ensure devices belong to the user
+        }
+      })
+      devicesMap = new Map(dbDevices.map((device) => [device.id, device]))
+    }
+
+    // Bước 3: Xây dựng kết quả
+    for (const sessionDetails of sessionDetailsList) {
+      const loggedInAtDate = new Date(sessionDetails.createdAt)
+      const lastActiveAtDate = new Date(sessionDetails.lastActiveAt)
+
+      if (isNaN(loggedInAtDate.getTime()) || isNaN(lastActiveAtDate.getTime())) {
+        this.sessionManagementLogger.warn(
+          `Session ${sessionDetails.originalSessionId} for user ${sessionDetails.userId} has invalid date formats. Skipping.`
+        )
+        continue
+      }
+
+      const deviceIdFromSession = parseInt(sessionDetails.deviceId, 10)
+      const dbDevice = devicesMap.get(deviceIdFromSession)
+      const deviceName = dbDevice?.name || null
+
+      const uaParser = new UAParser(sessionDetails.userAgent)
+      const browser = uaParser.getBrowser()
+      const os = uaParser.getOS()
+      const parsedDeviceType = uaParser.getDevice().type
+
+      let type: ActiveSessionType['device']['type']
+      switch (parsedDeviceType) {
+        case 'console':
+        case 'mobile':
+        case 'tablet':
+        case 'wearable':
+          type = parsedDeviceType
+          break
+        case 'smarttv':
+          type = 'tv'
+          break
+        default:
+          if (os.name && browser.name && !parsedDeviceType) {
+            type = 'desktop'
+          } else {
+            type = 'unknown'
+          }
+          break
+      }
+
+      const location = sessionDetails.ipAddress ? this.geolocationService.lookup(sessionDetails.ipAddress) : null
+      const locationString = location
+        ? `${location.city || 'Unknown City'}, ${location.country || 'Unknown Country'}`
+        : 'Location unknown'
+
+      let validIpAddress: string | null = null
+      if (sessionDetails.ipAddress && sessionDetails.ipAddress.trim() !== '') {
+        try {
+          z.string().ip().parse(sessionDetails.ipAddress)
+          validIpAddress = sessionDetails.ipAddress
+        } catch (e) {
+          this.sessionManagementLogger.warn(
+            `Session ${sessionDetails.originalSessionId} has an invalid IP address format ('${sessionDetails.ipAddress}'). Setting to null.`
+          )
+        }
+      }
+
+      activeSessions.push({
+        sessionId: sessionDetails.originalSessionId,
+        device: {
+          id: deviceIdFromSession,
+          name: deviceName,
+          type: type,
+          os: os.name && os.version ? `${os.name} ${os.version}` : os.name || null,
+          browser: browser.name && browser.version ? `${browser.name} ${browser.version}` : browser.name || null,
+          isCurrentDevice:
+            deviceIdFromSession === currentDeviceId && sessionDetails.originalSessionId === currentSessionId
+        },
+        ipAddress: validIpAddress,
+        location: locationString,
+        loggedInAt: loggedInAtDate.toISOString(),
+        lastActiveAt: lastActiveAtDate.toISOString(),
+        isCurrentSession: sessionDetails.originalSessionId === currentSessionId
+      })
     }
 
     activeSessions.sort((a, b) => {
@@ -171,7 +246,28 @@ export class SessionManagementService extends BaseAuthService {
       const uaParser = new UAParser(device.userAgent)
       const browser = uaParser.getBrowser()
       const os = uaParser.getOS()
-      const deviceTypeParsed = uaParser.getDevice().type || 'unknown'
+      const parsedDeviceType = uaParser.getDevice().type
+
+      let type: DeviceInfoType['type']
+      switch (parsedDeviceType) {
+        case 'console':
+        case 'mobile':
+        case 'tablet':
+        case 'wearable':
+          type = parsedDeviceType
+          break
+        case 'smarttv':
+          type = 'tv'
+          break
+        default:
+          if (os.name && browser.name && !parsedDeviceType) {
+            type = 'desktop'
+          } else {
+            type = 'unknown'
+          }
+          break
+      }
+
       let location: string | null = device.ip || null
       if (device.ip) {
         const geo = this.geolocationService.lookup(device.ip)
@@ -183,7 +279,7 @@ export class SessionManagementService extends BaseAuthService {
       return {
         id: device.id,
         name: device.name,
-        type: deviceTypeParsed as 'desktop' | 'mobile' | 'tablet' | 'unknown',
+        type: type,
         os: os.name && os.version ? `${os.name} ${os.version}` : os.name || null,
         browser: browser.name && browser.version ? `${browser.name} ${browser.version}` : browser.name || null,
         ip: device.ip,

@@ -20,19 +20,19 @@ export const dailyRotateFileTransport = (level: string, dirname?: string) => {
 
 export const consoleTransport = () => {
   return new winston.transports.Console({
-    level: envConfig.NODE_ENV === 'production' ? 'info' : 'silly',
-    format:
-      envConfig.NODE_ENV === 'production'
-        ? combine(timestamp(), ms(), errors({ stack: true }), json())
-        : combine(
-            errors({ stack: true }),
-            timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-            ms(),
-            nestWinstonModuleUtilities.format.nestLike('Shopsifu', {
-              colors: true,
-              prettyPrint: true
-            })
-          )
+      level: envConfig.NODE_ENV === 'production' ? 'info' : 'silly',
+      format:
+        envConfig.NODE_ENV === 'production'
+          ? combine(timestamp(), ms(), errors({ stack: true }), json())
+          : combine(
+              errors({ stack: true }),
+              timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+              ms(),
+              nestWinstonModuleUtilities.format.nestLike('Shopsifu', {
+                colors: true,
+                prettyPrint: true
+              })
+            )
   })
 }
 

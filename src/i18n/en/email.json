@@ -42,3 +42,4 @@
   "Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation": "Login from a New Location on Your Trusted Device",
   "Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation": "We detected a login to your Shopsifu account from your trusted device but at a new location. If this was you, you can safely ignore this email. If you don't recognize this activity, please review your account activity and secure your account if necessary."
 }
+ 

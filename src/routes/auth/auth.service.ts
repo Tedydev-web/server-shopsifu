@@ -101,7 +101,7 @@ export class AuthService {
       // If refresh failed, ensure cookies are cleared if res is available
       if (res) {
         this.tokenService.clearTokenCookies(res)
-      }
+  }
       const message = await this.i18nService.translate('Error.Auth.Token.RefreshFailed', {
         lang: I18nContext.current()?.lang
       })
