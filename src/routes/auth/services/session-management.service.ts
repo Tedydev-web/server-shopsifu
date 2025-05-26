@@ -1,7 +1,12 @@
 import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
-import { ActiveSessionSchema, DeviceInfoSchema } from '../dtos/session-management.dto'
+import {
+  ActiveSessionSchema,
+  DeviceInfoSchema,
+  GetActiveSessionsResSchema,
+  RevokeSessionsBodyDTO
+} from '../dtos/session-management.dto'
 import { z } from 'zod'
 import { UAParser } from 'ua-parser-js'
 import { Device } from '@prisma/client'
@@ -10,6 +15,8 @@ import { I18nContext } from 'nestjs-i18n'
 import { AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { Prisma } from '@prisma/client'
 import { PaginatedResponseType } from 'src/shared/models/pagination.model'
+import { SessionNotFoundException } from '../auth.error'
+import envConfig from 'src/shared/config'
 
 type ActiveSessionType = z.infer<typeof ActiveSessionSchema>
 type DeviceInfoType = z.infer<typeof DeviceInfoSchema>
@@ -47,15 +54,14 @@ export class SessionManagementService extends BaseAuthService {
   async getActiveSessions(
     userId: number,
     currentSessionId: string,
-    currentDeviceId: number
+    currentDeviceId: number,
+    filterByDeviceId?: number
   ): Promise<PaginatedResponseType<ActiveSessionType>> {
-    const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
-    const sessionIds = await this.redisService.smembers(userSessionsKey)
-    const activeSessionsData: ActiveSessionType[] = []
-    const sessionDetailsList: Array<Record<string, string> & { originalSessionId: string }> = []
-    const deviceIdsToFetch = new Set<number>()
-
-    if (sessionIds.length === 0) {
+    this.sessionManagementLogger.debug(
+      `Fetching active sessions for user ${userId}, currentSessionId: ${currentSessionId}, currentDeviceId: ${currentDeviceId}, filterByDeviceId: ${filterByDeviceId}`
+    )
+    const userSessionKeys = await this.redisService.smembers(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`)
+    if (!userSessionKeys || userSessionKeys.length === 0) {
       return {
         data: [],
         totalItems: 0,
@@ -65,9 +71,13 @@ export class SessionManagementService extends BaseAuthService {
       }
     }
 
+    const activeSessionsData: ActiveSessionType[] = []
+    const sessionDetailsList: Array<Record<string, string> & { originalSessionId: string }> = []
+    const deviceIdsToFetch = new Set<number>()
+
     // Bước 1: Lấy tất cả chi tiết session từ Redis
     const redisPipeline = this.redisService.client.pipeline()
-    sessionIds.forEach((sessionId) => {
+    userSessionKeys.forEach((sessionId) => {
       redisPipeline.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`)
     })
     const results = await redisPipeline.exec()
@@ -94,14 +104,14 @@ export class SessionManagementService extends BaseAuthService {
 
       if (err) {
         this.sessionManagementLogger.warn(
-          `Error in Redis pipeline for session ${sessionIds[i]} (user ${userId}): ${err.message}. Skipping.`
+          `Error in Redis pipeline for session ${userSessionKeys[i]} (user ${userId}): ${err.message}. Skipping.`
         )
         continue
       }
 
       if (typeof dataFromRedis !== 'object' || dataFromRedis === null) {
         this.sessionManagementLogger.warn(
-          `Invalid data type for session ${sessionIds[i]} (user ${userId}): expected object, got ${typeof dataFromRedis}. Skipping.`
+          `Invalid data type for session ${userSessionKeys[i]} (user ${userId}): expected object, got ${typeof dataFromRedis}. Skipping.`
         )
         continue
       }
@@ -109,7 +119,9 @@ export class SessionManagementService extends BaseAuthService {
       const sessionDetails = dataFromRedis as Record<string, string>
 
       if (Object.keys(sessionDetails).length === 0) {
-        this.sessionManagementLogger.warn(`Empty session data for session ${sessionIds[i]} (user ${userId}). Skipping.`)
+        this.sessionManagementLogger.warn(
+          `Empty session data for session ${userSessionKeys[i]} (user ${userId}). Skipping.`
+        )
         continue
       }
 
@@ -121,13 +133,19 @@ export class SessionManagementService extends BaseAuthService {
         parseInt(sessionDetails.userId, 10) !== userId
       ) {
         this.sessionManagementLogger.warn(
-          `Session ${sessionIds[i]} for user ${
+          `Session ${userSessionKeys[i]} for user ${
             sessionDetails.userId || 'UNKNOWN'
           } is missing critical details or userId mismatch. Skipping.`
         )
         continue
       }
-      sessionDetailsList.push({ ...sessionDetails, originalSessionId: sessionIds[i] })
+
+      // Apply deviceId filter if provided
+      if (filterByDeviceId !== undefined && parseInt(sessionDetails.deviceId, 10) !== filterByDeviceId) {
+        continue
+      }
+
+      sessionDetailsList.push({ ...sessionDetails, originalSessionId: userSessionKeys[i] })
       const deviceIdFromSession = parseInt(sessionDetails.deviceId, 10)
       if (!isNaN(deviceIdFromSession)) {
         deviceIdsToFetch.add(deviceIdFromSession)
@@ -265,6 +283,7 @@ export class SessionManagementService extends BaseAuthService {
   }
 
   async getManagedDevices(userId: number): Promise<PaginatedResponseType<DeviceInfoType>> {
+    this.sessionManagementLogger.debug(`User ${userId} fetching managed devices.`)
     const devicesFromDb = await this.prismaService.device.findMany({
       where: { userId },
       orderBy: { lastActive: 'desc' }
@@ -401,6 +420,9 @@ export class SessionManagementService extends BaseAuthService {
     return { message }
   }
 
+  /**
+   * @deprecated Use revokeMultipleSessions with deviceId and ensure the new method also untrusts the device if needed.
+   */
   async logoutFromManagedDevice(
     userId: number, // User whose device is being logged out
     deviceIdToLogout: number,
@@ -454,5 +476,346 @@ export class SessionManagementService extends BaseAuthService {
       lang: I18nContext.current()?.lang
     })
     return { message }
+  }
+
+  async trustCurrentDevice(userId: number, deviceId: number): Promise<{ message: string }> {
+    this.sessionManagementLogger.debug(`User ${userId} attempting to trust current device ${deviceId}`)
+    // This can directly call trustManagedDevice as the logic is the same.
+    // trustManagedDevice already handles audit logging.
+    return this.trustManagedDevice(userId, deviceId)
+  }
+
+  async revokeMultipleSessions(
+    userId: number,
+    currentSessionId: string,
+    body: RevokeSessionsBodyDTO // Use the imported DTO
+  ): Promise<{ message: string }> {
+    const { sessionIds, deviceId, revokeAll } = body
+    let sessionsToRevoke: string[] = []
+    let actionDescription = ''
+    let deviceToUntrust: number | null = null
+
+    const auditDetails: Prisma.JsonObject = {
+      revokedByUserId: userId,
+      currentSessionId,
+      requestBody: body as unknown as Prisma.JsonObject // body is already an object
+    }
+
+    if (revokeAll) {
+      actionDescription = 'Revoke all user sessions (excluding current)'
+      this.sessionManagementLogger.debug(
+        `User ${userId} attempting to revoke all sessions (excluding current: ${currentSessionId}).`
+      )
+      const allUserSessions = await this.redisService.smembers(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`)
+      sessionsToRevoke = allUserSessions.filter((sid) => sid !== currentSessionId)
+      auditDetails.revokeAllTriggered = true
+    } else if (deviceId) {
+      actionDescription = `Revoke all sessions for device ${deviceId} and untrust it`
+      this.sessionManagementLogger.debug(
+        `User ${userId} attempting to revoke all sessions for device ${deviceId} and untrust it.`
+      )
+      if (!(await this.deviceService.isDeviceOwnedByUser(deviceId, userId))) {
+        throw SessionNotFoundException // Or a more specific "DeviceNotOwned" exception
+      }
+
+      const allUserSessions = await this.redisService.smembers(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`)
+      for (const sid of allUserSessions) {
+        const sessionData = await this.redisService.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sid}`)
+        if (sessionData && parseInt(sessionData.deviceId, 10) === deviceId) {
+          // For revoking a device, we revoke all its sessions, including the current one if it's on that device.
+          sessionsToRevoke.push(sid)
+        }
+      }
+      deviceToUntrust = deviceId
+      auditDetails.revokedDeviceId = deviceId
+    } else if (sessionIds && sessionIds.length > 0) {
+      actionDescription = `Revoke specific sessions: ${sessionIds.join(', ')}`
+      this.sessionManagementLogger.debug(
+        `User ${userId} attempting to revoke specific sessions: ${sessionIds.join(', ')} (current: ${currentSessionId}).`
+      )
+      sessionsToRevoke = sessionIds.filter((sid) => {
+        if (sid === currentSessionId) {
+          this.sessionManagementLogger.warn(
+            `User ${userId} attempted to revoke current session ${currentSessionId} via sessionIds array. This is disallowed.`
+          )
+          // Optionally throw an error or just silently ignore
+          // For now, silently ignore to prevent accidental self-lockout through this specific path.
+          // The `deviceId` path has different semantics (logout from a device entirely).
+          return false
+        }
+        return true
+      })
+      auditDetails.specificSessionIdsRequested = sessionIds as Prisma.JsonArray
+    } else {
+      // This case should be caught by Zod validation, but as a safeguard:
+      throw new ApiException(HttpStatus.BAD_REQUEST, 'InvalidInput', 'Error.Auth.Session.InvalidRevokeOperation')
+    }
+
+    if (sessionsToRevoke.length === 0 && !deviceToUntrust) {
+      const message = await this.i18nService.translate('error.Auth.Session.NoSessionsToRevoke', {
+        lang: I18nContext.current()?.lang
+      })
+      return { message }
+    }
+
+    let revokedCount = 0
+    for (const sid of sessionsToRevoke) {
+      try {
+        // Check if session belongs to the user before revoking, as an extra security measure.
+        const sessionOwnerId = await this.redisService.hget(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sid}`, 'userId')
+        if (sessionOwnerId && parseInt(sessionOwnerId, 10) === userId) {
+          await this.tokenService.invalidateSession(sid, `USER_REQUEST_REVOKE_MULTIPLE (${actionDescription})`)
+          revokedCount++
+        } else {
+          this.sessionManagementLogger.warn(
+            `User ${userId} attempted to revoke session ${sid} not belonging to them or session details missing.`
+          )
+        }
+      } catch (error) {
+        this.sessionManagementLogger.error(`Error revoking session ${sid} for user ${userId}: ${error.message}`)
+        // Continue to revoke other sessions
+      }
+    }
+
+    auditDetails.sessionsActuallyRevoked = sessionsToRevoke as Prisma.JsonArray
+    auditDetails.revokedCount = revokedCount
+
+    if (deviceToUntrust !== null) {
+      try {
+        await this.untrustManagedDevice(userId, deviceToUntrust) // This also handles audit logging for untrust
+        auditDetails.deviceUntrusted = true
+      } catch (error) {
+        this.sessionManagementLogger.error(
+          `Error untrusting device ${deviceToUntrust} for user ${userId} after revoking its sessions: ${error.message}`
+        )
+        auditDetails.deviceUntrustFailed = error.message
+      }
+    }
+
+    await this.auditLogService.successSync('REVOKE_SESSIONS', {
+      userId,
+      details: auditDetails,
+      notes: `${actionDescription}. Revoked ${revokedCount} session(s).`
+    })
+
+    const message = await this.i18nService.translate('error.Auth.Session.RevokedSuccessfullyCount', {
+      lang: I18nContext.current()?.lang,
+      args: { count: revokedCount }
+    })
+    return { message }
+  }
+
+  async enforceSessionAndDeviceLimits(
+    userId: number,
+    currentSessionIdToExclude?: string,
+    currentDeviceIdToExclude?: number
+  ): Promise<{
+    devicesRemovedCount: number
+    sessionsRevokedCount: number
+    deviceLimitApplied: boolean
+    sessionLimitApplied: boolean
+  }> {
+    this.sessionManagementLogger.debug(
+      `Enforcing session/device limits for user ${userId}. Exclude session: ${currentSessionIdToExclude}, Exclude device: ${currentDeviceIdToExclude}`
+    )
+    let devicesRemovedCount = 0
+    let sessionsRevokedByDeviceLimit = 0
+    let sessionsRevokedBySessionLimit = 0
+    let deviceLimitApplied = false
+    let sessionLimitApplied = false
+
+    const maxDevices = envConfig.MAX_DEVICES_PER_USER
+    const maxSessions = envConfig.MAX_ACTIVE_SESSIONS_PER_USER
+
+    // --- Device Limit Enforcement ---
+    if (maxDevices > 0) {
+      const userDevices = await this.prismaService.device.findMany({
+        where: { userId, isActive: true },
+        orderBy: { lastActive: 'asc' } // Oldest first
+      })
+
+      if (userDevices.length > maxDevices) {
+        deviceLimitApplied = true
+        const devicesToPotentiallyRemove = userDevices.filter((d) => d.id !== currentDeviceIdToExclude)
+        let numDevicesToRemove =
+          devicesToPotentiallyRemove.length - (maxDevices - (userDevices.length - devicesToPotentiallyRemove.length))
+        //This calculation ensures we only consider removable devices to reach the target count.
+
+        if (numDevicesToRemove > 0) {
+          this.sessionManagementLogger.log(
+            `User ${userId} has ${userDevices.length} active devices, exceeding limit of ${maxDevices}. Attempting to remove ${numDevicesToRemove} devices.`
+          )
+
+          // Separate by trust status and sort: untrusted first, then by lastActive
+          const sortedDevicesToConsider = devicesToPotentiallyRemove.sort((a, b) => {
+            if (a.isTrusted !== b.isTrusted) {
+              return a.isTrusted ? 1 : -1 // Untrusted (false) come first
+            }
+            return new Date(a.lastActive).getTime() - new Date(b.lastActive).getTime() // Oldest lastActive first
+          })
+
+          const devicesActuallyRemoved: Device[] = []
+          for (const device of sortedDevicesToConsider) {
+            if (numDevicesToRemove <= 0) break
+
+            this.sessionManagementLogger.log(
+              `Removing device ${device.id} (trusted: ${device.isTrusted}, lastActive: ${device.lastActive.toISOString()}) for user ${userId} due to device limit.`
+            )
+            // 1. Revoke all sessions for this device
+            const deviceSessions = await this.getAllSessionsForDevice(userId, device.id)
+            for (const sessionId of deviceSessions) {
+              try {
+                await this.tokenService.invalidateSession(sessionId, 'DEVICE_LIMIT_EXCEEDED')
+                sessionsRevokedByDeviceLimit++
+              } catch (e) {
+                this.sessionManagementLogger.error(
+                  `Failed to invalidate session ${sessionId} for device ${device.id} during device limit enforcement: ${e.message}`
+                )
+              }
+            }
+            // 2. Mark device as inactive (and untrust it)
+            try {
+              await this.prismaService.device.update({
+                where: { id: device.id },
+                data: {
+                  isActive: false,
+                  isTrusted: false,
+                  name: device.name ? `[Removed] ${device.name}` : '[Removed] Device'
+                }
+              })
+              devicesActuallyRemoved.push(device)
+              devicesRemovedCount++
+            } catch (e) {
+              this.sessionManagementLogger.error(
+                `Failed to deactivate/untrust device ${device.id} during device limit enforcement: ${e.message}`
+              )
+            }
+            numDevicesToRemove--
+          }
+          if (devicesActuallyRemoved.length > 0) {
+            await this.auditLogService.recordAsync({
+              userId,
+              action: 'AUTO_DEVICE_REMOVAL_LIMIT_EXCEEDED',
+              status: AuditLogStatus.SUCCESS,
+              entity: 'Device',
+              details: {
+                maxDevices,
+                currentDeviceCount: userDevices.length,
+                removedDevices: devicesActuallyRemoved.map((d) => ({
+                  id: d.id,
+                  name: d.name,
+                  isTrusted: d.isTrusted,
+                  lastActive: d.lastActive.toISOString()
+                })),
+                sessionsRevokedRelatedToDevices: sessionsRevokedByDeviceLimit
+              } as Prisma.JsonObject,
+              notes: `Automatically removed ${devicesActuallyRemoved.length} devices and related sessions due to exceeding device limit.`
+            })
+          }
+        }
+      }
+    }
+
+    // --- Session Limit Enforcement ---
+    if (maxSessions > 0) {
+      const userSessionIds = await this.redisService.smembers(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`)
+
+      if (userSessionIds.length > maxSessions) {
+        sessionLimitApplied = true
+        const sessionsToConsider = userSessionIds.filter((sid) => sid !== currentSessionIdToExclude)
+        let numSessionsToRemove =
+          sessionsToConsider.length - (maxSessions - (userSessionIds.length - sessionsToConsider.length))
+
+        if (numSessionsToRemove > 0) {
+          this.sessionManagementLogger.log(
+            `User ${userId} has ${userSessionIds.length} active sessions, exceeding limit of ${maxSessions}. Attempting to remove ${numSessionsToRemove} sessions.`
+          )
+
+          const sessionDetailsList: Array<{
+            sessionId: string
+            deviceId: number
+            lastActiveAt: Date
+            isDeviceTrusted: boolean
+          }> = []
+          for (const sessionId of sessionsToConsider) {
+            const details = await this.redisService.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`)
+            if (details && details.deviceId && details.lastActiveAt) {
+              const device = await this.prismaService.device.findUnique({
+                where: { id: parseInt(details.deviceId, 10) }
+              })
+              sessionDetailsList.push({
+                sessionId,
+                deviceId: parseInt(details.deviceId, 10),
+                lastActiveAt: new Date(details.lastActiveAt),
+                isDeviceTrusted: device?.isTrusted || false // Default to not trusted if device not found or no trust status
+              })
+            }
+          }
+
+          // Sort: untrusted devices first, then by lastActiveAt (oldest first)
+          sessionDetailsList.sort((a, b) => {
+            if (a.isDeviceTrusted !== b.isDeviceTrusted) {
+              return a.isDeviceTrusted ? 1 : -1 // Untrusted (false) come first
+            }
+            return a.lastActiveAt.getTime() - b.lastActiveAt.getTime() // Oldest lastActiveAt first
+          })
+
+          const sessionsActuallyRevokedIds: string[] = []
+          for (const session of sessionDetailsList) {
+            if (numSessionsToRemove <= 0) break
+            try {
+              this.sessionManagementLogger.log(
+                `Revoking session ${session.sessionId} (on device ${session.deviceId}, trusted: ${session.isDeviceTrusted}, lastActive: ${session.lastActiveAt.toISOString()}) for user ${userId} due to session limit.`
+              )
+              await this.tokenService.invalidateSession(session.sessionId, 'SESSION_LIMIT_EXCEEDED')
+              sessionsRevokedBySessionLimit++
+              sessionsActuallyRevokedIds.push(session.sessionId)
+            } catch (e) {
+              this.sessionManagementLogger.error(
+                `Failed to invalidate session ${session.sessionId} during session limit enforcement: ${e.message}`
+              )
+            }
+            numSessionsToRemove--
+          }
+          if (sessionsActuallyRevokedIds.length > 0) {
+            await this.auditLogService.recordAsync({
+              userId,
+              action: 'AUTO_SESSION_REVOCATION_LIMIT_EXCEEDED',
+              status: AuditLogStatus.SUCCESS,
+              entity: 'Session',
+              details: {
+                maxSessions,
+                currentSessionCount: userSessionIds.length,
+                revokedSessionIds: sessionsActuallyRevokedIds
+              } as Prisma.JsonObject,
+              notes: `Automatically revoked ${sessionsActuallyRevokedIds.length} sessions due to exceeding session limit.`
+            })
+          }
+        }
+      }
+    }
+
+    return {
+      devicesRemovedCount,
+      sessionsRevokedCount: sessionsRevokedByDeviceLimit + sessionsRevokedBySessionLimit,
+      deviceLimitApplied,
+      sessionLimitApplied
+    }
+  }
+
+  // Helper method to get all session IDs for a specific device of a user
+  private async getAllSessionsForDevice(userId: number, deviceId: number): Promise<string[]> {
+    const userSessionIds = await this.redisService.smembers(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`)
+    const deviceSessions: string[] = []
+    for (const sessionId of userSessionIds) {
+      const sessionDeviceId = await this.redisService.hget(
+        `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`,
+        'deviceId'
+      )
+      if (sessionDeviceId && parseInt(sessionDeviceId, 10) === deviceId) {
+        deviceSessions.push(sessionId)
+      }
+    }
+    return deviceSessions
   }
 }

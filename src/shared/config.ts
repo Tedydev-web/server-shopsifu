@@ -56,7 +56,11 @@ const configSchema = z.object({
   REDIS_PASSWORD: z.string().optional().default(''), // Cung cấp giá trị mặc định là chuỗi rỗng
   REDIS_DB: z.coerce.number().default(0),
   REDIS_KEY_PREFIX: z.string().default('shopsifu:'),
-  REDIS_DEFAULT_TTL_MS: z.coerce.number().default(60000)
+  REDIS_DEFAULT_TTL_MS: z.coerce.number().default(60000),
+
+  // Session and Device Limits
+  MAX_ACTIVE_SESSIONS_PER_USER: z.coerce.number().int().positive().optional().default(10),
+  MAX_DEVICES_PER_USER: z.coerce.number().int().positive().optional().default(5)
 })
 
 const configServer = configSchema.safeParse(process.env)

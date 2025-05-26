@@ -43,7 +43,8 @@ import {
   DeviceIdParamsDTO,
   UpdateDeviceNameBodyDTO,
   TrustDeviceBodyDTO as SessionTrustDeviceBodyDTO,
-  UntrustDeviceBodyDTO as SessionUntrustDeviceBodyDTO
+  UntrustDeviceBodyDTO as SessionUntrustDeviceBodyDTO,
+  RevokeSessionsBodyDTO
 } from './dtos/session-management.dto'
 import { UserProfileResSchema, LoginSessionResSchema } from './auth.model'
 import { UseZodSchemas, hasProperty } from 'src/shared/decorators/use-zod-schema.decorator'
@@ -57,7 +58,7 @@ import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { EmptyBodyDTO } from 'src/shared/dtos/request.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { TokenService } from 'src/routes/auth/providers/token.service'
-import { SkipThrottle, Throttle } from '@nestjs/throttler'
+import { SkipThrottle } from '@nestjs/throttler'
 import { CookieNames } from 'src/shared/constants/auth.constant'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { I18nContext } from 'nestjs-i18n'
@@ -68,6 +69,10 @@ import { RolesGuard } from './guards/roles.guard'
 import { PaginatedResponseType } from 'src/shared/models/pagination.model'
 import { ActiveSessionSchema, DeviceInfoSchema } from './dtos/session-management.dto'
 import { z } from 'zod'
+import { GetActiveSessionsQueryDTO } from './dtos/session-management.dto'
+import { AuthType } from 'src/shared/constants/auth.constant'
+import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
+import { Auth } from './decorators/auth.decorator'
 
 @Controller('auth')
 export class AuthController {
@@ -350,15 +355,17 @@ export class AuthController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @ZodSerializerDto(GetActiveSessionsResDTO)
   async getActiveSessions(
-    @ActiveUser() activeUser: AccessTokenPayload
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Query() query: GetActiveSessionsQueryDTO
   ): Promise<PaginatedResponseType<z.infer<typeof ActiveSessionSchema>>> {
     this.logger.debug(
-      `User ${activeUser.userId} fetching active sessions. Current session: ${activeUser.sessionId}, current device: ${activeUser.deviceId}`
+      `User ${activeUser.userId} fetching active sessions. Current session: ${activeUser.sessionId}, current device: ${activeUser.deviceId}, query: ${JSON.stringify(query)}`
     )
     const paginatedSessions = await this.sessionManagementService.getActiveSessions(
       activeUser.userId,
       activeUser.sessionId,
-      activeUser.deviceId
+      activeUser.deviceId,
+      query.deviceId
     )
     this.logger.debug(`Paginated active sessions from service: ${JSON.stringify(paginatedSessions, null, 2)}`)
     return paginatedSessions
@@ -369,6 +376,13 @@ export class AuthController {
   @ZodSerializerDto(MessageResDTO)
   revokeSession(@ActiveUser() activeUser: AccessTokenPayload, @Param() params: RevokeSessionParamsDTO) {
     return this.sessionManagementService.revokeSession(activeUser.userId, params.sessionId, activeUser.sessionId)
+  }
+
+  @Delete('sessions')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(MessageResDTO)
+  revokeMultipleSessions(@ActiveUser() activeUser: AccessTokenPayload, @Body() body: RevokeSessionsBodyDTO) {
+    return this.sessionManagementService.revokeMultipleSessions(activeUser.userId, activeUser.sessionId, body)
   }
 
   @Get('devices')
@@ -416,19 +430,50 @@ export class AuthController {
     return this.sessionManagementService.untrustManagedDevice(userId, params.deviceId)
   }
 
+  /**
+   * @deprecated Use DELETE /auth/sessions with body { deviceId: <id> } instead.
+   */
   @Post('devices/:deviceId/logout')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
+  @Auth([AuthType.Bearer])
+  @AuditLog({
+    action: 'LOGOUT_FROM_MANAGED_DEVICE_DEPRECATED',
+    entity: 'Device',
+    getEntityId: ([_activeUser, params]) => params?.deviceId,
+    getUserId: ([activeUser]) => activeUser?.userId,
+    getDetails: ([activeUser, params]) => ({
+      deviceId: params?.deviceId,
+      performedByUserId: activeUser?.userId,
+      note: 'Called deprecated endpoint.'
+    })
+  })
   logoutFromManagedDevice(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Param() params: DeviceIdParamsDTO,
     @Ip() ip: string,
     @UserAgent() userAgent: string
   ) {
+    this.logger.warn(
+      `Deprecated endpoint POST /auth/devices/${params.deviceId}/logout called by user ${activeUser.userId}. Use DELETE /auth/sessions instead.`
+    )
+    // Note: The new DELETE /auth/sessions with deviceId also untrusts the device.
+    // This old endpoint only logs out sessions without untrusting.
+    // For simplicity in deprecation, we'll just call the session management service's old method.
+    // If full behavioral parity with the new endpoint (including untrust) is desired here during deprecation period,
+    // this would need to call SessionManagementService.revokeMultipleSessions with appropriate params.
     return this.sessionManagementService.logoutFromManagedDevice(activeUser.userId, params.deviceId, {
       userId: activeUser.userId,
       ipAddress: ip,
-      userAgent: userAgent
+      userAgent
     })
+  }
+
+  @Post('sessions/current/trust-device')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(MessageResDTO)
+  trustCurrentDevice(@ActiveUser() activeUser: AccessTokenPayload, @Body() _body: EmptyBodyDTO) {
+    // activeUser.deviceId is the ID of the device record in the database
+    return this.sessionManagementService.trustCurrentDevice(activeUser.userId, activeUser.deviceId)
   }
 }

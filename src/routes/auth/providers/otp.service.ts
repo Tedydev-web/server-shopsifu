@@ -132,22 +132,22 @@ export class OtpService {
       expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_TOKEN_EXPIRES_IN))
     })
 
+    let title: string
     const lang = I18nContext.current()?.lang || 'en'
-    let titleKey: string
+
     switch (type) {
       case TypeOfVerificationCode.REGISTER:
-        titleKey = 'email.Email.OTPSubject.Register'
+        title = this.i18nService.translate('email.OTPSubject.Register', { lang })
         break
       case TypeOfVerificationCode.RESET_PASSWORD:
-        titleKey = 'email.Email.OTPSubject.ResetPassword'
+        title = this.i18nService.translate('email.OTPSubject.ResetPassword', { lang })
         break
       case TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP:
-        titleKey = 'email.Email.OTPSubject.LoginUntrustedDevice'
+        title = this.i18nService.translate('email.OTPSubject.LoginUntrustedDevice', { lang })
         break
       default:
-        titleKey = 'email.Email.OTPSubject.Default'
+        title = this.i18nService.translate('email.OTPSubject.Default', { lang })
     }
-    const title = this.i18nService.translate(titleKey, { lang }) as string
 
     const { error } = await this.emailService.sendOTP({
       email,

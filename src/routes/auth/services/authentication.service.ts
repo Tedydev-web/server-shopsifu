@@ -1,4 +1,4 @@
-import { Injectable, HttpStatus } from '@nestjs/common'
+import { Injectable, HttpStatus, Logger } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { LoginBodyType, RegisterBodyType } from 'src/routes/auth/auth.model'
 import { Response, Request } from 'express'
@@ -8,27 +8,81 @@ import {
   DeviceSetupFailedException,
   EmailAlreadyExistsException,
   EmailNotFoundException,
-  InvalidPasswordException
+  InvalidPasswordException,
+  MissingRefreshTokenException,
+  SessionNotFoundException,
+  InvalidRefreshTokenException
 } from 'src/routes/auth/auth.error'
-import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
+import { AuditLogData, AuditLogStatus, AuditLogService } from 'src/routes/audit-log/audit-log.service'
 import { isUniqueConstraintPrismaError } from 'src/shared/utils/type-guards.utils'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { Device } from '@prisma/client'
+import { Device, Prisma, User, UserStatus } from '@prisma/client'
 import { TypeOfVerificationCode, TwoFactorMethodType } from '../constants/auth.constants'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
-import { Prisma } from '@prisma/client'
-import { I18nContext } from 'nestjs-i18n'
+import { I18nContext, I18nService } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import envConfig from 'src/shared/config'
 import ms from 'ms'
-import { GeolocationData } from 'src/shared/services/geolocation.service'
+import { GeolocationData, GeolocationService } from 'src/shared/services/geolocation.service'
+import { SessionManagementService } from './session-management.service'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { HashingService } from 'src/shared/services/hashing.service'
+import { RolesService } from '../roles.service'
+import { AuthRepository } from '../auth.repo'
+import { SharedUserRepository } from '../repositories/shared-user.repo'
+import { EmailService } from '../providers/email.service'
+import { TokenService } from '../providers/token.service'
+import { TwoFactorService } from '../providers/2fa.service'
+import { OtpService } from '../providers/otp.service'
+import { DeviceService } from '../providers/device.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { JwtService } from '@nestjs/jwt'
 
 @Injectable()
 export class AuthenticationService extends BaseAuthService {
+  private readonly logger = new Logger(AuthenticationService.name)
+
+  constructor(
+    prismaService: PrismaService,
+    hashingService: HashingService,
+    rolesService: RolesService,
+    authRepository: AuthRepository,
+    sharedUserRepository: SharedUserRepository,
+    emailService: EmailService,
+    tokenService: TokenService,
+    twoFactorService: TwoFactorService,
+    auditLogService: AuditLogService,
+    otpService: OtpService,
+    deviceService: DeviceService,
+    i18nService: I18nService,
+    redisService: RedisService,
+    geolocationService: GeolocationService,
+    jwtService: JwtService,
+    private readonly sessionManagementService: SessionManagementService
+  ) {
+    super(
+      prismaService,
+      hashingService,
+      rolesService,
+      authRepository,
+      sharedUserRepository,
+      emailService,
+      tokenService,
+      twoFactorService,
+      auditLogService,
+      otpService,
+      deviceService,
+      i18nService,
+      redisService,
+      geolocationService,
+      jwtService
+    )
+  }
+
   async register(body: RegisterBodyType & { userAgent?: string; ip?: string }) {
-    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Prisma.JsonObject } = {
+    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
       action: 'USER_REGISTER_ATTEMPT',
       userEmail: body.email,
       ipAddress: body.ip,
@@ -87,7 +141,8 @@ export class AuthenticationService extends BaseAuthService {
             name: body.name,
             phoneNumber: body.phoneNumber,
             password: hashedPassword,
-            roleId: clientRoleId
+            roleId: clientRoleId,
+            status: UserStatus.ACTIVE
           },
           tx
         )
@@ -125,7 +180,7 @@ export class AuthenticationService extends BaseAuthService {
   }
 
   async login(body: LoginBodyType & { userAgent: string; ip: string }, res?: Response) {
-    const auditLogEntry: Omit<Partial<AuditLogData>, 'details'> & { details: Prisma.JsonObject } = {
+    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
       action: 'USER_LOGIN_ATTEMPT',
       userEmail: body.email,
       ipAddress: body.ip,
@@ -133,54 +188,44 @@ export class AuthenticationService extends BaseAuthService {
       status: AuditLogStatus.FAILURE,
       details: {
         rememberMeRequested: body.rememberMe
-      } as Prisma.JsonObject
+      }
     }
     try {
       const user = await this.prismaService.user.findUnique({
-          where: { email: body.email },
-          include: { role: true }
-        })
-        if (!user) {
-          auditLogEntry.errorMessage = EmailNotFoundException.message
-          auditLogEntry.details.reason = 'USER_NOT_FOUND'
-          throw EmailNotFoundException
-        }
-        auditLogEntry.userId = user.id
+        where: { email: body.email },
+        include: { role: true }
+      })
+      if (!user) {
+        auditLogEntry.errorMessage = EmailNotFoundException.message
+        auditLogEntry.details.reason = 'USER_NOT_FOUND'
+        throw EmailNotFoundException
+      }
+      auditLogEntry.userId = user.id
 
-        const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
-        if (!isPasswordMatch) {
-          this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
-          auditLogEntry.errorMessage = InvalidPasswordException.message
-          auditLogEntry.details.reason = 'INVALID_PASSWORD'
-          throw InvalidPasswordException
-        }
+      const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
+      if (!isPasswordMatch) {
+        this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
+        auditLogEntry.errorMessage = InvalidPasswordException.message
+        auditLogEntry.details.reason = 'INVALID_PASSWORD'
+        throw InvalidPasswordException
+      }
 
-        let device: Device
-        try {
+      let device: Device
+      try {
         device = await this.deviceService.findOrCreateDevice({
-              userId: user.id,
-              userAgent: body.userAgent,
-              ip: body.ip
+          userId: user.id,
+          userAgent: body.userAgent,
+          ip: body.ip
         })
-          auditLogEntry.details.deviceId = device.id
-        } catch (error) {
-          this.logger.error('[DEBUG AuthenticationService login] Error creating/finding device:', error)
-          auditLogEntry.errorMessage = DeviceSetupFailedException.message
-          auditLogEntry.details.deviceError = 'DeviceSetupFailed'
-          throw DeviceSetupFailedException
-        }
+        auditLogEntry.details.deviceId = device.id
+      } catch (error) {
+        this.logger.error('[DEBUG AuthenticationService login] Error creating/finding device:', error)
+        auditLogEntry.errorMessage = DeviceSetupFailedException.message
+        auditLogEntry.details.deviceError = 'DeviceSetupFailed'
+        throw DeviceSetupFailedException
+      }
 
-        if (!this.deviceService.isSessionValid(device)) {
-          this.logger.warn(
-            `[SECURITY AuthenticationService login] Absolute session lifetime exceeded for user ${user.id}, device ${device.id}. Forcing re-login.`
-          )
-          auditLogEntry.errorMessage = AbsoluteSessionLifetimeExceededException.message
-          auditLogEntry.details.reason = 'ABSOLUTE_SESSION_LIFETIME_EXCEEDED_LOGIN'
-        auditLogEntry.notes = `All sessions for device ${device.id} should be invalidated due to absolute session lifetime exceeded during login.`
-          throw AbsoluteSessionLifetimeExceededException
-        }
-
-        const shouldAskToTrustDevice = !device.isTrusted
+      const shouldAskToTrustDevice = !device.isTrusted
       const sessionId = uuidv4()
       const now = new Date()
 
@@ -190,8 +235,8 @@ export class AuthenticationService extends BaseAuthService {
         auditLogEntry.details.location = `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
       }
 
-        if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
-          auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
+      if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
+        auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
         const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
           return this.otpService.createOtpToken({
             email: user.email,
@@ -210,18 +255,18 @@ export class AuthenticationService extends BaseAuthService {
           })
         })
 
-          auditLogEntry.status = AuditLogStatus.SUCCESS
-          auditLogEntry.notes = '2FA required: Device not trusted.'
-          const message = await this.i18nService.translate('error.Auth.Login.2FARequired', {
-            lang: I18nContext.current()?.lang
-          })
-          return {
-            message,
-            loginSessionToken: loginSessionToken,
-            twoFactorMethod: user.twoFactorMethod
-          }
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.notes = '2FA required: Device not trusted.'
+        const message = await this.i18nService.translate('Auth.Login.2FARequired', {
+          lang: I18nContext.current()?.lang
+        })
+        return {
+          message,
+          loginSessionToken: loginSessionToken,
+          twoFactorMethod: user.twoFactorMethod
+        }
       } else if (!device.isTrusted) {
-          await this.otpService.sendOTP(user.email, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
+        await this.otpService.sendOTP(user.email, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
         const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
           return this.otpService.createOtpToken({
             email: user.email,
@@ -240,17 +285,17 @@ export class AuthenticationService extends BaseAuthService {
           })
         })
 
-          auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.notes = 'Device verification OTP required: Device not trusted.'
-          const message = await this.i18nService.translate('error.Auth.Login.DeviceVerificationOtpRequired', {
-            lang: I18nContext.current()?.lang
-          })
-          return {
-            message,
-            loginSessionToken: loginSessionToken,
-            twoFactorMethod: TwoFactorMethodType.OTP
-          }
+        const message = await this.i18nService.translate('Auth.Login.DeviceVerificationOtpRequired', {
+          lang: I18nContext.current()?.lang
+        })
+        return {
+          message,
+          loginSessionToken: loginSessionToken,
+          twoFactorMethod: TwoFactorMethodType.OTP
         }
+      }
 
       const sessionData: Record<string, string | number | boolean | undefined | null> = {
         userId: user.id,
@@ -282,7 +327,8 @@ export class AuthenticationService extends BaseAuthService {
 
       sessionData.currentAccessTokenJti = accessTokenJti
       sessionData.currentRefreshTokenJti = refreshTokenJti
-      sessionData.accessTokenExp = this.jwtService.decode(accessToken).exp
+      const decodedToken = this.jwtService.decode(accessToken)
+      sessionData.accessTokenExp = decodedToken.exp
 
       let absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
       if (isNaN(absoluteSessionLifetimeMs)) {
@@ -310,13 +356,13 @@ export class AuthenticationService extends BaseAuthService {
         return pipeline
       })
 
-        if (res) {
+      if (res) {
         this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
-        } else {
-          this.logger.warn(
-            '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
-          )
-        }
+      } else {
+        this.logger.warn(
+          '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
+        )
+      }
 
       // Send email if login from new location on a trusted device
       if (device.isTrusted && geoLocation && geoLocation.country && geoLocation.city) {
@@ -346,38 +392,38 @@ export class AuthenticationService extends BaseAuthService {
               alertSubject: this.i18nService.translate(
                 'email.Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation',
                 { lang }
-              ) as string,
+              ),
               alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation', {
                 lang
-              }) as string,
+              }),
               mainMessage: this.i18nService.translate(
                 'email.Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation',
                 { lang }
-              ) as string,
+              ),
               actionDetails: [
                 {
-                  label: this.i18nService.translate('email.Email.Field.Time', { lang }) as string,
+                  label: this.i18nService.translate('email.Email.Field.Time', { lang }),
                   value: new Date().toLocaleString(lang)
                 },
                 {
-                  label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }) as string,
+                  label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }),
                   value: body.ip
                 },
                 {
-                  label: this.i18nService.translate('email.Email.Field.Device', { lang }) as string,
+                  label: this.i18nService.translate('email.Email.Field.Device', { lang }),
                   value: body.userAgent
                 },
                 {
-                  label: this.i18nService.translate('email.Email.Field.Location', { lang }) as string,
+                  label: this.i18nService.translate('email.Email.Field.Location', { lang }),
                   value: `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
                 }
               ],
               secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.NotYou', {
                 lang
-              }) as string,
+              }),
               actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
                 lang
-              }) as string,
+              }),
               actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
             })
           } catch (emailError) {
@@ -392,16 +438,42 @@ export class AuthenticationService extends BaseAuthService {
         }
       }
 
-        auditLogEntry.status = AuditLogStatus.SUCCESS
-        auditLogEntry.action = 'USER_LOGIN_SUCCESS'
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'USER_LOGIN_SUCCESS'
       auditLogEntry.details.sessionId = sessionId
-        return {
-          userId: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role.name,
-        isDeviceTrustedInSession: device.isTrusted
-        }
+
+      // Enforce limits after successful login and session creation (only if not pending 2FA/OTP)
+      // This means a full accessToken was generated and cookies were (potentially) set.
+      if (user && device && sessionId && accessToken) {
+        // Check accessToken as a proxy for full login
+        this.sessionManagementService
+          .enforceSessionAndDeviceLimits(user.id, sessionId, device.id)
+          .then((limitsResult) => {
+            if (limitsResult.deviceLimitApplied || limitsResult.sessionLimitApplied) {
+              this.logger.log(
+                `Session/device limits applied for user ${user.id} after login. Devices removed: ${limitsResult.devicesRemovedCount}, Sessions revoked: ${limitsResult.sessionsRevokedCount}`
+              )
+              // TODO: Consider if/how to notify client about auto-revocations.
+              // For now, logging is sufficient. We might throw MaxSessionsReachedException / MaxDevicesReachedException here if limits were applied *before* this session was established.
+              // However, since this is *after* the current session is established, it's more about cleanup.
+            }
+          })
+          .catch((limitError) => {
+            this.logger.error(
+              `Error enforcing session/device limits for user ${user.id} after login: ${limitError.message}`,
+              limitError.stack
+            )
+          })
+      }
+
+      return {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role.name,
+        isDeviceTrustedInSession: device.isTrusted,
+        currentDeviceId: device.id
+      }
     } catch (error) {
       this.logger.error('[AuthenticationService.login] Caught error:', error, typeof error)
       if (!auditLogEntry.errorMessage) {
@@ -445,10 +517,14 @@ export class AuthenticationService extends BaseAuthService {
         if (decoded) {
           auditLogEntry.userId = decoded.userId
           sessionIdFromAccessToken = decoded.sessionId
-          if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
-            ;(auditLogEntry.details as Prisma.JsonObject).deviceId = decoded.deviceId
-            ;(auditLogEntry.details as Prisma.JsonObject).sessionId = decoded.sessionId
-            ;(auditLogEntry.details as Prisma.JsonObject).accessTokenJti = decoded.jti
+          if (
+            auditLogEntry.details &&
+            typeof auditLogEntry.details === 'object' &&
+            !Array.isArray(auditLogEntry.details)
+          ) {
+            auditLogEntry.details.deviceId = decoded.deviceId
+            auditLogEntry.details.sessionId = decoded.sessionId
+            auditLogEntry.details.accessTokenJti = decoded.jti
           }
           await this.tokenService.invalidateAccessTokenJti(decoded.jti, decoded.exp)
         }
@@ -462,8 +538,12 @@ export class AuthenticationService extends BaseAuthService {
         if (sessionIdFromRefreshToken) {
           await this.tokenService.invalidateSession(sessionIdFromRefreshToken, 'USER_LOGOUT_WITH_REFRESH_TOKEN')
           auditLogEntry.notes = `Session ${sessionIdFromRefreshToken} invalidated via refresh token JTI ${refreshTokenJti}.`
-          if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
-            ;(auditLogEntry.details as Prisma.JsonObject).sessionIdFromRt = sessionIdFromRefreshToken
+          if (
+            auditLogEntry.details &&
+            typeof auditLogEntry.details === 'object' &&
+            !Array.isArray(auditLogEntry.details)
+          ) {
+            auditLogEntry.details.sessionIdFromRt = sessionIdFromRefreshToken
           }
         } else {
           await this.tokenService.invalidateRefreshTokenJti(refreshTokenJti, 'UNKNOWN_SESSION_FOR_RT_ON_LOGOUT')
@@ -475,7 +555,7 @@ export class AuthenticationService extends BaseAuthService {
 
       this.tokenService.clearTokenCookies(res)
       await this.auditLogService.record(auditLogEntry)
-      const message = await this.i18nService.translate('error.Auth.Logout.Success', {
+      const message = await this.i18nService.translate('Auth.Logout.Success', {
         lang: I18nContext.current()?.lang
       })
       return { message }
@@ -484,7 +564,7 @@ export class AuthenticationService extends BaseAuthService {
       auditLogEntry.errorMessage = error.message
       auditLogEntry.status = AuditLogStatus.FAILURE
       await this.auditLogService.record(auditLogEntry)
-      const message = await this.i18nService.translate('error.Auth.Logout.Processed', {
+      const message = await this.i18nService.translate('Auth.Logout.Processed', {
         lang: I18nContext.current()?.lang
       })
       return { message }
@@ -499,91 +579,64 @@ export class AuthenticationService extends BaseAuthService {
     ip: string,
     userAgent: string
   ) {
-    const auditLogEntry: AuditLogData = {
-      action: 'SET_REMEMBER_ME',
+    const currentRefreshTokenJti = this.tokenService.extractRefreshTokenFromRequest(req)
+    if (!currentRefreshTokenJti) {
+      this.logger.warn(
+        `[AuthService setRememberMe] No refresh token JTI found in request for user ${activeUser.userId}`
+      )
+      // This should ideally not happen if the user is authenticated with a valid RT
+      throw MissingRefreshTokenException
+    }
+
+    const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${activeUser.sessionId}`
+    const sessionDetails = await this.redisService.hgetall(sessionDetailsKey)
+
+    if (Object.keys(sessionDetails).length === 0) {
+      this.logger.warn(
+        `[AuthService setRememberMe] Session details not found in Redis for session ${activeUser.sessionId}, user ${activeUser.userId}. Cannot update rememberMe.`
+      )
+      throw SessionNotFoundException // Or a more specific error
+    }
+
+    if (sessionDetails.currentRefreshTokenJti !== currentRefreshTokenJti) {
+      this.logger.error(
+        `[AuthService setRememberMe] CRITICAL: Mismatch between request RT JTI and session RT JTI for user ${activeUser.userId}, session ${activeUser.sessionId}. Request JTI: ${currentRefreshTokenJti}, Session JTI: ${sessionDetails.currentRefreshTokenJti}. Aborting rememberMe update and invalidating session.`
+      )
+      await this.tokenService.invalidateSession(activeUser.sessionId, 'RT_JTI_MISMATCH_ON_REMEMBER_ME')
+      this.tokenService.clearTokenCookies(res)
+      throw InvalidRefreshTokenException // Or a more specific critical error
+    }
+
+    const newMaxAgeForRefreshTokenCookie = rememberMe
+      ? envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
+      : envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
+
+    // Update the cookie with the new maxAge
+    this.tokenService.setTokenCookies(res, '', currentRefreshTokenJti, newMaxAgeForRefreshTokenCookie, true)
+
+    // Update session details in Redis if necessary (e.g., if you store 'rememberMe' status in session)
+    await this.redisService.hset(sessionDetailsKey, 'rememberMe', rememberMe.toString())
+    // Also update the expiry of the session:details key itself if it should align with rememberMe
+    // For now, session:details TTL is managed by absolute session lifetime
+
+    this.auditLogService.record({
       userId: activeUser.userId,
+      action: 'REMEMBER_ME_UPDATED',
+      status: AuditLogStatus.SUCCESS,
+      entity: 'Session',
+      entityId: activeUser.sessionId,
       ipAddress: ip,
       userAgent: userAgent,
-      status: AuditLogStatus.FAILURE,
       details: {
-        rememberMeValue: rememberMe,
-        deviceId: activeUser.deviceId
-      } as Prisma.JsonObject
-    }
+        rememberMe,
+        oldMaxAge: sessionDetails.rememberMeMaxAge,
+        newMaxAge: newMaxAgeForRefreshTokenCookie
+      } as Prisma.JsonObject // Assuming you might store oldMaxAge
+    })
 
-    try {
-      const result = await this.prismaService.$transaction(async (_tx) => {
-        const currentRefreshTokenJti = this.tokenService.extractRefreshTokenFromRequest(req)
-        const accessToken = this.tokenService.extractTokenFromRequest(req)
-        let currentSessionId = activeUser.sessionId
-
-        if (!currentSessionId && accessToken) {
-          try {
-            const decoded = await this.tokenService.verifyAccessToken(accessToken)
-            currentSessionId = decoded.sessionId
-          } catch (_e) {
-            this.logger.warn('Could not decode access token to get sessionId for setRememberMe')
-            throw new ApiException(HttpStatus.BAD_REQUEST, 'MissingSessionId', 'Error.Auth.Session.MissingSessionId')
-          }
-        }
-
-        if (!currentSessionId) {
-          this.logger.error('Session ID is missing in setRememberMe. Cannot proceed.')
-          throw new ApiException(HttpStatus.BAD_REQUEST, 'MissingSessionId', 'Error.Auth.Session.MissingSessionId')
-        }
-
-        if (currentRefreshTokenJti) {
-          const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${currentSessionId}`
-          const sessionDetails = await this.redisService.hgetall(sessionKey)
-
-          if (sessionDetails && sessionDetails.currentRefreshTokenJti === currentRefreshTokenJti) {
-            await this.tokenService.invalidateRefreshTokenJti(currentRefreshTokenJti, currentSessionId)
-          }
-        }
-
-        const {
-          accessToken: newAccessToken,
-          refreshTokenJti: newRefreshTokenJti,
-          maxAgeForRefreshTokenCookie,
-          accessTokenJti: newAccessTokenJti
-        } = await this.tokenService.generateTokens(
-          {
-            userId: activeUser.userId,
-            deviceId: activeUser.deviceId,
-            roleId: activeUser.roleId,
-            roleName: activeUser.roleName,
-            sessionId: currentSessionId
-          },
-          undefined,
-          rememberMe
-        )
-
-        const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${currentSessionId}`
-        await this.redisService.hset(sessionKey, {
-          rememberMe: rememberMe.toString(),
-          currentRefreshTokenJti: newRefreshTokenJti,
-          currentAccessTokenJti: newAccessTokenJti,
-          lastActiveAt: new Date().toISOString()
-        })
-
-        this.tokenService.setTokenCookies(res, newAccessToken, newRefreshTokenJti, maxAgeForRefreshTokenCookie)
-
-        auditLogEntry.status = AuditLogStatus.SUCCESS
-        const message = await this.i18nService.translate('error.Auth.RememberMe.Set', {
-          lang: I18nContext.current()?.lang
-        })
-        return {
-          success: true,
-          message
-        }
-      })
-
-      await this.auditLogService.record(auditLogEntry)
-      return result
-    } catch (error) {
-      auditLogEntry.errorMessage = error.message
-      await this.auditLogService.record(auditLogEntry)
-      throw error
-    }
+    const message = await this.i18nService.translate('error.Auth.RememberMe.Set', {
+      lang: I18nContext.current()?.lang
+    })
+    return { message }
   }
 }

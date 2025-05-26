@@ -135,26 +135,6 @@ export class GoogleService {
         ip: effectiveIp
       })
 
-      // Kiểm tra session hợp lệ
-      if (!this.deviceService.isSessionValid(device)) {
-        // Nếu session không hợp lệ, không cần 2FA, client nên xử lý như một lỗi đăng nhập
-        // hoặc yêu cầu đăng nhập lại. Chúng ta sẽ không cấp token.
-        // Có thể throw một lỗi cụ thể ở đây nếu cần.
-        console.warn(
-          `[GoogleService googleCallback] Absolute session lifetime exceeded for user ${String(user.id)}, device ${String(device.id)}.`
-        )
-        // Thay vì throw, trả về cấu trúc lỗi để controller xử lý redirect
-        const sessionExpiredMessage = await this.i18nService.translate(
-          'error.Error.Auth.Session.AbsoluteLifetimeExceeded',
-          { lang: currentLang }
-        )
-        return {
-          errorCode: 'session_expired',
-          errorMessage: sessionExpiredMessage,
-          redirectToError: true
-        }
-      }
-
       // Kiểm tra 2FA
       if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod) {
         if (device.isTrusted) {

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { SendOTPBodyType, VerifyCodeBodyType } from 'src/routes/auth/auth.model'
 import { TypeOfVerificationCode } from '../constants/auth.constants'
@@ -12,6 +12,8 @@ import envConfig from 'src/shared/config'
 
 @Injectable()
 export class OtpAuthService extends BaseAuthService {
+  private readonly logger = new Logger(OtpAuthService.name)
+
   async sendOTP(body: SendOTPBodyType) {
     const user = await this.sharedUserRepository.findUnique({
       email: body.email

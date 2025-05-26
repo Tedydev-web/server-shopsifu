@@ -36,9 +36,9 @@ export class TokenService {
   signAccessToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>) {
     this.logger.debug(`Signing access token for user ${payload.userId}, session ${payload.sessionId}`)
     return this.jwtService.sign(payload, {
-        secret: envConfig.ACCESS_TOKEN_SECRET,
-        expiresIn: envConfig.ACCESS_TOKEN_EXPIRES_IN,
-        algorithm: 'HS256'
+      secret: envConfig.ACCESS_TOKEN_SECRET,
+      expiresIn: envConfig.ACCESS_TOKEN_EXPIRES_IN,
+      algorithm: 'HS256'
     })
   }
 
@@ -47,9 +47,9 @@ export class TokenService {
       `Signing short-lived access token for testing purposes: userId=${payload.userId}, session ${payload.sessionId}`
     )
     return this.jwtService.sign(payload, {
-        secret: envConfig.ACCESS_TOKEN_SECRET,
+      secret: envConfig.ACCESS_TOKEN_SECRET,
       expiresIn: '30s',
-        algorithm: 'HS256'
+      algorithm: 'HS256'
     })
   }
 
@@ -90,11 +90,19 @@ export class TokenService {
     }
   }
 
-  setTokenCookies(res: Response, accessToken: string, refreshToken: string, maxAgeForRefreshTokenCookie?: number) {
+  setTokenCookies(
+    res: Response,
+    accessToken: string,
+    refreshToken: string,
+    maxAgeForRefreshTokenCookie?: number,
+    isRefreshTokenOnly?: boolean
+  ) {
     const accessTokenConfig = envConfig.cookie.accessToken
     const refreshTokenConfig = envConfig.cookie.refreshToken
 
-    this._setCookie(res, accessTokenConfig.name, accessToken, accessTokenConfig)
+    if (!isRefreshTokenOnly) {
+      this._setCookie(res, accessTokenConfig.name, accessToken, accessTokenConfig)
+    }
     this._setCookie(res, refreshTokenConfig.name, refreshToken, refreshTokenConfig, maxAgeForRefreshTokenCookie)
   }
 
@@ -278,8 +286,8 @@ export class TokenService {
         errorMessage: 'Refresh token JTI is blacklisted.',
         details: auditLogDetails
       })
-        return null
-      }
+      return null
+    }
 
     const sessionId = await this.findSessionIdByRefreshTokenJti(clientRefreshTokenJti)
     if (!sessionId) {
@@ -313,8 +321,8 @@ export class TokenService {
         errorMessage: 'Session not found in Redis or is empty.',
         details: auditLogDetails
       })
-          return null
-        }
+      return null
+    }
     auditLogDetails.sessionUserId = parseInt(sessionDetails.userId, 10)
     auditLogDetails.sessionDeviceId = parseInt(sessionDetails.deviceId, 10)
 
@@ -334,8 +342,8 @@ export class TokenService {
         errorMessage: 'Provided refresh token JTI does not match the current one in session. Session invalidated.',
         details: auditLogDetails
       })
-        return null
-      }
+      return null
+    }
 
     const expectedUserAgentFingerprint = this.deviceService.basicDeviceFingerprint(sessionDetails.userAgent)
     const currentUserAgentFingerprint = this.deviceService.basicDeviceFingerprint(userAgent)
@@ -440,82 +448,120 @@ export class TokenService {
       }
     })
 
-      return {
+    return {
       accessToken: newAccessToken,
       refreshToken: shouldRotateRefreshToken ? newRefreshTokenJti : undefined,
       maxAgeForRefreshTokenCookie: shouldRotateRefreshToken ? maxAgeForCookie : undefined
-      }
+    }
   }
 
-  async invalidateSession(sessionId: string, reason: string = 'UNKNOWN') {
-    this.logger.warn(`Invalidating session ${sessionId} due to: ${reason}`)
+  private async _addSessionInvalidationToPipeline(
+    pipeline: ReturnType<RedisService['client']['pipeline']>,
+    sessionId: string,
+    reason: string = 'UNKNOWN'
+  ) {
     const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
     const sessionDetails = await this.redisService.hgetall(sessionKey)
 
-    if (!sessionDetails || Object.keys(sessionDetails).length === 0) {
-      this.logger.warn(`Attempted to invalidate a non-existent session: ${sessionId}`)
+    if (Object.keys(sessionDetails).length === 0) {
+      this.logger.warn(
+        `[TokenService] Attempted to invalidate non-existent or empty session ${sessionId}. Reason: ${reason}. Skipping Redis operations for this session.`
+      )
       return
     }
 
-    const userId = parseInt(sessionDetails.userId, 10)
-    const currentAccessTokenJti = sessionDetails.currentAccessTokenJti
+    const userId = sessionDetails.userId
     const currentRefreshTokenJti = sessionDetails.currentRefreshTokenJti
+    const currentAccessTokenJti = sessionDetails.currentAccessTokenJti
+    const accessTokenExp = sessionDetails.accessTokenExp ? parseInt(sessionDetails.accessTokenExp, 10) : null
 
-    if (currentAccessTokenJti) {
-      await this.invalidateAccessTokenJti(currentAccessTokenJti, Math.floor(Date.now() / 1000) + 60)
+    pipeline.del(sessionKey)
+    if (userId) {
+      const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
+      pipeline.srem(userSessionsKey, sessionId)
     }
     if (currentRefreshTokenJti) {
-      await this.invalidateRefreshTokenJti(currentRefreshTokenJti, sessionId)
+      const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${currentRefreshTokenJti}`
+      pipeline.del(refreshTokenJtiToSessionKey)
+      const usedRefreshTokenKey = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${currentRefreshTokenJti}`
+      const refreshTokenTTL =
+        (envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE || envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE) / 1000
+      pipeline.set(usedRefreshTokenKey, `INVALIDATED:${reason}`, 'EX', refreshTokenTTL)
     }
 
-    const deletePipeline = this.redisService.client.pipeline()
-    if (userId) {
-      deletePipeline.srem(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`, sessionId)
+    if (currentAccessTokenJti && accessTokenExp) {
+      const nowInSeconds = Math.floor(Date.now() / 1000)
+      if (accessTokenExp > nowInSeconds) {
+        const ttl = accessTokenExp - nowInSeconds
+        const accessTokenJtiBlacklistKey = `${REDIS_KEY_PREFIX.ACCESS_TOKEN_BLACKLIST}${currentAccessTokenJti}`
+        pipeline.set(accessTokenJtiBlacklistKey, `INVALIDATED:${reason}`, 'EX', ttl)
+      }
     }
-    deletePipeline.del(sessionKey)
-    await deletePipeline.exec()
 
-    this.logger.log(`Session ${sessionId} and associated tokens have been invalidated.`)
+    this.logger.log(
+      `[TokenService] Session ${sessionId} (User: ${userId || 'N/A'}) marked for invalidation in pipeline. Reason: ${reason}.`
+    )
+  }
+
+  async invalidateSession(sessionId: string, reason: string = 'UNKNOWN') {
+    const pipeline = this.redisService.client.pipeline()
+    await this._addSessionInvalidationToPipeline(pipeline, sessionId, reason)
+    const results = await pipeline.exec()
+    if (results) {
+      results.forEach(([err, result], index) => {
+        if (err) {
+          this.logger.error(`Error in invalidateSession pipeline (command ${index}): ${err.message}`)
+        }
+      })
+    } else {
+      this.logger.error('invalidateSession pipeline execution returned null')
+    }
+
+    this.logger.log(`[TokenService] Session ${sessionId} invalidation process completed. Reason: ${reason}.`)
   }
 
   async invalidateAllUserSessions(userId: number, reason: string = 'UNKNOWN_BULK_INVALIDATION') {
-    this.logger.warn(`Invalidating all sessions for user ${userId} due to: ${reason}`)
+    this.logger.warn(`[TokenService] Invalidating all sessions for user ${userId}. Reason: ${reason}`)
     const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
     const sessionIds = await this.redisService.smembers(userSessionsKey)
 
-    if (sessionIds && sessionIds.length > 0) {
-      const pipeline = this.redisService.client.pipeline()
-      for (const sessionId of sessionIds) {
-        const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-        const currentRefreshTokenJti = await this.redisService.hget(sessionKey, 'currentRefreshTokenJti')
-        if (currentRefreshTokenJti) {
-          const rtKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${currentRefreshTokenJti}`
-          const ttl = await this.redisService.ttl(rtKey)
-          const blacklistTtlSeconds = ttl > 0 ? ttl : Math.floor(ms(envConfig.REFRESH_TOKEN_EXPIRES_IN) / 1000)
-          if (blacklistTtlSeconds > 0) {
-            pipeline.set(
-              `${REDIS_KEY_PREFIX.REFRESH_TOKEN_BLACKLIST}${currentRefreshTokenJti}`,
-              `revoked:${reason}`,
-              'EX',
-              blacklistTtlSeconds
-            )
-          } else {
-            pipeline.set(`${REDIS_KEY_PREFIX.REFRESH_TOKEN_BLACKLIST}${currentRefreshTokenJti}`, `revoked:${reason}`)
-          }
-          pipeline.del(rtKey)
-        }
-
-        // const currentAccessTokenJti = await this.redisService.hget(sessionKey, 'currentAccessTokenJti') // Commented out/removed as AT JTI handling is through session deletion
-        // if (currentAccessTokenJti) {
-        // } // Removed empty block
-
-        pipeline.del(sessionKey)
-      }
-      pipeline.del(userSessionsKey)
-      await pipeline.exec()
-      this.logger.log(`Invalidated ${sessionIds.length} sessions for user ${userId}.`)
-    } else {
-      this.logger.log(`No active sessions found for user ${userId} to invalidate.`)
+    if (!sessionIds || sessionIds.length === 0) {
+      this.logger.log(`[TokenService] No active sessions found for user ${userId} to invalidate.`)
+      return
     }
+
+    const pipeline = this.redisService.client.pipeline()
+    let invalidatedCount = 0
+
+    for (const sessionId of sessionIds) {
+      await this._addSessionInvalidationToPipeline(pipeline, sessionId, reason)
+      invalidatedCount++
+    }
+
+    if (invalidatedCount > 0) {
+      const results = await pipeline.exec()
+      if (results) {
+        results.forEach(([err, result], index) => {
+          if (err) {
+            this.logger.error(`Error in invalidateAllUserSessions pipeline (command ${index}): ${err.message}`)
+          }
+        })
+        this.logger.log(
+          `[TokenService] Pipeline executed for invalidating ${invalidatedCount} sessions for user ${userId}. Reason: ${reason}.`
+        )
+      } else {
+        this.logger.error(`invalidateAllUserSessions pipeline execution returned null for user ${userId}.`)
+      }
+    } else {
+      this.logger.log(`[TokenService] No sessions were actually marked for invalidation for user ${userId}.`)
+    }
+
+    this.auditLogService.recordAsync({
+      userId,
+      action: 'ALL_SESSIONS_INVALIDATED',
+      status: AuditLogStatus.SUCCESS,
+      details: { reason, invalidatedCount } as Prisma.JsonObject,
+      notes: `All ${invalidatedCount} sessions for user ${userId} were invalidated.`
+    })
   }
 }

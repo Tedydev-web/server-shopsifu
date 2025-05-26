@@ -218,6 +218,24 @@ export const DeviceMissingSessionCreationTimeException = createApiError(
   'Error.Auth.Device.MissingSessionCreationTime'
 )
 
+export const RemoteSessionRevokedException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Session.RevokedRemotely'
+)
+
+export const MaxSessionsReachedException = createApiError(
+  HttpStatus.TOO_MANY_REQUESTS,
+  'LimitExceeded',
+  'Error.Auth.Session.MaxSessionsReached'
+)
+
+export const MaxDevicesReachedException = createApiError(
+  HttpStatus.TOO_MANY_REQUESTS,
+  'LimitExceeded',
+  'Error.Auth.Device.MaxDevicesReached'
+)
+
 export const SessionNotFoundException = createApiError(
   HttpStatus.UNAUTHORIZED,
   'Unauthenticated',

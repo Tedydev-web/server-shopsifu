@@ -149,17 +149,17 @@ export class RoleRepo extends BaseRepository<RoleType> {
     }
 
     const freshResult = await this.paginateQuery<RoleType>(
-          'role',
-          {
-            page,
-            limit: effectiveLimit,
-            sortBy,
-            sortOrder,
-            search
-          },
-          where,
-          { permissions: true },
-          prismaClient
+      'role',
+      {
+        page,
+        limit: effectiveLimit,
+        sortBy,
+        sortOrder,
+        search
+      },
+      where,
+      { permissions: true },
+      prismaClient
     )
 
     if (ttl > 0) {
@@ -179,8 +179,8 @@ export class RoleRepo extends BaseRepository<RoleType> {
     const cachedRole = await this.cacheManager.get<RoleType | null>(cacheKey)
     if (cachedRole !== undefined) return cachedRole
 
-        const whereClause: Prisma.RoleWhereUniqueInput = { id }
-        if (!includeDeleted) {
+    const whereClause: Prisma.RoleWhereUniqueInput = { id }
+    if (!includeDeleted) {
       whereClause.deletedAt = null
     }
 

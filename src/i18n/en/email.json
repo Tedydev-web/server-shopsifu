@@ -5,18 +5,24 @@
   "Email.SecurityAlert.Subject.PasswordReset": "Password Reset Successfully",
   "Email.SecurityAlert.Subject.TwoFactorEnabled": "Two-Factor Authentication Enabled",
   "Email.SecurityAlert.Subject.TwoFactorDisabled": "Two-Factor Authentication Disabled",
+  "Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation": "New Login Location Detected on a Trusted Device",
+  "Email.SecurityAlert.Subject.NewDeviceFingerprintLogin": "New Device or Browser Login Detected on Your Shopsifu Account",
 
   "Email.SecurityAlert.Title.NewDeviceLogin": "New Login to Your Shopsifu Account",
   "Email.SecurityAlert.Title.PasswordChanged": "Your Shopsifu Account Password Was Changed",
   "Email.SecurityAlert.Title.PasswordReset": "Your Shopsifu Account Password Was Reset",
   "Email.SecurityAlert.Title.TwoFactorEnabled": "Two-Factor Authentication (2FA) Enabled on Your Account",
   "Email.SecurityAlert.Title.TwoFactorDisabled": "Two-Factor Authentication (2FA) Disabled on Your Account",
+  "Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation": "Login from a New Location on Your Trusted Device",
+  "Email.SecurityAlert.Title.NewDeviceFingerprintLogin": "Security Alert: Login from a New Device/Browser",
 
   "Email.SecurityAlert.MainMessage.NewDeviceLogin": "We detected a new login to your Shopsifu account from a device we don't recognize. If this was you, you can safely ignore this email. If you don't recognize this activity, please secure your account immediately.",
   "Email.SecurityAlert.MainMessage.PasswordChanged": "Your password for Shopsifu has been successfully changed. If you made this change, no further action is needed.",
   "Email.SecurityAlert.MainMessage.PasswordReset": "Your password for Shopsifu has been successfully reset. If you made this change, no further action is needed.",
   "Email.SecurityAlert.MainMessage.TwoFactorEnabled": "Two-Factor Authentication (2FA) has been successfully enabled for your Shopsifu account. Your account is now more secure.",
   "Email.SecurityAlert.MainMessage.TwoFactorDisabled": "Two-Factor Authentication (2FA) has been disabled for your Shopsifu account. We recommend re-enabling 2FA to keep your account secure.",
+  "Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation": "We detected a login to your Shopsifu account from your trusted device but at a new location. If this was you, you can safely ignore this email. If you don't recognize this activity, please review your account activity and secure your account if necessary.",
+  "Email.SecurityAlert.MainMessage.NewDeviceFingerprintLogin": "Hello {userName},<br><br>We detected a login to your Shopsifu account from a device or browser that we haven't seen before, or one that has significantly changed. Here are the details:<br><br>If this was you, you can safely ignore this email. If you don't recognize this activity, please secure your account immediately by changing your password and reviewing your recent activity. Your account security is important to us.",
 
   "Email.SecurityAlert.SecondaryMessage.NotYou": "If this wasn't you, please secure your account immediately. This may include changing your password and reviewing your account activity.",
   "Email.SecurityAlert.SecondaryMessage.Password.NotYou": "If you did not make this change, please contact our support team immediately and secure your account.",
@@ -32,14 +38,13 @@
   "Email.Field.IPAddress": "IP Address",
   "Email.Field.Device": "Device (User Agent)",
   "Email.Field.Location": "Approximate Location",
+  "Email.Field.FingerprintDevice": "Device Type",
+  "Email.Field.FingerprintOS": "Operating System",
+  "Email.Field.FingerprintBrowser": "Browser",
+  "Email.Field.LocationUnknown": "Unknown (unable to determine location)",
 
   "Email.OTPSubject.Register": "Verify Your Shopsifu Account Registration",
   "Email.OTPSubject.ResetPassword": "Reset Your Shopsifu Password - OTP Inside",
   "Email.OTPSubject.LoginUntrustedDevice": "Verify Your Login from a New Device - Shopsifu",
-  "Email.OTPSubject.Default": "Your Shopsifu OTP Code",
-
-  "Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation": "New Login Location Detected on a Trusted Device",
-  "Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation": "Login from a New Location on Your Trusted Device",
-  "Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation": "We detected a login to your Shopsifu account from your trusted device but at a new location. If this was you, you can safely ignore this email. If you don't recognize this activity, please review your account activity and secure your account if necessary."
+  "Email.OTPSubject.Default": "Your Shopsifu OTP Code"
 }
- 

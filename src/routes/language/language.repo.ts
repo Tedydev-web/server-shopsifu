@@ -186,12 +186,12 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
     }
 
     const freshValue = await (async () => {
-        const [productCount, categoryCount, brandCount] = await Promise.all([
-          client.productTranslation.count({ where: { languageId: id } }),
-          client.categoryTranslation.count({ where: { languageId: id } }),
-          client.brandTranslation.count({ where: { languageId: id } })
-        ])
-        return productCount + categoryCount + brandCount
+      const [productCount, categoryCount, brandCount] = await Promise.all([
+        client.productTranslation.count({ where: { languageId: id } }),
+        client.categoryTranslation.count({ where: { languageId: id } }),
+        client.brandTranslation.count({ where: { languageId: id } })
+      ])
+      return productCount + categoryCount + brandCount
     })()
 
     await this.cacheManager.set(cacheKey, freshValue, 60000) // TTL from original getOrSet

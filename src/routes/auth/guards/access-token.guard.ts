@@ -9,7 +9,8 @@ import {
   InvalidDeviceException,
   InvalidAccessTokenException,
   SessionNotFoundException,
-  MismatchedSessionTokenException
+  MismatchedSessionTokenException,
+  RemoteSessionRevokedException
 } from 'src/routes/auth/auth.error'
 import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
@@ -89,10 +90,10 @@ export class AccessTokenGuard implements CanActivate {
           status: AuditLogStatus.FAILURE,
           ipAddress: request.ip,
           userAgent: request.headers['user-agent'] as string,
-          errorMessage: `Session ${sessionId} not found in Redis.`,
-          details: { reason: 'SESSION_NOT_FOUND_IN_REDIS', sessionId } as Prisma.JsonObject
+          errorMessage: `Session ${sessionId} not found in Redis. Assumed revoked remotely.`,
+          details: { reason: 'SESSION_NOT_FOUND_IN_REDIS_REVOKED_REMOTELY', sessionId } as Prisma.JsonObject
         })
-        throw SessionNotFoundException
+        throw RemoteSessionRevokedException
       }
 
       if (parseInt(sessionDetails.userId, 10) !== userId || parseInt(sessionDetails.deviceId, 10) !== deviceId) {
@@ -161,10 +162,10 @@ export class AccessTokenGuard implements CanActivate {
           status: AuditLogStatus.FAILURE,
           ipAddress: request.ip,
           userAgent: request.headers['user-agent'] as string,
-          errorMessage: `Session ${sessionId} is missing createdAt field in Redis.`,
+          errorMessage: `Session ${sessionId} is missing createdAt field in Redis. Could indicate data issue or remote revocation. `,
           details: { reason: 'SESSION_MISSING_CREATED_AT_IN_REDIS', sessionId } as Prisma.JsonObject
         })
-        throw SessionNotFoundException
+        throw RemoteSessionRevokedException
       }
 
       await this.redisService.hset(sessionKey, 'lastActiveAt', new Date().toISOString())
@@ -188,6 +189,7 @@ export class AccessTokenGuard implements CanActivate {
         error instanceof ApiException &&
         (error.message === AbsoluteSessionLifetimeExceededException.message ||
           error.message === SessionNotFoundException.message ||
+          error.message === RemoteSessionRevokedException.message ||
           error.message === InvalidAccessTokenException.message ||
           error.message === MismatchedSessionTokenException.message ||
           error.message === InvalidDeviceException.message)

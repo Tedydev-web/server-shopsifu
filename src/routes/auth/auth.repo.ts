@@ -11,7 +11,8 @@ import {
   User,
   VerificationCode as PrismaVerificationCodeModel,
   Device,
-  VerificationToken
+  VerificationToken,
+  UserStatus
 } from '@prisma/client'
 import { DeviceService } from 'src/routes/auth/providers/device.service'
 
@@ -32,12 +33,19 @@ export class AuthRepository {
   }
 
   async createUser(
-    user: Pick<UserType, 'email' | 'name' | 'password' | 'phoneNumber' | 'roleId'>,
+    user: Pick<UserType, 'email' | 'name' | 'password' | 'phoneNumber' | 'roleId'> & { status?: UserStatus },
     prismaClient?: PrismaTransactionClient
   ): Promise<Omit<UserType, 'password' | 'twoFactorSecret'>> {
     const client = this.getClient(prismaClient)
     return await client.user.create({
-      data: user,
+      data: {
+        email: user.email,
+        name: user.name,
+        password: user.password,
+        phoneNumber: user.phoneNumber,
+        roleId: user.roleId,
+        status: user.status
+      },
       omit: {
         password: true,
         twoFactorSecret: true

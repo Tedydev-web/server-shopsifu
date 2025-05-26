@@ -122,13 +122,13 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
       return cachedPermission
     }
 
-        const where: Prisma.PermissionWhereInput = {
-          path,
-          method
-        }
-        if (!includeDeleted) {
-          where.deletedAt = null
-        }
+    const where: Prisma.PermissionWhereInput = {
+      path,
+      method
+    }
+    if (!includeDeleted) {
+      where.deletedAt = null
+    }
     const permission = await client.permission.findFirst({ where })
     await this.cacheManager.set(cacheKey, permission, 30000) // TTL from original getOrSet
     return permission
@@ -253,10 +253,10 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
       return cachedCount
     }
 
-        const permission = await client.permission.findUnique({
-          where: { id },
-          include: { roles: { select: { id: true } } }
-        })
+    const permission = await client.permission.findUnique({
+      where: { id },
+      include: { roles: { select: { id: true } } }
+    })
     const count = permission?.roles.length || 0
     await this.cacheManager.set(cacheKey, count, 60000) // TTL from original getOrSet
     return count

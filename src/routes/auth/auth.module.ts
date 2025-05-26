@@ -21,33 +21,28 @@ import { TwoFactorAuthService } from './services/two-factor-auth.service'
 import { OtpAuthService } from './services/otp-auth.service'
 import { PasswordAuthService } from './services/password-auth.service'
 import { SessionManagementService } from './services/session-management.service'
-import { GeolocationService } from 'src/shared/services/geolocation.service'
+import { AuditLogModule } from '../audit-log/audit-log.module'
 
 @Global()
 @Module({
-  imports: [PassportModule, JwtModule.register({})],
+  imports: [PassportModule, JwtModule.register({}), AuditLogModule],
   controllers: [AuthController],
   providers: [
     AuthService,
     GoogleService,
-    PrismaService,
-    HashingService,
     AuthRepository,
     SharedUserRepository,
     RolesService,
     EmailService,
     TokenService,
     TwoFactorService,
-    AuditLogService,
-    AuditLogRepository,
     OtpService,
     DeviceService,
     AuthenticationService,
     TwoFactorAuthService,
     OtpAuthService,
     PasswordAuthService,
-    SessionManagementService,
-    GeolocationService
+    SessionManagementService
   ],
   exports: [
     AuthService,

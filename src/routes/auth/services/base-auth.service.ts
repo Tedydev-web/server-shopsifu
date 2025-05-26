@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { AuthRepository } from '../auth.repo'
@@ -17,8 +17,6 @@ import { JwtService } from '@nestjs/jwt'
 
 @Injectable()
 export class BaseAuthService {
-  protected readonly logger: Logger
-
   constructor(
     protected readonly prismaService: PrismaService,
     protected readonly hashingService: HashingService,
@@ -35,7 +33,5 @@ export class BaseAuthService {
     protected readonly redisService: RedisService,
     protected readonly geolocationService: GeolocationService,
     protected readonly jwtService: JwtService
-  ) {
-    this.logger = new Logger(this.constructor.name)
-  }
+  ) {}
 }

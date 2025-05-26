@@ -201,7 +201,8 @@ export const UserProfileResSchema = z.object({
   email: z.string().email(),
   name: z.string(),
   role: z.string(),
-  isDeviceTrustedInSession: z.boolean()
+  isDeviceTrustedInSession: z.boolean(),
+  currentDeviceId: z.number().int().positive()
 })
 
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>

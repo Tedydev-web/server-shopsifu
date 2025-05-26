@@ -70,5 +70,11 @@
   "Error.Auth.Session.NotFound": "Session not found or you do not have permission to revoke it.",
   "Error.Auth.Session.MissingSessionIdInToken": "Session identifier is missing in the token metadata. Action cannot be completed.",
   "Auth.Device.NameUpdatedSuccessfully": "Device name has been updated successfully.",
-  "Error.Auth.Device.NotFoundForUser": "Device not found or it does not belong to the specified user."
+  "Error.Auth.Device.NotFoundForUser": "Device not found or it does not belong to the specified user.",
+  "error.Auth.Session.NoSessionsToRevoke": "No sessions were found to revoke based on your criteria.",
+  "error.Auth.Session.RevokedSuccessfullyCount": "Successfully revoked {count} session(s).",
+  "Error.Auth.Session.InvalidRevokeOperation": "Invalid session revocation operation. Please provide valid parameters.",
+  "Error.Auth.Session.RevokedRemotely": "Your session has been revoked. Please log in again.",
+  "Error.Auth.Session.MaxSessionsReached": "You have reached the maximum number of active sessions. Some old or untrusted sessions/devices may have been automatically logged out. Please review your active sessions.",
+  "Error.Auth.Device.MaxDevicesReached": "You have reached the maximum number of allowed devices. Some old or untrusted devices may have been automatically removed. Please review your devices."
 }

@@ -1,4 +1,4 @@
-import { Injectable, HttpStatus } from '@nestjs/common'
+import { Injectable, HttpStatus, Logger } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { v4 as uuidv4 } from 'uuid'
 import { TokenType, TwoFactorMethodType, TypeOfVerificationCode } from '../constants/auth.constants'
@@ -14,13 +14,67 @@ import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.ser
 import { Response } from 'express'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
-import { I18nContext } from 'nestjs-i18n'
+import { I18nContext, I18nService } from 'nestjs-i18n'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import envConfig from 'src/shared/config'
 import ms from 'ms'
+import { SessionManagementService } from './session-management.service'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { HashingService } from 'src/shared/services/hashing.service'
+import { RolesService } from '../roles.service'
+import { AuthRepository } from '../auth.repo'
+import { SharedUserRepository } from '../repositories/shared-user.repo'
+import { EmailService } from '../providers/email.service'
+import { TokenService } from '../providers/token.service'
+import { TwoFactorService } from '../providers/2fa.service'
+import { AuditLogService as AuditLogServiceType } from 'src/routes/audit-log/audit-log.service'
+import { OtpService } from '../providers/otp.service'
+import { DeviceService } from '../providers/device.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { GeolocationService } from 'src/shared/services/geolocation.service'
+import { JwtService } from '@nestjs/jwt'
 
 @Injectable()
 export class TwoFactorAuthService extends BaseAuthService {
+  private readonly logger = new Logger(TwoFactorAuthService.name)
+
+  constructor(
+    prismaService: PrismaService,
+    hashingService: HashingService,
+    rolesService: RolesService,
+    authRepository: AuthRepository,
+    sharedUserRepository: SharedUserRepository,
+    emailService: EmailService,
+    tokenService: TokenService,
+    twoFactorService: TwoFactorService,
+    auditLogService: AuditLogServiceType,
+    otpService: OtpService,
+    deviceService: DeviceService,
+    i18nService: I18nService,
+    redisService: RedisService,
+    geolocationService: GeolocationService,
+    jwtService: JwtService,
+    private readonly sessionManagementService: SessionManagementService
+  ) {
+    super(
+      prismaService,
+      hashingService,
+      rolesService,
+      authRepository,
+      sharedUserRepository,
+      emailService,
+      tokenService,
+      twoFactorService,
+      auditLogService,
+      otpService,
+      deviceService,
+      i18nService,
+      redisService,
+      geolocationService,
+      jwtService
+    )
+  }
+
   async setupTwoFactorAuth(userId: number) {
     const auditLogEntry: Partial<AuditLogData> = {
       action: 'SETUP_2FA_ATTEMPT',
@@ -540,15 +594,32 @@ export class TwoFactorAuthService extends BaseAuthService {
           }
         }
 
+        // Enforce session and device limits
+        if (user && device && sessionIdFromToken) {
+          this.sessionManagementService
+            .enforceSessionAndDeviceLimits(user.id, sessionIdFromToken, device.id)
+            .then((limitsResult) => {
+              if (limitsResult.deviceLimitApplied || limitsResult.sessionLimitApplied) {
+                this.logger.log(
+                  `Session/device limits applied for user ${user.id} after 2FA verification. Devices removed: ${limitsResult.devicesRemovedCount}, Sessions revoked: ${limitsResult.sessionsRevokedCount}`
+                )
+              }
+            })
+            .catch((limitError) => {
+              this.logger.error(
+                `Error enforcing session/device limits for user ${user.id} after 2FA: ${limitError.message}`,
+                limitError.stack
+              )
+            })
+        }
+
         return {
           userId: user.id,
           email: user.email,
           name: user.name,
           role: user.role.name,
-          message: this.i18nService.translate('error.Auth.2FA.Verify.Success', {
-            lang: I18nContext.current()?.lang
-          }),
-          isDeviceTrustedInSession: sessionData.isTrusted === 'true' || sessionData.isTrusted === true
+          isDeviceTrustedInSession: device.isTrusted,
+          currentDeviceId: device.id
         }
       })
 

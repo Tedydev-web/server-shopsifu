@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { ResetPasswordBodyType } from 'src/routes/auth/auth.model'
 import { TypeOfVerificationCode, TokenType } from '../constants/auth.constants'
@@ -12,6 +12,8 @@ import envConfig from 'src/shared/config'
 
 @Injectable()
 export class PasswordAuthService extends BaseAuthService {
+  private readonly logger = new Logger(PasswordAuthService.name)
+
   async resetPassword(body: ResetPasswordBodyType & { userAgent?: string; ip?: string }) {
     const auditLogEntry: Partial<AuditLogData> = {
       action: 'RESET_PASSWORD_ATTEMPT',
@@ -82,35 +84,35 @@ export class PasswordAuthService extends BaseAuthService {
             userName: userForEmail.name,
             alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.PasswordReset', {
               lang
-            }) as string,
-            alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.PasswordReset', { lang }) as string,
+            }),
+            alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.PasswordReset', { lang }),
             mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.PasswordReset', {
               lang
-            }) as string,
+            }),
             actionDetails: [
               {
-                label: this.i18nService.translate('email.Email.Field.Time', { lang }) as string,
+                label: this.i18nService.translate('email.Email.Field.Time', { lang }),
                 value: new Date().toLocaleString(lang)
               },
               {
-                label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }) as string,
+                label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }),
                 value: body.ip || 'N/A'
               },
               {
-                label: this.i18nService.translate('email.Email.Field.Device', { lang }) as string,
+                label: this.i18nService.translate('email.Email.Field.Device', { lang }),
                 value: body.userAgent || 'N/A'
               },
               {
-                label: this.i18nService.translate('email.Email.Field.Location', { lang }) as string,
+                label: this.i18nService.translate('email.Email.Field.Location', { lang }),
                 value: locationInfo
               }
             ],
             secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.Password.NotYou', {
               lang
-            }) as string,
+            }),
             actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
               lang
-            }) as string,
+            }),
             actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
           })
         } catch (emailError) {
@@ -194,37 +196,37 @@ export class PasswordAuthService extends BaseAuthService {
             userName: userForEmailAfterChange.name,
             alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.PasswordChanged', {
               lang
-            }) as string,
+            }),
             alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.PasswordChanged', {
               lang
-            }) as string,
+            }),
             mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.PasswordChanged', {
               lang
-            }) as string,
+            }),
             actionDetails: [
               {
-                label: this.i18nService.translate('email.Email.Field.Time', { lang }) as string,
+                label: this.i18nService.translate('email.Email.Field.Time', { lang }),
                 value: new Date().toLocaleString(lang)
               },
               {
-                label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }) as string,
+                label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }),
                 value: ip || 'N/A'
               },
               {
-                label: this.i18nService.translate('email.Email.Field.Device', { lang }) as string,
+                label: this.i18nService.translate('email.Email.Field.Device', { lang }),
                 value: userAgent || 'N/A'
               },
               {
-                label: this.i18nService.translate('email.Email.Field.Location', { lang }) as string,
+                label: this.i18nService.translate('email.Email.Field.Location', { lang }),
                 value: locationInfo
               }
             ],
             secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.Password.NotYou', {
               lang
-            }) as string,
+            }),
             actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
               lang
-            }) as string,
+            }),
             actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
           })
         } catch (emailError) {
