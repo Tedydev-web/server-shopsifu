@@ -10,8 +10,7 @@ export const RegisterBodySchema = UserSchema.pick({
   phoneNumber: true
 })
   .extend({
-    confirmPassword: z.string().min(6).max(100),
-    otpToken: z.string()
+    confirmPassword: z.string().min(6).max(100)
   })
   .strict()
   .superRefine(({ confirmPassword, password }, ctx) => {
@@ -75,7 +74,7 @@ export const VerifyCodeBodySchema = z
   .strict()
 
 export const VerifyCodeResSchema = z.object({
-  otpToken: z.string()
+  message: z.string()
 })
 
 export const RefreshTokenBodySchema = z.object({}).strict()
@@ -132,8 +131,6 @@ export const GetAuthorizationUrlResSchema = z.object({
 
 export const ResetPasswordBodySchema = z
   .object({
-    email: z.string().email(),
-    otpToken: z.string(),
     newPassword: z.string().min(6).max(100),
     confirmNewPassword: z.string().min(6).max(100)
   })

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import envConfig from 'src/shared/config'
 import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
@@ -11,6 +11,12 @@ import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import ms from 'ms'
 import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
+import {
+  InvalidRefreshTokenException,
+  SessionNotFoundException,
+  AbsoluteSessionLifetimeExceededException,
+  DeviceMismatchException
+} from '../auth.error'
 
 interface CookieConfig {
   name: string
@@ -34,22 +40,22 @@ export class TokenService {
   ) {}
 
   signAccessToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>) {
-    this.logger.debug(`Signing access token for user ${payload.userId}, session ${payload.sessionId}`)
+    this.logger.debug(
+      `Signing access token for user ${payload.userId}, session ${payload.sessionId}, jti: ${payload.jti}`
+    )
     return this.jwtService.sign(payload, {
       secret: envConfig.ACCESS_TOKEN_SECRET,
-      expiresIn: envConfig.ACCESS_TOKEN_EXPIRES_IN,
-      algorithm: 'HS256'
+      expiresIn: envConfig.ACCESS_TOKEN_EXPIRY
     })
   }
 
   signShortLivedToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>) {
     this.logger.debug(
-      `Signing short-lived access token for testing purposes: userId=${payload.userId}, session ${payload.sessionId}`
+      `Signing short-lived token for user ${payload.userId}, purpose (inferred via jti): ${payload.jti}`
     )
     return this.jwtService.sign(payload, {
-      secret: envConfig.ACCESS_TOKEN_SECRET,
-      expiresIn: '30s',
-      algorithm: 'HS256'
+      secret: envConfig.VERIFICATION_JWT_SECRET,
+      expiresIn: envConfig.VERIFICATION_JWT_EXPIRES_IN
     })
   }
 
@@ -116,7 +122,7 @@ export class TokenService {
       domain: accessTokenConfig.domain,
       httpOnly: accessTokenConfig.httpOnly,
       secure: accessTokenConfig.secure,
-      sameSite: accessTokenConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+      sameSite: accessTokenConfig.sameSite
     })
 
     this.logger.debug(`Clearing refresh token cookie (${refreshTokenConfig.name})`)
@@ -125,7 +131,7 @@ export class TokenService {
       domain: refreshTokenConfig.domain,
       httpOnly: refreshTokenConfig.httpOnly,
       secure: refreshTokenConfig.secure,
-      sameSite: refreshTokenConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+      sameSite: refreshTokenConfig.sameSite
     })
   }
 
@@ -138,7 +144,7 @@ export class TokenService {
         domain: sltTokenConfig.domain,
         httpOnly: sltTokenConfig.httpOnly,
         secure: sltTokenConfig.secure,
-        sameSite: sltTokenConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+        sameSite: sltTokenConfig.sameSite
       })
     } else {
       this.logger.warn('SLT token cookie configuration not found, cannot clear SLT cookie.')
@@ -174,9 +180,9 @@ export class TokenService {
 
     let refreshTokenExpiresInMs: number
     if (rememberMe) {
-      refreshTokenExpiresInMs = envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
+      refreshTokenExpiresInMs = envConfig.cookie.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
     } else {
-      refreshTokenExpiresInMs = envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
+      refreshTokenExpiresInMs = envConfig.cookie.REFRESH_TOKEN_COOKIE_MAX_AGE
     }
     const refreshTokenExpiresInSeconds = Math.floor(refreshTokenExpiresInMs / 1000)
 
@@ -192,8 +198,10 @@ export class TokenService {
       currentRefreshTokenJti: refreshTokenJti
     })
     const sessionTtl = await this.redisService.ttl(sessionKey)
-    if (sessionTtl < 0 || sessionTtl < refreshTokenExpiresInSeconds) {
-      await this.redisService.expire(sessionKey, Math.floor(envConfig.ABSOLUTE_SESSION_LIFETIME_MS / 1000))
+    const refreshTokenConfiguredExpirySeconds = ms(envConfig.REFRESH_TOKEN_EXPIRY) / 1000
+    if (sessionTtl < refreshTokenConfiguredExpirySeconds) {
+      const remainingAbsoluteLife = envConfig.ABSOLUTE_SESSION_LIFETIME_MS - Date.now()
+      await this.redisService.expire(sessionKey, Math.floor(remainingAbsoluteLife / 1000))
     }
 
     return {
@@ -206,11 +214,9 @@ export class TokenService {
 
   async markRefreshTokenJtiAsUsed(refreshTokenJti: string, sessionId: string, ttlSeconds?: number) {
     this.logger.debug(`Marking refresh token JTI as used (blacklisting): ${refreshTokenJti}`)
-    await this.redisService.set(
-      `${REDIS_KEY_PREFIX.REFRESH_TOKEN_BLACKLIST}${refreshTokenJti}`,
-      'revoked:used',
-      ttlSeconds
-    )
+    const key = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${refreshTokenJti}`
+    const effectiveTtl = ttlSeconds && ttlSeconds > 0 ? ttlSeconds : ms(envConfig.REFRESH_TOKEN_EXPIRY) / 1000
+    await this.redisService.set(key, sessionId, Math.ceil(effectiveTtl))
     await this.redisService.del(`${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`)
 
     const sessionDetails = await this.redisService.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`)
@@ -229,7 +235,7 @@ export class TokenService {
     await this.redisService.set(
       `${REDIS_KEY_PREFIX.REFRESH_TOKEN_BLACKLIST}${refreshTokenJti}`,
       'revoked:logout',
-      ttl > 0 ? ttl : ms(envConfig.REFRESH_TOKEN_EXPIRES_IN) / 1000
+      ttl > 0 ? ttl : ms(envConfig.REFRESH_TOKEN_EXPIRY) / 1000
     )
     await this.redisService.del(rtKey)
 
@@ -403,9 +409,9 @@ export class TokenService {
       newRefreshTokenJti = uuidv4()
       const rememberMe = sessionDetails.rememberMe === 'true'
       if (rememberMe) {
-        maxAgeForCookie = Number(envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE)
+        maxAgeForCookie = Number(envConfig.cookie.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE)
       } else {
-        maxAgeForCookie = Number(envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE)
+        maxAgeForCookie = Number(envConfig.cookie.REFRESH_TOKEN_COOKIE_MAX_AGE)
       }
       const newRtTtlSeconds = maxAgeForCookie > 0 ? Math.floor(maxAgeForCookie / 1000) : 0
 
@@ -435,7 +441,7 @@ export class TokenService {
     } else {
       newRefreshTokenJti = clientRefreshTokenJti
       maxAgeForCookie =
-        parseInt(sessionDetails.maxAgeForRefreshTokenCookie, 10) || envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
+        parseInt(sessionDetails.maxAgeForRefreshTokenCookie, 10) || envConfig.cookie.REFRESH_TOKEN_COOKIE_MAX_AGE
       this.logger.debug(
         `Refresh token rotation is OFF. Reusing RT JTI: ${clientRefreshTokenJti} for session ${sessionId}`
       )
@@ -490,9 +496,9 @@ export class TokenService {
     if (currentRefreshTokenJti) {
       const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${currentRefreshTokenJti}`
       pipeline.del(refreshTokenJtiToSessionKey)
-      const usedRefreshTokenKey = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${currentRefreshTokenJti}`
-      const refreshTokenTTL = ms(envConfig.REFRESH_TOKEN_EXPIRES_IN) / 1000
-      pipeline.set(usedRefreshTokenKey, sessionId, 'EX', refreshTokenTTL)
+      const rtBlacklistKey = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${currentRefreshTokenJti}`
+      const rtExpirySeconds = ms(envConfig.REFRESH_TOKEN_EXPIRY) / 1000
+      pipeline.set(rtBlacklistKey, sessionId, 'EX', Math.ceil(rtExpirySeconds))
     }
 
     if (currentAccessTokenJti && accessTokenExp) {
@@ -561,9 +567,9 @@ export class TokenService {
         pipeline.srem(userSessionsKey, sessionId) // Remove session ID from user's set of sessions
 
         // Mark refresh token JTI as used (blacklisted)
-        const usedRefreshTokenKey = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${refreshTokenJti}`
-        const refreshTokenTTL = ms(envConfig.REFRESH_TOKEN_EXPIRES_IN) / 1000 // Use configured TTL
-        pipeline.set(usedRefreshTokenKey, sessionId, 'EX', refreshTokenTTL)
+        const rtBlacklistKey = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${refreshTokenJti}`
+        const rtExpirySeconds = ms(envConfig.REFRESH_TOKEN_EXPIRY) / 1000 // Use configured TTL
+        pipeline.set(rtBlacklistKey, sessionId, 'EX', Math.ceil(rtExpirySeconds))
 
         invalidatedCount++
         this.logger.log(`Session ${sessionId} for user ${userId} marked for invalidation. Reason: ${reason}`)

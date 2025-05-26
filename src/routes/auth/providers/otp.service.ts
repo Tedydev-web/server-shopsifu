@@ -53,23 +53,21 @@ export interface VerificationJwtPayload {
 // Define SLT Context and Payload
 interface SltJwtPayload {
   jti: string
-  sub: number // userId
+  sub?: number // userId, optional for anonymous flows like registration
   pur: TypeOfVerificationCodeType // purpose
-  exp: number // Keep exp as jwtService.verify will return it
+  iat?: number // Optional: Issued at, jwtService will add this
+  exp?: number // Optional: Expiration time, jwtService will add this
 }
 
 export interface SltContextData {
-  userId: number
-  deviceId: number
+  userId?: number // userId is optional for anonymous flows like registration before user exists
+  deviceId?: number
   ipAddress: string
   userAgent: string
   purpose: TypeOfVerificationCodeType
-  sltJwtExp: number // SLT JWT expiry timestamp (seconds)
-  sltJwtCreatedAt: number // SLT JWT creation timestamp (seconds)
   finalized: '0' | '1'
+  email?: string // For anonymous flows, email is stored here
   metadata?: Record<string, any>
-  // email might be useful here if OTP is sent to email based on this context
-  email?: string
 }
 
 @Injectable()
@@ -327,54 +325,48 @@ export class OtpService {
   }
 
   async initiateOtpWithSltCookie(payload: {
-    email: string // To send OTP
-    userId: number
-    deviceId: number
+    email: string
+    userId: number // For known user flows
+    deviceId?: number
     ipAddress: string
     userAgent: string
     purpose: TypeOfVerificationCodeType
     metadata?: Record<string, any>
   }): Promise<string> {
     const { email, userId, deviceId, ipAddress, userAgent, purpose, metadata } = payload
-
-    // 1. Send OTP (can pass userId to sendOTP if it needs to store it with OtpData)
-    await this.sendOTP(email, purpose, userId) // Pass userId to link OTP to user in OtpData
-
-    // 2. Create SLT JWT
     const sltJti = uuidv4()
-    const sltExpiresInSeconds = Math.floor(ms(envConfig.SLT_JWT_EXPIRES_IN) / 1000)
 
-    // Payload for JWT signing should only contain claims we set. 'iat' and 'exp' are handled by jwtService.sign
-    const sltJwtSigningPayload: Pick<SltJwtPayload, 'jti' | 'sub' | 'pur'> = {
+    const sltPayload: SltJwtPayload = {
       jti: sltJti,
       sub: userId,
       pur: purpose
     }
 
-    const sltJwt = this.jwtService.sign(sltJwtSigningPayload, {
+    const sltJwt = this.jwtService.sign(sltPayload, {
       secret: envConfig.SLT_JWT_SECRET,
       expiresIn: envConfig.SLT_JWT_EXPIRES_IN
     })
 
-    // 3. Store SLT Context in Redis
-    const sltContextKey = this._getSltContextKey(sltJti)
-    const nowForContext = Math.floor(Date.now() / 1000) // Get current time for context
     const sltContextData: SltContextData = {
       userId,
       deviceId,
       ipAddress,
       userAgent,
       purpose,
-      sltJwtExp: nowForContext + sltExpiresInSeconds, // Calculate exp for context based on current time and expiresIn
-      sltJwtCreatedAt: nowForContext, // Record creation time for context
       finalized: '0',
-      metadata,
-      email
+      email,
+      metadata
     }
 
-    await this.redisService.set(sltContextKey, JSON.stringify(sltContextData), sltExpiresInSeconds)
+    const sltContextKey = this._getSltContextKey(sltJti)
+    const sltContextTtlSeconds = Math.max(
+      Math.floor(ms(envConfig.SLT_JWT_EXPIRES_IN) / 1000) + 60, // Context lives 60s longer than JWT
+      60
+    )
+
+    await this.redisService.setJson(sltContextKey, sltContextData, sltContextTtlSeconds)
     this.logger.debug(
-      `SLT context for JTI ${sltJti} (purpose ${purpose}) stored in Redis with TTL ${sltExpiresInSeconds}s. Key: ${sltContextKey}`
+      `SLT context for JTI ${sltJti} (purpose ${purpose}, email ${email}) stored in Redis with TTL ${sltContextTtlSeconds}s. Key: ${sltContextKey}`
     )
     this.auditLogService.recordAsync({
       userId,
@@ -388,7 +380,7 @@ export class OtpService {
         purpose,
         deviceId,
         sltContextKey,
-        sltExpiresInSeconds
+        sltContextTtlSeconds
       } as Prisma.JsonObject
     })
 
@@ -399,152 +391,111 @@ export class OtpService {
     sltCookieValue: string,
     currentIpAddress: string,
     currentUserAgent: string,
-    expectedPurpose?: TypeOfVerificationCodeType // Made optional
+    expectedPurpose?: TypeOfVerificationCodeType
   ): Promise<SltContextData & { sltJti: string }> {
-    // Return JTI as well for convenience
-    let sltPayloadFromVerify: SltJwtPayload // This will include iat and exp from jwtService.verify
-    try {
-      sltPayloadFromVerify = this.jwtService.verify<SltJwtPayload>(sltCookieValue, {
-        secret: envConfig.SLT_JWT_SECRET
-      })
-    } catch (error) {
-      this.logger.warn(`SLT JWT verification failed: ${error.message}. Token: ${sltCookieValue.substring(0, 20)}...`)
-      // Log audit for failed SLT validation attempt
-      this.auditLogService.recordAsync({
-        action: 'SLT_VALIDATION_FAIL',
-        status: AuditLogStatus.FAILURE,
-        ipAddress: currentIpAddress,
-        userAgent: currentUserAgent,
-        errorMessage: 'INVALID_SLT_JWT_SIGNATURE_OR_EXPIRED',
-        details: {
-          error: error.message,
-          expectedPurposeProvided: !!expectedPurpose,
-          expectedPurposeValue: expectedPurpose
-        } as Prisma.JsonObject
-      })
-      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.Session.InvalidLogin', [
-        { code: 'Error.Auth.Session.InvalidLogin', path: 'slt_token' }
-      ]) // Generic error
-    }
-
-    const { jti: sltJti, pur: sltPurposeFromJwt, sub: sltUserId, exp: sltExpFromJwt } = sltPayloadFromVerify
-
-    const auditDetails: Record<string, any> = {
-      sltJti,
-      sltPurposeFromJwt,
-      sltUserId,
-      expectedPurposeProvided: !!expectedPurpose,
-      expectedPurposeValue: expectedPurpose,
-      currentIpAddress,
-      currentUserAgent
-    }
-
-    if (expectedPurpose && sltPurposeFromJwt !== expectedPurpose) {
-      this.logger.warn(`SLT purpose mismatch for JTI ${sltJti}. Expected ${expectedPurpose}, got ${sltPurposeFromJwt}.`)
-      this.auditLogService.recordAsync({
-        userId: sltUserId,
-        action: 'SLT_VALIDATION_FAIL',
-        status: AuditLogStatus.FAILURE,
-        ipAddress: currentIpAddress,
-        userAgent: currentUserAgent,
-        errorMessage: 'SLT_PURPOSE_MISMATCH',
-        details: auditDetails as Prisma.JsonObject
-      })
-      throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Session.InvalidLogin', [
-        { code: 'Error.Auth.Session.InvalidLogin', path: 'slt_token' }
-      ])
-    }
-
-    const sltContextKey = this._getSltContextKey(sltJti)
-    const sltContextString = await this.redisService.get(sltContextKey)
-
-    if (!sltContextString) {
-      this.logger.warn(`SLT context not found in Redis for JTI ${sltJti}. Key: ${sltContextKey}.`)
-      this.auditLogService.recordAsync({
-        userId: sltUserId,
-        action: 'SLT_VALIDATION_FAIL',
-        status: AuditLogStatus.FAILURE,
-        ipAddress: currentIpAddress,
-        userAgent: currentUserAgent,
-        errorMessage: 'SLT_CONTEXT_NOT_FOUND_OR_EXPIRED_IN_REDIS',
-        details: auditDetails as Prisma.JsonObject
-      })
-      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.Session.InvalidLogin', [
-        { code: 'Error.Auth.Session.InvalidLogin', path: 'slt_token' }
-      ])
-    }
-
-    const sltContext: SltContextData = JSON.parse(sltContextString)
-
-    if (sltContext.finalized === '1') {
-      this.logger.warn(`Attempt to use an already finalized SLT context for JTI ${sltJti}.`)
-      this.auditLogService.recordAsync({
-        userId: sltUserId,
-        action: 'SLT_VALIDATION_FAIL',
-        status: AuditLogStatus.FAILURE,
-        ipAddress: currentIpAddress,
-        userAgent: currentUserAgent,
-        errorMessage: 'SLT_CONTEXT_ALREADY_FINALIZED',
-        details: auditDetails as Prisma.JsonObject
-      })
-      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.Session.InvalidLogin', [
-        { code: 'Error.Auth.Session.InvalidLogin', path: 'slt_token' }
-      ])
-    }
-
-    // Verify JWT expiry against Redis stored expiry to ensure consistency, and also current time
-    const nowSeconds = Math.floor(Date.now() / 1000)
-    if (sltExpFromJwt !== sltContext.sltJwtExp || nowSeconds >= sltContext.sltJwtExp) {
-      this.logger.warn(
-        `SLT JWT/Context expiry mismatch or SLT expired for JTI ${sltJti}. JWT exp: ${sltExpFromJwt}, Context exp: ${sltContext.sltJwtExp}, Now: ${nowSeconds}`
-      )
-      // Clean up if expired
-      if (nowSeconds >= sltContext.sltJwtExp) await this.redisService.del(sltContextKey)
-      this.auditLogService.recordAsync({
-        userId: sltUserId,
-        action: 'SLT_VALIDATION_FAIL',
-        status: AuditLogStatus.FAILURE,
-        ipAddress: currentIpAddress,
-        userAgent: currentUserAgent,
-        errorMessage: 'SLT_EXPIRED_OR_EXPIRY_MISMATCH',
-        details: {
-          ...auditDetails,
-          jwtExp: sltExpFromJwt,
-          contextExp: sltContext.sltJwtExp,
-          actualPurposeInContext: sltContext.purpose
-        } as Prisma.JsonObject
-      })
-      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.Session.InvalidLogin', [
-        { code: 'Error.Auth.Session.InvalidLogin', path: 'slt_token' }
-      ])
-    }
-
-    // Optional: Stricter IP and User Agent check (can be made configurable)
-    // if (envConfig.SLT_STRICT_IP_UA_CHECK) { // Example: make it configurable
-    //   if (sltContext.ipAddress !== currentIpAddress || sltContext.userAgent !== currentUserAgent) {
-    //     this.logger.warn(
-    //       `SLT IP/UserAgent mismatch for JTI ${sltJti}. Context: [${sltContext.ipAddress}, ${sltContext.userAgent}], Current: [${currentIpAddress}, ${currentUserAgent}]`
-    //     );
-    //     // Decide if this is a hard fail or just a warning/audit
-    //     throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Device.Mismatch');
-    //   }
-    // }
-
-    this.auditLogService.recordAsync({
-      userId: sltUserId,
-      userEmail: sltContext.email,
-      action: 'SLT_VALIDATION_SUCCESS',
-      status: AuditLogStatus.SUCCESS,
+    const auditLogDetails: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
+      action: 'SLT_VALIDATION_ATTEMPT',
       ipAddress: currentIpAddress,
       userAgent: currentUserAgent,
+      status: AuditLogStatus.FAILURE,
       details: {
-        ...auditDetails,
-        contextUserId: sltContext.userId,
-        contextDeviceId: sltContext.deviceId,
-        actualPurposeInContext: sltContext.purpose
-      } as Prisma.JsonObject
-    })
-    return { ...sltContext, sltJti }
+        sltCookieProvided: !!sltCookieValue,
+        expectedPurpose: expectedPurpose || 'ANY'
+      }
+    }
+
+    if (!sltCookieValue) {
+      auditLogDetails.errorMessage = 'SLT cookie is missing.'
+      auditLogDetails.details.reason = 'SLT_COOKIE_MISSING'
+      this.auditLogService.recordAsync(auditLogDetails as AuditLogData)
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.OtpToken.Invalid', {
+        path: 'slt_token',
+        code: 'Error.Auth.OtpToken.Invalid'
+      })
+    }
+
+    let decodedSltJwt: SltJwtPayload & { exp: number; iat: number }
+    try {
+      decodedSltJwt = await this.jwtService.verifyAsync<SltJwtPayload & { exp: number; iat: number }>(sltCookieValue, {
+        secret: envConfig.SLT_JWT_SECRET,
+        ignoreExpiration: false
+      })
+    } catch (error) {
+      auditLogDetails.errorMessage = `SLT JWT verification failed: ${error.message}`
+      auditLogDetails.details.reason = 'SLT_JWT_VERIFICATION_FAILED'
+      auditLogDetails.details.jwtError = error.name
+      this.auditLogService.recordAsync(auditLogDetails as AuditLogData)
+      const errPath = 'slt_token'
+      if (error.name === 'TokenExpiredError') {
+        throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.OtpToken.Expired', {
+          path: errPath,
+          code: 'Error.Auth.OtpToken.Expired'
+        })
+      }
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.OtpToken.Invalid', {
+        path: errPath,
+        code: 'Error.Auth.OtpToken.Invalid'
+      })
+    }
+
+    const sltJti = decodedSltJwt.jti
+    auditLogDetails.details.sltJti = sltJti
+    if (decodedSltJwt.sub) auditLogDetails.userId = decodedSltJwt.sub
+
+    const sltContextKey = this._getSltContextKey(sltJti)
+    const sltContextData = await this.redisService.getJson<SltContextData>(sltContextKey)
+
+    if (!sltContextData) {
+      auditLogDetails.errorMessage = `SLT context not found in Redis for JTI ${sltJti}.`
+      auditLogDetails.details.reason = 'SLT_CONTEXT_NOT_FOUND_OR_EXPIRED_IN_REDIS'
+      this.auditLogService.recordAsync(auditLogDetails as AuditLogData)
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.Session.InvalidLogin', {
+        path: 'slt_token',
+        code: 'Error.Auth.Session.InvalidLogin'
+      })
+    }
+    auditLogDetails.details.contextPurpose = sltContextData.purpose
+    if (sltContextData.email) auditLogDetails.userEmail = sltContextData.email
+
+    if (sltContextData.finalized === '1') {
+      auditLogDetails.errorMessage = `SLT context for JTI ${sltJti} has already been finalized.`
+      auditLogDetails.details.reason = 'SLT_CONTEXT_ALREADY_FINALIZED'
+      this.auditLogService.recordAsync(auditLogDetails as AuditLogData)
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.Session.InvalidLogin', {
+        path: 'slt_token',
+        code: 'Error.Auth.Session.InvalidLogin'
+      })
+    }
+
+    if (expectedPurpose && sltContextData.purpose !== expectedPurpose) {
+      auditLogDetails.errorMessage = `SLT purpose mismatch for JTI ${sltJti}. Expected: ${expectedPurpose}, Actual: ${sltContextData.purpose}`
+      auditLogDetails.details.reason = 'SLT_PURPOSE_MISMATCH'
+      this.auditLogService.recordAsync(auditLogDetails as AuditLogData)
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.Session.InvalidLogin', {
+        path: 'slt_token',
+        code: 'Error.Auth.Session.InvalidLogin'
+      })
+    }
+
+    if (sltContextData.ipAddress !== currentIpAddress) {
+      this.logger.warn(
+        `SLT IP address mismatch for JTI ${sltJti}. Context IP: ${sltContextData.ipAddress}, Request IP: ${currentIpAddress}`
+      )
+      auditLogDetails.details.ipMismatch = `Context: ${sltContextData.ipAddress}, Request: ${currentIpAddress}`
+    }
+
+    if (sltContextData.userAgent !== currentUserAgent) {
+      this.logger.warn(
+        `SLT User-Agent mismatch for JTI ${sltJti}. Context UA: ${sltContextData.userAgent}, Request UA: ${currentUserAgent}`
+      )
+      auditLogDetails.details.userAgentMismatch = `Context: ${sltContextData.userAgent}, Request: ${currentUserAgent}`
+    }
+
+    auditLogDetails.status = AuditLogStatus.SUCCESS
+    auditLogDetails.action = 'SLT_VALIDATION_SUCCESS'
+    this.auditLogService.recordAsync(auditLogDetails as AuditLogData)
+
+    return { ...sltContextData, sltJti }
   }
 
   async finalizeSlt(sltJti: string): Promise<void> {
@@ -689,5 +640,115 @@ export class OtpService {
     // if (storedPayloadString) { ... compare ... }
 
     return payload
+  }
+
+  async sendOtpAndInitiateSltForAnonymous(payload: {
+    email: string
+    ipAddress: string
+    userAgent: string
+    purpose: TypeOfVerificationCode.REGISTER | TypeOfVerificationCode.RESET_PASSWORD
+    metadata?: Record<string, any>
+  }): Promise<string> {
+    const { email, ipAddress, userAgent, purpose, metadata } = payload
+    const sltJti = uuidv4()
+
+    const sltPayload: SltJwtPayload = {
+      jti: sltJti,
+      pur: purpose
+    }
+
+    const sltJwt = this.jwtService.sign(sltPayload, {
+      secret: envConfig.SLT_JWT_SECRET,
+      expiresIn: envConfig.SLT_JWT_EXPIRES_IN
+    })
+
+    const sltContextData: SltContextData = {
+      ipAddress,
+      userAgent,
+      purpose,
+      finalized: '0',
+      email,
+      metadata
+    }
+
+    const sltContextKey = this._getSltContextKey(sltJti)
+    const sltContextTtlSeconds = Math.max(
+      Math.floor(ms(envConfig.SLT_JWT_EXPIRES_IN) / 1000) + 60, // Context lives 60s longer
+      60
+    )
+
+    await this.redisService.setJson(sltContextKey, sltContextData, sltContextTtlSeconds)
+    this.logger.debug(
+      `Anonymous SLT context for JTI ${sltJti} (purpose ${purpose}, email ${email}) stored in Redis with TTL ${sltContextTtlSeconds}s. Key: ${sltContextKey}`
+    )
+
+    this.auditLogService.recordAsync({
+      action: 'ANONYMOUS_SLT_INITIATED_WITH_OTP',
+      status: AuditLogStatus.SUCCESS,
+      userEmail: email,
+      ipAddress: ipAddress,
+      userAgent: userAgent,
+      details: {
+        sltJti,
+        purpose,
+        email,
+        metadata,
+        sltContextTtlSeconds
+      } as Prisma.JsonObject
+    })
+
+    return sltJwt
+  }
+
+  async markSltOtpAsVerified(sltJti: string): Promise<boolean> {
+    const sltContextKey = this._getSltContextKey(sltJti)
+    const sltContextString = await this.redisService.get(sltContextKey)
+
+    if (!sltContextString) {
+      this.logger.warn(`Cannot mark OTP as verified: SLT context not found for JTI ${sltJti}. Key: ${sltContextKey}`)
+      // Potentially throw an error or return false if context must exist
+      return false
+    }
+
+    const sltContext: SltContextData = JSON.parse(sltContextString)
+
+    if (sltContext.finalized === '1') {
+      this.logger.warn(`Cannot mark OTP as verified for JTI ${sltJti}: SLT context is already finalized.`)
+      return false // Or throw error
+    }
+
+    // Update metadata
+    const updatedMetadata = {
+      ...(sltContext.metadata || {}),
+      otpVerified: '1'
+    }
+    const updatedContext: SltContextData = {
+      ...sltContext,
+      metadata: updatedMetadata
+    }
+
+    const ttl = await this.redisService.ttl(sltContextKey)
+    if (ttl > 0) {
+      await this.redisService.setJson(sltContextKey, updatedContext, ttl)
+      this.logger.debug(`SLT context JTI ${sltJti} marked with otpVerified='1'. Key: ${sltContextKey}`)
+      this.auditLogService.recordAsync({
+        action: 'SLT_OTP_MARKED_VERIFIED',
+        status: AuditLogStatus.SUCCESS,
+        userEmail: sltContext.email,
+        userId: sltContext.userId !== null ? sltContext.userId : undefined, // Handle potential null userId
+        ipAddress: sltContext.ipAddress,
+        userAgent: sltContext.userAgent,
+        details: {
+          sltJti,
+          purpose: sltContext.purpose
+        } as Prisma.JsonObject
+      })
+      return true
+    } else {
+      this.logger.warn(
+        `SLT context for JTI ${sltJti} has expired or has no TTL. Cannot mark OTP as verified. Key: ${sltContextKey}`
+      )
+      return false
+    }
   }
 }

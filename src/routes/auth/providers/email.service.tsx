@@ -28,19 +28,41 @@ export class EmailService {
   }
 
   async sendOTP(payload: { email: string; code: string; title: string }) {
-    const emailHtml = await render(<OTPEmail otpCode={payload.code} title={payload.title} />)
+    const { email, code, title } = payload
+    if (envConfig.NODE_ENV === 'test') {
+      this.logger.log(`OTP for ${email} (TEST ENV): ${code}`)
+      return { id: 'test_email_id' } // Mock response for test environment
+    }
+
+    if (!envConfig.NOTI_EMAIL_FROM_ADDRESS) {
+      this.logger.error('NOTI_EMAIL_FROM_ADDRESS is not configured. Cannot send OTP email.')
+      // Throw an error here because this is a configuration issue that prevents sending.
+      throw new Error('Email from address is not configured.')
+    }
 
     try {
-      const data = await this.resend.emails.send({
-        from: 'Shopsifu <no-reply@shopsifu.live>',
-        to: [payload.email],
-        subject: payload.title,
-        html: emailHtml
+      const { data, error } = await this.resend.emails.send({
+        from: `Shopsifu <${envConfig.NOTI_EMAIL_FROM_ADDRESS}>`,
+        to: email,
+        subject: title,
+        html: `Your OTP code is: <strong>${code}</strong>. It will expire in ${envConfig.OTP_EXPIRES_IN}.`
       })
-      this.logger.log(`OTP Email sent successfully to ${payload.email}, ID: ${data?.data?.id}`)
-      return data
+
+      if (error) {
+        this.logger.error(`Failed to send OTP email to ${email}. Resend error:`, error)
+        throw new Error(error.message || 'Resend API error during OTP sending.')
+      }
+
+      // Log the ID if data is available and has an id
+      if (data && data.id) {
+        this.logger.log(`OTP email sent to ${email}, ID: ${data.id}`)
+      } else {
+        this.logger.warn(`OTP email to ${email} - Resend returned success but no ID found in data. Data:`, data)
+      }
+      return { data, error } // Return the whole response object
     } catch (error) {
-      this.logger.error(`Error sending OTP email to ${payload.email}:`, error)
+      // Catch any other unexpected errors (e.g., network issues before Resend call)
+      this.logger.error(`Unexpected error sending OTP email to ${email}`, error)
       throw error
     }
   }
@@ -60,14 +82,28 @@ export class EmailService {
     )
 
     try {
-      const data = await this.resend.emails.send({
-        from: 'Shopsifu Security <security@shopsifu.live>', // Using a different sender for security alerts
+      const { data, error } = await this.resend.emails.send({
+        from: `Shopsifu Security <${envConfig.SEC_EMAIL_FROM_ADDRESS}>`, // Using a different sender for security alerts
         to: [payload.to],
         subject: payload.alertSubject,
         html: emailHtml
       })
-      this.logger.log(`Security alert email sent successfully to ${payload.to}, ID: ${data.data?.id}`)
-      return data
+
+      if (error) {
+        this.logger.error(`Failed to send security alert email to ${payload.to}. Resend error:`, error)
+        // Do not re-throw here for security alerts, but ensure comprehensive logging
+        return { data, error }
+      }
+
+      if (data && data.id) {
+        this.logger.log(`Security alert email sent successfully to ${payload.to}, ID: ${data.id}`)
+      } else {
+        this.logger.warn(
+          `Security alert email to ${payload.to} - Resend returned success but no ID found in data. Data:`,
+          data
+        )
+      }
+      return { data, error }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       const errorStack = error instanceof Error ? error.stack : undefined

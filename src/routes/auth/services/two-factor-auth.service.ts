@@ -633,7 +633,7 @@ export class TwoFactorAuthService extends BaseAuthService {
 
       // If userId is not yet determined (e.g., no valid SLT context), fetch user by effectiveEmail.
       // If userId was determined from SLT, this step is mainly to fetch the full user object.
-      const userLookupCriteria = effectiveUserId ? { id: effectiveUserId } : { email: effectiveEmail! }
+      const userLookupCriteria = effectiveUserId ? { id: effectiveUserId } : { email: effectiveEmail }
 
       const resultFromTransaction = await this.prismaService.$transaction(async (tx) => {
         const user = await this.sharedUserRepository.findUniqueWithRole(userLookupCriteria, tx)
@@ -702,7 +702,7 @@ export class TwoFactorAuthService extends BaseAuthService {
             }
             isValidCode = this.twoFactorService.verifyTOTP({
               email: user.email,
-              secret: user.twoFactorSecret!,
+              secret: user.twoFactorSecret,
               token: body.code
             })
             if (isValidCode) {
@@ -848,7 +848,7 @@ export class TwoFactorAuthService extends BaseAuthService {
             user, // Return user object from transaction scope
             finalDeviceIsTrusted,
             newSessionId: newSessionIdGenerated, // Return the new session ID
-            sltJtiToFinalize: sltContext!.sltJti // Pass JTI if SLT flow
+            sltJtiToFinalize: sltContext.sltJti // Pass JTI if SLT flow
           }
         } else {
           // This block implies no SLT cookie was provided.
