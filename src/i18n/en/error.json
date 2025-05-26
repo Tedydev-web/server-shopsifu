@@ -77,8 +77,5 @@
   "Error.Auth.Session.InvalidRevokeOperation": "Invalid session revocation operation. Please provide valid parameters.",
   "Error.Auth.Session.RevokedRemotely": "Your session has been revoked. Please log in again.",
   "Error.Auth.Session.MaxSessionsReached": "You have reached the maximum number of active sessions. Some old or untrusted sessions/devices may have been automatically logged out. Please review your active sessions.",
-  "Error.Auth.Device.MaxDevicesReached": "You have reached the maximum number of allowed devices. Some old or untrusted devices may have been automatically removed. Please review your devices.",
-  "Error.Auth.Otp.UnsupportedTypeForAnonymousFlow": "The selected OTP type is not supported for anonymous requests. Please ensure you are using a valid flow.",
-  "Auth.Otp.VerifiedSuccessfully": "OTP has been verified successfully.",
-  "Error.Auth.Otp.NotVerified": "OTP has not been verified for the current operation. Please verify OTP first."
+  "Error.Auth.Device.MaxDevicesReached": "You have reached the maximum number of allowed devices. Some old or untrusted devices may have been automatically removed. Please review your devices."
 }

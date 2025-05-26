@@ -30,10 +30,10 @@ export class GoogleService {
     private readonly tokenService: TokenService,
     private readonly redisService: RedisService
   ) {
-    this.oauth2Client = new OAuth2Client(
+    this.oauth2Client = new google.auth.OAuth2(
       envConfig.GOOGLE_CLIENT_ID,
       envConfig.GOOGLE_CLIENT_SECRET,
-      envConfig.GOOGLE_SERVER_REDIRECT_URI
+      envConfig.GOOGLE_CLIENT_REDIRECT_URI
     )
   }
   getAuthorizationUrl({ userAgent, ip }: Omit<GoogleAuthStateType, 'rememberMe'>) {

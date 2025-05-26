@@ -125,14 +125,14 @@ export class SessionManagementService extends BaseAuthService {
         continue
       }
 
-      if (
-        !sessionDetails.createdAt ||
-        !sessionDetails.lastActiveAt ||
-        !sessionDetails.deviceId ||
+        if (
+          !sessionDetails.createdAt ||
+          !sessionDetails.lastActiveAt ||
+          !sessionDetails.deviceId ||
         !sessionDetails.userId ||
         parseInt(sessionDetails.userId, 10) !== userId
-      ) {
-        this.sessionManagementLogger.warn(
+        ) {
+          this.sessionManagementLogger.warn(
           `Session ${userSessionKeys[i]} for user ${
             sessionDetails.userId || 'UNKNOWN'
           } is missing critical details or userId mismatch. Skipping.`
@@ -166,61 +166,61 @@ export class SessionManagementService extends BaseAuthService {
 
     // Bước 3: Xây dựng kết quả
     for (const sessionDetails of sessionDetailsList) {
-      const loggedInAtDate = new Date(sessionDetails.createdAt)
-      const lastActiveAtDate = new Date(sessionDetails.lastActiveAt)
+        const loggedInAtDate = new Date(sessionDetails.createdAt)
+        const lastActiveAtDate = new Date(sessionDetails.lastActiveAt)
 
-      if (isNaN(loggedInAtDate.getTime()) || isNaN(lastActiveAtDate.getTime())) {
-        this.sessionManagementLogger.warn(
+        if (isNaN(loggedInAtDate.getTime()) || isNaN(lastActiveAtDate.getTime())) {
+          this.sessionManagementLogger.warn(
           `Session ${sessionDetails.originalSessionId} for user ${sessionDetails.userId} has invalid date formats. Skipping.`
-        )
-        continue
-      }
+          )
+          continue
+        }
 
-      const deviceIdFromSession = parseInt(sessionDetails.deviceId, 10)
+        const deviceIdFromSession = parseInt(sessionDetails.deviceId, 10)
       const dbDevice = devicesMap.get(deviceIdFromSession)
       const deviceName = dbDevice?.name || null
 
-      const uaParser = new UAParser(sessionDetails.userAgent)
-      const browser = uaParser.getBrowser()
-      const os = uaParser.getOS()
+        const uaParser = new UAParser(sessionDetails.userAgent)
+        const browser = uaParser.getBrowser()
+        const os = uaParser.getOS()
       const parsedDeviceType = uaParser.getDevice().type
 
       const type = this._normalizeDeviceType(parsedDeviceType, os.name, browser.name)
 
-      const location = sessionDetails.ipAddress ? this.geolocationService.lookup(sessionDetails.ipAddress) : null
-      const locationString = location
-        ? `${location.city || 'Unknown City'}, ${location.country || 'Unknown Country'}`
-        : 'Location unknown'
+        const location = sessionDetails.ipAddress ? this.geolocationService.lookup(sessionDetails.ipAddress) : null
+        const locationString = location
+          ? `${location.city || 'Unknown City'}, ${location.country || 'Unknown Country'}`
+          : 'Location unknown'
 
-      let validIpAddress: string | null = null
+        let validIpAddress: string | null = null
       if (sessionDetails.ipAddress && sessionDetails.ipAddress.trim() !== '') {
-        try {
+          try {
           z.string().ip().parse(sessionDetails.ipAddress)
           validIpAddress = sessionDetails.ipAddress
-        } catch (e) {
-          this.sessionManagementLogger.warn(
+          } catch (e) {
+            this.sessionManagementLogger.warn(
             `Session ${sessionDetails.originalSessionId} has an invalid IP address format ('${sessionDetails.ipAddress}'). Setting to null.`
-          )
+            )
+          }
         }
-      }
 
       activeSessionsData.push({
         sessionId: sessionDetails.originalSessionId,
-        device: {
-          id: deviceIdFromSession,
-          name: deviceName,
+          device: {
+            id: deviceIdFromSession,
+            name: deviceName,
           type: type,
-          os: os.name && os.version ? `${os.name} ${os.version}` : os.name || null,
-          browser: browser.name && browser.version ? `${browser.name} ${browser.version}` : browser.name || null,
+            os: os.name && os.version ? `${os.name} ${os.version}` : os.name || null,
+            browser: browser.name && browser.version ? `${browser.name} ${browser.version}` : browser.name || null,
           isCurrentDevice:
             deviceIdFromSession === currentDeviceId && sessionDetails.originalSessionId === currentSessionId
-        },
-        ipAddress: validIpAddress,
-        location: locationString,
-        loggedInAt: loggedInAtDate.toISOString(),
-        lastActiveAt: lastActiveAtDate.toISOString(),
+          },
+          ipAddress: validIpAddress,
+          location: locationString,
+          loggedInAt: loggedInAtDate.toISOString(),
+          lastActiveAt: lastActiveAtDate.toISOString(),
         isCurrentSession: sessionDetails.originalSessionId === currentSessionId
-      })
+        })
     }
 
     activeSessionsData.sort((a, b) => {
@@ -616,35 +616,34 @@ export class SessionManagementService extends BaseAuthService {
     sessionLimitApplied: boolean
   }> {
     this.sessionManagementLogger.debug(
-      `Enforcing session and device limits for user ${userId}. Current session: ${currentSessionIdToExclude}, current device: ${currentDeviceIdToExclude}`
+      `Enforcing session/device limits for user ${userId}. Exclude session: ${currentSessionIdToExclude}, Exclude device: ${currentDeviceIdToExclude}`
     )
     let devicesRemovedCount = 0
-    let sessionsRevokedCount = 0
+    let sessionsRevokedByDeviceLimit = 0
+    let sessionsRevokedBySessionLimit = 0
     let deviceLimitApplied = false
     let sessionLimitApplied = false
 
-    // Enforce max active sessions
-    const maxSessions = envConfig.MAX_SESSIONS_PER_USER // Corrected from MAX_ACTIVE_SESSIONS_PER_USER
-    const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
-    const allSessionIds = await this.redisService.smembers(userSessionsKey)
+    const maxDevices = envConfig.MAX_DEVICES_PER_USER
+    const maxSessions = envConfig.MAX_ACTIVE_SESSIONS_PER_USER
 
     // --- Device Limit Enforcement ---
-    if (maxSessions > 0) {
+    if (maxDevices > 0) {
       const userDevices = await this.prismaService.device.findMany({
         where: { userId, isActive: true },
         orderBy: { lastActive: 'asc' } // Oldest first
       })
 
-      if (userDevices.length > maxSessions) {
+      if (userDevices.length > maxDevices) {
         deviceLimitApplied = true
         const devicesToPotentiallyRemove = userDevices.filter((d) => d.id !== currentDeviceIdToExclude)
         let numDevicesToRemove =
-          devicesToPotentiallyRemove.length - (maxSessions - (userDevices.length - devicesToPotentiallyRemove.length))
+          devicesToPotentiallyRemove.length - (maxDevices - (userDevices.length - devicesToPotentiallyRemove.length))
         //This calculation ensures we only consider removable devices to reach the target count.
 
         if (numDevicesToRemove > 0) {
           this.sessionManagementLogger.log(
-            `User ${userId} has ${userDevices.length} active devices, exceeding limit of ${maxSessions}. Attempting to remove ${numDevicesToRemove} devices.`
+            `User ${userId} has ${userDevices.length} active devices, exceeding limit of ${maxDevices}. Attempting to remove ${numDevicesToRemove} devices.`
           )
 
           // Separate by trust status and sort: untrusted first, then by lastActive
@@ -667,7 +666,7 @@ export class SessionManagementService extends BaseAuthService {
             for (const sessionId of deviceSessions) {
               try {
                 await this.tokenService.invalidateSession(sessionId, 'DEVICE_LIMIT_EXCEEDED')
-                sessionsRevokedCount++
+                sessionsRevokedByDeviceLimit++
               } catch (e) {
                 this.sessionManagementLogger.error(
                   `Failed to invalidate session ${sessionId} for device ${device.id} during device limit enforcement: ${e.message}`
@@ -700,7 +699,7 @@ export class SessionManagementService extends BaseAuthService {
               status: AuditLogStatus.SUCCESS,
               entity: 'Device',
               details: {
-                maxSessions,
+                maxDevices,
                 currentDeviceCount: userDevices.length,
                 removedDevices: devicesActuallyRemoved.map((d) => ({
                   id: d.id,
@@ -708,7 +707,7 @@ export class SessionManagementService extends BaseAuthService {
                   isTrusted: d.isTrusted,
                   lastActive: d.lastActive.toISOString()
                 })),
-                sessionsRevokedRelatedToDevices: sessionsRevokedCount
+                sessionsRevokedRelatedToDevices: sessionsRevokedByDeviceLimit
               } as Prisma.JsonObject,
               notes: `Automatically removed ${devicesActuallyRemoved.length} devices and related sessions due to exceeding device limit.`
             })
@@ -769,7 +768,7 @@ export class SessionManagementService extends BaseAuthService {
                 `Revoking session ${session.sessionId} (on device ${session.deviceId}, trusted: ${session.isDeviceTrusted}, lastActive: ${session.lastActiveAt.toISOString()}) for user ${userId} due to session limit.`
               )
               await this.tokenService.invalidateSession(session.sessionId, 'SESSION_LIMIT_EXCEEDED')
-              sessionsRevokedCount++
+              sessionsRevokedBySessionLimit++
               sessionsActuallyRevokedIds.push(session.sessionId)
             } catch (e) {
               this.sessionManagementLogger.error(
@@ -798,7 +797,7 @@ export class SessionManagementService extends BaseAuthService {
 
     return {
       devicesRemovedCount,
-      sessionsRevokedCount,
+      sessionsRevokedCount: sessionsRevokedByDeviceLimit + sessionsRevokedBySessionLimit,
       deviceLimitApplied,
       sessionLimitApplied
     }

@@ -1,4 +1,4 @@
-import { Injectable, Logger, HttpStatus } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { ResetPasswordBodyType } from 'src/routes/auth/auth.model'
 import { TypeOfVerificationCode, TokenType } from '../constants/auth.constants'
@@ -9,136 +9,104 @@ import { PrismaTransactionClient } from 'src/shared/repositories/base.repository
 import { Prisma } from '@prisma/client'
 import { I18nContext } from 'nestjs-i18n'
 import envConfig from 'src/shared/config'
-import { Response } from 'express'
 
 @Injectable()
 export class PasswordAuthService extends BaseAuthService {
   private readonly logger = new Logger(PasswordAuthService.name)
 
-  async resetPassword(
-    body: ResetPasswordBodyType & { userAgent?: string; ip?: string; sltCookie?: string },
-    res: Response
-  ) {
-    const { newPassword, userAgent, ip, sltCookie } = body
+  async resetPassword(body: ResetPasswordBodyType & { userAgent?: string; ip?: string }) {
     const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'PASSWORD_RESET_ATTEMPT_WITH_SLT',
-      ipAddress: ip,
-      userAgent: userAgent,
+      action: 'PASSWORD_RESET_ATTEMPT',
+      userEmail: body.email,
+      ipAddress: body.ip,
+      userAgent: body.userAgent,
       status: AuditLogStatus.FAILURE,
-      details: { sltCookieProvided: !!sltCookie }
-    }
-
-    if (!sltCookie) {
-      auditLogEntry.errorMessage = 'Missing SLT cookie for password reset.'
-      auditLogEntry.details.reason = 'MISSING_SLT_COOKIE_RESET_PWD'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Session.InvalidLogin')
+      details: { email: body.email, type: TypeOfVerificationCode.RESET_PASSWORD } as Prisma.JsonObject
     }
 
     try {
-      const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
-        sltCookie,
-        ip!,
-        userAgent!,
-        TypeOfVerificationCode.RESET_PASSWORD
+      const verificationPayload = await this.otpService.validateVerificationToken(
+        body.otpToken,
+        TypeOfVerificationCode.RESET_PASSWORD,
+        body.email
       )
 
-      auditLogEntry.userId = sltContext.userId
-      auditLogEntry.userEmail = sltContext.email
-      auditLogEntry.details.sltJti = sltContext.sltJti
-      auditLogEntry.details.sltPurpose = sltContext.purpose
-
-      if (!sltContext.userId) {
-        auditLogEntry.errorMessage = 'User ID missing in SLT context for password reset.'
-        auditLogEntry.details.reason = 'USER_ID_MISSING_IN_SLT_RESET_PWD'
-        await this.otpService.finalizeSlt(sltContext.sltJti)
-        this.tokenService.clearSltCookie(res)
-        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
+      if (!verificationPayload.userId) {
+        auditLogEntry.errorMessage = 'User ID missing in OTP token payload for password reset.'
+        auditLogEntry.details.reason = 'MISSING_USER_ID_IN_OTP_TOKEN'
+        throw InvalidOTPTokenException
       }
 
-      if (!sltContext.metadata?.otpVerified || sltContext.metadata.otpVerified !== '1') {
-        auditLogEntry.errorMessage = 'OTP not verified for password reset via SLT context.'
-        auditLogEntry.details.reason = 'OTP_NOT_VERIFIED_IN_SLT_RESET_PWD'
-        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.NotVerified')
-      }
-
-      const user = await this.sharedUserRepository.findUnique({ id: sltContext.userId })
+      const user = await this.sharedUserRepository.findUnique({ id: verificationPayload.userId })
       if (!user) {
-        auditLogEntry.errorMessage = `User not found (ID: ${sltContext.userId}) for password reset.`
-        auditLogEntry.details.reason = 'USER_NOT_FOUND_RESET_PWD'
-        await this.otpService.finalizeSlt(sltContext.sltJti)
-        this.tokenService.clearSltCookie(res)
-        throw EmailNotFoundException
+        auditLogEntry.errorMessage = `User with ID ${verificationPayload.userId} not found during password reset.`
+        auditLogEntry.details.reason = 'USER_NOT_FOUND'
+        throw EmailNotFoundException // Or a more generic user not found
       }
 
-      const hashedPassword = await this.hashingService.hash(newPassword)
-      await this.authRepository.updateUser({ id: user.id }, { password: hashedPassword })
+      const hashedPassword = await this.hashingService.hash(body.newPassword)
 
-      await this.otpService.finalizeSlt(sltContext.sltJti)
-      this.tokenService.clearSltCookie(res)
+      await this.prismaService.$transaction(async (tx) => {
+        await this.authRepository.updateUser({ id: user.id }, { password: hashedPassword }, tx)
 
-      await this.tokenService.invalidateAllUserSessions(user.id, 'PASSWORD_RESET')
+        // Blacklist the OTP token after successful use
+        const now = Math.floor(Date.now() / 1000)
+        await this.otpService.blacklistVerificationToken(verificationPayload.jti, now, verificationPayload.exp, tx)
+
+        // Invalidate all active sessions for the user to force re-login
+        await this.tokenService.invalidateAllUserSessions(user.id, 'PASSWORD_RESET_SUCCESS')
+      })
 
       auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'PASSWORD_RESET_SUCCESS_WITH_SLT'
-      auditLogEntry.details.allSessionsInvalidated = true
+      auditLogEntry.userId = user.id
+      auditLogEntry.action = 'PASSWORD_RESET_SUCCESS'
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
+      // Send password change notification email
       try {
-        const lang = this.i18nService.resolveLanguage(user.email)
         await this.emailService.sendSecurityAlertEmail({
           to: user.email,
           userName: user.name,
-          alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.PasswordReset', { lang }),
-          alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.PasswordReset', { lang }),
-          mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.PasswordReset', { lang }),
-          actionDetails: [
-            {
-              label: this.i18nService.translate('email.Email.Field.Time', { lang }),
-              value: new Date().toLocaleString(lang)
-            },
-            { label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }), value: ip || 'N/A' }
-          ],
-          secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.Password.NotYou', {
-            lang
+          alertSubject: await this.i18nService.translate('email.Email.SecurityAlert.Subject.PasswordReset', {
+            lang: I18nContext.current()?.lang
           }),
-          actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', { lang }),
-          actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
+          alertTitle: await this.i18nService.translate('email.Email.SecurityAlert.Title.PasswordReset', {
+            lang: I18nContext.current()?.lang
+          }),
+          mainMessage: await this.i18nService.translate('email.Email.SecurityAlert.MainMessage.PasswordReset', {
+            lang: I18nContext.current()?.lang,
+            args: { userName: user.name }
+          }),
+          actionDetails: [
+            { label: 'Time', value: new Date().toLocaleString() },
+            { label: 'IP Address', value: body.ip || 'N/A' },
+            { label: 'Device', value: body.userAgent || 'N/A' }
+          ],
+          secondaryMessage: await this.i18nService.translate(
+            'email.Email.SecurityAlert.SecondaryMessage.Password.NotYou',
+            { lang: I18nContext.current()?.lang }
+          ),
+          actionButtonText: await this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
+            lang: I18nContext.current()?.lang
+          }),
+          actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/login` // Or account security page
         })
       } catch (emailError) {
-        this.logger.error(`Failed to send password reset security alert to ${user.email}: ${emailError.message}`)
+        this.logger.error(`Failed to send password reset notification email to ${user.email}: ${emailError.message}`)
+        // Do not let email failure block the main operation
       }
 
-      const message = await this.i18nService.translate('error.Auth.Password.ResetSuccess', {
-        lang: this.i18nService.resolveLanguage(user.email)
+      const message = await this.i18nService.translate('Auth.Password.ResetSuccess', {
+        lang: I18nContext.current()?.lang
       })
       return { message }
     } catch (error) {
-      if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage =
-          error instanceof Error ? error.message : 'Unknown error during password reset with SLT'
-        if (error instanceof ApiException) {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        }
-      }
-      if (sltCookie && (!auditLogEntry.status || auditLogEntry.status === AuditLogStatus.FAILURE)) {
-        try {
-          const sltContextForCleanup = await this.otpService.validateSltFromCookieAndGetContext(
-            sltCookie,
-            ip!,
-            userAgent!
-          )
-          if (sltContextForCleanup && sltContextForCleanup.sltJti) {
-            await this.otpService.finalizeSlt(sltContextForCleanup.sltJti)
-            this.tokenService.clearSltCookie(res)
-            this.logger.debug('SLT context finalized during password reset error handling.')
-          }
-        } catch (cleanupError) {
-          this.logger.error('Error during SLT context cleanup in password reset error handler:', cleanupError)
-          this.tokenService.clearSltCookie(res)
-        }
+      auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
+      if (error instanceof ApiException && error.details) {
+        auditLogEntry.details.originalError = error.details as unknown as Prisma.JsonObject[]
       }
       await this.auditLogService.record(auditLogEntry as AuditLogData)
+      this.logger.error(`Password reset failed for ${body.email}: ${error.message}`, error.stack)
       throw error
     }
   }
@@ -157,7 +125,7 @@ export class PasswordAuthService extends BaseAuthService {
       if (!user) {
         auditLogEntry.errorMessage = 'User not found.'
         auditLogEntry.details.reason = 'USER_NOT_FOUND'
-        throw EmailNotFoundException
+        throw EmailNotFoundException // Or a more generic user not found
       }
       auditLogEntry.userEmail = user.email
 
@@ -171,6 +139,7 @@ export class PasswordAuthService extends BaseAuthService {
       const newHashedPassword = await this.hashingService.hash(newPassword)
       await this.authRepository.updateUser({ id: userId }, { password: newHashedPassword })
 
+      // Invalidate all sessions for the user to force re-login
       await this.tokenService.invalidateAllUserSessions(userId, 'PASSWORD_CHANGE_SUCCESS')
       auditLogEntry.details.allSessionsInvalidated = true
 
@@ -178,18 +147,19 @@ export class PasswordAuthService extends BaseAuthService {
       auditLogEntry.action = 'PASSWORD_CHANGE_SUCCESS'
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
+      // Send password change notification email
       try {
         await this.emailService.sendSecurityAlertEmail({
           to: user.email,
           userName: user.name,
-          alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.PasswordChanged', {
-            lang: this.i18nService.resolveLanguage(user.email)
+          alertSubject: await this.i18nService.translate('email.Email.SecurityAlert.Subject.PasswordChanged', {
+            lang: I18nContext.current()?.lang
           }),
-          alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.PasswordChanged', {
-            lang: this.i18nService.resolveLanguage(user.email)
+          alertTitle: await this.i18nService.translate('email.Email.SecurityAlert.Title.PasswordChanged', {
+            lang: I18nContext.current()?.lang
           }),
-          mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.PasswordChanged', {
-            lang: this.i18nService.resolveLanguage(user.email),
+          mainMessage: await this.i18nService.translate('email.Email.SecurityAlert.MainMessage.PasswordChanged', {
+            lang: I18nContext.current()?.lang,
             args: { userName: user.name }
           }),
           actionDetails: [

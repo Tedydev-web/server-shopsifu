@@ -199,7 +199,7 @@ export class DeviceService {
           `Failed to send new device login notification to ${user.email} for user ID ${user.id}: ${error.message}`,
           error.stack
         )
-      })
+    })
   }
 
   @AuditLog({
@@ -219,16 +219,16 @@ export class DeviceService {
     data: { userId: number; userAgent: string; ip: string },
     tx?: PrismaTransactionClient
   ): Promise<Device> {
-    const client = tx || this.prismaService
+      const client = tx || this.prismaService
     const fingerprint = this.basicDeviceFingerprint(data.userAgent)
 
-    this.logger.debug(
+        this.logger.debug(
       `[DeviceService] findOrCreateDevice for user ${data.userId}, IP: ${data.ip}, UserAgent: ${data.userAgent}, Fingerprint: ${fingerprint}`
     )
 
     let device = await client.device.findFirst({
       where: {
-        userId: data.userId,
+          userId: data.userId,
         fingerprint
       }
     })
@@ -317,7 +317,7 @@ export class DeviceService {
         osVersion: uaParsed.getOS().version || 'N/A',
         browserName: uaParsed.getBrowser().name || 'Unknown Browser',
         browserVersion: uaParsed.getBrowser().version || 'N/A'
-      }
+        }
 
       if (userForNotification) {
         this._sendNewDeviceLoginNotification(userForNotification, data.userAgent, data.ip, fingerprintDetails).catch(

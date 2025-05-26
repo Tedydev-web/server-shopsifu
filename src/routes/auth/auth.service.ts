@@ -56,16 +56,16 @@ export class AuthService {
 
   private readonly logger = new Logger(AuthService.name)
 
-  async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string; sltCookie?: string }) {
+  async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string }) {
     return this.otpAuthService.verifyCode(body)
   }
 
-  async sendOTP(body: SendOTPBodyType & { ipAddress: string; userAgent: string }, res: Response) {
-    return this.otpAuthService.sendOTP(body, res)
+  async sendOTP(body: SendOTPBodyType) {
+    return this.otpAuthService.sendOTP(body)
   }
 
-  async register(body: RegisterBodyType & { userAgent?: string; ip?: string; sltCookie?: string }, res: Response) {
-    return this.authenticationService.register(body, res)
+  async register(body: RegisterBodyType & { userAgent?: string; ip?: string }) {
+    return this.authenticationService.register(body)
   }
 
   async login(body: LoginBodyType & { userAgent: string; ip: string }, res?: Response) {
@@ -173,11 +173,8 @@ export class AuthService {
     return this.authenticationService.setRememberMe(activeUser, rememberMe, req, res, ip, userAgent)
   }
 
-  async resetPassword(
-    body: ResetPasswordBodyType & { userAgent?: string; ip?: string; sltCookie?: string },
-    res: Response
-  ) {
-    return this.passwordAuthService.resetPassword(body, res)
+  async resetPassword(body: ResetPasswordBodyType & { userAgent?: string; ip?: string }) {
+    return this.passwordAuthService.resetPassword(body)
   }
 
   async changePassword(userId: number, currentPassword: string, newPassword: string, ip?: string, userAgent?: string) {

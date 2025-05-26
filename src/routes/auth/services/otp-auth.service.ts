@@ -1,177 +1,162 @@
-import { Injectable, Logger, HttpStatus, Res } from '@nestjs/common'
-import { TypeOfVerificationCode, TypeOfVerificationCodeType } from '../constants/auth.constants'
-import { TokenService } from '../providers/token.service'
-import { OtpService, SltContextData } from '../providers/otp.service'
-import { VerifyCodeBodyType, SendOTPBodyType } from '../auth.model'
-import { I18nContext, I18nService } from 'nestjs-i18n'
-import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
-import { ApiException } from 'src/shared/exceptions/api.exception'
-import { Response } from 'express'
-import envConfig from 'src/shared/config'
-import { CookieNames } from 'src/shared/constants/auth.constant'
+import { Injectable, Logger } from '@nestjs/common'
+import { BaseAuthService } from './base-auth.service'
+import { SendOTPBodyType, VerifyCodeBodyType } from 'src/routes/auth/auth.model'
+import { TypeOfVerificationCode } from '../constants/auth.constants'
+import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
+import { EmailAlreadyExistsException, EmailNotFoundException } from 'src/routes/auth/auth.error'
+import { DeviceSetupFailedException } from '../auth.error'
+import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
+import { I18nContext } from 'nestjs-i18n'
+import envConfig from 'src/shared/config'
 
 @Injectable()
-export class OtpAuthService {
+export class OtpAuthService extends BaseAuthService {
   private readonly logger = new Logger(OtpAuthService.name)
 
-  constructor(
-    private readonly otpService: OtpService,
-    private readonly tokenService: TokenService,
-    private readonly i18nService: I18nService,
-    private readonly auditLogService: AuditLogService
-  ) {}
-
-  async sendOTP(body: SendOTPBodyType & { ipAddress: string; userAgent: string }, res: Response) {
-    const { email, type, ipAddress, userAgent } = body
-    let sltToken: string
-
-    if (type === TypeOfVerificationCode.REGISTER || type === TypeOfVerificationCode.RESET_PASSWORD) {
-      sltToken = await this.otpService.sendOtpAndInitiateSltForAnonymous({
-        email,
-        purpose: type,
-        ipAddress,
-        userAgent,
-        metadata: { sendReason: 'user_request' }
-      })
-      const sltCookieConfig = envConfig.cookie.sltToken
-      res.cookie(sltCookieConfig.name, sltToken, {
-        httpOnly: sltCookieConfig.httpOnly,
-        secure: sltCookieConfig.secure,
-        sameSite: sltCookieConfig.sameSite,
-        maxAge: sltCookieConfig.maxAge,
-        path: sltCookieConfig.path,
-        domain: sltCookieConfig.domain
-      })
-    } else {
-      this.logger.warn(
-        `[OtpAuthService sendOTP] Received type '${type}' which is not handled for anonymous SLT flow. OTP will be sent without SLT cookie.`
-      )
-      await this.otpService.sendOTP(email, type)
+  async sendOTP(body: SendOTPBodyType) {
+    const user = await this.sharedUserRepository.findUnique({
+      email: body.email
+    })
+    if (body.type === TypeOfVerificationCode.REGISTER && user) {
+      throw EmailAlreadyExistsException
+    }
+    if (body.type === TypeOfVerificationCode.RESET_PASSWORD && !user) {
+      throw EmailNotFoundException
     }
 
+    await this.otpService.sendOTP(body.email, body.type)
     const message = await this.i18nService.translate('error.Auth.Otp.SentSuccessfully', {
-      lang: I18nContext.current()?.lang || 'en'
+      lang: I18nContext.current()?.lang
     })
     return { message }
   }
 
-  async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string; sltCookie?: string }) {
-    const { email, code, type, userAgent, ip, sltCookie } = body
-    this.logger.debug(
-      `[OtpAuthService] verifyCode called. Email: ${email}, Type: ${type}, SLT Cookie Provided: ${!!sltCookie}`
-    )
-
-    const auditInitialDetails: Prisma.JsonObject = {
-      emailProvided: email,
-      otpTypeProvided: type,
-      ipAddress: ip,
-      userAgent,
-      sltCookieProvided: !!sltCookie
+  async verifyCode(body: VerifyCodeBodyType & { userAgent: string; ip: string }) {
+    const auditLogEntry: Partial<AuditLogData> = {
+      action: 'OTP_VERIFY_ATTEMPT',
+      userEmail: body.email,
+      ipAddress: body.ip,
+      userAgent: body.userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: { type: body.type, codeProvided: !!body.code } as Prisma.JsonObject
     }
+    try {
+      // Không còn $transaction ở đây vì OtpService mới xử lý Redis độc lập
+      // const result = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
 
-    if (!sltCookie) {
-      this.logger.warn(`verifyCode called for type ${type} without SLT cookie.`)
-      this.auditLogService.recordAsync({
-        action: 'VERIFY_CODE_FAIL_NO_SLT',
-        status: AuditLogStatus.FAILURE,
-        userEmail: email,
-        ipAddress: ip,
-        userAgent,
-        errorMessage: 'Missing SLT cookie for code verification.',
-        details: auditInitialDetails
+      // Bước 1: Xác thực OTP và tạo Verification JWT
+      const verificationJwt = await this.otpService.verifyOTPAndCreateToken({
+        email: body.email,
+        code: body.code,
+        type: body.type,
+        ip: body.ip,
+        userAgent: body.userAgent
+        // userId và deviceId sẽ được lấy từ payload của JWT sau này nếu cần,
+        // hoặc truyền vào đây nếu đã có sẵn trước khi tạo JWT.
+        // Đối với REGISTER, userId chưa có.
+        // Đối với LOGIN_UNTRUSTED_DEVICE_OTP, userId có thể được tìm trước.
       })
-      throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.OtpToken.Invalid')
+
+      const existingUser = await this.sharedUserRepository.findUnique({ email: body.email })
+      if (existingUser) {
+        auditLogEntry.userId = existingUser.id
+      }
+
+      // deviceId có thể được thêm vào metadata của JWT nếu cần thiết và lấy từ JWT sau khi validate
+      // Hoặc, nếu device đã được xác định trước khi verifyOTPAndCreateToken,
+      // nó có thể được truyền vào hàm đó để đưa vào payload JWT.
+      // Hiện tại, findOrCreateDevice logic ở đây sẽ không chạy trong $transaction nữa.
+      // Cần xem xét lại việc tạo/tìm device nếu nó phụ thuộc vào transaction.
+      // Tạm thời, bỏ qua logic device ở đây vì nó sẽ được xử lý ở bước hoàn tất login/register.
+
+      // Lookup geolocation
+      let geoLocationMetadata: { geoCountry?: string; geoCity?: string } = {}
+      if (body.ip) {
+        const geoLocation = this.geolocationService.lookup(body.ip)
+        if (geoLocation) {
+          geoLocationMetadata = { geoCountry: geoLocation.country, geoCity: geoLocation.city }
+          if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+            ;(auditLogEntry.details as Prisma.JsonObject).location =
+              `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
+          }
+        }
+      }
+      // Metadata này có thể được truyền vào verifyOTPAndCreateToken nếu cần thiết trong payload JWT
+
+      // Không cần createOtpToken và deleteVerificationCode nữa.
+
+      // Send security alert email if this was for LOGIN_UNTRUSTED_DEVICE_OTP
+      // Logic này nên được chuyển sang bước hoàn tất đăng nhập sau khi verificationJwt được xác thực thành công.
+      // Tạm thời comment out để tránh lỗi và xử lý sau.
+      /*
+      if (body.type === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP && existingUser) {
+        const user = await this.sharedUserRepository.findUnique({ where: { id: existingUser.id } }) // Đọc lại user nếu cần thông tin mới nhất
+        if (user) {
+          const lang = I18nContext.current()?.lang || 'en'
+          const locationInfo =
+            geoLocationMetadata.geoCity && geoLocationMetadata.geoCountry
+              ? `${geoLocationMetadata.geoCity}, ${geoLocationMetadata.geoCountry}`
+              : body.ip || 'N/A'
+          try {
+            await this.emailService.sendSecurityAlertEmail({
+              to: user.email,
+              userName: user.name,
+              alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.NewDeviceLogin', { lang }),
+              alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.NewDeviceLogin', { lang }),
+              mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.NewDeviceLogin', {
+                lang
+              }),
+              actionDetails: [
+                {
+                  label: this.i18nService.translate('email.Email.Field.Time', { lang }),
+                  value: new Date().toLocaleString(lang)
+                },
+                { label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }), value: body.ip },
+                {
+                  label: this.i18nService.translate('email.Email.Field.Device', { lang }),
+                  value: body.userAgent
+                },
+                {
+                  label: this.i18nService.translate('email.Email.Field.Location', { lang }),
+                  value: locationInfo
+                }
+              ],
+              secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.NotYou', {
+                lang
+              }),
+              actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
+                lang
+              }),
+              actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security` // TODO: Update with actual URL
+            })
+          } catch (emailError) {
+            this.logger.error(
+              `Failed to send new device login (OTP) security alert to ${user.email}: ${emailError.message}`,
+              emailError.stack
+            )
+            // Do not let email failure block the login flow
+          }
+        }
+      }
+      */
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'OTP_VERIFY_SUCCESS_JWT_ISSUED'
+      if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+        ;(auditLogEntry.details as Prisma.JsonObject).verificationJwtIssued = true
+      }
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      return { otpToken: verificationJwt } // Trả về verification JWT
+      // })
+      // return result
+    } catch (error) {
+      auditLogEntry.errorMessage = error.message
+      if (error.getResponse) {
+        auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+      }
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
     }
-
-    const sltContext = await this.otpService.validateSltFromCookieAndGetContext(sltCookie, ip, userAgent, type)
-
-    const emailToVerify = sltContext.email || email
-    if (!emailToVerify) {
-      this.logger.error(
-        `[OtpAuthService verifyCode] Email for OTP verification could not be determined. SLT context email: ${sltContext.email}, body email: ${email}`
-      )
-      this.auditLogService.recordAsync({
-        action: 'VERIFY_CODE_FAIL_NO_EMAIL',
-        status: AuditLogStatus.FAILURE,
-        ipAddress: ip,
-        userAgent,
-        errorMessage: 'Email is required for OTP verification and could not be determined.',
-        details: { ...auditInitialDetails, sltContextJti: sltContext.sltJti } as Prisma.JsonObject
-      })
-      throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Email.NotFound')
-    }
-
-    if (sltContext.email && email && sltContext.email !== email) {
-      this.logger.warn(
-        `[OtpAuthService verifyCode] Email mismatch. SLT context: ${sltContext.email}, body: ${email}. Using SLT context email.`
-      )
-      this.auditLogService.recordAsync({
-        action: 'VERIFY_CODE_EMAIL_MISMATCH',
-        status: AuditLogStatus.FAILURE,
-        userId: sltContext.userId !== null ? sltContext.userId : undefined,
-        userEmail: sltContext.email,
-        ipAddress: ip,
-        userAgent,
-        errorMessage: 'Email in request body does not match email in session token.',
-        details: {
-          ...auditInitialDetails,
-          bodyEmailProvided: email,
-          sltEmailInContext: sltContext.email,
-          sltJti: sltContext.sltJti
-        } as Prisma.JsonObject
-      })
-    }
-
-    await this.otpService.verifyOtpOnly(
-      emailToVerify,
-      code,
-      type,
-      sltContext.userId !== null ? sltContext.userId : undefined,
-      ip,
-      userAgent
-    )
-
-    const marked = await this.otpService.markSltOtpAsVerified(sltContext.sltJti)
-    if (!marked) {
-      this.logger.error(
-        `[OtpAuthService verifyCode] Failed to mark OTP as verified in SLT context for JTI ${sltContext.sltJti}.`
-      )
-      this.auditLogService.recordAsync({
-        action: 'VERIFY_CODE_FAIL_MARK_OTP',
-        status: AuditLogStatus.FAILURE,
-        userId: sltContext.userId !== null ? sltContext.userId : undefined,
-        userEmail: emailToVerify,
-        ipAddress: ip,
-        userAgent,
-        errorMessage: 'Failed to update session state after OTP verification. Please try again.',
-        details: {
-          ...auditInitialDetails,
-          sltJti: sltContext.sltJti,
-          reason: 'markSltOtpAsVerified_failed'
-        } as Prisma.JsonObject
-      })
-      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'Error.Global.Unknown')
-    }
-
-    const finalAuditDetails: Prisma.JsonObject = {
-      ...auditInitialDetails,
-      sltJti: sltContext.sltJti,
-      sltPurpose: sltContext.purpose,
-      sltUserId: sltContext.userId,
-      emailVerifiedWith: emailToVerify
-    }
-
-    this.auditLogService.recordAsync({
-      action: 'VERIFY_CODE_SUCCESS',
-      userId: sltContext.userId !== null ? sltContext.userId : undefined,
-      userEmail: emailToVerify,
-      status: AuditLogStatus.SUCCESS,
-      ipAddress: ip,
-      userAgent,
-      details: finalAuditDetails
-    })
-
-    return { message: 'Auth.Otp.VerifiedSuccessfully' }
   }
 }

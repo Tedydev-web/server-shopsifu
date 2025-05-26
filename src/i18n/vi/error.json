@@ -77,8 +77,5 @@
   "Error.Auth.Session.InvalidRevokeOperation": "Thao tác thu hồi phiên không hợp lệ. Vui lòng cung cấp các tham số hợp lệ.",
   "Error.Auth.Session.RevokedRemotely": "Phiên của bạn đã bị thu hồi. Vui lòng đăng nhập lại.",
   "Error.Auth.Session.MaxSessionsReached": "Bạn đã đạt đến số lượng phiên hoạt động tối đa. Một số phiên/thiết bị cũ hoặc không tin cậy có thể đã bị đăng xuất tự động. Vui lòng kiểm tra lại các phiên đang hoạt động của bạn.",
-  "Error.Auth.Device.MaxDevicesReached": "Bạn đã đạt đến số lượng thiết bị tối đa cho phép. Một số thiết bị cũ hoặc không tin cậy có thể đã bị xóa tự động. Vui lòng kiểm tra lại các thiết bị của bạn.",
-  "Error.Auth.Otp.UnsupportedTypeForAnonymousFlow": "Loại OTP đã chọn không được hỗ trợ cho các yêu cầu ẩn danh. Vui lòng đảm bảo bạn đang sử dụng luồng hợp lệ.",
-  "Auth.Otp.VerifiedSuccessfully": "Mã OTP đã được xác minh thành công.",
-  "Error.Auth.Otp.NotVerified": "Mã OTP chưa được xác minh cho hoạt động hiện tại. Vui lòng xác minh OTP trước."
+  "Error.Auth.Device.MaxDevicesReached": "Bạn đã đạt đến số lượng thiết bị tối đa cho phép. Một số thiết bị cũ hoặc không tin cậy có thể đã bị xóa tự động. Vui lòng kiểm tra lại các thiết bị của bạn."
 }

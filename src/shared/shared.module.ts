@@ -25,6 +25,7 @@ const SHARED_INTERCEPTORS = [
   { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor }
 ]
 
+// Concrete guard classes that can be provided and exported
 const CONCRETE_GUARDS = [AccessTokenGuard, APIKeyGuard, AuthenticationGuard]
 
 const SHARED_SERVICES = [PrismaService, HashingService]
@@ -35,7 +36,7 @@ const SHARED_SERVICES = [PrismaService, HashingService]
     AuditLogModule,
     CacheModule.registerAsync({
       isGlobal: true,
-      useFactory: (configService: ConfigService) => ({
+      useFactory: async (configService: ConfigService) => ({
         store: 'redis',
         host: configService.get<string>('REDIS_HOST'),
         port: configService.get<number>('REDIS_PORT'),
@@ -47,16 +48,17 @@ const SHARED_SERVICES = [PrismaService, HashingService]
   ],
   providers: [
     ...SHARED_SERVICES,
-    ...CONCRETE_GUARDS,
+    ...CONCRETE_GUARDS, // Provide concrete guards
     ...SHARED_PIPES,
     ...SHARED_INTERCEPTORS,
     {
+      // Register AuthenticationGuard as a global APP_GUARD
       provide: APP_GUARD,
       useClass: AuthenticationGuard
     },
     GeolocationService
   ],
-
+  // Export concrete services and guards for other modules to inject if needed
   exports: [...SHARED_SERVICES, ...CONCRETE_GUARDS, CacheModule, APIKeyGuard, GeolocationService]
 })
 export class SharedModule {}

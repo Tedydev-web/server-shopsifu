@@ -82,64 +82,57 @@ export class AuthenticationService extends BaseAuthService {
     )
   }
 
-  async register(body: RegisterBodyType & { userAgent?: string; ip?: string; sltCookie?: string }, res: Response) {
+  async register(body: RegisterBodyType & { userAgent?: string; ip?: string }) {
     const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'USER_REGISTER_ATTEMPT_WITH_SLT',
+      action: 'USER_REGISTER_ATTEMPT',
       userEmail: body.email,
       ipAddress: body.ip,
       userAgent: body.userAgent,
       status: AuditLogStatus.FAILURE,
       details: {
+        otpTokenProvided: !!body.otpToken,
         nameProvided: !!body.name,
-        phoneNumberProvided: !!body.phoneNumber,
-        sltCookieProvided: !!body.sltCookie
+        phoneNumberProvided: !!body.phoneNumber
       }
-    }
-
-    if (!body.sltCookie) {
-      auditLogEntry.errorMessage = 'Missing SLT cookie for registration.'
-      auditLogEntry.details.reason = 'MISSING_SLT_COOKIE_REGISTER'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Session.InvalidLogin') // Or a more specific error like 'Error.Auth.MissingRegistrationContext'
     }
 
     try {
-      const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
-        body.sltCookie,
-        body.ip!,
-        body.userAgent!,
-        TypeOfVerificationCode.REGISTER
-      )
-
-      auditLogEntry.details.sltJti = sltContext.sltJti
-      auditLogEntry.details.sltPurpose = sltContext.purpose
-      auditLogEntry.details.sltEmail = sltContext.email
-
-      if (!sltContext.metadata?.otpVerified || sltContext.metadata.otpVerified !== '1') {
-        auditLogEntry.errorMessage = 'OTP not verified for registration via SLT context.'
-        auditLogEntry.details.reason = 'OTP_NOT_VERIFIED_IN_SLT_REGISTER'
-        // Do not finalize SLT here, user might need to re-verify OTP for this SLT if it's still valid
-        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.NotVerified') // Create this i18n key
-      }
-
-      if (sltContext.email !== body.email) {
-        auditLogEntry.errorMessage = 'Email mismatch between SLT context and registration body.'
-        auditLogEntry.details.reason = 'EMAIL_MISMATCH_SLT_VS_BODY_REGISTER'
-        // Consider finalizing SLT if email mismatch is a hard stop to prevent reuse with wrong data
-        // await this.otpService.finalizeSlt(sltContext.sltJti);
-        // if (res) this.tokenService.clearSltCookie(res); // Requires res to be passed or handled differently
-        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Email.Mismatch')
-      }
-
       const user = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
+        const verificationPayload = await this.otpService.validateVerificationToken(
+          body.otpToken,
+          TypeOfVerificationCode.REGISTER,
+          body.email
+        )
+
+        if (verificationPayload.userId) {
+          auditLogEntry.userId = verificationPayload.userId
+        }
+        auditLogEntry.details.verificationTokenDeviceId = verificationPayload.deviceId
+        auditLogEntry.details.jwtJti = verificationPayload.jti
+
+        if (verificationPayload.deviceId && body.userAgent && body.ip) {
+          const isValidDevice = await this.deviceService.validateDevice(
+            verificationPayload.deviceId,
+            body.userAgent,
+            body.ip,
+            tx
+          )
+          if (!isValidDevice) {
+            auditLogEntry.errorMessage = DeviceMismatchException.message
+            auditLogEntry.details.reason = 'DEVICE_MISMATCH_ON_REGISTER'
+            auditLogEntry.details.validatedDeviceId = verificationPayload.deviceId
+            throw DeviceMismatchException
+          }
+          auditLogEntry.details.deviceValidatedOnRegister = true
+        }
+
         const clientRoleId = await this.rolesService.getClientRoleId()
         const hashedPassword = await this.hashingService.hash(body.password)
 
         const existingUserCheck = await tx.user.findUnique({ where: { email: body.email }, select: { id: true } })
         if (existingUserCheck) {
           auditLogEntry.errorMessage = EmailAlreadyExistsException.message
-          auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK_SLT'
-          throw EmailAlreadyExistsException // This will rollback transaction
+          auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK'
         }
 
         const createdUser = await this.authRepository.createUser(
@@ -153,76 +146,25 @@ export class AuthenticationService extends BaseAuthService {
           },
           tx
         )
-        auditLogEntry.userId = createdUser.id // Set userId for audit log upon successful creation
+
+        auditLogEntry.userId = createdUser.id
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = 'USER_REGISTER_SUCCESS'
+        auditLogEntry.details.roleIdAssigned = clientRoleId
+
         return createdUser
       })
-
-      // Finalize SLT and clear cookie outside transaction, after user creation is successful
-      await this.otpService.finalizeSlt(sltContext.sltJti)
-      this.tokenService.clearSltCookie(res) // `res` is now a parameter
-
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'USER_REGISTER_SUCCESS_WITH_SLT'
-      auditLogEntry.details.roleIdAssigned = await this.rolesService.getClientRoleId()
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-
-      // Automatically log in the user after successful registration
-      this.logger.debug(
-        `User ${user.email} registered successfully. Proceeding to login. IP: ${body.ip}, UA: ${body.userAgent}`
-      )
-      // Call the main login logic to create session and tokens
-      // This will internally handle device creation/finding and session management
-      const loginResult = await this.login(
-        {
-          email: user.email,
-          password: body.password, // Use the original password for login logic
-          rememberMe: false, // Default to no rememberMe on registration, can be set later
-          userAgent: body.userAgent!,
-          ip: body.ip!
-        },
-        res
-      )
-      // The login method itself will set cookies and return user profile.
-      // The register endpoint might just return the user profile part or a success message.
-
-      // Note: The `login` method above will record its own audit logs for the login part.
-      // We might want to adjust the response from register to reflect that login also occurred.
-
-      return {
-        // Return data consistent with what login would return if successful, or a specific registration success DTO
-        userId: loginResult.userId,
-        email: loginResult.email,
-        name: loginResult.name,
-        role: loginResult.role,
-        isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession,
-        currentDeviceId: loginResult.currentDeviceId
-        // message: 'Registration successful and logged in.' // Or use a DTO
-      }
+      return user
     } catch (error) {
       if (
         isUniqueConstraintPrismaError(error) ||
-        (auditLogEntry.details.reason === 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK_SLT' && !auditLogEntry.errorMessage)
+        (auditLogEntry.details.reason === 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK' && !auditLogEntry.errorMessage)
       ) {
         auditLogEntry.errorMessage = EmailAlreadyExistsException.message
-        auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS_SLT'
-        if (body.sltCookie) {
-          // If SLT was involved and registration failed due to existing email, finalize SLT
-          try {
-            const sltContextForCleanup = await this.otpService.validateSltFromCookieAndGetContext(
-              body.sltCookie,
-              body.ip!,
-              body.userAgent!,
-              TypeOfVerificationCode.REGISTER
-            )
-            await this.otpService.finalizeSlt(sltContextForCleanup.sltJti)
-            this.tokenService.clearSltCookie(res)
-          } catch (cleanupError) {
-            this.logger.error(`Error finalizing SLT during registration failure (email exists): ${cleanupError}`)
-          }
-        }
+        auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS'
       } else if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage =
-          error instanceof Error ? error.message : 'Unknown error during registration with SLT'
+        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during registration'
         if (error instanceof ApiException) {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
@@ -248,40 +190,40 @@ export class AuthenticationService extends BaseAuthService {
     }
     try {
       const user = await this.prismaService.user.findUnique({
-        where: { email: body.email },
-        include: { role: true }
-      })
-      if (!user) {
-        auditLogEntry.errorMessage = EmailNotFoundException.message
-        auditLogEntry.details.reason = 'USER_NOT_FOUND'
-        throw EmailNotFoundException
-      }
-      auditLogEntry.userId = user.id
-
-      const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
-      if (!isPasswordMatch) {
-        this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
-        auditLogEntry.errorMessage = InvalidPasswordException.message
-        auditLogEntry.details.reason = 'INVALID_PASSWORD'
-        throw InvalidPasswordException
-      }
-
-      let device: Device
-      try {
-        device = await this.deviceService.findOrCreateDevice({
-          userId: user.id,
-          userAgent: body.userAgent,
-          ip: body.ip
+          where: { email: body.email },
+          include: { role: true }
         })
-        auditLogEntry.details.deviceId = device.id
-      } catch (error) {
-        this.logger.error('[DEBUG AuthenticationService login] Error creating/finding device:', error)
-        auditLogEntry.errorMessage = DeviceSetupFailedException.message
-        auditLogEntry.details.deviceError = 'DeviceSetupFailed'
-        throw DeviceSetupFailedException
-      }
+        if (!user) {
+          auditLogEntry.errorMessage = EmailNotFoundException.message
+          auditLogEntry.details.reason = 'USER_NOT_FOUND'
+          throw EmailNotFoundException
+        }
+        auditLogEntry.userId = user.id
 
-      const shouldAskToTrustDevice = !device.isTrusted
+        const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
+        if (!isPasswordMatch) {
+          this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
+          auditLogEntry.errorMessage = InvalidPasswordException.message
+          auditLogEntry.details.reason = 'INVALID_PASSWORD'
+          throw InvalidPasswordException
+        }
+
+        let device: Device
+        try {
+        device = await this.deviceService.findOrCreateDevice({
+              userId: user.id,
+              userAgent: body.userAgent,
+              ip: body.ip
+        })
+          auditLogEntry.details.deviceId = device.id
+        } catch (error) {
+          this.logger.error('[DEBUG AuthenticationService login] Error creating/finding device:', error)
+          auditLogEntry.errorMessage = DeviceSetupFailedException.message
+          auditLogEntry.details.deviceError = 'DeviceSetupFailed'
+          throw DeviceSetupFailedException
+        }
+
+        const shouldAskToTrustDevice = !device.isTrusted
       const sessionId = uuidv4()
       const now = new Date()
 
@@ -291,18 +233,18 @@ export class AuthenticationService extends BaseAuthService {
         auditLogEntry.details.location = `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
       }
 
-      if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
-        auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
+        if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
+          auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.notes = '2FA required: Device not trusted.'
         await this.auditLogService.record(auditLogEntry as AuditLogData)
 
         const sltJwt = await this.otpService.initiateOtpWithSltCookie({
-          email: user.email,
-          userId: user.id,
-          deviceId: device.id,
+            email: user.email,
+            userId: user.id,
+            deviceId: device.id,
           ipAddress: body.ip,
-          userAgent: body.userAgent,
+              userAgent: body.userAgent,
           purpose: TypeOfVerificationCode.LOGIN_2FA,
           metadata: { rememberMe: body.rememberMe, initiatedFrom: 'login' }
         })
@@ -324,22 +266,22 @@ export class AuthenticationService extends BaseAuthService {
 
         const message = await this.i18nService.translate('Auth.Login.2FARequired', {
           lang: I18nContext.current()?.lang
-        })
-        return {
-          message,
-          twoFactorMethod: user.twoFactorMethod
-        }
+          })
+          return {
+            message,
+            twoFactorMethod: user.twoFactorMethod
+          }
       } else if (!device.isTrusted) {
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.notes = 'Device verification OTP required: Device not trusted.'
         await this.auditLogService.record(auditLogEntry as AuditLogData)
 
         const sltJwt = await this.otpService.initiateOtpWithSltCookie({
-          email: user.email,
-          userId: user.id,
-          deviceId: device.id,
+            email: user.email,
+            userId: user.id,
+            deviceId: device.id,
           ipAddress: body.ip,
-          userAgent: body.userAgent,
+              userAgent: body.userAgent,
           purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
           metadata: { rememberMe: body.rememberMe, initiatedFrom: 'login' }
         })
@@ -361,12 +303,12 @@ export class AuthenticationService extends BaseAuthService {
 
         const message = await this.i18nService.translate('Auth.Login.DeviceVerificationOtpRequired', {
           lang: I18nContext.current()?.lang
-        })
-        return {
-          message,
-          twoFactorMethod: TwoFactorMethodType.OTP
+          })
+          return {
+            message,
+            twoFactorMethod: TwoFactorMethodType.OTP
+          }
         }
-      }
 
       const sessionData: Record<string, string | number | boolean | undefined | null> = {
         userId: user.id,
@@ -399,78 +341,41 @@ export class AuthenticationService extends BaseAuthService {
       sessionData.currentAccessTokenJti = accessTokenJti
       sessionData.currentRefreshTokenJti = refreshTokenJti
       const decodedToken = this.jwtService.decode(accessToken)
-      if (decodedToken && typeof decodedToken === 'object' && typeof decodedToken.exp === 'number') {
-        sessionData.accessTokenExp = decodedToken.exp
-      } else {
+      sessionData.accessTokenExp = decodedToken.exp
+
+      let absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
+      if (isNaN(absoluteSessionLifetimeMs)) {
         this.logger.warn(
-          '[AuthenticationService.login] Could not decode access token or exp is invalid. Session data will not include accessTokenExp.'
+          `[AuthenticationService.login] Invalid ABSOLUTE_SESSION_LIFETIME_MS detected (NaN): ${envConfig.ABSOLUTE_SESSION_LIFETIME}. Falling back to 30 days.`
         )
+        absoluteSessionLifetimeMs = ms('30d') // Fallback to a known good value
       }
-
-      const absoluteSessionLifetimeEnvValue = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
-      let lifetimeMs: number
-
-      if (typeof absoluteSessionLifetimeEnvValue === 'string') {
-        const parsedMs = ms(absoluteSessionLifetimeEnvValue)
-        if (typeof parsedMs !== 'number' || isNaN(parsedMs)) {
-          this.logger.error(
-            `[AuthenticationService.login] Invalid string value for ABSOLUTE_SESSION_LIFETIME_MS: "${String(absoluteSessionLifetimeEnvValue)}". Falling back to 30 days.`
-          )
-          lifetimeMs = 30 * 24 * 60 * 60 * 1000 // 30 days in ms
-        } else {
-          lifetimeMs = parsedMs
-        }
-      } else if (typeof absoluteSessionLifetimeEnvValue === 'number') {
-        lifetimeMs = absoluteSessionLifetimeEnvValue
-      } else {
-        this.logger.error(
-          `[AuthenticationService.login] Unexpected type or undefined for ABSOLUTE_SESSION_LIFETIME_MS: ${String(typeof absoluteSessionLifetimeEnvValue)}. Value: ${String(absoluteSessionLifetimeEnvValue)}. Falling back to 30 days.`
-        )
-        lifetimeMs = 30 * 24 * 60 * 60 * 1000 // Default to 30 days in ms
-      }
-
-      if (isNaN(lifetimeMs) || lifetimeMs <= 0) {
-        this.logger.error(
-          `[AuthenticationService.login] Calculated lifetimeMs is invalid (NaN or non-positive): ${lifetimeMs}. Falling back to 30 days.`
-        )
-        lifetimeMs = 30 * 24 * 60 * 60 * 1000 // 30 days in ms
-      }
-
-      const effectiveAbsoluteSessionLifetimeSeconds: number = Math.floor(lifetimeMs / 1000)
-
-      const maxLifetimeTimestamp = Date.now() + effectiveAbsoluteSessionLifetimeSeconds * 1000
-      if (isNaN(maxLifetimeTimestamp)) {
-        this.logger.error(
-          `[AuthenticationService.login] maxLifetimeTimestamp is NaN. Date.now(): ${Date.now()}, effectiveAbsoluteSessionLifetimeSeconds: ${effectiveAbsoluteSessionLifetimeSeconds}. Defaulting sessionData.maxLifetimeExpiresAt.`
-        )
-        sessionData.maxLifetimeExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // Default to 30 days from now
-      } else {
-        sessionData.maxLifetimeExpiresAt = new Date(maxLifetimeTimestamp).toISOString()
-      }
+      sessionData.maxLifetimeExpiresAt = new Date(Date.now() + absoluteSessionLifetimeMs).toISOString()
 
       const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
       const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
       const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
 
+      const absoluteSessionLifetimeSeconds = Math.floor(ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS) / 1000)
       const refreshTokenTTL = maxAgeForRefreshTokenCookie
         ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
-        : effectiveAbsoluteSessionLifetimeSeconds
+        : absoluteSessionLifetimeSeconds
 
       await this.redisService.pipeline((pipeline) => {
         pipeline.hmset(sessionKey, sessionData as Record<string, string>)
-        pipeline.expire(sessionKey, effectiveAbsoluteSessionLifetimeSeconds)
+        pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
         pipeline.sadd(userSessionsKey, sessionId)
         pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
         return pipeline
       })
 
-      if (res) {
+        if (res) {
         this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
-      } else {
-        this.logger.warn(
-          '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
-        )
-      }
+        } else {
+          this.logger.warn(
+            '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
+          )
+        }
 
       // Send email if login from new location on a trusted device
       if (device.isTrusted && geoLocation && geoLocation.country && geoLocation.city) {
@@ -546,8 +451,8 @@ export class AuthenticationService extends BaseAuthService {
         }
       }
 
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'USER_LOGIN_SUCCESS'
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = 'USER_LOGIN_SUCCESS'
       auditLogEntry.details.sessionId = sessionId
 
       // Enforce limits after successful login and session creation (only if not pending 2FA/OTP)
@@ -574,15 +479,15 @@ export class AuthenticationService extends BaseAuthService {
           })
       }
 
-      return {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role.name,
+        return {
+          userId: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role.name,
         isDeviceTrustedInSession: device.isTrusted,
         currentDeviceId: device.id,
         askToTrustDevice: shouldAskToTrustDevice
-      }
+        }
     } catch (error) {
       this.logger.error('[AuthenticationService.login] Caught error:', error, typeof error)
       if (!auditLogEntry.errorMessage) {
@@ -760,8 +665,8 @@ export class AuthenticationService extends BaseAuthService {
     }
 
     const newMaxAgeForRefreshTokenCookie = rememberMe
-      ? envConfig.cookie.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
-      : envConfig.cookie.REFRESH_TOKEN_COOKIE_MAX_AGE
+      ? envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
+      : envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
 
     // Update the cookie with the new maxAge
     this.tokenService.setTokenCookies(res, '', currentRefreshTokenJti, newMaxAgeForRefreshTokenCookie, true)
@@ -920,68 +825,32 @@ export class AuthenticationService extends BaseAuthService {
       sessionData.currentAccessTokenJti = accessTokenJti
       sessionData.currentRefreshTokenJti = refreshTokenJti
       const decodedToken = this.jwtService.decode(accessToken)
-      if (
-        decodedToken &&
-        typeof decodedToken === 'object' &&
-        'exp' in decodedToken &&
-        typeof decodedToken.exp === 'number'
-      ) {
+      if (decodedToken && typeof decodedToken === 'object' && 'exp' in decodedToken) {
         sessionData.accessTokenExp = decodedToken.exp
       }
 
-      const absoluteSessionLifetimeEnvValueLoginOtp = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
-      let lifetimeMsLoginOtp: number
-
-      if (typeof absoluteSessionLifetimeEnvValueLoginOtp === 'string') {
-        const parsedMs = ms(absoluteSessionLifetimeEnvValueLoginOtp)
-        if (typeof parsedMs !== 'number' || isNaN(parsedMs)) {
-          this.logger.error(
-            `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Invalid string value for ABSOLUTE_SESSION_LIFETIME_MS: "${String(absoluteSessionLifetimeEnvValueLoginOtp)}". Falling back to 30 days.`
-          )
-          lifetimeMsLoginOtp = 30 * 24 * 60 * 60 * 1000 // 30 days in ms
-        } else {
-          lifetimeMsLoginOtp = parsedMs
-        }
-      } else if (typeof absoluteSessionLifetimeEnvValueLoginOtp === 'number') {
-        lifetimeMsLoginOtp = absoluteSessionLifetimeEnvValueLoginOtp
-      } else {
-        this.logger.error(
-          `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Unexpected type or undefined for ABSOLUTE_SESSION_LIFETIME_MS: ${String(typeof absoluteSessionLifetimeEnvValueLoginOtp)}. Value: ${String(absoluteSessionLifetimeEnvValueLoginOtp)}. Falling back to 30 days.`
+      let absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
+      if (isNaN(absoluteSessionLifetimeMs)) {
+        this.logger.warn(
+          `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Invalid ABSOLUTE_SESSION_LIFETIME_MS: ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}. Falling back to 30 days.`
         )
-        lifetimeMsLoginOtp = 30 * 24 * 60 * 60 * 1000 // Default to 30 days in ms
+        absoluteSessionLifetimeMs = ms('30d')
       }
-
-      if (isNaN(lifetimeMsLoginOtp) || lifetimeMsLoginOtp <= 0) {
-        this.logger.error(
-          `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Calculated lifetimeMsLoginOtp is invalid (NaN or non-positive): ${lifetimeMsLoginOtp}. Falling back to 30 days.`
-        )
-        lifetimeMsLoginOtp = 30 * 24 * 60 * 60 * 1000 // 30 days in ms
-      }
-
-      const effectiveAbsoluteSessionLifetimeSecondsLoginOtp: number = Math.floor(lifetimeMsLoginOtp / 1000)
-
-      const maxLifetimeTimestampLoginOtp = Date.now() + effectiveAbsoluteSessionLifetimeSecondsLoginOtp * 1000
-      if (isNaN(maxLifetimeTimestampLoginOtp)) {
-        this.logger.error(
-          `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] maxLifetimeTimestampLoginOtp is NaN. Date.now(): ${Date.now()}, effectiveAbsoluteSessionLifetimeSecondsLoginOtp: ${effectiveAbsoluteSessionLifetimeSecondsLoginOtp}. Defaulting sessionData.maxLifetimeExpiresAt.`
-        )
-        sessionData.maxLifetimeExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // Default to 30 days from now
-      } else {
-        sessionData.maxLifetimeExpiresAt = new Date(maxLifetimeTimestampLoginOtp).toISOString()
-      }
+      sessionData.maxLifetimeExpiresAt = new Date(Date.now() + absoluteSessionLifetimeMs).toISOString()
 
       const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
       const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
       const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
 
+      const absoluteSessionLifetimeSeconds = Math.floor(absoluteSessionLifetimeMs / 1000)
       const refreshTokenTTL =
         maxAgeForRefreshTokenCookie && maxAgeForRefreshTokenCookie > 0
           ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
-          : effectiveAbsoluteSessionLifetimeSecondsLoginOtp
+          : absoluteSessionLifetimeSeconds
 
       await this.redisService.pipeline((pipeline) => {
         pipeline.hmset(sessionKey, sessionData as Record<string, string>)
-        pipeline.expire(sessionKey, effectiveAbsoluteSessionLifetimeSecondsLoginOtp)
+        pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
         pipeline.sadd(userSessionsKey, sessionId)
         pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
         return pipeline
@@ -995,7 +864,7 @@ export class AuthenticationService extends BaseAuthService {
         )
       }
 
-      auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'LOGIN_UNTRUSTED_DEVICE_OTP_VERIFY_SUCCESS'
       auditLogEntry.details.sessionId = sessionId
       await this.auditLogService.record(auditLogEntry as AuditLogData)
@@ -1009,7 +878,7 @@ export class AuthenticationService extends BaseAuthService {
           )
         })
 
-      return {
+        return {
         userId: user.id,
         email: user.email,
         name: user.name,
@@ -1026,7 +895,7 @@ export class AuthenticationService extends BaseAuthService {
         if (error instanceof ApiException) {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         } else if (error instanceof Error) {
-          auditLogEntry.errorMessage = error.message
+      auditLogEntry.errorMessage = error.message
         } else {
           auditLogEntry.errorMessage = 'Unknown error during untrusted device OTP login completion'
         }

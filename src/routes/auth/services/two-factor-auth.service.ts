@@ -207,18 +207,18 @@ export class TwoFactorAuthService extends BaseAuthService {
         const isValidTOTP = this.twoFactorService.verifyTOTP({
           email: user.email, // or a unique identifier from user
           secret: twoFactorSecretFromToken,
-          token: totpCode
-        })
+        token: totpCode
+      })
 
         if (!isValidTOTP) {
           auditLogEntry.errorMessage = 'Invalid TOTP code provided during 2FA setup confirmation.'
           auditLogEntry.details.reason = 'INVALID_TOTP_CODE'
           // Note: Not incrementing OTP failure here as it's a TOTP code
-          throw InvalidTOTPException
-        }
+        throw InvalidTOTPException
+      }
 
         // All checks passed, proceed to enable 2FA
-        const recoveryCodes = this.twoFactorService.generateRecoveryCodes()
+      const recoveryCodes = this.twoFactorService.generateRecoveryCodes()
         await this.twoFactorService.saveRecoveryCodes(userId, recoveryCodes, tx)
         auditLogEntry.details.recoveryCodesGeneratedCount = recoveryCodes.length
 
@@ -435,8 +435,8 @@ export class TwoFactorAuthService extends BaseAuthService {
             throw TOTPNotEnabledException // Throw inside transaction
           }
           const isValidTOTP = this.twoFactorService.verifyTOTP({
-            email: user.email,
-            secret: user.twoFactorSecret,
+          email: user.email,
+          secret: user.twoFactorSecret,
             token: data.totpCode
           })
           if (!isValidTOTP) {
@@ -457,8 +457,8 @@ export class TwoFactorAuthService extends BaseAuthService {
         await this.authRepository.updateUser(
           { id: user.id },
           {
-            twoFactorEnabled: false,
-            twoFactorSecret: null,
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
             twoFactorMethod: null,
             twoFactorVerifiedAt: null,
             RecoveryCode: { deleteMany: {} } // Corrected relation name
@@ -633,7 +633,7 @@ export class TwoFactorAuthService extends BaseAuthService {
 
       // If userId is not yet determined (e.g., no valid SLT context), fetch user by effectiveEmail.
       // If userId was determined from SLT, this step is mainly to fetch the full user object.
-      const userLookupCriteria = effectiveUserId ? { id: effectiveUserId } : { email: effectiveEmail }
+      const userLookupCriteria = effectiveUserId ? { id: effectiveUserId } : { email: effectiveEmail! }
 
       const resultFromTransaction = await this.prismaService.$transaction(async (tx) => {
         const user = await this.sharedUserRepository.findUniqueWithRole(userLookupCriteria, tx)
@@ -702,7 +702,7 @@ export class TwoFactorAuthService extends BaseAuthService {
             }
             isValidCode = this.twoFactorService.verifyTOTP({
               email: user.email,
-              secret: user.twoFactorSecret,
+              secret: user.twoFactorSecret!,
               token: body.code
             })
             if (isValidCode) {
@@ -770,7 +770,7 @@ export class TwoFactorAuthService extends BaseAuthService {
             auditLogEntry.errorMessage = `SLT context (JTI: ${sltContext.sltJti}) is missing deviceId, which is required for 2FA verification.`
             auditLogEntry.details.reason = 'SLT_CONTEXT_MISSING_DEVICEID'
             this.logger.error(auditLogEntry.errorMessage)
-            throw new ApiException(
+          throw new ApiException(
               HttpStatus.INTERNAL_SERVER_ERROR,
               'SltProcessingError',
               'Error.Auth.Session.InvalidLogin'
@@ -804,21 +804,21 @@ export class TwoFactorAuthService extends BaseAuthService {
           const newSessionIdGenerated = uuidv4() // Renamed to avoid conflict
           await this.sessionManagementService.enforceSessionAndDeviceLimits(user.id, newSessionIdGenerated, device.id)
 
-          const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
-            await this.tokenService.generateTokens(
-              {
-                userId: user.id,
-                deviceId: device.id,
-                roleId: user.roleId,
-                roleName: user.role.name,
+        const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
+          await this.tokenService.generateTokens(
+            {
+              userId: user.id,
+              deviceId: device.id,
+              roleId: user.roleId,
+              roleName: user.role.name,
                 sessionId: newSessionIdGenerated
-              },
-              tx,
-              rememberMe
-            )
+            },
+            tx,
+            rememberMe
+          )
 
-          if (res) {
-            this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
+        if (res) {
+          this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
             // SLT cookie will be cleared after transaction success
           }
 
@@ -848,7 +848,7 @@ export class TwoFactorAuthService extends BaseAuthService {
             user, // Return user object from transaction scope
             finalDeviceIsTrusted,
             newSessionId: newSessionIdGenerated, // Return the new session ID
-            sltJtiToFinalize: sltContext.sltJti // Pass JTI if SLT flow
+            sltJtiToFinalize: sltContext!.sltJti // Pass JTI if SLT flow
           }
         } else {
           // This block implies no SLT cookie was provided.

@@ -53,15 +53,14 @@ export interface VerificationJwtPayload {
 // Define SLT Context and Payload
 interface SltJwtPayload {
   jti: string
-  sub?: number // userId, optional for anonymous flows like registration
+  sub: number // userId
   pur: TypeOfVerificationCodeType // purpose
-  iat?: number // Optional: Issued at, jwtService will add this
-  exp?: number // Optional: Expiration time, jwtService will add this
+  exp: number // Keep exp as jwtService.verify will return it
 }
 
 export interface SltContextData {
-  userId: number // For reset password, this will be present. For register, might be initially undefined/null then updated, or not used until user creation.
-  deviceId?: number // Made optional, esp. for registration flow before device is fully created
+  userId: number
+  deviceId: number
   ipAddress: string
   userAgent: string
   purpose: TypeOfVerificationCodeType
@@ -329,8 +328,8 @@ export class OtpService {
 
   async initiateOtpWithSltCookie(payload: {
     email: string // To send OTP
-    userId: number // Keep as number for now, assuming it's available for flows using this
-    deviceId?: number // Made optional
+    userId: number
+    deviceId: number
     ipAddress: string
     userAgent: string
     purpose: TypeOfVerificationCodeType
@@ -361,10 +360,10 @@ export class OtpService {
     const sltContextKey = this._getSltContextKey(sltJti)
     const nowForContext = Math.floor(Date.now() / 1000) // Get current time for context
     const sltContextData: SltContextData = {
-      userId: payload.userId,
-      deviceId: payload.deviceId, // Will be undefined if not provided
-      ipAddress: payload.ipAddress,
-      userAgent: payload.userAgent,
+      userId,
+      deviceId,
+      ipAddress,
+      userAgent,
       purpose,
       sltJwtExp: nowForContext + sltExpiresInSeconds, // Calculate exp for context based on current time and expiresIn
       sltJwtCreatedAt: nowForContext, // Record creation time for context
@@ -690,129 +689,5 @@ export class OtpService {
     // if (storedPayloadString) { ... compare ... }
 
     return payload
-  }
-
-  async sendOtpAndInitiateSltForAnonymous(payload: {
-    email: string // To send OTP
-    ipAddress: string
-    userAgent: string
-    purpose: TypeOfVerificationCode.REGISTER | TypeOfVerificationCode.RESET_PASSWORD // Specify limited purposes
-    metadata?: Record<string, any>
-  }): Promise<string> {
-    const { email, ipAddress, userAgent, purpose, metadata } = payload
-
-    const sltExpiresInSeconds = envConfig.SLT_EXPIRY_SECONDS
-    const sltJti = uuidv4()
-
-    const sltJwtPayloadToSign: Pick<SltJwtPayload, 'jti' | 'pur'> = {
-      jti: sltJti,
-      pur: purpose
-    }
-
-    const sltToken = this.jwtService.sign(sltJwtPayloadToSign, {
-      secret: envConfig.SLT_JWT_SECRET,
-      expiresIn: envConfig.SLT_JWT_EXPIRES_IN
-    })
-
-    // Send OTP email (this part remains largely the same)
-    try {
-      await this.sendOTP(email, purpose, undefined /* userIdForOtpData */) // sendOTP now handles optional userId
-    } catch (error) {
-      this.logger.error(`Failed to send OTP for ${purpose} to ${email}: ${error.message}`)
-      // Even if OTP sending fails, we might have created an SLT. Decide on rollback or let it expire.
-      // For now, we throw, and the caller handles cleanup or relies on SLT expiry.
-      throw error // Re-throw to be handled by the caller
-    }
-
-    const nowForContext = Math.floor(Date.now() / 1000) // Get current time for context
-    const sltContextData: SltContextData = {
-      // userId and deviceId are not set for anonymous flow initially
-      userId: null as any, // Explicitly null, will be updated later if needed or not used
-      deviceId: undefined,
-      email: email, // Store email in context for anonymous flows
-      ipAddress: ipAddress,
-      userAgent: userAgent,
-      purpose: purpose,
-      sltJwtExp: nowForContext + sltExpiresInSeconds,
-      sltJwtCreatedAt: nowForContext,
-      finalized: '0',
-      metadata: { ...(metadata || {}), otpVerified: '0' } // Initialize otpVerified in metadata
-    }
-
-    const sltContextKey = this._getSltContextKey(sltJti)
-    await this.redisService.setJson(sltContextKey, sltContextData, sltExpiresInSeconds)
-
-    this.logger.debug(
-      `Anonymous SLT context for JTI ${sltJti} (purpose ${purpose}, email ${email}) stored in Redis with TTL ${sltExpiresInSeconds}s. Key: ${sltContextKey}`
-    )
-
-    this.auditLogService.recordAsync({
-      action: 'ANONYMOUS_SLT_INITIATED_WITH_OTP',
-      status: AuditLogStatus.SUCCESS,
-      userEmail: email,
-      ipAddress: ipAddress,
-      userAgent: userAgent,
-      details: {
-        sltJti,
-        purpose,
-        email,
-        metadata,
-        sltExpiresInSeconds
-      } as Prisma.JsonObject
-    })
-
-    return sltToken
-  }
-
-  async markSltOtpAsVerified(sltJti: string): Promise<boolean> {
-    const sltContextKey = this._getSltContextKey(sltJti)
-    const sltContextString = await this.redisService.get(sltContextKey)
-
-    if (!sltContextString) {
-      this.logger.warn(`Cannot mark OTP as verified: SLT context not found for JTI ${sltJti}. Key: ${sltContextKey}`)
-      // Potentially throw an error or return false if context must exist
-      return false
-    }
-
-    const sltContext: SltContextData = JSON.parse(sltContextString)
-
-    if (sltContext.finalized === '1') {
-      this.logger.warn(`Cannot mark OTP as verified for JTI ${sltJti}: SLT context is already finalized.`)
-      return false // Or throw error
-    }
-
-    // Update metadata
-    const updatedMetadata = {
-      ...(sltContext.metadata || {}),
-      otpVerified: '1'
-    }
-    const updatedContext: SltContextData = {
-      ...sltContext,
-      metadata: updatedMetadata
-    }
-
-    const ttl = await this.redisService.ttl(sltContextKey)
-    if (ttl > 0) {
-      await this.redisService.setJson(sltContextKey, updatedContext, ttl)
-      this.logger.debug(`SLT context JTI ${sltJti} marked with otpVerified='1'. Key: ${sltContextKey}`)
-      this.auditLogService.recordAsync({
-        action: 'SLT_OTP_MARKED_VERIFIED',
-        status: AuditLogStatus.SUCCESS,
-        userEmail: sltContext.email,
-        userId: sltContext.userId !== null ? sltContext.userId : undefined, // Handle potential null userId
-        ipAddress: sltContext.ipAddress,
-        userAgent: sltContext.userAgent,
-        details: {
-          sltJti,
-          purpose: sltContext.purpose
-        } as Prisma.JsonObject
-      })
-      return true
-    } else {
-      this.logger.warn(
-        `SLT context for JTI ${sltJti} has expired or has no TTL. Cannot mark OTP as verified. Key: ${sltContextKey}`
-      )
-      return false
-    }
   }
 }
