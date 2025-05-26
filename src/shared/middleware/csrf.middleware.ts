@@ -31,13 +31,14 @@ export class CsrfMiddleware implements NestMiddleware {
         httpOnly: envConfig.cookie.csrfSecretCookie.httpOnly,
         secure: envConfig.cookie.csrfSecretCookie.secure,
         sameSite: envConfig.cookie.csrfSecretCookie.sameSite as 'strict' | 'lax' | 'none' | boolean,
-        domain: envConfig.cookie.csrfSecretCookie.domain,
-        signed: true
+        domain: envConfig.cookie.csrfSecretCookie.domain
       },
       value: (req: Request) => {
-        const token = req.headers['x-csrf-token'] || req.headers['X-CSRF-Token'] || req.body._csrf
-        const tokenFromHeader = req.headers['x-xsrf-token'] as string
-        const tokenFromBody = req.body?._csrf as string // if forms are used with _csrf field
+        const tokenFromHeader =
+          (req.headers['x-xsrf-token'] as string) ||
+          (req.headers['x-csrf-token'] as string) ||
+          (req.headers['X-CSRF-Token'] as string)
+        const tokenFromBody = req.body?._csrf as string
         return tokenFromHeader || tokenFromBody
       }
     }) as (req: Request, res: Response, next: NextFunction) => void

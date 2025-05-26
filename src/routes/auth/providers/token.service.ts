@@ -40,22 +40,22 @@ export class TokenService {
   ) {}
 
   signAccessToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>) {
-    this.logger.debug(`Signing access token for user ${payload.userId}, session ${payload.sessionId}`)
+    this.logger.debug(
+      `Signing access token for user ${payload.userId}, session ${payload.sessionId}, jti: ${payload.jti}`
+    )
     return this.jwtService.sign(payload, {
       secret: envConfig.ACCESS_TOKEN_SECRET,
-      expiresIn: envConfig.ACCESS_TOKEN_EXPIRY,
-      jwtid: payload.jti
+      expiresIn: envConfig.ACCESS_TOKEN_EXPIRY
     })
   }
 
   signShortLivedToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>) {
     this.logger.debug(
-      `Signing short-lived access token for testing purposes: userId=${payload.userId}, session ${payload.sessionId}`
+      `Signing short-lived token for user ${payload.userId}, purpose (inferred via jti): ${payload.jti}`
     )
     return this.jwtService.sign(payload, {
-      secret: envConfig.ACCESS_TOKEN_SECRET,
-      expiresIn: '5m',
-      jwtid: payload.jti
+      secret: envConfig.VERIFICATION_JWT_SECRET,
+      expiresIn: envConfig.VERIFICATION_JWT_EXPIRES_IN
     })
   }
 

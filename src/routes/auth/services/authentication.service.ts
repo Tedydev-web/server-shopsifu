@@ -399,22 +399,54 @@ export class AuthenticationService extends BaseAuthService {
       sessionData.currentAccessTokenJti = accessTokenJti
       sessionData.currentRefreshTokenJti = refreshTokenJti
       const decodedToken = this.jwtService.decode(accessToken)
-      sessionData.accessTokenExp = decodedToken.exp
-
-      let effectiveAbsoluteSessionLifetimeSeconds: number
-
-      const absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
-      if (isNaN(absoluteSessionLifetimeMs) || absoluteSessionLifetimeMs <= 0) {
-        this.logger.error(
-          `[AuthenticationService.login] Invalid ABSOLUTE_SESSION_LIFETIME_MS detected (NaN or non-positive): ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}. Falling back to 30 days.`
-        )
-        effectiveAbsoluteSessionLifetimeSeconds = 30 * 24 * 60 * 60 // 30 days in seconds
+      if (decodedToken && typeof decodedToken === 'object' && typeof decodedToken.exp === 'number') {
+        sessionData.accessTokenExp = decodedToken.exp
       } else {
-        effectiveAbsoluteSessionLifetimeSeconds = Math.floor(ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS) / 1000)
+        this.logger.warn(
+          '[AuthenticationService.login] Could not decode access token or exp is invalid. Session data will not include accessTokenExp.'
+        )
       }
-      sessionData.maxLifetimeExpiresAt = new Date(
-        Date.now() + effectiveAbsoluteSessionLifetimeSeconds * 1000
-      ).toISOString()
+
+      const absoluteSessionLifetimeEnvValue = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
+      let lifetimeMs: number
+
+      if (typeof absoluteSessionLifetimeEnvValue === 'string') {
+        const parsedMs = ms(absoluteSessionLifetimeEnvValue)
+        if (typeof parsedMs !== 'number' || isNaN(parsedMs)) {
+          this.logger.error(
+            `[AuthenticationService.login] Invalid string value for ABSOLUTE_SESSION_LIFETIME_MS: "${String(absoluteSessionLifetimeEnvValue)}". Falling back to 30 days.`
+          )
+          lifetimeMs = 30 * 24 * 60 * 60 * 1000 // 30 days in ms
+        } else {
+          lifetimeMs = parsedMs
+        }
+      } else if (typeof absoluteSessionLifetimeEnvValue === 'number') {
+        lifetimeMs = absoluteSessionLifetimeEnvValue
+      } else {
+        this.logger.error(
+          `[AuthenticationService.login] Unexpected type or undefined for ABSOLUTE_SESSION_LIFETIME_MS: ${String(typeof absoluteSessionLifetimeEnvValue)}. Value: ${String(absoluteSessionLifetimeEnvValue)}. Falling back to 30 days.`
+        )
+        lifetimeMs = 30 * 24 * 60 * 60 * 1000 // Default to 30 days in ms
+      }
+
+      if (isNaN(lifetimeMs) || lifetimeMs <= 0) {
+        this.logger.error(
+          `[AuthenticationService.login] Calculated lifetimeMs is invalid (NaN or non-positive): ${lifetimeMs}. Falling back to 30 days.`
+        )
+        lifetimeMs = 30 * 24 * 60 * 60 * 1000 // 30 days in ms
+      }
+
+      const effectiveAbsoluteSessionLifetimeSeconds: number = Math.floor(lifetimeMs / 1000)
+
+      const maxLifetimeTimestamp = Date.now() + effectiveAbsoluteSessionLifetimeSeconds * 1000
+      if (isNaN(maxLifetimeTimestamp)) {
+        this.logger.error(
+          `[AuthenticationService.login] maxLifetimeTimestamp is NaN. Date.now(): ${Date.now()}, effectiveAbsoluteSessionLifetimeSeconds: ${effectiveAbsoluteSessionLifetimeSeconds}. Defaulting sessionData.maxLifetimeExpiresAt.`
+        )
+        sessionData.maxLifetimeExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // Default to 30 days from now
+      } else {
+        sessionData.maxLifetimeExpiresAt = new Date(maxLifetimeTimestamp).toISOString()
+      }
 
       const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
       const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
@@ -888,24 +920,55 @@ export class AuthenticationService extends BaseAuthService {
       sessionData.currentAccessTokenJti = accessTokenJti
       sessionData.currentRefreshTokenJti = refreshTokenJti
       const decodedToken = this.jwtService.decode(accessToken)
-      if (decodedToken && typeof decodedToken === 'object' && 'exp' in decodedToken) {
+      if (
+        decodedToken &&
+        typeof decodedToken === 'object' &&
+        'exp' in decodedToken &&
+        typeof decodedToken.exp === 'number'
+      ) {
         sessionData.accessTokenExp = decodedToken.exp
       }
 
-      let effectiveAbsoluteSessionLifetimeSeconds: number
+      const absoluteSessionLifetimeEnvValueLoginOtp = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
+      let lifetimeMsLoginOtp: number
 
-      const absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
-      if (isNaN(absoluteSessionLifetimeMs) || absoluteSessionLifetimeMs <= 0) {
-        this.logger.error(
-          `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Invalid ABSOLUTE_SESSION_LIFETIME_MS: ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}. Falling back to 30 days.`
-        )
-        effectiveAbsoluteSessionLifetimeSeconds = 30 * 24 * 60 * 60 // 30 days in seconds
+      if (typeof absoluteSessionLifetimeEnvValueLoginOtp === 'string') {
+        const parsedMs = ms(absoluteSessionLifetimeEnvValueLoginOtp)
+        if (typeof parsedMs !== 'number' || isNaN(parsedMs)) {
+          this.logger.error(
+            `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Invalid string value for ABSOLUTE_SESSION_LIFETIME_MS: "${String(absoluteSessionLifetimeEnvValueLoginOtp)}". Falling back to 30 days.`
+          )
+          lifetimeMsLoginOtp = 30 * 24 * 60 * 60 * 1000 // 30 days in ms
+        } else {
+          lifetimeMsLoginOtp = parsedMs
+        }
+      } else if (typeof absoluteSessionLifetimeEnvValueLoginOtp === 'number') {
+        lifetimeMsLoginOtp = absoluteSessionLifetimeEnvValueLoginOtp
       } else {
-        effectiveAbsoluteSessionLifetimeSeconds = Math.floor(ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS) / 1000)
+        this.logger.error(
+          `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Unexpected type or undefined for ABSOLUTE_SESSION_LIFETIME_MS: ${String(typeof absoluteSessionLifetimeEnvValueLoginOtp)}. Value: ${String(absoluteSessionLifetimeEnvValueLoginOtp)}. Falling back to 30 days.`
+        )
+        lifetimeMsLoginOtp = 30 * 24 * 60 * 60 * 1000 // Default to 30 days in ms
       }
-      sessionData.maxLifetimeExpiresAt = new Date(
-        Date.now() + effectiveAbsoluteSessionLifetimeSeconds * 1000
-      ).toISOString()
+
+      if (isNaN(lifetimeMsLoginOtp) || lifetimeMsLoginOtp <= 0) {
+        this.logger.error(
+          `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Calculated lifetimeMsLoginOtp is invalid (NaN or non-positive): ${lifetimeMsLoginOtp}. Falling back to 30 days.`
+        )
+        lifetimeMsLoginOtp = 30 * 24 * 60 * 60 * 1000 // 30 days in ms
+      }
+
+      const effectiveAbsoluteSessionLifetimeSecondsLoginOtp: number = Math.floor(lifetimeMsLoginOtp / 1000)
+
+      const maxLifetimeTimestampLoginOtp = Date.now() + effectiveAbsoluteSessionLifetimeSecondsLoginOtp * 1000
+      if (isNaN(maxLifetimeTimestampLoginOtp)) {
+        this.logger.error(
+          `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] maxLifetimeTimestampLoginOtp is NaN. Date.now(): ${Date.now()}, effectiveAbsoluteSessionLifetimeSecondsLoginOtp: ${effectiveAbsoluteSessionLifetimeSecondsLoginOtp}. Defaulting sessionData.maxLifetimeExpiresAt.`
+        )
+        sessionData.maxLifetimeExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // Default to 30 days from now
+      } else {
+        sessionData.maxLifetimeExpiresAt = new Date(maxLifetimeTimestampLoginOtp).toISOString()
+      }
 
       const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
       const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
@@ -914,11 +977,11 @@ export class AuthenticationService extends BaseAuthService {
       const refreshTokenTTL =
         maxAgeForRefreshTokenCookie && maxAgeForRefreshTokenCookie > 0
           ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
-          : effectiveAbsoluteSessionLifetimeSeconds
+          : effectiveAbsoluteSessionLifetimeSecondsLoginOtp
 
       await this.redisService.pipeline((pipeline) => {
         pipeline.hmset(sessionKey, sessionData as Record<string, string>)
-        pipeline.expire(sessionKey, effectiveAbsoluteSessionLifetimeSeconds)
+        pipeline.expire(sessionKey, effectiveAbsoluteSessionLifetimeSecondsLoginOtp)
         pipeline.sadd(userSessionsKey, sessionId)
         pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
         return pipeline
