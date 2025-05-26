@@ -65,6 +65,9 @@ import { I18nService } from 'nestjs-i18n'
 import { SessionManagementService } from 'src/routes/auth/services/session-management.service'
 import { AccessTokenGuard } from './guards/access-token.guard'
 import { RolesGuard } from './guards/roles.guard'
+import { PaginatedResponseType } from 'src/shared/models/pagination.model'
+import { ActiveSessionSchema, DeviceInfoSchema } from './dtos/session-management.dto'
+import { z } from 'zod'
 
 @Controller('auth')
 export class AuthController {
@@ -346,19 +349,19 @@ export class AuthController {
   @Get('sessions')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @ZodSerializerDto(GetActiveSessionsResDTO)
-  async getActiveSessions(@ActiveUser() activeUser: AccessTokenPayload) {
+  async getActiveSessions(
+    @ActiveUser() activeUser: AccessTokenPayload
+  ): Promise<PaginatedResponseType<z.infer<typeof ActiveSessionSchema>>> {
     this.logger.debug(
       `User ${activeUser.userId} fetching active sessions. Current session: ${activeUser.sessionId}, current device: ${activeUser.deviceId}`
     )
-    const rawSessions = await this.sessionManagementService.getActiveSessions(
+    const paginatedSessions = await this.sessionManagementService.getActiveSessions(
       activeUser.userId,
       activeUser.sessionId,
       activeUser.deviceId
     )
-    this.logger.debug(
-      `Raw active sessions from service - IsArray: ${Array.isArray(rawSessions)}, Value: ${JSON.stringify(rawSessions, null, 2)}`
-    )
-    return rawSessions
+    this.logger.debug(`Paginated active sessions from service: ${JSON.stringify(paginatedSessions, null, 2)}`)
+    return paginatedSessions
   }
 
   @Delete('sessions/:sessionId')
@@ -371,13 +374,13 @@ export class AuthController {
   @Get('devices')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @ZodSerializerDto(GetDevicesResDTO)
-  async getManagedDevices(@ActiveUser('userId') userId: number) {
+  async getManagedDevices(
+    @ActiveUser('userId') userId: number
+  ): Promise<PaginatedResponseType<z.infer<typeof DeviceInfoSchema>>> {
     this.logger.debug(`User ${userId} fetching managed devices.`)
-    const rawDevices = await this.sessionManagementService.getManagedDevices(userId)
-    this.logger.debug(
-      `Raw managed devices from service - IsArray: ${Array.isArray(rawDevices)}, Value: ${JSON.stringify(rawDevices, null, 2)}`
-    )
-    return rawDevices
+    const paginatedDevices = await this.sessionManagementService.getManagedDevices(userId)
+    this.logger.debug(`Paginated managed devices from service: ${JSON.stringify(paginatedDevices, null, 2)}`)
+    return paginatedDevices
   }
 
   @Patch('devices/:deviceId/name')

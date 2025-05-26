@@ -4,12 +4,12 @@ import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { ActiveSessionSchema, DeviceInfoSchema } from '../dtos/session-management.dto'
 import { z } from 'zod'
 import { UAParser } from 'ua-parser-js'
-import { Device, User } from '@prisma/client'
+import { Device } from '@prisma/client'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { I18nContext } from 'nestjs-i18n'
 import { AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { Prisma } from '@prisma/client'
-import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { PaginatedResponseType } from 'src/shared/models/pagination.model'
 
 type ActiveSessionType = z.infer<typeof ActiveSessionSchema>
 type DeviceInfoType = z.infer<typeof DeviceInfoSchema>
@@ -18,19 +18,51 @@ type DeviceInfoType = z.infer<typeof DeviceInfoSchema>
 export class SessionManagementService extends BaseAuthService {
   private readonly sessionManagementLogger = new Logger(SessionManagementService.name)
 
+  private _normalizeDeviceType(
+    parsedDeviceType?: string,
+    osName?: string,
+    browserName?: string
+  ): ActiveSessionType['device']['type'] {
+    switch (parsedDeviceType) {
+      case 'console':
+      case 'mobile':
+      case 'tablet':
+      case 'wearable':
+        return parsedDeviceType
+      case 'smarttv':
+        return 'tv'
+      // Thêm các case khác từ ua-parser-js nếu cần
+      // ví dụ: 'embedded' có thể map sang 'unknown' hoặc một enum mới nếu bạn muốn hỗ trợ
+      default:
+        // Nếu không có device type cụ thể từ parser, nhưng có OS và browser, khả năng cao là desktop
+        if (osName && browserName && !parsedDeviceType) {
+          return 'desktop'
+        }
+        // Nếu parsedDeviceType có giá trị nhưng không nằm trong các case trên, hoặc không có os/browser
+        // thì coi là 'unknown'
+        return 'unknown'
+    }
+  }
+
   async getActiveSessions(
     userId: number,
     currentSessionId: string,
     currentDeviceId: number
-  ): Promise<ActiveSessionType[]> {
+  ): Promise<PaginatedResponseType<ActiveSessionType>> {
     const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
     const sessionIds = await this.redisService.smembers(userSessionsKey)
-    const activeSessions: ActiveSessionType[] = []
+    const activeSessionsData: ActiveSessionType[] = []
     const sessionDetailsList: Array<Record<string, string> & { originalSessionId: string }> = []
     const deviceIdsToFetch = new Set<number>()
 
     if (sessionIds.length === 0) {
-      return []
+      return {
+        data: [],
+        totalItems: 0,
+        page: 1,
+        limit: 0,
+        totalPages: 0
+      }
     }
 
     // Bước 1: Lấy tất cả chi tiết session từ Redis
@@ -42,7 +74,13 @@ export class SessionManagementService extends BaseAuthService {
 
     if (!results) {
       this.sessionManagementLogger.warn(`Pipeline to fetch session details for user ${userId} returned null.`)
-      return []
+      return {
+        data: [],
+        totalItems: 0,
+        page: 1,
+        limit: 0,
+        totalPages: 0
+      }
     }
 
     for (let i = 0; i < results.length; i++) {
@@ -129,25 +167,7 @@ export class SessionManagementService extends BaseAuthService {
       const os = uaParser.getOS()
       const parsedDeviceType = uaParser.getDevice().type
 
-      let type: ActiveSessionType['device']['type']
-      switch (parsedDeviceType) {
-        case 'console':
-        case 'mobile':
-        case 'tablet':
-        case 'wearable':
-          type = parsedDeviceType
-          break
-        case 'smarttv':
-          type = 'tv'
-          break
-        default:
-          if (os.name && browser.name && !parsedDeviceType) {
-            type = 'desktop'
-          } else {
-            type = 'unknown'
-          }
-          break
-      }
+      const type = this._normalizeDeviceType(parsedDeviceType, os.name, browser.name)
 
       const location = sessionDetails.ipAddress ? this.geolocationService.lookup(sessionDetails.ipAddress) : null
       const locationString = location
@@ -166,7 +186,7 @@ export class SessionManagementService extends BaseAuthService {
         }
       }
 
-      activeSessions.push({
+      activeSessionsData.push({
         sessionId: sessionDetails.originalSessionId,
         device: {
           id: deviceIdFromSession,
@@ -185,12 +205,20 @@ export class SessionManagementService extends BaseAuthService {
       })
     }
 
-    activeSessions.sort((a, b) => {
+    activeSessionsData.sort((a, b) => {
       if (a.isCurrentSession) return -1
       if (b.isCurrentSession) return 1
       return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
     })
-    return activeSessions
+
+    // Wrap in paginated response structure
+    return {
+      data: activeSessionsData,
+      totalItems: activeSessionsData.length,
+      page: 1, // Default to page 1 as no pagination params are taken
+      limit: activeSessionsData.length > 0 ? activeSessionsData.length : 1, // Avoid limit 0
+      totalPages: 1 // Default to 1 total page
+    }
   }
 
   async revokeSession(
@@ -236,37 +264,19 @@ export class SessionManagementService extends BaseAuthService {
     return { message }
   }
 
-  async getManagedDevices(userId: number): Promise<DeviceInfoType[]> {
-    const devices = await this.prismaService.device.findMany({
+  async getManagedDevices(userId: number): Promise<PaginatedResponseType<DeviceInfoType>> {
+    const devicesFromDb = await this.prismaService.device.findMany({
       where: { userId },
       orderBy: { lastActive: 'desc' }
     })
 
-    return devices.map((device) => {
+    const devicesData: DeviceInfoType[] = devicesFromDb.map((device) => {
       const uaParser = new UAParser(device.userAgent)
       const browser = uaParser.getBrowser()
       const os = uaParser.getOS()
       const parsedDeviceType = uaParser.getDevice().type
 
-      let type: DeviceInfoType['type']
-      switch (parsedDeviceType) {
-        case 'console':
-        case 'mobile':
-        case 'tablet':
-        case 'wearable':
-          type = parsedDeviceType
-          break
-        case 'smarttv':
-          type = 'tv'
-          break
-        default:
-          if (os.name && browser.name && !parsedDeviceType) {
-            type = 'desktop'
-          } else {
-            type = 'unknown'
-          }
-          break
-      }
+      const type = this._normalizeDeviceType(parsedDeviceType, os.name, browser.name)
 
       let location: string | null = device.ip || null
       if (device.ip) {
@@ -289,6 +299,15 @@ export class SessionManagementService extends BaseAuthService {
         isTrusted: device.isTrusted
       }
     })
+
+    // Wrap in paginated response structure
+    return {
+      data: devicesData,
+      totalItems: devicesData.length,
+      page: 1, // Default to page 1
+      limit: devicesData.length > 0 ? devicesData.length : 1, // Avoid limit 0
+      totalPages: 1 // Default to 1 total page
+    }
   }
 
   async updateDeviceName(userId: number, deviceId: number, name: string): Promise<{ message: string }> {
