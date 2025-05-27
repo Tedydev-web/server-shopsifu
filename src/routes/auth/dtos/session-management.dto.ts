@@ -70,7 +70,7 @@ export class UntrustDeviceBodyDTO extends createZodDto(EmptyBodySchema) {}
 export const RevokeSessionsBodySchema = z
   .object({
     sessionIds: z.array(z.string().uuid()).optional().describe('Array of session UUIDs to revoke.'),
-    deviceId: z.number().int().positive().optional().describe('Revoke all sessions for this device ID and untrust it.'),
+    deviceIds: z.array(z.coerce.number().int().positive()).optional().describe('Revoke all sessions for these device IDs and untrust them.'),
     revokeAll: z
       .boolean()
       .optional()
@@ -80,13 +80,13 @@ export const RevokeSessionsBodySchema = z
   .strict()
   .refine(
     (data) => {
-      const providedOptions = [data.sessionIds, data.deviceId, data.revokeAll].filter(
+      const providedOptions = [data.sessionIds, data.deviceIds, data.revokeAll].filter(
         (opt) => opt !== undefined && opt !== false && (!Array.isArray(opt) || opt.length > 0)
       ).length
       return providedOptions === 1
     },
     {
-      message: 'Exactly one of sessionIds, deviceId, or revokeAll must be provided and be valid.',
+      message: 'Exactly one of sessionIds, deviceIds, or revokeAll must be provided and be valid.',
       path: [] // General error for the whole object
     }
   )

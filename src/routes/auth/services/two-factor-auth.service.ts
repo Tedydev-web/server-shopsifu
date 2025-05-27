@@ -121,6 +121,7 @@ export class TwoFactorAuthService extends BaseAuthService {
       await this.redisService.set(
         setupTokenKey,
         JSON.stringify({ userId, secret, email: user.email }),
+        'EX',
         setupTokenTTLSeconds
       )
       this.logger.debug(`2FA Setup token ${setupTokenKey} stored in Redis for user ${userId}`)

@@ -670,45 +670,6 @@ export class AuthController {
     return this.sessionManagementService.untrustManagedDevice(userId, params.deviceId)
   }
 
-  /**
-   * @deprecated Use DELETE /auth/sessions with body { deviceId: <id> } instead.
-   */
-  @Post('devices/:deviceId/logout')
-  @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(MessageResDTO)
-  @Auth([AuthType.Bearer])
-  @AuditLog({
-    action: 'LOGOUT_FROM_MANAGED_DEVICE_DEPRECATED',
-    entity: 'Device',
-    getEntityId: ([_activeUser, params]) => params?.deviceId,
-    getUserId: ([activeUser]) => activeUser?.userId,
-    getDetails: ([activeUser, params]) => ({
-      deviceId: params?.deviceId,
-      performedByUserId: activeUser?.userId,
-      note: 'Called deprecated endpoint.'
-    })
-  })
-  logoutFromManagedDevice(
-    @ActiveUser() activeUser: AccessTokenPayload,
-    @Param() params: DeviceIdParamsDTO,
-    @Ip() ip: string,
-    @UserAgent() userAgent: string
-  ) {
-    this.logger.warn(
-      `Deprecated endpoint POST /auth/devices/${params.deviceId}/logout called by user ${activeUser.userId}. Use DELETE /auth/sessions instead.`
-    )
-    // Note: The new DELETE /auth/sessions with deviceId also untrusts the device.
-    // This old endpoint only logs out sessions without untrusting.
-    // For simplicity in deprecation, we'll just call the session management service's old method.
-    // If full behavioral parity with the new endpoint (including untrust) is desired here during deprecation period,
-    // this would need to call SessionManagementService.revokeMultipleSessions with appropriate params.
-    return this.sessionManagementService.logoutFromManagedDevice(activeUser.userId, params.deviceId, {
-      userId: activeUser.userId,
-      ipAddress: ip,
-      userAgent
-    })
-  }
-
   @Post('sessions/current/trust-device')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)

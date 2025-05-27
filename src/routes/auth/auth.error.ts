@@ -254,3 +254,34 @@ export const MismatchedSessionTokenException = createApiError(
   'Error.Auth.Session.MismatchedToken',
   'session'
 )
+
+export const DeviceNotFoundForUserException = createApiError(
+  HttpStatus.NOT_FOUND,
+  'ResourceNotFound',
+  'Error.Auth.Device.NotFoundForUser',
+  'deviceId'
+)
+
+export const RefreshTokenNotFoundException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Token.RefreshTokenNotFound',
+  'refreshToken'
+)
+
+export const RefreshTokenSessionInvalidException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Token.RefreshTokenSessionInvalid',
+  'refreshToken'
+)
+
+export const RefreshTokenDeviceMismatchException = createApiError(
+  HttpStatus.UNAUTHORIZED,
+  'Unauthenticated',
+  'Error.Auth.Token.RefreshTokenDeviceMismatch',
+  'refreshToken'
+)
+
+export const TooManyRequestsException = (messageKey: string = 'Error.Global.TooManyRequests') =>
+  createApiError(HttpStatus.TOO_MANY_REQUESTS, 'TooManyRequests', messageKey)

@@ -15,5 +15,7 @@ export const REDIS_KEY_PREFIX = {
   DEVICE_REFRESH_TOKENS: 'dev_rt:', // Set: dev_rt:{deviceId} -> refreshTokenJti (Deprecated or review usage)
   USER_KNOWN_LOCATIONS: 'u_loc:', // Set: u_loc:{userId} -> "city_country" (lowercase)
   TFA_SETUP_TOKEN: 'tfa_setup:', // String: tfa_setup:{setupToken} -> { userId, secret, email } (JSON string, with TTL for 15m)
-  SLT_CONTEXT: 'slt_ctx:' // Hash: slt_ctx:<jti> -> { userId, deviceId, ipAddress, userAgent, purpose, sltExp, finalized, metadata? } (with TTL matching SLT_JWT_EXPIRES_IN)
+  SLT_CONTEXT: 'slt_ctx:', // Hash: slt_ctx:<jti> -> { userId, deviceId, ipAddress, userAgent, purpose, sltExp, finalized, metadata? } (with TTL matching SLT_JWT_EXPIRES_IN)
+  DEVICE_SESSIONS: 'd_s:', // Set of session IDs for a device
+  OTP_LAST_SENT: 'otp_ls:' // String: otp_ls:{userId}:{purpose} -> timestamp (with TTL for OTP_SEND_COOLDOWN_SECONDS + buffer)
 } as const

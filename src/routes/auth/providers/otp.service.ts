@@ -22,7 +22,8 @@ import {
   InvalidOTPTokenException,
   OTPTokenExpiredException,
   DeviceMismatchException,
-  TooManyOTPAttemptsException
+  TooManyOTPAttemptsException,
+  TooManyRequestsException
 } from 'src/routes/auth/auth.error'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
@@ -74,6 +75,8 @@ export interface SltContextData {
   email?: string
 }
 
+const OTP_SEND_COOLDOWN_SECONDS = 60 // 1 minute cooldown
+
 @Injectable()
 export class OtpService {
   private readonly logger = new Logger(OtpService.name)
@@ -105,6 +108,10 @@ export class OtpService {
     return `${REDIS_KEY_PREFIX.SLT_CONTEXT}${jti}`
   }
 
+  private _getOtpLastSentKey(userId: number, purpose: TypeOfVerificationCodeType): string {
+    return `${REDIS_KEY_PREFIX.OTP_LAST_SENT}${userId}:${purpose}`
+  }
+
   async sendOTP(
     email: string,
     type: TypeOfVerificationCodeType,
@@ -121,7 +128,7 @@ export class OtpService {
       userId: userIdForOtpData // Store userId with OTP data if available and relevant
     }
 
-    await this.redisService.set(otpKey, JSON.stringify(otpData), otpTTLSeconds)
+    await this.redisService.set(otpKey, JSON.stringify(otpData), 'EX', otpTTLSeconds)
     this.logger.debug(`OTP for ${type} for ${email} stored in Redis with TTL ${otpTTLSeconds}s. Key: ${otpKey}`)
 
     let title: string
@@ -214,6 +221,7 @@ export class OtpService {
     await this.redisService.set(
       this._getVerificationJwtPayloadKey(jwtJti),
       JSON.stringify(verificationJwtPayload),
+      'EX',
       expiresInSeconds
     )
     this.logger.debug(
@@ -298,7 +306,7 @@ export class OtpService {
       otpData.attempts += 1
       const ttl = await this.redisService.ttl(otpKey)
       if (ttl > 0) {
-        await this.redisService.set(otpKey, JSON.stringify(otpData), ttl)
+        await this.redisService.set(otpKey, JSON.stringify(otpData), 'EX', ttl)
       }
       this.logger.warn(
         `OTP verification failed: Invalid code for key ${otpKey}. Attempt ${otpData.attempts}/${this.MAX_OTP_ATTEMPTS}`
@@ -337,47 +345,40 @@ export class OtpService {
     purpose: TypeOfVerificationCodeType
     metadata?: Record<string, any> & { twoFactorMethod?: TwoFactorMethodTypeType }
   }): Promise<string> {
-    const { email, userId, deviceId, ipAddress, userAgent, purpose, metadata } = payload
+    this.logger.debug(
+      `Initiating OTP with SLT cookie for user ${payload.userId}, device ${payload.deviceId}, purpose ${payload.purpose}`
+    )
 
-    // Chỉ gửi OTP nếu cần thiết
-    if (purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
-      await this.sendOTP(email, purpose, userId)
-    } else if (purpose === TypeOfVerificationCode.LOGIN_2FA) {
-      if (metadata?.twoFactorMethod === TwoFactorMethodType.OTP) {
-        await this.sendOTP(email, purpose, userId)
-      } else {
-        this.logger.debug(
-          `Skipping OTP send for LOGIN_2FA (purpose: ${purpose}) because 2FA method is ${metadata?.twoFactorMethod || 'not OTP (e.g., TOTP)'}`
+    // Anti-spam: Check last OTP sent time for this user and purpose
+    const otpLastSentKey = this._getOtpLastSentKey(payload.userId, payload.purpose)
+    const lastSentTimestampStr = await this.redisService.get(otpLastSentKey)
+
+    if (lastSentTimestampStr) {
+      const lastSentTime = parseInt(lastSentTimestampStr, 10)
+      const currentTime = Date.now()
+      if (currentTime - lastSentTime < OTP_SEND_COOLDOWN_SECONDS * 1000) {
+        this.logger.warn(`OTP request for user ${payload.userId}, purpose ${payload.purpose} blocked due to cooldown.`)
+        // It's important to use a generic error message for cooldowns
+        // to prevent users from inferring too much about account status.
+        throw TooManyRequestsException(
+          await this.i18nService.translate('error.Error.Auth.Otp.TooManyRequestsSimple', {
+            lang: I18nContext.current()?.lang,
+            defaultValue: 'Too many OTP requests. Please try again later.'
+          })
         )
       }
-    } else if (purpose === TypeOfVerificationCode.DISABLE_2FA) {
-      // Gửi OTP cho mục đích disable 2FA nếu phương thức hiện tại của người dùng là OTP, hoặc không có phương thức (để an toàn)
-      // Điều này cần được xem xét kỹ lưỡng dựa trên luồng disable 2FA của bạn
-      // Hiện tại, giả sử disable 2FA có thể cần OTP nếu user.twoFactorMethod === 'OTP'
-      // Hoặc bạn có thể quyết định rằng việc disable 2FA luôn yêu cầu TOTP/Recovery code nếu 2FA là TOTP.
-      if (metadata?.twoFactorMethod === TwoFactorMethodType.OTP) {
-        await this.sendOTP(email, purpose, userId)
-      } else {
-        this.logger.debug(
-          `Skipping OTP send for ${purpose} because 2FA method is ${metadata?.twoFactorMethod || 'not OTP'}`
-        )
-      }
-    } else if (purpose === TypeOfVerificationCode.SETUP_2FA) {
-      // Thông thường không gửi OTP cho SETUP_2FA, vì bước này user đang setup TOTP
-      this.logger.debug(`Purpose is ${purpose}, OTP not typically sent for this flow.`)
-    } else {
-      // Các trường hợp khác có thể cần gửi OTP, hoặc không
-      // Ví dụ: Nếu có mục đích mới, bạn cần thêm logic ở đây
-      this.logger.warn(`Unhandled purpose for OTP sending in initiateOtpWithSltCookie: ${purpose}. OTP not sent.`)
     }
+
+    // Send the actual OTP
+    await this.sendOTP(payload.email, payload.purpose, payload.userId)
 
     const sltJti = uuidv4()
     const sltExpiresInSeconds = Math.floor(ms(envConfig.SLT_JWT_EXPIRES_IN) / 1000)
 
     const sltJwtSigningPayload: Pick<SltJwtPayload, 'jti' | 'sub' | 'pur'> = {
       jti: sltJti,
-      sub: userId,
-      pur: purpose
+      sub: payload.userId,
+      pur: payload.purpose
     }
 
     const sltJwt = this.jwtService.sign(sltJwtSigningPayload, {
@@ -388,37 +389,45 @@ export class OtpService {
     const sltContextKey = this._getSltContextKey(sltJti)
     const nowForContext = Math.floor(Date.now() / 1000)
     const sltContextData: SltContextData = {
-      userId,
-      deviceId,
-      ipAddress,
-      userAgent,
-      purpose,
+      userId: payload.userId,
+      deviceId: payload.deviceId,
+      ipAddress: payload.ipAddress,
+      userAgent: payload.userAgent,
+      purpose: payload.purpose,
       sltJwtExp: nowForContext + sltExpiresInSeconds,
       sltJwtCreatedAt: nowForContext,
       finalized: '0',
-      metadata, // Đảm bảo metadata được truyền vào đây
-      email
+      metadata: payload.metadata,
+      email: payload.email
     }
 
-    await this.redisService.set(sltContextKey, JSON.stringify(sltContextData), sltExpiresInSeconds)
+    await this.redisService.set(sltContextKey, JSON.stringify(sltContextData), 'EX', sltExpiresInSeconds)
     this.logger.debug(
-      `SLT context for JTI ${sltJti} (purpose ${purpose}) stored in Redis with TTL ${sltExpiresInSeconds}s. Key: ${sltContextKey}`
+      `SLT context for JTI ${sltJti} (purpose ${payload.purpose}) stored in Redis with TTL ${sltExpiresInSeconds}s. Key: ${sltContextKey}`
     )
     this.auditLogService.recordAsync({
-      userId,
-      userEmail: email,
+      userId: payload.userId,
+      userEmail: payload.email,
       action: 'SLT_CONTEXT_CREATED',
       status: AuditLogStatus.SUCCESS,
-      ipAddress,
-      userAgent,
+      ipAddress: payload.ipAddress,
+      userAgent: payload.userAgent,
       details: {
         sltJti,
-        purpose,
-        deviceId,
+        purpose: payload.purpose,
+        deviceId: payload.deviceId,
         sltContextKey,
         sltExpiresInSeconds
       } as Prisma.JsonObject
     })
+
+    // After successfully initiating SLT (which includes sending OTP), update the last sent time
+    await this.redisService.set(
+      otpLastSentKey,
+      Date.now().toString(),
+      'EX', // mode
+      OTP_SEND_COOLDOWN_SECONDS + 5 // ttlValue
+    ) // TTL slightly longer than cooldown
 
     return sltJwt
   }
@@ -547,16 +556,31 @@ export class OtpService {
       ])
     }
 
-    // Optional: Stricter IP and User Agent check (can be made configurable)
-    // if (envConfig.SLT_STRICT_IP_UA_CHECK) { // Example: make it configurable
-    //   if (sltContext.ipAddress !== currentIpAddress || sltContext.userAgent !== currentUserAgent) {
-    //     this.logger.warn(
-    //       `SLT IP/UserAgent mismatch for JTI ${sltJti}. Context: [${sltContext.ipAddress}, ${sltContext.userAgent}], Current: [${currentIpAddress}, ${currentUserAgent}]`
-    //     );
-    //     // Decide if this is a hard fail or just a warning/audit
-    //     throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Device.Mismatch');
-    //   }
-    // }
+    // Basic security checks: IP and User Agent should ideally match the context
+    // Consider the implications if these change frequently for legitimate users (e.g., dynamic IPs, minor UA updates)
+    if (currentIpAddress !== sltContext.ipAddress) {
+      this.logger.warn(
+        `SLT JTI ${sltJti}: IP address mismatch. Context IP: ${sltContext.ipAddress}, Current IP: ${currentIpAddress}.`
+      )
+      this.auditLogService.recordAsync({
+        action: 'SLT_CONTEXT_VALIDATION_FAIL',
+        userId: sltContext.userId,
+        userEmail: sltContext.email,
+        ipAddress: currentIpAddress,
+        userAgent: currentUserAgent,
+        status: AuditLogStatus.FAILURE,
+        errorMessage: 'SLT_IP_MISMATCH',
+        details: {
+          sltJti,
+          expectedIp: sltContext.ipAddress,
+          actualIp: currentIpAddress,
+          expectedUserAgent: sltContext.userAgent,
+          actualUserAgent: currentUserAgent
+        } as Prisma.JsonObject
+      })
+      await this.finalizeSlt(sltJti) // Finalize on mismatch
+      throw DeviceMismatchException // Or a more specific SLT validation error
+    }
 
     this.auditLogService.recordAsync({
       userId: sltUserId,
@@ -652,7 +676,7 @@ export class OtpService {
     const blacklistKey = this._getVerificationJwtBlacklistKey(jti)
     const ttl = expiresAtTimestamp - currentTimestamp
     if (ttl > 0) {
-      await this.redisService.set(blacklistKey, 'blacklisted', ttl)
+      await this.redisService.set(blacklistKey, 'blacklisted', 'EX', ttl)
       this.logger.debug(`Blacklisted verification token JTI: ${jti} for ${ttl} seconds.`)
     }
   }

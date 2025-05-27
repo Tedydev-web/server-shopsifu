@@ -34,11 +34,36 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return await this.redisClient.get(key)
   }
 
-  async set(key: RedisKey, value: RedisValue, ttlSeconds?: number): Promise<'OK'> {
-    if (ttlSeconds) {
-      return await this.redisClient.set(key, value, 'EX', ttlSeconds)
+  async set(
+    key: RedisKey,
+    value: RedisValue,
+    mode?: 'EX' | 'PX' | 'KEEPTTL',
+    ttlValue?: number,
+    condition?: 'NX' | 'XX'
+  ): Promise<'OK' | null> {
+    if (mode === 'EX' && ttlValue !== undefined) {
+      if (condition === 'NX') {
+        return this.redisClient.set(key, value, 'EX', ttlValue, 'NX')
+      } else if (condition === 'XX') {
+        return this.redisClient.set(key, value, 'EX', ttlValue, 'XX')
+      } else if (!condition) {
+        return this.redisClient.set(key, value, 'EX', ttlValue)
+      } else {
+        // Should not happen if condition is only NX or XX, or undefined
+        this.logger.error(`Unsupported condition '${String(condition)}' with EX mode for key ${String(key)}`)
+        throw new Error('Unsupported condition with EX mode for RedisService.set')
+      }
+    } else if (!mode && !ttlValue && !condition) {
+      // Basic SET key value (no expiry, no condition)
+      return this.redisClient.set(key, value)
+    } else {
+      this.logger.error(
+        `Unsupported combination of set parameters for key ${String(key)}: mode=${mode}, ttlValue=${ttlValue}, condition=${condition}. Only SET key value, SET key value EX ttl, and SET key value EX ttl NX/XX are currently supported.`
+      )
+      throw new Error(
+        'Unsupported combination of parameters for RedisService.set. Check implementation for supported overloads.'
+      )
     }
-    return await this.redisClient.set(key, value)
   }
 
   async del(keys: RedisKey | RedisKey[]): Promise<number> {
@@ -183,13 +208,19 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async setJson(key: RedisKey, value: any, ttlSeconds?: number): Promise<'OK'> {
+  async setJson(key: RedisKey, value: any, ttlSeconds?: number): Promise<'OK' | null> {
+    let jsonString: string
     try {
-      const jsonString = JSON.stringify(value)
-      return await this.set(key, jsonString, ttlSeconds)
+      jsonString = JSON.stringify(value)
     } catch (error) {
       this.logger.error(`Failed to stringify JSON for key ${String(key)}:`, error)
-      throw new Error('Failed to stringify JSON for Redis')
+      throw error
+    }
+    if (ttlSeconds !== undefined) {
+      return this.set(key, jsonString, 'EX', ttlSeconds)
+    } else {
+      // Call 'set' without mode/ttlValue/condition if no TTL is provided
+      return this.set(key, jsonString)
     }
   }
 

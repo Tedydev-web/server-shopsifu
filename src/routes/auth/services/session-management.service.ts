@@ -17,6 +17,7 @@ import { Prisma } from '@prisma/client'
 import { PaginatedResponseType } from 'src/shared/models/pagination.model'
 import { SessionNotFoundException } from '../auth.error'
 import envConfig from 'src/shared/config'
+import { DeviceNotFoundForUserException } from '../auth.error'
 
 type ActiveSessionType = z.infer<typeof ActiveSessionSchema>
 type DeviceInfoType = z.infer<typeof DeviceInfoSchema>
@@ -244,42 +245,56 @@ export class SessionManagementService extends BaseAuthService {
     sessionIdToRevoke: string,
     currentSessionId: string
   ): Promise<{ message: string }> {
-    const auditLogEntry: Partial<AuditLogData> = {
-      action: 'SESSION_REVOKE_ATTEMPT',
-      userId,
-      status: AuditLogStatus.FAILURE,
-      details: { sessionIdToRevoke } as Prisma.JsonObject
-    }
-
-    if (sessionIdToRevoke === currentSessionId) {
-      auditLogEntry.errorMessage = 'Cannot revoke current session via this endpoint. Use logout.'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw new ApiException(
-        HttpStatus.BAD_REQUEST,
-        'CANNOT_REVOKE_CURRENT_SESSION',
-        'Error.Auth.Session.CannotRevokeCurrent'
-      )
-    }
-
-    const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionIdToRevoke}`
-    const sessionData = await this.redisService.hgetall(sessionDetailsKey)
-
-    if (Object.keys(sessionData).length === 0 || parseInt(sessionData.userId, 10) !== userId) {
-      auditLogEntry.errorMessage = 'Session not found or does not belong to the user.'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw new ApiException(HttpStatus.NOT_FOUND, 'SESSION_NOT_FOUND', 'Error.Auth.Session.NotFound')
-    }
-
-    await this.tokenService.invalidateSession(sessionIdToRevoke, 'USER_MANUAL_REVOKE')
-
-    auditLogEntry.status = AuditLogStatus.SUCCESS
-    auditLogEntry.action = 'SESSION_REVOKE_SUCCESS'
-    await this.auditLogService.record(auditLogEntry as AuditLogData)
-
-    const message = await this.i18nService.translate('error.Auth.Session.RevokedSuccessfully', {
+    this.sessionManagementLogger.debug(
+      `User ${userId} attempting to revoke session ${sessionIdToRevoke}. Current session: ${currentSessionId}`
+    )
+    await this.revokeSessionInternal(userId, sessionIdToRevoke, currentSessionId, 'SINGLE_REVOKE_REQUEST')
+    const message = await this.i18nService.translate('Auth.Session.RevokedSuccessfully', {
       lang: I18nContext.current()?.lang
     })
     return { message }
+  }
+
+  private async revokeSessionInternal(
+    userId: number,
+    sessionIdToRevoke: string,
+    currentSessionId: string,
+    revokeReason: string = 'INTERNAL_REQUEST'
+  ): Promise<void> {
+    if (sessionIdToRevoke === currentSessionId) {
+      this.sessionManagementLogger.warn(
+        `Attempt to revoke current session ${currentSessionId} for user ${userId} via internal call. Reason: ${revokeReason}. This is generally disallowed directly.`
+      )
+      // Depending on the revokeReason or specific logic, you might throw an error here
+      // For now, we prevent direct revocation of current session through this internal method
+      // to align with the general principle that users logout of current session via /logout
+      throw new ApiException(HttpStatus.FORBIDDEN, 'ForbiddenOperation', 'Error.Auth.Session.CannotRevokeCurrent')
+    }
+
+    // Check if session belongs to the user before revoking
+    const sessionDetails = await this.redisService.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionIdToRevoke}`)
+    const sessionOwnerId = sessionDetails?.userId ? parseInt(sessionDetails.userId, 10) : null
+
+    if (!sessionOwnerId || sessionOwnerId !== userId) {
+      this.sessionManagementLogger.warn(
+        `User ${userId} attempt to revoke session ${sessionIdToRevoke} not belonging to them (owner: ${sessionOwnerId}) or session details missing. Reason: ${revokeReason}`
+      )
+      throw SessionNotFoundException // Or a more specific "permission denied" error
+    }
+
+    await this.tokenService.invalidateSession(sessionIdToRevoke, `USER_REQUEST_REVOKE_SESSION (${revokeReason})`)
+    this.sessionManagementLogger.log(
+      `Session ${sessionIdToRevoke} for user ${userId} revoked successfully. Reason: ${revokeReason}`
+    )
+
+    await this.auditLogService.recordAsync({
+      action: 'REVOKE_SESSION_INTERNAL_SUCCESS',
+      userId,
+      status: AuditLogStatus.SUCCESS,
+      entity: 'Session',
+      entityId: sessionIdToRevoke,
+      details: { reason: revokeReason } as Prisma.JsonObject
+    })
   }
 
   async getManagedDevices(userId: number): Promise<PaginatedResponseType<DeviceInfoType>> {
@@ -356,30 +371,41 @@ export class SessionManagementService extends BaseAuthService {
   }
 
   async trustManagedDevice(userId: number, deviceId: number): Promise<{ message: string }> {
-    const device = await this.deviceService.trustDevice(deviceId, userId)
+    this.sessionManagementLogger.debug(`Attempting to trust managed device ${deviceId} for user ${userId}`)
 
-    // Also update all active sessions for this device on Redis to reflect trusted status
-    const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
-    const sessionIds = await this.redisService.smembers(userSessionsKey)
-    for (const sessionId of sessionIds) {
-      const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-      const sessionDeviceId = await this.redisService.hget(sessionDetailsKey, 'deviceId')
-      if (sessionDeviceId && parseInt(sessionDeviceId, 10) === deviceId) {
-        await this.redisService.hset(sessionDetailsKey, 'isTrusted', 'true')
-      }
-    }
-
-    this.auditLogService.record({
-      action: 'DEVICE_TRUST_MANAGED',
-      userId,
+    const auditEntry: Partial<AuditLogData> = {
+      action: 'TRUST_MANAGED_DEVICE_ATTEMPT',
       entity: 'Device',
       entityId: deviceId,
-      status: AuditLogStatus.SUCCESS,
-      details: { deviceUserAgent: device.userAgent } as Prisma.JsonObject
-    })
-    const message = await this.i18nService.translate('error.Auth.Device.Trusted', {
-      lang: I18nContext.current()?.lang
-    })
+      userId,
+      status: AuditLogStatus.FAILURE
+    }
+
+    const device = await this.deviceService.findDeviceById(deviceId)
+    if (!device || device.userId !== userId) {
+      auditEntry.errorMessage = 'Device not found or does not belong to user.'
+      await this.auditLogService.recordAsync(auditEntry as AuditLogData)
+      throw DeviceNotFoundForUserException
+    }
+
+    if (device.isTrusted) {
+      const message = await this.i18nService.translate('Auth.Device.AlreadyTrusted', {
+        lang: I18nContext.current()?.lang
+      })
+      auditEntry.status = AuditLogStatus.SUCCESS
+      auditEntry.action = 'TRUST_MANAGED_DEVICE_ALREADY_TRUSTED'
+      auditEntry.notes = 'Device was already trusted.'
+      await this.auditLogService.recordAsync(auditEntry as AuditLogData)
+      return { message }
+    }
+
+    await this.deviceService.updateDevice(deviceId, { isTrusted: true })
+
+    auditEntry.status = AuditLogStatus.SUCCESS
+    auditEntry.action = 'TRUST_MANAGED_DEVICE_SUCCESS'
+    await this.auditLogService.recordAsync(auditEntry as AuditLogData)
+
+    const message = await this.i18nService.translate('Auth.Device.Trusted', { lang: I18nContext.current()?.lang })
     return { message }
   }
 
@@ -414,65 +440,54 @@ export class SessionManagementService extends BaseAuthService {
       details: { deviceUserAgent: device.userAgent } as Prisma.JsonObject
     })
 
-    const message = await this.i18nService.translate('error.Auth.Device.Untrusted', {
-      lang: I18nContext.current()?.lang
-    })
+    const message = await this.i18nService.translate('Auth.Device.Untrusted', { lang: I18nContext.current()?.lang })
     return { message }
   }
 
-  /**
-   * @deprecated Use revokeMultipleSessions with deviceId and ensure the new method also untrusts the device if needed.
-   */
   async logoutFromManagedDevice(
     userId: number, // User whose device is being logged out
     deviceIdToLogout: number,
     actionPerformer: { userId: number; ipAddress?: string; userAgent?: string } // User performing the action
   ): Promise<{ message: string }> {
-    const auditLogEntry: Partial<AuditLogData> = {
-      action: 'DEVICE_LOGOUT_MANAGED_ATTEMPT',
-      userId: actionPerformer.userId, // User performing the action
-      ipAddress: actionPerformer.ipAddress,
-      userAgent: actionPerformer.userAgent,
+    this.sessionManagementLogger.debug(
+      `User ${actionPerformer.userId} attempting to logout all sessions for device ${deviceIdToLogout} (owned by user ${userId}).`
+    )
+
+    const auditEntry: Partial<AuditLogData> = {
+      action: 'LOGOUT_FROM_MANAGED_DEVICE_ATTEMPT',
+      entity: 'Device',
+      entityId: deviceIdToLogout,
+      userId: actionPerformer.userId, // Logged as the user performing the action
       status: AuditLogStatus.FAILURE,
-      details: { targetDeviceId: deviceIdToLogout, targetUserId: userId } as Prisma.JsonObject
+      details: {
+        targetUserId: userId,
+        targetDeviceId: deviceIdToLogout
+      } as Prisma.JsonObject
     }
 
-    const deviceToLogout = await this.prismaService.device.findUnique({ where: { id: deviceIdToLogout } })
+    if (actionPerformer.ipAddress) auditEntry.ipAddress = actionPerformer.ipAddress
+    if (actionPerformer.userAgent) auditEntry.userAgent = actionPerformer.userAgent
+
+    const deviceToLogout = await this.deviceService.findDeviceById(deviceIdToLogout)
+
     if (!deviceToLogout || deviceToLogout.userId !== userId) {
-      auditLogEntry.errorMessage = 'Device not found or does not belong to the specified user.'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw new ApiException(HttpStatus.NOT_FOUND, 'DEVICE_NOT_FOUND', 'Error.Auth.Device.NotFoundForUser')
-    }
-
-    if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
-      ;(auditLogEntry.details as Prisma.JsonObject).loggedOutDeviceUserAgent = deviceToLogout.userAgent
+      auditEntry.errorMessage = 'Device not found or does not belong to the specified target user.'
+      await this.auditLogService.recordAsync(auditEntry as AuditLogData)
+      throw DeviceNotFoundForUserException
     }
 
     // Invalidate all sessions associated with this device ID
-    const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
-    const sessionIds = await this.redisService.smembers(userSessionsKey)
-    let sessionsInvalidatedCount = 0
+    const sessionsRevokedCount = await this.tokenService.invalidateSessionsByDeviceId(
+      deviceIdToLogout,
+      'MANAGED_DEVICE_LOGOUT'
+    )
 
-    for (const sessionId of sessionIds) {
-      const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-      const sessionDeviceId = await this.redisService.hget(sessionDetailsKey, 'deviceId')
-      if (sessionDeviceId && parseInt(sessionDeviceId, 10) === deviceIdToLogout) {
-        await this.tokenService.invalidateSession(sessionId, 'ADMIN_DEVICE_LOGOUT')
-        sessionsInvalidatedCount++
-      }
-    }
+    auditEntry.status = AuditLogStatus.SUCCESS
+    auditEntry.action = 'LOGOUT_FROM_MANAGED_DEVICE_SUCCESS'
+    ;(auditEntry.details as Prisma.JsonObject).sessionsRevokedCount = sessionsRevokedCount
+    await this.auditLogService.recordAsync(auditEntry as AuditLogData)
 
-    // Optionally, mark the device as inactive in Prisma if desired, though sessions are the primary target
-    // await this.prismaService.device.update({ where: { id: deviceIdToLogout }, data: { isActive: false } });
-
-    auditLogEntry.status = AuditLogStatus.SUCCESS
-    auditLogEntry.action = 'DEVICE_LOGOUT_MANAGED_SUCCESS'
-    if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
-      ;(auditLogEntry.details as Prisma.JsonObject).sessionsInvalidated = sessionsInvalidatedCount
-    }
-    await this.auditLogService.record(auditLogEntry as AuditLogData)
-
-    const message = await this.i18nService.translate('error.Auth.Device.LogoutSpecificSuccess', {
+    const message = await this.i18nService.translate('Auth.Device.LogoutSpecificSuccess', {
       lang: I18nContext.current()?.lang
     })
     return { message }
@@ -490,117 +505,97 @@ export class SessionManagementService extends BaseAuthService {
     currentSessionId: string,
     body: RevokeSessionsBodyDTO // Use the imported DTO
   ): Promise<{ message: string }> {
-    const { sessionIds, deviceId, revokeAll } = body
-    let sessionsToRevoke: string[] = []
-    let actionDescription = ''
-    let deviceToUntrust: number | null = null
+    this.sessionManagementLogger.debug(
+      `User ${userId} attempting to revoke multiple sessions. Current session: ${currentSessionId}, Body: ${JSON.stringify(body)}`
+    )
+    const { sessionIds, deviceIds, revokeAll } = body
+    let totalRevokedCount = 0
+    let devicesUntrustedCount = 0
+    const auditDetails: Prisma.JsonObject = { requestedBody: body as unknown as Prisma.JsonObject }
 
-    const auditDetails: Prisma.JsonObject = {
-      revokedByUserId: userId,
-      currentSessionId,
-      requestBody: body as unknown as Prisma.JsonObject // body is already an object
-    }
-
-    if (revokeAll) {
-      actionDescription = 'Revoke all user sessions (excluding current)'
-      this.sessionManagementLogger.debug(
-        `User ${userId} attempting to revoke all sessions (excluding current: ${currentSessionId}).`
-      )
-      const allUserSessions = await this.redisService.smembers(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`)
-      sessionsToRevoke = allUserSessions.filter((sid) => sid !== currentSessionId)
-      auditDetails.revokeAllTriggered = true
-    } else if (deviceId) {
-      actionDescription = `Revoke all sessions for device ${deviceId} and untrust it`
-      this.sessionManagementLogger.debug(
-        `User ${userId} attempting to revoke all sessions for device ${deviceId} and untrust it.`
-      )
-      if (!(await this.deviceService.isDeviceOwnedByUser(deviceId, userId))) {
-        throw SessionNotFoundException // Or a more specific "DeviceNotOwned" exception
-      }
-
-      const allUserSessions = await this.redisService.smembers(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`)
-      for (const sid of allUserSessions) {
-        const sessionData = await this.redisService.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sid}`)
-        if (sessionData && parseInt(sessionData.deviceId, 10) === deviceId) {
-          // For revoking a device, we revoke all its sessions, including the current one if it's on that device.
-          sessionsToRevoke.push(sid)
-        }
-      }
-      deviceToUntrust = deviceId
-      auditDetails.revokedDeviceId = deviceId
-    } else if (sessionIds && sessionIds.length > 0) {
-      actionDescription = `Revoke specific sessions: ${sessionIds.join(', ')}`
-      this.sessionManagementLogger.debug(
-        `User ${userId} attempting to revoke specific sessions: ${sessionIds.join(', ')} (current: ${currentSessionId}).`
-      )
-      sessionsToRevoke = sessionIds.filter((sid) => {
-        if (sid === currentSessionId) {
+    if (sessionIds && sessionIds.length > 0) {
+      this.sessionManagementLogger.log(`Revoking specific sessions for user ${userId}: ${sessionIds.join(', ')}`)
+      for (const sessionIdToRevoke of sessionIds) {
+        if (sessionIdToRevoke === currentSessionId) {
           this.sessionManagementLogger.warn(
-            `User ${userId} attempted to revoke current session ${currentSessionId} via sessionIds array. This is disallowed.`
+            `User ${userId} attempted to revoke current session ${currentSessionId} via bulk. Skipping.`
           )
-          // Optionally throw an error or just silently ignore
-          // For now, silently ignore to prevent accidental self-lockout through this specific path.
-          // The `deviceId` path has different semantics (logout from a device entirely).
-          return false
+          continue
         }
-        return true
-      })
-      auditDetails.specificSessionIdsRequested = sessionIds as Prisma.JsonArray
+        try {
+          await this.revokeSessionInternal(userId, sessionIdToRevoke, currentSessionId, 'BULK_REVOKE_SESSION_LIST')
+          totalRevokedCount++
+        } catch (error) {
+          this.sessionManagementLogger.error(
+            `Failed to revoke session ${sessionIdToRevoke} for user ${userId} during bulk operation:`,
+            error
+          )
+          // Optionally collect errors or rethrow if one failure should stop all
+        }
+      }
+      auditDetails.sessionsRevokedByList = totalRevokedCount
+    } else if (deviceIds && deviceIds.length > 0) {
+      this.sessionManagementLogger.log(`Revoking sessions for devices of user ${userId}: ${deviceIds.join(', ')}`)
+      for (const deviceIdToUntrust of deviceIds) {
+        const device = await this.deviceService.findDeviceById(deviceIdToUntrust)
+        if (!device || device.userId !== userId) {
+          this.sessionManagementLogger.warn(
+            `Device ${deviceIdToUntrust} not found or not owned by user ${userId}. Skipping.`
+          )
+          continue
+        }
+
+        const revokedForDevice = await this.tokenService.invalidateSessionsByDeviceId(
+          deviceIdToUntrust,
+          'BULK_REVOKE_DEVICE_SESSIONS'
+        )
+        totalRevokedCount += revokedForDevice
+        // Untrust the device
+        if (device.isTrusted) {
+          await this.deviceService.updateDevice(deviceIdToUntrust, { isTrusted: false })
+          devicesUntrustedCount++
+          this.sessionManagementLogger.log(`Device ${deviceIdToUntrust} untrusted for user ${userId}.`)
+        }
+      }
+      auditDetails.sessionsRevokedByDevice = totalRevokedCount
+      auditDetails.devicesUntrusted = devicesUntrustedCount
+    } else if (revokeAll) {
+      this.sessionManagementLogger.log(`Revoking all sessions for user ${userId} except current ${currentSessionId}`)
+      const result = await this.tokenService.invalidateAllUserSessions(
+        userId,
+        'USER_REQUEST_REVOKE_ALL_EXCEPT_CURRENT',
+        currentSessionId
+      )
+      totalRevokedCount = result.invalidatedCount
+      auditDetails.allSessionsExceptCurrentRevoked = totalRevokedCount
     } else {
-      // This case should be caught by Zod validation, but as a safeguard:
-      throw new ApiException(HttpStatus.BAD_REQUEST, 'InvalidInput', 'Error.Auth.Session.InvalidRevokeOperation')
+      throw new ApiException(HttpStatus.BAD_REQUEST, 'InvalidOperation', 'Error.Auth.Session.InvalidRevokeOperation')
     }
 
-    if (sessionsToRevoke.length === 0 && !deviceToUntrust) {
-      const message = await this.i18nService.translate('error.Auth.Session.NoSessionsToRevoke', {
+    if (totalRevokedCount === 0 && devicesUntrustedCount === 0) {
+      await this.auditLogService.recordAsync({
+        action: 'REVOKE_MULTIPLE_SESSIONS_NO_ACTION',
+        userId,
+        status: AuditLogStatus.SUCCESS,
+        notes: 'No sessions were revoked or devices untrusted based on the criteria.',
+        details: auditDetails
+      })
+      const noSessionsMessage = await this.i18nService.translate('error.Auth.Session.NoSessionsToRevoke', {
         lang: I18nContext.current()?.lang
       })
-      return { message }
+      return { message: noSessionsMessage }
     }
 
-    let revokedCount = 0
-    for (const sid of sessionsToRevoke) {
-      try {
-        // Check if session belongs to the user before revoking, as an extra security measure.
-        const sessionOwnerId = await this.redisService.hget(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sid}`, 'userId')
-        if (sessionOwnerId && parseInt(sessionOwnerId, 10) === userId) {
-          await this.tokenService.invalidateSession(sid, `USER_REQUEST_REVOKE_MULTIPLE (${actionDescription})`)
-          revokedCount++
-        } else {
-          this.sessionManagementLogger.warn(
-            `User ${userId} attempted to revoke session ${sid} not belonging to them or session details missing.`
-          )
-        }
-      } catch (error) {
-        this.sessionManagementLogger.error(`Error revoking session ${sid} for user ${userId}: ${error.message}`)
-        // Continue to revoke other sessions
-      }
-    }
-
-    auditDetails.sessionsActuallyRevoked = sessionsToRevoke as Prisma.JsonArray
-    auditDetails.revokedCount = revokedCount
-
-    if (deviceToUntrust !== null) {
-      try {
-        await this.untrustManagedDevice(userId, deviceToUntrust) // This also handles audit logging for untrust
-        auditDetails.deviceUntrusted = true
-      } catch (error) {
-        this.sessionManagementLogger.error(
-          `Error untrusting device ${deviceToUntrust} for user ${userId} after revoking its sessions: ${error.message}`
-        )
-        auditDetails.deviceUntrustFailed = error.message
-      }
-    }
-
-    await this.auditLogService.successSync('REVOKE_SESSIONS', {
+    await this.auditLogService.recordAsync({
+      action: 'REVOKE_MULTIPLE_SESSIONS_SUCCESS',
       userId,
-      details: auditDetails,
-      notes: `${actionDescription}. Revoked ${revokedCount} session(s).`
+      status: AuditLogStatus.SUCCESS,
+      details: auditDetails
     })
 
     const message = await this.i18nService.translate('error.Auth.Session.RevokedSuccessfullyCount', {
       lang: I18nContext.current()?.lang,
-      args: { count: revokedCount }
+      args: { count: totalRevokedCount }
     })
     return { message }
   }

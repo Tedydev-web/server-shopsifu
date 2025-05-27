@@ -11,6 +11,11 @@ import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import ms from 'ms'
 import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
+import {
+  InvalidRefreshTokenException,
+  ExpiredRefreshTokenException,
+  RefreshTokenAlreadyUsedException
+} from 'src/routes/auth/auth.error'
 
 interface CookieConfig {
   name: string
@@ -185,6 +190,7 @@ export class TokenService {
     await this.redisService.set(
       `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`,
       sessionId,
+      'EX',
       refreshTokenExpiresInSeconds
     )
 
@@ -207,22 +213,26 @@ export class TokenService {
     }
   }
 
-  async markRefreshTokenJtiAsUsed(refreshTokenJti: string, sessionId: string, ttlSeconds?: number) {
-    this.logger.debug(`Marking refresh token JTI as used (blacklisting): ${refreshTokenJti}`)
-    await this.redisService.set(
-      `${REDIS_KEY_PREFIX.REFRESH_TOKEN_BLACKLIST}${refreshTokenJti}`,
-      'revoked:used',
-      ttlSeconds
-    )
-    await this.redisService.del(`${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`)
+  async markRefreshTokenJtiAsUsed(refreshTokenJti: string, sessionId: string, ttlSeconds?: number): Promise<boolean> {
+    const usedKey = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${refreshTokenJti}`
+    const effectiveTtl = ttlSeconds ?? Math.floor(ms(envConfig.REFRESH_TOKEN_EXPIRES_IN) / 1000)
 
-    const sessionDetails = await this.redisService.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`)
-    if (sessionDetails && sessionDetails.deviceId) {
-      await this.redisService.srem(
-        `${REDIS_KEY_PREFIX.DEVICE_REFRESH_TOKENS}${sessionDetails.deviceId}`,
-        refreshTokenJti
+    this.logger.verbose(
+      `Attempting to mark RT JTI ${refreshTokenJti} as used for session ${sessionId} with TTL ${effectiveTtl}s. Key: ${usedKey}`
+    )
+    // Set the value to the session ID that used it.
+    // 'NX' ensures this is set only if the JTI hasn't been marked as used before.
+    const result = await this.redisService.set(usedKey, sessionId, 'EX', effectiveTtl, 'NX')
+
+    if (result === null) {
+      // This means the key already existed (NX condition failed).
+      this.logger.warn(
+        `RT JTI ${refreshTokenJti} was already marked as used. Current session trying to mark: ${sessionId}. Associated session (if set by other): ${await this.redisService.get(usedKey)}.`
       )
+      return false // Indicate that marking failed because it already existed
     }
+    this.logger.verbose(`RT JTI ${refreshTokenJti} successfully marked as used for session ${sessionId}.`)
+    return true // Indicate successful marking
   }
 
   async invalidateRefreshTokenJti(refreshTokenJti: string, sessionId: string) {
@@ -231,7 +241,8 @@ export class TokenService {
     const ttl = await this.redisService.ttl(rtKey)
     await this.redisService.set(
       `${REDIS_KEY_PREFIX.REFRESH_TOKEN_BLACKLIST}${refreshTokenJti}`,
-      'revoked:logout',
+      `revoked:logout`,
+      'EX',
       ttl > 0 ? ttl : ms(envConfig.REFRESH_TOKEN_EXPIRES_IN) / 1000
     )
     await this.redisService.del(rtKey)
@@ -250,7 +261,7 @@ export class TokenService {
     const nowInSeconds = Math.floor(Date.now() / 1000)
     const ttl = accessTokenExp - nowInSeconds
     if (ttl > 0) {
-      await this.redisService.set(`${REDIS_KEY_PREFIX.ACCESS_TOKEN_BLACKLIST}${accessTokenJti}`, 'revoked', ttl)
+      await this.redisService.set(`${REDIS_KEY_PREFIX.ACCESS_TOKEN_BLACKLIST}${accessTokenJti}`, 'revoked', 'EX', ttl)
     }
   }
 
@@ -401,7 +412,17 @@ export class TokenService {
       const oldRtKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${clientRefreshTokenJti}`
       const oldRtTtl = await this.redisService.ttl(oldRtKey)
       const blacklistTtl = oldRtTtl > 0 ? oldRtTtl : 300
-      await this.markRefreshTokenJtiAsUsed(clientRefreshTokenJti, sessionId, blacklistTtl)
+      const markedSuccessfully = await this.markRefreshTokenJtiAsUsed(clientRefreshTokenJti, sessionId, blacklistTtl)
+
+      if (!markedSuccessfully) {
+        this.logger.warn(
+          `Refresh token JTI ${clientRefreshTokenJti} for session ${sessionId} was already marked as used by another process. Aborting refresh.`
+        )
+        // This session is now potentially compromised or a race condition was lost.
+        // Invalidate the session as a security measure if it wasn't already.
+        await this.invalidateSession(sessionId, 'RT_JTI_ALREADY_USED_ON_REFRESH_ATTEMPT')
+        throw RefreshTokenAlreadyUsedException // Specific exception for client
+      }
 
       newRefreshTokenJti = uuidv4()
       const rememberMe = sessionDetails.rememberMe === 'true'
@@ -416,12 +437,14 @@ export class TokenService {
         await this.redisService.set(
           `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${newRefreshTokenJti}`,
           sessionId,
+          'EX',
           newRtTtlSeconds
         )
       } else {
         await this.redisService.set(
           `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${newRefreshTokenJti}`,
           sessionId,
+          'EX',
           Math.floor(envConfig.ABSOLUTE_SESSION_LIFETIME_MS / 1000)
         )
       }
@@ -529,75 +552,117 @@ export class TokenService {
     this.logger.log(`[TokenService] Session ${sessionId} invalidation process completed. Reason: ${reason}.`)
   }
 
-  async invalidateAllUserSessions(userId: number, reason: string = 'UNKNOWN_BULK_INVALIDATION') {
+  async invalidateAllUserSessions(
+    userId: number,
+    reason: string = 'UNKNOWN_BULK_INVALIDATION',
+    sessionIdToExclude?: string
+  ): Promise<{ invalidatedCount: number }> {
     const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
     const sessionIds = await this.redisService.smembers(userSessionsKey)
-    let invalidatedCount = 0
 
-    if (sessionIds.length === 0) {
-      this.logger.debug(`No active sessions found for user ${userId} to invalidate.`)
-      return { invalidatedCount }
+    if (!sessionIds || sessionIds.length === 0) {
+      this.logger.log(`No active sessions found for user ${userId} to invalidate.`)
+      return { invalidatedCount: 0 }
     }
 
+    let invalidatedCount = 0
     const pipeline = this.redisService.client.pipeline()
-    const jtisToBlacklist: Array<{ jti: string; exp: number }> = []
+    const sessionKeysToDelete: string[] = []
+    const deviceSessionUpdates: Map<string, string[]> = new Map() // Key: deviceSessionKey, Value: array of sessionIds to SREM
 
     for (const sessionId of sessionIds) {
+      if (sessionId === sessionIdToExclude) {
+        this.logger.verbose(`Skipping excluded session ${sessionId} during bulk invalidation for user ${userId}.`)
+        continue
+      }
       const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-      const sessionData = await this.redisService.hgetall(sessionDetailsKey)
+      const sessionDetails = await this.redisService.hgetall(sessionDetailsKey)
 
-      if (sessionData && sessionData.currentRefreshTokenJti && sessionData.currentAccessTokenJti) {
-        const refreshTokenJti = sessionData.currentRefreshTokenJti
-        const accessTokenJti = sessionData.currentAccessTokenJti
-        const accessTokenExp = Number(sessionData.accessTokenExp) // Assuming accessTokenExp is stored
-
-        // Add JTI to a list for blacklisting after removing session details
-        if (accessTokenJti && accessTokenExp && accessTokenExp * 1000 > Date.now()) {
-          jtisToBlacklist.push({ jti: accessTokenJti, exp: accessTokenExp })
+      if (sessionDetails && Object.keys(sessionDetails).length > 0) {
+        // Blacklist Access Token if JTI exists
+        if (sessionDetails.currentAccessTokenJti) {
+          const accessTokenExp = parseInt(sessionDetails.accessTokenExp, 10)
+          if (!isNaN(accessTokenExp)) {
+            this.invalidateAccessTokenJti(sessionDetails.currentAccessTokenJti, accessTokenExp)
+          }
         }
-        // For refresh tokens, they are typically long-lived; blacklisting their JTI is key.
-        // We don't necessarily need their expiry here for blacklisting, as the JTI itself is the target.
-        // However, if we were to store a TTL with the blacklist entry, we'd need it.
-        // For now, direct blacklisting of JTI (e.g. via SADD to a blacklist set or a key with a long TTL)
+        // Blacklist Refresh Token if JTI exists
+        if (sessionDetails.currentRefreshTokenJti) {
+          this.markRefreshTokenJtiAsUsed(sessionDetails.currentRefreshTokenJti, sessionId)
+        }
 
-        pipeline.del(sessionDetailsKey) // Delete session details from Redis
-        pipeline.srem(userSessionsKey, sessionId) // Remove session ID from user's set of sessions
+        pipeline.srem(userSessionsKey, sessionId) // Remove from user's set of sessions
+        sessionKeysToDelete.push(sessionDetailsKey) // Mark session details for deletion
 
-        // Mark refresh token JTI as used (blacklisted)
-        const usedRefreshTokenKey = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${refreshTokenJti}`
-        const refreshTokenTTL = ms(envConfig.REFRESH_TOKEN_EXPIRES_IN) / 1000 // Use configured TTL
-        pipeline.set(usedRefreshTokenKey, sessionId, 'EX', refreshTokenTTL)
-
+        if (sessionDetails.deviceId) {
+          const deviceSessionKey = `${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${sessionDetails.deviceId}`
+          if (!deviceSessionUpdates.has(deviceSessionKey)) {
+            deviceSessionUpdates.set(deviceSessionKey, [])
+          }
+          deviceSessionUpdates.get(deviceSessionKey)!.push(sessionId)
+        }
         invalidatedCount++
-        this.logger.log(`Session ${sessionId} for user ${userId} marked for invalidation. Reason: ${reason}`)
-      } else {
-        this.logger.warn(
-          `Session data incomplete or missing for session ${sessionId}, user ${userId}. Removing from set.`
-        )
-        pipeline.srem(userSessionsKey, sessionId) // Clean up inconsistent entry
+        this.logger.verbose(`Session ${sessionId} for user ${userId} marked for bulk invalidation. Reason: ${reason}`)
       }
     }
 
-    // Blacklist access tokens
-    for (const item of jtisToBlacklist) {
-      const blacklistKey = `${REDIS_KEY_PREFIX.ACCESS_TOKEN_BLACKLIST}${item.jti}`
-      const ttl = item.exp - Math.floor(Date.now() / 1000)
-      if (ttl > 0) {
-        pipeline.set(blacklistKey, 'invalidated', 'EX', ttl)
-      }
+    if (sessionKeysToDelete.length > 0) {
+      pipeline.del(sessionKeysToDelete)
     }
+
+    // Remove specific sessionIds from their respective DEVICE_SESSIONS sets
+    deviceSessionUpdates.forEach((sessionsToRemove, deviceKey) => {
+      if (sessionsToRemove.length > 0) {
+        pipeline.srem(deviceKey, ...sessionsToRemove)
+      }
+    })
 
     await pipeline.exec()
 
-    if (invalidatedCount > 0) {
-      this.logger.log(`Successfully invalidated ${invalidatedCount} sessions for user ${userId}. Reason: ${reason}`)
-      this.auditLogService.recordAsync({
-        action: 'BULK_SESSION_INVALIDATION',
-        userId,
-        status: AuditLogStatus.SUCCESS,
-        details: { invalidatedCount, reason } as Prisma.JsonObject
-      })
-    }
+    this.logger.log(`Invalidated ${invalidatedCount} sessions for user ${userId}. Reason: ${reason}`)
     return { invalidatedCount }
+  }
+
+  async invalidateSessionsByDeviceId(deviceId: number, reason: string = 'DEVICE_INVALIDATED'): Promise<number> {
+    const deviceSessionsKey = `${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${deviceId}`
+    const sessionIds = await this.redisService.smembers(deviceSessionsKey)
+
+    if (!sessionIds || sessionIds.length === 0) {
+      this.logger.log(`No active sessions found for device ${deviceId} to invalidate.`)
+      return 0
+    }
+
+    let invalidatedCount = 0
+    const pipeline = this.redisService.client.pipeline()
+
+    for (const sessionId of sessionIds) {
+      const sessionDetails = await this.redisService.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`)
+      if (sessionDetails && Object.keys(sessionDetails).length > 0) {
+        if (sessionDetails.currentAccessTokenJti) {
+          const accessTokenExp = parseInt(sessionDetails.accessTokenExp, 10)
+          if (!isNaN(accessTokenExp)) {
+            await this.invalidateAccessTokenJti(sessionDetails.currentAccessTokenJti, accessTokenExp) // Blacklist AT
+          }
+        }
+        if (sessionDetails.currentRefreshTokenJti) {
+          await this.markRefreshTokenJtiAsUsed(sessionDetails.currentRefreshTokenJti, sessionId) // Blacklist RT
+        }
+        pipeline.del(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`)
+        invalidatedCount++
+        this.logger.verbose(`Session ${sessionId} for device ${deviceId} marked for invalidation. Reason: ${reason}`)
+
+        // Remove session from user's set of sessions
+        if (sessionDetails.userId) {
+          pipeline.srem(`${REDIS_KEY_PREFIX.USER_SESSIONS}${sessionDetails.userId}`, sessionId)
+        }
+      }
+    }
+
+    // Remove the device's own set of sessions
+    pipeline.del(deviceSessionsKey)
+
+    await pipeline.exec()
+    this.logger.log(`Invalidated ${invalidatedCount} sessions for device ${deviceId}. Reason: ${reason}`)
+    return invalidatedCount
   }
 }
