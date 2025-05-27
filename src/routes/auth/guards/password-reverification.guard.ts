@@ -8,6 +8,9 @@ import { GqlExecutionContext } from '@nestjs/graphql' // Nếu dùng GraphQL
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { HttpStatus } from '@nestjs/common'
+import { AUTH_TYPE_KEY } from 'src/routes/auth/decorators/auth.decorator' // Chỉ import AUTH_TYPE_KEY
+import { AuthType } from 'src/shared/constants/auth.constant' // Import AuthType từ nguồn
+import { AuthTypeDecoratorPayload } from 'src/routes/auth/decorators/auth.decorator' // Import kiểu payload
 
 export const SKIP_PASSWORD_REVERIFICATION_CHECK = 'skipPasswordReverificationCheck'
 export const AllowWithoutPasswordReverification = () => SetMetadata(SKIP_PASSWORD_REVERIFICATION_CHECK, true)
@@ -29,6 +32,17 @@ export class PasswordReverificationGuard implements CanActivate {
     ])
 
     if (skipReverificationCheck) {
+      return true
+    }
+
+    // Kiểm tra nếu endpoint là public thông qua @IsPublic() (sử dụng AUTH_TYPE_KEY)
+    const authTypePayload = this.reflector.getAllAndOverride<AuthTypeDecoratorPayload | undefined>(AUTH_TYPE_KEY, [
+      context.getHandler(),
+      context.getClass()
+    ])
+
+    if (authTypePayload && authTypePayload.authTypes.includes(AuthType.None)) {
+      this.logger.verbose('PasswordReverificationGuard: Skipping check for @IsPublic() endpoint.')
       return true
     }
 
