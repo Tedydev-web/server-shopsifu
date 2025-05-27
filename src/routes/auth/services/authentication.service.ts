@@ -437,7 +437,7 @@ export class AuthenticationService extends BaseAuthService {
               actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
                 lang
               }),
-              actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
+              actionButtonUrl: `${envConfig.FRONTEND_URL}/account/security`
             })
           } catch (emailError) {
             const errorMessage = emailError instanceof Error ? emailError.message : String(emailError)
@@ -1113,7 +1113,7 @@ export class AuthenticationService extends BaseAuthService {
               actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
                 lang
               }),
-              actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
+              actionButtonUrl: `${envConfig.FRONTEND_URL}/account/security`
             })
           } catch (emailError) {
             const errorMessage = emailError instanceof Error ? emailError.message : String(emailError)

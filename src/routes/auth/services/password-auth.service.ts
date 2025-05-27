@@ -89,7 +89,7 @@ export class PasswordAuthService extends BaseAuthService {
           actionButtonText: await this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
             lang: I18nContext.current()?.lang
           }),
-          actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/login` // Or account security page
+          actionButtonUrl: `${envConfig.FRONTEND_URL}/login` // Or account security page
         })
       } catch (emailError) {
         this.logger.error(`Failed to send password reset notification email to ${user.email}: ${emailError.message}`)
@@ -174,7 +174,7 @@ export class PasswordAuthService extends BaseAuthService {
           actionButtonText: await this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
             lang: I18nContext.current()?.lang
           }),
-          actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/login` // Or account security page
+          actionButtonUrl: `${envConfig.FRONTEND_URL}/login` // Or account security page
         })
       } catch (emailError) {
         this.logger.error(`Failed to send password change notification email to ${user.email}: ${emailError.message}`)

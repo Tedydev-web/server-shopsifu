@@ -177,7 +177,7 @@ export class DeviceService {
 
     // Consider adding a button to review security activity if such a page exists
     // const actionButtonText = await this.i18nService.translate('Email.SecurityAlert.Button.ReviewActivity', { lang })
-    // const actionButtonUrl = `${envConfig.FRONTEND_HOST_URL}/account/security`
+    // const actionButtonUrl = `${envConfig.FRONTEND_URL}/account/security`
 
     this.emailService
       .sendSecurityAlertEmail({

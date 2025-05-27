@@ -38,10 +38,8 @@ const configSchema = z.object({
   CSRF_SECRET: z.string(), // Secret specifically for CSRF token generation and verification by csurf
   REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN: z.string().default('14d'),
   ABSOLUTE_SESSION_LIFETIME: z.string().default('30d'),
-  API_HOST_URL: z.string(),
-  API_LOCAL_URL: z.string(),
-  FRONTEND_HOST_URL: z.string(),
-  FRONTEND_LOCAL_URL: z.string(),
+  API_URL: z.string(),
+  FRONTEND_URL: z.string(),
   PORT: z.string().default('3000'),
 
   COOKIE_PATH_ACCESS_TOKEN: z.string().default('/'),
@@ -138,20 +136,20 @@ const envConfig = {
     sltToken: {
       name: CookieNames.SLT_TOKEN,
       path: '/',
-      domain: parsedConfig.COOKIE_DOMAIN,
+      domain: cookieDomain,
       maxAge: ms(parsedConfig.SLT_JWT_EXPIRES_IN),
       httpOnly: true,
       secure: cookieSecure,
-      sameSite: 'Lax' as const
+      sameSite: 'lax' as const
     },
     nonce: {
       name: CookieNames.OAUTH_NONCE,
       path: '/',
-      domain: parsedConfig.COOKIE_DOMAIN,
+      domain: cookieDomain,
       maxAge: ms(parsedConfig.NONCE_COOKIE_MAX_AGE || '5m'),
       httpOnly: true,
       secure: cookieSecure,
-      sameSite: 'Lax' as const
+      sameSite: 'lax' as const
     },
     csrfToken: {
       name: CookieNames.CSRF_TOKEN,

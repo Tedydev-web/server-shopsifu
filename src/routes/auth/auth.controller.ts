@@ -84,6 +84,7 @@ import { GoogleCallbackSuccessResult } from './google.service'
 import { AuthenticationService } from './services/authentication.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { UserProfileResDTO } from './auth.dto'
+import { Buffer } from 'buffer'
 
 @Controller('auth')
 export class AuthController {
@@ -205,13 +206,15 @@ export class AuthController {
     })
 
     const nonceCookieConfig = envConfig.cookie.nonce
+    const isDevelopment = envConfig.NODE_ENV === 'development'
+
     res.cookie(CookieNames.OAUTH_NONCE, nonce, {
       path: nonceCookieConfig.path,
       domain: nonceCookieConfig.domain,
       maxAge: nonceCookieConfig.maxAge,
       httpOnly: nonceCookieConfig.httpOnly,
-      secure: nonceCookieConfig.secure,
-      sameSite: nonceCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+      secure: isDevelopment ? false : nonceCookieConfig.secure,
+      sameSite: nonceCookieConfig.sameSite
     })
 
     return { url }
@@ -229,17 +232,16 @@ export class AuthController {
     @UserAgent() userAgent: string,
     @Ip() ip: string
   ) {
+    this.logger.log('[GoogleCallback] Received callback from Google.')
+    this.logger.debug(`[GoogleCallback] Request Cookies: ${JSON.stringify(req.cookies)}`)
+    this.logger.debug(`[GoogleCallback] Request Cookie Header: ${req.headers.cookie}`)
+    this.logger.debug(`[GoogleCallback] Request Origin Header: ${req.headers.origin}`)
+    this.logger.debug(`[GoogleCallback] Request Referer Header: ${req.headers.referer}`)
+    this.logger.debug(`[GoogleCallback] Full Request URL: ${req.protocol}://${req.get('host')}${req.originalUrl}`)
+
     const currentLang = I18nContext.current()?.lang
     const nonceFromCookie = req.cookies?.[CookieNames.OAUTH_NONCE]
     const nonceCookieConfig = envConfig.cookie.nonce
-
-    res.clearCookie(CookieNames.OAUTH_NONCE, {
-      path: nonceCookieConfig.path,
-      domain: nonceCookieConfig.domain,
-      httpOnly: nonceCookieConfig.httpOnly,
-      secure: nonceCookieConfig.secure,
-      sameSite: nonceCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
-    })
 
     let nonceFromStateParam: string | undefined
     let rememberMeFromState: boolean = false
@@ -258,8 +260,17 @@ export class AuthController {
         const genericErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
           lang: currentLang
         })
+        if (res) {
+          res.clearCookie(CookieNames.OAUTH_NONCE, {
+            path: nonceCookieConfig.path,
+            domain: nonceCookieConfig.domain,
+            httpOnly: nonceCookieConfig.httpOnly,
+            secure: nonceCookieConfig.secure,
+            sameSite: nonceCookieConfig.sameSite
+          })
+        }
         return res.redirect(
-          `${envConfig.FRONTEND_HOST_URL}/auth/callback/google?error=invalid_state&errorMessage=${encodeURIComponent(genericErrorMessage)}`
+          `${envConfig.FRONTEND_URL}/auth/callback/google?error=invalid_state&errorMessage=${encodeURIComponent(genericErrorMessage)}`
         )
       }
     }
@@ -272,8 +283,17 @@ export class AuthController {
         lang: currentLang,
         defaultValue: 'Login with Google failed due to a security check. Please try again.'
       })
+      if (res) {
+        res.clearCookie(CookieNames.OAUTH_NONCE, {
+          path: nonceCookieConfig.path,
+          domain: nonceCookieConfig.domain,
+          httpOnly: nonceCookieConfig.httpOnly,
+          secure: nonceCookieConfig.secure,
+          sameSite: nonceCookieConfig.sameSite
+        })
+      }
       return res.redirect(
-        `${envConfig.FRONTEND_HOST_URL}/auth/callback/google?error=csrf_error&errorMessage=${encodeURIComponent(csrfErrorMessage)}`
+        `${envConfig.FRONTEND_URL}/auth/callback/google?error=csrf_error&errorMessage=${encodeURIComponent(csrfErrorMessage)}`
       )
     }
 
@@ -281,8 +301,17 @@ export class AuthController {
       const missingCodeMessage = await this.i18nService.translate('error.Error.Auth.Google.MissingCode', {
         lang: currentLang
       })
+      if (res) {
+        res.clearCookie(CookieNames.OAUTH_NONCE, {
+          path: nonceCookieConfig.path,
+          domain: nonceCookieConfig.domain,
+          httpOnly: nonceCookieConfig.httpOnly,
+          secure: nonceCookieConfig.secure,
+          sameSite: nonceCookieConfig.sameSite
+        })
+      }
       return res.redirect(
-        `${envConfig.FRONTEND_HOST_URL}/auth/callback/google?error=missing_code&errorMessage=${encodeURIComponent(missingCodeMessage)}`
+        `${envConfig.FRONTEND_URL}/auth/callback/google?error=missing_code&errorMessage=${encodeURIComponent(missingCodeMessage)}`
       )
     }
 
@@ -298,8 +327,17 @@ export class AuthController {
         this.logger.error(
           `[AuthController googleCallback] Error from GoogleService: ${googleAuthResultFromService.errorMessage}`
         )
+        if (res) {
+          res.clearCookie(CookieNames.OAUTH_NONCE, {
+            path: nonceCookieConfig.path,
+            domain: nonceCookieConfig.domain,
+            httpOnly: nonceCookieConfig.httpOnly,
+            secure: nonceCookieConfig.secure,
+            sameSite: nonceCookieConfig.sameSite
+          })
+        }
         return res.redirect(
-          `${envConfig.FRONTEND_HOST_URL}/auth/callback/google?error=${googleAuthResultFromService.errorCode}&errorMessage=${encodeURIComponent(googleAuthResultFromService.errorMessage)}`
+          `${envConfig.FRONTEND_URL}/auth/callback/google?error=${googleAuthResultFromService.errorCode}&errorMessage=${encodeURIComponent(googleAuthResultFromService.errorMessage)}`
         )
       }
 
@@ -337,7 +375,16 @@ export class AuthController {
           twoFactorMethod: user.twoFactorMethod,
           source: 'google'
         })
-        return res.redirect(`${envConfig.FRONTEND_HOST_URL}/login/verify-2fa?${queryParams.toString()}`)
+        if (res) {
+          res.clearCookie(CookieNames.OAUTH_NONCE, {
+            path: nonceCookieConfig.path,
+            domain: nonceCookieConfig.domain,
+            httpOnly: nonceCookieConfig.httpOnly,
+            secure: nonceCookieConfig.secure,
+            sameSite: nonceCookieConfig.sameSite
+          })
+        }
+        return res.redirect(`${envConfig.FRONTEND_URL}/login/verify-2fa?${queryParams.toString()}`)
       }
 
       if (requiresUntrustedDeviceVerification) {
@@ -366,7 +413,16 @@ export class AuthController {
           deviceVerificationRequired: 'true',
           source: 'google'
         })
-        return res.redirect(`${envConfig.FRONTEND_HOST_URL}/login/verify-device?${queryParams.toString()}`)
+        if (res) {
+          res.clearCookie(CookieNames.OAUTH_NONCE, {
+            path: nonceCookieConfig.path,
+            domain: nonceCookieConfig.domain,
+            httpOnly: nonceCookieConfig.httpOnly,
+            secure: nonceCookieConfig.secure,
+            sameSite: nonceCookieConfig.sameSite
+          })
+        }
+        return res.redirect(`${envConfig.FRONTEND_URL}/login/verify-device?${queryParams.toString()}`)
       }
 
       this.logger.log(
@@ -383,17 +439,21 @@ export class AuthController {
         res
       )
 
-      const successRedirectUrl = `${envConfig.FRONTEND_HOST_URL}` // Or a more specific success page like /dashboard or /login/oauth-success
+      const successRedirectUrl = `${envConfig.FRONTEND_URL}` // Or a more specific success page like /dashboard or /login/oauth-success
       this.logger.log(
         `[GoogleCallback] Successful login for user ${user.id} via google-oauth. Redirecting to ${successRedirectUrl}`
       )
       if (res) {
         res.redirect(successRedirectUrl)
-        return // Explicitly return to prevent further processing by NestJS default response handling
+        res.clearCookie(CookieNames.OAUTH_NONCE, {
+          path: nonceCookieConfig.path,
+          domain: nonceCookieConfig.domain,
+          httpOnly: nonceCookieConfig.httpOnly,
+          secure: nonceCookieConfig.secure,
+          sameSite: nonceCookieConfig.sameSite
+        })
+        return
       } else {
-        // This case should ideally not happen if @Res({ passthrough: true }) is used correctly
-        // and res is always passed to finalizeOauthLogin.
-        // However, if it does, we return the data as a fallback, though redirect is preferred.
         this.logger.warn(
           `[GoogleCallback] Response object not available for redirect. Returning login result as JSON for user ${user.id}.`
         )
@@ -427,8 +487,17 @@ export class AuthController {
       const messageToEncode = error instanceof Error ? error.message : genericErrorMessage
       const message = encodeURIComponent(messageToEncode)
 
+      if (res) {
+        res.clearCookie(CookieNames.OAUTH_NONCE, {
+          path: nonceCookieConfig.path,
+          domain: nonceCookieConfig.domain,
+          httpOnly: nonceCookieConfig.httpOnly,
+          secure: nonceCookieConfig.secure,
+          sameSite: nonceCookieConfig.sameSite
+        })
+      }
       return res.redirect(
-        `${envConfig.FRONTEND_HOST_URL}/auth/callback/google?error=${determinedErrorCode}&errorMessage=${message}`
+        `${envConfig.FRONTEND_URL}/auth/callback/google?error=${determinedErrorCode}&errorMessage=${message}`
       )
     }
   }

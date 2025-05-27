@@ -208,7 +208,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       errors = [{ field: '', message: translatedMainMessage }]
     }
 
-    const errorBaseUrl = envConfig.NODE_ENV === 'production' ? envConfig.API_HOST_URL : envConfig.API_LOCAL_URL
+    const errorBaseUrl = envConfig.NODE_ENV === 'production' ? envConfig.API_URL : envConfig.API_URL
 
     const responseBody: ErrorResponse = {
       type: `${errorBaseUrl}/errors/${errorCode.toLowerCase().replace(/_/g, '-')}`,

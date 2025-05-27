@@ -15,7 +15,7 @@ async function bootstrap() {
   })
 
   app.enableCors({
-    origin: [envConfig.FRONTEND_HOST_URL, envConfig.FRONTEND_LOCAL_URL],
+    origin: envConfig.FRONTEND_URL,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'x-csrf-token'],
@@ -56,6 +56,6 @@ async function bootstrap() {
 
   const port = envConfig.PORT ?? 3000
   await app.listen(port)
-  winstonLogger.log(`Application is running on: ${envConfig.API_LOCAL_URL}/api/v1`, 'Bootstrap')
+  winstonLogger.log(`Application is running on: ${envConfig.API_URL}/api/v1`, 'Bootstrap')
 }
 void bootstrap()

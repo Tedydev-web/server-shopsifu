@@ -350,7 +350,7 @@ export class TwoFactorAuthService extends BaseAuthService {
               }
             ),
             actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.ReviewActivity', { lang }),
-            actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/sessions`
+            actionButtonUrl: `${envConfig.FRONTEND_URL}/account/sessions`
           })
         } catch (emailError) {
           this.logger.error(
@@ -506,7 +506,7 @@ export class TwoFactorAuthService extends BaseAuthService {
               { lang }
             ),
             actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.Enable2FA', { lang }),
-            actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
+            actionButtonUrl: `${envConfig.FRONTEND_URL}/account/security`
           })
         } catch (emailError) {
           this.logger.error(

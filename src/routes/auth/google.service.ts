@@ -199,19 +199,19 @@ export class GoogleService {
           this.logger.log(
             `[GoogleCallback] No user found for Google ID ${googleUserId} or email ${payload.email}. Creating new user.`
           )
-          user = await this.prismaService.user.create({
-            data: {
-              email: payload.email,
-              name: payload.name || 'Google User',
-              password: await this.hashingService.hash(uuidv4()),
+        user = await this.prismaService.user.create({
+          data: {
+            email: payload.email,
+            name: payload.name || 'Google User',
+            password: await this.hashingService.hash(uuidv4()),
               phoneNumber: '',
-              avatar: payload.picture,
-              status: 'ACTIVE',
+            avatar: payload.picture,
+            status: 'ACTIVE',
               role: { connect: { id: clientRoleId } },
               googleId: googleUserId
-            },
-            include: { role: true }
-          })
+          },
+          include: { role: true }
+        })
         }
       } else {
         this.logger.log(`[GoogleCallback] User found by Google ID ${googleUserId}: ${user.email} (ID: ${user.id}).`)
@@ -268,12 +268,12 @@ export class GoogleService {
         `[GoogleCallback] User: ${user.id}, Device: ${device.id} (isTrusted: ${device.isTrusted}), 2FA Enabled: ${user.twoFactorEnabled}, Requires 2FA: ${requiresTwoFactorAuth}, Requires Untrusted Verification: ${requiresUntrustedDeviceVerification}`
       )
 
-      return {
+          return {
         user,
         device,
         requiresTwoFactorAuth,
         requiresUntrustedDeviceVerification,
-        twoFactorMethod: user.twoFactorMethod,
+            twoFactorMethod: user.twoFactorMethod,
         isLoginViaGoogle: true,
         message: 'Google authentication successful. Proceed to security checks.'
       }

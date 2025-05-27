@@ -128,7 +128,7 @@ export class OtpAuthService extends BaseAuthService {
               actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
                 lang
               }),
-              actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security` // TODO: Update with actual URL
+              actionButtonUrl: `${envConfig.FRONTEND_URL}/account/security` // TODO: Update with actual URL
             })
           } catch (emailError) {
             this.logger.error(
