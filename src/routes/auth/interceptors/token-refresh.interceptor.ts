@@ -5,6 +5,7 @@ import { TokenService } from '../providers/token.service'
 import { Request, Response } from 'express'
 import { REQUEST_USER_KEY } from '../../../shared/constants/auth.constant'
 import { Logger } from '@nestjs/common'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class TokenRefreshInterceptor implements NestInterceptor {
@@ -33,7 +34,7 @@ export class TokenRefreshInterceptor implements NestInterceptor {
 
         return this.tryRefreshToken(refreshToken, request).pipe(
           switchMap((result) => {
-            if (!result.success) {
+            if (!result.success || !result.payload) {
               return throwError(() => error)
             }
 
@@ -46,14 +47,7 @@ export class TokenRefreshInterceptor implements NestInterceptor {
               )
             }
 
-            request[REQUEST_USER_KEY] = {
-              userId: result.payload.userId,
-              deviceId: result.payload.deviceId,
-              roleId: result.payload.roleId,
-              roleName: result.payload.roleName,
-              exp: result.payload.exp,
-              iat: result.payload.iat
-            }
+            request[REQUEST_USER_KEY] = result.payload
 
             return next.handle()
           })
@@ -72,43 +66,34 @@ export class TokenRefreshInterceptor implements NestInterceptor {
       refreshToken?: string
       maxAgeForRefreshTokenCookie?: number
     }
-    payload?: any
+    payload?: AccessTokenPayload
   }> {
     return new Observable((subscriber) => {
       this.tokenService
         .refreshTokenSilently(refreshToken, request.headers['user-agent']?.toString() || '', request.ip || '')
         .then((result) => {
-          if (!result || !result.accessToken) {
-            this.logger.debug('Failed to silently refresh token')
+          if (!result || !result.accessToken || !result.accessTokenPayload) {
+            this.logger.debug('Failed to silently refresh token or missing payload')
             subscriber.next({ success: false })
             subscriber.complete()
             return
           }
 
-          this.logger.debug('Token refreshed successfully')
+          this.logger.debug('Token refreshed successfully, using direct payload')
 
-          this.tokenService
-            .verifyAccessToken(result.accessToken)
-            .then((payload) => {
-              subscriber.next({
-                success: true,
-                tokens: {
-                  accessToken: result.accessToken,
-                  refreshToken: result.refreshToken,
-                  maxAgeForRefreshTokenCookie: result.maxAgeForRefreshTokenCookie
-                },
-                payload
-              })
-              subscriber.complete()
-            })
-            .catch((decodeError) => {
-              this.logger.error('Error decoding new access token', decodeError)
-              subscriber.next({ success: false })
-              subscriber.complete()
-            })
+          subscriber.next({
+            success: true,
+            tokens: {
+              accessToken: result.accessToken,
+              refreshToken: result.refreshToken,
+              maxAgeForRefreshTokenCookie: result.maxAgeForRefreshTokenCookie
+            },
+            payload: result.accessTokenPayload
+          })
+          subscriber.complete()
         })
         .catch((refreshError) => {
-          this.logger.debug('Error during silent token refresh', refreshError)
+          this.logger.warn('Error during silent token refresh attempt in TokenRefreshInterceptor:', refreshError)
           subscriber.next({ success: false })
           subscriber.complete()
         })

@@ -4,7 +4,7 @@ import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { SharedModule } from 'src/shared/shared.module'
 import { AuthModule } from 'src/routes/auth/auth.module'
-import { APP_PIPE, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core'
+import { APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_GUARD } from '@nestjs/core'
 import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import { LanguageModule } from './routes/language/language.module'
@@ -22,7 +22,7 @@ import envConfig from './shared/config'
 import { WinstonModule } from 'nest-winston'
 import { dailyRotateFileTransport, consoleTransport } from './shared/logger/winston.config'
 import { RedisProviderModule } from './shared/providers/redis/redis.module'
-import { APP_GUARD } from '@nestjs/core'
+import { TokenRefreshInterceptor } from 'src/routes/auth/interceptors/token-refresh.interceptor'
 
 @Module({
   imports: [
@@ -75,6 +75,10 @@ import { APP_GUARD } from '@nestjs/core'
       useClass: CustomZodValidationPipe
     },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TokenRefreshInterceptor
+    },
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard

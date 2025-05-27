@@ -14,7 +14,10 @@ import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.
 import {
   InvalidRefreshTokenException,
   ExpiredRefreshTokenException,
-  RefreshTokenAlreadyUsedException
+  RefreshTokenAlreadyUsedException,
+  RefreshTokenNotFoundException,
+  RefreshTokenSessionInvalidException,
+  RefreshTokenDeviceMismatchException
 } from 'src/routes/auth/auth.error'
 
 interface CookieConfig {
@@ -288,6 +291,7 @@ export class TokenService {
     accessToken: string
     refreshToken?: string
     maxAgeForRefreshTokenCookie?: number
+    accessTokenPayload: AccessTokenPayload
   } | null> {
     this.logger.debug(`Attempting to silently refresh token with JTI: ${clientRefreshTokenJti}`)
     const auditLogDetails: Prisma.JsonObject = {
@@ -307,7 +311,7 @@ export class TokenService {
         errorMessage: 'Refresh token JTI is blacklisted.',
         details: auditLogDetails
       })
-      return null
+      throw InvalidRefreshTokenException
     }
 
     const sessionId = await this.findSessionIdByRefreshTokenJti(clientRefreshTokenJti)
@@ -322,7 +326,7 @@ export class TokenService {
         errorMessage: 'No session found for the provided refresh token JTI.',
         details: auditLogDetails
       })
-      return null
+      throw RefreshTokenNotFoundException
     }
     auditLogDetails.sessionId = sessionId
 
@@ -342,7 +346,7 @@ export class TokenService {
         errorMessage: 'Session not found in Redis or is empty.',
         details: auditLogDetails
       })
-      return null
+      throw RefreshTokenSessionInvalidException
     }
     auditLogDetails.sessionUserId = parseInt(sessionDetails.userId, 10)
     auditLogDetails.sessionDeviceId = parseInt(sessionDetails.deviceId, 10)
@@ -363,7 +367,7 @@ export class TokenService {
         errorMessage: 'Provided refresh token JTI does not match the current one in session. Session invalidated.',
         details: auditLogDetails
       })
-      return null
+      throw InvalidRefreshTokenException
     }
 
     const expectedUserAgentFingerprint = this.deviceService.basicDeviceFingerprint(sessionDetails.userAgent)
@@ -384,7 +388,7 @@ export class TokenService {
         errorMessage: 'User-Agent mismatch during token refresh.',
         details: auditLogDetails
       })
-      return null
+      throw RefreshTokenDeviceMismatchException
     }
 
     const now = new Date()
@@ -392,16 +396,32 @@ export class TokenService {
     this.logger.debug(`Session ${sessionId} last active time updated.`)
 
     const newAccessTokenJti = uuidv4()
-    const newAccessToken = this.signAccessToken({
+    const nowTime = Math.floor(Date.now() / 1000) // For iat and exp calculation
+
+    const accessTokenPayloadToSign: Omit<AccessTokenPayloadCreate, 'exp' | 'iat' | 'isDeviceTrustedInSession'> & {
+      isDeviceTrustedInSession?: boolean
+    } = {
       userId: parseInt(sessionDetails.userId, 10),
       deviceId: parseInt(sessionDetails.deviceId, 10),
       roleId: parseInt(sessionDetails.roleId, 10),
       roleName: sessionDetails.roleName,
       sessionId: sessionId,
-      jti: newAccessTokenJti
-    })
+      jti: newAccessTokenJti,
+      // isDeviceTrustedInSession will be part of AccessTokenPayloadCreate, ensure it's included from sessionDetails
+      isDeviceTrustedInSession: sessionDetails.isDeviceTrustedInSession === 'true'
+    }
+
+    const newAccessToken = this.signAccessToken(accessTokenPayloadToSign)
+
+    const finalAccessTokenPayload: AccessTokenPayload = {
+      ...accessTokenPayloadToSign,
+      iat: nowTime,
+      exp: nowTime + Math.floor(ms(envConfig.ACCESS_TOKEN_EXPIRES_IN) / 1000),
+      // Ensure all fields from AccessTokenPayloadCreate are present
+      isDeviceTrustedInSession: accessTokenPayloadToSign.isDeviceTrustedInSession ?? false
+    }
+
     await this.redisService.hset(sessionKey, 'currentAccessTokenJti', newAccessTokenJti)
-    auditLogDetails.newAccessTokenJti = newAccessTokenJti
 
     const shouldRotateRefreshToken = true
     let newRefreshTokenJti: string | undefined = undefined
@@ -484,7 +504,8 @@ export class TokenService {
     return {
       accessToken: newAccessToken,
       refreshToken: shouldRotateRefreshToken ? newRefreshTokenJti : undefined,
-      maxAgeForRefreshTokenCookie: shouldRotateRefreshToken ? maxAgeForCookie : undefined
+      maxAgeForRefreshTokenCookie: shouldRotateRefreshToken ? maxAgeForCookie : undefined,
+      accessTokenPayload: finalAccessTokenPayload
     }
   }
 
