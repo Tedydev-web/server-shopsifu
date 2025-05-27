@@ -70,12 +70,14 @@ export interface SltContextData {
   sltJwtExp: number // SLT JWT expiry timestamp (seconds)
   sltJwtCreatedAt: number // SLT JWT creation timestamp (seconds)
   finalized: '0' | '1'
+  attempts: number // Added attempts field
   metadata?: Record<string, any> & { twoFactorMethod?: TwoFactorMethodTypeType }
   // email might be useful here if OTP is sent to email based on this context
   email?: string
 }
 
 const OTP_SEND_COOLDOWN_SECONDS = 60 // 1 minute cooldown
+const MAX_SLT_ATTEMPTS = 5 // Max attempts for an SLT token
 
 @Injectable()
 export class OtpService {
@@ -345,89 +347,70 @@ export class OtpService {
     purpose: TypeOfVerificationCodeType
     metadata?: Record<string, any> & { twoFactorMethod?: TwoFactorMethodTypeType }
   }): Promise<string> {
-    this.logger.debug(
-      `Initiating OTP with SLT cookie for user ${payload.userId}, device ${payload.deviceId}, purpose ${payload.purpose}`
-    )
-
-    // Anti-spam: Check last OTP sent time for this user and purpose
-    const otpLastSentKey = this._getOtpLastSentKey(payload.userId, payload.purpose)
-    const lastSentTimestampStr = await this.redisService.get(otpLastSentKey)
-
-    if (lastSentTimestampStr) {
-      const lastSentTime = parseInt(lastSentTimestampStr, 10)
-      const currentTime = Date.now()
-      if (currentTime - lastSentTime < OTP_SEND_COOLDOWN_SECONDS * 1000) {
-        this.logger.warn(`OTP request for user ${payload.userId}, purpose ${payload.purpose} blocked due to cooldown.`)
-        // It's important to use a generic error message for cooldowns
-        // to prevent users from inferring too much about account status.
-        throw TooManyRequestsException(
-          await this.i18nService.translate('error.Error.Auth.Otp.TooManyRequestsSimple', {
-            lang: I18nContext.current()?.lang,
-            defaultValue: 'Too many OTP requests. Please try again later.'
-          })
-        )
-      }
-    }
-
-    // Send the actual OTP
-    await this.sendOTP(payload.email, payload.purpose, payload.userId)
-
+    const { email, userId, deviceId, ipAddress, userAgent, purpose, metadata } = payload
     const sltJti = uuidv4()
+    const nowSeconds = Math.floor(Date.now() / 1000)
     const sltExpiresInSeconds = Math.floor(ms(envConfig.SLT_JWT_EXPIRES_IN) / 1000)
 
-    const sltJwtSigningPayload: Pick<SltJwtPayload, 'jti' | 'sub' | 'pur'> = {
+    const sltJwtPayload: SltJwtPayload = {
       jti: sltJti,
-      sub: payload.userId,
-      pur: payload.purpose
+      sub: userId,
+      pur: purpose,
+      exp: nowSeconds + sltExpiresInSeconds
     }
 
-    const sltJwt = this.jwtService.sign(sltJwtSigningPayload, {
+    const sltJwt = this.jwtService.sign(sltJwtPayload, {
       secret: envConfig.SLT_JWT_SECRET,
-      expiresIn: envConfig.SLT_JWT_EXPIRES_IN
+      expiresIn: `${sltExpiresInSeconds}s` // Ensure this is a string with 's'
     })
+
+    const sltContextDataToStore: SltContextData = {
+      userId,
+      deviceId,
+      ipAddress,
+      userAgent,
+      purpose,
+      sltJwtExp: sltJwtPayload.exp,
+      sltJwtCreatedAt: nowSeconds,
+      finalized: '0',
+      attempts: 0, // Initialize attempts
+      metadata,
+      email // Store email in context if needed later, e.g. for re-sending OTP related to this SLT
+    }
 
     const sltContextKey = this._getSltContextKey(sltJti)
-    const nowForContext = Math.floor(Date.now() / 1000)
-    const sltContextData: SltContextData = {
-      userId: payload.userId,
-      deviceId: payload.deviceId,
-      ipAddress: payload.ipAddress,
-      userAgent: payload.userAgent,
-      purpose: payload.purpose,
-      sltJwtExp: nowForContext + sltExpiresInSeconds,
-      sltJwtCreatedAt: nowForContext,
-      finalized: '0',
-      metadata: payload.metadata,
-      email: payload.email
+    await this.redisService.set(sltContextKey, JSON.stringify(sltContextDataToStore), 'EX', sltExpiresInSeconds)
+    this.logger.debug(
+      `SLT context for JTI ${sltJti} stored in Redis with TTL ${sltExpiresInSeconds}s. Key: ${sltContextKey}`
+    )
+
+    // Send OTP if the purpose requires it (e.g., LOGIN_UNTRUSTED_DEVICE_OTP)
+    // For LOGIN_2FA with TOTP, OTP is not sent from here.
+    // This logic might need adjustment based on when/how OTPs are sent for different SLT purposes.
+    if (purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
+      // TODO: Consider rate limiting for sending OTPs here as well.
+      // The 'email' in the payload is crucial.
+      await this.sendOTP(email, purpose, userId)
+      this.logger.debug(`OTP sent for SLT purpose: ${purpose} to email: ${email}`)
+    } else if (purpose === TypeOfVerificationCode.REVERIFY_SESSION_OTP) {
+      // Already handled by its dedicated endpoint, but if SLT is to be used, ensure email is present
+      await this.sendOTP(email, purpose, userId)
+      this.logger.debug(`OTP sent for SLT purpose: ${purpose} to email: ${email}`)
     }
 
-    await this.redisService.set(sltContextKey, JSON.stringify(sltContextData), 'EX', sltExpiresInSeconds)
-    this.logger.debug(
-      `SLT context for JTI ${sltJti} (purpose ${payload.purpose}) stored in Redis with TTL ${sltExpiresInSeconds}s. Key: ${sltContextKey}`
-    )
     this.auditLogService.recordAsync({
-      userId: payload.userId,
-      userEmail: payload.email,
-      action: 'SLT_CONTEXT_CREATED',
+      userId,
+      action: 'SLT_INITIATED',
       status: AuditLogStatus.SUCCESS,
-      ipAddress: payload.ipAddress,
-      userAgent: payload.userAgent,
+      ipAddress,
+      userAgent,
       details: {
         sltJti,
-        purpose: payload.purpose,
-        deviceId: payload.deviceId,
-        sltContextKey,
-        sltExpiresInSeconds
+        purpose,
+        deviceId,
+        metadata
       } as Prisma.JsonObject
     })
-
-    // After successfully initiating SLT (which includes sending OTP), update the last sent time
-    await this.redisService.set(
-      otpLastSentKey,
-      Date.now().toString(),
-      'EX', // mode
-      OTP_SEND_COOLDOWN_SECONDS + 5 // ttlValue
-    ) // TTL slightly longer than cooldown
 
     return sltJwt
   }
@@ -601,25 +584,139 @@ export class OtpService {
 
   async finalizeSlt(sltJti: string): Promise<void> {
     const sltContextKey = this._getSltContextKey(sltJti)
-    const result = await this.redisService.del(sltContextKey) // Delete the context key
-    if (result > 0) {
-      this.logger.debug(`SLT context for JTI ${sltJti} finalized and deleted from Redis.`)
+    const sltContextRaw = await this.redisService.get(sltContextKey)
+
+    if (!sltContextRaw) {
+      this.logger.warn(`SLT context for JTI ${sltJti} not found in Redis during finalize. Key: ${sltContextKey}`)
+      // Optionally throw an error or just log, depending on strictness
+      // throw new ApiException(HttpStatus.NOT_FOUND, 'SLT_CONTEXT_NOT_FOUND', 'SLT session data not found or expired.');
+      return // Nothing to finalize if not found
+    }
+
+    try {
+      const sltContext = JSON.parse(sltContextRaw) as SltContextData
+      if (sltContext.finalized === '1') {
+        this.logger.log(`SLT context for JTI ${sltJti} is already finalized. Skipping re-finalization.`)
+        return
+      }
+
+      sltContext.finalized = '1'
+      // Keep the original TTL when re-setting for finalization
+      const ttl = await this.redisService.ttl(sltContextKey)
+      if (ttl > 0) {
+        await this.redisService.set(sltContextKey, JSON.stringify(sltContext), 'EX', ttl)
+        this.logger.log(`SLT context for JTI ${sltJti} marked as finalized in Redis with remaining TTL ${ttl}s.`)
+      } else {
+        // If TTL is -1 (no expiry) or -2 (not found), it might have expired between GET and TTL.
+        // Or if it had no expiry set initially (which shouldn't be the case here).
+        // We can still set it with a short TTL to ensure it's marked as finalized if it reappears due to race conditions.
+        await this.redisService.set(sltContextKey, JSON.stringify(sltContext), 'EX', 60) // Finalize for 1 minute
+        this.logger.log(
+          `SLT context for JTI ${sltJti} marked as finalized in Redis. Original TTL was <=0, set with 60s TTL.`
+        )
+      }
+
       this.auditLogService.recordAsync({
-        action: 'SLT_CONTEXT_FINALIZED',
+        userId: sltContext.userId,
+        action: 'SLT_FINALIZED',
         status: AuditLogStatus.SUCCESS,
-        details: { sltJti, sltContextKey } as Prisma.JsonObject
+        ipAddress: sltContext.ipAddress, // Assuming ipAddress is part of context
+        userAgent: sltContext.userAgent, // Assuming userAgent is part of context
+        details: { sltJti, purpose: sltContext.purpose } as Prisma.JsonObject
       })
-    } else {
+    } catch (error) {
+      this.logger.error(`Error parsing SLT context for JTI ${sltJti} during finalize: ${error.message}`, error.stack)
+      // Decide if to throw. If parsing fails, the data is corrupt.
+      // Re-throwing might be too disruptive if the goal is just to mark as finalized.
+      // For now, log and continue, as the primary goal is to mark as finalized if possible.
+    }
+  }
+
+  async getSltAttempts(sltJti: string): Promise<number> {
+    const sltContextKey = this._getSltContextKey(sltJti)
+    const sltContextRaw = await this.redisService.get(sltContextKey)
+
+    if (!sltContextRaw) {
       this.logger.warn(
-        `Attempted to finalize SLT context for JTI ${sltJti}, but key was not found or already deleted. Key: ${sltContextKey}`
+        `SLT context for JTI ${sltJti} not found in Redis during getSltAttempts. Returning max attempts.`
       )
-      // Audit this too, as it might indicate a double finalization attempt or an issue.
+      return MAX_SLT_ATTEMPTS // Assume max attempts if context is gone, effectively blocking further tries
+    }
+
+    try {
+      const sltContext = JSON.parse(sltContextRaw) as SltContextData
+      if (sltContext.finalized === '1') {
+        this.logger.log(`SLT context for JTI ${sltJti} is already finalized. Returning max attempts.`)
+        return MAX_SLT_ATTEMPTS // Already finalized, no more attempts
+      }
+      return sltContext.attempts
+    } catch (error) {
+      this.logger.error(
+        `Error parsing SLT context for JTI ${sltJti} during getSltAttempts: ${error.message}`,
+        error.stack
+      )
+      return MAX_SLT_ATTEMPTS // Error parsing, assume max attempts
+    }
+  }
+
+  async incrementSltAttempts(sltJti: string): Promise<number> {
+    const sltContextKey = this._getSltContextKey(sltJti)
+    const sltContextRaw = await this.redisService.get(sltContextKey)
+
+    if (!sltContextRaw) {
+      this.logger.warn(`SLT context for JTI ${sltJti} not found in Redis during incrementSltAttempts.`)
+      // Should not happen if getSltAttempts was called first and didn't return MAX_SLT_ATTEMPTS
+      throw new ApiException(HttpStatus.BAD_REQUEST, 'SltContextInvalid', 'Error.Auth.OtpToken.Invalid')
+    }
+
+    try {
+      const sltContext = JSON.parse(sltContextRaw) as SltContextData
+
+      if (sltContext.finalized === '1') {
+        this.logger.warn(`Attempt to increment attempts for already finalized SLT JTI ${sltJti}.`)
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'SltContextFinalized', 'Error.Auth.OtpToken.AlreadyUsed')
+      }
+
+      sltContext.attempts += 1
+
+      const ttl = await this.redisService.ttl(sltContextKey)
+      if (ttl > 0) {
+        await this.redisService.set(sltContextKey, JSON.stringify(sltContext), 'EX', ttl)
+        this.logger.log(
+          `SLT attempts incremented for JTI ${sltJti}. New attempts: ${sltContext.attempts}. Remaining TTL ${ttl}s.`
+        )
+      } else {
+        this.logger.warn(
+          `SLT context for JTI ${sltJti} expired before attempts could be incremented or had no TTL. Discarding increment.`
+        )
+        // If it expired, effectively it's an invalid attempt anyway.
+        // Throwing an error might be more consistent, as the SLT is no longer valid for this attempt.
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'SltContextExpired', 'Error.Auth.OtpToken.Expired')
+      }
+
+      // Audit log for failed attempt using this SLT
       this.auditLogService.recordAsync({
-        action: 'SLT_FINALIZE_WARN_NOT_FOUND',
-        status: AuditLogStatus.FAILURE, // Or WARNING if such status exists
-        errorMessage: 'SLT_CONTEXT_KEY_NOT_FOUND_ON_FINALIZE',
-        details: { sltJti, sltContextKey } as Prisma.JsonObject
+        userId: sltContext.userId,
+        action: 'SLT_VERIFY_ATTEMPT_INCREMENTED',
+        status: AuditLogStatus.FAILURE, // Failure for this specific attempt
+        ipAddress: sltContext.ipAddress,
+        userAgent: sltContext.userAgent,
+        details: {
+          sltJti,
+          purpose: sltContext.purpose,
+          currentAttempts: sltContext.attempts,
+          maxAttempts: MAX_SLT_ATTEMPTS
+        } as Prisma.JsonObject
       })
+
+      return sltContext.attempts
+    } catch (error) {
+      this.logger.error(
+        `Error parsing or updating SLT context for JTI ${sltJti} during incrementSltAttempts: ${error.message}`,
+        error.stack
+      )
+      if (error instanceof ApiException) throw error
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
     }
   }
 

@@ -40,6 +40,11 @@ import { DeviceService } from '../providers/device.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { JwtService } from '@nestjs/jwt'
 import { CookieNames } from 'src/shared/constants/auth.constant'
+import { ReverifyPasswordBodyType } from '../auth.dto'
+import { SltContextData } from '../providers/otp.service'
+import { MaxVerificationAttemptsExceededException, InvalidOTPException } from '../auth.error'
+
+const MAX_OTP_VERIFY_ATTEMPTS = 5
 
 @Injectable()
 export class AuthenticationService extends BaseAuthService {
@@ -732,233 +737,298 @@ export class AuthenticationService extends BaseAuthService {
   }
 
   async completeLoginWithUntrustedDeviceOtp(
-    body: TwoFactorVerifyBodyType & { userAgent: string; ip: string; sltCookie?: string },
+    body: TwoFactorVerifyBodyType & { userAgent: string; ip: string },
+    sltContext: (SltContextData & { sltJti: string }) | null,
     res?: Response
   ) {
     const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'LOGIN_UNTRUSTED_DEVICE_OTP_VERIFY_ATTEMPT',
+      action: 'COMPLETE_LOGIN_UNTRUSTED_DEVICE_OTP_ATTEMPT',
+      userEmail: body.email,
       ipAddress: body.ip,
       userAgent: body.userAgent,
       status: AuditLogStatus.FAILURE,
       details: {
-        sltCookieProvided: !!body.sltCookie,
+        rememberMeRequested: body.rememberMe,
         codeProvided: !!body.code,
-        rememberMeFromClient: body.rememberMe
+        sltContextProvided: !!sltContext,
+        emailFromBody: body.email
       }
     }
 
-    if (!body.sltCookie) {
-      auditLogEntry.errorMessage = 'Missing SLT cookie for untrusted device OTP login.'
-      auditLogEntry.details.reason = 'MISSING_SLT_COOKIE'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.OtpToken.Invalid')
-    }
+    let effectiveEmail: string
+    let effectiveUserId: number
 
     try {
-      const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
-        body.sltCookie,
-        body.ip,
-        body.userAgent,
-        TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP
-      )
+      if (!sltContext || !sltContext.sltJti) {
+        auditLogEntry.errorMessage = 'SLT context or JTI is missing.'
+        auditLogEntry.details.reason = 'MISSING_SLT_CONTEXT_OR_JTI'
+        this.logger.error(
+          '[AuthenticationService completeLoginWithUntrustedDeviceOtp] SLT context or JTI missing.',
+          auditLogEntry.details
+        )
+        throw new ApiException(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          'SltProcessingError',
+          'Error.Auth.Session.InvalidLogin'
+        )
+      }
 
-      auditLogEntry.userId = sltContext.userId
-      auditLogEntry.userEmail = sltContext.email
+      // Ensure userId exists in SLT context
+      if (typeof sltContext.userId !== 'number') {
+        auditLogEntry.errorMessage = 'User ID missing or invalid in SLT context.'
+        auditLogEntry.details.reason = 'MISSING_OR_INVALID_USER_ID_IN_SLT'
+        this.logger.error(auditLogEntry.errorMessage, sltContext)
+        await this.otpService.finalizeSlt(sltContext.sltJti)
+        throw new ApiException(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          'SltProcessingError',
+          'Error.Auth.Session.InvalidLogin'
+        )
+      }
+      effectiveUserId = sltContext.userId
+      auditLogEntry.userId = effectiveUserId
+
+      // Determine and validate effectiveEmail
+      if (typeof sltContext.email === 'string' && sltContext.email.length > 0) {
+        effectiveEmail = sltContext.email
+      } else if (typeof body.email === 'string' && body.email.length > 0) {
+        effectiveEmail = body.email
+        this.logger.warn(
+          `[AuthService completeLoginWithUntrustedDeviceOtp] SLT context for JTI ${sltContext.sltJti} is missing email. Using email from body: ${body.email}.`
+        )
+      } else {
+        auditLogEntry.errorMessage = 'Email is required (missing in SLT context and body).'
+        auditLogEntry.details.reason = 'MISSING_EMAIL_SLT_AND_BODY'
+        this.logger.error(auditLogEntry.errorMessage, sltContext)
+        await this.otpService.finalizeSlt(sltContext.sltJti)
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Email.NotFound', [
+          { code: 'validation.email.required', path: 'email' }
+        ])
+      }
+      auditLogEntry.userEmail = effectiveEmail
+
+      // At this point, effectiveUserId is a number and effectiveEmail is a string.
+
       auditLogEntry.details.sltJti = sltContext.sltJti
       auditLogEntry.details.sltPurpose = sltContext.purpose
-      auditLogEntry.details.sltDeviceId = sltContext.deviceId
-      auditLogEntry.details.sltRememberMe = sltContext.metadata?.rememberMe
+      auditLogEntry.details.sltDeviceIdFromContext = sltContext.deviceId
+      auditLogEntry.details.sltUserIdFromContext = sltContext.userId
+      auditLogEntry.details.sltEmailFromContext = sltContext.email
+      auditLogEntry.details.sltMetadata = sltContext.metadata as Prisma.JsonObject
 
-      if (!sltContext.email || !sltContext.userId || !sltContext.deviceId) {
-        auditLogEntry.errorMessage = 'Invalid SLT context data (missing email, userId, or deviceId).'
-        auditLogEntry.details.reason = 'INVALID_SLT_CONTEXT_DATA'
-        await this.otpService.finalizeSlt(sltContext.sltJti) // Finalize invalid context
-        if (res) this.tokenService.clearSltCookie(res)
-        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
-      }
+      const currentAttempts = await this.otpService.getSltAttempts(sltContext.sltJti)
+      auditLogEntry.details.currentSltAttempts = currentAttempts
 
-      if (!body.code) {
-        auditLogEntry.errorMessage = 'OTP code is missing.'
-        auditLogEntry.details.reason = 'MISSING_OTP_CODE'
-        // Do not finalize SLT here as user might retry with code
-        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.Invalid')
-      }
-
-      await this.otpService.verifyOtpOnly(
-        sltContext.email,
-        body.code,
-        TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
-        sltContext.userId,
-        body.ip,
-        body.userAgent
-      )
-      auditLogEntry.details.otpVerified = true
-
-      // IMPORTANT: Device should NOT be trusted automatically here.
-      // Fetch the device record without trusting it.
-      const deviceRecord = await this.deviceService.findDeviceById(sltContext.deviceId)
-      if (!deviceRecord) {
-        this.logger.error(
-          `Device record not found (ID: ${sltContext.deviceId}) during OTP completion for user ${sltContext.userId}. This should not happen.`
+      if (currentAttempts >= MAX_OTP_VERIFY_ATTEMPTS) {
+        this.logger.warn(
+          `[AuthService completeLoginWithUntrustedDeviceOtp] Max SLT verification attempts reached for JTI ${sltContext.sltJti}. Attempts: ${currentAttempts}`
         )
-        throw DeviceSetupFailedException // Using existing exception
-      }
-      // auditLogEntry.details.deviceNowTrusted = false; // Explicitly log that it's not auto-trusted
-
-      // Finalize the SLT context as it has been successfully used
-      await this.otpService.finalizeSlt(sltContext.sltJti)
-      if (res) {
-        this.tokenService.clearSltCookie(res)
+        await this.otpService.finalizeSlt(sltContext.sltJti) // Finalize before throwing
+        auditLogEntry.errorMessage = 'Max SLT verification attempts reached for untrusted device OTP.'
+        auditLogEntry.details.reason = 'MAX_SLT_ATTEMPTS_REACHED_OTP'
+        throw MaxVerificationAttemptsExceededException
       }
 
-      const user = await this.sharedUserRepository.findUniqueWithRole({ id: sltContext.userId })
-      if (!user) {
-        auditLogEntry.errorMessage = `User not found (ID: ${sltContext.userId}) after OTP verification.`
-        auditLogEntry.details.reason = 'USER_NOT_FOUND_POST_OTP_VERIFY'
-        throw EmailNotFoundException // Or a more generic server error
-      }
+      const resultFromTransaction = await this.prismaService.$transaction(async (tx) => {
+        const user = await this.sharedUserRepository.findUniqueWithRole({ id: effectiveUserId }, tx)
 
-      const sessionId = uuidv4()
-      const now = new Date()
-      const rememberMe = sltContext.metadata?.rememberMe === true || body.rememberMe === true
-      auditLogEntry.details.finalRememberMe = rememberMe
+        if (!user || !user.role) {
+          auditLogEntry.errorMessage = 'User or user role not found for untrusted device OTP login.'
+          auditLogEntry.details.reason = 'USER_OR_ROLE_NOT_FOUND_OTP'
+          throw EmailNotFoundException // Or a more specific user not found if only user is checked
+        }
+        auditLogEntry.userId = user.id // Ensure userId in audit is from DB user
+        auditLogEntry.userEmail = user.email // Ensure email in audit is from DB user
 
-      const geoLocation: GeolocationData | null = this.geolocationService.lookup(body.ip)
-      if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && geoLocation) {
-        auditLogEntry.details.location = `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
-      }
+        // Final check for effectiveEmail before use within transaction, mainly for TS satisfaction
+        if (typeof effectiveEmail !== 'string' || effectiveEmail.length === 0) {
+          auditLogEntry.errorMessage = 'Effective email became invalid before OTP verification within transaction.'
+          auditLogEntry.details.reason = 'EFFECTIVE_EMAIL_INVALID_IN_TX'
+          this.logger.error(auditLogEntry.errorMessage, { currentEffectiveEmail: effectiveEmail })
+          // No SLT finalize here as we are in a transaction that will likely roll back.
+          throw new ApiException(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            'InternalServerError',
+            'Error.Global.InternalServerError'
+          )
+        }
 
-      const sessionData: Record<string, string | number | boolean | undefined | null> = {
-        userId: user.id,
-        deviceId: deviceRecord.id,
-        ipAddress: body.ip,
-        userAgent: body.userAgent,
-        createdAt: now.toISOString(),
-        lastActiveAt: now.toISOString(),
-        isTrusted: deviceRecord.isTrusted,
-        rememberMe: rememberMe,
-        roleId: user.role.id,
-        roleName: user.role.name,
-        geoCountry: geoLocation?.country,
-        geoCity: geoLocation?.city
-      }
+        if (sltContext.purpose !== TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
+          auditLogEntry.errorMessage = `Invalid SLT purpose: ${sltContext.purpose}. Expected LOGIN_UNTRUSTED_DEVICE_OTP.`
+          auditLogEntry.details.reason = 'INVALID_SLT_PURPOSE_FOR_UNTRUSTED_OTP'
+          await this.otpService.finalizeSlt(sltContext.sltJti) // Finalize SLT as it's unexpected
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.InvalidPurpose')
+        }
 
-      const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
-        await this.tokenService.generateTokens(
+        // Ensure body.code is a valid string before using it
+        if (typeof body.code !== 'string' || body.code.length === 0) {
+          auditLogEntry.errorMessage = 'OTP code is missing or invalid in the request body.'
+          auditLogEntry.details.reason = 'INVALID_OTP_CODE_IN_BODY'
+          // Không nên finalize SLT ở đây ngay vì người dùng có thể thử lại nếu SLT còn hạn
+          // Lỗi này nên được bắt bởi validation ở DTO hoặc controller trước đó, nhưng đây là một safeguard.
+          throw InvalidOTPException
+        }
+
+        const isValidOtp = await this.otpService.verifyOtpOnly(
+          effectiveEmail,
+          body.code, // body.code bây giờ được đảm bảo là string
+          TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
+          user.id,
+          body.ip,
+          body.userAgent
+        )
+
+        if (!isValidOtp) {
+          await this.otpService.incrementSltAttempts(sltContext.sltJti)
+          auditLogEntry.details.sltAttemptIncremented = true
+          const attemptsAfterIncrement = await this.otpService.getSltAttempts(sltContext.sltJti)
+          auditLogEntry.details.sltAttemptsAfterIncrement = attemptsAfterIncrement
+          auditLogEntry.errorMessage = 'Invalid OTP for untrusted device login.'
+
+          if (attemptsAfterIncrement >= MAX_OTP_VERIFY_ATTEMPTS) {
+            this.logger.warn(
+              `[AuthService completeLoginWithUntrustedDeviceOtp] Max SLT attempts reached for JTI ${sltContext.sltJti} after failed OTP verification. Finalizing.`
+            )
+            await this.otpService.finalizeSlt(sltContext.sltJti)
+            auditLogEntry.details.sltFinalizedAfterMaxAttemptsIncrement = true
+            throw MaxVerificationAttemptsExceededException // Throw after finalizing
+          }
+          throw InvalidOTPException // Throw standard invalid OTP if attempts remain
+        }
+
+        // OTP is valid, proceed with login completion.
+
+        const deviceFromFindOrCreate = await this.deviceService.findOrCreateDevice(
           {
             userId: user.id,
-            deviceId: deviceRecord.id,
-            roleId: user.role.id,
-            roleName: user.role.name,
-            sessionId
+            userAgent: sltContext.userAgent || body.userAgent, // Prioritize SLT context
+            ip: sltContext.ipAddress || body.ip // Prioritize SLT context
           },
-          this.prismaService,
-          rememberMe
+          tx
         )
+        auditLogEntry.details.finalDeviceId = deviceFromFindOrCreate.id
 
-      sessionData.currentAccessTokenJti = accessTokenJti
-      sessionData.currentRefreshTokenJti = refreshTokenJti
-      const decodedToken = this.jwtService.decode(accessToken)
-      sessionData.accessTokenExp = decodedToken.exp
+        // Validate that the deviceId from SLT context matches the device found/created
+        if (sltContext.deviceId && sltContext.deviceId !== deviceFromFindOrCreate.id) {
+          auditLogEntry.errorMessage = `Device ID mismatch during untrusted device OTP login. SLT Device ID: ${sltContext.deviceId}, Identified Device ID: ${deviceFromFindOrCreate.id}.`
+          auditLogEntry.details.reason = 'SLT_DEVICE_ID_MISMATCH_UNTRUSTED_OTP_LOGIN'
+          this.logger.error(auditLogEntry.errorMessage)
+          // Potentially finalize SLT here as well if this is considered a security issue
+          // await this.otpService.finalizeSlt(sltContext.sltJti);
+          throw DeviceMismatchException // Use a general device mismatch or a more specific one
+        }
+        const device = deviceFromFindOrCreate // Use this device for the rest of the flow
 
-      let absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
-      if (isNaN(absoluteSessionLifetimeMs)) {
-        this.logger.warn(
-          `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Invalid ABSOLUTE_SESSION_LIFETIME_MS: ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}. Falling back to 30 days.`
-        )
-        absoluteSessionLifetimeMs = ms('30d')
-      }
-      sessionData.maxLifetimeExpiresAt = new Date(Date.now() + absoluteSessionLifetimeMs).toISOString()
+        let shouldRememberDevice = body.rememberMe
+        if (shouldRememberDevice === undefined && sltContext?.metadata) {
+          shouldRememberDevice = sltContext.metadata.rememberMe === true
+        }
+        shouldRememberDevice = shouldRememberDevice ?? false
 
-      const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-      const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
-      const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
+        auditLogEntry.details.shouldRememberDevice = shouldRememberDevice
+        auditLogEntry.details.initialDeviceIsTrusted = device.isTrusted
 
-      const absoluteSessionLifetimeSeconds = Math.floor(absoluteSessionLifetimeMs / 1000)
-      const refreshTokenTTL =
-        maxAgeForRefreshTokenCookie && maxAgeForRefreshTokenCookie > 0
-          ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
-          : absoluteSessionLifetimeSeconds
+        if (shouldRememberDevice && !device.isTrusted) {
+          await this.deviceService.trustDevice(device.id, user.id, tx)
+          auditLogEntry.details.deviceTrustedInThisFlow = true
+        }
 
-      await this.redisService.pipeline((pipeline) => {
-        pipeline.hmset(sessionKey, sessionData as Record<string, string>)
-        pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
-        pipeline.sadd(userSessionsKey, sessionId)
-        pipeline.sadd(`${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${deviceRecord.id}`, sessionId)
-        pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
-        return pipeline
-      })
-
-      if (res) {
-        this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
-      } else {
-        this.logger.warn(
-          '[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Response object (res) is NOT present. Cookies will not be set.'
-        )
-      }
-
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'LOGIN_UNTRUSTED_DEVICE_OTP_VERIFY_SUCCESS'
-      auditLogEntry.details.sessionId = sessionId
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-
-      this.sessionManagementService
-        .enforceSessionAndDeviceLimits(user.id, sessionId, deviceRecord.id)
-        .catch((limitError) => {
-          this.logger.error(
-            `Error enforcing session/device limits for user ${user.id} after untrusted device OTP login: ${limitError.message}`,
-            limitError.stack
+        const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenPayload } =
+          await this.tokenService.generateTokens(
+            {
+              userId: user.id,
+              deviceId: device.id,
+              roleId: user.role.id,
+              roleName: user.role.name,
+              sessionId: uuidv4(), // New session for this successful OTP verification
+              isDeviceTrustedInSession: device.isTrusted || shouldRememberDevice // Reflect current trust status
+            },
+            tx,
+            shouldRememberDevice
           )
-        })
 
-      return {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role.name,
-        isDeviceTrustedInSession: deviceRecord.isTrusted,
-        currentDeviceId: deviceRecord.id
-      }
+        await this.otpService.finalizeSlt(sltContext.sltJti) // Finalize SLT on successful OTP and login
+        auditLogEntry.details.finalizedSltJtiOnSuccess = sltContext.sltJti
+
+        if (res) {
+          this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
+          this.tokenService.clearSltCookie(res) // Clear SLT cookie as it's now used
+        }
+
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = 'COMPLETE_LOGIN_UNTRUSTED_DEVICE_OTP_SUCCESS'
+        auditLogEntry.details.finalSessionId = accessTokenPayload.sessionId
+        auditLogEntry.details.isDeviceTrustedInSession = accessTokenPayload.isDeviceTrustedInSession
+
+        return {
+          userId: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role.name,
+          isDeviceTrustedInSession: accessTokenPayload.isDeviceTrustedInSession,
+          currentDeviceId: device.id
+          // accessToken, // Usually not returned directly if cookies are set
+        }
+      })
+      await this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
+      return resultFromTransaction
     } catch (error) {
       this.logger.error(
-        `[AuthenticationService.completeLoginWithUntrustedDeviceOtp] Error during OTP verification or login completion for user ${auditLogEntry.userEmail || 'unknown'}:`,
-        error
+        `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Failed for email ${auditLogEntry.userEmail || 'unknown'}: ${error.message}`,
+        error.stack
       )
-      if (!auditLogEntry.errorMessage) {
-        if (error instanceof ApiException) {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        } else if (error instanceof Error) {
-          auditLogEntry.errorMessage = error.message
-        } else {
-          auditLogEntry.errorMessage = 'Unknown error during untrusted device OTP login completion'
-        }
-      }
-      // If SLT context might still be active due to an error before finalizeSlt was called
-      if (body.sltCookie && !auditLogEntry.details.otpVerified) {
-        try {
-          const sltContextForCleanup = await this.otpService.validateSltFromCookieAndGetContext(
-            body.sltCookie,
-            body.ip,
-            body.userAgent
-            // No expected purpose, just get it for cleanup if it's still valid
-          )
-          if (sltContextForCleanup && sltContextForCleanup.sltJti) {
-            await this.otpService.finalizeSlt(sltContextForCleanup.sltJti)
-            this.logger.debug('SLT context finalized during error handling.')
-            if (res) this.tokenService.clearSltCookie(res)
+      auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
+      if (error instanceof ApiException) {
+        auditLogEntry.details.apiErrorCode = error.errorCode
+        auditLogEntry.details.apiHttpStatus = error.getStatus()
+        const errorResponse = error.getResponse()
+        const errorCode =
+          typeof errorResponse === 'object' && errorResponse !== null && 'errorCode' in errorResponse
+            ? (errorResponse as any).errorCode
+            : typeof errorResponse === 'string'
+              ? errorResponse
+              : ''
+
+        // Do not finalize SLT again if it was already finalized by MaxVerificationAttemptsExceededException
+        if (errorCode !== 'Error.Auth.Verification.MaxAttemptsExceeded' && sltContext && sltContext.sltJti) {
+          const isSltFinalizedKey = `${REDIS_KEY_PREFIX.SLT_FINALIZED}${sltContext.sltJti}`
+          const alreadyFinalized = await this.redisService.get(isSltFinalizedKey)
+          if (!alreadyFinalized) {
+            try {
+              this.logger.warn(
+                `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Finalizing SLT JTI ${sltContext.sltJti} due to error: ${error.message}`
+              )
+              await this.otpService.finalizeSlt(sltContext.sltJti)
+            } catch (finalizeError) {
+              this.logger.error(
+                `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Error finalizing SLT JTI ${sltContext.sltJti} during error handling: ${finalizeError.message}`
+              )
+            }
           }
-        } catch (cleanupError) {
-          this.logger.error('Error during SLT context cleanup in error handler:', cleanupError)
         }
-      } else if (res && auditLogEntry.details.otpVerified === undefined) {
-        // If OTP was not verified (or attempt didn't happen) AND SLT was provided, client might still have cookie
-        // However, if OTP was verified and then something else failed, finalizeSlt + clearSltCookie should have run.
-        // This is a safety net for cases where the error occurs before OTP verification logic, but after SLT validation attempt
-        this.tokenService.clearSltCookie(res)
+      } else if (error) {
+        auditLogEntry.details.errorType = error.constructor?.name || 'UnknownError'
+        // Finalize SLT for unexpected errors if context exists and not already finalized
+        if (sltContext && sltContext.sltJti) {
+          const isSltFinalizedKey = `${REDIS_KEY_PREFIX.SLT_FINALIZED}${sltContext.sltJti}`
+          const alreadyFinalized = await this.redisService.get(isSltFinalizedKey)
+          if (!alreadyFinalized) {
+            try {
+              this.logger.warn(
+                `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Finalizing SLT JTI ${sltContext.sltJti} due to unexpected error: ${error.message}`
+              )
+              await this.otpService.finalizeSlt(sltContext.sltJti)
+            } catch (finalizeError) {
+              this.logger.error(
+                `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Error finalizing SLT JTI ${sltContext.sltJti} during unexpected error handling: ${finalizeError.message}`
+              )
+            }
+          }
+        }
       }
 
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      throw error
+      await this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
+      throw error // Re-throw the original error
     }
   }
 
@@ -1178,62 +1248,147 @@ export class AuthenticationService extends BaseAuthService {
   async reverifyPassword(
     userId: number,
     sessionId: string,
-    enteredPassword: string,
+    body: ReverifyPasswordBodyType,
     ipAddress?: string,
     userAgent?: string
   ): Promise<{ message: string }> {
     const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'PASSWORD_REVERIFY_ATTEMPT',
+      action: 'SESSION_REVERIFY_ATTEMPT',
       userId,
       ipAddress,
       userAgent,
       entity: 'Session',
       entityId: sessionId,
       status: AuditLogStatus.FAILURE,
-      details: {}
+      details: { verificationMethod: body.verificationMethod }
     }
 
     try {
-      const user = await this.prismaService.user.findUnique({ where: { id: userId } })
+      const user = await this.prismaService.user.findUnique({
+        where: { id: userId },
+        include: { RecoveryCode: true }
+      })
+
       if (!user) {
-        auditLogEntry.errorMessage = 'User not found during password reverification.'
+        auditLogEntry.errorMessage = 'User not found during session reverification.'
         auditLogEntry.details.reason = 'USER_NOT_FOUND'
-        // Đây là lỗi nghiêm trọng, không nên xảy ra nếu user đã được xác thực qua AT
         throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
       }
+      auditLogEntry.userEmail = user.email
 
-      const isPasswordMatch = await this.hashingService.compare(enteredPassword, user.password)
-      if (!isPasswordMatch) {
-        auditLogEntry.errorMessage = InvalidPasswordException.message
-        auditLogEntry.details.reason = 'INVALID_PASSWORD'
-        throw InvalidPasswordException
-      }
+      let verificationSuccess = false
 
-      // Xóa cờ reverification khỏi session
-      const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-      const removedCount = await this.redisService.hdel(sessionDetailsKey, 'requiresPasswordReverification')
-
-      if (removedCount > 0) {
-        this.logger.log(`Password reverified for session ${sessionId}, flag removed from Redis.`)
-        auditLogEntry.details.reverificationFlagRemoved = true
-      } else {
-        this.logger.warn(
-          `Password reverified for session ${sessionId}, but reverification flag was not found or not removed from Redis.`
+      if (body.verificationMethod === 'password') {
+        if (!body.password) {
+          auditLogEntry.errorMessage = 'Password is required for password verification method.'
+          auditLogEntry.details.reason = 'MISSING_PASSWORD_FIELD'
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Password.Invalid')
+        }
+        const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
+        if (!isPasswordMatch) {
+          auditLogEntry.errorMessage = InvalidPasswordException.message
+          auditLogEntry.details.reason = 'INVALID_PASSWORD'
+          throw InvalidPasswordException
+        }
+        verificationSuccess = true
+        auditLogEntry.details.passwordVerified = true
+      } else if (body.verificationMethod === 'otp') {
+        if (!body.otpCode) {
+          auditLogEntry.errorMessage = 'OTP code is required for OTP verification method.'
+          auditLogEntry.details.reason = 'MISSING_OTP_CODE_FIELD'
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.Invalid')
+        }
+        const isOtpValid = await this.otpService.verifyOtpOnly(
+          user.email,
+          body.otpCode,
+          TypeOfVerificationCode.REVERIFY_SESSION_OTP,
+          userId,
+          ipAddress,
+          userAgent
         )
-        auditLogEntry.details.reverificationFlagRemoved = false
-        auditLogEntry.notes = 'Reverification flag was not present in session details in Redis.'
+        if (!isOtpValid) {
+          auditLogEntry.errorMessage = 'Invalid OTP code for session reverification.'
+          auditLogEntry.details.reason = 'INVALID_OTP_FOR_REVERIFICATION'
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.Invalid')
+        }
+        verificationSuccess = true
+        auditLogEntry.details.otpVerified = true
+      } else if (body.verificationMethod === 'totp') {
+        if (!body.totpCode) {
+          auditLogEntry.errorMessage = 'TOTP code is required for TOTP verification method.'
+          auditLogEntry.details.reason = 'MISSING_TOTP_CODE_FIELD'
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.2FA.InvalidTOTP')
+        }
+        if (!user.twoFactorEnabled || !user.twoFactorSecret || user.twoFactorMethod !== TwoFactorMethodType.TOTP) {
+          auditLogEntry.errorMessage = 'TOTP verification not available or not configured for this user.'
+          auditLogEntry.details.reason = 'TOTP_NOT_CONFIGURED'
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'OperationNotAllowed', 'Error.Auth.2FA.NotEnabled')
+        }
+        const isTotpValid = this.twoFactorService.verifyTOTP({
+          email: user.email,
+          secret: user.twoFactorSecret,
+          token: body.totpCode
+        })
+        if (!isTotpValid) {
+          auditLogEntry.errorMessage = 'Invalid TOTP code for session reverification.'
+          auditLogEntry.details.reason = 'INVALID_TOTP_FOR_REVERIFICATION'
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.2FA.InvalidTOTP')
+        }
+        verificationSuccess = true
+        auditLogEntry.details.totpVerified = true
+      } else if (body.verificationMethod === 'recovery') {
+        if (!body.recoveryCode) {
+          auditLogEntry.errorMessage = 'Recovery code is required for recovery code verification method.'
+          auditLogEntry.details.reason = 'MISSING_RECOVERY_CODE_FIELD'
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.2FA.InvalidRecoveryCode')
+        }
+        if (!user.twoFactorEnabled) {
+          auditLogEntry.errorMessage = 'Recovery code verification not available as 2FA is not enabled.'
+          auditLogEntry.details.reason = 'RECOVERY_CODE_2FA_NOT_ENABLED'
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'OperationNotAllowed', 'Error.Auth.2FA.NotEnabled')
+        }
+        await this.twoFactorService.verifyRecoveryCode(userId, body.recoveryCode, this.prismaService)
+        verificationSuccess = true
+        auditLogEntry.details.recoveryCodeVerified = true
+      } else {
+        const exhaustiveCheck: never = body
+        auditLogEntry.errorMessage = 'Invalid verification method specified.'
+        auditLogEntry.details.reason = 'INVALID_VERIFICATION_METHOD_UNREACHABLE'
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Global.ValidationFailed')
       }
 
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'PASSWORD_REVERIFY_SUCCESS'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      if (verificationSuccess) {
+        const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
+        const removedCount = await this.redisService.hdel(sessionDetailsKey, 'requiresPasswordReverification')
 
-      const message = await this.i18nService.translate('Auth.Password.ReverifiedSuccessfully', {
-        lang: I18nContext.current()?.lang
-      })
-      return { message }
+        if (removedCount > 0) {
+          this.logger.log(`Session ${sessionId} reverified via ${body.verificationMethod}, flag removed from Redis.`)
+          auditLogEntry.details.reverificationFlagRemoved = true
+        } else {
+          this.logger.warn(
+            `Session ${sessionId} reverified via ${body.verificationMethod}, but reverification flag was not found or not removed from Redis.`
+          )
+          auditLogEntry.details.reverificationFlagRemoved = false
+          auditLogEntry.notes = 'Reverification flag was not present in session details in Redis.'
+        }
+
+        auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = 'SESSION_REVERIFY_SUCCESS'
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+        const message = await this.i18nService.translate('Auth.Session.ReverifiedSuccessfully', {
+          lang: I18nContext.current()?.lang
+        })
+        return { message }
+      } else {
+        auditLogEntry.errorMessage = 'Verification failed due to an unknown reason after method selection.'
+        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
+      }
     } catch (error) {
-      this.logger.error(`Password reverification failed for user ${userId}, session ${sessionId}:`, error)
+      this.logger.error(
+        `Session reverification failed for user ${userId}, session ${sessionId} with method ${body.verificationMethod}:`,
+        error
+      )
       if (!auditLogEntry.errorMessage && error instanceof Error) {
         auditLogEntry.errorMessage = error.message
       }

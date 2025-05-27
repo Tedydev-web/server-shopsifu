@@ -248,12 +248,12 @@ export class AuthService {
 
       if (sltContext.purpose === TypeOfVerificationCode.LOGIN_2FA) {
         this.logger.debug('[AuthService verifyTwoFactor] SLT purpose is LOGIN_2FA. Proceeding with 2FA verification.')
-        return this.twoFactorAuthService.verifyTwoFactor(body, res)
+        return this.twoFactorAuthService.verifyTwoFactor(body, sltContext, res)
       } else if (sltContext.purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
         this.logger.debug(
           '[AuthService verifyTwoFactor] SLT purpose is LOGIN_UNTRUSTED_DEVICE_OTP. Proceeding with untrusted device OTP login completion.'
         )
-        return this.authenticationService.completeLoginWithUntrustedDeviceOtp(body, res)
+        return this.authenticationService.completeLoginWithUntrustedDeviceOtp(body, sltContext, res)
       } else {
         this.logger.error(
           `[AuthService verifyTwoFactor] Invalid SLT purpose: ${sltContext.purpose} for JTI: ${sltContext.sltJti}. Expected LOGIN_2FA or LOGIN_UNTRUSTED_DEVICE_OTP.`
@@ -280,34 +280,70 @@ export class AuthService {
     } catch (error) {
       this.logger.error(
         `[AuthService verifyTwoFactor] Error during SLT validation or processing: ${error.message}`,
-        error
+        error.stack // Log stack for better debugging
       )
-      // If SLT context was fetched and an error occurred AFTERWARDS, and it wasn't finalized by the downstream service
-      // (e.g. if the error is from validateSltFromCookieAndGetContext itself, it won't be finalized there)
-      // However, downstream services (verifyTwoFactor, completeLoginWithUntrustedDeviceOtp) ARE responsible for finalizing SLT on their success/failure paths.
-      // This catch block is more for errors directly from validateSltFromCookieAndGetContext or unexpected errors before routing.
-      if (sltContext && sltContext.sltJti) {
-        // Check if the error indicates the context might still be active
-        // For example, if the error is NOT that the context is already finalized or not found
-        if (error instanceof ApiException) {
-          const apiErrorResponse = error.getResponse()
-          if (typeof apiErrorResponse === 'object' && apiErrorResponse !== null) {
-            const message = (apiErrorResponse as any).message
-            if (
-              message !== 'SLT_CONTEXT_ALREADY_FINALIZED' &&
-              message !== 'SLT_CONTEXT_NOT_FOUND_OR_EXPIRED_IN_REDIS'
-            ) {
-              // Potentially finalize and clear cookie if it's an unexpected error path
-              // that might leave the SLT active.
-              // However, this is risky as the error might be transient. It's safer to let it expire.
-              // this.logger.debug(`[AuthService verifyTwoFactor] Considering SLT finalization due to error: ${error.message}`);
-            }
-          }
+
+      let shouldClearSltCookie = true // Default to clearing cookie on error
+      let shouldFinalizeSlt = true // Default to finalizing SLT if context exists
+
+      if (error instanceof ApiException) {
+        // Convert non-string responses to string for consistent errorCode checking
+        const errorResponse = error.getResponse()
+        let errorCode = ''
+        if (typeof errorResponse === 'string') {
+          errorCode = errorResponse
+        } else if (typeof errorResponse === 'object' && errorResponse !== null && 'errorCode' in errorResponse) {
+          errorCode = (errorResponse as any).errorCode
+        } else if (typeof errorResponse === 'object' && errorResponse !== null && 'message' in errorResponse) {
+          // Fallback for cases where errorCode might not be the primary field
+          errorCode = (errorResponse as any).message
+        }
+
+        this.logger.debug(`[AuthService verifyTwoFactor] Caught ApiException with errorCode: ${errorCode}`)
+
+        if (
+          errorCode === 'Error.Auth.Otp.Invalid' ||
+          errorCode === 'Error.Auth.2FA.InvalidTOTP' ||
+          errorCode === 'Error.Auth.2FA.InvalidRecoveryCode'
+        ) {
+          // These are errors where the user might still have attempts left with the current SLT.
+          shouldClearSltCookie = false
+          shouldFinalizeSlt = false // Don't finalize if they can retry with this SLT
+          this.logger.debug(
+            `[AuthService verifyTwoFactor] সিদ্ধান্ত নেওয়া হয়েছে SLT কুকি সাফ বা চূড়ান্ত না করার জন্য: ${errorCode}`
+          )
+        } else if (errorCode === 'Error.Auth.Verification.MaxAttemptsExceeded') {
+          // SLT should have been finalized by the service that threw this.
+          // Cookie should be cleared. Finalization already done by the thrower.
+          shouldFinalizeSlt = false
+          this.logger.debug(
+            `[AuthService verifyTwoFactor] Max attempts exceeded, SLT কুকি সাফ করা হবে, SLT ইতিমধ্যে চূড়ান্ত করা হয়েছে৷`
+          )
+        } else {
+          this.logger.debug(
+            `[AuthService verifyTwoFactor] ডিফল্ট আচরণ: SLT কুকি সাফ এবং চূড়ান্ত করা হবে ত্রুটির জন্য: ${errorCode}`
+          )
+        }
+      } else {
+        this.logger.debug(
+          `[AuthService verifyTwoFactor] Non-ApiException error. Defaulting to clearing/finalizing SLT if context exists.`
+        )
+      }
+
+      if (shouldFinalizeSlt && sltContext && sltContext.sltJti) {
+        try {
+          this.logger.warn(`[AuthService] Finalizing SLT JTI ${sltContext.sltJti} due to error: ${error.message}`)
+          await this.otpService.finalizeSlt(sltContext.sltJti)
+        } catch (finalizeError) {
+          this.logger.error(
+            `[AuthService] Error finalizing SLT JTI ${sltContext.sltJti} during error handling: ${finalizeError.message}`
+          )
         }
       }
-      if (res) {
-        this.tokenService.clearSltCookie(res) // Clear SLT cookie on any error from this top-level handler
-        this.logger.debug('[AuthService verifyTwoFactor] SLT cookie cleared due to error in verifyTwoFactor.')
+
+      if (shouldClearSltCookie && res) {
+        this.tokenService.clearSltCookie(res)
+        this.logger.debug('[AuthService verifyTwoFactor] SLT cookie cleared based on error type.')
       }
       throw error // Re-throw the original error
     }

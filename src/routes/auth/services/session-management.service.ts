@@ -116,23 +116,23 @@ export class SessionManagementService extends BaseAuthService {
                 !sessionData.lastActiveAt ||
                 parseInt(sessionData.userId, 10) !== userId || // Ensure session belongs to user
                 parseInt(sessionData.deviceId, 10) !== dbDevice.id // Ensure session belongs to this device
-              ) {
-                this.sessionManagementLogger.warn(
+      ) {
+        this.sessionManagementLogger.warn(
                   `Session ${deviceSessionIds[i]} has missing/invalid data or mismatch. Skipping. ` +
                     `Expected userId: ${userId}, Actual userId: ${sessionData.userId}. ` +
                     `Expected deviceId: ${dbDevice.id}, Actual deviceId: ${sessionData.deviceId}. ` +
                     `SessionData: ${JSON.stringify(sessionData)}`
-                )
-                continue
-              }
+        )
+        continue
+      }
 
-              let validIpAddress: string | null = null
+      let validIpAddress: string | null = null
               if (sessionData.ipAddress && sessionData.ipAddress.trim() !== '') {
-                try {
+        try {
                   z.string().ip().parse(sessionData.ipAddress)
                   validIpAddress = sessionData.ipAddress
-                } catch (e) {
-                  this.sessionManagementLogger.warn(
+        } catch (e) {
+          this.sessionManagementLogger.warn(
                     `Session ${deviceSessionIds[i]} has an invalid IP address format ('${sessionData.ipAddress}'). Setting to null.`
                   )
                 }
@@ -145,8 +145,8 @@ export class SessionManagementService extends BaseAuthService {
 
               nestedSessions.push({
                 sessionId: deviceSessionIds[i],
-                ipAddress: validIpAddress,
-                location: locationString,
+        ipAddress: validIpAddress,
+        location: locationString,
                 loggedInAt: new Date(sessionData.createdAt).toISOString(),
                 lastActiveAt: new Date(sessionData.lastActiveAt).toISOString(),
                 isCurrentSession: deviceSessionIds[i] === currentSessionIdFromRequest
@@ -156,10 +156,10 @@ export class SessionManagementService extends BaseAuthService {
         }
         // Sort sessions within a device, current first, then by last active
         nestedSessions.sort((a, b) => {
-          if (a.isCurrentSession) return -1
-          if (b.isCurrentSession) return 1
-          return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
-        })
+      if (a.isCurrentSession) return -1
+      if (b.isCurrentSession) return 1
+      return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+    })
       }
 
       // Normalize device info for the response
@@ -339,14 +339,14 @@ export class SessionManagementService extends BaseAuthService {
 
     if (device.isTrusted) {
       const message = await this.i18nService.translate('Auth.Device.AlreadyTrusted', {
-        lang: I18nContext.current()?.lang
-      })
+      lang: I18nContext.current()?.lang
+    })
       auditEntry.status = AuditLogStatus.SUCCESS
       auditEntry.action = 'TRUST_MANAGED_DEVICE_ALREADY_TRUSTED'
       auditEntry.notes = 'Device was already trusted.'
       await this.auditLogService.recordAsync(auditEntry as AuditLogData)
-      return { message }
-    }
+    return { message }
+  }
 
     await this.deviceService.updateDevice(deviceId, { isTrusted: true })
 
@@ -628,7 +628,7 @@ export class SessionManagementService extends BaseAuthService {
           try {
             await this.revokeSessionInternal(userId, sessionIdToRevoke, currentSessionId, 'BULK_REVOKE_DEVICE_SESSIONS')
             totalRevokedCount++
-          } catch (error) {
+      } catch (error) {
             this.sessionManagementLogger.error(
               `Failed to revoke session ${sessionIdToRevoke} for device ${deviceId} (user ${userId}) during deviceIds list operation:`,
               error
@@ -647,8 +647,8 @@ export class SessionManagementService extends BaseAuthService {
                 `Revoke by deviceIds: Current device ${currentDeviceId} was untrusted.`
               )
             }
-          } catch (error) {
-            this.sessionManagementLogger.error(
+      } catch (error) {
+        this.sessionManagementLogger.error(
               `Failed to untrust device ${deviceId} for user ${userId} during deviceIds list operation:`,
               error
             )
@@ -692,7 +692,7 @@ export class SessionManagementService extends BaseAuthService {
     if (totalRevokedCount === 0 && devicesUntrustedCount === 0 && !currentDeviceUntrustedInThisOperation) {
       await this.auditLogService.recordAsync({
         action: 'REVOKE_MULTIPLE_SESSIONS_NO_ACTION',
-        userId,
+      userId,
         status: AuditLogStatus.SUCCESS,
         notes: 'No sessions were revoked or devices untrusted based on the criteria.',
         details: auditDetails

@@ -37,7 +37,7 @@ import {
   RememberMeBodyDTO,
   RefreshTokenSuccessResDTO,
   UserProfileResDTO,
-  ReverifyPasswordBodyDTO
+  ReverifyPasswordBodyType
 } from 'src/routes/auth/auth.dto'
 import {
   // GetActiveSessionsResDTO, // Keep for now if other parts of the app use it, otherwise remove
@@ -93,6 +93,7 @@ import { ApiException } from 'src/shared/exceptions/api.exception'
 import { Buffer } from 'buffer'
 import { RevokeSessionsResDTO } from './dtos/session-management.dto'
 import { PasswordReverificationGuard, AllowWithoutPasswordReverification } from './guards/password-reverification.guard'
+import { SharedUserRepository } from './repositories/shared-user.repo'
 
 @Controller('auth')
 export class AuthController {
@@ -107,7 +108,8 @@ export class AuthController {
     private readonly otpService: OtpService,
     private readonly redisService: RedisService,
     private readonly jwtService: JwtService,
-    private readonly authenticationService: AuthenticationService
+    private readonly authenticationService: AuthenticationService,
+    private readonly sharedUserRepository: SharedUserRepository
   ) {}
 
   @Post('register')
@@ -684,17 +686,34 @@ export class AuthController {
   @ZodSerializerDto(MessageResDTO)
   async reverifyPassword(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Body() body: ReverifyPasswordBodyDTO,
+    @Body() body: ReverifyPasswordBodyType,
     @Ip() ip: string,
     @UserAgent() userAgent: string
   ) {
     this.logger.log(`User ${activeUser.userId} attempting to reverify password for session ${activeUser.sessionId}.`)
-    return this.authenticationService.reverifyPassword(
-      activeUser.userId,
-      activeUser.sessionId,
-      body.password,
-      ip,
-      userAgent
+    return this.authenticationService.reverifyPassword(activeUser.userId, activeUser.sessionId, body, ip, userAgent)
+  }
+
+  @Post('session/send-reverification-otp')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AccessTokenGuard)
+  @AllowWithoutPasswordReverification()
+  @ZodSerializerDto(MessageResDTO)
+  async sendReverificationOtp(@ActiveUser() activeUser: AccessTokenPayload): Promise<{ message: string }> {
+    this.logger.log(
+      `User ${activeUser.userId} requesting OTP for session reverification. Session: ${activeUser.sessionId}`
     )
+
+    const user = await this.sharedUserRepository.findUnique({ id: activeUser.userId })
+    if (!user || !user.email) {
+      this.logger.error(`Could not find user or user email for ID: ${activeUser.userId} to send reverification OTP.`)
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
+    }
+
+    await this.otpService.sendOTP(user.email, TypeOfVerificationCode.REVERIFY_SESSION_OTP, activeUser.userId)
+    const message = await this.i18nService.translate('Auth.Session.SendReverificationOtpSuccess', {
+      lang: I18nContext.current()?.lang
+    })
+    return { message }
   }
 }

@@ -65,7 +65,23 @@ export class RememberMeBodyDTO extends createZodDto(RememberMeBodySchema) {}
 
 export class RefreshTokenSuccessResDTO extends createZodDto(RefreshTokenSuccessResSchema) {}
 
-export const ReverifyPasswordBodySchema = z.object({
-  password: z.string().min(1, 'Password is required')
-})
-export class ReverifyPasswordBodyDTO extends createZodDto(ReverifyPasswordBodySchema) {}
+export const ReverifyPasswordBodySchema = z.discriminatedUnion('verificationMethod', [
+  z.object({
+    verificationMethod: z.literal('password'),
+    password: z.string().min(1, 'Password is required')
+  }),
+  z.object({
+    verificationMethod: z.literal('otp'),
+    otpCode: z.string().min(6, 'OTP code must be at least 6 characters').max(8, 'OTP code must be at most 8 characters')
+  }),
+  z.object({
+    verificationMethod: z.literal('totp'),
+    totpCode: z.string().length(6, 'TOTP code must be 6 characters')
+  }),
+  z.object({
+    verificationMethod: z.literal('recovery'),
+    recoveryCode: z.string().min(1, 'Recovery code is required') // Độ dài có thể thay đổi
+  })
+])
+
+export type ReverifyPasswordBodyType = z.infer<typeof ReverifyPasswordBodySchema>

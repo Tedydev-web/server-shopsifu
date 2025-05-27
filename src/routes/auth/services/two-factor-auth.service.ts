@@ -10,7 +10,9 @@ import {
   InvalidRecoveryCodeException,
   InvalidTOTPException,
   TOTPAlreadyEnabledException,
-  TOTPNotEnabledException
+  TOTPNotEnabledException,
+  MaxVerificationAttemptsExceededException,
+  InvalidOTPException
 } from 'src/routes/auth/auth.error'
 import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { Response } from 'express'
@@ -37,6 +39,9 @@ import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { JwtService } from '@nestjs/jwt'
 import { EmailNotFoundException, InvalidOTPTokenException, MismatchedSessionTokenException } from '../auth.error'
 import { CookieNames } from 'src/shared/constants/auth.constant'
+import { SltContextData } from '../providers/otp.service'
+
+const MAX_2FA_VERIFY_ATTEMPTS = 5
 
 @Injectable()
 export class TwoFactorAuthService extends BaseAuthService {
@@ -536,7 +541,8 @@ export class TwoFactorAuthService extends BaseAuthService {
   }
 
   async verifyTwoFactor(
-    body: TwoFactorVerifyBodyType & { userAgent: string; ip: string; sltCookie?: string },
+    body: TwoFactorVerifyBodyType & { userAgent: string; ip: string },
+    sltContext: (SltContextData & { sltJti: string }) | null,
     res?: Response
   ) {
     const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
@@ -548,70 +554,69 @@ export class TwoFactorAuthService extends BaseAuthService {
       details: {
         emailProvidedInBody: body.email,
         rememberMe: body.rememberMe,
-        sltCookieProvided: !!body.sltCookie,
+        sltContextProvided: !!sltContext,
         bodyHasEmail: !!body.email
       } as Prisma.JsonObject
     }
 
-    let sltContext: Awaited<ReturnType<typeof this.otpService.validateSltFromCookieAndGetContext>> | null = null
     let effectiveEmail: string | undefined = body.email
     let effectiveUserId: number | undefined = undefined
 
     try {
-      if (body.sltCookie) {
-        sltContext = await this.otpService.validateSltFromCookieAndGetContext(
-          body.sltCookie,
-          body.ip,
-          body.userAgent
-          // Không truyền expectedPurpose ở đây nữa, sẽ kiểm tra purpose từ sltContext sau
-        )
+      if (sltContext && sltContext.sltJti) {
+        auditLogEntry.details.sltJti = sltContext.sltJti
+        const currentAttempts = await this.otpService.getSltAttempts(sltContext.sltJti)
+        auditLogEntry.details.currentSltAttempts = currentAttempts
 
-        if (sltContext && sltContext.userId) {
-          effectiveUserId = sltContext.userId
-          auditLogEntry.userId = effectiveUserId
-          auditLogEntry.details.sltJti = sltContext.sltJti
-          auditLogEntry.details.sltPurpose = sltContext.purpose
-          auditLogEntry.details.sltDeviceId = sltContext.deviceId
-          auditLogEntry.details.userIdFromSlt = effectiveUserId
-          auditLogEntry.details.sltMetadata = sltContext.metadata as Prisma.JsonObject // Log metadata từ SLT
+        if (currentAttempts >= MAX_2FA_VERIFY_ATTEMPTS) {
+          this.logger.warn(
+            `Max SLT verification attempts reached for JTI ${sltContext.sltJti}. Attempts: ${currentAttempts}`
+          )
+          await this.otpService.finalizeSlt(sltContext.sltJti)
+          auditLogEntry.errorMessage = 'Max SLT verification attempts reached.'
+          auditLogEntry.details.reason = 'MAX_SLT_ATTEMPTS_REACHED'
+          throw MaxVerificationAttemptsExceededException
+        }
 
-          if (sltContext.email) {
-            effectiveEmail = sltContext.email
-            auditLogEntry.userEmail = effectiveEmail
-            auditLogEntry.details.emailFromSlt = effectiveEmail
-            if (body.email && body.email !== sltContext.email) {
-              this.logger.warn(
-                `Email mismatch: SLT context email ('${sltContext.email}') differs from body email ('${body.email}') for SLT JTI ${sltContext.sltJti}. Prioritizing SLT email.`
-              )
-              auditLogEntry.details.emailMismatchWarning = `SLT: ${sltContext.email}, Body: ${body.email}`
-            }
-          } else {
+        effectiveUserId = sltContext.userId
+        auditLogEntry.userId = effectiveUserId
+        auditLogEntry.details.sltPurpose = sltContext.purpose
+        auditLogEntry.details.sltDeviceId = sltContext.deviceId
+        auditLogEntry.details.userIdFromSlt = effectiveUserId
+        auditLogEntry.details.sltMetadata = sltContext.metadata as Prisma.JsonObject
+
+        if (sltContext.email) {
+          effectiveEmail = sltContext.email
+          auditLogEntry.userEmail = effectiveEmail
+          auditLogEntry.details.emailFromSlt = effectiveEmail
+          if (body.email && body.email !== sltContext.email) {
             this.logger.warn(
-              `SLT context for JTI ${sltContext.sltJti} is missing email. Falling back to body email if present.`
+              `Email mismatch: SLT context email ('${sltContext.email}') differs from body email ('${body.email}') for SLT JTI ${sltContext.sltJti}. Prioritizing SLT email.`
             )
-            if (!body.email) {
-              auditLogEntry.errorMessage = 'Email is required (missing in SLT context and body).'
-              auditLogEntry.details.reason = 'MISSING_EMAIL_SLT_AND_BODY'
-              throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Email.NotFound', [
-                { code: 'validation.email.required', path: 'email' }
-              ])
-            }
+            auditLogEntry.details.emailMismatchWarning = `SLT: ${sltContext.email}, Body: ${body.email}`
           }
         } else {
-          auditLogEntry.errorMessage = 'Invalid or expired SLT context from cookie.'
-          auditLogEntry.details.reason = 'INVALID_SLT_CONTEXT_FROM_COOKIE'
-          throw MismatchedSessionTokenException
+          this.logger.warn(
+            `SLT context for JTI ${sltContext.sltJti} is missing email. Falling back to body email if present.`
+          )
+          if (!body.email) {
+            auditLogEntry.errorMessage = 'Email is required (missing in SLT context and body).'
+            auditLogEntry.details.reason = 'MISSING_EMAIL_SLT_AND_BODY'
+            throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Email.NotFound', [
+              { code: 'validation.email.required', path: 'email' }
+            ])
+          }
         }
       } else {
-        auditLogEntry.details.sltCookieMissing = true
+        auditLogEntry.details.sltContextMissingOrInvalid = true
         if (!body.email) {
-          auditLogEntry.errorMessage = 'Email is required (SLT cookie not provided).'
-          auditLogEntry.details.reason = 'MISSING_EMAIL_NO_SLT'
+          auditLogEntry.errorMessage = 'Email is required (SLT context not provided or invalid).'
+          auditLogEntry.details.reason = 'MISSING_EMAIL_NO_VALID_SLT'
           throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Email.NotFound', [
             { code: 'validation.email.required', path: 'email' }
           ])
         }
-        this.logger.warn('No SLT cookie provided for 2FA/OTP. Proceeding with email from body.')
+        this.logger.warn('No valid SLT context provided for 2FA/OTP. Proceeding with email from body if available.')
       }
 
       if (!effectiveEmail) {
@@ -638,11 +643,10 @@ export class TwoFactorAuthService extends BaseAuthService {
         auditLogEntry.userId = effectiveUserId
         auditLogEntry.userEmail = user.email
 
-        // --- Logic xác minh mã dựa trên sltPurpose và user.twoFactorMethod ---
         if (!sltContext || !sltContext.purpose) {
           auditLogEntry.errorMessage = 'SLT context or purpose is missing, cannot determine verification type.'
-          auditLogEntry.details.reason = 'MISSING_SLT_CONTEXT_OR_PURPOSE'
-          this.logger.error(auditLogEntry.errorMessage)
+          auditLogEntry.details.reason = 'MISSING_SLT_CONTEXT_OR_PURPOSE_IN_TRANSACTION'
+          this.logger.error(auditLogEntry.errorMessage + ' This indicates a flow error if SLT was expected.')
           throw new ApiException(
             HttpStatus.INTERNAL_SERVER_ERROR,
             'SltProcessingError',
@@ -650,58 +654,55 @@ export class TwoFactorAuthService extends BaseAuthService {
           )
         }
 
-        const { purpose: sltPurpose } = sltContext
+        const { purpose: sltPurpose, sltJti } = sltContext
         let isValidCode = false
-        // let recoveryCodeUsed = false; // Biến này không còn được sử dụng trực tiếp
 
-        if (sltPurpose === TypeOfVerificationCode.LOGIN_2FA) {
-          if (!user.twoFactorEnabled || !user.twoFactorSecret || !user.twoFactorMethod) {
-            auditLogEntry.errorMessage = 'User 2FA not configured (secret/method missing) for LOGIN_2FA purpose.'
-            auditLogEntry.details.reason = 'USER_2FA_NOT_CONFIGURED_FOR_LOGIN_2FA'
-            throw TOTPNotEnabledException
-          }
-          auditLogEntry.details.userTwoFactorMethod = user.twoFactorMethod
+        try {
+          if (sltPurpose === TypeOfVerificationCode.LOGIN_2FA) {
+            if (!user.twoFactorEnabled || !user.twoFactorSecret || !user.twoFactorMethod) {
+              auditLogEntry.errorMessage = 'User 2FA not configured (secret/method missing) for LOGIN_2FA purpose.'
+              auditLogEntry.details.reason = 'USER_2FA_NOT_CONFIGURED_FOR_LOGIN_2FA'
+              throw TOTPNotEnabledException
+            }
+            auditLogEntry.details.userTwoFactorMethod = user.twoFactorMethod
 
-          if (body.recoveryCode) {
-            if (
-              user.twoFactorMethod !== TwoFactorMethodType.TOTP &&
-              user.twoFactorMethod !== TwoFactorMethodType.RECOVERY
-            ) {
-              // Allow recovery for TOTP method as well.
-              auditLogEntry.errorMessage = `Recovery code used with incompatible 2FA method (${user.twoFactorMethod}).`
-              auditLogEntry.details.reason = 'RECOVERY_CODE_INVALID_METHOD'
-              throw InvalidRecoveryCodeException
-            }
-            const recoveryCodeResult = await this.twoFactorService.verifyRecoveryCode(user.id, body.recoveryCode, tx)
-            isValidCode = !!recoveryCodeResult
-            if (isValidCode) {
-              auditLogEntry.details.twoFactorMethodUsed = TwoFactorMethodType.RECOVERY
-              // recoveryCodeUsed = true;
-            } else {
-              auditLogEntry.errorMessage = 'Invalid recovery code for LOGIN_2FA.'
-              auditLogEntry.details.reason = 'INVALID_RECOVERY_CODE_FOR_2FA'
-            }
-          } else if (body.code) {
-            if (user.twoFactorMethod === TwoFactorMethodType.TOTP) {
-              isValidCode = this.twoFactorService.verifyTOTP({
-                email: user.email,
-                secret: user.twoFactorSecret,
-                token: body.code
-              })
+            if (body.recoveryCode) {
+              if (
+                user.twoFactorMethod !== TwoFactorMethodType.TOTP &&
+                user.twoFactorMethod !== TwoFactorMethodType.RECOVERY
+              ) {
+                auditLogEntry.errorMessage = `Recovery code used with incompatible 2FA method (${user.twoFactorMethod}).`
+                auditLogEntry.details.reason = 'RECOVERY_CODE_INVALID_METHOD'
+                throw InvalidRecoveryCodeException
+              }
+              const recoveryCodeResult = await this.twoFactorService.verifyRecoveryCode(user.id, body.recoveryCode, tx)
+              isValidCode = !!recoveryCodeResult
               if (isValidCode) {
-                auditLogEntry.details.twoFactorMethodUsed = TwoFactorMethodType.TOTP
+                auditLogEntry.details.twoFactorMethodUsed = TwoFactorMethodType.RECOVERY
               } else {
-                auditLogEntry.errorMessage = 'Invalid TOTP code (from body.code) for LOGIN_2FA.'
-                auditLogEntry.details.reason = 'INVALID_TOTP_CODE_FOR_2FA'
+                auditLogEntry.errorMessage = 'Invalid recovery code for LOGIN_2FA.'
+                auditLogEntry.details.reason = 'INVALID_RECOVERY_CODE_FOR_2FA'
               }
-            } else if (user.twoFactorMethod === TwoFactorMethodType.OTP) {
-              const emailForOtpVerification = sltContext.email || effectiveEmail
-              if (!emailForOtpVerification) {
-                auditLogEntry.errorMessage = 'Email not found for OTP (2FA) verification.'
-                auditLogEntry.details.reason = 'EMAIL_MISSING_FOR_2FA_OTP'
-                throw EmailNotFoundException
-              }
-              try {
+            } else if (body.code) {
+              if (user.twoFactorMethod === TwoFactorMethodType.TOTP) {
+                isValidCode = this.twoFactorService.verifyTOTP({
+                  email: user.email,
+                  secret: user.twoFactorSecret,
+                  token: body.code
+                })
+                if (isValidCode) {
+                  auditLogEntry.details.twoFactorMethodUsed = TwoFactorMethodType.TOTP
+                } else {
+                  auditLogEntry.errorMessage = 'Invalid TOTP code (from body.code) for LOGIN_2FA.'
+                  auditLogEntry.details.reason = 'INVALID_TOTP_CODE_FOR_2FA'
+                }
+              } else if (user.twoFactorMethod === TwoFactorMethodType.OTP) {
+                const emailForOtpVerification = sltContext.email || effectiveEmail
+                if (!emailForOtpVerification) {
+                  auditLogEntry.errorMessage = 'Email not found for OTP (2FA) verification.'
+                  auditLogEntry.details.reason = 'EMAIL_MISSING_FOR_2FA_OTP'
+                  throw EmailNotFoundException
+                }
                 isValidCode = await this.otpService.verifyOtpOnly(
                   emailForOtpVerification,
                   body.code,
@@ -710,40 +711,30 @@ export class TwoFactorAuthService extends BaseAuthService {
                   body.ip,
                   body.userAgent
                 )
+
                 if (isValidCode) {
                   auditLogEntry.details.twoFactorMethodUsed = TwoFactorMethodType.OTP
                 } else {
-                  // verifyOtpOnly throws specific exceptions (InvalidOTPException, OTPExpiredException),
-                  // so this 'else' block might not be reached if it throws.
-                  // If it returns false without throwing, then this message is appropriate.
                   auditLogEntry.errorMessage = 'Invalid OTP (from body.code) for LOGIN_2FA (method OTP).'
                 }
-              } catch (otpError) {
-                // Catch errors from verifyOtpOnly to set audit log and rethrow
-                auditLogEntry.errorMessage = otpError instanceof Error ? otpError.message : String(otpError)
-                auditLogEntry.details.otpVerificationError = otpError.constructor.name
-                throw otpError // Rethrow to be caught by the outer try-catch
+              } else {
+                auditLogEntry.errorMessage = `Unsupported 2FA method ('${user.twoFactorMethod}') for code verification.`
+                auditLogEntry.details.reason = 'UNSUPPORTED_2FA_METHOD_FOR_CODE_VERIFY'
+                throw InvalidTOTPException
               }
             } else {
-              auditLogEntry.errorMessage = `Unsupported 2FA method ('${user.twoFactorMethod}') for code verification.`
-              auditLogEntry.details.reason = 'UNSUPPORTED_2FA_METHOD_FOR_CODE_VERIFY'
-              throw InvalidTOTPException
+              auditLogEntry.errorMessage = 'Neither code nor recovery code was provided for LOGIN_2FA purpose.'
+              auditLogEntry.details.reason = 'NO_2FA_CODE_PROVIDED_FOR_2FA'
+              throw InvalidCodeFormatException
             }
-          } else {
-            auditLogEntry.errorMessage = 'Neither code nor recovery code was provided for LOGIN_2FA purpose.'
-            auditLogEntry.details.reason = 'NO_2FA_CODE_PROVIDED_FOR_2FA'
-            throw InvalidCodeFormatException
-          }
-        } else if (sltPurpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
-          // Đây là trường hợp xác minh OTP cho thiết bị không tin cậy (không phải là 2FA chính thức của user)
-          if (body.code) {
-            const emailForOtpVerification = sltContext.email || effectiveEmail
-            if (!emailForOtpVerification) {
-              auditLogEntry.errorMessage = 'Email not found for OTP (untrusted device) verification.'
-              auditLogEntry.details.reason = 'EMAIL_MISSING_FOR_UNTRUSTED_OTP'
-              throw EmailNotFoundException
-            }
-            try {
+          } else if (sltPurpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
+            if (body.code) {
+              const emailForOtpVerification = sltContext.email || effectiveEmail
+              if (!emailForOtpVerification) {
+                auditLogEntry.errorMessage = 'Email not found for OTP (untrusted device) verification.'
+                auditLogEntry.details.reason = 'EMAIL_MISSING_FOR_UNTRUSTED_OTP'
+                throw EmailNotFoundException
+              }
               isValidCode = await this.otpService.verifyOtpOnly(
                 emailForOtpVerification,
                 body.code,
@@ -757,43 +748,79 @@ export class TwoFactorAuthService extends BaseAuthService {
               } else {
                 auditLogEntry.errorMessage = 'Invalid OTP (from body.code) for LOGIN_UNTRUSTED_DEVICE_OTP.'
               }
-            } catch (otpError) {
-              auditLogEntry.errorMessage = otpError instanceof Error ? otpError.message : String(otpError)
-              auditLogEntry.details.otpVerificationError = otpError.constructor.name
-              throw otpError
+            } else {
+              auditLogEntry.errorMessage = 'Code was not provided for LOGIN_UNTRUSTED_DEVICE_OTP purpose.'
+              auditLogEntry.details.reason = 'NO_CODE_PROVIDED_FOR_UNTRUSTED_OTP'
+              throw InvalidCodeFormatException
             }
           } else {
-            auditLogEntry.errorMessage = 'Code was not provided for LOGIN_UNTRUSTED_DEVICE_OTP purpose.'
-            auditLogEntry.details.reason = 'NO_CODE_PROVIDED_FOR_UNTRUSTED_OTP'
-            throw InvalidCodeFormatException
+            auditLogEntry.errorMessage = `Unsupported SLT purpose for verification: ${sltPurpose}`
+            auditLogEntry.details.reason = 'UNSUPPORTED_SLT_PURPOSE_FOR_VERIFICATION'
+            throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Session.InvalidLogin')
           }
-        } else {
-          auditLogEntry.errorMessage = `Unsupported SLT purpose for verification: ${sltPurpose}`
-          auditLogEntry.details.reason = 'UNSUPPORTED_SLT_PURPOSE_FOR_VERIFICATION'
-          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Session.InvalidLogin')
+
+          if (!isValidCode) {
+            // if (sltJti) { // Khối này được comment out hoặc xóa hẳn
+            //   await this.otpService.incrementSltAttempts(sltJti)
+            //   auditLogEntry.details.sltAttemptIncremented = true
+            // }
+            if (!auditLogEntry.errorMessage) {
+              auditLogEntry.errorMessage = 'Verification code is invalid.'
+            }
+            if (sltPurpose === TypeOfVerificationCode.LOGIN_2FA) {
+              throw body.recoveryCode ? InvalidRecoveryCodeException : InvalidTOTPException
+            } else {
+              // This case (LOGIN_UNTRUSTED_DEVICE_OTP within TwoFactorAuthService) should ideally not be hit
+              // as it's handled by AuthenticationService. If hit, treat as InvalidOTPException.
+              this.logger.warn('Unexpected LOGIN_UNTRUSTED_DEVICE_OTP purpose in TwoFactorAuthService verifyTwoFactor')
+              throw InvalidOTPException
+            }
+          }
+        } catch (verificationError) {
+          // If the error is NOT MaxVerificationAttemptsExceededException (already handled at the start)
+          // and we have an SLT context, increment its attempt count.
+          let isMaxAttemptsError = false
+          if (verificationError instanceof ApiException) {
+            const response = verificationError.getResponse()
+            const errorCode =
+              typeof response === 'object' && response !== null && 'errorCode' in response
+                ? (response as any).errorCode
+                : typeof response === 'string'
+                  ? response
+                  : ''
+            if (errorCode === 'Error.Auth.Verification.MaxAttemptsExceeded') {
+              isMaxAttemptsError = true
+            }
+          }
+
+          if (sltContext && sltContext.sltJti && !isMaxAttemptsError) {
+            try {
+              await this.otpService.incrementSltAttempts(sltJti)
+              auditLogEntry.details.sltAttemptIncrementedOnError = true
+              auditLogEntry.details.sltAttemptsAfterError = await this.otpService.getSltAttempts(sltJti)
+              if ((await this.otpService.getSltAttempts(sltJti)) >= MAX_2FA_VERIFY_ATTEMPTS) {
+                this.logger.warn(
+                  `Max SLT verification attempts reached for JTI ${sltJti} after error. Attempts: ${await this.otpService.getSltAttempts(sltJti)}`
+                )
+                await this.otpService.finalizeSlt(sltJti)
+                auditLogEntry.details.sltFinalizedAfterErrorMaxAttempts = true
+                throw MaxVerificationAttemptsExceededException
+              }
+            } catch (incrementError) {
+              this.logger.error(
+                `Failed to increment/finalize SLT attempts for ${sltJti} during error handling: ${incrementError.message}`
+              )
+              auditLogEntry.details.sltIncrementOrFinalizeErrorDuringHandling = incrementError.message
+            }
+          }
+          throw verificationError
         }
 
-        if (!isValidCode) {
-          if (!auditLogEntry.errorMessage) {
-            // Set a generic if not already set by specific logic
-            auditLogEntry.errorMessage = 'Verification code is invalid.'
-          }
-          if (sltPurpose === TypeOfVerificationCode.LOGIN_2FA) {
-            throw body.recoveryCode ? InvalidRecoveryCodeException : InvalidTOTPException
-          } else if (sltPurpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
-            // InvalidOTPException should be thrown by verifyOtpOnly if it failed that way
-            throw InvalidCodeFormatException // Fallback if verifyOtpOnly returned false without specific error
-          }
-          throw InvalidCodeFormatException
-        }
-
-        // Device handling:
-        if (!sltContext.deviceId) {
-          // Should always have deviceId from SLT context at this stage
-          auditLogEntry.errorMessage = 'SLT Context is missing deviceId for 2FA/OTP completion.'
-          auditLogEntry.details.reason = 'SLT_CONTEXT_MISSING_DEVICE_ID'
+        if (!sltContext || !sltContext.deviceId) {
+          auditLogEntry.errorMessage = 'SLT Context or deviceId is missing post-verification (should not happen).'
+          auditLogEntry.details.reason = 'SLT_CONTEXT_OR_DEVICE_ID_MISSING_POST_VERIFY'
           throw new ApiException(
-            HttpStatus.INTERNAL_SERVER_ERROR, // This is an internal logic error
+            HttpStatus.INTERNAL_SERVER_ERROR,
             'SltProcessingError',
             'Error.Auth.Session.InvalidLogin'
           )
@@ -804,7 +831,6 @@ export class TwoFactorAuthService extends BaseAuthService {
           tx
         )
 
-        // Critical check for device ID consistency
         if (sltContext.deviceId !== deviceFromFindOrCreate.id) {
           auditLogEntry.errorMessage = `Device ID mismatch: SLT context device ID (${sltContext.deviceId}) differs from identified device ID (${deviceFromFindOrCreate.id}) for user ${user.id}.`
           auditLogEntry.details.sltDeviceId = sltContext.deviceId
@@ -814,22 +840,17 @@ export class TwoFactorAuthService extends BaseAuthService {
             auditLogEntry.errorMessage,
             `SLT UserAgent: ${sltContext.userAgent}, SLT IP: ${sltContext.ipAddress}`
           )
-          // This is a significant discrepancy, safer to fail the operation.
-          throw new ApiException(
-            HttpStatus.BAD_REQUEST, // Or potentially HttpStatus.CONFLICT or HttpStatus.PRECONDITION_FAILED
-            'DeviceContextMismatch',
-            'Error.Auth.Device.Mismatch', // Consider a more specific error key if needed
-            [{ code: 'Error.Auth.Device.SltContextMismatch', path: 'slt_token' }]
-          )
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'DeviceContextMismatch', 'Error.Auth.Device.Mismatch', [
+            { code: 'Error.Auth.Device.SltContextMismatch', path: 'slt_token' }
+          ])
         }
         const device = deviceFromFindOrCreate
 
-        let shouldRememberDevice = body.rememberMe // Ưu tiên giá trị từ body nếu có
+        let shouldRememberDevice = body.rememberMe
         if (shouldRememberDevice === undefined && sltContext?.metadata) {
-          // Nếu body không cung cấp, kiểm tra metadata của SLT
           shouldRememberDevice = sltContext.metadata.rememberMe === true
         }
-        shouldRememberDevice = shouldRememberDevice ?? false // Mặc định là false nếu không có thông tin nào
+        shouldRememberDevice = shouldRememberDevice ?? false
 
         auditLogEntry.details.shouldRememberDevice = shouldRememberDevice
         auditLogEntry.details.initialDeviceIsTrusted = device.isTrusted
@@ -853,17 +874,18 @@ export class TwoFactorAuthService extends BaseAuthService {
             shouldRememberDevice
           )
 
-        // Quan trọng: Finalize SLT sau khi đã sử dụng thành công
-        await this.otpService.finalizeSlt(sltContext.sltJti)
+        if (sltContext && sltContext.sltJti) {
+          await this.otpService.finalizeSlt(sltContext.sltJti)
+          auditLogEntry.details.finalizedSltJtiOnSuccess = sltContext.sltJti
+        }
+
         if (res) {
           this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
-          this.tokenService.clearSltCookie(res)
         }
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.action =
           sltPurpose === TypeOfVerificationCode.LOGIN_2FA ? '2FA_VERIFY_SUCCESS' : 'UNTRUSTED_DEVICE_OTP_VERIFY_SUCCESS'
-        auditLogEntry.details.finalizedSltJti = sltContext.sltJti
 
         return {
           userId: user.id,
@@ -873,20 +895,20 @@ export class TwoFactorAuthService extends BaseAuthService {
           isDeviceTrustedInSession: accessTokenPayload.isDeviceTrustedInSession,
           currentDeviceId: device.id
         }
-      }) // Kết thúc $transaction
+      })
 
       await this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
       return resultFromTransaction
     } catch (error) {
       this.logger.error(`2FA/OTP verification failed: ${error.message}`, error.stack)
-      auditLogEntry.errorMessage = error.message
+      auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
       if (error instanceof ApiException) {
         auditLogEntry.details.apiErrorCode = error.errorCode
         auditLogEntry.details.apiHttpStatus = error.getStatus()
-      } else {
-        auditLogEntry.details.errorType = error.constructor.name
+      } else if (error) {
+        auditLogEntry.details.errorType = error.constructor?.name || 'UnknownError'
       }
-      // Đảm bảo SLT được finalize và cookie SLT được xóa nếu có lỗi SAU KHI sltContext được lấy
+
       if (sltContext && sltContext.sltJti) {
         try {
           this.logger.warn(`Finalizing SLT JTI ${sltContext.sltJti} due to error in 2FA/OTP verification flow.`)
@@ -897,12 +919,6 @@ export class TwoFactorAuthService extends BaseAuthService {
           )
         }
       }
-      if (res && body.sltCookie) {
-        // Chỉ xóa nếu sltCookie được cung cấp ban đầu
-        this.logger.warn('Clearing SLT cookie due to error in 2FA/OTP verification flow.')
-        this.tokenService.clearSltCookie(res)
-      }
-
       await this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
       throw error
     }

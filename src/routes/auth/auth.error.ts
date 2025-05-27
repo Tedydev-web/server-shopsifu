@@ -285,3 +285,10 @@ export const RefreshTokenDeviceMismatchException = createApiError(
 
 export const TooManyRequestsException = (messageKey: string = 'Error.Global.TooManyRequests') =>
   createApiError(HttpStatus.TOO_MANY_REQUESTS, 'TooManyRequests', messageKey)
+
+export const MaxVerificationAttemptsExceededException = createApiError(
+  HttpStatus.TOO_MANY_REQUESTS,
+  'MaxVerificationAttemptsExceeded',
+  'Error.Auth.Verification.MaxAttemptsExceeded',
+  'code'
+)

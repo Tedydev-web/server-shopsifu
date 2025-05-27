@@ -19,6 +19,8 @@
   "Auth.Otp.Verified": "OTP verified successfully. Please proceed.",
   "Auth.Device.Untrusted": "Device has been untrusted successfully.",
   "Auth.Device.LogoutSpecificSuccess": "Successfully logged out from the specified device.",
+  "Auth.Session.ReverifiedSuccessfully": "Session has been successfully reverified.",
+  "Auth.Session.SendReverificationOtpSuccess": "An OTP has been sent to your email to reverify this session.",
   "Error.Auth.Otp.Invalid": "Invalid OTP provided.",
   "Error.Auth.Otp.Expired": "OTP has expired.",
   "Error.Auth.Otp.FailedToSend": "Failed to send OTP. Please try again later.",

@@ -20,6 +20,8 @@
   "Auth.Otp.Verified": "OTP đã được xác minh thành công. Vui lòng tiếp tục.",
   "Auth.Device.Untrusted": "Thiết bị đã được bỏ tin cậy thành công.",
   "Auth.Device.LogoutSpecificSuccess": "Đăng xuất khỏi thiết bị chỉ định thành công.",
+  "Auth.Session.ReverifiedSuccessfully": "Phiên đã được tái xác minh thành công.",
+  "Auth.Session.SendReverificationOtpSuccess": "Một mã OTP đã được gửi đến email của bạn để tái xác minh phiên này.",
   "Error.Auth.Otp.Invalid": "Mã OTP không hợp lệ.",
   "Error.Auth.Otp.Expired": "Mã OTP đã hết hạn.",
   "Error.Auth.Otp.FailedToSend": "Gửi mã OTP thất bại. Vui lòng thử lại sau.",
