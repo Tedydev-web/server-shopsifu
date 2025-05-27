@@ -150,7 +150,7 @@ const envConfig = {
       path: '/',
       domain: cookieDomain,
       maxAge: convertMs(parsedConfig.SLT_JWT_EXPIRES_IN, ms('5m')),
-      httpOnly: true,
+      httpOnly: false,
       secure: cookieSecure,
       sameSite: cookieSameSite
     },

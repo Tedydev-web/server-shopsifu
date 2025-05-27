@@ -3,6 +3,7 @@ import { createZodDto } from 'nestjs-zod'
 import { EmptyBodySchema } from 'src/shared/models/request.model'
 import { createPaginatedResponseSchema } from 'src/shared/models/pagination.model'
 import { BasePaginationQuerySchema } from 'src/shared/models/pagination.model'
+import { MessageResSchema } from 'src/shared/models/response.model'
 
 const BaseDeviceSchema = z.object({
   id: z.number().int(),
@@ -121,14 +122,10 @@ export const RevokeSessionsBodySchema = z
     sessionIds: z.array(z.string().uuid()).optional().describe('List of session IDs to revoke.'),
     deviceIds: z
       .array(z.number().int().positive())
-      .optional()
-      .describe('List of device IDs whose sessions should be revoked and the devices untrusted.'),
-    revokeAll: z.boolean().optional().describe('Revoke all sessions for the user except the current one.'),
-    untrustDevices: z
-      .boolean()
-      .optional()
-      .default(true)
-      .describe('Whether to untrust devices when revoking by deviceIds. Defaults to true.')
+      .min(1, { message: 'At least one device ID must be provided when using deviceIds.' })
+      .optional(),
+    untrustDevices: z.boolean().optional().default(true),
+    revokeAll: z.boolean().optional()
   })
   .strict()
   .refine(
@@ -143,5 +140,25 @@ export const RevokeSessionsBodySchema = z
       path: [] // General error for the whole object
     }
   )
+  .superRefine((data, ctx) => {
+    const { sessionIds, deviceIds, revokeAll } = data
+
+    if (!sessionIds && !deviceIds && !revokeAll) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'At least one of sessionIds, deviceIds, or revokeAll must be provided.',
+        path: []
+      })
+    }
+  })
 
 export class RevokeSessionsBodyDTO extends createZodDto(RevokeSessionsBodySchema) {}
+
+export const RevokeSessionsResSchema = MessageResSchema.extend({
+  requiresPasswordReverification: z.boolean().optional()
+})
+
+export class RevokeSessionsResDTO extends createZodDto(RevokeSessionsResSchema) {}
+
+// GET DEVICES (Removed - Functionality merged into GetActiveSessions)
+// ... existing code ...

@@ -22,6 +22,7 @@ import { OtpAuthService } from './services/otp-auth.service'
 import { PasswordAuthService } from './services/password-auth.service'
 import { SessionManagementService } from './services/session-management.service'
 import { AuditLogModule } from '../audit-log/audit-log.module'
+import { PasswordReverificationGuard } from './guards/password-reverification.guard'
 
 @Global()
 @Module({
@@ -42,7 +43,8 @@ import { AuditLogModule } from '../audit-log/audit-log.module'
     TwoFactorAuthService,
     OtpAuthService,
     PasswordAuthService,
-    SessionManagementService
+    SessionManagementService,
+    PasswordReverificationGuard
   ],
   exports: [
     AuthService,

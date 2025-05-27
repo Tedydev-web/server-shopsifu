@@ -117,50 +117,67 @@ export class AuthService {
     return this.tokenService.generateTokens(payload, _prismaTx, rememberMe)
   }
 
-  async logoutFromAllDevices(
-    activeUser: AccessTokenPayload,
-    ip: string,
-    userAgent: string,
-    _req: Request, // _req is not used in the new logic
-    res: Response
-  ) {
-    const auditLogEntry: Partial<AuditLogData> = {
-      action: 'LOGOUT_ALL_DEVICES_ATTEMPT',
-      userId: activeUser.userId,
-      ipAddress: ip,
-      userAgent,
-      status: AuditLogStatus.FAILURE,
-      details: {
-        currentSessionId: activeUser.sessionId,
-        currentDeviceId: activeUser.deviceId
-      } as Prisma.JsonObject
-    }
+  // async logoutFromAllDevices( // Bắt đầu comment hoặc xóa
+  //   activeUser: AccessTokenPayload,
+  //   ip: string,
+  //   userAgent: string,
+  //   _req: Request, // _req is not used in the new logic
+  //   res: Response
+  // ) {
+  //   this.logger.log(
+  //     `User ${activeUser.userId} requesting logout from all devices. Current session: ${activeUser.sessionId}, Device: ${activeUser.deviceId}`
+  //   )
+  //   const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
+  //     action: 'USER_LOGOUT_ALL_ATTEMPT',
+  //     userId: activeUser.userId,
+  //     ipAddress: ip,
+  //     userAgent: userAgent,
+  //     status: AuditLogStatus.FAILURE,
+  //     details: {
+  //       currentSessionId: activeUser.sessionId,
+  //       currentDeviceId: activeUser.deviceId
+  //     }
+  //   }
 
-    try {
-      // Invalidate all other sessions for this user
-      // The reason 'USER_REQUEST_LOGOUT_ALL_EXCLUDING_CURRENT' implies that the current session might be handled differently or next.
-      await this.tokenService.invalidateAllUserSessions(activeUser.userId, 'USER_REQUEST_LOGOUT_ALL_EXCLUDING_CURRENT')
+  //   try {
+  //     // Invalidate all sessions for the user EXCEPT the current one.
+  //     const { invalidatedCount } = await this.tokenService.invalidateAllUserSessions(
+  //       activeUser.userId,
+  //       'USER_REQUEST_LOGOUT_ALL',
+  //       activeUser.sessionId // Exclude current session from invalidation
+  //     )
 
-      // Now, invalidate the current session and clear cookies for the user initiating the action
-      await this.tokenService.invalidateSession(activeUser.sessionId, 'CURRENT_SESSION_LOGOUT_AFTER_LOGOUT_ALL')
-      this.tokenService.clearTokenCookies(res)
+  //     // Deactivate and untrust all other devices for the user
+  //     // This step needs careful consideration if the current device should also be untrusted/deactivated.
+  //     // For a typical "logout all others", the current device remains active and trusted.
+  //     // If the intent is to also untrust the current device and force re-auth, that needs to be explicit.
+  //     const deactivatedDevicesCount = await this.deviceService.deactivateAndUntrustAllUserDevices(
+  //       activeUser.userId,
+  //       activeUser.deviceId // Exclude current device
+  //     )
 
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'LOGOUT_ALL_DEVICES_SUCCESS'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
+  //     // Cookies for the current session are NOT cleared here because the current session remains active.
+  //     // The client is expected to still have its valid refresh/access tokens for the current session.
 
-      const message = await this.i18nService.translate('error.Auth.Logout.AllDevicesSuccess', {
-        lang: I18nContext.current()?.lang
-      })
-      return { message }
-    } catch (error) {
-      auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      // Clear cookies even on error as a safety measure
-      this.tokenService.clearTokenCookies(res)
-      throw error
-    }
-  }
+  //     auditLogEntry.status = AuditLogStatus.SUCCESS
+  //     auditLogEntry.action = 'USER_LOGOUT_ALL_SUCCESS'
+  //     auditLogEntry.details.sessionsInvalidated = invalidatedCount
+  //     auditLogEntry.details.devicesDeactivatedAndUntrusted = deactivatedDevicesCount
+
+  //     await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+  //     const message = await this.i18nService.translate('Auth.LogoutAll.Success', {
+  //       lang: I18nContext.current()?.lang,
+  //       args: { count: invalidatedCount }
+  //     })
+  //     return { message }
+  //   } catch (error) {
+  //     this.logger.error(`Error during logout from all devices for user ${activeUser.userId}:`, error)
+  //     auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error'
+  //     await this.auditLogService.record(auditLogEntry as AuditLogData)
+  //     throw error // Re-throw the error to be handled by global exception filter
+  //   }
+  // } // Kết thúc comment hoặc xóa
 
   async setRememberMe(
     activeUser: AccessTokenPayload,

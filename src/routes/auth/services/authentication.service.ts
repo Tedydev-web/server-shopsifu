@@ -1174,4 +1174,74 @@ export class AuthenticationService extends BaseAuthService {
       throw error
     }
   }
+
+  async reverifyPassword(
+    userId: number,
+    sessionId: string,
+    enteredPassword: string,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<{ message: string }> {
+    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
+      action: 'PASSWORD_REVERIFY_ATTEMPT',
+      userId,
+      ipAddress,
+      userAgent,
+      entity: 'Session',
+      entityId: sessionId,
+      status: AuditLogStatus.FAILURE,
+      details: {}
+    }
+
+    try {
+      const user = await this.prismaService.user.findUnique({ where: { id: userId } })
+      if (!user) {
+        auditLogEntry.errorMessage = 'User not found during password reverification.'
+        auditLogEntry.details.reason = 'USER_NOT_FOUND'
+        // Đây là lỗi nghiêm trọng, không nên xảy ra nếu user đã được xác thực qua AT
+        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
+      }
+
+      const isPasswordMatch = await this.hashingService.compare(enteredPassword, user.password)
+      if (!isPasswordMatch) {
+        auditLogEntry.errorMessage = InvalidPasswordException.message
+        auditLogEntry.details.reason = 'INVALID_PASSWORD'
+        throw InvalidPasswordException
+      }
+
+      // Xóa cờ reverification khỏi session
+      const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
+      const removedCount = await this.redisService.hdel(sessionDetailsKey, 'requiresPasswordReverification')
+
+      if (removedCount > 0) {
+        this.logger.log(`Password reverified for session ${sessionId}, flag removed from Redis.`)
+        auditLogEntry.details.reverificationFlagRemoved = true
+      } else {
+        this.logger.warn(
+          `Password reverified for session ${sessionId}, but reverification flag was not found or not removed from Redis.`
+        )
+        auditLogEntry.details.reverificationFlagRemoved = false
+        auditLogEntry.notes = 'Reverification flag was not present in session details in Redis.'
+      }
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'PASSWORD_REVERIFY_SUCCESS'
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+      const message = await this.i18nService.translate('Auth.Password.ReverifiedSuccessfully', {
+        lang: I18nContext.current()?.lang
+      })
+      return { message }
+    } catch (error) {
+      this.logger.error(`Password reverification failed for user ${userId}, session ${sessionId}:`, error)
+      if (!auditLogEntry.errorMessage && error instanceof Error) {
+        auditLogEntry.errorMessage = error.message
+      }
+      if (error instanceof ApiException && !auditLogEntry.errorMessage) {
+        auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+      }
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
+  }
 }

@@ -21,6 +21,7 @@ import {
   RememberMeBodySchema,
   RefreshTokenSuccessResSchema
 } from 'src/routes/auth/auth.model'
+import { z } from 'zod'
 
 export class RegisterBodyDTO extends createZodDto(RegisterBodySchema) {}
 
@@ -63,3 +64,8 @@ export class UserProfileResDTO extends createZodDto(UserProfileResSchema) {}
 export class RememberMeBodyDTO extends createZodDto(RememberMeBodySchema) {}
 
 export class RefreshTokenSuccessResDTO extends createZodDto(RefreshTokenSuccessResSchema) {}
+
+export const ReverifyPasswordBodySchema = z.object({
+  password: z.string().min(1, 'Password is required')
+})
+export class ReverifyPasswordBodyDTO extends createZodDto(ReverifyPasswordBodySchema) {}

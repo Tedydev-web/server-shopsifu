@@ -36,7 +36,8 @@ import {
   TwoFactorConfirmSetupResDTO,
   RememberMeBodyDTO,
   RefreshTokenSuccessResDTO,
-  UserProfileResDTO
+  UserProfileResDTO,
+  ReverifyPasswordBodyDTO
 } from 'src/routes/auth/auth.dto'
 import {
   // GetActiveSessionsResDTO, // Keep for now if other parts of the app use it, otherwise remove
@@ -90,6 +91,8 @@ import { GoogleCallbackSuccessResult } from './google.service'
 import { AuthenticationService } from './services/authentication.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { Buffer } from 'buffer'
+import { RevokeSessionsResDTO } from './dtos/session-management.dto'
+import { PasswordReverificationGuard, AllowWithoutPasswordReverification } from './guards/password-reverification.guard'
 
 @Controller('auth')
 export class AuthController {
@@ -582,19 +585,19 @@ export class AuthController {
     return this.authService.setRememberMe(activeUser, body.rememberMe, req, res, ip, userAgent)
   }
 
-  @Post('logout-all')
-  @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(MessageResDTO)
-  // @Throttle({ short: { limit: 3, ttl: 60000 } })
-  logoutFromAllDevices(
-    @ActiveUser() activeUser: AccessTokenPayload,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-    @Ip() ip: string,
-    @UserAgent() userAgent: string
-  ) {
-    return this.authService.logoutFromAllDevices(activeUser, ip, userAgent, req, res)
-  }
+  // @Post('logout-all') // Bắt đầu comment hoặc xóa
+  // @HttpCode(HttpStatus.OK)
+  // @ZodSerializerDto(MessageResDTO)
+  // // @Throttle({ short: { limit: 3, ttl: 60000 } })
+  // logoutFromAllDevices(
+  //   @ActiveUser() activeUser: AccessTokenPayload,
+  //   @Req() req: Request,
+  //   @Res({ passthrough: true }) res: Response,
+  //   @Ip() ip: string,
+  //   @UserAgent() userAgent: string
+  // ) {
+  //   return this.authService.logoutFromAllDevices(activeUser, ip, userAgent, req, res)
+  // } // Kết thúc comment hoặc xóa
 
   @Get('sessions')
   @UseGuards(AccessTokenGuard, RolesGuard)
@@ -623,9 +626,14 @@ export class AuthController {
 
   @Delete('sessions')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(MessageResDTO)
+  @ZodSerializerDto(RevokeSessionsResDTO)
   revokeMultipleSessions(@ActiveUser() activeUser: AccessTokenPayload, @Body() body: RevokeSessionsBodyDTO) {
-    return this.sessionManagementService.revokeMultipleSessions(activeUser.userId, activeUser.sessionId, body)
+    return this.sessionManagementService.revokeMultipleSessions(
+      activeUser.userId,
+      activeUser.sessionId,
+      activeUser.deviceId,
+      body
+    )
   }
 
   @Patch('devices/:deviceId/name')
@@ -667,5 +675,26 @@ export class AuthController {
   trustCurrentDevice(@ActiveUser() activeUser: AccessTokenPayload, @Body() _body: EmptyBodyDTO) {
     // activeUser.deviceId is the ID of the device record in the database
     return this.sessionManagementService.trustCurrentDevice(activeUser.userId, activeUser.deviceId)
+  }
+
+  @Post('reverify-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AccessTokenGuard)
+  @AllowWithoutPasswordReverification()
+  @ZodSerializerDto(MessageResDTO)
+  async reverifyPassword(
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Body() body: ReverifyPasswordBodyDTO,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string
+  ) {
+    this.logger.log(`User ${activeUser.userId} attempting to reverify password for session ${activeUser.sessionId}.`)
+    return this.authenticationService.reverifyPassword(
+      activeUser.userId,
+      activeUser.sessionId,
+      body.password,
+      ip,
+      userAgent
+    )
   }
 }

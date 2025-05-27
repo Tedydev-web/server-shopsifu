@@ -23,6 +23,8 @@ import { WinstonModule } from 'nest-winston'
 import { dailyRotateFileTransport, consoleTransport } from './shared/logger/winston.config'
 import { RedisProviderModule } from './shared/providers/redis/redis.module'
 import { TokenRefreshInterceptor } from 'src/routes/auth/interceptors/token-refresh.interceptor'
+import { AuditLogInterceptor } from './shared/interceptor/audit-log.interceptor'
+import { PasswordReverificationGuard } from './routes/auth/guards/password-reverification.guard'
 
 @Module({
   imports: [
@@ -82,6 +84,14 @@ import { TokenRefreshInterceptor } from 'src/routes/auth/interceptors/token-refr
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditLogInterceptor
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PasswordReverificationGuard
     },
     { provide: APP_FILTER, useClass: AllExceptionsFilter }
   ]

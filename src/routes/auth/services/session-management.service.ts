@@ -118,7 +118,10 @@ export class SessionManagementService extends BaseAuthService {
                 parseInt(sessionData.deviceId, 10) !== dbDevice.id // Ensure session belongs to this device
               ) {
                 this.sessionManagementLogger.warn(
-                  `Session ${deviceSessionIds[i]} has missing/invalid data or mismatch. Skipping.`
+                  `Session ${deviceSessionIds[i]} has missing/invalid data or mismatch. Skipping. ` +
+                    `Expected userId: ${userId}, Actual userId: ${sessionData.userId}. ` +
+                    `Expected deviceId: ${dbDevice.id}, Actual deviceId: ${sessionData.deviceId}. ` +
+                    `SessionData: ${JSON.stringify(sessionData)}`
                 )
                 continue
               }
@@ -486,22 +489,108 @@ export class SessionManagementService extends BaseAuthService {
   async revokeMultipleSessions(
     userId: number,
     currentSessionId: string,
-    body: RevokeSessionsBodyDTO // Use the imported DTO
-  ): Promise<{ message: string }> {
+    currentDeviceId: number,
+    body: RevokeSessionsBodyDTO
+  ): Promise<{ message: string; requiresPasswordReverification?: boolean }> {
     this.sessionManagementLogger.debug(
-      `User ${userId} attempting to revoke multiple sessions. Current session: ${currentSessionId}, Body: ${JSON.stringify(body)}`
+      `User ${userId} attempting to revoke multiple sessions. Current session: ${currentSessionId}, Current device: ${currentDeviceId}, Body: ${JSON.stringify(
+        body
+      )}`
     )
-    const { sessionIds, deviceIds, revokeAll } = body
+    const { sessionIds, deviceIds, revokeAll, untrustDevices } = body
     let totalRevokedCount = 0
     let devicesUntrustedCount = 0
+    let currentDeviceUntrustedInThisOperation = false
     const auditDetails: Prisma.JsonObject = { requestedBody: body as unknown as Prisma.JsonObject }
 
-    if (sessionIds && sessionIds.length > 0) {
+    if (revokeAll) {
+      this.sessionManagementLogger.log(
+        `Processing revokeAll for user ${userId}. Current session: ${currentSessionId}, Current device: ${currentDeviceId}. Untrust devices: ${untrustDevices}`
+      )
+      const allUserSessionIds = await this.redisService.smembers(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`)
+      const distinctDeviceIdsFromSessions = new Set<number>()
+
+      for (const sessionIdToRevoke of allUserSessionIds) {
+        if (sessionIdToRevoke === currentSessionId) {
+          this.sessionManagementLogger.verbose(
+            `revokeAll: Skipping current session ${currentSessionId} from immediate revocation.`
+          )
+          // Session hiện tại không bị revoke ở đây, nhưng thiết bị của nó có thể bị untrusted bên dưới.
+          const currentSessionDetails = await this.redisService.hgetall(
+            `${REDIS_KEY_PREFIX.SESSION_DETAILS}${currentSessionId}`
+          )
+          const cDeviceId = currentSessionDetails?.deviceId ? parseInt(currentSessionDetails.deviceId, 10) : null
+          if (cDeviceId) distinctDeviceIdsFromSessions.add(cDeviceId) // Thêm thiết bị hiện tại vào set để có thể untrust
+          continue
+        }
+
+        const sessionDetails = await this.redisService.hgetall(
+          `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionIdToRevoke}`
+        )
+        const sessionDeviceId = sessionDetails?.deviceId ? parseInt(sessionDetails.deviceId, 10) : null
+
+        try {
+          await this.tokenService.invalidateSession(sessionIdToRevoke, 'REVOKE_ALL_REQUESTED')
+          totalRevokedCount++
+          if (sessionDeviceId) {
+            // Chỉ thêm vào set nếu session có deviceId
+            distinctDeviceIdsFromSessions.add(sessionDeviceId)
+          }
+        } catch (error) {
+          this.sessionManagementLogger.error(
+            `Failed to revoke session ${sessionIdToRevoke} for user ${userId} during revokeAll:`,
+            error
+          )
+        }
+      }
+      auditDetails.sessionsRevokedByRevokeAll = totalRevokedCount
+
+      if (untrustDevices) {
+        this.sessionManagementLogger.log(
+          `revokeAll: Untrusting devices for user ${userId}. Devices from sessions: ${Array.from(distinctDeviceIdsFromSessions).join(', ')}. Current device to also untrust: ${currentDeviceId}`
+        )
+        // Đảm bảo thiết bị hiện tại cũng được xem xét để untrust nếu untrustDevices = true
+        distinctDeviceIdsFromSessions.add(currentDeviceId)
+
+        for (const deviceIdToUntrust of distinctDeviceIdsFromSessions) {
+          const device = await this.deviceService.findDeviceById(deviceIdToUntrust)
+          if (device && device.userId === userId && device.isTrusted) {
+            try {
+              await this.deviceService.updateDevice(deviceIdToUntrust, { isTrusted: false })
+              devicesUntrustedCount++
+              this.sessionManagementLogger.log(
+                `Device ${deviceIdToUntrust} untrusted for user ${userId} due to revokeAll.`
+              )
+              if (deviceIdToUntrust === currentDeviceId) {
+                currentDeviceUntrustedInThisOperation = true
+                this.sessionManagementLogger.verbose(`revokeAll: Current device ${currentDeviceId} was untrusted.`)
+              }
+            } catch (error) {
+              this.sessionManagementLogger.error(
+                `Failed to untrust device ${deviceIdToUntrust} for user ${userId} during revokeAll:`,
+                error
+              )
+            }
+          } else if (device && device.userId === userId && !device.isTrusted && deviceIdToUntrust === currentDeviceId) {
+            // If current device was already untrusted but part of the operation scope
+            currentDeviceUntrustedInThisOperation = true // Vẫn đánh dấu để có thể yêu cầu reverify nếu nằm trong scope untrust
+            this.sessionManagementLogger.verbose(
+              `revokeAll: Current device ${currentDeviceId} was already untrusted but included in untrust scope.`
+            )
+          }
+        }
+        auditDetails.devicesUntrustedByRevokeAll = devicesUntrustedCount
+      }
+    } else if (sessionIds && sessionIds.length > 0) {
       this.sessionManagementLogger.log(`Revoking specific sessions for user ${userId}: ${sessionIds.join(', ')}`)
+      // Logic này không trực tiếp untrust device, chỉ revoke session.
+      // Nếu muốn untrust device chứa session này, cần query deviceId từ session rồi untrust.
+      // Hiện tại, việc untrust device khi revoke theo sessionIds không được hỗ trợ trực tiếp qua body.
+      // Nếu cần, phải gửi thêm deviceId của session đó trong `deviceIds` kèm `untrustDevices: true`.
       for (const sessionIdToRevoke of sessionIds) {
         if (sessionIdToRevoke === currentSessionId) {
           this.sessionManagementLogger.warn(
-            `User ${userId} attempted to revoke current session ${currentSessionId} via bulk. Skipping.`
+            `User ${userId} attempted to revoke current session ${currentSessionId} via sessionIds list. Skipping.`
           )
           continue
         }
@@ -510,15 +599,16 @@ export class SessionManagementService extends BaseAuthService {
           totalRevokedCount++
         } catch (error) {
           this.sessionManagementLogger.error(
-            `Failed to revoke session ${sessionIdToRevoke} for user ${userId} during bulk operation:`,
+            `Failed to revoke session ${sessionIdToRevoke} for user ${userId} during sessionIds list operation:`,
             error
           )
-          // Optionally collect errors or rethrow if one failure should stop all
         }
       }
       auditDetails.sessionsRevokedByList = totalRevokedCount
     } else if (deviceIds && deviceIds.length > 0) {
-      this.sessionManagementLogger.log(`Revoking sessions for devices of user ${userId}: ${deviceIds.join(', ')}`)
+      this.sessionManagementLogger.log(
+        `Revoking sessions for devices of user ${userId}: ${deviceIds.join(', ')}. Untrust devices: ${untrustDevices}`
+      )
       for (const deviceId of deviceIds) {
         const device = await this.deviceService.findDeviceById(deviceId)
         if (!device || device.userId !== userId) {
@@ -526,17 +616,13 @@ export class SessionManagementService extends BaseAuthService {
           continue
         }
 
-        // Get all session IDs for this device
         const sessionsForDevice = await this.getAllSessionsForDevice(userId, deviceId)
-        if (sessionsForDevice.length === 0) {
-          this.sessionManagementLogger.log(`No active sessions found for device ${deviceId} to revoke.`)
-        }
-
         for (const sessionIdToRevoke of sessionsForDevice) {
           if (sessionIdToRevoke === currentSessionId) {
-            this.sessionManagementLogger.warn(
-              `Skipping current session ${currentSessionId} on device ${deviceId} during bulk device revoke.`
+            this.sessionManagementLogger.verbose(
+              `Revoke by deviceIds: Skipping current session ${currentSessionId} on device ${deviceId}.`
             )
+            // Session hiện tại không bị revoke, nhưng thiết bị của nó có thể bị untrusted bên dưới.
             continue
           }
           try {
@@ -544,42 +630,66 @@ export class SessionManagementService extends BaseAuthService {
             totalRevokedCount++
           } catch (error) {
             this.sessionManagementLogger.error(
-              `Failed to revoke session ${sessionIdToRevoke} for device ${deviceId} of user ${userId} during bulk operation:`,
+              `Failed to revoke session ${sessionIdToRevoke} for device ${deviceId} (user ${userId}) during deviceIds list operation:`,
               error
             )
           }
         }
 
-        // Untrust the device if requested (and it was trusted)
-        if (body.untrustDevices && device.isTrusted) {
+        if (untrustDevices && device.isTrusted) {
           try {
             await this.deviceService.updateDevice(deviceId, { isTrusted: false })
             devicesUntrustedCount++
-            this.sessionManagementLogger.log(`Device ${deviceId} untrusted for user ${userId}.`)
+            this.sessionManagementLogger.log(`Device ${deviceId} untrusted for user ${userId} due to deviceIds list.`)
+            if (deviceId === currentDeviceId) {
+              currentDeviceUntrustedInThisOperation = true
+              this.sessionManagementLogger.verbose(
+                `Revoke by deviceIds: Current device ${currentDeviceId} was untrusted.`
+              )
+            }
           } catch (error) {
             this.sessionManagementLogger.error(
-              `Failed to untrust device ${deviceId} for user ${userId} during bulk operation:`,
+              `Failed to untrust device ${deviceId} for user ${userId} during deviceIds list operation:`,
               error
             )
           }
+        } else if (untrustDevices && !device.isTrusted && deviceId === currentDeviceId) {
+          // If current device was already untrusted but part of the operation scope
+          currentDeviceUntrustedInThisOperation = true
+          this.sessionManagementLogger.verbose(
+            `Revoke by deviceIds: Current device ${currentDeviceId} was already untrusted but included in untrust scope.`
+          )
         }
       }
       auditDetails.sessionsRevokedByDeviceList = totalRevokedCount
-      auditDetails.devicesUntrustedCount = devicesUntrustedCount
-    } else if (revokeAll) {
-      this.sessionManagementLogger.log(`Revoking all sessions for user ${userId} except current ${currentSessionId}`)
-      const result = await this.tokenService.invalidateAllUserSessions(
-        userId,
-        'USER_REQUEST_REVOKE_ALL_EXCEPT_CURRENT',
-        currentSessionId
-      )
-      totalRevokedCount = result.invalidatedCount
-      auditDetails.allSessionsExceptCurrentRevoked = totalRevokedCount
+      auditDetails.devicesUntrustedByDeviceList = devicesUntrustedCount
     } else {
       throw new ApiException(HttpStatus.BAD_REQUEST, 'InvalidOperation', 'Error.Auth.Session.InvalidRevokeOperation')
     }
 
-    if (totalRevokedCount === 0 && devicesUntrustedCount === 0) {
+    if (currentDeviceUntrustedInThisOperation) {
+      this.sessionManagementLogger.log(
+        `Current device ${currentDeviceId} for user ${userId} was untrusted (or confirmed untrusted) in this operation. Session ${currentSessionId} will require password reverification.`
+      )
+      await this.redisService.hset(
+        `${REDIS_KEY_PREFIX.SESSION_DETAILS}${currentSessionId}`,
+        'requiresPasswordReverification',
+        'true'
+      )
+      auditDetails.currentSessionRequiresReverification = true
+      // Potentially update the isTrusted flag in the current session's details in Redis immediately.
+      // This makes the current session data reflect the device's new untrusted state even before a new token is issued.
+      await this.redisService.hset(
+        `${REDIS_KEY_PREFIX.SESSION_DETAILS}${currentSessionId}`,
+        'isTrusted', // Assuming 'isTrusted' is the field name in session details for device trust status
+        'false'
+      )
+      this.sessionManagementLogger.verbose(
+        `Updated 'isTrusted' to false in Redis for current session ${currentSessionId}.`
+      )
+    }
+
+    if (totalRevokedCount === 0 && devicesUntrustedCount === 0 && !currentDeviceUntrustedInThisOperation) {
       await this.auditLogService.recordAsync({
         action: 'REVOKE_MULTIPLE_SESSIONS_NO_ACTION',
         userId,
@@ -604,7 +714,7 @@ export class SessionManagementService extends BaseAuthService {
       lang: I18nContext.current()?.lang,
       args: { count: totalRevokedCount }
     })
-    return { message }
+    return { message, requiresPasswordReverification: currentDeviceUntrustedInThisOperation }
   }
 
   async enforceSessionAndDeviceLimits(
