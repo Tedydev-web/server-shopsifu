@@ -114,10 +114,7 @@ export class GoogleService {
         this.logger.error('[GoogleCallback] Invalid payload from Google: missing email or sub (googleId).', payload)
         return {
           errorCode: 'INVALID_PAYLOAD',
-          errorMessage: await this.i18nService.translate('error.Error.Auth.Google.UserInfoFailed', {
-            lang: currentLang,
-            defaultValue: 'Failed to retrieve user information from Google.'
-          }),
+          errorMessage: await this.i18nService.translate('Error.Auth.Google.InvalidPayload'),
           redirectToError: true
         }
       }
@@ -173,10 +170,7 @@ export class GoogleService {
             )
             return {
               errorCode: 'ACCOUNT_CONFLICT',
-              errorMessage: await this.i18nService.translate('error.Error.Auth.Google.AccountConflict', {
-                lang: currentLang,
-                defaultValue: 'This email is already linked to a different Google account.'
-              }),
+              errorMessage: await this.i18nService.translate('Error.Auth.Google.AccountConflict'),
               redirectToError: true
             }
           }
@@ -199,19 +193,19 @@ export class GoogleService {
           this.logger.log(
             `[GoogleCallback] No user found for Google ID ${googleUserId} or email ${payload.email}. Creating new user.`
           )
-        user = await this.prismaService.user.create({
-          data: {
-            email: payload.email,
-            name: payload.name || 'Google User',
-            password: await this.hashingService.hash(uuidv4()),
+          user = await this.prismaService.user.create({
+            data: {
+              email: payload.email,
+              name: payload.name || 'Google User',
+              password: await this.hashingService.hash(uuidv4()),
               phoneNumber: '',
-            avatar: payload.picture,
-            status: 'ACTIVE',
+              avatar: payload.picture,
+              status: 'ACTIVE',
               role: { connect: { id: clientRoleId } },
               googleId: googleUserId
-          },
-          include: { role: true }
-        })
+            },
+            include: { role: true }
+          })
         }
       } else {
         this.logger.log(`[GoogleCallback] User found by Google ID ${googleUserId}: ${user.email} (ID: ${user.id}).`)
@@ -268,14 +262,14 @@ export class GoogleService {
         `[GoogleCallback] User: ${user.id}, Device: ${device.id} (isTrusted: ${device.isTrusted}), 2FA Enabled: ${user.twoFactorEnabled}, Requires 2FA: ${requiresTwoFactorAuth}, Requires Untrusted Verification: ${requiresUntrustedDeviceVerification}`
       )
 
-          return {
+      return {
         user,
         device,
         requiresTwoFactorAuth,
         requiresUntrustedDeviceVerification,
-            twoFactorMethod: user.twoFactorMethod,
+        twoFactorMethod: user.twoFactorMethod,
         isLoginViaGoogle: true,
-        message: 'Google authentication successful. Proceed to security checks.'
+        message: await this.i18nService.translate('Auth.Google.SuccessProceedToSecurityChecks', { lang: currentLang })
       }
     } catch (error) {
       this.logger.error('[GoogleCallback] Error processing Google callback:', error)
@@ -295,7 +289,7 @@ export class GoogleService {
       }
       const errorCode = resolveErrorCode()
 
-      let errorMessageKey = 'error.Error.Auth.Google.CallbackErrorGeneric'
+      let errorMessageKey = 'Error.Auth.Google.CallbackErrorGeneric'
       if (error instanceof ApiException) {
         const errorResponse = error.getResponse()
         if (typeof errorResponse === 'string') {
@@ -309,8 +303,7 @@ export class GoogleService {
       }
 
       const translatedMessageFromService: unknown = await this.i18nService.translate(errorMessageKey, {
-        lang: currentLang,
-        defaultValue: 'An unexpected error occurred during Google Sign-In. Please try again.'
+        lang: currentLang
       })
 
       let finalErrorMessage: string
@@ -323,7 +316,9 @@ export class GoogleService {
           'Received:',
           translatedMessageFromService
         )
-        finalErrorMessage = 'An unexpected error occurred during Google Sign-In. Please try again.'
+        finalErrorMessage = await this.i18nService.translate('Error.Auth.Google.CallbackErrorGeneric', {
+          lang: currentLang
+        })
       }
 
       return {

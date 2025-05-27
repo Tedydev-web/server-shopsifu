@@ -719,7 +719,7 @@ export class AuthenticationService extends BaseAuthService {
       } as Prisma.JsonObject // Assuming you might store oldMaxAge
     })
 
-    const message = await this.i18nService.translate('error.Auth.RememberMe.Set', {
+    const message = await this.i18nService.translate('Auth.RememberMe.Set', {
       lang: I18nContext.current()?.lang
     })
     return { message }

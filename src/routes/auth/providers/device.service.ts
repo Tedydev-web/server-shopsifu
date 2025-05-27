@@ -221,6 +221,7 @@ export class DeviceService {
   ): Promise<Device> {
     const client = tx || this.prismaService
     const fingerprint = this.basicDeviceFingerprint(data.userAgent)
+    const lang = I18nContext.current()?.lang || 'en' // For email translations
 
     this.logger.debug(
       `[DeviceService] findOrCreateDevice for user ${data.userId}, IP: ${data.ip}, UserAgent: ${data.userAgent}, Fingerprint: ${fingerprint}`
@@ -240,16 +241,19 @@ export class DeviceService {
       requestedUserAgent: data.userAgent
     }
 
+    const currentGeoLocationData = this.geolocationService.lookup(data.ip)
+    const currentCity = currentGeoLocationData?.city || null
+    const currentCountry = currentGeoLocationData?.country || null
+
     if (device) {
       this.logger.debug(
         `[DeviceService] Found existing device ${device.id} for user ${data.userId} with fingerprint ${fingerprint}`
       )
       deviceLogDetails.foundDeviceId = device.id
 
-      // Device found, update lastActive, IP, and potentially userAgent
       const updates: Prisma.DeviceUpdateInput = {
         lastActive: new Date(),
-        ip: data.ip
+        ip: data.ip // Always update IP to the latest one from the request
       }
 
       let userAgentChanged = false
@@ -261,6 +265,64 @@ export class DeviceService {
         )
         deviceLogDetails.userAgentChanged = true
         deviceLogDetails.oldUserAgent = device.userAgent
+      }
+
+      // Location change detection and notification logic
+      const significantLocationChange =
+        (currentCity && device.lastKnownCity !== currentCity) ||
+        (currentCountry && device.lastKnownCountry !== currentCountry) ||
+        (data.ip !== device.lastKnownIp && // Also consider if IP changed and one of the location fields was unknown
+          ((!device.lastKnownCity && currentCity) || (!device.lastKnownCountry && currentCountry)))
+
+      if (data.ip !== device.lastKnownIp) {
+        updates.lastKnownIp = data.ip
+        updates.lastKnownCity = currentCity
+        updates.lastKnownCountry = currentCountry
+        deviceLogDetails.ipChanged = true
+        deviceLogDetails.oldIp = device.lastKnownIp
+        deviceLogDetails.newIp = data.ip
+        deviceLogDetails.newCity = currentCity
+        deviceLogDetails.newCountry = currentCountry
+      }
+
+      if (significantLocationChange) {
+        deviceLogDetails.significantLocationChange = true
+        deviceLogDetails.oldCity = device.lastKnownCity
+        deviceLogDetails.oldCountry = device.lastKnownCountry
+
+        const now = new Date()
+        const notificationCooldownMs = 24 * 60 * 60 * 1000 // 24 hours
+        const canSendNotification =
+          !device.lastNotificationSentAt ||
+          now.getTime() - device.lastNotificationSentAt.getTime() > notificationCooldownMs
+
+        if (canSendNotification) {
+          const userForNotification = await this.sharedUserRepository.findUnique({ id: data.userId }, client)
+          if (userForNotification) {
+            this._sendKnownDeviceNewLocationNotification(
+              userForNotification,
+              device, // Pass the existing device object
+              data.ip,
+              currentCity,
+              currentCountry,
+              data.userAgent
+            ).catch((error) => {
+              this.logger.error(
+                `[DeviceService] Failed to send known device new location notification for user ${data.userId}, device ${device?.id}: ${error.message}`,
+                error.stack
+              )
+            })
+            updates.lastNotificationSentAt = now
+            deviceLogDetails.notificationSent = 'KNOWN_DEVICE_NEW_LOCATION'
+          } else {
+            deviceLogDetails.notificationSkippedReason = 'USER_NOT_FOUND_FOR_NOTIFICATION'
+          }
+        } else {
+          deviceLogDetails.notificationSkippedReason = 'COOLDOWN_PERIOD_ACTIVE'
+          this.logger.debug(
+            `[DeviceService] Notification for location change on device ${device.id} (user ${data.userId}) skipped due to cooldown.`
+          )
+        }
       }
 
       device = await this.updateDevice(device.id, updates, client)
@@ -276,7 +338,9 @@ export class DeviceService {
         userAgent: data.userAgent,
         notes: userAgentChanged
           ? 'Device last active, IP, and user agent updated due to login with matching fingerprint but different UA.'
-          : 'Device last active and IP updated due to login with matching fingerprint.'
+          : significantLocationChange
+            ? 'Device last active, IP updated. Significant location change detected.'
+            : 'Device last active and IP updated due to login with matching fingerprint.'
       })
     } else {
       this.logger.warn(
@@ -288,13 +352,20 @@ export class DeviceService {
         userAgent: data.userAgent,
         ip: data.ip,
         fingerprint,
-        name: null, // Initially no name
+        name: null,
         isTrusted: false,
-        isActive: true // New devices are active by default
+        isActive: true,
+        lastKnownIp: data.ip,
+        lastKnownCity: currentCity,
+        lastKnownCountry: currentCountry,
+        lastNotificationSentAt: new Date() // Sent notification for new device
       }
 
       device = await this.createDeviceRecordInternal(newDeviceData, client)
       deviceLogDetails.createdDeviceId = device.id
+      deviceLogDetails.initialIp = data.ip
+      deviceLogDetails.initialCity = currentCity
+      deviceLogDetails.initialCountry = currentCountry
 
       this.auditLogService.recordAsync({
         action: 'NEW_DEVICE_CREATED_ON_LOGIN',
@@ -308,7 +379,6 @@ export class DeviceService {
         notes: 'New device record created due to login with an unrecognized fingerprint.'
       })
 
-      // Send notification for new device
       const userForNotification = await this.sharedUserRepository.findUnique({ id: data.userId }, client)
       const uaParsed = new UAParser(data.userAgent)
       const fingerprintDetails = {
@@ -328,6 +398,9 @@ export class DeviceService {
             )
           }
         )
+        // lastNotificationSentAt is already set in newDeviceData
+      } else {
+        deviceLogDetails.notificationSkippedReason = 'USER_NOT_FOUND_FOR_NEW_DEVICE_NOTIFICATION'
       }
     }
     return device
@@ -527,5 +600,135 @@ export class DeviceService {
     })
     this.logger.log(`[DeviceService] Device ${deviceId} trusted successfully for user ${userId}.`)
     return updatedDevice
+  }
+
+  // New private method to send notification for known device, new location
+  private async _sendKnownDeviceNewLocationNotification(
+    user: UserForNotification,
+    device: Device, // Pass the existing device object
+    newIpAddress: string,
+    newCity: string | null,
+    newCountry: string | null,
+    currentUserAgent: string
+  ): Promise<void> {
+    if (!user || !user.email) {
+      this.logger.warn(
+        `Cannot send known device new location notification for user ID ${user.id}: user data or email is missing.`
+      )
+      return
+    }
+
+    const lang = I18nContext.current()?.lang || 'en'
+
+    const subject = await this.i18nService.translate('Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation', {
+      lang
+    })
+    const title = await this.i18nService.translate('Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation', { lang })
+    const mainMessage = await this.i18nService.translate(
+      'Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation',
+      {
+        lang,
+        args: { userName: user.name || user.email }
+      }
+    )
+    const secondaryMessage = await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.NotYou', { lang })
+
+    const newLocationString =
+      newCity && newCountry
+        ? `${newCity}, ${newCountry}`
+        : newCity || newCountry || (await this.i18nService.translate('Email.Field.LocationUnknown', { lang })) || 'N/A'
+    const oldLocationString =
+      device.lastKnownCity && device.lastKnownCountry
+        ? `${device.lastKnownCity}, ${device.lastKnownCountry}`
+        : device.lastKnownCity ||
+          device.lastKnownCountry ||
+          (await this.i18nService.translate('Email.Field.LocationUnknown', { lang })) ||
+          'N/A'
+
+    const uaParsed = new UAParser(currentUserAgent)
+    const fingerprintDetails = {
+      type: this._normalizeDeviceType(uaParsed.getDevice().type, uaParsed.getOS().name, uaParsed.getBrowser().name),
+      osName: uaParsed.getOS().name || 'Unknown OS',
+      osVersion: uaParsed.getOS().version || 'N/A',
+      browserName: uaParsed.getBrowser().name || 'Unknown Browser',
+      browserVersion: uaParsed.getBrowser().version || 'N/A'
+    }
+
+    const actionDetails = [
+      {
+        label: await this.i18nService.translate('Email.Field.Time', { lang }),
+        value: new Date().toLocaleString(lang)
+      },
+      {
+        label: await this.i18nService.translate('Email.Field.DeviceName', { lang, defaultValue: 'Device Name' }),
+        value:
+          device.name ||
+          (await this.i18nService.translate('Email.Field.DeviceIdentifier', {
+            lang,
+            defaultValue: `Device ID: ${device.id}`
+          })) ||
+          `Device ID: ${device.id}` // Fallback if translate returns null/undefined
+      },
+      {
+        label: await this.i18nService.translate('Email.Field.NewIPAddress', { lang, defaultValue: 'New IP Address' }),
+        value: newIpAddress
+      },
+      {
+        label: await this.i18nService.translate('Email.Field.NewApprox.Location', {
+          lang,
+          defaultValue: 'New Approx. Location'
+        }),
+        value: newLocationString
+      },
+      {
+        label: await this.i18nService.translate('Email.Field.OldIPAddress', {
+          lang,
+          defaultValue: 'Previous IP Address'
+        }),
+        value: device.lastKnownIp || 'N/A'
+      },
+      {
+        label: await this.i18nService.translate('Email.Field.OldLocation', {
+          lang,
+          defaultValue: 'Previous Approx. Location'
+        }),
+        value: oldLocationString
+      },
+      {
+        label: await this.i18nService.translate('Email.Field.FingerprintDevice', { lang }),
+        value: `${fingerprintDetails.type || 'N/A'}`
+      },
+      {
+        label: await this.i18nService.translate('Email.Field.FingerprintOS', { lang }),
+        value: `${fingerprintDetails.osName || 'N/A'} ${fingerprintDetails.osVersion || ''}`.trim()
+      },
+      {
+        label: await this.i18nService.translate('Email.Field.FingerprintBrowser', { lang }),
+        value: `${fingerprintDetails.browserName || 'N/A'} ${fingerprintDetails.browserVersion || ''}`.trim()
+      }
+    ]
+
+    this.emailService
+      .sendSecurityAlertEmail({
+        to: user.email,
+        userName: user.name || user.email,
+        alertSubject: subject,
+        alertTitle: title,
+        mainMessage,
+        actionDetails,
+        secondaryMessage
+      })
+      .then(() => {
+        this.logger.log(
+          `Known device new location notification sent to ${user.email} for user ID ${user.id}, device ID ${device.id}`
+        )
+        // Update lastNotificationSentAt is handled by the caller (findOrCreateDevice)
+      })
+      .catch((error) => {
+        this.logger.error(
+          `Failed to send known device new location notification to ${user.email} for user ID ${user.id}, device ID ${device.id}: ${error.message}`,
+          error.stack
+        )
+      })
   }
 }

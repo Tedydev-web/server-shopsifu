@@ -295,31 +295,26 @@ export class AllExceptionsFilter implements ExceptionFilter {
   private getFallbackTitleText(status: HttpStatus): string {
     switch (status) {
       case HttpStatus.BAD_REQUEST:
-        return 'Yêu Cầu Không Hợp Lệ'
+        return 'HttpStatus.Title.BadRequest'
       case HttpStatus.UNAUTHORIZED:
-        return 'Không Được Phép'
+        return 'HttpStatus.Title.Unauthorized'
       case HttpStatus.FORBIDDEN:
-        return 'Bị Cấm'
+        return 'HttpStatus.Title.Forbidden'
       case HttpStatus.NOT_FOUND:
-        return 'Không Tìm Thấy'
+        return 'HttpStatus.Title.NotFound'
       case HttpStatus.CONFLICT:
-        return 'Xung Đột'
+        return 'HttpStatus.Title.Conflict'
       case HttpStatus.UNPROCESSABLE_ENTITY:
-        return 'Không Thể Xử Lý Đối Tượng'
+        return 'HttpStatus.Title.UnprocessableEntity'
       case HttpStatus.PRECONDITION_FAILED:
-        return 'Điều Kiện Tiên Quyết Thất Bại'
+        return 'HttpStatus.Title.PreconditionFailed'
       case HttpStatus.INTERNAL_SERVER_ERROR:
-        return 'Lỗi Máy Chủ Nội Bộ'
+        return 'HttpStatus.Title.InternalServerError'
       case HttpStatus.SERVICE_UNAVAILABLE:
-        return 'Dịch Vụ Không Khả Dụng'
+        return 'HttpStatus.Title.ServiceUnavailable'
       default: {
-        const statusText = Object.keys(HttpStatus).find((key) => HttpStatus[key] === status)
-        return statusText
-          ? statusText
-              .split('_')
-              .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-              .join(' ')
-          : 'Lỗi HTTP'
+        // For other statuses, use a generic title key
+        return 'HttpStatus.Title.HttpError'
       }
     }
   }

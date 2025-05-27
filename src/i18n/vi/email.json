@@ -42,10 +42,15 @@
   "Email.Field.FingerprintOS": "Hệ Điều Hành",
   "Email.Field.FingerprintBrowser": "Trình Duyệt",
   "Email.Field.LocationUnknown": "Không xác định (không thể xác định vị trí)",
+  "Email.Field.DeviceName": "Tên thiết bị",
+  "Email.Field.DeviceIdentifier": "Mã thiết bị: {id}",
+  "Email.Field.NewIPAddress": "Địa chỉ IP mới",
+  "Email.Field.NewApprox.Location": "Vị trí ước tính mới",
+  "Email.Field.OldIPAddress": "Địa chỉ IP trước đó",
+  "Email.Field.OldLocation": "Vị trí ước tính trước đó",
 
   "Email.OTPSubject.Register": "Shopsifu - Xác minh đăng ký tài khoản của bạn",
   "Email.OTPSubject.ResetPassword": "Shopsifu - Đặt lại mật khẩu của bạn (Mã OTP)",
   "Email.OTPSubject.LoginUntrustedDevice": "Shopsifu - Xác minh đăng nhập từ thiết bị mới",
   "Email.OTPSubject.Default": "Shopsifu - Mã OTP của bạn"
 }
- 

@@ -42,10 +42,15 @@
   "Email.Field.FingerprintOS": "Operating System",
   "Email.Field.FingerprintBrowser": "Browser",
   "Email.Field.LocationUnknown": "Unknown (unable to determine location)",
+  "Email.Field.DeviceName": "Device Name",
+  "Email.Field.DeviceIdentifier": "Device ID: {id}",
+  "Email.Field.NewIPAddress": "New IP Address",
+  "Email.Field.NewApprox.Location": "New Approx. Location",
+  "Email.Field.OldIPAddress": "Previous IP Address",
+  "Email.Field.OldLocation": "Previous Approx. Location",
 
   "Email.OTPSubject.Register": "Verify Your Shopsifu Account Registration",
   "Email.OTPSubject.ResetPassword": "Reset Your Shopsifu Password - OTP Inside",
   "Email.OTPSubject.LoginUntrustedDevice": "Verify Your Login from a New Device - Shopsifu",
   "Email.OTPSubject.Default": "Your Shopsifu OTP Code"
 }
- 

@@ -109,7 +109,7 @@ export class AuthService {
         lang: I18nContext.current()?.lang
       })
       // Consider throwing an appropriate HTTP exception here, e.g., UnauthorizedException
-      return { message, error: 'RefreshFailed' } // Or throw new UnauthorizedException(message)
+      throw InvalidRefreshTokenException // Throw standard exception
     }
   }
 

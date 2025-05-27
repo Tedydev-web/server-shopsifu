@@ -16,6 +16,7 @@
   "Auth.2FA.Confirm.Success": "2FA has been confirmed and enabled. Please save your recovery codes.",
   "Auth.2FA.Verify.Success": "2FA verification successful.",
   "Auth.2FA.Verify.AskToTrustDevice": "2FA verification successful. Would you like to trust this device?",
+  "Auth.Otp.Verified": "OTP verified successfully. Please proceed.",
   "Auth.Device.Untrusted": "Device has been untrusted successfully.",
   "Auth.Device.LogoutSpecificSuccess": "Successfully logged out from the specified device.",
   "Error.Auth.Otp.Invalid": "Invalid OTP provided.",
@@ -32,6 +33,7 @@
   "Error.Auth.Token.InvalidRefreshToken": "Refresh token is invalid or has been used.",
   "Error.Auth.Token.ExpiredRefreshToken": "Refresh token has expired.",
   "Error.Auth.Token.RefreshTokenAlreadyUsed": "Refresh token has already been used.",
+  "Error.Auth.Token.RefreshFailed": "Failed to refresh token. Please log in again.",
   "Error.Auth.Access.Unauthorized": "Unauthorized access. Please log in.",
   "Error.Auth.Access.Denied": "Access denied. You do not have permission to perform this action.",
   "Error.Auth.Session.InvalidLogin": "Invalid login session.",
@@ -66,6 +68,10 @@
   "HttpStatus.Title.HttpError": "Http Error",
   "Error.Auth.Google.CallbackErrorGeneric": "An error occurred while logging in with Google. Please try again or use another method.",
   "Error.Auth.Google.MissingCode": "Authorization code is missing from Google callback.",
+  "Error.Auth.Google.StateMismatch": "Google authentication state mismatch. Please try logging in again.",
+  "Error.Auth.Google.InvalidPayload": "Failed to retrieve valid user information from Google.",
+  "Error.Auth.Google.AccountConflict": "This email is already linked to a different Google account. Please sign in with the previously linked Google account or use a different email.",
+  "Auth.Google.SuccessProceedToSecurityChecks": "Google authentication successful. Proceeding to security checks.",
   "Auth.Session.RevokedSuccessfully": "Session has been revoked successfully.",
   "Error.Auth.Session.CannotRevokeCurrent": "You cannot revoke your current active session. Please use the logout feature.",
   "Error.Auth.Session.NotFound": "Session not found or you do not have permission to revoke it.",
@@ -77,5 +83,6 @@
   "Error.Auth.Session.InvalidRevokeOperation": "Invalid session revocation operation. Please provide valid parameters.",
   "Error.Auth.Session.RevokedRemotely": "Your session has been revoked. Please log in again.",
   "Error.Auth.Session.MaxSessionsReached": "You have reached the maximum number of active sessions. Some old or untrusted sessions/devices may have been automatically logged out. Please review your active sessions.",
-  "Error.Auth.Device.MaxDevicesReached": "You have reached the maximum number of allowed devices. Some old or untrusted devices may have been automatically removed. Please review your devices."
+  "Error.Auth.Device.MaxDevicesReached": "You have reached the maximum number of allowed devices. Some old or untrusted devices may have been automatically removed. Please review your devices.",
+  "Auth.Device.AlreadyTrusted": "Device is already trusted."
 }

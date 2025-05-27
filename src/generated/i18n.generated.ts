@@ -19,9 +19,12 @@ export type I18nTranslations = {
         "Auth.Login.DeviceVerificationOtpRequired": string;
         "Auth.RememberMe.Set": string;
         "Auth.2FA.Setup.Success": string;
+        "Auth.Device.AlreadyTrusted": string;
         "Auth.2FA.Confirm.Success": string;
         "Auth.2FA.Verify.Success": string;
         "Auth.2FA.Verify.AskToTrustDevice": string;
+        "Auth.Otp.Verified": string;
+        "Auth.Device.Untrusted": string;
         "Error.Auth.Otp.Invalid": string;
         "Error.Auth.Otp.Expired": string;
         "Error.Auth.Otp.FailedToSend": string;
@@ -36,6 +39,7 @@ export type I18nTranslations = {
         "Error.Auth.Token.InvalidRefreshToken": string;
         "Error.Auth.Token.ExpiredRefreshToken": string;
         "Error.Auth.Token.RefreshTokenAlreadyUsed": string;
+        "Error.Auth.Token.RefreshFailed": string;
         "Error.Auth.Access.Unauthorized": string;
         "Error.Auth.Access.Denied": string;
         "Error.Auth.Session.InvalidLogin": string;
@@ -69,6 +73,11 @@ export type I18nTranslations = {
         "HttpStatus.Title.HttpError": string;
         "Error.Auth.Google.CallbackErrorGeneric": string;
         "Error.Auth.Google.MissingCode": string;
+        "Error.Auth.Google.StateMismatch": string;
+        "Error.Auth.Google.InvalidPayload": string;
+        "Error.Auth.Google.AccountConflict": string;
+        "Auth.Google.SuccessProceedToSecurityChecks": string;
+        "Auth.Session.RevokedSuccessfully": string;
     };
     "email": {
         "Email.SecurityAlert.Subject.Default": string;
@@ -99,6 +108,16 @@ export type I18nTranslations = {
         "Email.Field.IPAddress": string;
         "Email.Field.Device": string;
         "Email.Field.Location": string;
+        "Email.Field.FingerprintDevice": string;
+        "Email.Field.FingerprintOS": string;
+        "Email.Field.FingerprintBrowser": string;
+        "Email.Field.LocationUnknown": string;
+        "Email.Field.DeviceName": string;
+        "Email.Field.DeviceIdentifier": string;
+        "Email.Field.NewIPAddress": string;
+        "Email.Field.NewApprox.Location": string;
+        "Email.Field.OldIPAddress": string;
+        "Email.Field.OldLocation": string;
         "Email.OTPSubject.Register": string;
         "Email.OTPSubject.ResetPassword": string;
         "Email.OTPSubject.LoginUntrustedDevice": string;

@@ -170,17 +170,17 @@ export class TokenService {
 
     const accessTokenJti = uuidv4()
     const refreshTokenJti = uuidv4()
-    const now = Math.floor(Date.now() / 1000)
 
-    const accessTokenPayload: AccessTokenPayload = {
+    const accessTokenPayloadToSign: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
       ...params,
       jti: accessTokenJti,
-      isDeviceTrustedInSession: params.isDeviceTrustedInSession ?? false,
-      exp: now + Math.floor(ms(envConfig.ACCESS_TOKEN_EXPIRES_IN) / 1000),
-      iat: now
+      isDeviceTrustedInSession: params.isDeviceTrustedInSession ?? false
     }
 
-    const accessToken = this.signAccessToken(accessTokenPayload)
+    const accessToken = this.signAccessToken(accessTokenPayloadToSign)
+
+    const decodedAccessToken = this.jwtService.decode(accessToken) as AccessTokenPayload
+    const accessTokenExp = decodedAccessToken.exp
 
     let refreshTokenExpiresInMs: number
     if (rememberMe) {
@@ -200,7 +200,8 @@ export class TokenService {
     const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
     await this.redisService.hset(sessionKey, {
       currentAccessTokenJti: accessTokenJti,
-      currentRefreshTokenJti: refreshTokenJti
+      currentRefreshTokenJti: refreshTokenJti,
+      accessTokenExp: accessTokenExp.toString()
     })
     const sessionTtl = await this.redisService.ttl(sessionKey)
     if (sessionTtl < 0 || sessionTtl < refreshTokenExpiresInSeconds) {
@@ -212,7 +213,7 @@ export class TokenService {
       refreshTokenJti: refreshTokenJti,
       maxAgeForRefreshTokenCookie: refreshTokenExpiresInMs,
       accessTokenJti,
-      accessTokenPayload
+      accessTokenPayload: decodedAccessToken
     }
   }
 
