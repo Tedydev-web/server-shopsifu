@@ -628,21 +628,6 @@ export class AuthController {
     return this.sessionManagementService.revokeMultipleSessions(activeUser.userId, activeUser.sessionId, body)
   }
 
-  /* // Temporarily comment out GET /devices endpoint
-  @Get('devices')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  // @ZodSerializerDto(GetDevicesResDTO) // This DTO is also commented out
-  async getManagedDevices(
-    @ActiveUser('userId') userId: number
-  ): Promise<PaginatedResponseType<z.infer<typeof DeviceInfoSchema>>> {
-    this.logger.debug(`User ${userId} fetching managed devices.`)
-    // const paginatedDevices = await this.sessionManagementService.getManagedDevices(userId) // Service method is also commented out
-    this.logger.debug(`Paginated managed devices from service: getManagedDevices temporarily disabled`)
-    // return paginatedDevices
-    throw new Error('This endpoint is temporarily disabled.') // Or return an appropriate HTTP error
-  }
-  */
-
   @Patch('devices/:deviceId/name')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
@@ -683,25 +668,4 @@ export class AuthController {
     // activeUser.deviceId is the ID of the device record in the database
     return this.sessionManagementService.trustCurrentDevice(activeUser.userId, activeUser.deviceId)
   }
-
-  // --- DEBUG ENDPOINTS (temporary) ---
-  @Get('debug/sessions-for-device/:deviceId')
-  @UseGuards(AccessTokenGuard) // Hoặc một guard nào đó phù hợp cho debug, ví dụ RolesGuard cho Admin
-  @SkipThrottle()
-  @HttpCode(HttpStatus.OK)
-  async debugGetSessionsForDevice(
-    @Param('deviceId', ParseIntPipe) deviceId: number,
-    @Query('userId', ParseIntPipe) userId: number,
-    @ActiveUser() activeUser: AccessTokenPayload // Để kiểm tra quyền nếu cần
-  ) {
-    this.logger.log(
-      `[DEBUG ENDPOINT] User ${activeUser.userId} (Role: ${activeUser.roleName}) is requesting raw sessions for deviceId: ${deviceId}, targetUserId: ${userId}`
-    )
-    // // Optional: Add role check or specific user check for more security
-    // if (activeUser.roleName !== 'ADMIN' && activeUser.userId !== userId) {
-    //   throw new ForbiddenException('You do not have permission to access this debug information.');
-    // }
-    return await this.sessionManagementService.debugGetRawSessionsForDevice(deviceId, userId)
-  }
-  // --- END DEBUG ENDPOINTS ---
 }
