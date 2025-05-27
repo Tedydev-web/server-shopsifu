@@ -190,40 +190,40 @@ export class AuthenticationService extends BaseAuthService {
     }
     try {
       const user = await this.prismaService.user.findUnique({
-          where: { email: body.email },
-          include: { role: true }
-        })
-        if (!user) {
-          auditLogEntry.errorMessage = EmailNotFoundException.message
-          auditLogEntry.details.reason = 'USER_NOT_FOUND'
-          throw EmailNotFoundException
-        }
-        auditLogEntry.userId = user.id
+        where: { email: body.email },
+        include: { role: true }
+      })
+      if (!user) {
+        auditLogEntry.errorMessage = EmailNotFoundException.message
+        auditLogEntry.details.reason = 'USER_NOT_FOUND'
+        throw EmailNotFoundException
+      }
+      auditLogEntry.userId = user.id
 
-        const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
-        if (!isPasswordMatch) {
-          this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
-          auditLogEntry.errorMessage = InvalidPasswordException.message
-          auditLogEntry.details.reason = 'INVALID_PASSWORD'
-          throw InvalidPasswordException
-        }
+      const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
+      if (!isPasswordMatch) {
+        this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
+        auditLogEntry.errorMessage = InvalidPasswordException.message
+        auditLogEntry.details.reason = 'INVALID_PASSWORD'
+        throw InvalidPasswordException
+      }
 
-        let device: Device
-        try {
+      let device: Device
+      try {
         device = await this.deviceService.findOrCreateDevice({
-              userId: user.id,
-              userAgent: body.userAgent,
-              ip: body.ip
+          userId: user.id,
+          userAgent: body.userAgent,
+          ip: body.ip
         })
-          auditLogEntry.details.deviceId = device.id
-        } catch (error) {
-          this.logger.error('[DEBUG AuthenticationService login] Error creating/finding device:', error)
-          auditLogEntry.errorMessage = DeviceSetupFailedException.message
-          auditLogEntry.details.deviceError = 'DeviceSetupFailed'
-          throw DeviceSetupFailedException
-        }
+        auditLogEntry.details.deviceId = device.id
+      } catch (error) {
+        this.logger.error('[DEBUG AuthenticationService login] Error creating/finding device:', error)
+        auditLogEntry.errorMessage = DeviceSetupFailedException.message
+        auditLogEntry.details.deviceError = 'DeviceSetupFailed'
+        throw DeviceSetupFailedException
+      }
 
-        const shouldAskToTrustDevice = !device.isTrusted
+      const shouldAskToTrustDevice = !device.isTrusted
       const sessionId = uuidv4()
       const now = new Date()
 
@@ -233,18 +233,18 @@ export class AuthenticationService extends BaseAuthService {
         auditLogEntry.details.location = `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
       }
 
-        if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
-          auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
+      if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod && !device.isTrusted) {
+        auditLogEntry.details.twoFactorMethod = user.twoFactorMethod
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.notes = '2FA required: Device not trusted.'
         await this.auditLogService.record(auditLogEntry as AuditLogData)
 
         const sltJwt = await this.otpService.initiateOtpWithSltCookie({
-            email: user.email,
-            userId: user.id,
-            deviceId: device.id,
+          email: user.email,
+          userId: user.id,
+          deviceId: device.id,
           ipAddress: body.ip,
-              userAgent: body.userAgent,
+          userAgent: body.userAgent,
           purpose: TypeOfVerificationCode.LOGIN_2FA,
           metadata: { rememberMe: body.rememberMe, initiatedFrom: 'login' }
         })
@@ -266,22 +266,22 @@ export class AuthenticationService extends BaseAuthService {
 
         const message = await this.i18nService.translate('Auth.Login.2FARequired', {
           lang: I18nContext.current()?.lang
-          })
-          return {
-            message,
-            twoFactorMethod: user.twoFactorMethod
-          }
+        })
+        return {
+          message,
+          twoFactorMethod: user.twoFactorMethod
+        }
       } else if (!device.isTrusted) {
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.notes = 'Device verification OTP required: Device not trusted.'
         await this.auditLogService.record(auditLogEntry as AuditLogData)
 
         const sltJwt = await this.otpService.initiateOtpWithSltCookie({
-            email: user.email,
-            userId: user.id,
-            deviceId: device.id,
+          email: user.email,
+          userId: user.id,
+          deviceId: device.id,
           ipAddress: body.ip,
-              userAgent: body.userAgent,
+          userAgent: body.userAgent,
           purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
           metadata: { rememberMe: body.rememberMe, initiatedFrom: 'login' }
         })
@@ -303,12 +303,12 @@ export class AuthenticationService extends BaseAuthService {
 
         const message = await this.i18nService.translate('Auth.Login.DeviceVerificationOtpRequired', {
           lang: I18nContext.current()?.lang
-          })
-          return {
-            message,
-            twoFactorMethod: TwoFactorMethodType.OTP
-          }
+        })
+        return {
+          message,
+          twoFactorMethod: TwoFactorMethodType.OTP
         }
+      }
 
       const sessionData: Record<string, string | number | boolean | undefined | null> = {
         userId: user.id,
@@ -369,13 +369,13 @@ export class AuthenticationService extends BaseAuthService {
         return pipeline
       })
 
-        if (res) {
+      if (res) {
         this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
-        } else {
-          this.logger.warn(
-            '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
-          )
-        }
+      } else {
+        this.logger.warn(
+          '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
+        )
+      }
 
       // Send email if login from new location on a trusted device
       if (device.isTrusted && geoLocation && geoLocation.country && geoLocation.city) {
@@ -451,8 +451,8 @@ export class AuthenticationService extends BaseAuthService {
         }
       }
 
-        auditLogEntry.status = AuditLogStatus.SUCCESS
-        auditLogEntry.action = 'USER_LOGIN_SUCCESS'
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'USER_LOGIN_SUCCESS'
       auditLogEntry.details.sessionId = sessionId
 
       // Enforce limits after successful login and session creation (only if not pending 2FA/OTP)
@@ -479,15 +479,15 @@ export class AuthenticationService extends BaseAuthService {
           })
       }
 
-        return {
-          userId: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role.name,
+      return {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role.name,
         isDeviceTrustedInSession: device.isTrusted,
         currentDeviceId: device.id,
         askToTrustDevice: shouldAskToTrustDevice
-        }
+      }
     } catch (error) {
       this.logger.error('[AuthenticationService.login] Caught error:', error, typeof error)
       if (!auditLogEntry.errorMessage) {
@@ -760,7 +760,18 @@ export class AuthenticationService extends BaseAuthService {
       )
       auditLogEntry.details.otpVerified = true
 
-      // OTP is valid, finalize SLT and clear cookie
+      // IMPORTANT: Device should NOT be trusted automatically here.
+      // Fetch the device record without trusting it.
+      const deviceRecord = await this.deviceService.findDeviceById(sltContext.deviceId)
+      if (!deviceRecord) {
+        this.logger.error(
+          `Device record not found (ID: ${sltContext.deviceId}) during OTP completion for user ${sltContext.userId}. This should not happen.`
+        )
+        throw DeviceSetupFailedException // Using existing exception
+      }
+      // auditLogEntry.details.deviceNowTrusted = false; // Explicitly log that it's not auto-trusted
+
+      // Finalize the SLT context as it has been successfully used
       await this.otpService.finalizeSlt(sltContext.sltJti)
       if (res) {
         this.tokenService.clearSltCookie(res)
@@ -772,17 +783,6 @@ export class AuthenticationService extends BaseAuthService {
         auditLogEntry.details.reason = 'USER_NOT_FOUND_POST_OTP_VERIFY'
         throw EmailNotFoundException // Or a more generic server error
       }
-
-      const device = await this.deviceService.findDeviceById(sltContext.deviceId)
-      if (!device) {
-        auditLogEntry.errorMessage = `Device not found (ID: ${sltContext.deviceId}) after OTP verification.`
-        auditLogEntry.details.reason = 'DEVICE_NOT_FOUND_POST_OTP_VERIFY'
-        throw DeviceSetupFailedException // Or a more generic server error
-      }
-
-      // Trust the device as OTP verification was successful for it
-      const trustedDevice = await this.deviceService.trustDevice(device.id, user.id)
-      auditLogEntry.details.deviceTrustedPostOtp = trustedDevice.isTrusted
 
       const sessionId = uuidv4()
       const now = new Date()
@@ -796,12 +796,12 @@ export class AuthenticationService extends BaseAuthService {
 
       const sessionData: Record<string, string | number | boolean | undefined | null> = {
         userId: user.id,
-        deviceId: trustedDevice.id,
+        deviceId: deviceRecord.id,
         ipAddress: body.ip,
         userAgent: body.userAgent,
         createdAt: now.toISOString(),
         lastActiveAt: now.toISOString(),
-        isTrusted: true, // Device is now trusted for this session
+        isTrusted: deviceRecord.isTrusted,
         rememberMe: rememberMe,
         roleId: user.role.id,
         roleName: user.role.name,
@@ -813,7 +813,7 @@ export class AuthenticationService extends BaseAuthService {
         await this.tokenService.generateTokens(
           {
             userId: user.id,
-            deviceId: trustedDevice.id,
+            deviceId: deviceRecord.id,
             roleId: user.role.id,
             roleName: user.role.name,
             sessionId
@@ -864,13 +864,13 @@ export class AuthenticationService extends BaseAuthService {
         )
       }
 
-        auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'LOGIN_UNTRUSTED_DEVICE_OTP_VERIFY_SUCCESS'
       auditLogEntry.details.sessionId = sessionId
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
       this.sessionManagementService
-        .enforceSessionAndDeviceLimits(user.id, sessionId, trustedDevice.id)
+        .enforceSessionAndDeviceLimits(user.id, sessionId, deviceRecord.id)
         .catch((limitError) => {
           this.logger.error(
             `Error enforcing session/device limits for user ${user.id} after untrusted device OTP login: ${limitError.message}`,
@@ -878,13 +878,13 @@ export class AuthenticationService extends BaseAuthService {
           )
         })
 
-        return {
+      return {
         userId: user.id,
         email: user.email,
         name: user.name,
         role: user.role.name,
-        isDeviceTrustedInSession: true, // Device is now trusted
-        currentDeviceId: trustedDevice.id
+        isDeviceTrustedInSession: deviceRecord.isTrusted,
+        currentDeviceId: deviceRecord.id
       }
     } catch (error) {
       this.logger.error(
@@ -895,7 +895,7 @@ export class AuthenticationService extends BaseAuthService {
         if (error instanceof ApiException) {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         } else if (error instanceof Error) {
-      auditLogEntry.errorMessage = error.message
+          auditLogEntry.errorMessage = error.message
         } else {
           auditLogEntry.errorMessage = 'Unknown error during untrusted device OTP login completion'
         }

@@ -36,7 +36,7 @@ const SHARED_SERVICES = [PrismaService, HashingService]
     AuditLogModule,
     CacheModule.registerAsync({
       isGlobal: true,
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         store: 'redis',
         host: configService.get<string>('REDIS_HOST'),
         port: configService.get<number>('REDIS_PORT'),

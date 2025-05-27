@@ -125,14 +125,14 @@ export class SessionManagementService extends BaseAuthService {
         continue
       }
 
-        if (
-          !sessionDetails.createdAt ||
-          !sessionDetails.lastActiveAt ||
-          !sessionDetails.deviceId ||
+      if (
+        !sessionDetails.createdAt ||
+        !sessionDetails.lastActiveAt ||
+        !sessionDetails.deviceId ||
         !sessionDetails.userId ||
         parseInt(sessionDetails.userId, 10) !== userId
-        ) {
-          this.sessionManagementLogger.warn(
+      ) {
+        this.sessionManagementLogger.warn(
           `Session ${userSessionKeys[i]} for user ${
             sessionDetails.userId || 'UNKNOWN'
           } is missing critical details or userId mismatch. Skipping.`
@@ -166,61 +166,61 @@ export class SessionManagementService extends BaseAuthService {
 
     // Bước 3: Xây dựng kết quả
     for (const sessionDetails of sessionDetailsList) {
-        const loggedInAtDate = new Date(sessionDetails.createdAt)
-        const lastActiveAtDate = new Date(sessionDetails.lastActiveAt)
+      const loggedInAtDate = new Date(sessionDetails.createdAt)
+      const lastActiveAtDate = new Date(sessionDetails.lastActiveAt)
 
-        if (isNaN(loggedInAtDate.getTime()) || isNaN(lastActiveAtDate.getTime())) {
-          this.sessionManagementLogger.warn(
+      if (isNaN(loggedInAtDate.getTime()) || isNaN(lastActiveAtDate.getTime())) {
+        this.sessionManagementLogger.warn(
           `Session ${sessionDetails.originalSessionId} for user ${sessionDetails.userId} has invalid date formats. Skipping.`
-          )
-          continue
-        }
+        )
+        continue
+      }
 
-        const deviceIdFromSession = parseInt(sessionDetails.deviceId, 10)
+      const deviceIdFromSession = parseInt(sessionDetails.deviceId, 10)
       const dbDevice = devicesMap.get(deviceIdFromSession)
       const deviceName = dbDevice?.name || null
 
-        const uaParser = new UAParser(sessionDetails.userAgent)
-        const browser = uaParser.getBrowser()
-        const os = uaParser.getOS()
+      const uaParser = new UAParser(sessionDetails.userAgent)
+      const browser = uaParser.getBrowser()
+      const os = uaParser.getOS()
       const parsedDeviceType = uaParser.getDevice().type
 
       const type = this._normalizeDeviceType(parsedDeviceType, os.name, browser.name)
 
-        const location = sessionDetails.ipAddress ? this.geolocationService.lookup(sessionDetails.ipAddress) : null
-        const locationString = location
-          ? `${location.city || 'Unknown City'}, ${location.country || 'Unknown Country'}`
-          : 'Location unknown'
+      const location = sessionDetails.ipAddress ? this.geolocationService.lookup(sessionDetails.ipAddress) : null
+      const locationString = location
+        ? `${location.city || 'Unknown City'}, ${location.country || 'Unknown Country'}`
+        : 'Location unknown'
 
-        let validIpAddress: string | null = null
+      let validIpAddress: string | null = null
       if (sessionDetails.ipAddress && sessionDetails.ipAddress.trim() !== '') {
-          try {
+        try {
           z.string().ip().parse(sessionDetails.ipAddress)
           validIpAddress = sessionDetails.ipAddress
-          } catch (e) {
-            this.sessionManagementLogger.warn(
+        } catch (e) {
+          this.sessionManagementLogger.warn(
             `Session ${sessionDetails.originalSessionId} has an invalid IP address format ('${sessionDetails.ipAddress}'). Setting to null.`
-            )
-          }
+          )
         }
+      }
 
       activeSessionsData.push({
         sessionId: sessionDetails.originalSessionId,
-          device: {
-            id: deviceIdFromSession,
-            name: deviceName,
+        device: {
+          id: deviceIdFromSession,
+          name: deviceName,
           type: type,
-            os: os.name && os.version ? `${os.name} ${os.version}` : os.name || null,
-            browser: browser.name && browser.version ? `${browser.name} ${browser.version}` : browser.name || null,
+          os: os.name && os.version ? `${os.name} ${os.version}` : os.name || null,
+          browser: browser.name && browser.version ? `${browser.name} ${browser.version}` : browser.name || null,
           isCurrentDevice:
             deviceIdFromSession === currentDeviceId && sessionDetails.originalSessionId === currentSessionId
-          },
-          ipAddress: validIpAddress,
-          location: locationString,
-          loggedInAt: loggedInAtDate.toISOString(),
-          lastActiveAt: lastActiveAtDate.toISOString(),
+        },
+        ipAddress: validIpAddress,
+        location: locationString,
+        loggedInAt: loggedInAtDate.toISOString(),
+        lastActiveAt: lastActiveAtDate.toISOString(),
         isCurrentSession: sessionDetails.originalSessionId === currentSessionId
-        })
+      })
     }
 
     activeSessionsData.sort((a, b) => {
