@@ -351,17 +351,19 @@ export class OtpService {
     const sltJti = uuidv4()
     const nowSeconds = Math.floor(Date.now() / 1000)
     const sltExpiresInSeconds = Math.floor(ms(envConfig.SLT_JWT_EXPIRES_IN) / 1000)
+    const calculatedSltExp = nowSeconds + sltExpiresInSeconds // Tính toán thời gian hết hạn
 
-    const sltJwtPayload: SltJwtPayload = {
+    const sltJwtPayload: Omit<SltJwtPayload, 'exp'> = {
+      // Bỏ 'exp' khỏi payload
       jti: sltJti,
       sub: userId,
-      pur: purpose,
-      exp: nowSeconds + sltExpiresInSeconds
+      pur: purpose
     }
 
     const sltJwt = this.jwtService.sign(sltJwtPayload, {
+      // Sử dụng sign đồng bộ
       secret: envConfig.SLT_JWT_SECRET,
-      expiresIn: `${sltExpiresInSeconds}s` // Ensure this is a string with 's'
+      expiresIn: `${sltExpiresInSeconds}s` // Để expiresIn trong options xử lý
     })
 
     const sltContextDataToStore: SltContextData = {
@@ -370,7 +372,7 @@ export class OtpService {
       ipAddress,
       userAgent,
       purpose,
-      sltJwtExp: sltJwtPayload.exp,
+      sltJwtExp: calculatedSltExp, // Sử dụng giá trị đã tính toán
       sltJwtCreatedAt: nowSeconds,
       finalized: '0',
       attempts: 0, // Initialize attempts
