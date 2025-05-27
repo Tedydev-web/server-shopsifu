@@ -13,7 +13,8 @@ import {
   Param,
   Patch,
   Delete,
-  UseGuards
+  UseGuards,
+  ParseIntPipe
 } from '@nestjs/common'
 import { Response, Request } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
@@ -34,17 +35,23 @@ import {
   TwoFactorConfirmSetupBodyDTO,
   TwoFactorConfirmSetupResDTO,
   RememberMeBodyDTO,
-  RefreshTokenSuccessResDTO
+  RefreshTokenSuccessResDTO,
+  UserProfileResDTO
 } from 'src/routes/auth/auth.dto'
 import {
-  GetActiveSessionsResDTO,
+  // GetActiveSessionsResDTO, // Keep for now if other parts of the app use it, otherwise remove
   RevokeSessionParamsDTO,
-  GetDevicesResDTO,
+  // GetDevicesResDTO, // Removed as the endpoint is being phased out
   DeviceIdParamsDTO,
   UpdateDeviceNameBodyDTO,
   TrustDeviceBodyDTO as SessionTrustDeviceBodyDTO,
   UntrustDeviceBodyDTO as SessionUntrustDeviceBodyDTO,
-  RevokeSessionsBodyDTO
+  RevokeSessionsBodyDTO,
+  GetSessionsGroupedByDeviceResDTO,
+  GetSessionsByDeviceQueryDTO,
+  DeviceWithSessionsSchema,
+  GetSessionsGroupedByDeviceResSchema,
+  DeviceInfoSchema
 } from './dtos/session-management.dto'
 import { UserProfileResSchema, LoginSessionResSchema } from './auth.model'
 import { UseZodSchemas, hasProperty } from 'src/shared/decorators/use-zod-schema.decorator'
@@ -67,9 +74,8 @@ import { SessionManagementService } from 'src/routes/auth/services/session-manag
 import { AccessTokenGuard } from './guards/access-token.guard'
 import { RolesGuard } from './guards/roles.guard'
 import { PaginatedResponseType } from 'src/shared/models/pagination.model'
-import { ActiveSessionSchema, DeviceInfoSchema } from './dtos/session-management.dto'
+import { ActiveSessionSchema } from './dtos/session-management.dto'
 import { z } from 'zod'
-import { GetActiveSessionsQueryDTO } from './dtos/session-management.dto'
 import { AuthType } from 'src/shared/constants/auth.constant'
 import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
 import { Auth } from './decorators/auth.decorator'
@@ -83,7 +89,6 @@ import { JwtService } from '@nestjs/jwt'
 import { GoogleCallbackSuccessResult } from './google.service'
 import { AuthenticationService } from './services/authentication.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { UserProfileResDTO } from './auth.dto'
 import { Buffer } from 'buffer'
 
 @Controller('auth')
@@ -213,7 +218,7 @@ export class AuthController {
       domain: nonceCookieConfig.domain,
       maxAge: nonceCookieConfig.maxAge,
       httpOnly: nonceCookieConfig.httpOnly,
-      secure: isDevelopment ? false : nonceCookieConfig.secure,
+      secure: nonceCookieConfig.secure,
       sameSite: nonceCookieConfig.sameSite
     })
 
@@ -593,22 +598,20 @@ export class AuthController {
 
   @Get('sessions')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @ZodSerializerDto(GetActiveSessionsResDTO)
+  @ZodSerializerDto(GetSessionsGroupedByDeviceResDTO)
   async getActiveSessions(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Query() query: GetActiveSessionsQueryDTO
-  ): Promise<PaginatedResponseType<z.infer<typeof ActiveSessionSchema>>> {
+    @Query() query: GetSessionsByDeviceQueryDTO
+  ): Promise<z.infer<typeof GetSessionsGroupedByDeviceResSchema>> {
     this.logger.debug(
-      `User ${activeUser.userId} fetching active sessions. Current session: ${activeUser.sessionId}, current device: ${activeUser.deviceId}, query: ${JSON.stringify(query)}`
+      `User ${activeUser.userId} fetching active sessions (grouped by device). Current session: ${activeUser.sessionId}, current device: ${activeUser.deviceId}, query: ${JSON.stringify(query)}`
     )
-    const paginatedSessions = await this.sessionManagementService.getActiveSessions(
+    return this.sessionManagementService.getActiveSessions(
       activeUser.userId,
       activeUser.sessionId,
       activeUser.deviceId,
-      query.deviceId
+      query
     )
-    this.logger.debug(`Paginated active sessions from service: ${JSON.stringify(paginatedSessions, null, 2)}`)
-    return paginatedSessions
   }
 
   @Delete('sessions/:sessionId')
@@ -625,17 +628,20 @@ export class AuthController {
     return this.sessionManagementService.revokeMultipleSessions(activeUser.userId, activeUser.sessionId, body)
   }
 
+  /* // Temporarily comment out GET /devices endpoint
   @Get('devices')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @ZodSerializerDto(GetDevicesResDTO)
+  // @ZodSerializerDto(GetDevicesResDTO) // This DTO is also commented out
   async getManagedDevices(
     @ActiveUser('userId') userId: number
   ): Promise<PaginatedResponseType<z.infer<typeof DeviceInfoSchema>>> {
     this.logger.debug(`User ${userId} fetching managed devices.`)
-    const paginatedDevices = await this.sessionManagementService.getManagedDevices(userId)
-    this.logger.debug(`Paginated managed devices from service: ${JSON.stringify(paginatedDevices, null, 2)}`)
-    return paginatedDevices
+    // const paginatedDevices = await this.sessionManagementService.getManagedDevices(userId) // Service method is also commented out
+    this.logger.debug(`Paginated managed devices from service: getManagedDevices temporarily disabled`)
+    // return paginatedDevices
+    throw new Error('This endpoint is temporarily disabled.') // Or return an appropriate HTTP error
   }
+  */
 
   @Patch('devices/:deviceId/name')
   @HttpCode(HttpStatus.OK)
@@ -663,11 +669,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
   untrustManagedDevice(
-    @ActiveUser('userId') userId: number,
+    @ActiveUser() activeUser: AccessTokenPayload,
     @Param() params: DeviceIdParamsDTO,
     @Body() _body: SessionUntrustDeviceBodyDTO
   ) {
-    return this.sessionManagementService.untrustManagedDevice(userId, params.deviceId)
+    return this.sessionManagementService.untrustManagedDevice(activeUser.userId, params.deviceId, activeUser.sessionId)
   }
 
   @Post('sessions/current/trust-device')
@@ -677,4 +683,25 @@ export class AuthController {
     // activeUser.deviceId is the ID of the device record in the database
     return this.sessionManagementService.trustCurrentDevice(activeUser.userId, activeUser.deviceId)
   }
+
+  // --- DEBUG ENDPOINTS (temporary) ---
+  @Get('debug/sessions-for-device/:deviceId')
+  @UseGuards(AccessTokenGuard) // Hoặc một guard nào đó phù hợp cho debug, ví dụ RolesGuard cho Admin
+  @SkipThrottle()
+  @HttpCode(HttpStatus.OK)
+  async debugGetSessionsForDevice(
+    @Param('deviceId', ParseIntPipe) deviceId: number,
+    @Query('userId', ParseIntPipe) userId: number,
+    @ActiveUser() activeUser: AccessTokenPayload // Để kiểm tra quyền nếu cần
+  ) {
+    this.logger.log(
+      `[DEBUG ENDPOINT] User ${activeUser.userId} (Role: ${activeUser.roleName}) is requesting raw sessions for deviceId: ${deviceId}, targetUserId: ${userId}`
+    )
+    // // Optional: Add role check or specific user check for more security
+    // if (activeUser.roleName !== 'ADMIN' && activeUser.userId !== userId) {
+    //   throw new ForbiddenException('You do not have permission to access this debug information.');
+    // }
+    return await this.sessionManagementService.debugGetRawSessionsForDevice(deviceId, userId)
+  }
+  // --- END DEBUG ENDPOINTS ---
 }

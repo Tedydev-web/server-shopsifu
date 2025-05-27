@@ -2,10 +2,13 @@ import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import {
-  ActiveSessionSchema,
-  DeviceInfoSchema,
-  GetActiveSessionsResSchema,
-  RevokeSessionsBodyDTO
+  // ActiveSessionSchema, // Old schema, replaced by DeviceWithSessionsSchema
+  // DeviceInfoSchema, // Old schema for GET /devices
+  // GetActiveSessionsResSchema, // Old schema, replaced by GetSessionsGroupedByDeviceResSchema
+  RevokeSessionsBodyDTO,
+  DeviceWithSessionsSchema, // New schema for items in the response
+  NestedSessionSchema, // Schema for sessions nested under devices
+  GetSessionsByDeviceQueryDTO // New query DTO for pagination and sorting of devices
 } from '../dtos/session-management.dto'
 import { z } from 'zod'
 import { UAParser } from 'ua-parser-js'
@@ -14,13 +17,14 @@ import { ApiException } from 'src/shared/exceptions/api.exception'
 import { I18nContext } from 'nestjs-i18n'
 import { AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { Prisma } from '@prisma/client'
-import { PaginatedResponseType } from 'src/shared/models/pagination.model'
+import { PaginatedResponseType, createPaginatedResponse } from 'src/shared/models/pagination.model'
 import { SessionNotFoundException } from '../auth.error'
 import envConfig from 'src/shared/config'
 import { DeviceNotFoundForUserException } from '../auth.error'
 
-type ActiveSessionType = z.infer<typeof ActiveSessionSchema>
-type DeviceInfoType = z.infer<typeof DeviceInfoSchema>
+// Define types based on new Zod schemas
+type DeviceWithSessionsType = z.infer<typeof DeviceWithSessionsSchema>
+type NestedSessionType = z.infer<typeof NestedSessionSchema>
 
 @Injectable()
 export class SessionManagementService extends BaseAuthService {
@@ -30,7 +34,7 @@ export class SessionManagementService extends BaseAuthService {
     parsedDeviceType?: string,
     osName?: string,
     browserName?: string
-  ): ActiveSessionType['device']['type'] {
+  ): DeviceWithSessionsType['type'] {
     switch (parsedDeviceType) {
       case 'console':
       case 'mobile':
@@ -39,205 +43,144 @@ export class SessionManagementService extends BaseAuthService {
         return parsedDeviceType
       case 'smarttv':
         return 'tv'
-      // Thêm các case khác từ ua-parser-js nếu cần
-      // ví dụ: 'embedded' có thể map sang 'unknown' hoặc một enum mới nếu bạn muốn hỗ trợ
       default:
-        // Nếu không có device type cụ thể từ parser, nhưng có OS và browser, khả năng cao là desktop
         if (osName && browserName && !parsedDeviceType) {
           return 'desktop'
         }
-        // Nếu parsedDeviceType có giá trị nhưng không nằm trong các case trên, hoặc không có os/browser
-        // thì coi là 'unknown'
         return 'unknown'
     }
   }
 
   async getActiveSessions(
     userId: number,
-    currentSessionId: string,
-    currentDeviceId: number,
-    filterByDeviceId?: number
-  ): Promise<PaginatedResponseType<ActiveSessionType>> {
+    currentSessionIdFromRequest: string,
+    currentDeviceIdFromRequest: number,
+    query: GetSessionsByDeviceQueryDTO
+  ): Promise<PaginatedResponseType<DeviceWithSessionsType>> {
     this.sessionManagementLogger.debug(
-      `Fetching active sessions for user ${userId}, currentSessionId: ${currentSessionId}, currentDeviceId: ${currentDeviceId}, filterByDeviceId: ${filterByDeviceId}`
+      `Fetching active sessions grouped by device for user ${userId}. Query: ${JSON.stringify(query)}`
     )
-    const userSessionKeys = await this.redisService.smembers(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`)
-    if (!userSessionKeys || userSessionKeys.length === 0) {
-      return {
-        data: [],
-        totalItems: 0,
-        page: 1,
-        limit: 0,
-        totalPages: 0
-      }
+
+    const { page = 1, limit = 10, sortBy = 'lastSeenAt', sortOrder = 'desc' } = query
+
+    // 1. Fetch paginated devices from DB
+    const skip = (page - 1) * limit
+    const take = limit
+
+    let orderByClause: Prisma.DeviceOrderByWithRelationInput = {}
+    if (sortBy === 'lastSeenAt') {
+      orderByClause = { lastActive: sortOrder }
+    } else if (sortBy === 'firstSeenAt') {
+      orderByClause = { createdAt: sortOrder }
+    } else if (sortBy === 'name') {
+      orderByClause = { name: sortOrder }
     }
 
-    const activeSessionsData: ActiveSessionType[] = []
-    const sessionDetailsList: Array<Record<string, string> & { originalSessionId: string }> = []
-    const deviceIdsToFetch = new Set<number>()
-
-    // Bước 1: Lấy tất cả chi tiết session từ Redis
-    const redisPipeline = this.redisService.client.pipeline()
-    userSessionKeys.forEach((sessionId) => {
-      redisPipeline.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`)
+    const dbDevices = await this.prismaService.device.findMany({
+      where: { userId, isActive: true }, // Consider only active devices
+      orderBy: orderByClause,
+      skip,
+      take
     })
-    const results = await redisPipeline.exec()
 
-    if (!results) {
-      this.sessionManagementLogger.warn(`Pipeline to fetch session details for user ${userId} returned null.`)
-      return {
-        data: [],
-        totalItems: 0,
-        page: 1,
-        limit: 0,
-        totalPages: 0
-      }
+    const totalDevices = await this.prismaService.device.count({
+      where: { userId, isActive: true }
+    })
+
+    if (dbDevices.length === 0) {
+      return createPaginatedResponse([], totalDevices, { page, limit, sortBy, sortOrder })
     }
 
-    for (let i = 0; i < results.length; i++) {
-      const pipelineItem = results[i]
-      if (!pipelineItem) {
-        this.sessionManagementLogger.warn(`Pipeline result item at index ${i} for user ${userId} is null. Skipping.`)
-        continue
-      }
+    const devicesWithSessions: DeviceWithSessionsType[] = []
 
-      const [err, dataFromRedis] = pipelineItem // dataFromRedis is 'any'
+    // 2. For each device, fetch its sessions from Redis
+    for (const dbDevice of dbDevices) {
+      const deviceSessionIds = await this.redisService.smembers(`${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${dbDevice.id}`)
 
-      if (err) {
-        this.sessionManagementLogger.warn(
-          `Error in Redis pipeline for session ${userSessionKeys[i]} (user ${userId}): ${err.message}. Skipping.`
-        )
-        continue
-      }
+      const nestedSessions: NestedSessionType[] = []
+      if (deviceSessionIds.length > 0) {
+        const sessionDetailsPipeline = this.redisService.client.pipeline()
+        deviceSessionIds.forEach((sid) => {
+          sessionDetailsPipeline.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sid}`)
+        })
+        const redisResults = await sessionDetailsPipeline.exec()
 
-      if (typeof dataFromRedis !== 'object' || dataFromRedis === null) {
-        this.sessionManagementLogger.warn(
-          `Invalid data type for session ${userSessionKeys[i]} (user ${userId}): expected object, got ${typeof dataFromRedis}. Skipping.`
-        )
-        continue
-      }
+        if (redisResults) {
+          for (let i = 0; i < redisResults.length; i++) {
+            const pipelineItem = redisResults[i]
+            if (pipelineItem && !pipelineItem[0] && pipelineItem[1]) {
+              const sessionData = pipelineItem[1] as Record<string, string>
 
-      const sessionDetails = dataFromRedis as Record<string, string>
+              if (
+                !sessionData.createdAt ||
+                !sessionData.lastActiveAt ||
+                parseInt(sessionData.userId, 10) !== userId || // Ensure session belongs to user
+                parseInt(sessionData.deviceId, 10) !== dbDevice.id // Ensure session belongs to this device
+              ) {
+                this.sessionManagementLogger.warn(
+                  `Session ${deviceSessionIds[i]} has missing/invalid data or mismatch. Skipping.`
+                )
+                continue
+              }
 
-      if (Object.keys(sessionDetails).length === 0) {
-        this.sessionManagementLogger.warn(
-          `Empty session data for session ${userSessionKeys[i]} (user ${userId}). Skipping.`
-        )
-        continue
-      }
+              let validIpAddress: string | null = null
+              if (sessionData.ipAddress && sessionData.ipAddress.trim() !== '') {
+                try {
+                  z.string().ip().parse(sessionData.ipAddress)
+                  validIpAddress = sessionData.ipAddress
+                } catch (e) {
+                  this.sessionManagementLogger.warn(
+                    `Session ${deviceSessionIds[i]} has an invalid IP address format ('${sessionData.ipAddress}'). Setting to null.`
+                  )
+                }
+              }
 
-      if (
-        !sessionDetails.createdAt ||
-        !sessionDetails.lastActiveAt ||
-        !sessionDetails.deviceId ||
-        !sessionDetails.userId ||
-        parseInt(sessionDetails.userId, 10) !== userId
-      ) {
-        this.sessionManagementLogger.warn(
-          `Session ${userSessionKeys[i]} for user ${
-            sessionDetails.userId || 'UNKNOWN'
-          } is missing critical details or userId mismatch. Skipping.`
-        )
-        continue
-      }
+              const locationInfo = validIpAddress ? this.geolocationService.lookup(validIpAddress) : null
+              const locationString = locationInfo
+                ? `${locationInfo.city || 'Unknown City'}, ${locationInfo.country || 'Unknown Country'}`
+                : 'Location unknown'
 
-      // Apply deviceId filter if provided
-      if (filterByDeviceId !== undefined && parseInt(sessionDetails.deviceId, 10) !== filterByDeviceId) {
-        continue
-      }
-
-      sessionDetailsList.push({ ...sessionDetails, originalSessionId: userSessionKeys[i] })
-      const deviceIdFromSession = parseInt(sessionDetails.deviceId, 10)
-      if (!isNaN(deviceIdFromSession)) {
-        deviceIdsToFetch.add(deviceIdFromSession)
-      }
-    }
-
-    // Bước 2: Lấy tất cả device info từ DB một lần
-    let devicesMap = new Map<number, Device>()
-    if (deviceIdsToFetch.size > 0) {
-      const dbDevices = await this.prismaService.device.findMany({
-        where: {
-          id: { in: Array.from(deviceIdsToFetch) },
-          userId: userId // Ensure devices belong to the user
+              nestedSessions.push({
+                sessionId: deviceSessionIds[i],
+                ipAddress: validIpAddress,
+                location: locationString,
+                loggedInAt: new Date(sessionData.createdAt).toISOString(),
+                lastActiveAt: new Date(sessionData.lastActiveAt).toISOString(),
+                isCurrentSession: deviceSessionIds[i] === currentSessionIdFromRequest
+              })
+            }
+          }
         }
-      })
-      devicesMap = new Map(dbDevices.map((device) => [device.id, device]))
-    }
-
-    // Bước 3: Xây dựng kết quả
-    for (const sessionDetails of sessionDetailsList) {
-      const loggedInAtDate = new Date(sessionDetails.createdAt)
-      const lastActiveAtDate = new Date(sessionDetails.lastActiveAt)
-
-      if (isNaN(loggedInAtDate.getTime()) || isNaN(lastActiveAtDate.getTime())) {
-        this.sessionManagementLogger.warn(
-          `Session ${sessionDetails.originalSessionId} for user ${sessionDetails.userId} has invalid date formats. Skipping.`
-        )
-        continue
+        // Sort sessions within a device, current first, then by last active
+        nestedSessions.sort((a, b) => {
+          if (a.isCurrentSession) return -1
+          if (b.isCurrentSession) return 1
+          return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+        })
       }
 
-      const deviceIdFromSession = parseInt(sessionDetails.deviceId, 10)
-      const dbDevice = devicesMap.get(deviceIdFromSession)
-      const deviceName = dbDevice?.name || null
-
-      const uaParser = new UAParser(sessionDetails.userAgent)
+      // Normalize device info for the response
+      const uaParser = new UAParser(dbDevice.userAgent)
       const browser = uaParser.getBrowser()
       const os = uaParser.getOS()
       const parsedDeviceType = uaParser.getDevice().type
+      const normalizedDeviceType = this._normalizeDeviceType(parsedDeviceType, os.name, browser.name)
 
-      const type = this._normalizeDeviceType(parsedDeviceType, os.name, browser.name)
-
-      const location = sessionDetails.ipAddress ? this.geolocationService.lookup(sessionDetails.ipAddress) : null
-      const locationString = location
-        ? `${location.city || 'Unknown City'}, ${location.country || 'Unknown Country'}`
-        : 'Location unknown'
-
-      let validIpAddress: string | null = null
-      if (sessionDetails.ipAddress && sessionDetails.ipAddress.trim() !== '') {
-        try {
-          z.string().ip().parse(sessionDetails.ipAddress)
-          validIpAddress = sessionDetails.ipAddress
-        } catch (e) {
-          this.sessionManagementLogger.warn(
-            `Session ${sessionDetails.originalSessionId} has an invalid IP address format ('${sessionDetails.ipAddress}'). Setting to null.`
-          )
-        }
-      }
-
-      activeSessionsData.push({
-        sessionId: sessionDetails.originalSessionId,
-        device: {
-          id: deviceIdFromSession,
-          name: deviceName,
-          type: type,
-          os: os.name && os.version ? `${os.name} ${os.version}` : os.name || null,
-          browser: browser.name && browser.version ? `${browser.name} ${browser.version}` : browser.name || null,
-          isCurrentDevice:
-            deviceIdFromSession === currentDeviceId && sessionDetails.originalSessionId === currentSessionId
-        },
-        ipAddress: validIpAddress,
-        location: locationString,
-        loggedInAt: loggedInAtDate.toISOString(),
-        lastActiveAt: lastActiveAtDate.toISOString(),
-        isCurrentSession: sessionDetails.originalSessionId === currentSessionId
+      devicesWithSessions.push({
+        id: dbDevice.id,
+        name: dbDevice.name,
+        type: normalizedDeviceType,
+        os: os.name && os.version ? `${os.name} ${os.version}` : os.name || null,
+        browser: browser.name && browser.version ? `${browser.name} ${browser.version}` : browser.name || null,
+        firstSeenAt: dbDevice.createdAt.toISOString(),
+        lastSeenAt: dbDevice.lastActive.toISOString(),
+        isTrusted: dbDevice.isTrusted,
+        isCurrentDevice: dbDevice.id === currentDeviceIdFromRequest,
+        sessions: nestedSessions
       })
     }
 
-    activeSessionsData.sort((a, b) => {
-      if (a.isCurrentSession) return -1
-      if (b.isCurrentSession) return 1
-      return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
-    })
-
-    // Wrap in paginated response structure
-    return {
-      data: activeSessionsData,
-      totalItems: activeSessionsData.length,
-      page: 1, // Default to page 1 as no pagination params are taken
-      limit: activeSessionsData.length > 0 ? activeSessionsData.length : 1, // Avoid limit 0
-      totalPages: 1 // Default to 1 total page
-    }
+    return createPaginatedResponse(devicesWithSessions, totalDevices, { page, limit, sortBy, sortOrder })
   }
 
   async revokeSession(
@@ -297,6 +240,8 @@ export class SessionManagementService extends BaseAuthService {
     })
   }
 
+  // Temporarily comment out getManagedDevices as it uses old DeviceInfoType which is being removed
+  /*
   async getManagedDevices(userId: number): Promise<PaginatedResponseType<DeviceInfoType>> {
     this.sessionManagementLogger.debug(`User ${userId} fetching managed devices.`)
     const devicesFromDb = await this.prismaService.device.findMany({
@@ -310,7 +255,7 @@ export class SessionManagementService extends BaseAuthService {
       const os = uaParser.getOS()
       const parsedDeviceType = uaParser.getDevice().type
 
-      const type = this._normalizeDeviceType(parsedDeviceType, os.name, browser.name)
+      const type = this._normalizeDeviceType(parsedDeviceType, os.name, browser.name) as DeviceInfoType['type'] // Cast needed if _normalizeDeviceType is strictly for DeviceWithSessionsType
 
       let location: string | null = device.ip || null
       if (device.ip) {
@@ -343,6 +288,7 @@ export class SessionManagementService extends BaseAuthService {
       totalPages: 1 // Default to 1 total page
     }
   }
+  */
 
   async updateDeviceName(userId: number, deviceId: number, name: string): Promise<{ message: string }> {
     const device = await this.prismaService.device.findUnique({ where: { id: deviceId } })
@@ -409,10 +355,23 @@ export class SessionManagementService extends BaseAuthService {
     return { message }
   }
 
-  async untrustManagedDevice(userId: number, deviceId: number): Promise<{ message: string }> {
+  async untrustManagedDevice(
+    userId: number,
+    deviceId: number,
+    currentSessionIdPerformingAction?: string
+  ): Promise<{ message: string }> {
     const device = await this.prismaService.device.findUnique({ where: { id: deviceId } })
     if (!device || device.userId !== userId) {
       throw new ApiException(HttpStatus.NOT_FOUND, 'DEVICE_NOT_FOUND', 'Error.Auth.Device.NotFound')
+    }
+
+    if (!device.isTrusted) {
+      this.sessionManagementLogger.log(`Device ${deviceId} is already untrusted for user ${userId}. No action needed.`)
+      const message = await this.i18nService.translate('Auth.Device.AlreadyUntrusted', {
+        lang: I18nContext.current()?.lang,
+        defaultValue: 'Device is already untrusted.'
+      })
+      return { message }
     }
 
     await this.prismaService.device.update({
@@ -420,15 +379,36 @@ export class SessionManagementService extends BaseAuthService {
       data: { isTrusted: false }
     })
 
-    // Also update all active sessions for this device on Redis
-    const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`
-    const sessionIds = await this.redisService.smembers(userSessionsKey)
-    for (const sessionId of sessionIds) {
-      const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-      const sessionDeviceId = await this.redisService.hget(sessionDetailsKey, 'deviceId')
-      if (sessionDeviceId && parseInt(sessionDeviceId, 10) === deviceId) {
-        await this.redisService.hset(sessionDetailsKey, 'isTrusted', 'false')
+    // Revoke all active sessions for this device, except potentially the current one performing the action
+    const sessionsForDevice = await this.getAllSessionsForDevice(userId, deviceId)
+    let revokedCount = 0
+    if (sessionsForDevice.length > 0) {
+      this.sessionManagementLogger.log(
+        `Found ${sessionsForDevice.length} sessions for device ${deviceId} to potentially revoke after untrusting.`
+      )
+      for (const sessionIdToRevoke of sessionsForDevice) {
+        if (currentSessionIdPerformingAction && sessionIdToRevoke === currentSessionIdPerformingAction) {
+          this.sessionManagementLogger.warn(
+            `Skipping current session ${currentSessionIdPerformingAction} on device ${deviceId} during untrust operation.`
+          )
+          // Even if we skip revoking the current session, we should ensure its 'isTrusted' flag (if stored in Redis session) is updated
+          // However, our primary mechanism is that new tokens will reflect the untrusted state from DB.
+          // For now, we won't update Redis session details here as it might be complex if session is still active.
+          // The main goal is to revoke other sessions.
+          continue
+        }
+        try {
+          // Use a more specific reason for audit trails in TokenService if possible
+          await this.tokenService.invalidateSession(sessionIdToRevoke, 'DEVICE_UNTRUSTED_SESSIONS_REVOKED')
+          revokedCount++
+        } catch (error) {
+          this.sessionManagementLogger.error(
+            `Failed to revoke session ${sessionIdToRevoke} for device ${deviceId} during untrust operation:`,
+            error
+          )
+        }
       }
+      this.sessionManagementLogger.log(`Revoked ${revokedCount} sessions for device ${deviceId} after untrusting.`)
     }
 
     this.auditLogService.record({
@@ -437,7 +417,10 @@ export class SessionManagementService extends BaseAuthService {
       entity: 'Device',
       entityId: deviceId,
       status: AuditLogStatus.SUCCESS,
-      details: { deviceUserAgent: device.userAgent } as Prisma.JsonObject
+      details: {
+        deviceUserAgent: device.userAgent,
+        sessionsRevoked: revokedCount
+      } as Prisma.JsonObject
     })
 
     const message = await this.i18nService.translate('Auth.Device.Untrusted', { lang: I18nContext.current()?.lang })
@@ -536,29 +519,53 @@ export class SessionManagementService extends BaseAuthService {
       auditDetails.sessionsRevokedByList = totalRevokedCount
     } else if (deviceIds && deviceIds.length > 0) {
       this.sessionManagementLogger.log(`Revoking sessions for devices of user ${userId}: ${deviceIds.join(', ')}`)
-      for (const deviceIdToUntrust of deviceIds) {
-        const device = await this.deviceService.findDeviceById(deviceIdToUntrust)
+      for (const deviceId of deviceIds) {
+        const device = await this.deviceService.findDeviceById(deviceId)
         if (!device || device.userId !== userId) {
-          this.sessionManagementLogger.warn(
-            `Device ${deviceIdToUntrust} not found or not owned by user ${userId}. Skipping.`
-          )
+          this.sessionManagementLogger.warn(`Device ${deviceId} not found or not owned by user ${userId}. Skipping.`)
           continue
         }
 
-        const revokedForDevice = await this.tokenService.invalidateSessionsByDeviceId(
-          deviceIdToUntrust,
-          'BULK_REVOKE_DEVICE_SESSIONS'
-        )
-        totalRevokedCount += revokedForDevice
-        // Untrust the device
-        if (device.isTrusted) {
-          await this.deviceService.updateDevice(deviceIdToUntrust, { isTrusted: false })
-          devicesUntrustedCount++
-          this.sessionManagementLogger.log(`Device ${deviceIdToUntrust} untrusted for user ${userId}.`)
+        // Get all session IDs for this device
+        const sessionsForDevice = await this.getAllSessionsForDevice(userId, deviceId)
+        if (sessionsForDevice.length === 0) {
+          this.sessionManagementLogger.log(`No active sessions found for device ${deviceId} to revoke.`)
+        }
+
+        for (const sessionIdToRevoke of sessionsForDevice) {
+          if (sessionIdToRevoke === currentSessionId) {
+            this.sessionManagementLogger.warn(
+              `Skipping current session ${currentSessionId} on device ${deviceId} during bulk device revoke.`
+            )
+            continue
+          }
+          try {
+            await this.revokeSessionInternal(userId, sessionIdToRevoke, currentSessionId, 'BULK_REVOKE_DEVICE_SESSIONS')
+            totalRevokedCount++
+          } catch (error) {
+            this.sessionManagementLogger.error(
+              `Failed to revoke session ${sessionIdToRevoke} for device ${deviceId} of user ${userId} during bulk operation:`,
+              error
+            )
+          }
+        }
+
+        // Untrust the device if requested (and it was trusted)
+        if (body.untrustDevices && device.isTrusted) {
+          try {
+            await this.deviceService.updateDevice(deviceId, { isTrusted: false })
+            devicesUntrustedCount++
+            this.sessionManagementLogger.log(`Device ${deviceId} untrusted for user ${userId}.`)
+          } catch (error) {
+            this.sessionManagementLogger.error(
+              `Failed to untrust device ${deviceId} for user ${userId} during bulk operation:`,
+              error
+            )
+          }
         }
       }
-      auditDetails.sessionsRevokedByDevice = totalRevokedCount
-      auditDetails.devicesUntrusted = devicesUntrustedCount
+      auditDetails.sessionsRevokedByDeviceList = totalRevokedCount
+      auditDetails.devicesUntrustedCount = devicesUntrustedCount
     } else if (revokeAll) {
       this.sessionManagementLogger.log(`Revoking all sessions for user ${userId} except current ${currentSessionId}`)
       const result = await this.tokenService.invalidateAllUserSessions(
@@ -812,5 +819,49 @@ export class SessionManagementService extends BaseAuthService {
       }
     }
     return deviceSessions
+  }
+
+  async debugGetRawSessionsForDevice(deviceId: number, userId: number) {
+    this.sessionManagementLogger.debug(
+      `[DEBUG] Attempting to fetch raw sessions for deviceId: ${deviceId}, userId: ${userId}`
+    )
+    const deviceSessionsKey = `${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${deviceId}`
+    const sessionIds = await this.redisService.smembers(deviceSessionsKey)
+
+    if (!sessionIds || sessionIds.length === 0) {
+      this.sessionManagementLogger.debug(
+        `[DEBUG] No session IDs found for deviceId: ${deviceId} in key ${deviceSessionsKey}`
+      )
+      return { deviceId, userId, message: 'No sessions found for this device.', sessions: [] }
+    }
+
+    this.sessionManagementLogger.debug(`[DEBUG] Found session IDs for deviceId ${deviceId}: ${sessionIds.join(', ')}`)
+
+    const detailedSessions: Array<Record<string, any> & { sessionId: string }> = []
+    for (const sessionId of sessionIds) {
+      const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
+      const sessionDetails = await this.redisService.hgetall(sessionDetailsKey)
+      if (sessionDetails && Object.keys(sessionDetails).length > 0) {
+        this.sessionManagementLogger.debug(
+          `[DEBUG] Details for session ${sessionId}: ${JSON.stringify(sessionDetails)}`
+        )
+        // Verify if this session truly belongs to the user, as a sanity check
+        if (sessionDetails.userId && Number(sessionDetails.userId) === userId) {
+          detailedSessions.push({ sessionId, ...sessionDetails })
+        } else {
+          this.sessionManagementLogger.warn(
+            `[DEBUG] Session ${sessionId} for device ${deviceId} does NOT belong to user ${userId} (found user ${sessionDetails.userId}). Skipping.`
+          )
+        }
+      } else {
+        this.sessionManagementLogger.warn(
+          `[DEBUG] No details found for session ${sessionId} at key ${sessionDetailsKey}`
+        )
+      }
+    }
+    this.sessionManagementLogger.debug(
+      `[DEBUG] Returning ${detailedSessions.length} detailed sessions for deviceId: ${deviceId}, userId: ${userId}`
+    )
+    return { deviceId, userId, sessions: detailedSessions }
   }
 }

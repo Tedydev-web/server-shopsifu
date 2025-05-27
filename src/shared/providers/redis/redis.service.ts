@@ -79,6 +79,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async expire(key: RedisKey, seconds: number): Promise<number> {
+    this.logger.debug(
+      `[RedisService.expire] Called with key: "${String(key)}", seconds: ${seconds}, type of seconds: ${typeof seconds}`
+    )
+    if (typeof seconds !== 'number' || isNaN(seconds) || !isFinite(seconds) || Math.floor(seconds) !== seconds) {
+      this.logger.error(
+        `[RedisService.expire] Invalid 'seconds' argument. Key: "${String(key)}", Seconds: ${seconds} (Type: ${typeof seconds}). Must be a finite integer.`
+      )
+      // Potentially throw an error here, or return a specific value indicating failure, e.g., 0 or -1
+      // For now, let ioredis handle it to see if it surfaces a more specific error or if this log catches it first.
+      // throw new Error(`Invalid 'seconds' argument for EXPIRE command: ${seconds}`);
+    }
     return await this.redisClient.expire(key, seconds)
   }
 

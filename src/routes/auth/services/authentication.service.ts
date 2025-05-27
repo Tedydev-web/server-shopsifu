@@ -356,15 +356,21 @@ export class AuthenticationService extends BaseAuthService {
       const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
       const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
 
-      const absoluteSessionLifetimeSeconds = Math.floor(ms(envConfig.ABSOLUTE_SESSION_LIFETIME_MS) / 1000)
+      const absoluteSessionLifetimeSeconds = Math.floor(absoluteSessionLifetimeMs / 1000)
       const refreshTokenTTL = maxAgeForRefreshTokenCookie
         ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
         : absoluteSessionLifetimeSeconds
+
+      this.logger.debug(
+        `[AuthenticationService.login] Preparing Redis pipeline for session ${sessionId}. ` +
+          `sessionKey TTL: ${absoluteSessionLifetimeSeconds}, refreshTokenJtiToSessionKey TTL: ${refreshTokenTTL}`
+      )
 
       await this.redisService.pipeline((pipeline) => {
         pipeline.hmset(sessionKey, sessionData as Record<string, string>)
         pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
         pipeline.sadd(userSessionsKey, sessionId)
+        pipeline.sadd(`${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${device.id}`, sessionId)
         pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
         return pipeline
       })
@@ -853,9 +859,7 @@ export class AuthenticationService extends BaseAuthService {
       sessionData.currentAccessTokenJti = accessTokenJti
       sessionData.currentRefreshTokenJti = refreshTokenJti
       const decodedToken = this.jwtService.decode(accessToken)
-      if (decodedToken && typeof decodedToken === 'object' && 'exp' in decodedToken) {
-        sessionData.accessTokenExp = decodedToken.exp
-      }
+      sessionData.accessTokenExp = decodedToken.exp
 
       let absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
       if (isNaN(absoluteSessionLifetimeMs)) {
@@ -880,6 +884,7 @@ export class AuthenticationService extends BaseAuthService {
         pipeline.hmset(sessionKey, sessionData as Record<string, string>)
         pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
         pipeline.sadd(userSessionsKey, sessionId)
+        pipeline.sadd(`${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${deviceRecord.id}`, sessionId)
         pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
         return pipeline
       })
@@ -1049,6 +1054,7 @@ export class AuthenticationService extends BaseAuthService {
         pipeline.hmset(sessionKey, sessionData as Record<string, string>)
         pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
         pipeline.sadd(userSessionsKey, sessionId)
+        pipeline.sadd(`${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${device.id}`, sessionId)
         pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
         return pipeline
       })

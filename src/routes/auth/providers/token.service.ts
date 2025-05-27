@@ -190,6 +190,10 @@ export class TokenService {
     }
     const refreshTokenExpiresInSeconds = Math.floor(refreshTokenExpiresInMs / 1000)
 
+    this.logger.debug(
+      `Calculated refreshTokenExpiresInSeconds: ${refreshTokenExpiresInSeconds} (from ${refreshTokenExpiresInMs}ms)`
+    )
+
     await this.redisService.set(
       `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`,
       sessionId,
@@ -205,7 +209,11 @@ export class TokenService {
     })
     const sessionTtl = await this.redisService.ttl(sessionKey)
     if (sessionTtl < 0 || sessionTtl < refreshTokenExpiresInSeconds) {
-      await this.redisService.expire(sessionKey, Math.floor(envConfig.ABSOLUTE_SESSION_LIFETIME_MS / 1000))
+      const absoluteSessionLifetimeInSeconds = Math.floor(envConfig.ABSOLUTE_SESSION_LIFETIME_MS / 1000)
+      this.logger.debug(
+        `Calculated absoluteSessionLifetimeInSeconds for session ${sessionId}: ${absoluteSessionLifetimeInSeconds} (from ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}ms). Current TTL: ${sessionTtl}`
+      )
+      await this.redisService.expire(sessionKey, absoluteSessionLifetimeInSeconds)
     }
 
     return {

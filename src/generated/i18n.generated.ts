@@ -20,6 +20,7 @@ export type I18nTranslations = {
         "Auth.RememberMe.Set": string;
         "Auth.2FA.Setup.Success": string;
         "Auth.Device.AlreadyTrusted": string;
+        "Auth.Device.AlreadyUntrusted": string;
         "Auth.2FA.Confirm.Success": string;
         "Auth.2FA.Verify.Success": string;
         "Auth.2FA.Verify.AskToTrustDevice": string;

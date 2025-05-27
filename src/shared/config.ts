@@ -107,19 +107,31 @@ switch (nodeEnv) {
     break
 }
 
+const convertMs = (value: string, defaultValue: number): number => {
+  const calculatedMs = ms(value)
+  if (typeof calculatedMs === 'number' && !isNaN(calculatedMs)) {
+    return calculatedMs
+  }
+  // Log a warning if the value is problematic but still allow fallback
+  console.warn(
+    `[Config] Invalid or unparseable time string encountered: '${value}'. Falling back to default: ${defaultValue}ms.`
+  )
+  return defaultValue
+}
+
 const envConfig = {
   ...parsedConfig, // Các biến từ process.env đã được parse và validate, bao gồm cả Redis vars
-  ACCESS_TOKEN_COOKIE_MAX_AGE: ms(parsedConfig.ACCESS_TOKEN_EXPIRES_IN),
-  REFRESH_TOKEN_COOKIE_MAX_AGE: ms(parsedConfig.REFRESH_TOKEN_EXPIRES_IN),
-  REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE: ms(parsedConfig.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN),
-  ABSOLUTE_SESSION_LIFETIME_MS: ms(parsedConfig.ABSOLUTE_SESSION_LIFETIME),
+  ACCESS_TOKEN_COOKIE_MAX_AGE: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('10m')),
+  REFRESH_TOKEN_COOKIE_MAX_AGE: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d')),
+  REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE: convertMs(parsedConfig.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN, ms('14d')),
+  ABSOLUTE_SESSION_LIFETIME_MS: convertMs(parsedConfig.ABSOLUTE_SESSION_LIFETIME, ms('30d')),
 
   cookie: {
     accessToken: {
       name: CookieNames.ACCESS_TOKEN,
       path: parsedConfig.COOKIE_PATH_ACCESS_TOKEN,
       domain: cookieDomain,
-      maxAge: ms(parsedConfig.ACCESS_TOKEN_EXPIRES_IN),
+      maxAge: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('10m')),
       httpOnly: true,
       secure: cookieSecure,
       sameSite: cookieSameSite
@@ -128,7 +140,7 @@ const envConfig = {
       name: CookieNames.REFRESH_TOKEN,
       path: parsedConfig.COOKIE_PATH_REFRESH_TOKEN,
       domain: cookieDomain,
-      maxAge: ms(parsedConfig.REFRESH_TOKEN_EXPIRES_IN),
+      maxAge: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d')),
       httpOnly: true,
       secure: cookieSecure,
       sameSite: cookieSameSite
@@ -137,19 +149,19 @@ const envConfig = {
       name: CookieNames.SLT_TOKEN,
       path: '/',
       domain: cookieDomain,
-      maxAge: ms(parsedConfig.SLT_JWT_EXPIRES_IN),
+      maxAge: convertMs(parsedConfig.SLT_JWT_EXPIRES_IN, ms('5m')),
       httpOnly: true,
       secure: cookieSecure,
-      sameSite: 'lax' as const
+      sameSite: cookieSameSite
     },
     nonce: {
       name: CookieNames.OAUTH_NONCE,
       path: '/',
       domain: cookieDomain,
-      maxAge: ms(parsedConfig.NONCE_COOKIE_MAX_AGE || '5m'),
+      maxAge: convertMs(parsedConfig.NONCE_COOKIE_MAX_AGE || '5m', ms('5m')),
       httpOnly: true,
       secure: cookieSecure,
-      sameSite: 'lax' as const
+      sameSite: cookieSameSite
     },
     csrfToken: {
       name: CookieNames.CSRF_TOKEN,
