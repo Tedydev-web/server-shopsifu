@@ -526,7 +526,8 @@ export class AuthenticationService extends BaseAuthService {
       const accessToken = this.tokenService.extractTokenFromHeader(req) // Try to get AT for logging userId
       if (accessToken) {
         try {
-          activeUserFromToken = await this.tokenService.verifyAccessToken(accessToken) // verify even if expired for userId
+          // Attempt to verify AT. Could be expired but still gives us payload for logging.
+          activeUserFromToken = await this.tokenService.verifyAccessToken(accessToken)
           auditLogEntry.userId = activeUserFromToken.userId
           if (activeUserFromToken.sessionId) {
             auditLogEntry.details = {
@@ -535,15 +536,41 @@ export class AuthenticationService extends BaseAuthService {
             } as Prisma.JsonObject
           }
         } catch (e) {
-          this.logger.debug('Could not decode access token during logout, proceeding with refresh token only.')
+          this.logger.debug(
+            'Could not decode or verify access token during logout. It might be expired or invalid. Will proceed if refresh token is present.'
+          )
+          // If AT is invalid/expired, we might not get activeUserFromToken.
+          // We still want to proceed if a refresh token is available.
+          // If AT is required for logout (strict check), this guard should be at controller level.
+          // For now, we allow logout with just RT if AT fails verification here.
         }
       }
 
       if (!refreshTokenFromCookie) {
-        this.logger.log('Logout called without refresh token cookie. Clearing only client-side cookies.')
+        this.logger.log('Logout called without refresh token cookie.')
+        if (activeUserFromToken && activeUserFromToken.sessionId) {
+          this.logger.log(
+            `Invalidating session ${activeUserFromToken.sessionId} based on Access Token as Refresh Token cookie is missing.`
+          )
+          await this.tokenService.invalidateSession(activeUserFromToken.sessionId, 'USER_LOGOUT_NO_RT_COOKIE_WITH_AT')
+          auditLogEntry.notes =
+            'Logout processed: No refresh token cookie, session invalidated based on Access Token. Client cookies cleared.'
+          auditLogEntry.details = {
+            ...(auditLogEntry.details as object),
+            sessionInvalidatedByAT: activeUserFromToken.sessionId
+          } as Prisma.JsonObject
+        } else {
+          this.logger.log(
+            'No refresh token cookie and no valid Access Token session to invalidate. Clearing only client-side cookies.'
+          )
+          auditLogEntry.notes = 'Logout processed: No refresh token cookie, no AT session. Client cookies cleared.'
+        }
+
         this.tokenService.clearTokenCookies(res) // Clear any lingering http-only cookies
+        const sltCookieConfig = envConfig.cookie.sltToken
+        res.clearCookie(sltCookieConfig.name, { path: sltCookieConfig.path, domain: sltCookieConfig.domain })
+
         auditLogEntry.status = AuditLogStatus.SUCCESS
-        auditLogEntry.notes = 'Logout processed: No refresh token, client cookies cleared.'
         await this.auditLogService.record(auditLogEntry as AuditLogData)
         const message = await this.i18nService.translate('Auth.Logout.Processed', {
           lang: I18nContext.current()?.lang
@@ -551,6 +578,7 @@ export class AuthenticationService extends BaseAuthService {
         return { message }
       }
 
+      // Proceed with refresh token based logout if refreshTokenFromCookie exists
       const sessionId = await this.tokenService.findSessionIdByRefreshTokenJti(refreshTokenFromCookie)
       if (sessionId) {
         auditLogEntry.details = {

@@ -68,7 +68,11 @@ const configSchema = z.object({
 
   // State-Linking Token (SLT) Configuration
   SLT_JWT_SECRET: z.string(),
-  SLT_JWT_EXPIRES_IN: z.string().default('5m')
+  SLT_JWT_EXPIRES_IN: z.string().default('5m'),
+
+  // New configuration for nonce cookie
+  NONCE_COOKIE_MAX_AGE: z.string().optional(),
+  COOKIE_DOMAIN: z.string().optional()
 })
 
 const configServer = configSchema.safeParse(process.env)
@@ -133,12 +137,21 @@ const envConfig = {
     },
     sltToken: {
       name: CookieNames.SLT_TOKEN,
-      path: parsedConfig.COOKIE_PATH_ACCESS_TOKEN,
-      domain: cookieDomain,
+      path: '/',
+      domain: parsedConfig.COOKIE_DOMAIN,
       maxAge: ms(parsedConfig.SLT_JWT_EXPIRES_IN),
       httpOnly: true,
       secure: cookieSecure,
-      sameSite: 'Strict'
+      sameSite: 'Lax' as const
+    },
+    nonce: {
+      name: CookieNames.OAUTH_NONCE,
+      path: '/',
+      domain: parsedConfig.COOKIE_DOMAIN,
+      maxAge: ms(parsedConfig.NONCE_COOKIE_MAX_AGE || '5m'),
+      httpOnly: true,
+      secure: cookieSecure,
+      sameSite: 'Lax' as const
     },
     csrfToken: {
       name: CookieNames.CSRF_TOKEN,

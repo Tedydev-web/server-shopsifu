@@ -48,6 +48,7 @@ model User {
   carts               CartItem[]
   orders              Order[]
   reviews             Review[]
+  googleId            String?              @unique
 
   createdPermissions Permission[] @relation("PermissionCreatedBy")
   updatedPermissions Permission[] @relation("PermissionUpdatedBy")

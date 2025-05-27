@@ -183,11 +183,23 @@ export class AuthController {
   @IsPublic()
   @ZodSerializerDto(GetAuthorizationUrlResDTO)
   @SkipThrottle()
-  getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string) {
-    return this.googleService.getAuthorizationUrl({
+  getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string, @Res({ passthrough: true }) res: Response) {
+    const { url, nonce } = this.googleService.getAuthorizationUrl({
       userAgent,
       ip
     })
+
+    const nonceCookieConfig = envConfig.cookie.nonce
+    res.cookie(CookieNames.OAUTH_NONCE, nonce, {
+      path: nonceCookieConfig.path,
+      domain: nonceCookieConfig.domain,
+      maxAge: nonceCookieConfig.maxAge,
+      httpOnly: nonceCookieConfig.httpOnly,
+      secure: nonceCookieConfig.secure,
+      sameSite: nonceCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+    })
+
+    return { url }
   }
 
   @Get('google/callback')
@@ -195,12 +207,52 @@ export class AuthController {
   @SkipThrottle()
   async googleCallback(
     @Query('code') code: string,
-    @Query('state') state: string,
+    @Query('state') stateFromGoogle: string,
     @Res() res: Response,
+    @Req() req: Request,
     @UserAgent() userAgent: string,
     @Ip() ip: string
   ) {
     const currentLang = I18nContext.current()?.lang
+    const nonceFromCookie = req.cookies?.[CookieNames.OAUTH_NONCE]
+    const nonceCookieConfig = envConfig.cookie.nonce
+    res.clearCookie(CookieNames.OAUTH_NONCE, {
+      path: nonceCookieConfig.path,
+      domain: nonceCookieConfig.domain,
+      httpOnly: nonceCookieConfig.httpOnly,
+      secure: nonceCookieConfig.secure,
+      sameSite: nonceCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+    })
+
+    let nonceFromStateParam: string | undefined
+    if (stateFromGoogle) {
+      try {
+        const decodedStateObj = JSON.parse(Buffer.from(stateFromGoogle, 'base64').toString('utf-8'))
+        nonceFromStateParam = decodedStateObj?.nonce
+      } catch (e) {
+        this.logger.error('[GoogleCallback] Failed to parse state parameter from Google.', e)
+        const genericErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
+          lang: currentLang
+        })
+        return res.redirect(
+          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=invalid_state&errorMessage=${encodeURIComponent(genericErrorMessage)}`
+        )
+      }
+    }
+
+    if (!nonceFromCookie || !nonceFromStateParam || nonceFromCookie !== nonceFromStateParam) {
+      this.logger.error(
+        `[GoogleCallback] Nonce mismatch or missing. Cookie: ${nonceFromCookie ? 'present' : 'missing'}, StateParam: ${nonceFromStateParam ? 'present' : 'missing'}. CSRF attempt?`
+      )
+      const csrfErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CsrfOrStateMismatch', {
+        lang: currentLang,
+        defaultValue: 'Login with Google failed due to a security check. Please try again.'
+      })
+      return res.redirect(
+        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=csrf_error&errorMessage=${encodeURIComponent(csrfErrorMessage)}`
+      )
+    }
+
     try {
       if (!code) {
         const missingCodeMessage = await this.i18nService.translate('error.Error.Auth.Google.MissingCode', {
@@ -213,7 +265,7 @@ export class AuthController {
 
       const data = await this.googleService.googleCallback({
         code,
-        state,
+        state: stateFromGoogle,
         userAgent,
         ip
       })

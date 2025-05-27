@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import { OAuth2Client } from 'google-auth-library'
 import { google } from 'googleapis'
 import { GoogleAuthStateType } from 'src/routes/auth/auth.model'
@@ -16,9 +16,12 @@ import { I18nService, I18nContext } from 'nestjs-i18n'
 import { TokenService } from 'src/routes/auth/providers/token.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { Prisma } from '@prisma/client'
+import { ApiException } from 'src/shared/exceptions/api.exception'
 
 @Injectable()
 export class GoogleService {
+  private readonly logger = new Logger(GoogleService.name)
   private oauth2Client: OAuth2Client
   constructor(
     private readonly hashingService: HashingService,
@@ -36,11 +39,15 @@ export class GoogleService {
       envConfig.GOOGLE_CLIENT_REDIRECT_URI
     )
   }
-  getAuthorizationUrl({ userAgent, ip }: Omit<GoogleAuthStateType, 'rememberMe'>) {
+  getAuthorizationUrl({ userAgent, ip }: Omit<GoogleAuthStateType, 'rememberMe'>): { url: string; nonce: string } {
     const scope = ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email']
-    const stateObject: Omit<GoogleAuthStateType, 'rememberMe'> = {
+
+    const nonce = uuidv4()
+
+    const stateObject: Omit<GoogleAuthStateType, 'rememberMe'> & { nonce: string } = {
       userAgent,
-      ip
+      ip,
+      nonce
     }
     const stateString = Buffer.from(JSON.stringify(stateObject)).toString('base64')
     const url = this.oauth2Client.generateAuthUrl({
@@ -50,7 +57,7 @@ export class GoogleService {
       state: stateString,
       prompt: 'select_account'
     })
-    return { url }
+    return { url, nonce }
   }
   async googleCallback({
     code,
@@ -86,64 +93,138 @@ export class GoogleService {
       })
 
       const payload = ticket.getPayload()
-      if (!payload || !payload.email) {
+      if (!payload || !payload.email || !payload.sub) {
+        this.logger.error('[GoogleCallback] Invalid payload from Google: missing email or sub (googleId).', payload)
         throw GoogleUserInfoException
       }
 
-      let decodedState: GoogleAuthStateType | null = null
+      const googleUserId = payload.sub
+
+      let stateFromServer: (Omit<GoogleAuthStateType, 'rememberMe'> & { nonce: string }) | null = null
       try {
-        decodedState = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'))
-      } catch (_error) {
-        // Bỏ qua lỗi parse state, sử dụng userAgent và ip từ tham số
+        if (state) {
+          stateFromServer = JSON.parse(Buffer.from(state, 'base64').toString('utf-8')) as Omit<
+            GoogleAuthStateType,
+            'rememberMe'
+          > & { nonce: string }
+          userAgent = stateFromServer?.userAgent || userAgent
+          ip = stateFromServer?.ip || ip
+        }
+      } catch (parseError) {
+        this.logger.warn(
+          '[GoogleCallback] Could not parse state string from Google, or state was empty. Using request IP/UserAgent.',
+          parseError
+        )
       }
 
-      const effectiveUserAgent = decodedState?.userAgent || userAgent
-      const effectiveIp = decodedState?.ip || ip
-      const rememberMe = decodedState?.rememberMe || false
+      const rememberMe = false
 
       let user = await this.prismaService.user.findUnique({
-        where: { email: payload.email },
+        where: { googleId: googleUserId },
         include: { role: true }
       })
 
       const clientRoleId = await this.rolesService.getClientRoleId()
 
       if (!user) {
-        user = await this.prismaService.user.create({
-          data: {
-            email: payload.email,
-            name: payload.name || 'Google User',
-            password: await this.hashingService.hash(uuidv4()),
-            phoneNumber: '', // payload.phone_number is not standard, initialize as empty
-            avatar: payload.picture,
-            status: 'ACTIVE',
-            roleId: clientRoleId
-          },
+        const userByEmail = await this.prismaService.user.findUnique({
+          where: { email: payload.email },
           include: { role: true }
         })
-      } else if (!user.role) {
+
+        if (userByEmail) {
+          if (userByEmail.googleId && userByEmail.googleId !== googleUserId) {
+            this.logger.error(
+              `[GoogleCallback] User with email ${payload.email} (ID: ${userByEmail.id}) is already linked to a different Google ID (${userByEmail.googleId}). Attempted to link with ${googleUserId}.`
+            )
+            throw new ApiException(
+              HttpStatus.CONFLICT,
+              'GoogleAccountConflict',
+              'error.Error.Auth.Google.AccountConflict'
+            )
+          }
+
+          this.logger.log(
+            `[GoogleCallback] User with email ${payload.email} (ID: ${userByEmail.id}) found. Linking with Google ID ${googleUserId}.`
+          )
+          user = await this.prismaService.user.update({
+            where: { id: userByEmail.id },
+            data: {
+              googleId: googleUserId,
+              ...(payload.picture && (!userByEmail.avatar || userByEmail.avatar !== payload.picture)
+                ? { avatar: payload.picture }
+                : {}),
+              ...(!userByEmail.roleId || !userByEmail.role ? { role: { connect: { id: clientRoleId } } } : {})
+            },
+            include: { role: true }
+          })
+        } else {
+          this.logger.log(
+            `[GoogleCallback] No user found for Google ID ${googleUserId} or email ${payload.email}. Creating new user.`
+          )
+          user = await this.prismaService.user.create({
+            data: {
+              email: payload.email,
+              name: payload.name || 'Google User',
+              password: await this.hashingService.hash(uuidv4()),
+              phoneNumber: '',
+              avatar: payload.picture,
+              status: 'ACTIVE',
+              role: { connect: { id: clientRoleId } },
+              googleId: googleUserId
+            },
+            include: { role: true }
+          })
+        }
+      } else {
+        this.logger.log(`[GoogleCallback] User found by Google ID ${googleUserId}: ${user.email} (ID: ${user.id}).`)
+        const updates: Prisma.UserUpdateInput = {}
+        if (payload.email && user.email !== payload.email) {
+          this.logger.warn(
+            `[GoogleCallback] User ${user.id} (googleId: ${googleUserId}) has different email in DB (${user.email}) and Google (${payload.email}). Email NOT updated automatically to avoid conflicts. Manual review might be needed if this is a concern.`
+          )
+        }
+        if (payload.name && user.name !== payload.name) {
+          updates.name = payload.name
+        }
+        if (payload.picture && user.avatar !== payload.picture) {
+          updates.avatar = payload.picture
+        }
+        if (!user.roleId || !user.role) {
+          updates.role = { connect: { id: clientRoleId } }
+        }
+
+        if (Object.keys(updates).length > 0) {
+          this.logger.log(`[GoogleCallback] Updating user ${user.id} details from Google:`, updates)
+          user = await this.prismaService.user.update({
+            where: { id: user.id },
+            data: updates,
+            include: { role: true }
+          })
+        }
+      }
+
+      if (!user.role) {
+        this.logger.warn(`[GoogleCallback] User ${user.id} still has no role after processing. Forcing client role.`)
         user = await this.prismaService.user.update({
           where: { id: user.id },
-          data: { roleId: clientRoleId },
+          data: { role: { connect: { id: clientRoleId } } },
           include: { role: true }
         })
       }
 
       const device = await this.deviceService.findOrCreateDevice({
         userId: user.id,
-        userAgent: effectiveUserAgent,
-        ip: effectiveIp
+        userAgent: userAgent,
+        ip: ip
       })
 
-      // Kiểm tra 2FA
       if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod) {
         if (device.isTrusted) {
-          // Thiết bị tin cậy và session hợp lệ, bỏ qua 2FA
           console.debug(
             `[GoogleService googleCallback] Device ${String(device.id)} is trusted for user ${String(user.id)}. Skipping 2FA.`
           )
         } else {
-          // Thiết bị không tin cậy, yêu cầu 2FA
           const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
             return this.otpService.createLoginSessionToken({
               email: user.email,
@@ -164,24 +245,22 @@ export class GoogleService {
         }
       }
 
-      // Tạo session mới
       const sessionId = uuidv4()
       const now = new Date()
 
       const sessionData: Record<string, string | number | boolean> = {
         userId: user.id,
         deviceId: device.id,
-        ipAddress: effectiveIp,
-        userAgent: effectiveUserAgent,
+        ipAddress: ip,
+        userAgent: userAgent,
         createdAt: now.toISOString(),
         lastActiveAt: now.toISOString(),
-        isTrusted: device.isTrusted, // Google login có thể coi là trusted hoặc cần flow riêng
+        isTrusted: device.isTrusted,
         rememberMe: rememberMe,
         roleId: user.roleId,
         roleName: user.role.name
       }
 
-      // Gọi TokenService trực tiếp
       const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
         await this.tokenService.generateTokens(
           {
@@ -189,9 +268,9 @@ export class GoogleService {
             deviceId: device.id,
             roleId: user.roleId,
             roleName: user.role.name,
-            sessionId // Thêm sessionId
+            sessionId
           },
-          undefined, // Không có transaction Prisma ở đây
+          undefined,
           rememberMe
         )
 
@@ -227,9 +306,7 @@ export class GoogleService {
         lang: currentLang
       })
       const errorMessage =
-        error instanceof Error
-          ? encodeURIComponent(error.message) // Giữ lại thông báo lỗi cụ thể nếu có
-          : encodeURIComponent(defaultMessage)
+        error instanceof Error ? encodeURIComponent(error.message) : encodeURIComponent(defaultMessage)
 
       return {
         errorCode,

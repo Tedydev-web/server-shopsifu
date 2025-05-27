@@ -19,7 +19,8 @@ export const CookieNames = {
   ACCESS_TOKEN: 'access_token',
   REFRESH_TOKEN: 'refresh_token',
   CSRF_TOKEN: 'xsrf-token',
-  SLT_TOKEN: 'slt_token'
+  SLT_TOKEN: 'slt_token',
+  OAUTH_NONCE: 'oauth_nonce'
 } as const
 
 export type CookieNamesType = (typeof CookieNames)[keyof typeof CookieNames]
