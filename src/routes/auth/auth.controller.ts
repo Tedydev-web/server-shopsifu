@@ -73,6 +73,17 @@ import { GetActiveSessionsQueryDTO } from './dtos/session-management.dto'
 import { AuthType } from 'src/shared/constants/auth.constant'
 import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
 import { Auth } from './decorators/auth.decorator'
+import { OtpService } from './providers/otp.service'
+import { TypeOfVerificationCode } from './constants/auth.constants'
+import { v4 as uuidv4 } from 'uuid'
+import ms from 'ms'
+import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { JwtService } from '@nestjs/jwt'
+import { GoogleCallbackSuccessResult } from './google.service'
+import { AuthenticationService } from './services/authentication.service'
+import { ApiException } from 'src/shared/exceptions/api.exception'
+import { UserProfileResDTO } from './auth.dto'
 
 @Controller('auth')
 export class AuthController {
@@ -83,7 +94,11 @@ export class AuthController {
     private readonly googleService: GoogleService,
     private readonly tokenService: TokenService,
     private readonly i18nService: I18nService,
-    private readonly sessionManagementService: SessionManagementService
+    private readonly sessionManagementService: SessionManagementService,
+    private readonly otpService: OtpService,
+    private readonly redisService: RedisService,
+    private readonly jwtService: JwtService,
+    private readonly authenticationService: AuthenticationService
   ) {}
 
   @Post('register')
@@ -205,10 +220,11 @@ export class AuthController {
   @Get('google/callback')
   @IsPublic()
   @SkipThrottle()
+  @ZodSerializerDto(UserProfileResSchema)
   async googleCallback(
     @Query('code') code: string,
     @Query('state') stateFromGoogle: string,
-    @Res() res: Response,
+    @Res({ passthrough: true }) res: Response,
     @Req() req: Request,
     @UserAgent() userAgent: string,
     @Ip() ip: string
@@ -216,6 +232,7 @@ export class AuthController {
     const currentLang = I18nContext.current()?.lang
     const nonceFromCookie = req.cookies?.[CookieNames.OAUTH_NONCE]
     const nonceCookieConfig = envConfig.cookie.nonce
+
     res.clearCookie(CookieNames.OAUTH_NONCE, {
       path: nonceCookieConfig.path,
       domain: nonceCookieConfig.domain,
@@ -225,17 +242,24 @@ export class AuthController {
     })
 
     let nonceFromStateParam: string | undefined
+    let rememberMeFromState: boolean = false
+
     if (stateFromGoogle) {
       try {
         const decodedStateObj = JSON.parse(Buffer.from(stateFromGoogle, 'base64').toString('utf-8'))
         nonceFromStateParam = decodedStateObj?.nonce
+        userAgent = decodedStateObj?.userAgent || userAgent
+        ip = decodedStateObj?.ip || ip
+        if (typeof decodedStateObj?.rememberMe === 'boolean') {
+          rememberMeFromState = decodedStateObj.rememberMe
+        }
       } catch (e) {
         this.logger.error('[GoogleCallback] Failed to parse state parameter from Google.', e)
         const genericErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
           lang: currentLang
         })
         return res.redirect(
-          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=invalid_state&errorMessage=${encodeURIComponent(genericErrorMessage)}`
+          `${envConfig.FRONTEND_HOST_URL}/auth/callback/google?error=invalid_state&errorMessage=${encodeURIComponent(genericErrorMessage)}`
         )
       }
     }
@@ -249,71 +273,163 @@ export class AuthController {
         defaultValue: 'Login with Google failed due to a security check. Please try again.'
       })
       return res.redirect(
-        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=csrf_error&errorMessage=${encodeURIComponent(csrfErrorMessage)}`
+        `${envConfig.FRONTEND_HOST_URL}/auth/callback/google?error=csrf_error&errorMessage=${encodeURIComponent(csrfErrorMessage)}`
+      )
+    }
+
+    if (!code) {
+      const missingCodeMessage = await this.i18nService.translate('error.Error.Auth.Google.MissingCode', {
+        lang: currentLang
+      })
+      return res.redirect(
+        `${envConfig.FRONTEND_HOST_URL}/auth/callback/google?error=missing_code&errorMessage=${encodeURIComponent(missingCodeMessage)}`
       )
     }
 
     try {
-      if (!code) {
-        const missingCodeMessage = await this.i18nService.translate('error.Error.Auth.Google.MissingCode', {
-          lang: currentLang
-        })
-        return res.redirect(
-          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=invalid_request&errorMessage=${encodeURIComponent(missingCodeMessage)}`
-        )
-      }
-
-      const data = await this.googleService.googleCallback({
+      const googleAuthResultFromService = await this.googleService.googleCallback({
         code,
         state: stateFromGoogle,
         userAgent,
         ip
       })
 
-      if (data.redirectToError) {
-        this.logger.error(`[AuthController googleCallback] Error from GoogleService: ${data.errorMessage}`)
+      if ('redirectToError' in googleAuthResultFromService && googleAuthResultFromService.redirectToError === true) {
+        this.logger.error(
+          `[AuthController googleCallback] Error from GoogleService: ${googleAuthResultFromService.errorMessage}`
+        )
         return res.redirect(
-          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=${data.errorCode}&errorMessage=${encodeURIComponent(data.errorMessage)}`
+          `${envConfig.FRONTEND_HOST_URL}/auth/callback/google?error=${googleAuthResultFromService.errorCode}&errorMessage=${encodeURIComponent(googleAuthResultFromService.errorMessage)}`
         )
       }
 
-      if ('loginSessionToken' in data && data.loginSessionToken) {
+      const googleAuthResult = googleAuthResultFromService as GoogleCallbackSuccessResult
+      const { user, device, requiresTwoFactorAuth, requiresUntrustedDeviceVerification, twoFactorMethod } =
+        googleAuthResult
+
+      const sltCookieConfig = envConfig.cookie.sltToken
+
+      if (requiresTwoFactorAuth && user.twoFactorMethod) {
+        this.logger.log(`[GoogleCallback] User ${user.id} requires 2FA (${user.twoFactorMethod}). Initiating SLT flow.`)
+        const sltJwt = await this.otpService.initiateOtpWithSltCookie({
+          email: user.email,
+          userId: user.id,
+          deviceId: device.id,
+          ipAddress: ip,
+          userAgent: userAgent,
+          purpose: TypeOfVerificationCode.LOGIN_2FA,
+          metadata: {
+            isGoogleAuth: true,
+            rememberMe: rememberMeFromState,
+            twoFactorMethod: user.twoFactorMethod
+          }
+        })
+        res.cookie(sltCookieConfig.name, sltJwt, {
+          path: sltCookieConfig.path,
+          domain: sltCookieConfig.domain,
+          maxAge: sltCookieConfig.maxAge,
+          httpOnly: sltCookieConfig.httpOnly,
+          secure: sltCookieConfig.secure,
+          sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+        })
         const queryParams = new URLSearchParams({
           twoFactorRequired: 'true',
-          loginSessionToken: data.loginSessionToken,
-          twoFactorMethod: data.twoFactorMethod as string
+          twoFactorMethod: user.twoFactorMethod,
+          source: 'google'
         })
-        if (data.isGoogleAuth) {
-          queryParams.set('source', 'google')
-        }
-        return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?${queryParams.toString()}`)
+        return res.redirect(`${envConfig.FRONTEND_HOST_URL}/login/verify-2fa?${queryParams.toString()}`)
       }
 
-      if (data && data.accessToken) {
-        this.tokenService.setTokenCookies(res, data.accessToken, data.refreshTokenJti, data.maxAgeForRefreshTokenCookie)
-        res.status(HttpStatus.OK).json({
-          message: 'Google login successful, tokens set in cookies.',
-          user: data.user
+      if (requiresUntrustedDeviceVerification) {
+        this.logger.log(`[GoogleCallback] User ${user.id} requires untrusted device verification. Initiating SLT flow.`)
+        const sltJwt = await this.otpService.initiateOtpWithSltCookie({
+          email: user.email,
+          userId: user.id,
+          deviceId: device.id,
+          ipAddress: ip,
+          userAgent: userAgent,
+          purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
+          metadata: {
+            isGoogleAuth: true,
+            rememberMe: rememberMeFromState
+          }
         })
+        res.cookie(sltCookieConfig.name, sltJwt, {
+          path: sltCookieConfig.path,
+          domain: sltCookieConfig.domain,
+          maxAge: sltCookieConfig.maxAge,
+          httpOnly: sltCookieConfig.httpOnly,
+          secure: sltCookieConfig.secure,
+          sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+        })
+        const queryParams = new URLSearchParams({
+          deviceVerificationRequired: 'true',
+          source: 'google'
+        })
+        return res.redirect(`${envConfig.FRONTEND_HOST_URL}/login/verify-device?${queryParams.toString()}`)
+      }
+
+      this.logger.log(
+        `[GoogleCallback] User ${user.id} passed OAuth security checks. Finalizing login directly via Google. Device ID: ${device.id}. Remember Me: ${rememberMeFromState}`
+      )
+
+      const loginResult = await this.authenticationService.finalizeOauthLogin(
+        user,
+        device,
+        rememberMeFromState,
+        ip,
+        userAgent,
+        'google-oauth',
+        res
+      )
+
+      const successRedirectUrl = `${envConfig.FRONTEND_HOST_URL}` // Or a more specific success page like /dashboard or /login/oauth-success
+      this.logger.log(
+        `[GoogleCallback] Successful login for user ${user.id} via google-oauth. Redirecting to ${successRedirectUrl}`
+      )
+      if (res) {
+        res.redirect(successRedirectUrl)
+        return // Explicitly return to prevent further processing by NestJS default response handling
       } else {
-        const unknownErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
-          lang: currentLang
-        })
-        this.logger.error('[AuthController googleCallback] Unexpected data structure from GoogleService', data)
-        return res.redirect(
-          `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=internal_error&errorMessage=${encodeURIComponent(unknownErrorMessage)}`
+        // This case should ideally not happen if @Res({ passthrough: true }) is used correctly
+        // and res is always passed to finalizeOauthLogin.
+        // However, if it does, we return the data as a fallback, though redirect is preferred.
+        this.logger.warn(
+          `[GoogleCallback] Response object not available for redirect. Returning login result as JSON for user ${user.id}.`
         )
+        return {
+          userId: loginResult.userId,
+          email: loginResult.email,
+          name: loginResult.name,
+          role: loginResult.role,
+          isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession,
+          currentDeviceId: loginResult.currentDeviceId
+        }
       }
     } catch (error) {
       this.logger.error('Google OAuth callback error in controller:', error.stack, error.message)
       const genericErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
         lang: currentLang
       })
-      const errorCode = error.code || 'auth_error_controller'
-      const message =
-        error instanceof Error ? encodeURIComponent(error.message) : encodeURIComponent(genericErrorMessage)
 
-      return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?error=${errorCode}&errorMessage=${message}`)
+      let determinedErrorCode = 'auth_error_controller_final'
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        typeof (error as { code?: unknown }).code === 'string'
+      ) {
+        determinedErrorCode = (error as { code: string }).code
+      } else if (error instanceof ApiException) {
+        determinedErrorCode = error.getStatus().toString()
+      }
+
+      const messageToEncode = error instanceof Error ? error.message : genericErrorMessage
+      const message = encodeURIComponent(messageToEncode)
+
+      return res.redirect(
+        `${envConfig.FRONTEND_HOST_URL}/auth/callback/google?error=${determinedErrorCode}&errorMessage=${message}`
+      )
     }
   }
 

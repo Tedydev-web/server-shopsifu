@@ -3,7 +3,9 @@ import {
   TokenType,
   TokenTypeType,
   TypeOfVerificationCode,
-  TypeOfVerificationCodeType
+  TypeOfVerificationCodeType,
+  TwoFactorMethodType,
+  TwoFactorMethodTypeType
 } from '../constants/auth.constants'
 import envConfig from 'src/shared/config'
 import { EmailService } from './email.service'
@@ -67,7 +69,7 @@ export interface SltContextData {
   sltJwtExp: number // SLT JWT expiry timestamp (seconds)
   sltJwtCreatedAt: number // SLT JWT creation timestamp (seconds)
   finalized: '0' | '1'
-  metadata?: Record<string, any>
+  metadata?: Record<string, any> & { twoFactorMethod?: TwoFactorMethodTypeType }
   // email might be useful here if OTP is sent to email based on this context
   email?: string
 }
@@ -327,24 +329,51 @@ export class OtpService {
   }
 
   async initiateOtpWithSltCookie(payload: {
-    email: string // To send OTP
+    email: string
     userId: number
     deviceId: number
     ipAddress: string
     userAgent: string
     purpose: TypeOfVerificationCodeType
-    metadata?: Record<string, any>
+    metadata?: Record<string, any> & { twoFactorMethod?: TwoFactorMethodTypeType }
   }): Promise<string> {
     const { email, userId, deviceId, ipAddress, userAgent, purpose, metadata } = payload
 
-    // 1. Send OTP (can pass userId to sendOTP if it needs to store it with OtpData)
-    await this.sendOTP(email, purpose, userId) // Pass userId to link OTP to user in OtpData
+    // Chỉ gửi OTP nếu cần thiết
+    if (purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
+      await this.sendOTP(email, purpose, userId)
+    } else if (purpose === TypeOfVerificationCode.LOGIN_2FA) {
+      if (metadata?.twoFactorMethod === TwoFactorMethodType.OTP) {
+        await this.sendOTP(email, purpose, userId)
+      } else {
+        this.logger.debug(
+          `Skipping OTP send for LOGIN_2FA (purpose: ${purpose}) because 2FA method is ${metadata?.twoFactorMethod || 'not OTP (e.g., TOTP)'}`
+        )
+      }
+    } else if (purpose === TypeOfVerificationCode.DISABLE_2FA) {
+      // Gửi OTP cho mục đích disable 2FA nếu phương thức hiện tại của người dùng là OTP, hoặc không có phương thức (để an toàn)
+      // Điều này cần được xem xét kỹ lưỡng dựa trên luồng disable 2FA của bạn
+      // Hiện tại, giả sử disable 2FA có thể cần OTP nếu user.twoFactorMethod === 'OTP'
+      // Hoặc bạn có thể quyết định rằng việc disable 2FA luôn yêu cầu TOTP/Recovery code nếu 2FA là TOTP.
+      if (metadata?.twoFactorMethod === TwoFactorMethodType.OTP) {
+        await this.sendOTP(email, purpose, userId)
+      } else {
+        this.logger.debug(
+          `Skipping OTP send for ${purpose} because 2FA method is ${metadata?.twoFactorMethod || 'not OTP'}`
+        )
+      }
+    } else if (purpose === TypeOfVerificationCode.SETUP_2FA) {
+      // Thông thường không gửi OTP cho SETUP_2FA, vì bước này user đang setup TOTP
+      this.logger.debug(`Purpose is ${purpose}, OTP not typically sent for this flow.`)
+    } else {
+      // Các trường hợp khác có thể cần gửi OTP, hoặc không
+      // Ví dụ: Nếu có mục đích mới, bạn cần thêm logic ở đây
+      this.logger.warn(`Unhandled purpose for OTP sending in initiateOtpWithSltCookie: ${purpose}. OTP not sent.`)
+    }
 
-    // 2. Create SLT JWT
     const sltJti = uuidv4()
     const sltExpiresInSeconds = Math.floor(ms(envConfig.SLT_JWT_EXPIRES_IN) / 1000)
 
-    // Payload for JWT signing should only contain claims we set. 'iat' and 'exp' are handled by jwtService.sign
     const sltJwtSigningPayload: Pick<SltJwtPayload, 'jti' | 'sub' | 'pur'> = {
       jti: sltJti,
       sub: userId,
@@ -356,19 +385,18 @@ export class OtpService {
       expiresIn: envConfig.SLT_JWT_EXPIRES_IN
     })
 
-    // 3. Store SLT Context in Redis
     const sltContextKey = this._getSltContextKey(sltJti)
-    const nowForContext = Math.floor(Date.now() / 1000) // Get current time for context
+    const nowForContext = Math.floor(Date.now() / 1000)
     const sltContextData: SltContextData = {
       userId,
       deviceId,
       ipAddress,
       userAgent,
       purpose,
-      sltJwtExp: nowForContext + sltExpiresInSeconds, // Calculate exp for context based on current time and expiresIn
-      sltJwtCreatedAt: nowForContext, // Record creation time for context
+      sltJwtExp: nowForContext + sltExpiresInSeconds,
+      sltJwtCreatedAt: nowForContext,
       finalized: '0',
-      metadata,
+      metadata, // Đảm bảo metadata được truyền vào đây
       email
     }
 

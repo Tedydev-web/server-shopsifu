@@ -16,8 +16,26 @@ import { I18nService, I18nContext } from 'nestjs-i18n'
 import { TokenService } from 'src/routes/auth/providers/token.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { Prisma } from '@prisma/client'
+import { Prisma, Role, User, Device, TwoFactorMethodType as PrismaTwoFactorMethodType } from '@prisma/client'
 import { ApiException } from 'src/shared/exceptions/api.exception'
+
+export interface GoogleCallbackSuccessResult {
+  user: User & { role: Role }
+  device: Device
+  requiresTwoFactorAuth: boolean
+  requiresUntrustedDeviceVerification: boolean
+  twoFactorMethod?: PrismaTwoFactorMethodType | null
+  isLoginViaGoogle: true
+  message: string
+}
+
+export interface GoogleCallbackErrorResult {
+  errorCode: string
+  errorMessage: string
+  redirectToError: true
+}
+
+export type GoogleCallbackReturnType = GoogleCallbackSuccessResult | GoogleCallbackErrorResult
 
 @Injectable()
 export class GoogleService {
@@ -30,7 +48,6 @@ export class GoogleService {
     private readonly otpService: OtpService,
     private readonly prismaService: PrismaService,
     private readonly i18nService: I18nService,
-    private readonly tokenService: TokenService,
     private readonly redisService: RedisService
   ) {
     this.oauth2Client = new google.auth.OAuth2(
@@ -69,7 +86,7 @@ export class GoogleService {
     state: string
     userAgent?: string
     ip?: string
-  }) {
+  }): Promise<GoogleCallbackReturnType> {
     const currentLang = I18nContext.current()?.lang
     try {
       try {
@@ -95,20 +112,39 @@ export class GoogleService {
       const payload = ticket.getPayload()
       if (!payload || !payload.email || !payload.sub) {
         this.logger.error('[GoogleCallback] Invalid payload from Google: missing email or sub (googleId).', payload)
-        throw GoogleUserInfoException
+        return {
+          errorCode: 'INVALID_PAYLOAD',
+          errorMessage: await this.i18nService.translate('error.Error.Auth.Google.UserInfoFailed', {
+            lang: currentLang,
+            defaultValue: 'Failed to retrieve user information from Google.'
+          }),
+          redirectToError: true
+        }
       }
 
       const googleUserId = payload.sub
 
-      let stateFromServer: (Omit<GoogleAuthStateType, 'rememberMe'> & { nonce: string }) | null = null
+      let stateFromServer: { userAgent?: string; ip?: string; nonce: string } | null = null
       try {
         if (state) {
-          stateFromServer = JSON.parse(Buffer.from(state, 'base64').toString('utf-8')) as Omit<
-            GoogleAuthStateType,
-            'rememberMe'
-          > & { nonce: string }
-          userAgent = stateFromServer?.userAgent || userAgent
-          ip = stateFromServer?.ip || ip
+          const parsedState = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'))
+          if (
+            parsedState &&
+            typeof parsedState === 'object' &&
+            parsedState !== null &&
+            'nonce' in parsedState &&
+            typeof parsedState.nonce === 'string'
+          ) {
+            stateFromServer = {
+              nonce: parsedState.nonce,
+              userAgent: typeof parsedState.userAgent === 'string' ? parsedState.userAgent : undefined,
+              ip: typeof parsedState.ip === 'string' ? parsedState.ip : undefined
+            }
+            userAgent = stateFromServer?.userAgent || userAgent
+            ip = stateFromServer?.ip || ip
+          } else {
+            this.logger.warn('[GoogleCallback] Parsed state object is not in the expected format or missing nonce.')
+          }
         }
       } catch (parseError) {
         this.logger.warn(
@@ -116,8 +152,6 @@ export class GoogleService {
           parseError
         )
       }
-
-      const rememberMe = false
 
       let user = await this.prismaService.user.findUnique({
         where: { googleId: googleUserId },
@@ -137,11 +171,14 @@ export class GoogleService {
             this.logger.error(
               `[GoogleCallback] User with email ${payload.email} (ID: ${userByEmail.id}) is already linked to a different Google ID (${userByEmail.googleId}). Attempted to link with ${googleUserId}.`
             )
-            throw new ApiException(
-              HttpStatus.CONFLICT,
-              'GoogleAccountConflict',
-              'error.Error.Auth.Google.AccountConflict'
-            )
+            return {
+              errorCode: 'ACCOUNT_CONFLICT',
+              errorMessage: await this.i18nService.translate('error.Error.Auth.Google.AccountConflict', {
+                lang: currentLang,
+                defaultValue: 'This email is already linked to a different Google account.'
+              }),
+              redirectToError: true
+            }
           }
 
           this.logger.log(
@@ -181,7 +218,7 @@ export class GoogleService {
         const updates: Prisma.UserUpdateInput = {}
         if (payload.email && user.email !== payload.email) {
           this.logger.warn(
-            `[GoogleCallback] User ${user.id} (googleId: ${googleUserId}) has different email in DB (${user.email}) and Google (${payload.email}). Email NOT updated automatically to avoid conflicts. Manual review might be needed if this is a concern.`
+            `[GoogleCallback] User ${user.id} (googleId: ${googleUserId}) has different email in DB (${user.email}) and Google (${payload.email}). Email NOT updated automatically. Consider implications or manual review.`
           )
         }
         if (payload.name && user.name !== payload.name) {
@@ -219,98 +256,79 @@ export class GoogleService {
         ip: ip
       })
 
-      if (user.twoFactorEnabled && user.twoFactorSecret && user.twoFactorMethod) {
-        if (device.isTrusted) {
-          console.debug(
-            `[GoogleService googleCallback] Device ${String(device.id)} is trusted for user ${String(user.id)}. Skipping 2FA.`
-          )
-        } else {
-          const loginSessionToken = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
-            return this.otpService.createLoginSessionToken({
-              email: user.email,
-              type: TypeOfVerificationCode.LOGIN_2FA,
-              userId: user.id,
-              deviceId: device.id,
-              metadata: { rememberMe: false, isGoogleAuth: true },
-              tx
-            })
-          })
+      const requiresTwoFactorAuth = !!(
+        user.twoFactorEnabled &&
+        user.twoFactorSecret &&
+        user.twoFactorMethod &&
+        !device.isTrusted
+      )
+      const requiresUntrustedDeviceVerification = !user.twoFactorEnabled && !device.isTrusted
 
-          return {
-            message: 'Auth.Login.2FARequired',
-            loginSessionToken: loginSessionToken,
-            twoFactorMethod: user.twoFactorMethod,
-            isGoogleAuth: true
+      this.logger.log(
+        `[GoogleCallback] User: ${user.id}, Device: ${device.id} (isTrusted: ${device.isTrusted}), 2FA Enabled: ${user.twoFactorEnabled}, Requires 2FA: ${requiresTwoFactorAuth}, Requires Untrusted Verification: ${requiresUntrustedDeviceVerification}`
+      )
+
+      return {
+        user,
+        device,
+        requiresTwoFactorAuth,
+        requiresUntrustedDeviceVerification,
+        twoFactorMethod: user.twoFactorMethod,
+        isLoginViaGoogle: true,
+        message: 'Google authentication successful. Proceed to security checks.'
+      }
+    } catch (error) {
+      this.logger.error('[GoogleCallback] Error processing Google callback:', error)
+      const resolveErrorCode = (): string => {
+        if (error instanceof ApiException) {
+          return error.getStatus().toString()
+        }
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          typeof (error as { code?: unknown }).code === 'string'
+        ) {
+          return (error as { code: string }).code
+        }
+        return 'AUTH_ERROR_GOOGLE_CALLBACK'
+      }
+      const errorCode = resolveErrorCode()
+
+      let errorMessageKey = 'error.Error.Auth.Google.CallbackErrorGeneric'
+      if (error instanceof ApiException) {
+        const errorResponse = error.getResponse()
+        if (typeof errorResponse === 'string') {
+          errorMessageKey = errorResponse
+        } else if (typeof errorResponse === 'object' && errorResponse !== null && 'messageKey' in errorResponse) {
+          const potentialMessageKey = (errorResponse as { messageKey?: any }).messageKey
+          if (typeof potentialMessageKey === 'string') {
+            errorMessageKey = potentialMessageKey
           }
         }
       }
 
-      const sessionId = uuidv4()
-      const now = new Date()
+      const translatedMessageFromService: unknown = await this.i18nService.translate(errorMessageKey, {
+        lang: currentLang,
+        defaultValue: 'An unexpected error occurred during Google Sign-In. Please try again.'
+      })
 
-      const sessionData: Record<string, string | number | boolean> = {
-        userId: user.id,
-        deviceId: device.id,
-        ipAddress: ip,
-        userAgent: userAgent,
-        createdAt: now.toISOString(),
-        lastActiveAt: now.toISOString(),
-        isTrusted: device.isTrusted,
-        rememberMe: rememberMe,
-        roleId: user.roleId,
-        roleName: user.role.name
-      }
-
-      const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
-        await this.tokenService.generateTokens(
-          {
-            userId: user.id,
-            deviceId: device.id,
-            roleId: user.roleId,
-            roleName: user.role.name,
-            sessionId
-          },
-          undefined,
-          rememberMe
+      let finalErrorMessage: string
+      if (typeof translatedMessageFromService === 'string') {
+        finalErrorMessage = translatedMessageFromService
+      } else {
+        this.logger.error(
+          '[GoogleCallback] i18nService.translate did not return a string for key:',
+          errorMessageKey,
+          'Received:',
+          translatedMessageFromService
         )
-
-      sessionData.currentAccessTokenJti = accessTokenJti
-      sessionData.currentRefreshTokenJti = refreshTokenJti
-
-      const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-      const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
-      const absoluteSessionLifetimeSeconds = Math.floor(envConfig.ABSOLUTE_SESSION_LIFETIME_MS / 1000)
-
-      await this.redisService.pipeline((pipeline) => {
-        pipeline.hmset(sessionKey, sessionData)
-        pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
-        pipeline.sadd(userSessionsKey, sessionId)
-        return pipeline
-      })
-
-      return {
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role.name
-        },
-        accessToken,
-        refreshTokenJti,
-        maxAgeForRefreshTokenCookie
+        finalErrorMessage = 'An unexpected error occurred during Google Sign-In. Please try again.'
       }
-    } catch (error) {
-      console.error('Error in googleCallback', error)
-      const errorCode = error.code || 'auth_error'
-      const defaultMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
-        lang: currentLang
-      })
-      const errorMessage =
-        error instanceof Error ? encodeURIComponent(error.message) : encodeURIComponent(defaultMessage)
 
       return {
         errorCode,
-        errorMessage,
+        errorMessage: finalErrorMessage,
         redirectToError: true
       }
     }

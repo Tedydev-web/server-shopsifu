@@ -956,4 +956,216 @@ export class AuthenticationService extends BaseAuthService {
       throw error
     }
   }
+
+  async finalizeOauthLogin(
+    user: User & { role: { id: number; name: string } },
+    device: Device,
+    rememberMe: boolean,
+    ipAddress: string,
+    userAgent: string,
+    source: string = 'oauth-general',
+    res?: Response
+  ) {
+    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
+      action: 'USER_OAUTH_LOGIN_FINALIZE_ATTEMPT',
+      userId: user.id,
+      userEmail: user.email,
+      ipAddress: ipAddress,
+      userAgent: userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: {
+        source,
+        rememberMeRequested: rememberMe,
+        deviceId: device.id,
+        isDeviceTrustedInitial: device.isTrusted
+      }
+    }
+
+    try {
+      const sessionId = uuidv4()
+      const now = new Date()
+
+      const geoLocation: GeolocationData | null = this.geolocationService.lookup(ipAddress)
+      if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && geoLocation) {
+        auditLogEntry.details.location = `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
+      }
+
+      const sessionData: Record<string, string | number | boolean | undefined | null> = {
+        userId: user.id,
+        deviceId: device.id,
+        ipAddress: ipAddress,
+        userAgent: userAgent,
+        createdAt: now.toISOString(),
+        lastActiveAt: now.toISOString(),
+        isTrusted: device.isTrusted,
+        rememberMe: rememberMe,
+        roleId: user.role.id,
+        roleName: user.role.name,
+        geoCountry: geoLocation?.country,
+        geoCity: geoLocation?.city,
+        source: source
+      }
+
+      const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
+        await this.tokenService.generateTokens(
+          {
+            userId: user.id,
+            deviceId: device.id,
+            roleId: user.role.id,
+            roleName: user.role.name,
+            sessionId
+          },
+          this.prismaService,
+          rememberMe
+        )
+
+      sessionData.currentAccessTokenJti = accessTokenJti
+      sessionData.currentRefreshTokenJti = refreshTokenJti
+      const decodedToken = this.jwtService.decode(accessToken)
+      if (decodedToken && typeof decodedToken === 'object' && 'exp' in decodedToken) {
+        sessionData.accessTokenExp = decodedToken.exp
+      }
+
+      let absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
+      if (isNaN(absoluteSessionLifetimeMs)) {
+        this.logger.warn(
+          `[AuthenticationService.finalizeOauthLogin] Invalid ABSOLUTE_SESSION_LIFETIME_MS: ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}. Falling back to 30 days.`
+        )
+        absoluteSessionLifetimeMs = ms('30d')
+      }
+      sessionData.maxLifetimeExpiresAt = new Date(Date.now() + absoluteSessionLifetimeMs).toISOString()
+
+      const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
+      const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
+      const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
+
+      const absoluteSessionLifetimeSeconds = Math.floor(absoluteSessionLifetimeMs / 1000)
+      const refreshTokenTTL =
+        maxAgeForRefreshTokenCookie && maxAgeForRefreshTokenCookie > 0
+          ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
+          : absoluteSessionLifetimeSeconds
+
+      await this.redisService.pipeline((pipeline) => {
+        pipeline.hmset(sessionKey, sessionData as Record<string, string>)
+        pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
+        pipeline.sadd(userSessionsKey, sessionId)
+        pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
+        return pipeline
+      })
+
+      if (res) {
+        this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
+      } else {
+        this.logger.warn(
+          '[AuthenticationService.finalizeOauthLogin] Response object (res) is NOT present. Cookies will not be set by this function.'
+        )
+      }
+
+      if (device.isTrusted && geoLocation && geoLocation.country && geoLocation.city) {
+        const knownLocationsKey = `${REDIS_KEY_PREFIX.USER_KNOWN_LOCATIONS}${user.id}`
+        const locationString = `${geoLocation.city?.toLowerCase()}_${geoLocation.country?.toLowerCase()}`
+        const isNewLocation = await this.redisService.sadd(knownLocationsKey, locationString)
+        if (isNewLocation === 1) {
+          this.logger.warn(
+            `New login location detected for user ${user.id} on trusted device ${device.id} via ${source}: ${locationString}. Sending alert.`
+          )
+          auditLogEntry.notes = (
+            (auditLogEntry.notes ? auditLogEntry.notes + '; ' : '') +
+            `New trusted device login location via ${source}: ${locationString}. Alert email sent.`
+          ).trim()
+          const lang = I18nContext.current()?.lang || 'en'
+          try {
+            await this.emailService.sendSecurityAlertEmail({
+              to: user.email,
+              userName: user.name || undefined,
+              alertSubject: this.i18nService.translate(
+                'email.Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation',
+                { lang }
+              ),
+              alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation', {
+                lang
+              }),
+              mainMessage: this.i18nService.translate(
+                'email.Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation',
+                { lang }
+              ),
+              actionDetails: [
+                {
+                  label: this.i18nService.translate('email.Email.Field.Time', { lang }),
+                  value: new Date().toLocaleString(lang)
+                },
+                {
+                  label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }),
+                  value: ipAddress
+                },
+                {
+                  label: this.i18nService.translate('email.Email.Field.Device', { lang }),
+                  value: userAgent
+                },
+                {
+                  label: this.i18nService.translate('email.Email.Field.Location', { lang }),
+                  value: `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
+                }
+              ],
+              secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.NotYou', {
+                lang
+              }),
+              actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
+                lang
+              }),
+              actionButtonUrl: `${envConfig.FRONTEND_HOST_URL}/account/security`
+            })
+          } catch (emailError) {
+            const errorMessage = emailError instanceof Error ? emailError.message : String(emailError)
+            const errorStack = emailError instanceof Error ? emailError.stack : undefined
+            this.logger.error(
+              `Failed to send new trusted device login location alert (OAuth - ${source}) to ${user.email}: ${errorMessage}`,
+              errorStack
+            )
+          }
+        }
+      }
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'USER_OAUTH_LOGIN_FINALIZE_SUCCESS'
+      auditLogEntry.details.sessionId = sessionId
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+      this.sessionManagementService
+        .enforceSessionAndDeviceLimits(user.id, sessionId, device.id)
+        .then((limitsResult) => {
+          if (limitsResult.deviceLimitApplied || limitsResult.sessionLimitApplied) {
+            this.logger.log(
+              `Session/device limits applied for user ${user.id} after OAuth login. Devices removed: ${limitsResult.devicesRemovedCount}, Sessions revoked: ${limitsResult.sessionsRevokedCount}`
+            )
+          }
+        })
+        .catch((limitError) => {
+          this.logger.error(
+            `Error enforcing session/device limits for user ${user.id} after OAuth login: ${limitError.message}`,
+            limitError.stack
+          )
+        })
+
+      return {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role.name,
+        isDeviceTrustedInSession: device.isTrusted,
+        currentDeviceId: device.id
+      }
+    } catch (error) {
+      this.logger.error(
+        `[AuthenticationService.finalizeOauthLogin] Error finalizing OAuth login for user ${user.email}:`,
+        error
+      )
+      auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
+      if (error instanceof ApiException) {
+        auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+      }
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
+  }
 }

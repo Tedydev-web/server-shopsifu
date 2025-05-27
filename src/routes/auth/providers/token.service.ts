@@ -151,7 +151,7 @@ export class TokenService {
   }
 
   async generateTokens(
-    params: Omit<AccessTokenPayloadCreate, 'jti'>,
+    params: Omit<AccessTokenPayloadCreate, 'jti'> & { isDeviceTrustedInSession?: boolean },
     _prismaTx?: PrismaTransactionClient,
     rememberMe?: boolean
   ) {
@@ -161,16 +161,18 @@ export class TokenService {
     )
 
     const accessTokenJti = uuidv4()
-    const accessToken = this.signAccessToken({
-      userId,
-      deviceId,
-      roleId,
-      roleName,
-      sessionId,
-      jti: accessTokenJti
-    })
-
     const refreshTokenJti = uuidv4()
+    const now = Math.floor(Date.now() / 1000)
+
+    const accessTokenPayload: AccessTokenPayload = {
+      ...params,
+      jti: accessTokenJti,
+      isDeviceTrustedInSession: params.isDeviceTrustedInSession ?? false,
+      exp: now + Math.floor(ms(envConfig.ACCESS_TOKEN_EXPIRES_IN) / 1000),
+      iat: now
+    }
+
+    const accessToken = this.signAccessToken(accessTokenPayload)
 
     let refreshTokenExpiresInMs: number
     if (rememberMe) {
@@ -200,7 +202,8 @@ export class TokenService {
       accessToken,
       refreshTokenJti: refreshTokenJti,
       maxAgeForRefreshTokenCookie: refreshTokenExpiresInMs,
-      accessTokenJti
+      accessTokenJti,
+      accessTokenPayload
     }
   }
 
