@@ -111,6 +111,7 @@ export type I18nTranslations = {
         "Error.Auth.Session.AbsoluteLifetimeExceeded": string;
         "Error.Auth.Device.MissingSessionCreationTime": string;
         "Error.Auth.Otp.TooManyAttempts": string;
+        "Error.Auth.Otp.CooldownActive": string;
         "Error.Global.Unknown": string;
         "Error.Global.ValidationFailed": string;
         "Error.Global.SerializationFailed": string;

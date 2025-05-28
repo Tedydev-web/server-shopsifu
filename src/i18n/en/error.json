@@ -54,6 +54,7 @@
   "Error.Auth.Session.AbsoluteLifetimeExceeded": "Your session has expired due to reaching its maximum lifetime. Please log in again.",
   "Error.Auth.Device.MissingSessionCreationTime": "Device session creation time is missing. Please re-authenticate.",
   "Error.Auth.Otp.TooManyAttempts": "You have made too many incorrect OTP attempts. Please try again later or request a new OTP.",
+  "Error.Auth.Otp.CooldownActive": "You are requesting OTPs too frequently. Please wait {seconds} seconds before trying again.",
   "Error.Global.Unknown": "An unknown error occurred.",
   "Error.Global.ValidationFailed": "Validation failed. Please check your input.",
   "Error.Global.SerializationFailed": "Data serialization failed. Please try again.",

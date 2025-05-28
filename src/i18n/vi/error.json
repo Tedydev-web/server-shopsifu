@@ -55,6 +55,7 @@
   "Error.Auth.Session.AbsoluteLifetimeExceeded": "Phiên của bạn đã hết hạn do đạt đến thời gian tồn tại tối đa. Vui lòng đăng nhập lại.",
   "Error.Auth.Device.MissingSessionCreationTime": "Thiếu thời gian tạo phiên thiết bị. Vui lòng xác thực lại.",
   "Error.Auth.Otp.TooManyAttempts": "Bạn đã nhập sai OTP quá nhiều lần. Vui lòng thử lại sau hoặc yêu cầu OTP mới.",
+  "Error.Auth.Otp.CooldownActive": "Bạn đang yêu cầu OTP quá thường xuyên. Vui lòng đợi {seconds} giây trước khi thử lại.",
   "Error.Global.Unknown": "Đã xảy ra lỗi không xác định.",
   "Error.Global.ValidationFailed": "Xác thực thất bại. Vui lòng kiểm tra lại thông tin.",
   "Error.Global.SerializationFailed": "Tuần tự hóa dữ liệu thất bại. Vui lòng thử lại.",

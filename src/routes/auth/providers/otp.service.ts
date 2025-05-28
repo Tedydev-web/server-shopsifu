@@ -119,6 +119,25 @@ export class OtpService {
     type: TypeOfVerificationCodeType,
     userIdForOtpData?: number
   ): Promise<{ message: string }> {
+    const lang = I18nContext.current()?.lang || 'en'
+
+    if (userIdForOtpData) {
+      const cooldownKey = this._getOtpLastSentKey(userIdForOtpData, type)
+      const lastSentTimestampStr = await this.redisService.get(cooldownKey)
+      if (lastSentTimestampStr) {
+        const lastSentTimestamp = parseInt(lastSentTimestampStr, 10)
+        if (Date.now() - lastSentTimestamp < OTP_SEND_COOLDOWN_SECONDS * 1000) {
+          this.logger.warn(`OTP send cooldown active for user ${userIdForOtpData}, type ${type}.`)
+          throw TooManyRequestsException(
+            await this.i18nService.translate('error.Error.Auth.Otp.CooldownActive', {
+              lang,
+              args: { seconds: OTP_SEND_COOLDOWN_SECONDS }
+            })
+          )
+        }
+      }
+    }
+
     const otpKey = this._getOtpKey(type, email)
     const code = generateOTP()
     const otpTTLSeconds = Math.floor(ms(envConfig.OTP_EXPIRES_IN) / 1000)
@@ -134,7 +153,6 @@ export class OtpService {
     this.logger.debug(`OTP for ${type} for ${email} stored in Redis with TTL ${otpTTLSeconds}s. Key: ${otpKey}`)
 
     let title: string
-    const lang = I18nContext.current()?.lang || 'en'
 
     switch (type) {
       case TypeOfVerificationCode.REGISTER:
@@ -167,6 +185,13 @@ export class OtpService {
         status: AuditLogStatus.SUCCESS,
         details: { type, emailSent: true } as Prisma.JsonObject
       })
+
+      if (userIdForOtpData) {
+        const cooldownKey = this._getOtpLastSentKey(userIdForOtpData, type)
+        await this.redisService.set(cooldownKey, Date.now().toString(), 'EX', OTP_SEND_COOLDOWN_SECONDS)
+        this.logger.debug(`OTP send cooldown set for user ${userIdForOtpData}, type ${type}. Key: ${cooldownKey}`)
+      }
+
       return { message: 'Auth.Otp.SentSuccessfully' }
     } catch (error) {
       this.logger.error(`Failed to send OTP to ${email} for type ${type}`, error)
@@ -347,6 +372,23 @@ export class OtpService {
     purpose: TypeOfVerificationCodeType
     metadata?: Record<string, any> & { twoFactorMethod?: TwoFactorMethodTypeType }
   }): Promise<string> {
+    const lang = I18nContext.current()?.lang || 'en'
+    const cooldownKey = this._getOtpLastSentKey(payload.userId, payload.purpose)
+    const lastSentTimestampStr = await this.redisService.get(cooldownKey)
+
+    if (lastSentTimestampStr) {
+      const lastSentTimestamp = parseInt(lastSentTimestampStr, 10)
+      if (Date.now() - lastSentTimestamp < OTP_SEND_COOLDOWN_SECONDS * 1000) {
+        this.logger.warn(`SLT OTP send cooldown active for user ${payload.userId}, purpose ${payload.purpose}.`)
+        throw TooManyRequestsException(
+          await this.i18nService.translate('error.Error.Auth.Otp.CooldownActive', {
+            lang,
+            args: { seconds: OTP_SEND_COOLDOWN_SECONDS }
+          })
+        )
+      }
+    }
+
     const { email, userId, deviceId, ipAddress, userAgent, purpose, metadata } = payload
     const sltJti = uuidv4()
     const nowSeconds = Math.floor(Date.now() / 1000)
@@ -413,6 +455,11 @@ export class OtpService {
         metadata
       } as Prisma.JsonObject
     })
+
+    await this.redisService.set(cooldownKey, Date.now().toString(), 'EX', OTP_SEND_COOLDOWN_SECONDS)
+    this.logger.debug(
+      `SLT OTP send cooldown set for user ${payload.userId}, purpose ${payload.purpose}. Key: ${cooldownKey}`
+    )
 
     return sltJwt
   }
