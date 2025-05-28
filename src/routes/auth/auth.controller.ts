@@ -154,8 +154,8 @@ export class AuthController {
   @IsPublic()
   @HttpCode(HttpStatus.OK)
   @UseZodSchemas(
-    { schema: UserProfileResSchema, predicate: hasProperty('userId') },
-    { schema: LoginSessionResSchema, predicate: hasProperty('otpToken') }
+    { schema: UserProfileResSchema, predicate: hasProperty('id') },
+    { schema: LoginSessionResSchema, predicate: hasProperty('message') }
   )
   // @Throttle({ short: { limit: 5, ttl: 60000 }, medium: { limit: 20, ttl: 300000 } })
   login(
@@ -574,9 +574,7 @@ export class AuthController {
             id: loginResult.userId,
             email: loginResult.email,
             role: loginResult.role,
-            roleId: loginResult.roleId,
-            isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession,
-            currentDeviceId: loginResult.currentDeviceId,
+            isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession as boolean,
             userProfile: loginResult.userProfile
           }
           return result
@@ -971,9 +969,7 @@ export class AuthController {
         id: loginResult.userId,
         email: loginResult.email,
         role: loginResult.role,
-        roleId: loginResult.roleId,
-        isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession,
-        currentDeviceId: loginResult.currentDeviceId,
+        isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession as boolean,
         userProfile: loginResult.userProfile
       }
       return result

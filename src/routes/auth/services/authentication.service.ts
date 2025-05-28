@@ -479,17 +479,13 @@ export class AuthenticationService extends BaseAuthService {
       }
 
       return {
-        userId: user.id,
+        id: user.id,
         email: user.email,
         role: user.role.name,
-        roleId: user.role.id,
         isDeviceTrustedInSession: device.isTrusted,
-        currentDeviceId: device.id,
         askToTrustDevice: shouldAskToTrustDevice,
         userProfile: user.userProfile
           ? {
-              firstName: user.userProfile.firstName,
-              lastName: user.userProfile.lastName,
               avatar: user.userProfile.avatar,
               username: user.userProfile.username
             }
@@ -868,6 +864,12 @@ export class AuthenticationService extends BaseAuthService {
           throw InvalidOTPException
         }
 
+        // Log user object here
+        this.logger.debug(
+          '[CompleteLoginWithUntrustedDeviceOtp] User object before generating tokens and userToReturn:',
+          JSON.stringify(user)
+        )
+
         const deviceFromFindOrCreate = await this.deviceService.findOrCreateDevice(
           {
             userId: user.id,
@@ -928,22 +930,20 @@ export class AuthenticationService extends BaseAuthService {
         auditLogEntry.details.finalSessionId = accessTokenPayload.sessionId
         auditLogEntry.details.isDeviceTrustedInSession = accessTokenPayload.isDeviceTrustedInSession
 
-        return {
-          userId: user.id,
+        const userToReturn = {
+          id: user.id,
           email: user.email,
           role: user.role.name,
-          roleId: user.role.id,
           isDeviceTrustedInSession: accessTokenPayload.isDeviceTrustedInSession,
-          currentDeviceId: device.id,
           userProfile: user.userProfile
             ? {
-                firstName: user.userProfile.firstName,
-                lastName: user.userProfile.lastName,
                 avatar: user.userProfile.avatar,
                 username: user.userProfile.username
               }
             : null
         }
+
+        return userToReturn
       })
       await this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
       return resultFromTransaction
@@ -991,9 +991,8 @@ export class AuthenticationService extends BaseAuthService {
       status: AuditLogStatus.FAILURE,
       details: {
         source,
-        rememberMeRequested: rememberMe,
-        deviceId: device.id,
-        isDeviceTrustedInitial: device.isTrusted
+        finalRememberMe: rememberMe,
+        initialDeviceId: device.id
       }
     }
 
@@ -1018,149 +1017,45 @@ export class AuthenticationService extends BaseAuthService {
         source: source
       }
 
-      const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenPayload } =
-        await this.tokenService.generateTokens(
+      const { accessTokenPayload, sessionId: newSessionId } = await this.prismaService.$transaction<{
+        accessTokenPayload: AccessTokenPayload
+        sessionId: string
+      }>(async (tx) => {
+        const tokens = await this.tokenService.generateTokens(
           {
             userId: user.id,
             deviceId: device.id,
             roleId: user.role.id,
             roleName: user.role.name,
-            sessionId,
-            isDeviceTrustedInSession: device.isTrusted
+            sessionId: newSessionId,
+            isDeviceTrustedInSession: device.isTrusted || rememberMe
           },
-          this.prismaService,
+          tx,
           rememberMe
         )
 
-      sessionData.currentAccessTokenJti = accessTokenPayload.jti
-      sessionData.currentRefreshTokenJti = refreshTokenJti
-      const decodedToken = this.jwtService.decode(accessToken)
-      if (decodedToken && typeof decodedToken === 'object' && 'exp' in decodedToken) {
-        sessionData.accessTokenExp = decodedToken.exp
-      }
-
-      let absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
-      if (isNaN(absoluteSessionLifetimeMs)) {
-        this.logger.warn(
-          `[AuthenticationService.finalizeOauthLogin] Invalid ABSOLUTE_SESSION_LIFETIME_MS: ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}. Falling back to 30 days.`
-        )
-        absoluteSessionLifetimeMs = ms('30d')
-      }
-      sessionData.maxLifetimeExpiresAt = new Date(Date.now() + absoluteSessionLifetimeMs).toISOString()
-
-      const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-      const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
-      const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
-
-      const absoluteSessionLifetimeSeconds = Math.floor(absoluteSessionLifetimeMs / 1000)
-      const refreshTokenTTL =
-        maxAgeForRefreshTokenCookie && maxAgeForRefreshTokenCookie > 0
-          ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
-          : absoluteSessionLifetimeSeconds
-
-      await this.redisService.pipeline((pipeline) => {
-        pipeline.hmset(sessionKey, sessionData as Record<string, string>)
-        pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
-        pipeline.sadd(userSessionsKey, sessionId)
-        pipeline.sadd(`${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${device.id}`, sessionId)
-        pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
-        return pipeline
-      })
-
-      if (res) {
-        this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
-      } else {
-        this.logger.warn(
-          '[AuthenticationService.finalizeOauthLogin] Response object (res) is NOT present. Cookies will not be set by this function.'
-        )
-      }
-
-      if (device.isTrusted && user.userProfile && geoLocation && geoLocation.country && geoLocation.city) {
-        const displayName = user.userProfile.firstName || user.userProfile.lastName || user.email
-        const knownLocationsKey = `${REDIS_KEY_PREFIX.USER_KNOWN_LOCATIONS}${user.id}`
-        const locationString = `${geoLocation.city?.toLowerCase()}_${geoLocation.country?.toLowerCase()}`
-        const isNewLocation = await this.redisService.sadd(knownLocationsKey, locationString)
-        if (isNewLocation === 1) {
-          this.logger.warn(
-            `New login location detected for user ${user.id} on trusted device ${device.id} via ${source}: ${locationString}. Sending alert.`
+        if (res) {
+          this.tokenService.setTokenCookies(
+            res,
+            tokens.accessToken,
+            tokens.refreshTokenJti,
+            tokens.maxAgeForRefreshTokenCookie
           )
-          auditLogEntry.notes = (
-            (auditLogEntry.notes ? auditLogEntry.notes + '; ' : '') +
-            `New trusted device login location via ${source}: ${locationString}. Alert email sent.`
-          ).trim()
-          const lang = I18nContext.current()?.lang || 'en'
-          try {
-            await this.emailService.sendSecurityAlertEmail({
-              to: user.email,
-              userName: displayName,
-              alertSubject: this.i18nService.translate(
-                'email.Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation',
-                { lang }
-              ),
-              alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation', {
-                lang
-              }),
-              mainMessage: this.i18nService.translate(
-                'email.Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation',
-                { lang }
-              ),
-              actionDetails: [
-                {
-                  label: this.i18nService.translate('email.Email.Field.Time', { lang }),
-                  value: new Date().toLocaleString(lang)
-                },
-                {
-                  label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }),
-                  value: ipAddress
-                },
-                {
-                  label: this.i18nService.translate('email.Email.Field.Device', { lang }),
-                  value: userAgent
-                },
-                {
-                  label: this.i18nService.translate('email.Email.Field.Location', { lang }),
-                  value: `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
-                }
-              ],
-              secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.NotYou', {
-                lang
-              }),
-              actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
-                lang
-              }),
-              actionButtonUrl: `${envConfig.FRONTEND_URL}/account/security`
-            })
-          } catch (emailError) {
-            const errorMessage = emailError instanceof Error ? emailError.message : String(emailError)
-            const errorStack = emailError instanceof Error ? emailError.stack : undefined
-            this.logger.error(
-              `Failed to send new trusted device login location alert (OAuth - ${source}) to ${user.email}: ${errorMessage}`,
-              errorStack
-            )
-          }
         }
-      }
+        return { accessTokenPayload: tokens.accessTokenPayload, sessionId: newSessionId }
+      })
 
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'USER_OAUTH_LOGIN_FINALIZE_SUCCESS'
       auditLogEntry.details.sessionId = sessionId
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
-      this.sessionManagementService
-        .enforceSessionAndDeviceLimits(user.id, sessionId, device.id)
-        .then((limitsResult) => {
-          if (limitsResult.deviceLimitApplied || limitsResult.sessionLimitApplied) {
-            this.logger.log(
-              `Session/device limits applied for user ${user.id} after OAuth login. Devices removed: ${limitsResult.devicesRemovedCount}, Sessions revoked: ${limitsResult.sessionsRevokedCount}`
-            )
-          }
-        })
-        .catch((limitError) => {
-          this.logger.error(
-            `Error enforcing session/device limits for user ${user.id} after OAuth login: ${limitError.message}`,
-            limitError.stack
-          )
-        })
+      this.sessionManagementService.enforceSessionAndDeviceLimits(user.id, sessionId, device.id).catch((err) => {
+        this.logger.error(
+          `[AuthenticationService.finalizeOauthLogin] Failed to enforce session limits for user ${user.id}, session ${sessionId}, device ${device.id}:`,
+          err
+        )
+      })
 
       return {
         userId: user.id,
@@ -1171,8 +1066,6 @@ export class AuthenticationService extends BaseAuthService {
         currentDeviceId: device.id,
         userProfile: user.userProfile
           ? {
-              firstName: user.userProfile.firstName,
-              lastName: user.userProfile.lastName,
               avatar: user.userProfile.avatar,
               username: user.userProfile.username
             }
@@ -1184,7 +1077,7 @@ export class AuthenticationService extends BaseAuthService {
         error
       )
       auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
-      if (error instanceof ApiException) {
+      if (error instanceof ApiException && !auditLogEntry.errorMessage) {
         auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
       }
       await this.auditLogService.record(auditLogEntry as AuditLogData)

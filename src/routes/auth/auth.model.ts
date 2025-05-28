@@ -67,7 +67,6 @@ export const LoginResSchema = z.object({
 
 export const LoginSessionResSchema = z.object({
   message: z.string(),
-  loginSessionToken: z.string(),
   twoFactorMethod: z.nativeEnum(TwoFactorMethodType)
 })
 
@@ -221,17 +220,12 @@ export const TwoFactorVerifyBodySchema = z
     }
   })
 
-export const UserProfileResSchema = UserSchema.pick({ email: true, id: true, roleId: true }).extend({
+export const UserProfileResSchema = UserSchema.pick({ email: true, id: true }).extend({
   role: z.string(),
   isDeviceTrustedInSession: z.boolean(),
-  currentDeviceId: z.number().int().positive(),
   userProfile: UserProfileSchema.pick({
-    firstName: true,
-    lastName: true,
     avatar: true,
-    username: true,
-    phoneNumber: true,
-    countryCode: true
+    username: true
   })
     .nullable()
     .optional()
