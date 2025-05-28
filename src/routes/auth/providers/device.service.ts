@@ -1,10 +1,8 @@
 import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { Prisma, Device } from '@prisma/client'
-import { DeviceSetupFailedException } from 'src/routes/auth/auth.error'
+import { Prisma, Device, UserProfile } from '@prisma/client'
 import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
 import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
-import envConfig from 'src/shared/config'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { UAParser } from 'ua-parser-js'
 import { EmailService } from './email.service'
@@ -13,11 +11,10 @@ import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { SharedUserRepository } from '../repositories/shared-user.repo'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 
-// Định nghĩa một kiểu con cho thông tin user cần thiết cho notification
 interface UserForNotification {
   id: number
   email: string
-  name: string | null
+  userProfile: Pick<UserProfile, 'firstName' | 'lastName'> | null
 }
 
 @Injectable()
@@ -129,6 +126,8 @@ export class DeviceService {
       return
     }
 
+    const displayName = user.userProfile?.firstName || user.userProfile?.lastName || user.email
+
     const lang = I18nContext.current()?.lang || 'en'
     const locationData = this.geolocationService.lookup(ipAddress)
     const locationString = locationData
@@ -139,7 +138,7 @@ export class DeviceService {
     const title = await this.i18nService.translate('Email.SecurityAlert.Title.NewDeviceFingerprintLogin', { lang })
     const mainMessage = await this.i18nService.translate('Email.SecurityAlert.MainMessage.NewDeviceFingerprintLogin', {
       lang,
-      args: { userName: user.name || user.email } // Use name or email as fallback
+      args: { userName: displayName }
     })
     const secondaryMessage = await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.NotYou', { lang })
 
@@ -168,28 +167,17 @@ export class DeviceService {
         label: await this.i18nService.translate('Email.Field.FingerprintBrowser', { lang }),
         value: `${fingerprintDetails.browserName || 'N/A'} ${fingerprintDetails.browserVersion || ''}`.trim()
       }
-      // User agent đầy đủ có thể quá dài, cân nhắc bỏ hoặc rút gọn nếu cần
-      // {
-      //   label: await this.i18nService.translate('Email.Field.Device', { lang }),
-      //   value: newDeviceUserAgent,
-      // },
     ]
-
-    // Consider adding a button to review security activity if such a page exists
-    // const actionButtonText = await this.i18nService.translate('Email.SecurityAlert.Button.ReviewActivity', { lang })
-    // const actionButtonUrl = `${envConfig.FRONTEND_URL}/account/security`
 
     this.emailService
       .sendSecurityAlertEmail({
         to: user.email,
-        userName: user.name || user.email,
+        userName: displayName,
         alertSubject: subject,
         alertTitle: title,
         mainMessage,
         actionDetails,
         secondaryMessage
-        // actionButtonText,
-        // actionButtonUrl,
       })
       .then(() => {
         this.logger.log(`New device login notification sent to ${user.email} for user ID ${user.id}`)
@@ -221,7 +209,6 @@ export class DeviceService {
   ): Promise<Device> {
     const client = tx || this.prismaService
     const fingerprint = this.basicDeviceFingerprint(data.userAgent)
-    const lang = I18nContext.current()?.lang || 'en' // For email translations
 
     this.logger.debug(
       `[DeviceService] findOrCreateDevice for user ${data.userId}, IP: ${data.ip}, UserAgent: ${data.userAgent}, Fingerprint: ${fingerprint}`
@@ -297,8 +284,18 @@ export class DeviceService {
           now.getTime() - device.lastNotificationSentAt.getTime() > notificationCooldownMs
 
         if (canSendNotification) {
-          const userForNotification = await this.sharedUserRepository.findUnique({ id: data.userId }, client)
-          if (userForNotification) {
+          const userWithProfile = await this.sharedUserRepository.findUniqueWithRole({ id: data.userId }, client)
+          if (userWithProfile) {
+            const userForNotification: UserForNotification = {
+              id: userWithProfile.id,
+              email: userWithProfile.email,
+              userProfile: userWithProfile.userProfile
+                ? {
+                    firstName: userWithProfile.userProfile.firstName,
+                    lastName: userWithProfile.userProfile.lastName
+                  }
+                : null
+            }
             this._sendKnownDeviceNewLocationNotification(
               userForNotification,
               device, // Pass the existing device object
@@ -379,7 +376,7 @@ export class DeviceService {
         notes: 'New device record created due to login with an unrecognized fingerprint.'
       })
 
-      const userForNotification = await this.sharedUserRepository.findUnique({ id: data.userId }, client)
+      const userWithProfile = await this.sharedUserRepository.findUniqueWithRole({ id: data.userId }, client)
       const uaParsed = new UAParser(data.userAgent)
       const fingerprintDetails = {
         type: this._normalizeDeviceType(uaParsed.getDevice().type, uaParsed.getOS().name, uaParsed.getBrowser().name),
@@ -389,7 +386,17 @@ export class DeviceService {
         browserVersion: uaParsed.getBrowser().version || 'N/A'
       }
 
-      if (userForNotification) {
+      if (userWithProfile) {
+        const userForNotification: UserForNotification = {
+          id: userWithProfile.id,
+          email: userWithProfile.email,
+          userProfile: userWithProfile.userProfile
+            ? {
+                firstName: userWithProfile.userProfile.firstName,
+                lastName: userWithProfile.userProfile.lastName
+              }
+            : null
+        }
         this._sendNewDeviceLoginNotification(userForNotification, data.userAgent, data.ip, fingerprintDetails).catch(
           (error) => {
             this.logger.error(
@@ -618,6 +625,8 @@ export class DeviceService {
       return
     }
 
+    const displayName = user.userProfile?.firstName || user.userProfile?.lastName || user.email
+
     const lang = I18nContext.current()?.lang || 'en'
 
     const subject = await this.i18nService.translate('Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation', {
@@ -628,7 +637,7 @@ export class DeviceService {
       'Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation',
       {
         lang,
-        args: { userName: user.name || user.email }
+        args: { userName: displayName }
       }
     )
     const secondaryMessage = await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.NotYou', { lang })
@@ -711,7 +720,7 @@ export class DeviceService {
     this.emailService
       .sendSecurityAlertEmail({
         to: user.email,
-        userName: user.name || user.email,
+        userName: displayName,
         alertSubject: subject,
         alertTitle: title,
         mainMessage,

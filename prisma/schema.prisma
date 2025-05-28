@@ -33,10 +33,7 @@ model Language {
 model User {
   id                  Int                  @id @default(autoincrement())
   email               String               @unique
-  name                String               @db.VarChar(500)
   password            String               @db.VarChar(500)
-  phoneNumber         String               @db.VarChar(50)
-  avatar              String?              @db.VarChar(1000)
   status              UserStatus           @default(ACTIVE)
   roleId              Int
   role                Role                 @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -49,6 +46,7 @@ model User {
   orders              Order[]
   reviews             Review[]
   googleId            String?              @unique
+  userProfile         UserProfile?
 
   createdPermissions Permission[] @relation("PermissionCreatedBy")
   updatedPermissions Permission[] @relation("PermissionUpdatedBy")
@@ -524,6 +522,28 @@ model RecoveryCode {
   @@index([userId])
 }
 
+model UserProfile {
+  id                       Int       @id @default(autoincrement())
+  userId                   Int       @unique
+  user                     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName                String?   @db.VarChar(255)
+  lastName                 String?   @db.VarChar(255)
+  username                 String?   @unique @db.VarChar(100)
+  avatar                   String?   @db.VarChar(1000)
+  bio                      String?   @db.Text
+  phoneNumber              String?   @unique @db.VarChar(50)
+  isPhoneNumberVerified    Boolean   @default(false)
+  phoneNumberVerifiedAt    DateTime?
+  countryCode              String?   @db.VarChar(10)
+  secondaryEmail           String?   @unique @db.VarChar(255)
+  isSecondaryEmailVerified Boolean   @default(false)
+  secondaryEmailVerifiedAt DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@index([userId])
+}
+
 enum OrderStatus {
   PENDING_CONFIRMATION
   PENDING_PICKUP
@@ -541,6 +561,8 @@ enum VerificationCodeType {
   DISABLE_2FA
   SETUP_2FA
   LOGIN_UNTRUSTED_DEVICE_OTP
+  VERIFY_SECONDARY_EMAIL
+  VERIFY_PHONE_NUMBER
 }
 
 enum UserStatus {

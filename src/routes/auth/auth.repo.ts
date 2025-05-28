@@ -22,33 +22,33 @@ export class AuthRepository {
   }
 
   async createUser(
-    user: Pick<UserType, 'email' | 'name' | 'password' | 'phoneNumber' | 'roleId'> & { status?: UserStatus },
+    user: Pick<UserType, 'email' | 'password' | 'roleId'> & { status?: UserStatus },
     prismaClient?: PrismaTransactionClient
-  ): Promise<Omit<UserType, 'password' | 'twoFactorSecret'>> {
+  ): Promise<Omit<User, 'password' | 'twoFactorSecret'>> {
+    const client = this.getClient(prismaClient)
+    const createdUser = await client.user.create({
+      data: {
+        email: user.email,
+        password: user.password,
+        roleId: user.roleId,
+        status: user.status
+      }
+    })
+    const { password, twoFactorSecret, ...userWithoutSensitiveData } = createdUser
+    return userWithoutSensitiveData
+  }
+
+  async createUserIncludeRole(
+    user: Pick<UserType, 'email' | 'password' | 'roleId'>,
+    prismaClient?: PrismaTransactionClient
+  ): Promise<User & { role: RoleType }> {
     const client = this.getClient(prismaClient)
     return await client.user.create({
       data: {
         email: user.email,
-        name: user.name,
         password: user.password,
-        phoneNumber: user.phoneNumber,
-        roleId: user.roleId,
-        status: user.status
+        roleId: user.roleId
       },
-      omit: {
-        password: true,
-        twoFactorSecret: true
-      }
-    })
-  }
-
-  async createUserIncludeRole(
-    user: Pick<UserType, 'email' | 'name' | 'password' | 'phoneNumber' | 'avatar' | 'roleId'>,
-    prismaClient?: PrismaTransactionClient
-  ): Promise<UserType & { role: RoleType }> {
-    const client = this.getClient(prismaClient)
-    return await client.user.create({
-      data: user,
       include: {
         role: true
       }
@@ -68,12 +68,13 @@ export class AuthRepository {
   async findUniqueUserIncludeRole(
     uniqueObject: { email: string } | { id: number },
     prismaClient?: PrismaTransactionClient
-  ): Promise<(UserType & { role: RoleType }) | null> {
+  ): Promise<(User & { role: RoleType }) | null> {
     const client = this.getClient(prismaClient)
     return await client.user.findUnique({
       where: uniqueObject,
       include: {
-        role: true
+        role: true,
+        userProfile: true
       }
     })
   }

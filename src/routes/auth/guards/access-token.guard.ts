@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
-import { REQUEST_USER_KEY, AuthType, AuthTypeType } from 'src/shared/constants/auth.constant'
+import { REQUEST_USER_KEY, AuthType } from 'src/shared/constants/auth.constant'
 import { TokenService } from 'src/routes/auth/providers/token.service'
 import { Request } from 'express'
 import envConfig from 'src/shared/config'

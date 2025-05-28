@@ -38,8 +38,6 @@ const main = async () => {
     data: {
       email: envConfig.ADMIN_EMAIL,
       password: hashedPassword,
-      name: envConfig.ADMIN_NAME,
-      phoneNumber: envConfig.ADMIN_PHONE_NUMBER,
       roleId: adminRole.id
     }
   })

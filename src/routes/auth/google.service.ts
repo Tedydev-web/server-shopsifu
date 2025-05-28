@@ -2,27 +2,29 @@ import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import { OAuth2Client } from 'google-auth-library'
 import { google } from 'googleapis'
 import { GoogleAuthStateType } from 'src/routes/auth/auth.model'
-import { GoogleUserInfoException } from 'src/routes/auth/auth.error'
 import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { v4 as uuidv4 } from 'uuid'
 import { DeviceService } from 'src/routes/auth/providers/device.service'
-import { TypeOfVerificationCode } from './constants/auth.constants'
 import { OtpService } from 'src/routes/auth/providers/otp.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { I18nService, I18nContext } from 'nestjs-i18n'
-import { TokenService } from 'src/routes/auth/providers/token.service'
-import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { Prisma, Role, User, Device, TwoFactorMethodType as PrismaTwoFactorMethodType } from '@prisma/client'
+import {
+  Prisma,
+  Role,
+  User,
+  Device,
+  UserProfile,
+  TwoFactorMethodType as PrismaTwoFactorMethodType
+} from '@prisma/client'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { Credentials, TokenPayload } from 'google-auth-library'
+import { TokenPayload } from 'google-auth-library'
 import { GetTokenResponse } from 'google-auth-library/build/src/auth/oauth2client'
 
 export interface GoogleCallbackSuccessResult {
-  user: User & { role: Role }
+  user: User & { role: Role; userProfile: UserProfile | null }
   device: Device
   requiresTwoFactorAuth: boolean
   requiresUntrustedDeviceVerification: boolean
@@ -209,7 +211,7 @@ export class GoogleService {
 
       let user = await this.prismaService.user.findUnique({
         where: { googleId: googleUserId },
-        include: { role: true }
+        include: { role: true, userProfile: true }
       })
 
       const clientRoleId = await this.rolesService.getClientRoleId()
@@ -217,7 +219,7 @@ export class GoogleService {
       if (!user) {
         const userByEmail = await this.prismaService.user.findUnique({
           where: { email: payload.email },
-          include: { role: true }
+          include: { role: true, userProfile: true }
         })
 
         if (userByEmail) {
@@ -254,16 +256,38 @@ export class GoogleService {
           this.logger.log(
             `[GoogleCallback] User with email ${payload.email} (ID: ${userByEmail.id}) found. Linking with Google ID ${googleUserId}.`
           )
+
+          const userProfileUpdateData: any = {}
+          if (
+            payload.picture &&
+            (!userByEmail.userProfile?.avatar || userByEmail.userProfile.avatar !== payload.picture)
+          ) {
+            userProfileUpdateData.avatar = payload.picture
+          }
+          if (
+            payload.name &&
+            (!userByEmail.userProfile?.firstName || userByEmail.userProfile.firstName !== payload.name)
+          ) {
+            // Assuming payload.name maps to firstName. Adjust if it's a full name that needs parsing.
+            userProfileUpdateData.firstName = payload.name
+          }
+
           user = await this.prismaService.user.update({
             where: { id: userByEmail.id },
             data: {
               googleId: googleUserId,
-              ...(payload.picture && (!userByEmail.avatar || userByEmail.avatar !== payload.picture)
-                ? { avatar: payload.picture }
-                : {}),
-              ...(!userByEmail.roleId || !userByEmail.role ? { role: { connect: { id: clientRoleId } } } : {})
+              ...(!userByEmail.roleId || !userByEmail.role ? { role: { connect: { id: clientRoleId } } } : {}),
+              userProfile:
+                Object.keys(userProfileUpdateData).length > 0
+                  ? {
+                      upsert: {
+                        create: userProfileUpdateData,
+                        update: userProfileUpdateData
+                      }
+                    }
+                  : undefined
             },
-            include: { role: true }
+            include: { role: true, userProfile: true }
           })
         } else {
           this.logger.log(
@@ -272,33 +296,51 @@ export class GoogleService {
           user = await this.prismaService.user.create({
             data: {
               email: payload.email,
-              name: payload.name || 'Google User',
               password: await this.hashingService.hash(uuidv4()),
-              phoneNumber: '',
-              avatar: payload.picture,
               status: 'ACTIVE',
               role: { connect: { id: clientRoleId } },
-              googleId: googleUserId
+              googleId: googleUserId,
+              userProfile: {
+                // Create UserProfile simultaneously
+                create: {
+                  firstName: payload.name || undefined, // Store Google's name as firstName
+                  avatar: payload.picture || undefined
+                }
+              }
             },
-            include: { role: true }
+            include: { role: true, userProfile: true }
           })
         }
       } else {
         this.logger.log(`[GoogleCallback] User found by Google ID ${googleUserId}: ${user.email} (ID: ${user.id}).`)
         const updates: Prisma.UserUpdateInput = {}
+        const profileUpdates: Prisma.UserProfileUpdateInput = {}
+
         if (payload.email && user.email !== payload.email) {
           this.logger.warn(
-            `[GoogleCallback] User ${user.id} (googleId: ${googleUserId}) has different email in DB (${user.email}) and Google (${payload.email}). Email NOT updated automatically. Consider implications or manual review.`
+            `[GoogleCallback] User ${user.id} (googleId: ${googleUserId}) has different email in DB (${user.email}) and Google (${payload.email}). Email NOT updated automatically.`
           )
         }
-        if (payload.name && user.name !== payload.name) {
-          updates.name = payload.name
+        // Update UserProfile fields
+        if (payload.name && user.userProfile?.firstName !== payload.name) {
+          profileUpdates.firstName = payload.name
         }
-        if (payload.picture && user.avatar !== payload.picture) {
-          updates.avatar = payload.picture
+        if (payload.picture && user.userProfile?.avatar !== payload.picture) {
+          profileUpdates.avatar = payload.picture
         }
+
         if (!user.roleId || !user.role) {
           updates.role = { connect: { id: clientRoleId } }
+        }
+
+        const userProfileExists = !!user.userProfile
+
+        if (Object.keys(profileUpdates).length > 0) {
+          if (userProfileExists) {
+            updates.userProfile = { update: profileUpdates }
+          } else {
+            updates.userProfile = { create: profileUpdates as Prisma.UserProfileCreateInput }
+          }
         }
 
         if (Object.keys(updates).length > 0) {
@@ -306,7 +348,7 @@ export class GoogleService {
           user = await this.prismaService.user.update({
             where: { id: user.id },
             data: updates,
-            include: { role: true }
+            include: { role: true, userProfile: true }
           })
         }
       }
@@ -316,7 +358,7 @@ export class GoogleService {
         user = await this.prismaService.user.update({
           where: { id: user.id },
           data: { role: { connect: { id: clientRoleId } } },
-          include: { role: true }
+          include: { role: true, userProfile: true }
         })
       }
 
@@ -411,10 +453,10 @@ export class GoogleService {
     googleEmail: string,
     googleName: string | null | undefined,
     googleAvatar: string | null | undefined
-  ): Promise<User & { role: Role }> {
+  ): Promise<User & { role: Role; userProfile: UserProfile | null }> {
     const currentUser = await this.prismaService.user.findUnique({
       where: { id: loggedInUserId },
-      include: { role: true }
+      include: { role: true, userProfile: true }
     })
 
     if (!currentUser) {
@@ -458,10 +500,26 @@ export class GoogleService {
       googleId: googleIdToLink
     }
 
+    const profileUpdates: Prisma.UserProfileUpdateInput = {}
+    if (googleName && currentUser.userProfile?.firstName !== googleName) {
+      profileUpdates.firstName = googleName
+    }
+    if (googleAvatar && currentUser.userProfile?.avatar !== googleAvatar) {
+      profileUpdates.avatar = googleAvatar
+    }
+
+    if (Object.keys(profileUpdates).length > 0) {
+      if (currentUser.userProfile) {
+        updateData.userProfile = { update: profileUpdates }
+      } else {
+        updateData.userProfile = { create: profileUpdates as Prisma.UserProfileCreateInput }
+      }
+    }
+
     const updatedUser = await this.prismaService.user.update({
       where: { id: loggedInUserId },
       data: updateData,
-      include: { role: true }
+      include: { role: true, userProfile: true }
     })
 
     this.logger.log(`[linkGoogleAccount] Successfully linked Google ID ${googleIdToLink} to user ${loggedInUserId}.`)

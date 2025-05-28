@@ -128,8 +128,15 @@ export class AuthService {
     return this.twoFactorAuthService.setupTwoFactorAuth(userId)
   }
 
-  async confirmTwoFactorSetup(userId: number, setupToken: string, totpCode: string) {
-    return this.twoFactorAuthService.confirmTwoFactorSetup(userId, setupToken, totpCode)
+  async confirmTwoFactorSetup(
+    userId: number,
+    setupToken: string,
+    totpCode: string,
+    res: Response,
+    ip?: string,
+    userAgent?: string
+  ) {
+    return this.twoFactorAuthService.confirmTwoFactorSetup(userId, setupToken, totpCode, res, ip, userAgent)
   }
 
   async disableTwoFactorAuth(data: DisableTwoFactorBodyType & { userId: number; userAgent?: string; ip?: string }) {

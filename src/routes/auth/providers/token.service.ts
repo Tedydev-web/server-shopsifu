@@ -18,7 +18,6 @@ import ms from 'ms'
 import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import {
   InvalidRefreshTokenException,
-  ExpiredRefreshTokenException,
   RefreshTokenAlreadyUsedException,
   RefreshTokenNotFoundException,
   RefreshTokenSessionInvalidException,
@@ -98,8 +97,8 @@ export class TokenService {
     return this.jwtService.sign(
       { ...payload, jti },
       {
-        secret: secret as string,
-        expiresIn: expiresIn as string,
+        secret: secret,
+        expiresIn: expiresIn,
         algorithm: 'HS256'
       }
     )
@@ -119,7 +118,7 @@ export class TokenService {
     try {
       this.logger.debug(`Verifying Pending Link Token.`)
       const payload = await this.jwtService.verifyAsync<PendingLinkTokenPayload>(token, {
-        secret: secret as string
+        secret: secret
       })
       return payload
     } catch (error) {
@@ -225,7 +224,7 @@ export class TokenService {
     _prismaTx?: PrismaTransactionClient,
     rememberMe?: boolean
   ) {
-    const { userId, deviceId, roleId, roleName, sessionId } = params
+    const { userId, deviceId, sessionId } = params
     this.logger.debug(
       `Generating tokens for user ${userId}, device ${deviceId}, session ${sessionId}, rememberMe: ${!!rememberMe}`
     )
@@ -241,7 +240,7 @@ export class TokenService {
 
     const accessToken = this.signAccessToken(accessTokenPayloadToSign)
 
-    const decodedAccessToken = this.jwtService.decode(accessToken) as AccessTokenPayload
+    const decodedAccessToken = this.jwtService.decode(accessToken)
     const accessTokenExp = decodedAccessToken.exp
 
     let refreshTokenExpiresInMs: number
@@ -466,28 +465,25 @@ export class TokenService {
     await this.redisService.hset(sessionKey, 'lastActiveAt', now.toISOString())
     this.logger.debug(`Session ${sessionId} last active time updated.`)
 
-    const newAccessTokenJti = uuidv4()
-    const nowTime = Math.floor(Date.now() / 1000) // For iat and exp calculation
+    const isDeviceTrustedInSessionBoolean = sessionDetails.isTrusted === 'true'
 
-    const accessTokenPayloadToSign: Omit<AccessTokenPayloadCreate, 'exp' | 'iat' | 'isDeviceTrustedInSession'> & {
-      isDeviceTrustedInSession?: boolean
-    } = {
-      userId: parseInt(sessionDetails.userId, 10),
-      deviceId: parseInt(sessionDetails.deviceId, 10),
-      roleId: parseInt(sessionDetails.roleId, 10),
+    const newAccessTokenJti = uuidv4()
+    const accessTokenPayloadToSign: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
+      userId: Number(sessionDetails.userId),
+      deviceId: Number(sessionDetails.deviceId),
+      roleId: Number(sessionDetails.roleId),
       roleName: sessionDetails.roleName,
       sessionId: sessionId,
-      jti: newAccessTokenJti,
-      // isDeviceTrustedInSession will be part of AccessTokenPayloadCreate, ensure it's included from sessionDetails
-      isDeviceTrustedInSession: sessionDetails.isDeviceTrustedInSession === 'true'
+      isDeviceTrustedInSession: isDeviceTrustedInSessionBoolean,
+      jti: newAccessTokenJti
     }
 
     const newAccessToken = this.signAccessToken(accessTokenPayloadToSign)
 
     const finalAccessTokenPayload: AccessTokenPayload = {
       ...accessTokenPayloadToSign,
-      iat: nowTime,
-      exp: nowTime + Math.floor(ms(envConfig.ACCESS_TOKEN_EXPIRES_IN) / 1000),
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + Math.floor(ms(envConfig.ACCESS_TOKEN_EXPIRES_IN) / 1000),
       // Ensure all fields from AccessTokenPayloadCreate are present
       isDeviceTrustedInSession: accessTokenPayloadToSign.isDeviceTrustedInSession ?? false
     }

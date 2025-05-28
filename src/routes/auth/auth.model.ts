@@ -1,13 +1,12 @@
 import { TwoFactorMethodType, TypeOfVerificationCode } from './constants/auth.constants'
 import { UserSchema } from 'src/shared/models/shared-user.model'
+import { UserProfileSchema } from 'src/shared/models/user-profile.model'
 import { z } from 'zod'
-import { PasswordsDoNotMatchException, InvalidCodeFormatException } from './auth.error'
+import { PasswordsDoNotMatchException } from './auth.error'
 
 export const RegisterBodySchema = UserSchema.pick({
   email: true,
-  password: true,
-  name: true,
-  phoneNumber: true
+  password: true
 })
   .extend({
     confirmPassword: z.string().min(6).max(100),
@@ -27,6 +26,10 @@ export const RegisterBodySchema = UserSchema.pick({
 export const RegisterResSchema = UserSchema.omit({
   password: true,
   twoFactorSecret: true
+}).extend({
+  userProfile: UserProfileSchema.pick({ firstName: true, lastName: true, avatar: true, username: true })
+    .nullable()
+    .optional()
 })
 
 export const VerificationCodeSchema = z.object({
@@ -55,9 +58,11 @@ export const LoginBodySchema = UserSchema.pick({
 export const LoginResSchema = z.object({
   userId: z.number(),
   email: z.string().email(),
-  name: z.string(),
   role: z.string(),
-  askToTrustDevice: z.boolean().optional()
+  askToTrustDevice: z.boolean().optional(),
+  userProfile: UserProfileSchema.pick({ firstName: true, lastName: true, avatar: true, username: true })
+    .nullable()
+    .optional()
 })
 
 export const LoginSessionResSchema = z.object({
@@ -216,13 +221,20 @@ export const TwoFactorVerifyBodySchema = z
     }
   })
 
-export const UserProfileResSchema = z.object({
-  userId: z.number(),
-  email: z.string().email(),
-  name: z.string(),
+export const UserProfileResSchema = UserSchema.pick({ email: true, id: true, roleId: true }).extend({
   role: z.string(),
   isDeviceTrustedInSession: z.boolean(),
-  currentDeviceId: z.number().int().positive()
+  currentDeviceId: z.number().int().positive(),
+  userProfile: UserProfileSchema.pick({
+    firstName: true,
+    lastName: true,
+    avatar: true,
+    username: true,
+    phoneNumber: true,
+    countryCode: true
+  })
+    .nullable()
+    .optional()
 })
 
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>

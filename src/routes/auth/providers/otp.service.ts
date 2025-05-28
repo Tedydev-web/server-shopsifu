@@ -1,15 +1,11 @@
 import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import {
-  TokenType,
-  TokenTypeType,
   TypeOfVerificationCode,
   TypeOfVerificationCodeType,
-  TwoFactorMethodType,
   TwoFactorMethodTypeType
 } from '../constants/auth.constants'
 import envConfig from 'src/shared/config'
 import { EmailService } from './email.service'
-import { addMilliseconds } from 'date-fns'
 import ms from 'ms'
 import { v4 as uuidv4 } from 'uuid'
 import { generateOTP } from 'src/routes/auth/utils/otp.utils'
@@ -29,7 +25,7 @@ import { I18nContext, I18nService } from 'nestjs-i18n'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { JwtService } from '@nestjs/jwt'
-import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
+import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 
@@ -216,7 +212,7 @@ export class OtpService {
     ip?: string
     userAgent?: string
   }): Promise<string> {
-    const { otpKey, otpData } = await this._verifyOtpCore(
+    const { otpData } = await this._verifyOtpCore(
       payload.email,
       payload.code,
       payload.type,

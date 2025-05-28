@@ -14,7 +14,6 @@ import {
   Patch,
   Delete,
   UseGuards,
-  ParseIntPipe,
   UsePipes
 } from '@nestjs/common'
 import { Response, Request } from 'express'
@@ -51,18 +50,12 @@ import {
   RevokeSessionsBodyDTO,
   GetSessionsGroupedByDeviceResDTO,
   GetSessionsByDeviceQueryDTO,
-  DeviceWithSessionsSchema,
-  GetSessionsGroupedByDeviceResSchema,
-  DeviceInfoSchema
+  GetSessionsGroupedByDeviceResSchema
 } from './dtos/session-management.dto'
 import { UseZodSchemas, hasProperty } from 'src/shared/decorators/use-zod-schema.decorator'
 
 import { AuthService } from 'src/routes/auth/auth.service'
-import {
-  GoogleService,
-  GoogleCallbackSuccessResult,
-  GoogleCallbackAccountExistsWithoutLinkResult
-} from './google.service'
+import { GoogleService } from './google.service'
 import envConfig from 'src/shared/config'
 import { ActiveUser } from './decorators/active-user.decorator'
 import { IsPublic } from './decorators/auth.decorator'
@@ -78,23 +71,17 @@ import { I18nService } from 'nestjs-i18n'
 import { SessionManagementService } from 'src/routes/auth/services/session-management.service'
 import { AccessTokenGuard } from './guards/access-token.guard'
 import { RolesGuard } from './guards/roles.guard'
-import { PaginatedResponseType } from 'src/shared/models/pagination.model'
-import { ActiveSessionSchema } from './dtos/session-management.dto'
 import { z } from 'zod'
-import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
 import { Auth } from './decorators/auth.decorator'
 import { OtpService } from './providers/otp.service'
 import { TypeOfVerificationCode } from './constants/auth.constants'
-import { v4 as uuidv4 } from 'uuid'
-import ms from 'ms'
-import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { JwtService } from '@nestjs/jwt'
 import { AuthenticationService } from './services/authentication.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { Buffer } from 'buffer'
 import { RevokeSessionsResDTO } from './dtos/session-management.dto'
-import { PasswordReverificationGuard, AllowWithoutPasswordReverification } from './guards/password-reverification.guard'
+import { AllowWithoutPasswordReverification } from './guards/password-reverification.guard'
 import { SharedUserRepository } from './repositories/shared-user.repo'
 import { LinkGoogleAccountReqDto, LinkGoogleAccountReqSchema } from './dtos/link-google-account.dto'
 import { UserProfileResSchema, LoginSessionResSchema, GoogleAuthStateType } from './auth.model'
@@ -583,14 +570,16 @@ export class AuthController {
           this.logger.warn(
             `[GoogleCallback] Response object not available for redirect. Returning login result as JSON for user ${user.id}.`
           )
-          return {
-            userId: loginResult.userId,
+          const result: UserProfileResDTO = {
+            id: loginResult.userId,
             email: loginResult.email,
-            name: loginResult.name,
             role: loginResult.role,
+            roleId: loginResult.roleId,
             isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession,
-            currentDeviceId: loginResult.currentDeviceId
+            currentDeviceId: loginResult.currentDeviceId,
+            userProfile: loginResult.userProfile
           }
+          return result
         }
       }
       this.logger.error(
@@ -660,8 +649,14 @@ export class AuthController {
   @Post('2fa/confirm-setup')
   @ZodSerializerDto(TwoFactorConfirmSetupResDTO)
   // @Throttle({ short: { limit: 3, ttl: 60000 } })
-  confirmTwoFactorSetup(@Body() body: TwoFactorConfirmSetupBodyDTO, @ActiveUser('userId') userId: number) {
-    return this.authService.confirmTwoFactorSetup(userId, body.setupToken, body.totpCode)
+  confirmTwoFactorSetup(
+    @Body() body: TwoFactorConfirmSetupBodyDTO,
+    @ActiveUser('userId') userId: number,
+    @Res({ passthrough: true }) res: Response,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string
+  ) {
+    return this.authService.confirmTwoFactorSetup(userId, body.setupToken, body.totpCode, res, ip, userAgent)
   }
 
   @Post('2fa/disable')
@@ -818,7 +813,7 @@ export class AuthController {
       throw new ApiException(HttpStatus.NOT_FOUND, 'USER_NOT_FOUND', 'Error.User.NotFound')
     }
 
-    await this.authenticationService.initiateSessionReverificationOtp(activeUser.userId, user.email, user.name ?? '')
+    await this.authenticationService.initiateSessionReverificationOtp(activeUser.userId, user.email)
     return {
       message: await this.i18nService.translate('Auth.Session.SendReverificationOtpSuccess')
     }
@@ -972,14 +967,16 @@ export class AuthController {
         res
       )
 
-      return {
-        userId: loginResult.userId,
+      const result: UserProfileResDTO = {
+        id: loginResult.userId,
         email: loginResult.email,
-        name: loginResult.name,
         role: loginResult.role,
+        roleId: loginResult.roleId,
         isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession,
-        currentDeviceId: loginResult.currentDeviceId
+        currentDeviceId: loginResult.currentDeviceId,
+        userProfile: loginResult.userProfile
       }
+      return result
     } catch (error) {
       this.logger.error('[completeLinkAndLogin] Error completing Google link and login:', error.message, error.stack)
       if (error instanceof ApiException) throw error

@@ -36,7 +36,7 @@ export class PasswordAuthService extends BaseAuthService {
         throw InvalidOTPTokenException
       }
 
-      const user = await this.sharedUserRepository.findUnique({ id: verificationPayload.userId })
+      const user = await this.sharedUserRepository.findUniqueWithRole({ id: verificationPayload.userId })
       if (!user) {
         auditLogEntry.errorMessage = `User with ID ${verificationPayload.userId} not found during password reset.`
         auditLogEntry.details.reason = 'USER_NOT_FOUND'
@@ -60,9 +60,10 @@ export class PasswordAuthService extends BaseAuthService {
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
       try {
+        const displayName = user.userProfile?.firstName || user.userProfile?.lastName || user.email
         await this.emailService.sendSecurityAlertEmail({
           to: user.email,
-          userName: user.name,
+          userName: displayName,
           alertSubject: await this.i18nService.translate('email.Email.SecurityAlert.Subject.PasswordReset', {
             lang: I18nContext.current()?.lang
           }),
@@ -71,7 +72,7 @@ export class PasswordAuthService extends BaseAuthService {
           }),
           mainMessage: await this.i18nService.translate('email.Email.SecurityAlert.MainMessage.PasswordReset', {
             lang: I18nContext.current()?.lang,
-            args: { userName: user.name }
+            args: { userName: displayName }
           }),
           actionDetails: [
             { label: 'Time', value: new Date().toLocaleString() },
@@ -142,9 +143,10 @@ export class PasswordAuthService extends BaseAuthService {
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
       try {
+        const displayName = user.userProfile?.firstName || user.userProfile?.lastName || user.email
         await this.emailService.sendSecurityAlertEmail({
           to: user.email,
-          userName: user.name,
+          userName: displayName,
           alertSubject: await this.i18nService.translate('email.Email.SecurityAlert.Subject.PasswordChanged', {
             lang: I18nContext.current()?.lang
           }),
@@ -153,7 +155,7 @@ export class PasswordAuthService extends BaseAuthService {
           }),
           mainMessage: await this.i18nService.translate('email.Email.SecurityAlert.MainMessage.PasswordChanged', {
             lang: I18nContext.current()?.lang,
-            args: { userName: user.name }
+            args: { userName: displayName }
           }),
           actionDetails: [
             { label: 'Time', value: new Date().toLocaleString() },

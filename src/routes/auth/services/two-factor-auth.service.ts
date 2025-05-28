@@ -11,7 +11,9 @@ import {
   TOTPAlreadyEnabledException,
   TOTPNotEnabledException,
   MaxVerificationAttemptsExceededException,
-  InvalidOTPException
+  InvalidOTPException,
+  EmailNotFoundException,
+  InvalidOTPTokenException
 } from 'src/routes/auth/auth.error'
 import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { Response } from 'express'
@@ -34,7 +36,6 @@ import { DeviceService } from '../providers/device.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { JwtService } from '@nestjs/jwt'
-import { EmailNotFoundException, InvalidOTPTokenException } from '../auth.error'
 import { SltContextData } from '../providers/otp.service'
 
 const MAX_2FA_VERIFY_ATTEMPTS = 5
@@ -89,9 +90,9 @@ export class TwoFactorAuthService extends BaseAuthService {
     }
 
     try {
-      const user = await this.sharedUserRepository.findUnique({ id: userId })
+      const user = await this.sharedUserRepository.findUniqueWithRole({ id: userId })
       if (!user) {
-        throw new ApiException(404, 'User not found', 'Auth.UserNotFound')
+        throw new ApiException(HttpStatus.NOT_FOUND, 'UserNotFound', 'Error.Auth.UserNotFound')
       }
 
       if (user.twoFactorEnabled && user.twoFactorSecret) {
@@ -138,7 +139,7 @@ export class TwoFactorAuthService extends BaseAuthService {
     userId: number,
     setupToken: string,
     totpCode: string,
-
+    res: Response,
     requestIpAddress?: string,
     requestUserAgent?: string
   ) {
@@ -163,7 +164,7 @@ export class TwoFactorAuthService extends BaseAuthService {
     try {
       const resultFromTransaction = await this.prismaService.$transaction(async (tx) => {
         const user = await this.sharedUserRepository.findUniqueWithRole({ id: userId }, tx)
-        if (!user) {
+        if (!user || !user.role) {
           auditLogEntry.errorMessage = 'User not found during 2FA confirmation.'
           auditLogEntry.details.reason = 'USER_NOT_FOUND'
           throw EmailNotFoundException
@@ -250,10 +251,11 @@ export class TwoFactorAuthService extends BaseAuthService {
               deviceId: device.id,
               roleId: user.roleId,
               roleName: user.role.name,
-              sessionId: newSessionId
+              sessionId: newSessionId,
+              isDeviceTrustedInSession: true
             },
             tx,
-            false
+            true
           )
 
         const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${newSessionId}`
@@ -267,8 +269,8 @@ export class TwoFactorAuthService extends BaseAuthService {
           userAgent: requestUserAgent || 'N/A',
           createdAt: new Date().toISOString(),
           lastActiveAt: new Date().toISOString(),
-          isTrusted: false,
-          rememberMe: false,
+          isTrusted: true,
+          rememberMe: true,
           roleId: user.roleId,
           roleName: user.role.name,
           currentAccessTokenJti: accessTokenJti,
@@ -283,12 +285,41 @@ export class TwoFactorAuthService extends BaseAuthService {
 
         auditLogEntry.details.newSessionIdCreated = newSessionId
 
+        const lang = I18nContext.current()?.lang || 'en'
+        const displayName = user.userProfile?.firstName || user.userProfile?.lastName || user.email
+        try {
+          await this.emailService.sendSecurityAlertEmail({
+            to: user.email,
+            userName: displayName,
+            alertSubject: await this.i18nService.translate('email.Email.SecurityAlert.Subject.2FAEnabled', { lang }),
+            alertTitle: await this.i18nService.translate('email.Email.SecurityAlert.Title.2FAEnabled', { lang }),
+            mainMessage: await this.i18nService.translate('email.Email.SecurityAlert.MainMessage.2FAEnabled', {
+              lang,
+              args: { userName: displayName }
+            }),
+            actionDetails: [
+              { label: 'Time', value: new Date().toLocaleString(lang) },
+              { label: 'IP Address', value: requestIpAddress || 'N/A' },
+              { label: 'Device', value: requestUserAgent || 'N/A' }
+            ],
+            secondaryMessage: await this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.NotYou', {
+              lang
+            }),
+            actionButtonText: await this.i18nService.translate('email.Email.SecurityAlert.Button.ManageSettings', {
+              lang
+            }),
+            actionButtonUrl: `${envConfig.FRONTEND_URL}/account/security`
+          })
+        } catch (emailError) {
+          this.logger.error(`Failed to send 2FA enabled notification to ${user.email}: ${emailError.message}`)
+        }
+
         return {
           recoveryCodesToReturn: recoveryCodes,
           accessTokenToReturn: accessToken,
           refreshTokenJtiToReturn: refreshTokenJti,
           maxAgeForRefreshTokenCookieToReturn: maxAgeForRefreshTokenCookie,
-          userForEmail: { id: user.id, email: user.email, name: user.name }
+          userForEmail: { id: user.id, email: user.email, displayName: displayName }
         }
       })
 
@@ -302,12 +333,12 @@ export class TwoFactorAuthService extends BaseAuthService {
         try {
           await this.emailService.sendSecurityAlertEmail({
             to: resultFromTransaction.userForEmail.email,
-            userName: resultFromTransaction.userForEmail.name || undefined,
+            userName: resultFromTransaction.userForEmail.displayName,
             alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.TwoFactorEnabled', { lang }),
             alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.TwoFactorEnabled', { lang }),
             mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.TwoFactorEnabled', {
               lang,
-              args: { userName: resultFromTransaction.userForEmail.name }
+              args: { userName: resultFromTransaction.userForEmail.displayName }
             }),
             actionDetails: [
               {
@@ -439,55 +470,47 @@ export class TwoFactorAuthService extends BaseAuthService {
           tx
         )
 
+        await this.twoFactorService.deleteAllRecoveryCodes(data.userId, tx)
         await this.tokenService.invalidateAllUserSessions(data.userId, '2FA_DISABLED')
         auditLogEntry.details.allOtherSessionsInvalidated = true
 
-        return { userForEmail: { id: user.id, email: user.email, name: user.name } }
+        const lang = I18nContext.current()?.lang || 'en'
+        const displayName = user.userProfile?.firstName || user.userProfile?.lastName || user.email
+        try {
+          await this.emailService.sendSecurityAlertEmail({
+            to: user.email,
+            userName: displayName,
+            alertSubject: await this.i18nService.translate('email.Email.SecurityAlert.Subject.2FADisabled', { lang }),
+            alertTitle: await this.i18nService.translate('email.Email.SecurityAlert.Title.2FADisabled', { lang }),
+            mainMessage: await this.i18nService.translate('email.Email.SecurityAlert.MainMessage.2FADisabled', {
+              lang,
+              args: { userName: displayName }
+            }),
+            actionDetails: [
+              { label: 'Time', value: new Date().toLocaleString(lang) },
+              { label: 'IP Address', value: data.ip || 'N/A' },
+              { label: 'Device', value: data.userAgent || 'N/A' }
+            ],
+            secondaryMessage: await this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.NotYou', {
+              lang
+            }),
+            actionButtonText: await this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
+              lang
+            }),
+            actionButtonUrl: `${envConfig.FRONTEND_URL}/account/security`
+          })
+        } catch (emailError) {
+          this.logger.error(`Failed to send 2FA disabled notification to ${user.email}: ${emailError.message}`)
+        }
+
+        return { message: await this.i18nService.translate('Auth.2FA.DisabledSuccessfully', { lang }) }
       })
 
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = '2FA_DISABLE_SUCCESS'
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
-      if (resultFromTransaction && resultFromTransaction.userForEmail) {
-        const lang = I18nContext.current()?.lang || 'en'
-        try {
-          await this.emailService.sendSecurityAlertEmail({
-            to: resultFromTransaction.userForEmail.email,
-            userName: resultFromTransaction.userForEmail.name || undefined,
-            alertSubject: this.i18nService.translate('email.Email.SecurityAlert.Subject.TwoFactorDisabled', { lang }),
-            alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.TwoFactorDisabled', { lang }),
-            mainMessage: this.i18nService.translate('email.Email.SecurityAlert.MainMessage.TwoFactorDisabled', {
-              lang,
-              args: { userName: resultFromTransaction.userForEmail.name }
-            }),
-            actionDetails: [
-              {
-                label: this.i18nService.translate('email.Email.Field.Time', { lang }),
-                value: new Date().toLocaleString(lang)
-              },
-              { label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }), value: data.ip || 'N/A' },
-              {
-                label: this.i18nService.translate('email.Email.Field.Device', { lang }),
-                value: data.userAgent || 'N/A'
-              }
-            ],
-            secondaryMessage: this.i18nService.translate(
-              'email.Email.SecurityAlert.SecondaryMessage.2FA.NotYouDisable',
-              { lang }
-            ),
-            actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.Enable2FA', { lang }),
-            actionButtonUrl: `${envConfig.FRONTEND_URL}/account/security`
-          })
-        } catch (emailError) {
-          this.logger.error(
-            `Failed to send 2FA disabled security alert to ${resultFromTransaction.userForEmail.email}: ${emailError.message}`,
-            emailError.stack
-          )
-        }
-      }
-      const message = await this.i18nService.translate('Auth.2FA.Disabled', { lang: I18nContext.current()?.lang })
-      return { message }
+      return resultFromTransaction
     } catch (error) {
       auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
       if (error instanceof ApiException && error.details) {
@@ -823,10 +846,10 @@ export class TwoFactorAuthService extends BaseAuthService {
               roleId: user.role.id,
               roleName: user.role.name,
               sessionId: uuidv4(),
-              isDeviceTrustedInSession: device.isTrusted || shouldRememberDevice
+              isDeviceTrustedInSession: true
             },
             tx,
-            shouldRememberDevice
+            true
           )
 
         if (sltContext && sltContext.sltJti) {
@@ -836,6 +859,7 @@ export class TwoFactorAuthService extends BaseAuthService {
 
         if (res) {
           this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
+          this.tokenService.clearSltCookie(res)
         }
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
@@ -845,10 +869,17 @@ export class TwoFactorAuthService extends BaseAuthService {
         return {
           userId: user.id,
           email: user.email,
-          name: user.name,
           role: user.role.name,
           isDeviceTrustedInSession: accessTokenPayload.isDeviceTrustedInSession,
-          currentDeviceId: device.id
+          currentDeviceId: device.id,
+          userProfile: user.userProfile
+            ? {
+                firstName: user.userProfile.firstName,
+                lastName: user.userProfile.lastName,
+                avatar: user.userProfile.avatar,
+                username: user.userProfile.username
+              }
+            : null
         }
       })
 
@@ -875,6 +906,84 @@ export class TwoFactorAuthService extends BaseAuthService {
         }
       }
       await this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
+      throw error
+    }
+  }
+
+  async regenerateRecoveryCodes(userId: number, ip?: string, userAgent?: string): Promise<{ recoveryCodes: string[] }> {
+    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
+      action: '2FA_REGENERATE_RECOVERY_CODES_ATTEMPT',
+      userId,
+      ipAddress: ip,
+      userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: { userId } as Prisma.JsonObject
+    }
+
+    try {
+      const user = await this.sharedUserRepository.findUniqueWithRole({ id: userId })
+      if (!user || !user.role) {
+        auditLogEntry.errorMessage = 'User not found.'
+        throw EmailNotFoundException
+      }
+      auditLogEntry.userEmail = user.email
+
+      if (!user.twoFactorEnabled || user.twoFactorMethod !== TwoFactorMethodType.TOTP) {
+        auditLogEntry.errorMessage = '2FA (TOTP) is not enabled for this user.'
+        throw TOTPNotEnabledException
+      }
+
+      const newRecoveryCodes = this.twoFactorService.generateRecoveryCodes()
+      await this.twoFactorService.saveRecoveryCodes(userId, newRecoveryCodes, this.prismaService)
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = '2FA_REGENERATE_RECOVERY_CODES_SUCCESS'
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+      const lang = I18nContext.current()?.lang || 'en'
+      const displayName = user.userProfile?.firstName || user.userProfile?.lastName || user.email
+      try {
+        await this.emailService.sendSecurityAlertEmail({
+          to: user.email,
+          userName: displayName,
+          alertSubject: await this.i18nService.translate(
+            'email.Email.SecurityAlert.Subject.2FARecoveryCodesRegenerated',
+            { lang }
+          ),
+          alertTitle: await this.i18nService.translate('email.Email.SecurityAlert.Title.2FARecoveryCodesRegenerated', {
+            lang
+          }),
+          mainMessage: await this.i18nService.translate(
+            'email.Email.SecurityAlert.MainMessage.2FARecoveryCodesRegenerated',
+            {
+              lang,
+              args: { userName: displayName }
+            }
+          ),
+          actionDetails: [
+            { label: 'Time', value: new Date().toLocaleString(lang) },
+            { label: 'IP Address', value: ip || 'N/A' },
+            { label: 'Device', value: userAgent || 'N/A' }
+          ],
+          secondaryMessage: await this.i18nService.translate(
+            'email.Email.SecurityAlert.SecondaryMessage.NotYouKeepSafe',
+            { lang }
+          ),
+          actionButtonText: await this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
+            lang
+          }),
+          actionButtonUrl: `${envConfig.FRONTEND_URL}/account/security`
+        })
+      } catch (emailError) {
+        this.logger.error(
+          `Failed to send 2FA recovery codes regenerated notification to ${user.email}: ${emailError.message}`
+        )
+      }
+
+      return { recoveryCodes: newRecoveryCodes }
+    } catch (error) {
+      auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }

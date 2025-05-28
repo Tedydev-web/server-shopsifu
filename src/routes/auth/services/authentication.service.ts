@@ -3,7 +3,6 @@ import { BaseAuthService } from './base-auth.service'
 import { LoginBodyType, RegisterBodyType, TwoFactorVerifyBodyType } from 'src/routes/auth/auth.model'
 import { Response, Request } from 'express'
 import {
-  AbsoluteSessionLifetimeExceededException,
   DeviceMismatchException,
   DeviceSetupFailedException,
   EmailAlreadyExistsException,
@@ -17,7 +16,7 @@ import { AuditLogData, AuditLogStatus, AuditLogService } from 'src/routes/audit-
 import { isUniqueConstraintPrismaError } from 'src/shared/utils/type-guards.utils'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { Device, Prisma, User, UserStatus } from '@prisma/client'
+import { Device, Prisma, User, UserProfile, UserStatus } from '@prisma/client'
 import { TypeOfVerificationCode, TwoFactorMethodType } from '../constants/auth.constants'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { I18nContext, I18nService } from 'nestjs-i18n'
@@ -39,7 +38,6 @@ import { OtpService } from '../providers/otp.service'
 import { DeviceService } from '../providers/device.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { JwtService } from '@nestjs/jwt'
-import { CookieNames } from 'src/shared/constants/auth.constant'
 import { ReverifyPasswordBodyType } from '../auth.dto'
 import { SltContextData } from '../providers/otp.service'
 import { MaxVerificationAttemptsExceededException, InvalidOTPException } from '../auth.error'
@@ -95,9 +93,7 @@ export class AuthenticationService extends BaseAuthService {
       userAgent: body.userAgent,
       status: AuditLogStatus.FAILURE,
       details: {
-        otpTokenProvided: !!body.otpToken,
-        nameProvided: !!body.name,
-        phoneNumberProvided: !!body.phoneNumber
+        otpTokenProvided: !!body.otpToken
       }
     }
 
@@ -143,8 +139,6 @@ export class AuthenticationService extends BaseAuthService {
         const createdUser = await this.authRepository.createUser(
           {
             email: body.email,
-            name: body.name,
-            phoneNumber: body.phoneNumber,
             password: hashedPassword,
             roleId: clientRoleId,
             status: UserStatus.ACTIVE
@@ -160,7 +154,8 @@ export class AuthenticationService extends BaseAuthService {
         return createdUser
       })
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      return user
+      const userToReturn = user
+      return userToReturn
     } catch (error) {
       if (
         isUniqueConstraintPrismaError(error) ||
@@ -196,7 +191,7 @@ export class AuthenticationService extends BaseAuthService {
     try {
       const user = await this.prismaService.user.findUnique({
         where: { email: body.email },
-        include: { role: true }
+        include: { role: true, userProfile: true }
       })
       if (!user) {
         auditLogEntry.errorMessage = EmailNotFoundException.message
@@ -336,7 +331,8 @@ export class AuthenticationService extends BaseAuthService {
             deviceId: device.id,
             roleId: user.roleId,
             roleName: user.role.name,
-            sessionId
+            sessionId,
+            isDeviceTrustedInSession: device.isTrusted
           },
           this.prismaService,
           body.rememberMe
@@ -387,7 +383,8 @@ export class AuthenticationService extends BaseAuthService {
         )
       }
 
-      if (device.isTrusted && geoLocation && geoLocation.country && geoLocation.city) {
+      if (device.isTrusted && geoLocation && geoLocation.country && geoLocation.city && user.userProfile) {
+        const displayName = user.userProfile.firstName || user.userProfile.lastName || user.email
         const knownLocationsKey = `${REDIS_KEY_PREFIX.USER_KNOWN_LOCATIONS}${user.id}`
         const locationString = `${geoLocation.city?.toLowerCase()}_${geoLocation.country?.toLowerCase()}`
 
@@ -410,7 +407,7 @@ export class AuthenticationService extends BaseAuthService {
           try {
             await this.emailService.sendSecurityAlertEmail({
               to: user.email,
-              userName: user.name,
+              userName: displayName,
               alertSubject: this.i18nService.translate(
                 'email.Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation',
                 { lang }
@@ -484,11 +481,19 @@ export class AuthenticationService extends BaseAuthService {
       return {
         userId: user.id,
         email: user.email,
-        name: user.name,
         role: user.role.name,
+        roleId: user.role.id,
         isDeviceTrustedInSession: device.isTrusted,
         currentDeviceId: device.id,
-        askToTrustDevice: shouldAskToTrustDevice
+        askToTrustDevice: shouldAskToTrustDevice,
+        userProfile: user.userProfile
+          ? {
+              firstName: user.userProfile.firstName,
+              lastName: user.userProfile.lastName,
+              avatar: user.userProfile.avatar,
+              username: user.userProfile.username
+            }
+          : null
       }
     } catch (error) {
       this.logger.error('[AuthenticationService.login] Caught error:', error, typeof error)
@@ -926,10 +931,18 @@ export class AuthenticationService extends BaseAuthService {
         return {
           userId: user.id,
           email: user.email,
-          name: user.name,
           role: user.role.name,
+          roleId: user.role.id,
           isDeviceTrustedInSession: accessTokenPayload.isDeviceTrustedInSession,
-          currentDeviceId: device.id
+          currentDeviceId: device.id,
+          userProfile: user.userProfile
+            ? {
+                firstName: user.userProfile.firstName,
+                lastName: user.userProfile.lastName,
+                avatar: user.userProfile.avatar,
+                username: user.userProfile.username
+              }
+            : null
         }
       })
       await this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
@@ -961,7 +974,7 @@ export class AuthenticationService extends BaseAuthService {
   }
 
   async finalizeOauthLogin(
-    user: User & { role: { id: number; name: string } },
+    user: User & { role: { id: number; name: string }; userProfile: UserProfile | null },
     device: Device,
     rememberMe: boolean,
     ipAddress: string,
@@ -987,11 +1000,7 @@ export class AuthenticationService extends BaseAuthService {
     try {
       const sessionId = uuidv4()
       const now = new Date()
-
       const geoLocation: GeolocationData | null = this.geolocationService.lookup(ipAddress)
-      if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && geoLocation) {
-        auditLogEntry.details.location = `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
-      }
 
       const sessionData: Record<string, string | number | boolean | undefined | null> = {
         userId: user.id,
@@ -1009,20 +1018,21 @@ export class AuthenticationService extends BaseAuthService {
         source: source
       }
 
-      const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
+      const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenPayload } =
         await this.tokenService.generateTokens(
           {
             userId: user.id,
             deviceId: device.id,
             roleId: user.role.id,
             roleName: user.role.name,
-            sessionId
+            sessionId,
+            isDeviceTrustedInSession: device.isTrusted
           },
           this.prismaService,
           rememberMe
         )
 
-      sessionData.currentAccessTokenJti = accessTokenJti
+      sessionData.currentAccessTokenJti = accessTokenPayload.jti
       sessionData.currentRefreshTokenJti = refreshTokenJti
       const decodedToken = this.jwtService.decode(accessToken)
       if (decodedToken && typeof decodedToken === 'object' && 'exp' in decodedToken) {
@@ -1065,7 +1075,8 @@ export class AuthenticationService extends BaseAuthService {
         )
       }
 
-      if (device.isTrusted && geoLocation && geoLocation.country && geoLocation.city) {
+      if (device.isTrusted && user.userProfile && geoLocation && geoLocation.country && geoLocation.city) {
+        const displayName = user.userProfile.firstName || user.userProfile.lastName || user.email
         const knownLocationsKey = `${REDIS_KEY_PREFIX.USER_KNOWN_LOCATIONS}${user.id}`
         const locationString = `${geoLocation.city?.toLowerCase()}_${geoLocation.country?.toLowerCase()}`
         const isNewLocation = await this.redisService.sadd(knownLocationsKey, locationString)
@@ -1081,7 +1092,7 @@ export class AuthenticationService extends BaseAuthService {
           try {
             await this.emailService.sendSecurityAlertEmail({
               to: user.email,
-              userName: user.name || undefined,
+              userName: displayName,
               alertSubject: this.i18nService.translate(
                 'email.Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation',
                 { lang }
@@ -1154,10 +1165,18 @@ export class AuthenticationService extends BaseAuthService {
       return {
         userId: user.id,
         email: user.email,
-        name: user.name,
         role: user.role.name,
-        isDeviceTrustedInSession: device.isTrusted,
-        currentDeviceId: device.id
+        roleId: user.role.id,
+        isDeviceTrustedInSession: accessTokenPayload.isDeviceTrustedInSession,
+        currentDeviceId: device.id,
+        userProfile: user.userProfile
+          ? {
+              firstName: user.userProfile.firstName,
+              lastName: user.userProfile.lastName,
+              avatar: user.userProfile.avatar,
+              username: user.userProfile.username
+            }
+          : null
       }
     } catch (error) {
       this.logger.error(
@@ -1194,7 +1213,7 @@ export class AuthenticationService extends BaseAuthService {
     try {
       const user = await this.prismaService.user.findUnique({
         where: { id: userId },
-        include: { RecoveryCode: true }
+        include: { RecoveryCode: true, userProfile: true }
       })
 
       if (!user) {
@@ -1328,9 +1347,12 @@ export class AuthenticationService extends BaseAuthService {
     }
   }
 
-  async initiateSessionReverificationOtp(userId: number, userEmail: string, userName: string): Promise<void> {
+  async initiateSessionReverificationOtp(userId: number, userEmail: string): Promise<void> {
+    const user = await this.sharedUserRepository.findUniqueWithRole({ id: userId })
+    const displayName = user?.userProfile?.firstName || user?.userProfile?.lastName || userEmail
+
     this.logger.log(
-      `[AuthenticationService] Initiating session reverification OTP for user ${userId} (Email: ${userEmail}, Name: ${userName})`
+      `[AuthenticationService] Initiating session reverification OTP for user ${userId} (Email: ${userEmail}, DisplayName: ${displayName})`
     )
 
     try {
@@ -1342,7 +1364,7 @@ export class AuthenticationService extends BaseAuthService {
         userId,
         userEmail,
         status: AuditLogStatus.SUCCESS,
-        details: { context: 'session_reverification', userNameAttempted: userName }
+        details: { context: 'session_reverification', userNameAttempted: displayName }
       })
     } catch (error) {
       this.logger.error(`[AuthenticationService] Failed to send session reverification OTP to ${userEmail}:`, error)
@@ -1352,7 +1374,7 @@ export class AuthenticationService extends BaseAuthService {
         userEmail,
         status: AuditLogStatus.FAILURE,
         errorMessage: error instanceof Error ? error.message : 'Unknown OTP send error',
-        details: { context: 'session_reverification', userNameAttempted: userName }
+        details: { context: 'session_reverification', userNameAttempted: displayName }
       })
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'OTP_SEND_FAILED', 'Error.Auth.Otp.SendFailed')
     }

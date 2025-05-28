@@ -1,20 +1,19 @@
 import { TwoFactorMethodType } from '../../routes/auth/constants/auth.constants'
 import { UserStatus as PrismaUserStatus } from '@prisma/client'
 import { z } from 'zod'
+import { UserProfileSchema } from './user-profile.model'
 
 export const UserSchema = z.object({
   id: z.number(),
   email: z.string().email(),
-  name: z.string().min(1).max(100),
   password: z.string().min(6).max(100),
-  phoneNumber: z.string().min(9).max(15),
-  avatar: z.string().nullable(),
   status: z.nativeEnum(PrismaUserStatus),
   twoFactorEnabled: z.boolean().nullable().optional(),
   twoFactorSecret: z.string().nullable().optional(),
   twoFactorMethod: z.nativeEnum(TwoFactorMethodType).nullable().optional(),
   twoFactorVerifiedAt: z.date().nullable().optional(),
   roleId: z.number().positive(),
+  userProfile: UserProfileSchema.nullable().optional(),
   createdById: z.number().nullable(),
   updatedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
