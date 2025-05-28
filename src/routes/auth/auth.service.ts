@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import {
   DisableTwoFactorBodyType,
   LoginBodyType,
@@ -15,7 +15,17 @@ import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from 'src/routes/auth/providers/token.service'
 import { EmailService } from 'src/routes/auth/providers/email.service'
 import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
-import { InvalidRefreshTokenException } from 'src/routes/auth/auth.error'
+import {
+  InvalidRefreshTokenException,
+  InvalidOTPException,
+  InvalidTOTPException,
+  InvalidRecoveryCodeException,
+  MaxVerificationAttemptsExceededException,
+  SltCookieMissingException,
+  SltContextFinalizedException,
+  SltContextMaxAttemptsReachedException,
+  DeviceMismatchException
+} from 'src/routes/auth/auth.error'
 import { TwoFactorService } from 'src/routes/auth/providers/2fa.service'
 import { Response, Request } from 'express'
 import { PrismaService } from 'src/shared/services/prisma.service'
@@ -30,8 +40,7 @@ import envConfig from 'src/shared/config'
 import { I18nService, I18nContext } from 'nestjs-i18n'
 import { Prisma } from '@prisma/client'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { HttpStatus } from '@nestjs/common'
-import { TypeOfVerificationCode } from './constants/auth.constants'
+import { TypeOfVerificationCode, MAX_SLT_ATTEMPTS } from './constants/auth.constants'
 
 @Injectable()
 export class AuthService {
@@ -117,68 +126,6 @@ export class AuthService {
     return this.tokenService.generateTokens(payload, _prismaTx, rememberMe)
   }
 
-  // async logoutFromAllDevices( // Bắt đầu comment hoặc xóa
-  //   activeUser: AccessTokenPayload,
-  //   ip: string,
-  //   userAgent: string,
-  //   _req: Request, // _req is not used in the new logic
-  //   res: Response
-  // ) {
-  //   this.logger.log(
-  //     `User ${activeUser.userId} requesting logout from all devices. Current session: ${activeUser.sessionId}, Device: ${activeUser.deviceId}`
-  //   )
-  //   const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-  //     action: 'USER_LOGOUT_ALL_ATTEMPT',
-  //     userId: activeUser.userId,
-  //     ipAddress: ip,
-  //     userAgent: userAgent,
-  //     status: AuditLogStatus.FAILURE,
-  //     details: {
-  //       currentSessionId: activeUser.sessionId,
-  //       currentDeviceId: activeUser.deviceId
-  //     }
-  //   }
-
-  //   try {
-  //     // Invalidate all sessions for the user EXCEPT the current one.
-  //     const { invalidatedCount } = await this.tokenService.invalidateAllUserSessions(
-  //       activeUser.userId,
-  //       'USER_REQUEST_LOGOUT_ALL',
-  //       activeUser.sessionId // Exclude current session from invalidation
-  //     )
-
-  //     // Deactivate and untrust all other devices for the user
-  //     // This step needs careful consideration if the current device should also be untrusted/deactivated.
-  //     // For a typical "logout all others", the current device remains active and trusted.
-  //     // If the intent is to also untrust the current device and force re-auth, that needs to be explicit.
-  //     const deactivatedDevicesCount = await this.deviceService.deactivateAndUntrustAllUserDevices(
-  //       activeUser.userId,
-  //       activeUser.deviceId // Exclude current device
-  //     )
-
-  //     // Cookies for the current session are NOT cleared here because the current session remains active.
-  //     // The client is expected to still have its valid refresh/access tokens for the current session.
-
-  //     auditLogEntry.status = AuditLogStatus.SUCCESS
-  //     auditLogEntry.action = 'USER_LOGOUT_ALL_SUCCESS'
-  //     auditLogEntry.details.sessionsInvalidated = invalidatedCount
-  //     auditLogEntry.details.devicesDeactivatedAndUntrusted = deactivatedDevicesCount
-
-  //     await this.auditLogService.record(auditLogEntry as AuditLogData)
-
-  //     const message = await this.i18nService.translate('Auth.LogoutAll.Success', {
-  //       lang: I18nContext.current()?.lang,
-  //       args: { count: invalidatedCount }
-  //     })
-  //     return { message }
-  //   } catch (error) {
-  //     this.logger.error(`Error during logout from all devices for user ${activeUser.userId}:`, error)
-  //     auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error'
-  //     await this.auditLogService.record(auditLogEntry as AuditLogData)
-  //     throw error // Re-throw the error to be handled by global exception filter
-  //   }
-  // } // Kết thúc comment hoặc xóa
-
   async setRememberMe(
     activeUser: AccessTokenPayload,
     rememberMe: boolean,
@@ -229,123 +176,147 @@ export class AuthService {
         errorMessage: 'MISSING_SLT_COOKIE',
         details: { codeProvided: !!body.code, recoveryCodeProvided: !!body.recoveryCode } as Prisma.JsonObject
       })
-      throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.OtpToken.Invalid')
+      throw SltCookieMissingException
     }
 
     let sltContext: (SltContextData & { sltJti: string }) | null = null
     try {
-      // Validate SLT without expected purpose first to get the actual purpose
-      sltContext = await this.otpService.validateSltFromCookieAndGetContext(
-        body.sltCookie,
-        body.ip,
-        body.userAgent
-        // No expectedPurpose initially
-      )
+      sltContext = await this.otpService.validateSltFromCookieAndGetContext(body.sltCookie, body.ip, body.userAgent)
 
       this.logger.debug(
-        `[AuthService verifyTwoFactor] SLT context validated. Purpose: ${sltContext.purpose}, UserID: ${sltContext.userId}`
+        `[AuthService verifyTwoFactor] SLT context validated. Purpose: ${sltContext.purpose}, UserID: ${sltContext.userId}, Attempts: ${sltContext.attempts}`
       )
+
+      if (sltContext.finalized === '1') {
+        this.logger.warn(`[AuthService verifyTwoFactor] SLT JTI ${sltContext.sltJti} is already finalized.`)
+        if (res) this.tokenService.clearSltCookie(res)
+        throw SltContextFinalizedException
+      }
+
+      if (sltContext.attempts >= MAX_SLT_ATTEMPTS) {
+        this.logger.warn(
+          `[AuthService verifyTwoFactor] SLT JTI ${sltContext.sltJti} has reached max attempts (${sltContext.attempts}/${MAX_SLT_ATTEMPTS}).`
+        )
+        await this.otpService.finalizeSlt(sltContext.sltJti)
+        if (res) this.tokenService.clearSltCookie(res)
+        throw SltContextMaxAttemptsReachedException
+      }
 
       if (sltContext.purpose === TypeOfVerificationCode.LOGIN_2FA) {
         this.logger.debug('[AuthService verifyTwoFactor] SLT purpose is LOGIN_2FA. Proceeding with 2FA verification.')
-        return this.twoFactorAuthService.verifyTwoFactor(body, sltContext, res)
+        return await this.twoFactorAuthService.verifyTwoFactor(body, sltContext, res)
       } else if (sltContext.purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
         this.logger.debug(
           '[AuthService verifyTwoFactor] SLT purpose is LOGIN_UNTRUSTED_DEVICE_OTP. Proceeding with untrusted device OTP login completion.'
         )
-        return this.authenticationService.completeLoginWithUntrustedDeviceOtp(body, sltContext, res)
+        if (!body.code) {
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.CodeRequired', [
+            { code: 'Error.Auth.Otp.CodeRequired', path: 'code' }
+          ])
+        }
+        return await this.authenticationService.completeLoginWithUntrustedDeviceOtp(body, sltContext, res)
+      } else if (sltContext.purpose === TypeOfVerificationCode.REVERIFY_SESSION_OTP) {
+        this.logger.debug(
+          '[AuthService verifyTwoFactor] SLT purpose is REVERIFY_SESSION_OTP. Proceeding with session OTP reverification.'
+        )
+        if (!body.code) {
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.CodeRequired', [
+            { code: 'Error.Auth.Otp.CodeRequired', path: 'code' }
+          ])
+        }
+        throw new ApiException(
+          HttpStatus.NOT_IMPLEMENTED,
+          'NotImplemented',
+          'Reverify session OTP via SLT not fully implemented here.'
+        )
       } else {
         this.logger.error(
-          `[AuthService verifyTwoFactor] Invalid SLT purpose: ${sltContext.purpose} for JTI: ${sltContext.sltJti}. Expected LOGIN_2FA or LOGIN_UNTRUSTED_DEVICE_OTP.`
+          `[AuthService verifyTwoFactor] Unknown SLT purpose: ${sltContext.purpose} for JTI ${sltContext.sltJti}`
         )
-        await this.otpService.finalizeSlt(sltContext.sltJti) // Finalize unexpected SLT
-        if (res) this.tokenService.clearSltCookie(res) // Clear the cookie
-
-        this.auditLogService.recordAsync({
-          action: 'VERIFY_2FA_OR_OTP_FAIL',
-          status: AuditLogStatus.FAILURE,
-          userId: sltContext.userId,
-          userEmail: sltContext.email,
-          ipAddress: body.ip,
-          userAgent: body.userAgent,
-          errorMessage: 'INVALID_SLT_PURPOSE_FOR_VERIFICATION_ENDPOINT',
-          details: {
-            sltJti: sltContext.sltJti,
-            actualPurpose: sltContext.purpose,
-            expectedPurposes: [TypeOfVerificationCode.LOGIN_2FA, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP]
-          } as Prisma.JsonObject
-        })
-        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Session.InvalidLogin')
+        await this.otpService.finalizeSlt(sltContext.sltJti)
+        if (res) this.tokenService.clearSltCookie(res)
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.OtpToken.Invalid')
       }
     } catch (error) {
       this.logger.error(
-        `[AuthService verifyTwoFactor] Error during SLT validation or processing: ${error.message}`,
-        error.stack // Log stack for better debugging
+        `[AuthService verifyTwoFactor] Error during SLT validation or processing. SLT JTI: ${sltContext?.sltJti || 'N/A'}`,
+        error.stack
       )
 
-      let shouldClearSltCookie = true // Default to clearing cookie on error
-      let shouldFinalizeSlt = true // Default to finalizing SLT if context exists
+      const thrownErrorCode = error instanceof ApiException ? error.errorCode : null
 
-      if (error instanceof ApiException) {
-        // Convert non-string responses to string for consistent errorCode checking
-        const errorResponse = error.getResponse()
-        let errorCode = ''
-        if (typeof errorResponse === 'string') {
-          errorCode = errorResponse
-        } else if (typeof errorResponse === 'object' && errorResponse !== null && 'errorCode' in errorResponse) {
-          errorCode = (errorResponse as any).errorCode
-        } else if (typeof errorResponse === 'object' && errorResponse !== null && 'message' in errorResponse) {
-          // Fallback for cases where errorCode might not be the primary field
-          errorCode = (errorResponse as any).message
+      const isVerificationCodeError =
+        thrownErrorCode === InvalidOTPException.errorCode ||
+        thrownErrorCode === InvalidTOTPException.errorCode ||
+        thrownErrorCode === InvalidRecoveryCodeException.errorCode
+
+      if (sltContext && isVerificationCodeError) {
+        this.logger.warn(
+          `[AuthService verifyTwoFactor] Verification code error for SLT JTI ${sltContext.sltJti}. Incrementing attempts.`
+        )
+        try {
+          const newAttempts = await this.otpService.incrementSltAttempts(sltContext.sltJti)
+          this.auditLogService.recordAsync({
+            userId: sltContext.userId,
+            action: 'VERIFY_2FA_OR_OTP_CODE_INVALID_ATTEMPT',
+            status: AuditLogStatus.FAILURE,
+            ipAddress: sltContext.ipAddress,
+            userAgent: sltContext.userAgent,
+            errorMessage: error.message,
+            details: {
+              sltJti: sltContext.sltJti,
+              purpose: sltContext.purpose,
+              currentAttempts: newAttempts,
+              maxAttempts: MAX_SLT_ATTEMPTS,
+              originalErrorCode: thrownErrorCode,
+              originalErrorMessageFromApiException: error.message
+            } as Prisma.JsonObject
+          })
+
+          if (newAttempts >= MAX_SLT_ATTEMPTS) {
+            this.logger.warn(
+              `[AuthService verifyTwoFactor] Max attempts reached for SLT JTI ${sltContext.sltJti} after failed attempt. Finalizing and clearing cookie.`
+            )
+            await this.otpService.finalizeSlt(sltContext.sltJti)
+            if (res) this.tokenService.clearSltCookie(res)
+            throw MaxVerificationAttemptsExceededException
+          }
+        } catch (incrementError) {
+          this.logger.error(
+            `[AuthService verifyTwoFactor] Error during SLT attempt increment/finalization for JTI ${sltContext.sltJti}: ${incrementError.message}`
+          )
+          if (res) this.tokenService.clearSltCookie(res)
+          throw incrementError
         }
-
-        this.logger.debug(`[AuthService verifyTwoFactor] Caught ApiException with errorCode: ${errorCode}`)
-
-        if (
-          errorCode === 'Error.Auth.Otp.Invalid' ||
-          errorCode === 'Error.Auth.2FA.InvalidTOTP' ||
-          errorCode === 'Error.Auth.2FA.InvalidRecoveryCode'
-        ) {
-          // These are errors where the user might still have attempts left with the current SLT.
-          shouldClearSltCookie = false
-          shouldFinalizeSlt = false // Don't finalize if they can retry with this SLT
-          this.logger.debug(
-            `[AuthService verifyTwoFactor] সিদ্ধান্ত নেওয়া হয়েছে SLT কুকি সাফ বা চূড়ান্ত না করার জন্য: ${errorCode}`
-          )
-        } else if (errorCode === 'Error.Auth.Verification.MaxAttemptsExceeded') {
-          // SLT should have been finalized by the service that threw this.
-          // Cookie should be cleared. Finalization already done by the thrower.
-          shouldFinalizeSlt = false
-          this.logger.debug(
-            `[AuthService verifyTwoFactor] Max attempts exceeded, SLT কুকি সাফ করা হবে, SLT ইতিমধ্যে চূড়ান্ত করা হয়েছে৷`
-          )
-        } else {
-          this.logger.debug(
-            `[AuthService verifyTwoFactor] ডিফল্ট আচরণ: SLT কুকি সাফ এবং চূড়ান্ত করা হবে ত্রুটির জন্য: ${errorCode}`
-          )
-        }
+        throw error
       } else {
-        this.logger.debug(
-          `[AuthService verifyTwoFactor] Non-ApiException error. Defaulting to clearing/finalizing SLT if context exists.`
+        if (sltContext?.sltJti) {
+          if (
+            thrownErrorCode !== MaxVerificationAttemptsExceededException.errorCode &&
+            thrownErrorCode !== SltContextFinalizedException.errorCode &&
+            thrownErrorCode !== SltContextMaxAttemptsReachedException.errorCode &&
+            thrownErrorCode !== DeviceMismatchException.errorCode
+          ) {
+            await this.otpService.finalizeSlt(sltContext.sltJti)
+          }
+        }
+        if (res) this.tokenService.clearSltCookie(res)
+
+        if (thrownErrorCode === DeviceMismatchException.errorCode) {
+          this.logger.warn(
+            `[AuthService verifyTwoFactor] SLT DeviceMismatchException for JTI ${sltContext?.sltJti}. SLT should have been finalized by OtpService. Cookie cleared.`
+          )
+          throw error
+        }
+
+        if (error instanceof ApiException) throw error
+        throw new ApiException(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          'ServerError',
+          'Error.Global.InternalServerError',
+          error
         )
       }
-
-      if (shouldFinalizeSlt && sltContext && sltContext.sltJti) {
-        try {
-          this.logger.warn(`[AuthService] Finalizing SLT JTI ${sltContext.sltJti} due to error: ${error.message}`)
-          await this.otpService.finalizeSlt(sltContext.sltJti)
-        } catch (finalizeError) {
-          this.logger.error(
-            `[AuthService] Error finalizing SLT JTI ${sltContext.sltJti} during error handling: ${finalizeError.message}`
-          )
-        }
-      }
-
-      if (shouldClearSltCookie && res) {
-        this.tokenService.clearSltCookie(res)
-        this.logger.debug('[AuthService verifyTwoFactor] SLT cookie cleared based on error type.')
-      }
-      throw error // Re-throw the original error
     }
   }
 }

@@ -755,7 +755,7 @@ export class AuthenticationService extends BaseAuthService {
       }
     }
 
-    let effectiveEmail: string
+    let effectiveEmail: string = ''
     let effectiveUserId: number
 
     try {
@@ -974,61 +974,31 @@ export class AuthenticationService extends BaseAuthService {
       return resultFromTransaction
     } catch (error) {
       this.logger.error(
-        `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Failed for email ${auditLogEntry.userEmail || 'unknown'}: ${error.message}`,
-        error.stack
+        `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Failed for email ${effectiveEmail || auditLogEntry.userEmail || 'unknown'}: ${error.message}`,
+        error.stack,
+        auditLogEntry.details // Log details for context
       )
-      auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
-      if (error instanceof ApiException) {
-        auditLogEntry.details.apiErrorCode = error.errorCode
-        auditLogEntry.details.apiHttpStatus = error.getStatus()
-        const errorResponse = error.getResponse()
-        const errorCode =
-          typeof errorResponse === 'object' && errorResponse !== null && 'errorCode' in errorResponse
-            ? (errorResponse as any).errorCode
-            : typeof errorResponse === 'string'
-              ? errorResponse
-              : ''
 
-        // Do not finalize SLT again if it was already finalized by MaxVerificationAttemptsExceededException
-        if (errorCode !== 'Error.Auth.Verification.MaxAttemptsExceeded' && sltContext && sltContext.sltJti) {
-          const isSltFinalizedKey = `${REDIS_KEY_PREFIX.SLT_FINALIZED}${sltContext.sltJti}`
-          const alreadyFinalized = await this.redisService.get(isSltFinalizedKey)
-          if (!alreadyFinalized) {
-            try {
-              this.logger.warn(
-                `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Finalizing SLT JTI ${sltContext.sltJti} due to error: ${error.message}`
-              )
-              await this.otpService.finalizeSlt(sltContext.sltJti)
-            } catch (finalizeError) {
-              this.logger.error(
-                `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Error finalizing SLT JTI ${sltContext.sltJti} during error handling: ${finalizeError.message}`
-              )
-            }
-          }
-        }
-      } else if (error) {
-        auditLogEntry.details.errorType = error.constructor?.name || 'UnknownError'
-        // Finalize SLT for unexpected errors if context exists and not already finalized
-        if (sltContext && sltContext.sltJti) {
-          const isSltFinalizedKey = `${REDIS_KEY_PREFIX.SLT_FINALIZED}${sltContext.sltJti}`
-          const alreadyFinalized = await this.redisService.get(isSltFinalizedKey)
-          if (!alreadyFinalized) {
-            try {
-              this.logger.warn(
-                `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Finalizing SLT JTI ${sltContext.sltJti} due to unexpected error: ${error.message}`
-              )
-              await this.otpService.finalizeSlt(sltContext.sltJti)
-            } catch (finalizeError) {
-              this.logger.error(
-                `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Error finalizing SLT JTI ${sltContext.sltJti} during unexpected error handling: ${finalizeError.message}`
-              )
-            }
-          }
-        }
+      // IMPORTANT: Ensure SLT is NOT finalized here if the error is something like InvalidOTPException
+      // The AuthService or the transaction logic should handle attempt counting and finalization based on attempts.
+      if (sltContext?.sltJti) {
+        // Log the intent or previous behavior, but do not finalize here.
+        this.logger.warn(
+          `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Caught error. SLT JTI ${sltContext.sltJti}. Error: ${error.message}. Ensure SLT is not prematurely finalized here.`
+        )
+        // DO NOT CALL: await this.otpService.finalizeSlt(sltContext.sltJti);
       }
 
-      await this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
-      throw error // Re-throw the original error
+      if (!auditLogEntry.errorMessage) {
+        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        if (error instanceof ApiException) {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
+      }
+      // Always record the audit log for the attempt
+      this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
+
+      throw error // Re-throw the error to be handled by AuthService or global filters
     }
   }
 

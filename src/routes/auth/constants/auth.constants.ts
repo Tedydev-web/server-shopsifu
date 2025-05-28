@@ -25,3 +25,10 @@ export const TokenType = {
 } as const
 
 export type TokenTypeType = (typeof TokenType)[keyof typeof TokenType]
+
+export const VERIFICATION_JWT_EXPIRES_IN = '5m'
+export const SLT_JWT_EXPIRES_IN = '5m'
+
+export const SESSION_ID_LENGTH = 24
+
+export const MAX_SLT_ATTEMPTS = 5

@@ -292,3 +292,27 @@ export const MaxVerificationAttemptsExceededException = createApiError(
   'Error.Auth.Verification.MaxAttemptsExceeded',
   'code'
 )
+
+export const MaxLoginAttemptsReachedException = createApiError(
+  HttpStatus.TOO_MANY_REQUESTS,
+  'Error.Auth.Login.MaxAttemptsReached',
+  'Max login attempts reached. Please try again later.'
+)
+
+export const SltCookieMissingException = createApiError(
+  HttpStatus.BAD_REQUEST,
+  'Error.Auth.SltCookie.Missing',
+  'SLT cookie is required for this operation.'
+)
+
+export const SltContextFinalizedException = createApiError(
+  HttpStatus.UNAUTHORIZED, // Or BAD_REQUEST depending on when it's checked
+  'Error.Auth.SltContext.Finalized',
+  'This login session has already been completed or invalidated.'
+)
+
+export const SltContextMaxAttemptsReachedException = createApiError(
+  HttpStatus.UNAUTHORIZED, // Or TOO_MANY_REQUESTS
+  'Error.Auth.SltContext.MaxAttemptsReached',
+  'Maximum verification attempts reached for this login session.'
+)
