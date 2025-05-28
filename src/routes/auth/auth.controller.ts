@@ -377,7 +377,7 @@ export class AuthController {
             sameSite: nonceCookieConfig.sameSite
           })
         }
-        return res.redirect(`${envConfig.FRONTEND_URL}/buyer/verify-2fa?${queryParams.toString()}`)
+        return res.redirect(`${envConfig.FRONTEND_URL}/buyer/verify-2fa?type=TOTP&${queryParams.toString()}`)
       }
 
       if (requiresUntrustedDeviceVerification) {
@@ -415,7 +415,7 @@ export class AuthController {
             sameSite: nonceCookieConfig.sameSite
           })
         }
-        return res.redirect(`${envConfig.FRONTEND_URL}/buyer/verify-2fa?${queryParams.toString()}`)
+        return res.redirect(`${envConfig.FRONTEND_URL}/buyer/verify-2fa?type=OTP&${queryParams.toString()}`)
       }
 
       this.logger.log(
