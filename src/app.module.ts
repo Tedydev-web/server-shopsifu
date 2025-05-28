@@ -24,6 +24,7 @@ import { dailyRotateFileTransport, consoleTransport } from './shared/logger/wins
 import { RedisProviderModule } from './shared/providers/redis/redis.module'
 import { TokenRefreshInterceptor } from 'src/routes/auth/interceptors/token-refresh.interceptor'
 import { AuditLogInterceptor } from './shared/interceptor/audit-log.interceptor'
+import { AuthenticationGuard } from './shared/guards/authentication.guard'
 import { PasswordReverificationGuard } from './routes/auth/guards/password-reverification.guard'
 
 @Module({
@@ -85,6 +86,10 @@ import { PasswordReverificationGuard } from './routes/auth/guards/password-rever
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard
+    },
+    {
+      provide: APP_GUARD,
+      useClass: AuthenticationGuard
     },
     {
       provide: APP_INTERCEPTOR,

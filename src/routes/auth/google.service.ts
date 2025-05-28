@@ -18,6 +18,8 @@ import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { Prisma, Role, User, Device, TwoFactorMethodType as PrismaTwoFactorMethodType } from '@prisma/client'
 import { ApiException } from 'src/shared/exceptions/api.exception'
+import { Credentials, TokenPayload } from 'google-auth-library'
+import { GetTokenResponse } from 'google-auth-library/build/src/auth/oauth2client'
 
 export interface GoogleCallbackSuccessResult {
   user: User & { role: Role }
@@ -35,7 +37,21 @@ export interface GoogleCallbackErrorResult {
   redirectToError: true
 }
 
-export type GoogleCallbackReturnType = GoogleCallbackSuccessResult | GoogleCallbackErrorResult
+export interface GoogleCallbackAccountExistsWithoutLinkResult {
+  needsLinking: true
+  existingUserId: number
+  existingUserEmail: string
+  googleId: string
+  googleEmail: string
+  googleName?: string | null
+  googleAvatar?: string | null
+  message: string
+}
+
+export type GoogleCallbackReturnType =
+  | GoogleCallbackSuccessResult
+  | GoogleCallbackErrorResult
+  | GoogleCallbackAccountExistsWithoutLinkResult
 
 @Injectable()
 export class GoogleService {
@@ -56,16 +72,60 @@ export class GoogleService {
       envConfig.GOOGLE_CLIENT_REDIRECT_URI
     )
   }
-  getAuthorizationUrl({ userAgent, ip }: Omit<GoogleAuthStateType, 'rememberMe'>): { url: string; nonce: string } {
+
+  async getGoogleTokens(code: string): Promise<GetTokenResponse['tokens']> {
+    try {
+      const { tokens } = await this.oauth2Client.getToken(code)
+      if (!tokens || !tokens.id_token) {
+        this.logger.error('[getGoogleTokens] Failed to retrieve tokens or id_token is missing from Google.', tokens)
+        throw new ApiException(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          'GOOGLE_TOKEN_FETCH_FAILED',
+          'Error.Auth.Google.TokenFetchFailedOrMissingIdToken'
+        )
+      }
+      return tokens
+    } catch (error) {
+      this.logger.error('[getGoogleTokens] Error fetching Google tokens:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Error.Auth.Google.TokenFetchFailed'
+      const errorCode = error instanceof ApiException ? error.errorCode : 'GOOGLE_TOKEN_FETCH_ERROR'
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, errorCode, errorMessage)
+    }
+  }
+
+  async verifyGoogleIdToken(idToken: string): Promise<TokenPayload | undefined> {
+    if (!idToken) {
+      this.logger.error('[verifyGoogleIdToken] idToken is missing.')
+      return undefined
+    }
+    try {
+      const ticket = await this.oauth2Client.verifyIdToken({
+        idToken: idToken,
+        audience: envConfig.GOOGLE_CLIENT_ID
+      })
+      return ticket.getPayload()
+    } catch (error) {
+      this.logger.error('[verifyGoogleIdToken] Error verifying Google ID token:', error)
+      return undefined
+    }
+  }
+
+  getAuthorizationUrl(stateParams: GoogleAuthStateType): { url: string; nonce: string } {
     const scope = ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email']
 
     const nonce = uuidv4()
 
-    const stateObject: Omit<GoogleAuthStateType, 'rememberMe'> & { nonce: string } = {
-      userAgent,
-      ip,
+    const stateObject: GoogleAuthStateType & { nonce: string } = {
+      ...stateParams,
       nonce
     }
+
+    if (stateParams.flow === 'profile_link' && stateParams.userIdIfLinking) {
+      this.logger.log(
+        `[GoogleService getAuthorizationUrl] Preparing state for profile linking. User ID: ${stateParams.userIdIfLinking}, Flow: ${stateParams.flow}`
+      )
+    }
+
     const stateString = Buffer.from(JSON.stringify(stateObject)).toString('base64')
     const url = this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
@@ -101,17 +161,14 @@ export class GoogleService {
       } catch (parseError) {
         console.error('Error parsing state', parseError)
       }
-      const { tokens } = await this.oauth2Client.getToken(code)
-      this.oauth2Client.setCredentials(tokens)
+      const tokens = await this.getGoogleTokens(code)
+      const payload = await this.verifyGoogleIdToken(tokens.id_token as string)
 
-      const ticket = await this.oauth2Client.verifyIdToken({
-        idToken: tokens.id_token!,
-        audience: envConfig.GOOGLE_CLIENT_ID
-      })
-
-      const payload = ticket.getPayload()
       if (!payload || !payload.email || !payload.sub) {
-        this.logger.error('[GoogleCallback] Invalid payload from Google: missing email or sub (googleId).', payload)
+        this.logger.error(
+          '[GoogleCallback] Invalid payload from Google after verification: missing email or sub.',
+          payload
+        )
         return {
           errorCode: 'INVALID_PAYLOAD',
           errorMessage: await this.i18nService.translate('Error.Auth.Google.InvalidPayload'),
@@ -172,6 +229,25 @@ export class GoogleService {
               errorCode: 'ACCOUNT_CONFLICT',
               errorMessage: await this.i18nService.translate('Error.Auth.Google.AccountConflict'),
               redirectToError: true
+            }
+          }
+
+          if (!userByEmail.googleId) {
+            this.logger.log(
+              `[GoogleCallback] User with email ${payload.email} (ID: ${userByEmail.id}) found, but not linked to any Google account. Google ID from this login: ${googleUserId}. Prompting user for linking.`
+            )
+            return {
+              needsLinking: true,
+              existingUserId: userByEmail.id,
+              existingUserEmail: userByEmail.email,
+              googleId: googleUserId,
+              googleEmail: payload.email,
+              googleName: payload.name,
+              googleAvatar: payload.picture,
+              message: await this.i18nService.translate('Auth.Google.PromptLinkAccount', {
+                lang: currentLang,
+                args: { email: userByEmail.email }
+              })
             }
           }
 
@@ -327,5 +403,68 @@ export class GoogleService {
         redirectToError: true
       }
     }
+  }
+
+  async linkGoogleAccount(
+    loggedInUserId: number,
+    googleIdToLink: string,
+    googleEmail: string,
+    googleName: string | null | undefined,
+    googleAvatar: string | null | undefined
+  ): Promise<User & { role: Role }> {
+    const currentUser = await this.prismaService.user.findUnique({
+      where: { id: loggedInUserId },
+      include: { role: true }
+    })
+
+    if (!currentUser) {
+      this.logger.error(`[linkGoogleAccount] User with ID ${loggedInUserId} not found.`)
+      throw new ApiException(HttpStatus.NOT_FOUND, 'USER_NOT_FOUND', 'Error.User.NotFound')
+    }
+
+    if (currentUser.googleId && currentUser.googleId !== googleIdToLink) {
+      this.logger.error(
+        `[linkGoogleAccount] User ${loggedInUserId} is already linked to a different Google ID (${currentUser.googleId}). Cannot link to ${googleIdToLink}.`
+      )
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        'GOOGLE_ALREADY_LINKED_OTHER',
+        'Error.Auth.Google.AlreadyLinkedToOtherGoogle'
+      )
+    }
+    if (currentUser.googleId === googleIdToLink) {
+      this.logger.log(
+        `[linkGoogleAccount] User ${loggedInUserId} is already linked to this Google ID (${googleIdToLink}). No action needed.`
+      )
+      return currentUser
+    }
+
+    const userWithThisGoogleId = await this.prismaService.user.findUnique({
+      where: { googleId: googleIdToLink }
+    })
+
+    if (userWithThisGoogleId && userWithThisGoogleId.id !== loggedInUserId) {
+      this.logger.error(
+        `[linkGoogleAccount] Google ID ${googleIdToLink} is already linked to another user (ID: ${userWithThisGoogleId.id}).`
+      )
+      throw new ApiException(HttpStatus.CONFLICT, 'GOOGLE_ID_CONFLICT', 'Error.Auth.Google.GoogleIdConflict')
+    }
+
+    this.logger.log(
+      `[linkGoogleAccount] Linking Google ID ${googleIdToLink} to user ${loggedInUserId} (Email: ${currentUser.email}). Google email: ${googleEmail}`
+    )
+
+    const updateData: Prisma.UserUpdateInput = {
+      googleId: googleIdToLink
+    }
+
+    const updatedUser = await this.prismaService.user.update({
+      where: { id: loggedInUserId },
+      data: updateData,
+      include: { role: true }
+    })
+
+    this.logger.log(`[linkGoogleAccount] Successfully linked Google ID ${googleIdToLink} to user ${loggedInUserId}.`)
+    return updatedUser
   }
 }

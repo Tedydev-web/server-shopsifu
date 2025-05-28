@@ -87,5 +87,15 @@
   "Error.Auth.Session.RevokedRemotely": "Phiên của bạn đã bị thu hồi. Vui lòng đăng nhập lại.",
   "Error.Auth.Session.MaxSessionsReached": "Bạn đã đạt đến số lượng phiên hoạt động tối đa. Một số phiên/thiết bị cũ hoặc không tin cậy có thể đã bị đăng xuất tự động. Vui lòng kiểm tra lại các phiên đang hoạt động của bạn.",
   "Error.Auth.Device.MaxDevicesReached": "Bạn đã đạt đến số lượng thiết bị tối đa cho phép. Một số thiết bị cũ hoặc không tin cậy có thể đã bị xóa tự động. Vui lòng kiểm tra lại các thiết bị của bạn.",
-  "Auth.Device.AlreadyUntrusted": "Thiết bị này đã ở trạng thái không tin cậy."
+  "Auth.Device.AlreadyUntrusted": "Thiết bị này đã ở trạng thái không tin cậy.",
+  "Error.Auth.Google.Link.NoPendingState": "Không tìm thấy yêu cầu liên kết tài khoản Google nào đang chờ. Vui lòng bắt đầu lại quy trình.",
+  "Error.Auth.Google.Link.InvalidPendingState": "Trạng thái yêu cầu liên kết tài khoản Google không hợp lệ hoặc đã hết hạn. Vui lòng thử lại.",
+  "Error.Auth.Google.Link.CompleteFailed": "Không thể hoàn tất liên kết tài khoản Google. Vui lòng thử lại.",
+  "Auth.Google.ConfirmLinkDetailsMessage": "Bạn sắp liên kết tài khoản Google ({googleEmail}) với tài khoản Shopsifu hiện có ({email}). Tiếp tục?",
+  "Auth.Google.Link.CancelledSuccessfully": "Yêu cầu liên kết tài khoản Google đang chờ đã được hủy.",
+  "Auth.Google.Link.NoPendingStateToCancel": "Không tìm thấy yêu cầu liên kết tài khoản Google nào đang chờ để hủy.",
+  "Error.Auth.Google.AlreadyLinkedToOtherGoogle": "Tài khoản Shopsifu này đã được liên kết với một tài khoản Google khác.",
+  "Error.Auth.Google.GoogleIdConflict": "Tài khoản Google này đã được liên kết với một người dùng Shopsifu khác.",
+  "Error.Auth.Google.LinkAccountFailed": "Không thể liên kết tài khoản Google. Vui lòng thử lại.",
+  "Error.Server.ConfigError.MissingOAuthCookie": "Lỗi cấu hình máy chủ: Cài đặt cookie OAuth bị thiếu hoặc không đầy đủ. Vui lòng liên hệ hỗ trợ."
 }

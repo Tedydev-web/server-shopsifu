@@ -123,7 +123,9 @@ export const GoogleAuthStateSchema = DeviceSchema.pick({
   userAgent: true,
   ip: true
 }).extend({
-  rememberMe: z.boolean().optional()
+  rememberMe: z.boolean().optional(),
+  flow: z.string().optional(),
+  userIdIfLinking: z.number().optional()
 })
 
 export const GetAuthorizationUrlResSchema = z.object({

@@ -87,5 +87,15 @@
   "Error.Auth.Session.MaxSessionsReached": "You have reached the maximum number of active sessions. Some old or untrusted sessions/devices may have been automatically logged out. Please review your active sessions.",
   "Error.Auth.Device.MaxDevicesReached": "You have reached the maximum number of allowed devices. Some old or untrusted devices may have been automatically removed. Please review your devices.",
   "Auth.Device.AlreadyTrusted": "Device is already trusted.",
-  "Auth.Device.AlreadyUntrusted": "Device is already untrusted."
+  "Auth.Device.AlreadyUntrusted": "Device is already untrusted.",
+  "Error.Auth.Google.Link.NoPendingState": "No pending Google account link found. Please start the process again.",
+  "Error.Auth.Google.Link.InvalidPendingState": "The pending Google account link state is invalid or has expired. Please try again.",
+  "Error.Auth.Google.Link.CompleteFailed": "Failed to complete Google account linking. Please try again.",
+  "Auth.Google.ConfirmLinkDetailsMessage": "You are about to link your Google account ({googleEmail}) to your existing Shopsifu account ({email}). Proceed?",
+  "Auth.Google.Link.CancelledSuccessfully": "Pending Google account link has been cancelled.",
+  "Auth.Google.Link.NoPendingStateToCancel": "No pending Google account link found to cancel.",
+  "Error.Auth.Google.AlreadyLinkedToOtherGoogle": "This Shopsifu account is already linked to a different Google account.",
+  "Error.Auth.Google.GoogleIdConflict": "This Google account is already linked to another Shopsifu user.",
+  "Error.Auth.Google.LinkAccountFailed": "Failed to link Google account. Please try again.",
+  "Error.Server.ConfigError.MissingOAuthCookie": "Server configuration error: OAuth cookie settings are missing or incomplete. Please contact support."
 }

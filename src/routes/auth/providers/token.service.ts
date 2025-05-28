@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import envConfig from 'src/shared/config'
-import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
+import {
+  AccessTokenPayload,
+  AccessTokenPayloadCreate,
+  PendingLinkTokenPayload,
+  PendingLinkTokenPayloadCreate
+} from 'src/shared/types/jwt.type'
 import { v4 as uuidv4 } from 'uuid'
 import { Request, Response } from 'express'
 import { Prisma } from '@prisma/client'
@@ -19,6 +24,8 @@ import {
   RefreshTokenSessionInvalidException,
   RefreshTokenDeviceMismatchException
 } from 'src/routes/auth/auth.error'
+import { ApiException } from 'src/shared/exceptions/api.exception'
+import { HttpStatus } from '@nestjs/common'
 
 interface CookieConfig {
   name: string
@@ -66,6 +73,61 @@ export class TokenService {
       secret: envConfig.ACCESS_TOKEN_SECRET
     })
   }
+
+  // --- Pending Link Token Methods ---
+  signPendingLinkToken(payload: PendingLinkTokenPayloadCreate): string {
+    const jti = uuidv4()
+    this.logger.debug(
+      `Signing Pending Link Token for existing user ID ${payload.existingUserId}, googleId ${payload.googleId}`
+    )
+
+    const secret = envConfig.PENDING_LINK_TOKEN_SECRET
+    const expiresIn = envConfig.PENDING_LINK_TOKEN_EXPIRES_IN
+
+    if (!secret || !expiresIn) {
+      this.logger.error(
+        '[TokenService signPendingLinkToken] PENDING_LINK_TOKEN_SECRET or PENDING_LINK_TOKEN_EXPIRES_IN is missing in envConfig.'
+      )
+      throw new ApiException(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        'SERVER_CONFIG_ERROR',
+        'Error.Server.ConfigError.MissingTokenSecrets'
+      )
+    }
+
+    return this.jwtService.sign(
+      { ...payload, jti },
+      {
+        secret: secret as string,
+        expiresIn: expiresIn as string,
+        algorithm: 'HS256'
+      }
+    )
+  }
+
+  async verifyPendingLinkToken(token: string): Promise<PendingLinkTokenPayload> {
+    const secret = envConfig.PENDING_LINK_TOKEN_SECRET
+    if (!secret) {
+      this.logger.error('[TokenService verifyPendingLinkToken] PENDING_LINK_TOKEN_SECRET is missing in envConfig.')
+      throw new ApiException(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        'SERVER_CONFIG_ERROR',
+        'Error.Server.ConfigError.MissingTokenSecrets'
+      )
+    }
+
+    try {
+      this.logger.debug(`Verifying Pending Link Token.`)
+      const payload = await this.jwtService.verifyAsync<PendingLinkTokenPayload>(token, {
+        secret: secret as string
+      })
+      return payload
+    } catch (error) {
+      this.logger.warn(`Pending Link Token verification failed: ${error.message}`)
+      throw InvalidRefreshTokenException
+    }
+  }
+  // --- End Pending Link Token Methods ---
 
   extractTokenFromRequest(req: Request): string | null {
     return req.cookies?.[envConfig.cookie.accessToken.name] || this.extractTokenFromHeader(req)

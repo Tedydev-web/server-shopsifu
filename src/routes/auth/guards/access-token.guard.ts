@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
-import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
+import { REQUEST_USER_KEY, AuthType, AuthTypeType } from 'src/shared/constants/auth.constant'
 import { TokenService } from 'src/routes/auth/providers/token.service'
 import { Request } from 'express'
 import envConfig from 'src/shared/config'
@@ -17,7 +17,7 @@ import { ApiException } from 'src/shared/exceptions/api.exception'
 import { Prisma } from '@prisma/client'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
-import { AUTH_TYPE_KEY } from 'src/routes/auth/decorators/auth.decorator'
+import { AUTH_TYPE_KEY, AuthTypeDecoratorPayload } from 'src/routes/auth/decorators/auth.decorator'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
@@ -29,12 +29,12 @@ export class AccessTokenGuard implements CanActivate {
     private readonly redisService: RedisService
   ) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(AUTH_TYPE_KEY, [
+    const authTypePayload = this.reflector.getAllAndOverride<AuthTypeDecoratorPayload | undefined>(AUTH_TYPE_KEY, [
       context.getHandler(),
       context.getClass()
     ])
 
-    if (isPublic) {
+    if (authTypePayload?.authTypes?.includes(AuthType.None)) {
       return true
     }
 
@@ -49,6 +49,15 @@ export class AccessTokenGuard implements CanActivate {
 
     try {
       decodedAccessToken = await this.tokenService.verifyAccessToken(token)
+      this.auditLogService.recordAsync({
+        action: 'ACCESS_TOKEN_GUARD_DECODED',
+        userId: decodedAccessToken?.userId,
+        status: AuditLogStatus.SUCCESS,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string,
+        errorMessage: `Decoded access token successfully. JTI: ${decodedAccessToken?.jti}, SessionID: ${decodedAccessToken?.sessionId}`,
+        details: { tokenPayload: JSON.stringify(decodedAccessToken) } as Prisma.JsonObject
+      })
       request[REQUEST_USER_KEY] = decodedAccessToken
 
       const { userId, deviceId, sessionId, jti: accessTokenJti } = decodedAccessToken
@@ -173,6 +182,21 @@ export class AccessTokenGuard implements CanActivate {
       return true
     } catch (error) {
       const userIdFromToken = decodedAccessToken?.userId
+      this.auditLogService.recordAsync({
+        action: 'ACCESS_TOKEN_GUARD_CATCH_BLOCK',
+        userId: userIdFromToken,
+        status: AuditLogStatus.FAILURE,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string,
+        errorMessage: `Error in AccessTokenGuard catch block: ${error?.constructor?.name} - ${error instanceof Error ? error.message : 'Unknown error'}`,
+        details: {
+          originalErrorName: error?.constructor?.name,
+          originalErrorMessage: error instanceof Error ? error.message : 'Unknown error',
+          originalErrorStack: error instanceof Error ? error.stack : undefined,
+          decodedAccessTokenBeforeErrorString: JSON.stringify(decodedAccessToken)
+        } as Prisma.JsonObject
+      })
+
       const details: Prisma.JsonObject = {
         reason: 'ACCESS_TOKEN_VERIFICATION_FAILED',
         originalError: error?.constructor?.name,

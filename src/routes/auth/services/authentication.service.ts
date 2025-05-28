@@ -1327,4 +1327,34 @@ export class AuthenticationService extends BaseAuthService {
       throw error
     }
   }
+
+  async initiateSessionReverificationOtp(userId: number, userEmail: string, userName: string): Promise<void> {
+    this.logger.log(
+      `[AuthenticationService] Initiating session reverification OTP for user ${userId} (Email: ${userEmail}, Name: ${userName})`
+    )
+
+    try {
+      await this.otpService.sendOTP(userEmail, TypeOfVerificationCode.REVERIFY_SESSION_OTP, userId)
+      this.logger.log(`Successfully sent session reverification OTP to ${userEmail}`)
+
+      await this.auditLogService.record({
+        action: 'REVERIFICATION_OTP_SENT',
+        userId,
+        userEmail,
+        status: AuditLogStatus.SUCCESS,
+        details: { context: 'session_reverification', userNameAttempted: userName }
+      })
+    } catch (error) {
+      this.logger.error(`[AuthenticationService] Failed to send session reverification OTP to ${userEmail}:`, error)
+      await this.auditLogService.record({
+        action: 'REVERIFICATION_OTP_SENT_FAILED',
+        userId,
+        userEmail,
+        status: AuditLogStatus.FAILURE,
+        errorMessage: error instanceof Error ? error.message : 'Unknown OTP send error',
+        details: { context: 'session_reverification', userNameAttempted: userName }
+      })
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'OTP_SEND_FAILED', 'Error.Auth.Otp.SendFailed')
+    }
+  }
 }

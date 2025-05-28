@@ -145,6 +145,16 @@ export type I18nTranslations = {
         "Error.Auth.Device.MaxDevicesReached": string;
         "Auth.Device.AlreadyTrusted": string;
         "Auth.Device.AlreadyUntrusted": string;
+        "Error.Auth.Google.Link.NoPendingState": string;
+        "Error.Auth.Google.Link.InvalidPendingState": string;
+        "Error.Auth.Google.Link.CompleteFailed": string;
+        "Auth.Google.ConfirmLinkDetailsMessage": string;
+        "Auth.Google.Link.CancelledSuccessfully": string;
+        "Auth.Google.Link.NoPendingStateToCancel": string;
+        "Error.Auth.Google.AlreadyLinkedToOtherGoogle": string;
+        "Error.Auth.Google.GoogleIdConflict": string;
+        "Error.Auth.Google.LinkAccountFailed": string;
+        "Error.Server.ConfigError.MissingOAuthCookie": string;
     };
 };
 /* prettier-ignore */

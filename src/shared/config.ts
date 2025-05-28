@@ -70,7 +70,9 @@ const configSchema = z.object({
 
   // New configuration for nonce cookie
   NONCE_COOKIE_MAX_AGE: z.string().optional(),
-  COOKIE_DOMAIN: z.string().optional()
+  COOKIE_DOMAIN: z.string().optional(),
+  PENDING_LINK_TOKEN_SECRET: z.string(),
+  PENDING_LINK_TOKEN_EXPIRES_IN: z.string().default('15m')
 })
 
 const configServer = configSchema.safeParse(process.env)
@@ -179,6 +181,15 @@ const envConfig = {
       secure: cookieSecure,
       sameSite: cookieSameSite,
       signed: true
+    },
+    oauthPendingLinkToken: {
+      name: CookieNames.OAUTH_PENDING_LINK_TOKEN,
+      path: '/',
+      domain: cookieDomain,
+      maxAge: convertMs(parsedConfig.PENDING_LINK_TOKEN_EXPIRES_IN, ms('15m')),
+      httpOnly: true,
+      secure: cookieSecure,
+      sameSite: cookieSameSite
     }
   }
 }

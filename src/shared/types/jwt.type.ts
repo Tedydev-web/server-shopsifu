@@ -22,3 +22,18 @@ export interface AccessTokenPayload extends AccessTokenPayloadCreate {
 //   exp: number
 //   iat: number
 // }
+
+// Định nghĩa cho Pending Link Token
+export interface PendingLinkTokenPayloadCreate {
+  existingUserId: number
+  googleId: string
+  googleEmail: string
+  googleName?: string | null
+  googleAvatar?: string | null
+}
+
+export interface PendingLinkTokenPayload extends PendingLinkTokenPayloadCreate {
+  jti: string
+  exp: number
+  iat: number
+}
