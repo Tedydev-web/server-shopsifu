@@ -1,11 +1,10 @@
 import { Injectable, HttpStatus, Logger } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { v4 as uuidv4 } from 'uuid'
-import { TokenType, TwoFactorMethodType, TypeOfVerificationCode } from '../constants/auth.constants'
+import { TwoFactorMethodType, TypeOfVerificationCode } from '../constants/auth.constants'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { DisableTwoFactorBodyType, TwoFactorVerifyBodyType } from 'src/routes/auth/auth.model'
 import {
-  DeviceMismatchException,
   InvalidCodeFormatException,
   InvalidRecoveryCodeException,
   InvalidTOTPException,
@@ -16,12 +15,10 @@ import {
 } from 'src/routes/auth/auth.error'
 import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { Response } from 'express'
-import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import envConfig from 'src/shared/config'
-import ms from 'ms'
 import { SessionManagementService } from './session-management.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { HashingService } from 'src/shared/services/hashing.service'
@@ -37,8 +34,7 @@ import { DeviceService } from '../providers/device.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { JwtService } from '@nestjs/jwt'
-import { EmailNotFoundException, InvalidOTPTokenException, MismatchedSessionTokenException } from '../auth.error'
-import { CookieNames } from 'src/shared/constants/auth.constant'
+import { EmailNotFoundException, InvalidOTPTokenException } from '../auth.error'
 import { SltContextData } from '../providers/otp.service'
 
 const MAX_2FA_VERIFY_ATTEMPTS = 5
@@ -107,22 +103,8 @@ export class TwoFactorAuthService extends BaseAuthService {
       const { secret, uri } = this.twoFactorService.generateTOTPSecret(user.email)
       const setupToken = uuidv4()
       const setupTokenKey = `${REDIS_KEY_PREFIX.TFA_SETUP_TOKEN}${setupToken}`
-      const setupTokenTTLSeconds = 15 * 60 // 15 minutes
+      const setupTokenTTLSeconds = 15 * 60
 
-      // // Old DB storage:
-      // await this.prismaService.verificationToken.create({
-      //   data: {
-      //     token: setupToken,
-      //     email: user.email,
-      //     type: TypeOfVerificationCode.SETUP_2FA,
-      //     tokenType: TokenType.SETUP_2FA_TOKEN,
-      //     expiresAt: new Date(Date.now() + setupTokenTTLSeconds * 1000),
-      //     userId,
-      //     metadata: JSON.stringify({ secret })
-      //   }
-      // })
-
-      // New Redis storage:
       await this.redisService.set(
         setupTokenKey,
         JSON.stringify({ userId, secret, email: user.email }),
@@ -141,7 +123,7 @@ export class TwoFactorAuthService extends BaseAuthService {
       return {
         secret,
         uri,
-        setupToken // This token will be used by the client to confirm
+        setupToken
       }
     } catch (error) {
       if (!auditLogEntry.errorMessage) {
@@ -156,7 +138,7 @@ export class TwoFactorAuthService extends BaseAuthService {
     userId: number,
     setupToken: string,
     totpCode: string,
-    // Optional: Pass these from controller if available, for more accurate logging
+
     requestIpAddress?: string,
     requestUserAgent?: string
   ) {
@@ -186,7 +168,7 @@ export class TwoFactorAuthService extends BaseAuthService {
           auditLogEntry.details.reason = 'USER_NOT_FOUND'
           throw EmailNotFoundException
         }
-        auditLogEntry.userEmail = user.email // For audit log enrichment
+        auditLogEntry.userEmail = user.email
 
         if (user.twoFactorEnabled && user.twoFactorMethod === TwoFactorMethodType.TOTP) {
           auditLogEntry.errorMessage = '2FA (TOTP) is already enabled for this user.'
@@ -194,12 +176,11 @@ export class TwoFactorAuthService extends BaseAuthService {
           throw TOTPAlreadyEnabledException
         }
 
-        // Validate setup token
         const decodedSetupToken = await this.otpService.validateVerificationToken(
           setupToken,
           TypeOfVerificationCode.SETUP_2FA,
           user.email,
-          undefined // deviceId not relevant
+          undefined
         )
 
         if (decodedSetupToken.userId !== userId || !decodedSetupToken.metadata?.twoFactorSecret) {
@@ -209,9 +190,8 @@ export class TwoFactorAuthService extends BaseAuthService {
         }
         const twoFactorSecretFromToken = decodedSetupToken.metadata.twoFactorSecret as string
 
-        // Verify TOTP code against the secret from the setup token
         const isValidTOTP = this.twoFactorService.verifyTOTP({
-          email: user.email, // or a unique identifier from user
+          email: user.email,
           secret: twoFactorSecretFromToken,
           token: totpCode
         })
@@ -219,11 +199,10 @@ export class TwoFactorAuthService extends BaseAuthService {
         if (!isValidTOTP) {
           auditLogEntry.errorMessage = 'Invalid TOTP code provided during 2FA setup confirmation.'
           auditLogEntry.details.reason = 'INVALID_TOTP_CODE'
-          // Note: Not incrementing OTP failure here as it's a TOTP code
+
           throw InvalidTOTPException
         }
 
-        // All checks passed, proceed to enable 2FA
         const recoveryCodes = this.twoFactorService.generateRecoveryCodes()
         await this.twoFactorService.saveRecoveryCodes(userId, recoveryCodes, tx)
         auditLogEntry.details.recoveryCodesGeneratedCount = recoveryCodes.length
@@ -232,14 +211,13 @@ export class TwoFactorAuthService extends BaseAuthService {
           { id: userId },
           {
             twoFactorEnabled: true,
-            twoFactorSecret: twoFactorSecretFromToken, // Save the validated secret
+            twoFactorSecret: twoFactorSecretFromToken,
             twoFactorMethod: TwoFactorMethodType.TOTP,
-            twoFactorVerifiedAt: new Date() // Mark as verified
+            twoFactorVerifiedAt: new Date()
           },
           tx
         )
 
-        // Invalidate the setup token as it's now used
         const nowForSetupTokenBlacklist = Math.floor(Date.now() / 1000)
         await this.otpService.blacklistVerificationToken(
           decodedSetupToken.jti,
@@ -248,12 +226,9 @@ export class TwoFactorAuthService extends BaseAuthService {
         )
         auditLogEntry.details.setupTokenInvalidated = true
 
-        // Since 2FA setup implies a new verified state, invalidate other sessions
-        // to ensure they re-authenticate with 2FA if needed.
         await this.tokenService.invalidateAllUserSessions(userId, '2FA_SETUP_CONFIRMED')
         auditLogEntry.details.allOtherSessionsInvalidated = true
 
-        // Create a new session for the user as 2FA setup is a form of re-authentication
         const device = await this.deviceService.findOrCreateDevice(
           {
             userId: user.id,
@@ -265,7 +240,7 @@ export class TwoFactorAuthService extends BaseAuthService {
         auditLogEntry.details.finalDeviceId = device.id
 
         const newSessionId = uuidv4()
-        // Enforce limits for this new session context
+
         await this.sessionManagementService.enforceSessionAndDeviceLimits(user.id, newSessionId, device.id)
 
         const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
@@ -278,7 +253,7 @@ export class TwoFactorAuthService extends BaseAuthService {
               sessionId: newSessionId
             },
             tx,
-            false // No rememberMe by default for 2FA setup confirmation
+            false
           )
 
         const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${newSessionId}`
@@ -292,7 +267,7 @@ export class TwoFactorAuthService extends BaseAuthService {
           userAgent: requestUserAgent || 'N/A',
           createdAt: new Date().toISOString(),
           lastActiveAt: new Date().toISOString(),
-          isTrusted: false, // Device is not trusted by default on 2FA setup confirmation
+          isTrusted: false,
           rememberMe: false,
           roleId: user.roleId,
           roleName: user.role.name,
@@ -313,16 +288,15 @@ export class TwoFactorAuthService extends BaseAuthService {
           accessTokenToReturn: accessToken,
           refreshTokenJtiToReturn: refreshTokenJti,
           maxAgeForRefreshTokenCookieToReturn: maxAgeForRefreshTokenCookie,
-          userForEmail: { id: user.id, email: user.email, name: user.name } // For email notification
+          userForEmail: { id: user.id, email: user.email, name: user.name }
         }
       })
 
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = '2FA_CONFIRM_SETUP_SUCCESS'
-      // finalAuditLogEntry.details will be merged from the one within transaction
+
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
-      // Send 2FA enabled notification email
       if (resultFromTransaction && resultFromTransaction.userForEmail) {
         const lang = I18nContext.current()?.lang || 'en'
         try {
@@ -363,7 +337,6 @@ export class TwoFactorAuthService extends BaseAuthService {
             `Failed to send 2FA enabled security alert to ${resultFromTransaction.userForEmail.email}: ${emailError.message}`,
             emailError.stack
           )
-          // Do not let email failure block the main operation
         }
       }
 
@@ -374,17 +347,12 @@ export class TwoFactorAuthService extends BaseAuthService {
       return {
         message,
         recoveryCodes: resultFromTransaction.recoveryCodesToReturn
-        // Optionally return tokens if the client should log in immediately
-        // accessToken: resultFromTransaction.accessTokenToReturn,
-        // refreshTokenJti: resultFromTransaction.refreshTokenJtiToReturn,
-        // maxAgeForRefreshTokenCookie: resultFromTransaction.maxAgeForRefreshTokenCookieToReturn
       }
     } catch (error) {
       auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
       if (error instanceof ApiException && error.details) {
         auditLogEntry.details.originalError = error.details as unknown as Prisma.JsonObject[]
       }
-      // Ensure final logging attempt even on error
       await this.auditLogService.record(auditLogEntry as AuditLogData)
       this.logger.error(
         `2FA setup confirmation failed for user ${userId}: ${error.message}`,
@@ -411,10 +379,9 @@ export class TwoFactorAuthService extends BaseAuthService {
         if (!user || !user.twoFactorEnabled) {
           auditLogEntry.errorMessage = 'User not found or 2FA not enabled.'
           auditLogEntry.details.reason = 'USER_NOT_FOUND_OR_2FA_NOT_ENABLED'
-          // Not throwing here yet, let audit log capture this state if transaction fails later
-          throw TOTPNotEnabledException // Throw inside transaction to cause rollback
+          throw TOTPNotEnabledException
         }
-        auditLogEntry.userEmail = user.email // For audit log enrichment
+        auditLogEntry.userEmail = user.email
 
         let tokenVerified = false
         if (data.otpToken) {
@@ -422,14 +389,14 @@ export class TwoFactorAuthService extends BaseAuthService {
             data.otpToken,
             TypeOfVerificationCode.DISABLE_2FA,
             user.email,
-            undefined // deviceId is not relevant here
+            undefined
           )
           if (verificationPayload.userId !== user.id) {
             auditLogEntry.errorMessage = 'OTP token user ID mismatch.'
             auditLogEntry.details.reason = 'OTP_TOKEN_USER_ID_MISMATCH'
-            throw InvalidOTPTokenException // Throw inside transaction
+            throw InvalidOTPTokenException
           }
-          // Blacklist the token within the transaction
+
           const now = Math.floor(Date.now() / 1000)
           await this.otpService.blacklistVerificationToken(verificationPayload.jti, now, verificationPayload.exp)
           tokenVerified = true
@@ -438,7 +405,7 @@ export class TwoFactorAuthService extends BaseAuthService {
           if (!user.twoFactorSecret) {
             auditLogEntry.errorMessage = 'User 2FA secret not found for TOTP verification.'
             auditLogEntry.details.reason = 'USER_2FA_SECRET_NOT_FOUND'
-            throw TOTPNotEnabledException // Throw inside transaction
+            throw TOTPNotEnabledException
           }
           const isValidTOTP = this.twoFactorService.verifyTOTP({
             email: user.email,
@@ -448,7 +415,7 @@ export class TwoFactorAuthService extends BaseAuthService {
           if (!isValidTOTP) {
             auditLogEntry.errorMessage = 'Invalid TOTP code provided.'
             auditLogEntry.details.reason = 'INVALID_TOTP_CODE'
-            throw InvalidTOTPException // Throw inside transaction
+            throw InvalidTOTPException
           }
           tokenVerified = true
           auditLogEntry.details.verificationMethod = 'TOTP_CODE'
@@ -457,7 +424,7 @@ export class TwoFactorAuthService extends BaseAuthService {
         if (!tokenVerified) {
           auditLogEntry.errorMessage = 'No valid verification method provided (OTP token or TOTP code).'
           auditLogEntry.details.reason = 'NO_VALID_VERIFICATION_METHOD'
-          throw InvalidCodeFormatException // Throw inside transaction
+          throw InvalidCodeFormatException
         }
 
         await this.authRepository.updateUser(
@@ -467,7 +434,7 @@ export class TwoFactorAuthService extends BaseAuthService {
             twoFactorSecret: null,
             twoFactorMethod: null,
             twoFactorVerifiedAt: null,
-            RecoveryCode: { deleteMany: {} } // Corrected relation name
+            RecoveryCode: { deleteMany: {} }
           },
           tx
         )
@@ -478,12 +445,10 @@ export class TwoFactorAuthService extends BaseAuthService {
         return { userForEmail: { id: user.id, email: user.email, name: user.name } }
       })
 
-      // If transaction is successful
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = '2FA_DISABLE_SUCCESS'
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
-      // Send email notification outside transaction
       if (resultFromTransaction && resultFromTransaction.userForEmail) {
         const lang = I18nContext.current()?.lang || 'en'
         try {
@@ -524,19 +489,17 @@ export class TwoFactorAuthService extends BaseAuthService {
       const message = await this.i18nService.translate('Auth.2FA.Disabled', { lang: I18nContext.current()?.lang })
       return { message }
     } catch (error) {
-      // Error might have occurred before or during transaction
-      // auditLogEntry status is already FAILURE
       auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
       if (error instanceof ApiException && error.details) {
         auditLogEntry.details.originalError = error.details as unknown as Prisma.JsonObject[]
       }
-      await this.auditLogService.record(auditLogEntry as AuditLogData) // Log failure
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       this.logger.error(
         `2FA disable failed for user ${data.userId}: ${error.message}`,
         error.stack,
         `Details: ${JSON.stringify(auditLogEntry.details)}`
       )
-      throw error // Re-throw original error
+      throw error
     }
   }
 
@@ -760,25 +723,17 @@ export class TwoFactorAuthService extends BaseAuthService {
           }
 
           if (!isValidCode) {
-            // if (sltJti) { // Khối này được comment out hoặc xóa hẳn
-            //   await this.otpService.incrementSltAttempts(sltJti)
-            //   auditLogEntry.details.sltAttemptIncremented = true
-            // }
             if (!auditLogEntry.errorMessage) {
               auditLogEntry.errorMessage = 'Verification code is invalid.'
             }
             if (sltPurpose === TypeOfVerificationCode.LOGIN_2FA) {
               throw body.recoveryCode ? InvalidRecoveryCodeException : InvalidTOTPException
             } else {
-              // This case (LOGIN_UNTRUSTED_DEVICE_OTP within TwoFactorAuthService) should ideally not be hit
-              // as it's handled by AuthenticationService. If hit, treat as InvalidOTPException.
               this.logger.warn('Unexpected LOGIN_UNTRUSTED_DEVICE_OTP purpose in TwoFactorAuthService verifyTwoFactor')
               throw InvalidOTPException
             }
           }
         } catch (verificationError) {
-          // If the error is NOT MaxVerificationAttemptsExceededException (already handled at the start)
-          // and we have an SLT context, increment its attempt count.
           let isMaxAttemptsError = false
           if (verificationError instanceof ApiException) {
             const response = verificationError.getResponse()

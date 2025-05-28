@@ -1,17 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import { DeviceType, RoleType } from 'src/routes/auth/auth.model'
-import { TokenTypeType, TypeOfVerificationCodeType } from './constants/auth.constants'
 import { UserType } from 'src/shared/models/shared-user.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import {
-  Prisma,
-  PrismaClient,
-  RecoveryCode,
-  User,
-  Device,
-  UserStatus,
-  VerificationCodeType as PrismaVerificationCodeEnum
-} from '@prisma/client'
+import { Prisma, PrismaClient, RecoveryCode, User, Device, UserStatus } from '@prisma/client'
 import { DeviceService } from 'src/routes/auth/providers/device.service'
 
 type PrismaTransactionClient = Omit<

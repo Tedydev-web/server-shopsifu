@@ -2,13 +2,10 @@ import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import {
-  // ActiveSessionSchema, // Old schema, replaced by DeviceWithSessionsSchema
-  // DeviceInfoSchema, // Old schema for GET /devices
-  // GetActiveSessionsResSchema, // Old schema, replaced by GetSessionsGroupedByDeviceResSchema
   RevokeSessionsBodyDTO,
-  DeviceWithSessionsSchema, // New schema for items in the response
-  NestedSessionSchema, // Schema for sessions nested under devices
-  GetSessionsByDeviceQueryDTO // New query DTO for pagination and sorting of devices
+  DeviceWithSessionsSchema,
+  NestedSessionSchema,
+  GetSessionsByDeviceQueryDTO
 } from '../dtos/session-management.dto'
 import { z } from 'zod'
 import { UAParser } from 'ua-parser-js'
@@ -22,7 +19,6 @@ import { SessionNotFoundException } from '../auth.error'
 import envConfig from 'src/shared/config'
 import { DeviceNotFoundForUserException } from '../auth.error'
 
-// Define types based on new Zod schemas
 type DeviceWithSessionsType = z.infer<typeof DeviceWithSessionsSchema>
 type NestedSessionType = z.infer<typeof NestedSessionSchema>
 
@@ -63,7 +59,6 @@ export class SessionManagementService extends BaseAuthService {
 
     const { page = 1, limit = 10, sortBy = 'lastSeenAt', sortOrder = 'desc' } = query
 
-    // 1. Fetch paginated devices from DB
     const skip = (page - 1) * limit
     const take = limit
 
@@ -77,7 +72,7 @@ export class SessionManagementService extends BaseAuthService {
     }
 
     const dbDevices = await this.prismaService.device.findMany({
-      where: { userId, isActive: true }, // Consider only active devices
+      where: { userId, isActive: true },
       orderBy: orderByClause,
       skip,
       take
@@ -93,7 +88,6 @@ export class SessionManagementService extends BaseAuthService {
 
     const devicesWithSessions: DeviceWithSessionsType[] = []
 
-    // 2. For each device, fetch its sessions from Redis
     for (const dbDevice of dbDevices) {
       const deviceSessionIds = await this.redisService.smembers(`${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${dbDevice.id}`)
 
@@ -114,25 +108,29 @@ export class SessionManagementService extends BaseAuthService {
               if (
                 !sessionData.createdAt ||
                 !sessionData.lastActiveAt ||
-                parseInt(sessionData.userId, 10) !== userId || // Ensure session belongs to user
-                parseInt(sessionData.deviceId, 10) !== dbDevice.id // Ensure session belongs to this device
-      ) {
-        this.sessionManagementLogger.warn(
+                parseInt(sessionData.userId, 10) !== userId ||
+                parseInt(sessionData.deviceId, 10) !== dbDevice.id
+              ) {
+                this.sessionManagementLogger.warn(
                   `Session ${deviceSessionIds[i]} has missing/invalid data or mismatch. Skipping. ` +
                     `Expected userId: ${userId}, Actual userId: ${sessionData.userId}. ` +
                     `Expected deviceId: ${dbDevice.id}, Actual deviceId: ${sessionData.deviceId}. ` +
                     `SessionData: ${JSON.stringify(sessionData)}`
-        )
-        continue
-      }
+                )
+                continue
+              }
 
-      let validIpAddress: string | null = null
+              let validIpAddress: string | null = null
               if (sessionData.ipAddress && sessionData.ipAddress.trim() !== '') {
-        try {
+                try {
                   z.string().ip().parse(sessionData.ipAddress)
                   validIpAddress = sessionData.ipAddress
-        } catch (e) {
-          this.sessionManagementLogger.warn(
+                } catch (error) {
+                  this.sessionManagementLogger.error(
+                    `Error parsing IP address for session ${deviceSessionIds[i]}:`,
+                    error
+                  )
+                  this.sessionManagementLogger.warn(
                     `Session ${deviceSessionIds[i]} has an invalid IP address format ('${sessionData.ipAddress}'). Setting to null.`
                   )
                 }
@@ -145,8 +143,8 @@ export class SessionManagementService extends BaseAuthService {
 
               nestedSessions.push({
                 sessionId: deviceSessionIds[i],
-        ipAddress: validIpAddress,
-        location: locationString,
+                ipAddress: validIpAddress,
+                location: locationString,
                 loggedInAt: new Date(sessionData.createdAt).toISOString(),
                 lastActiveAt: new Date(sessionData.lastActiveAt).toISOString(),
                 isCurrentSession: deviceSessionIds[i] === currentSessionIdFromRequest
@@ -154,15 +152,13 @@ export class SessionManagementService extends BaseAuthService {
             }
           }
         }
-        // Sort sessions within a device, current first, then by last active
         nestedSessions.sort((a, b) => {
-      if (a.isCurrentSession) return -1
-      if (b.isCurrentSession) return 1
-      return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
-    })
+          if (a.isCurrentSession) return -1
+          if (b.isCurrentSession) return 1
+          return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+        })
       }
 
-      // Normalize device info for the response
       const uaParser = new UAParser(dbDevice.userAgent)
       const browser = uaParser.getBrowser()
       const os = uaParser.getOS()
@@ -211,13 +207,9 @@ export class SessionManagementService extends BaseAuthService {
       this.sessionManagementLogger.warn(
         `Attempt to revoke current session ${currentSessionId} for user ${userId} via internal call. Reason: ${revokeReason}. This is generally disallowed directly.`
       )
-      // Depending on the revokeReason or specific logic, you might throw an error here
-      // For now, we prevent direct revocation of current session through this internal method
-      // to align with the general principle that users logout of current session via /logout
       throw new ApiException(HttpStatus.FORBIDDEN, 'ForbiddenOperation', 'Error.Auth.Session.CannotRevokeCurrent')
     }
 
-    // Check if session belongs to the user before revoking
     const sessionDetails = await this.redisService.hgetall(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionIdToRevoke}`)
     const sessionOwnerId = sessionDetails?.userId ? parseInt(sessionDetails.userId, 10) : null
 
@@ -225,7 +217,7 @@ export class SessionManagementService extends BaseAuthService {
       this.sessionManagementLogger.warn(
         `User ${userId} attempt to revoke session ${sessionIdToRevoke} not belonging to them (owner: ${sessionOwnerId}) or session details missing. Reason: ${revokeReason}`
       )
-      throw SessionNotFoundException // Or a more specific "permission denied" error
+      throw SessionNotFoundException
     }
 
     await this.tokenService.invalidateSession(sessionIdToRevoke, `USER_REQUEST_REVOKE_SESSION (${revokeReason})`)
@@ -243,56 +235,6 @@ export class SessionManagementService extends BaseAuthService {
     })
   }
 
-  // Temporarily comment out getManagedDevices as it uses old DeviceInfoType which is being removed
-  /*
-  async getManagedDevices(userId: number): Promise<PaginatedResponseType<DeviceInfoType>> {
-    this.sessionManagementLogger.debug(`User ${userId} fetching managed devices.`)
-    const devicesFromDb = await this.prismaService.device.findMany({
-      where: { userId },
-      orderBy: { lastActive: 'desc' }
-    })
-
-    const devicesData: DeviceInfoType[] = devicesFromDb.map((device) => {
-      const uaParser = new UAParser(device.userAgent)
-      const browser = uaParser.getBrowser()
-      const os = uaParser.getOS()
-      const parsedDeviceType = uaParser.getDevice().type
-
-      const type = this._normalizeDeviceType(parsedDeviceType, os.name, browser.name) as DeviceInfoType['type'] // Cast needed if _normalizeDeviceType is strictly for DeviceWithSessionsType
-
-      let location: string | null = device.ip || null
-      if (device.ip) {
-        const geo = this.geolocationService.lookup(device.ip)
-        if (geo && geo.city && geo.country) {
-          location = `${geo.city}, ${geo.country}`
-        }
-      }
-
-      return {
-        id: device.id,
-        name: device.name,
-        type: type,
-        os: os.name && os.version ? `${os.name} ${os.version}` : os.name || null,
-        browser: browser.name && browser.version ? `${browser.name} ${browser.version}` : browser.name || null,
-        ip: device.ip,
-        location,
-        createdAt: device.createdAt.toISOString(),
-        lastActive: device.lastActive.toISOString(),
-        isTrusted: device.isTrusted
-      }
-    })
-
-    // Wrap in paginated response structure
-    return {
-      data: devicesData,
-      totalItems: devicesData.length,
-      page: 1, // Default to page 1
-      limit: devicesData.length > 0 ? devicesData.length : 1, // Avoid limit 0
-      totalPages: 1 // Default to 1 total page
-    }
-  }
-  */
-
   async updateDeviceName(userId: number, deviceId: number, name: string): Promise<{ message: string }> {
     const device = await this.prismaService.device.findUnique({ where: { id: deviceId } })
     if (!device || device.userId !== userId) {
@@ -304,7 +246,7 @@ export class SessionManagementService extends BaseAuthService {
       data: { name }
     })
 
-    this.auditLogService.record({
+    await this.auditLogService.record({
       action: 'DEVICE_NAME_UPDATE',
       userId,
       entity: 'Device',
@@ -339,14 +281,14 @@ export class SessionManagementService extends BaseAuthService {
 
     if (device.isTrusted) {
       const message = await this.i18nService.translate('Auth.Device.AlreadyTrusted', {
-      lang: I18nContext.current()?.lang
-    })
+        lang: I18nContext.current()?.lang
+      })
       auditEntry.status = AuditLogStatus.SUCCESS
       auditEntry.action = 'TRUST_MANAGED_DEVICE_ALREADY_TRUSTED'
       auditEntry.notes = 'Device was already trusted.'
       await this.auditLogService.recordAsync(auditEntry as AuditLogData)
-    return { message }
-  }
+      return { message }
+    }
 
     await this.deviceService.updateDevice(deviceId, { isTrusted: true })
 
@@ -382,7 +324,6 @@ export class SessionManagementService extends BaseAuthService {
       data: { isTrusted: false }
     })
 
-    // Revoke all active sessions for this device, except potentially the current one performing the action
     const sessionsForDevice = await this.getAllSessionsForDevice(userId, deviceId)
     let revokedCount = 0
     if (sessionsForDevice.length > 0) {
@@ -394,14 +335,9 @@ export class SessionManagementService extends BaseAuthService {
           this.sessionManagementLogger.warn(
             `Skipping current session ${currentSessionIdPerformingAction} on device ${deviceId} during untrust operation.`
           )
-          // Even if we skip revoking the current session, we should ensure its 'isTrusted' flag (if stored in Redis session) is updated
-          // However, our primary mechanism is that new tokens will reflect the untrusted state from DB.
-          // For now, we won't update Redis session details here as it might be complex if session is still active.
-          // The main goal is to revoke other sessions.
           continue
         }
         try {
-          // Use a more specific reason for audit trails in TokenService if possible
           await this.tokenService.invalidateSession(sessionIdToRevoke, 'DEVICE_UNTRUSTED_SESSIONS_REVOKED')
           revokedCount++
         } catch (error) {
@@ -414,7 +350,7 @@ export class SessionManagementService extends BaseAuthService {
       this.sessionManagementLogger.log(`Revoked ${revokedCount} sessions for device ${deviceId} after untrusting.`)
     }
 
-    this.auditLogService.record({
+    await this.auditLogService.record({
       action: 'DEVICE_UNTRUST_MANAGED',
       userId,
       entity: 'Device',
@@ -431,9 +367,9 @@ export class SessionManagementService extends BaseAuthService {
   }
 
   async logoutFromManagedDevice(
-    userId: number, // User whose device is being logged out
+    userId: number,
     deviceIdToLogout: number,
-    actionPerformer: { userId: number; ipAddress?: string; userAgent?: string } // User performing the action
+    actionPerformer: { userId: number; ipAddress?: string; userAgent?: string }
   ): Promise<{ message: string }> {
     this.sessionManagementLogger.debug(
       `User ${actionPerformer.userId} attempting to logout all sessions for device ${deviceIdToLogout} (owned by user ${userId}).`
@@ -443,7 +379,7 @@ export class SessionManagementService extends BaseAuthService {
       action: 'LOGOUT_FROM_MANAGED_DEVICE_ATTEMPT',
       entity: 'Device',
       entityId: deviceIdToLogout,
-      userId: actionPerformer.userId, // Logged as the user performing the action
+      userId: actionPerformer.userId,
       status: AuditLogStatus.FAILURE,
       details: {
         targetUserId: userId,
@@ -462,7 +398,6 @@ export class SessionManagementService extends BaseAuthService {
       throw DeviceNotFoundForUserException
     }
 
-    // Invalidate all sessions associated with this device ID
     const sessionsRevokedCount = await this.tokenService.invalidateSessionsByDeviceId(
       deviceIdToLogout,
       'MANAGED_DEVICE_LOGOUT'
@@ -481,8 +416,7 @@ export class SessionManagementService extends BaseAuthService {
 
   async trustCurrentDevice(userId: number, deviceId: number): Promise<{ message: string }> {
     this.sessionManagementLogger.debug(`User ${userId} attempting to trust current device ${deviceId}`)
-    // This can directly call trustManagedDevice as the logic is the same.
-    // trustManagedDevice already handles audit logging.
+
     return this.trustManagedDevice(userId, deviceId)
   }
 
@@ -515,12 +449,11 @@ export class SessionManagementService extends BaseAuthService {
           this.sessionManagementLogger.verbose(
             `revokeAll: Skipping current session ${currentSessionId} from immediate revocation.`
           )
-          // Session hiện tại không bị revoke ở đây, nhưng thiết bị của nó có thể bị untrusted bên dưới.
           const currentSessionDetails = await this.redisService.hgetall(
             `${REDIS_KEY_PREFIX.SESSION_DETAILS}${currentSessionId}`
           )
           const cDeviceId = currentSessionDetails?.deviceId ? parseInt(currentSessionDetails.deviceId, 10) : null
-          if (cDeviceId) distinctDeviceIdsFromSessions.add(cDeviceId) // Thêm thiết bị hiện tại vào set để có thể untrust
+          if (cDeviceId) distinctDeviceIdsFromSessions.add(cDeviceId)
           continue
         }
 
@@ -533,7 +466,6 @@ export class SessionManagementService extends BaseAuthService {
           await this.tokenService.invalidateSession(sessionIdToRevoke, 'REVOKE_ALL_REQUESTED')
           totalRevokedCount++
           if (sessionDeviceId) {
-            // Chỉ thêm vào set nếu session có deviceId
             distinctDeviceIdsFromSessions.add(sessionDeviceId)
           }
         } catch (error) {
@@ -549,7 +481,6 @@ export class SessionManagementService extends BaseAuthService {
         this.sessionManagementLogger.log(
           `revokeAll: Untrusting devices for user ${userId}. Devices from sessions: ${Array.from(distinctDeviceIdsFromSessions).join(', ')}. Current device to also untrust: ${currentDeviceId}`
         )
-        // Đảm bảo thiết bị hiện tại cũng được xem xét để untrust nếu untrustDevices = true
         distinctDeviceIdsFromSessions.add(currentDeviceId)
 
         for (const deviceIdToUntrust of distinctDeviceIdsFromSessions) {
@@ -572,8 +503,7 @@ export class SessionManagementService extends BaseAuthService {
               )
             }
           } else if (device && device.userId === userId && !device.isTrusted && deviceIdToUntrust === currentDeviceId) {
-            // If current device was already untrusted but part of the operation scope
-            currentDeviceUntrustedInThisOperation = true // Vẫn đánh dấu để có thể yêu cầu reverify nếu nằm trong scope untrust
+            currentDeviceUntrustedInThisOperation = true
             this.sessionManagementLogger.verbose(
               `revokeAll: Current device ${currentDeviceId} was already untrusted but included in untrust scope.`
             )
@@ -583,10 +513,7 @@ export class SessionManagementService extends BaseAuthService {
       }
     } else if (sessionIds && sessionIds.length > 0) {
       this.sessionManagementLogger.log(`Revoking specific sessions for user ${userId}: ${sessionIds.join(', ')}`)
-      // Logic này không trực tiếp untrust device, chỉ revoke session.
-      // Nếu muốn untrust device chứa session này, cần query deviceId từ session rồi untrust.
-      // Hiện tại, việc untrust device khi revoke theo sessionIds không được hỗ trợ trực tiếp qua body.
-      // Nếu cần, phải gửi thêm deviceId của session đó trong `deviceIds` kèm `untrustDevices: true`.
+
       for (const sessionIdToRevoke of sessionIds) {
         if (sessionIdToRevoke === currentSessionId) {
           this.sessionManagementLogger.warn(
@@ -622,13 +549,13 @@ export class SessionManagementService extends BaseAuthService {
             this.sessionManagementLogger.verbose(
               `Revoke by deviceIds: Skipping current session ${currentSessionId} on device ${deviceId}.`
             )
-            // Session hiện tại không bị revoke, nhưng thiết bị của nó có thể bị untrusted bên dưới.
+
             continue
           }
           try {
             await this.revokeSessionInternal(userId, sessionIdToRevoke, currentSessionId, 'BULK_REVOKE_DEVICE_SESSIONS')
             totalRevokedCount++
-      } catch (error) {
+          } catch (error) {
             this.sessionManagementLogger.error(
               `Failed to revoke session ${sessionIdToRevoke} for device ${deviceId} (user ${userId}) during deviceIds list operation:`,
               error
@@ -647,14 +574,13 @@ export class SessionManagementService extends BaseAuthService {
                 `Revoke by deviceIds: Current device ${currentDeviceId} was untrusted.`
               )
             }
-      } catch (error) {
-        this.sessionManagementLogger.error(
+          } catch (error) {
+            this.sessionManagementLogger.error(
               `Failed to untrust device ${deviceId} for user ${userId} during deviceIds list operation:`,
               error
             )
           }
         } else if (untrustDevices && !device.isTrusted && deviceId === currentDeviceId) {
-          // If current device was already untrusted but part of the operation scope
           currentDeviceUntrustedInThisOperation = true
           this.sessionManagementLogger.verbose(
             `Revoke by deviceIds: Current device ${currentDeviceId} was already untrusted but included in untrust scope.`
@@ -677,13 +603,8 @@ export class SessionManagementService extends BaseAuthService {
         'true'
       )
       auditDetails.currentSessionRequiresReverification = true
-      // Potentially update the isTrusted flag in the current session's details in Redis immediately.
-      // This makes the current session data reflect the device's new untrusted state even before a new token is issued.
-      await this.redisService.hset(
-        `${REDIS_KEY_PREFIX.SESSION_DETAILS}${currentSessionId}`,
-        'isTrusted', // Assuming 'isTrusted' is the field name in session details for device trust status
-        'false'
-      )
+
+      await this.redisService.hset(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${currentSessionId}`, 'isTrusted', 'false')
       this.sessionManagementLogger.verbose(
         `Updated 'isTrusted' to false in Redis for current session ${currentSessionId}.`
       )
@@ -692,7 +613,7 @@ export class SessionManagementService extends BaseAuthService {
     if (totalRevokedCount === 0 && devicesUntrustedCount === 0 && !currentDeviceUntrustedInThisOperation) {
       await this.auditLogService.recordAsync({
         action: 'REVOKE_MULTIPLE_SESSIONS_NO_ACTION',
-      userId,
+        userId,
         status: AuditLogStatus.SUCCESS,
         notes: 'No sessions were revoked or devices untrusted based on the criteria.',
         details: auditDetails
@@ -739,11 +660,10 @@ export class SessionManagementService extends BaseAuthService {
     const maxDevices = envConfig.MAX_DEVICES_PER_USER
     const maxSessions = envConfig.MAX_ACTIVE_SESSIONS_PER_USER
 
-    // --- Device Limit Enforcement ---
     if (maxDevices > 0) {
       const userDevices = await this.prismaService.device.findMany({
         where: { userId, isActive: true },
-        orderBy: { lastActive: 'asc' } // Oldest first
+        orderBy: { lastActive: 'asc' }
       })
 
       if (userDevices.length > maxDevices) {
@@ -751,19 +671,17 @@ export class SessionManagementService extends BaseAuthService {
         const devicesToPotentiallyRemove = userDevices.filter((d) => d.id !== currentDeviceIdToExclude)
         let numDevicesToRemove =
           devicesToPotentiallyRemove.length - (maxDevices - (userDevices.length - devicesToPotentiallyRemove.length))
-        //This calculation ensures we only consider removable devices to reach the target count.
 
         if (numDevicesToRemove > 0) {
           this.sessionManagementLogger.log(
             `User ${userId} has ${userDevices.length} active devices, exceeding limit of ${maxDevices}. Attempting to remove ${numDevicesToRemove} devices.`
           )
 
-          // Separate by trust status and sort: untrusted first, then by lastActive
           const sortedDevicesToConsider = devicesToPotentiallyRemove.sort((a, b) => {
             if (a.isTrusted !== b.isTrusted) {
-              return a.isTrusted ? 1 : -1 // Untrusted (false) come first
+              return a.isTrusted ? 1 : -1
             }
-            return new Date(a.lastActive).getTime() - new Date(b.lastActive).getTime() // Oldest lastActive first
+            return new Date(a.lastActive).getTime() - new Date(b.lastActive).getTime()
           })
 
           const devicesActuallyRemoved: Device[] = []
@@ -773,7 +691,7 @@ export class SessionManagementService extends BaseAuthService {
             this.sessionManagementLogger.log(
               `Removing device ${device.id} (trusted: ${device.isTrusted}, lastActive: ${device.lastActive.toISOString()}) for user ${userId} due to device limit.`
             )
-            // 1. Revoke all sessions for this device
+
             const deviceSessions = await this.getAllSessionsForDevice(userId, device.id)
             for (const sessionId of deviceSessions) {
               try {
@@ -785,7 +703,7 @@ export class SessionManagementService extends BaseAuthService {
                 )
               }
             }
-            // 2. Mark device as inactive (and untrust it)
+
             try {
               await this.prismaService.device.update({
                 where: { id: device.id },
@@ -828,7 +746,6 @@ export class SessionManagementService extends BaseAuthService {
       }
     }
 
-    // --- Session Limit Enforcement ---
     if (maxSessions > 0) {
       const userSessionIds = await this.redisService.smembers(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`)
 
@@ -859,17 +776,16 @@ export class SessionManagementService extends BaseAuthService {
                 sessionId,
                 deviceId: parseInt(details.deviceId, 10),
                 lastActiveAt: new Date(details.lastActiveAt),
-                isDeviceTrusted: device?.isTrusted || false // Default to not trusted if device not found or no trust status
+                isDeviceTrusted: device?.isTrusted || false
               })
             }
           }
 
-          // Sort: untrusted devices first, then by lastActiveAt (oldest first)
           sessionDetailsList.sort((a, b) => {
             if (a.isDeviceTrusted !== b.isDeviceTrusted) {
-              return a.isDeviceTrusted ? 1 : -1 // Untrusted (false) come first
+              return a.isDeviceTrusted ? 1 : -1
             }
-            return a.lastActiveAt.getTime() - b.lastActiveAt.getTime() // Oldest lastActiveAt first
+            return a.lastActiveAt.getTime() - b.lastActiveAt.getTime()
           })
 
           const sessionsActuallyRevokedIds: string[] = []
@@ -915,7 +831,6 @@ export class SessionManagementService extends BaseAuthService {
     }
   }
 
-  // Helper method to get all session IDs for a specific device of a user
   private async getAllSessionsForDevice(userId: number, deviceId: number): Promise<string[]> {
     const userSessionIds = await this.redisService.smembers(`${REDIS_KEY_PREFIX.USER_SESSIONS}${userId}`)
     const deviceSessions: string[] = []
@@ -955,7 +870,7 @@ export class SessionManagementService extends BaseAuthService {
         this.sessionManagementLogger.debug(
           `[DEBUG] Details for session ${sessionId}: ${JSON.stringify(sessionDetails)}`
         )
-        // Verify if this session truly belongs to the user, as a sanity check
+
         if (sessionDetails.userId && Number(sessionDetails.userId) === userId) {
           detailedSessions.push({ sessionId, ...sessionDetails })
         } else {

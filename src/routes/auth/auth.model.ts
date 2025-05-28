@@ -249,24 +249,15 @@ export type TwoFactorVerifyBodyType = z.infer<typeof TwoFactorVerifyBodySchema>
 export type UserProfileResType = z.infer<typeof UserProfileResSchema>
 export type AccessTokenResType = z.infer<typeof AccessTokenResSchema>
 
-// Schema for successful token refresh without returning the token in body
 export const RefreshTokenSuccessResSchema = z.object({
   message: z.string()
 })
 
-// Schemas for new endpoints
-export const TrustDeviceBodySchema = z
-  .object({
-    // deviceId: z.number().int().positive() // Removed deviceId
-    // Không cần userId ở body vì sẽ lấy từ active user
-    // Body sẽ rỗng, chỉ cần endpoint được gọi với AT hợp lệ
-  })
-  .strict()
+export const TrustDeviceBodySchema = z.object({}).strict()
 
 export const RememberMeBodySchema = z
   .object({
     rememberMe: z.boolean()
-    // Không cần userId hay deviceId ở body vì sẽ lấy từ active user và refresh token
   })
   .strict()
 
@@ -275,8 +266,7 @@ export type RememberMeBodyType = z.infer<typeof RememberMeBodySchema>
 
 export type RefreshTokenSuccessResType = z.infer<typeof RefreshTokenSuccessResSchema>
 
-// Schema for new device management endpoints
-export const UntrustDeviceBodySchema = z.object({}).strict() // Empty body
+export const UntrustDeviceBodySchema = z.object({}).strict()
 
 export const LogoutFromDeviceBodySchema = z
   .object({

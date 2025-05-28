@@ -80,7 +80,7 @@ export const ReverifyPasswordBodySchema = z.discriminatedUnion('verificationMeth
   }),
   z.object({
     verificationMethod: z.literal('recovery'),
-    recoveryCode: z.string().min(1, 'Recovery code is required') // Độ dài có thể thay đổi
+    recoveryCode: z.string().min(1, 'Recovery code is required')
   })
 ])
 

@@ -232,7 +232,6 @@ export class AuthenticationService extends BaseAuthService {
       const sessionId = uuidv4()
       const now = new Date()
 
-      // Lookup geolocation
       const geoLocation: GeolocationData | null = this.geolocationService.lookup(body.ip)
       if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && geoLocation) {
         auditLogEntry.details.location = `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
@@ -353,7 +352,7 @@ export class AuthenticationService extends BaseAuthService {
         this.logger.warn(
           `[AuthenticationService.login] Invalid ABSOLUTE_SESSION_LIFETIME_MS detected (NaN): ${envConfig.ABSOLUTE_SESSION_LIFETIME}. Falling back to 30 days.`
         )
-        absoluteSessionLifetimeMs = ms('30d') // Fallback to a known good value
+        absoluteSessionLifetimeMs = ms('30d')
       }
       sessionData.maxLifetimeExpiresAt = new Date(Date.now() + absoluteSessionLifetimeMs).toISOString()
 
@@ -388,7 +387,6 @@ export class AuthenticationService extends BaseAuthService {
         )
       }
 
-      // Send email if login from new location on a trusted device
       if (device.isTrusted && geoLocation && geoLocation.country && geoLocation.city) {
         const knownLocationsKey = `${REDIS_KEY_PREFIX.USER_KNOWN_LOCATIONS}${user.id}`
         const locationString = `${geoLocation.city?.toLowerCase()}_${geoLocation.country?.toLowerCase()}`
@@ -457,7 +455,6 @@ export class AuthenticationService extends BaseAuthService {
               `Failed to send new trusted device login location alert to ${user.email}: ${errorMessage}`,
               errorStack
             )
-            // Do not let email failure block the login flow
           }
         }
       }
@@ -466,10 +463,7 @@ export class AuthenticationService extends BaseAuthService {
       auditLogEntry.action = 'USER_LOGIN_SUCCESS'
       auditLogEntry.details.sessionId = sessionId
 
-      // Enforce limits after successful login and session creation (only if not pending 2FA/OTP)
-      // This means a full accessToken was generated and cookies were (potentially) set.
       if (user && device && sessionId && accessToken) {
-        // Check accessToken as a proxy for full login
         this.sessionManagementService
           .enforceSessionAndDeviceLimits(user.id, sessionId, device.id)
           .then((limitsResult) => {
@@ -477,9 +471,6 @@ export class AuthenticationService extends BaseAuthService {
               this.logger.log(
                 `Session/device limits applied for user ${user.id} after login. Devices removed: ${limitsResult.devicesRemovedCount}, Sessions revoked: ${limitsResult.sessionsRevokedCount}`
               )
-              // TODO: Consider if/how to notify client about auto-revocations.
-              // For now, logging is sufficient. We might throw MaxSessionsReachedException / MaxDevicesReachedException here if limits were applied *before* this session was established.
-              // However, since this is *after* the current session is established, it's more about cleanup.
             }
           })
           .catch((limitError) => {
@@ -534,10 +525,9 @@ export class AuthenticationService extends BaseAuthService {
     let activeUserFromToken: AccessTokenPayload | undefined = undefined
 
     try {
-      const accessToken = this.tokenService.extractTokenFromHeader(req) // Try to get AT for logging userId
+      const accessToken = this.tokenService.extractTokenFromHeader(req)
       if (accessToken) {
         try {
-          // Attempt to verify AT. Could be expired but still gives us payload for logging.
           activeUserFromToken = await this.tokenService.verifyAccessToken(accessToken)
           auditLogEntry.userId = activeUserFromToken.userId
           if (activeUserFromToken.sessionId) {
@@ -550,10 +540,6 @@ export class AuthenticationService extends BaseAuthService {
           this.logger.debug(
             'Could not decode or verify access token during logout. It might be expired or invalid. Will proceed if refresh token is present.'
           )
-          // If AT is invalid/expired, we might not get activeUserFromToken.
-          // We still want to proceed if a refresh token is available.
-          // If AT is required for logout (strict check), this guard should be at controller level.
-          // For now, we allow logout with just RT if AT fails verification here.
         }
       }
 
@@ -577,7 +563,7 @@ export class AuthenticationService extends BaseAuthService {
           auditLogEntry.notes = 'Logout processed: No refresh token cookie, no AT session. Client cookies cleared.'
         }
 
-        this.tokenService.clearTokenCookies(res) // Clear any lingering http-only cookies
+        this.tokenService.clearTokenCookies(res)
         const sltCookieConfig = envConfig.cookie.sltToken
         res.clearCookie(sltCookieConfig.name, { path: sltCookieConfig.path, domain: sltCookieConfig.domain })
 
@@ -589,7 +575,6 @@ export class AuthenticationService extends BaseAuthService {
         return { message }
       }
 
-      // Proceed with refresh token based logout if refreshTokenFromCookie exists
       const sessionId = await this.tokenService.findSessionIdByRefreshTokenJti(refreshTokenFromCookie)
       if (sessionId) {
         auditLogEntry.details = {
@@ -603,11 +588,8 @@ export class AuthenticationService extends BaseAuthService {
           auditLogEntry.notes = 'Logout for a session different from the active AT session.'
         }
         await this.tokenService.invalidateSession(sessionId, 'USER_LOGOUT')
-        await this.tokenService.markRefreshTokenJtiAsUsed(refreshTokenFromCookie, sessionId) // Mark as used after invalidating session
+        await this.tokenService.markRefreshTokenJtiAsUsed(refreshTokenFromCookie, sessionId)
       } else {
-        // If session not found by RT JTI, it might have been already invalidated or RT is stale.
-        // Still proceed to mark RT JTI as used to prevent replay if it's a known JTI.
-        // We don't have a session ID here, so pass a placeholder or handle it in markRefreshTokenJtiAsUsed
         await this.tokenService.markRefreshTokenJtiAsUsed(refreshTokenFromCookie, 'UNKNOWN_SESSION_ON_LOGOUT')
         this.logger.warn(
           `Session ID not found for refresh token JTI during logout. Refresh token JTI: ${refreshTokenFromCookie.substring(0, 10)}...`
@@ -616,11 +598,11 @@ export class AuthenticationService extends BaseAuthService {
       }
 
       this.tokenService.clearTokenCookies(res)
-      // Clear SLT cookie as well, if it exists, during logout
+
       const sltCookieConfig = envConfig.cookie.sltToken
       res.clearCookie(sltCookieConfig.name, { path: sltCookieConfig.path, domain: sltCookieConfig.domain })
 
-      auditLogEntry.status = AuditLogStatus.SUCCESS // Set success before final record if all goes well
+      auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'USER_LOGOUT_SUCCESS'
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
@@ -629,7 +611,6 @@ export class AuthenticationService extends BaseAuthService {
       })
       return { message }
     } catch (error) {
-      // Ensure all fields are set for the audit log in case of an error
       const finalErrorAuditLog: AuditLogData = {
         action: auditLogEntry.action || 'USER_LOGOUT_EXCEPTION',
         status: AuditLogStatus.FAILURE,
@@ -644,25 +625,22 @@ export class AuthenticationService extends BaseAuthService {
         entityId: auditLogEntry.entityId,
         geoLocation: auditLogEntry.geoLocation as Prisma.JsonObject | undefined
       }
-      // Record the error audit log
+
       await this.auditLogService.record(finalErrorAuditLog)
 
-      // Log the error with its own stack trace
       this.logger.error(
         `Logout failed: ${finalErrorAuditLog.errorMessage}`,
         error instanceof Error ? error.stack : undefined,
         `Audit Details: ${JSON.stringify(finalErrorAuditLog.details)}`
       )
 
-      // Clear cookies as a safety measure even on error
       this.tokenService.clearTokenCookies(res)
-      const sltCookieConfigOnError = envConfig.cookie.sltToken // Re-declare for scope
+      const sltCookieConfigOnError = envConfig.cookie.sltToken
       res.clearCookie(sltCookieConfigOnError.name, {
         path: sltCookieConfigOnError.path,
         domain: sltCookieConfigOnError.domain
       })
 
-      // Re-throw the original error or a generic one
       throw error
     }
   }
@@ -680,7 +658,7 @@ export class AuthenticationService extends BaseAuthService {
       this.logger.warn(
         `[AuthService setRememberMe] No refresh token JTI found in request for user ${activeUser.userId}`
       )
-      // This should ideally not happen if the user is authenticated with a valid RT
+
       throw MissingRefreshTokenException
     }
 
@@ -691,7 +669,7 @@ export class AuthenticationService extends BaseAuthService {
       this.logger.warn(
         `[AuthService setRememberMe] Session details not found in Redis for session ${activeUser.sessionId}, user ${activeUser.userId}. Cannot update rememberMe.`
       )
-      throw SessionNotFoundException // Or a more specific error
+      throw SessionNotFoundException
     }
 
     if (sessionDetails.currentRefreshTokenJti !== currentRefreshTokenJti) {
@@ -700,20 +678,16 @@ export class AuthenticationService extends BaseAuthService {
       )
       await this.tokenService.invalidateSession(activeUser.sessionId, 'RT_JTI_MISMATCH_ON_REMEMBER_ME')
       this.tokenService.clearTokenCookies(res)
-      throw InvalidRefreshTokenException // Or a more specific critical error
+      throw InvalidRefreshTokenException
     }
 
     const newMaxAgeForRefreshTokenCookie = rememberMe
       ? envConfig.REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE
       : envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
 
-    // Update the cookie with the new maxAge
     this.tokenService.setTokenCookies(res, '', currentRefreshTokenJti, newMaxAgeForRefreshTokenCookie, true)
 
-    // Update session details in Redis if necessary (e.g., if you store 'rememberMe' status in session)
     await this.redisService.hset(sessionDetailsKey, 'rememberMe', rememberMe.toString())
-    // Also update the expiry of the session:details key itself if it should align with rememberMe
-    // For now, session:details TTL is managed by absolute session lifetime
 
     this.auditLogService.record({
       userId: activeUser.userId,
@@ -727,7 +701,7 @@ export class AuthenticationService extends BaseAuthService {
         rememberMe,
         oldMaxAge: sessionDetails.rememberMeMaxAge,
         newMaxAge: newMaxAgeForRefreshTokenCookie
-      } as Prisma.JsonObject // Assuming you might store oldMaxAge
+      } as Prisma.JsonObject
     })
 
     const message = await this.i18nService.translate('Auth.RememberMe.Set', {
@@ -773,7 +747,6 @@ export class AuthenticationService extends BaseAuthService {
         )
       }
 
-      // Ensure userId exists in SLT context
       if (typeof sltContext.userId !== 'number') {
         auditLogEntry.errorMessage = 'User ID missing or invalid in SLT context.'
         auditLogEntry.details.reason = 'MISSING_OR_INVALID_USER_ID_IN_SLT'
@@ -788,7 +761,6 @@ export class AuthenticationService extends BaseAuthService {
       effectiveUserId = sltContext.userId
       auditLogEntry.userId = effectiveUserId
 
-      // Determine and validate effectiveEmail
       if (typeof sltContext.email === 'string' && sltContext.email.length > 0) {
         effectiveEmail = sltContext.email
       } else if (typeof body.email === 'string' && body.email.length > 0) {
@@ -807,8 +779,6 @@ export class AuthenticationService extends BaseAuthService {
       }
       auditLogEntry.userEmail = effectiveEmail
 
-      // At this point, effectiveUserId is a number and effectiveEmail is a string.
-
       auditLogEntry.details.sltJti = sltContext.sltJti
       auditLogEntry.details.sltPurpose = sltContext.purpose
       auditLogEntry.details.sltDeviceIdFromContext = sltContext.deviceId
@@ -823,7 +793,7 @@ export class AuthenticationService extends BaseAuthService {
         this.logger.warn(
           `[AuthService completeLoginWithUntrustedDeviceOtp] Max SLT verification attempts reached for JTI ${sltContext.sltJti}. Attempts: ${currentAttempts}`
         )
-        await this.otpService.finalizeSlt(sltContext.sltJti) // Finalize before throwing
+        await this.otpService.finalizeSlt(sltContext.sltJti)
         auditLogEntry.errorMessage = 'Max SLT verification attempts reached for untrusted device OTP.'
         auditLogEntry.details.reason = 'MAX_SLT_ATTEMPTS_REACHED_OTP'
         throw MaxVerificationAttemptsExceededException
@@ -835,17 +805,16 @@ export class AuthenticationService extends BaseAuthService {
         if (!user || !user.role) {
           auditLogEntry.errorMessage = 'User or user role not found for untrusted device OTP login.'
           auditLogEntry.details.reason = 'USER_OR_ROLE_NOT_FOUND_OTP'
-          throw EmailNotFoundException // Or a more specific user not found if only user is checked
+          throw EmailNotFoundException
         }
-        auditLogEntry.userId = user.id // Ensure userId in audit is from DB user
-        auditLogEntry.userEmail = user.email // Ensure email in audit is from DB user
+        auditLogEntry.userId = user.id
+        auditLogEntry.userEmail = user.email
 
-        // Final check for effectiveEmail before use within transaction, mainly for TS satisfaction
         if (typeof effectiveEmail !== 'string' || effectiveEmail.length === 0) {
           auditLogEntry.errorMessage = 'Effective email became invalid before OTP verification within transaction.'
           auditLogEntry.details.reason = 'EFFECTIVE_EMAIL_INVALID_IN_TX'
           this.logger.error(auditLogEntry.errorMessage, { currentEffectiveEmail: effectiveEmail })
-          // No SLT finalize here as we are in a transaction that will likely roll back.
+
           throw new ApiException(
             HttpStatus.INTERNAL_SERVER_ERROR,
             'InternalServerError',
@@ -856,22 +825,20 @@ export class AuthenticationService extends BaseAuthService {
         if (sltContext.purpose !== TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
           auditLogEntry.errorMessage = `Invalid SLT purpose: ${sltContext.purpose}. Expected LOGIN_UNTRUSTED_DEVICE_OTP.`
           auditLogEntry.details.reason = 'INVALID_SLT_PURPOSE_FOR_UNTRUSTED_OTP'
-          await this.otpService.finalizeSlt(sltContext.sltJti) // Finalize SLT as it's unexpected
+          await this.otpService.finalizeSlt(sltContext.sltJti)
           throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.InvalidPurpose')
         }
 
-        // Ensure body.code is a valid string before using it
         if (typeof body.code !== 'string' || body.code.length === 0) {
           auditLogEntry.errorMessage = 'OTP code is missing or invalid in the request body.'
           auditLogEntry.details.reason = 'INVALID_OTP_CODE_IN_BODY'
-          // Không nên finalize SLT ở đây ngay vì người dùng có thể thử lại nếu SLT còn hạn
-          // Lỗi này nên được bắt bởi validation ở DTO hoặc controller trước đó, nhưng đây là một safeguard.
+
           throw InvalidOTPException
         }
 
         const isValidOtp = await this.otpService.verifyOtpOnly(
           effectiveEmail,
-          body.code, // body.code bây giờ được đảm bảo là string
+          body.code,
           TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
           user.id,
           body.ip,
@@ -891,33 +858,29 @@ export class AuthenticationService extends BaseAuthService {
             )
             await this.otpService.finalizeSlt(sltContext.sltJti)
             auditLogEntry.details.sltFinalizedAfterMaxAttemptsIncrement = true
-            throw MaxVerificationAttemptsExceededException // Throw after finalizing
+            throw MaxVerificationAttemptsExceededException
           }
-          throw InvalidOTPException // Throw standard invalid OTP if attempts remain
+          throw InvalidOTPException
         }
-
-        // OTP is valid, proceed with login completion.
 
         const deviceFromFindOrCreate = await this.deviceService.findOrCreateDevice(
           {
             userId: user.id,
-            userAgent: sltContext.userAgent || body.userAgent, // Prioritize SLT context
-            ip: sltContext.ipAddress || body.ip // Prioritize SLT context
+            userAgent: sltContext.userAgent || body.userAgent,
+            ip: sltContext.ipAddress || body.ip
           },
           tx
         )
         auditLogEntry.details.finalDeviceId = deviceFromFindOrCreate.id
 
-        // Validate that the deviceId from SLT context matches the device found/created
         if (sltContext.deviceId && sltContext.deviceId !== deviceFromFindOrCreate.id) {
           auditLogEntry.errorMessage = `Device ID mismatch during untrusted device OTP login. SLT Device ID: ${sltContext.deviceId}, Identified Device ID: ${deviceFromFindOrCreate.id}.`
           auditLogEntry.details.reason = 'SLT_DEVICE_ID_MISMATCH_UNTRUSTED_OTP_LOGIN'
           this.logger.error(auditLogEntry.errorMessage)
-          // Potentially finalize SLT here as well if this is considered a security issue
-          // await this.otpService.finalizeSlt(sltContext.sltJti);
-          throw DeviceMismatchException // Use a general device mismatch or a more specific one
+
+          throw DeviceMismatchException
         }
-        const device = deviceFromFindOrCreate // Use this device for the rest of the flow
+        const device = deviceFromFindOrCreate
 
         let shouldRememberDevice = body.rememberMe
         if (shouldRememberDevice === undefined && sltContext?.metadata) {
@@ -940,19 +903,19 @@ export class AuthenticationService extends BaseAuthService {
               deviceId: device.id,
               roleId: user.role.id,
               roleName: user.role.name,
-              sessionId: uuidv4(), // New session for this successful OTP verification
-              isDeviceTrustedInSession: device.isTrusted || shouldRememberDevice // Reflect current trust status
+              sessionId: uuidv4(),
+              isDeviceTrustedInSession: device.isTrusted || shouldRememberDevice
             },
             tx,
             shouldRememberDevice
           )
 
-        await this.otpService.finalizeSlt(sltContext.sltJti) // Finalize SLT on successful OTP and login
+        await this.otpService.finalizeSlt(sltContext.sltJti)
         auditLogEntry.details.finalizedSltJtiOnSuccess = sltContext.sltJti
 
         if (res) {
           this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
-          this.tokenService.clearSltCookie(res) // Clear SLT cookie as it's now used
+          this.tokenService.clearSltCookie(res)
         }
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
@@ -967,7 +930,6 @@ export class AuthenticationService extends BaseAuthService {
           role: user.role.name,
           isDeviceTrustedInSession: accessTokenPayload.isDeviceTrustedInSession,
           currentDeviceId: device.id
-          // accessToken, // Usually not returned directly if cookies are set
         }
       })
       await this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
@@ -976,17 +938,13 @@ export class AuthenticationService extends BaseAuthService {
       this.logger.error(
         `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Failed for email ${effectiveEmail || auditLogEntry.userEmail || 'unknown'}: ${error.message}`,
         error.stack,
-        auditLogEntry.details // Log details for context
+        auditLogEntry.details
       )
 
-      // IMPORTANT: Ensure SLT is NOT finalized here if the error is something like InvalidOTPException
-      // The AuthService or the transaction logic should handle attempt counting and finalization based on attempts.
       if (sltContext?.sltJti) {
-        // Log the intent or previous behavior, but do not finalize here.
         this.logger.warn(
           `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Caught error. SLT JTI ${sltContext.sltJti}. Error: ${error.message}. Ensure SLT is not prematurely finalized here.`
         )
-        // DO NOT CALL: await this.otpService.finalizeSlt(sltContext.sltJti);
       }
 
       if (!auditLogEntry.errorMessage) {
@@ -995,10 +953,10 @@ export class AuthenticationService extends BaseAuthService {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
       }
-      // Always record the audit log for the attempt
+
       this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
 
-      throw error // Re-throw the error to be handled by AuthService or global filters
+      throw error
     }
   }
 

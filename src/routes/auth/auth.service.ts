@@ -8,12 +8,7 @@ import {
   TwoFactorVerifyBodyType,
   VerifyCodeBodyType
 } from 'src/routes/auth/auth.model'
-import { AuthRepository } from 'src/routes/auth/auth.repo'
-import { RolesService } from 'src/routes/auth/roles.service'
-import { SharedUserRepository } from './repositories/shared-user.repo'
-import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from 'src/routes/auth/providers/token.service'
-import { EmailService } from 'src/routes/auth/providers/email.service'
 import { AccessTokenPayload, AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import {
   InvalidRefreshTokenException,
@@ -26,17 +21,13 @@ import {
   SltContextMaxAttemptsReachedException,
   DeviceMismatchException
 } from 'src/routes/auth/auth.error'
-import { TwoFactorService } from 'src/routes/auth/providers/2fa.service'
 import { Response, Request } from 'express'
-import { PrismaService } from 'src/shared/services/prisma.service'
-import { AuditLogService, AuditLogData, AuditLogStatus } from '../audit-log/audit-log.service'
+import { AuditLogService, AuditLogStatus } from '../audit-log/audit-log.service'
 import { OtpService, SltContextData } from 'src/routes/auth/providers/otp.service'
-import { DeviceService } from 'src/routes/auth/providers/device.service'
 import { AuthenticationService } from './services/authentication.service'
 import { TwoFactorAuthService } from './services/two-factor-auth.service'
 import { OtpAuthService } from './services/otp-auth.service'
 import { PasswordAuthService } from './services/password-auth.service'
-import envConfig from 'src/shared/config'
 import { I18nService, I18nContext } from 'nestjs-i18n'
 import { Prisma } from '@prisma/client'
 import { ApiException } from 'src/shared/exceptions/api.exception'
@@ -45,17 +36,9 @@ import { TypeOfVerificationCode, MAX_SLT_ATTEMPTS } from './constants/auth.const
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prismaService: PrismaService,
-    private readonly hashingService: HashingService,
-    private readonly rolesService: RolesService,
-    private readonly authRepository: AuthRepository,
-    private readonly sharedUserRepository: SharedUserRepository,
-    private readonly emailService: EmailService,
     private readonly tokenService: TokenService,
-    private readonly twoFactorService: TwoFactorService,
     private readonly auditLogService: AuditLogService,
     private readonly otpService: OtpService,
-    private readonly deviceService: DeviceService,
     private readonly authenticationService: AuthenticationService,
     private readonly twoFactorAuthService: TwoFactorAuthService,
     private readonly otpAuthService: OtpAuthService,
@@ -92,8 +75,6 @@ export class AuthService {
 
     if (!refreshTokenFromCookie) {
       this.logger.warn('Refresh token not found in request for silent refresh.')
-      // Consider throwing an error or returning a specific response if no refresh token
-      // For now, relying on tokenService.refreshTokenSilently to handle this implicitly
     }
 
     const result = await this.tokenService.refreshTokenSilently(refreshTokenFromCookie || '', userAgent, ip)
@@ -110,15 +91,13 @@ export class AuthService {
       })
       return { message, accessToken: result.accessToken }
     } else {
-      // If refresh failed, ensure cookies are cleared if res is available
       if (res) {
         this.tokenService.clearTokenCookies(res)
       }
-      const message = await this.i18nService.translate('Error.Auth.Token.RefreshFailed', {
+      await this.i18nService.translate('Error.Auth.Token.RefreshFailed', {
         lang: I18nContext.current()?.lang
       })
-      // Consider throwing an appropriate HTTP exception here, e.g., UnauthorizedException
-      throw InvalidRefreshTokenException // Throw standard exception
+      throw InvalidRefreshTokenException
     }
   }
 

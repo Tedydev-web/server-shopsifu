@@ -306,13 +306,13 @@ export const SltCookieMissingException = createApiError(
 )
 
 export const SltContextFinalizedException = createApiError(
-  HttpStatus.UNAUTHORIZED, // Or BAD_REQUEST depending on when it's checked
+  HttpStatus.UNAUTHORIZED,
   'Error.Auth.SltContext.Finalized',
   'This login session has already been completed or invalidated.'
 )
 
 export const SltContextMaxAttemptsReachedException = createApiError(
-  HttpStatus.UNAUTHORIZED, // Or TOO_MANY_REQUESTS
+  HttpStatus.UNAUTHORIZED,
   'Error.Auth.SltContext.MaxAttemptsReached',
   'Maximum verification attempts reached for this login session.'
 )

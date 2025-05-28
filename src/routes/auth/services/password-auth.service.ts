@@ -1,11 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { ResetPasswordBodyType } from 'src/routes/auth/auth.model'
-import { TypeOfVerificationCode, TokenType } from '../constants/auth.constants'
+import { TypeOfVerificationCode } from '../constants/auth.constants'
 import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { EmailNotFoundException, InvalidPasswordException, InvalidOTPTokenException } from 'src/routes/auth/auth.error'
-import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { Prisma } from '@prisma/client'
 import { I18nContext } from 'nestjs-i18n'
 import envConfig from 'src/shared/config'
@@ -41,7 +40,7 @@ export class PasswordAuthService extends BaseAuthService {
       if (!user) {
         auditLogEntry.errorMessage = `User with ID ${verificationPayload.userId} not found during password reset.`
         auditLogEntry.details.reason = 'USER_NOT_FOUND'
-        throw EmailNotFoundException // Or a more generic user not found
+        throw EmailNotFoundException
       }
 
       const hashedPassword = await this.hashingService.hash(body.newPassword)
@@ -49,11 +48,9 @@ export class PasswordAuthService extends BaseAuthService {
       await this.prismaService.$transaction(async (tx) => {
         await this.authRepository.updateUser({ id: user.id }, { password: hashedPassword }, tx)
 
-        // Blacklist the OTP token after successful use
         const now = Math.floor(Date.now() / 1000)
         await this.otpService.blacklistVerificationToken(verificationPayload.jti, now, verificationPayload.exp, tx)
 
-        // Invalidate all active sessions for the user to force re-login
         await this.tokenService.invalidateAllUserSessions(user.id, 'PASSWORD_RESET_SUCCESS')
       })
 
@@ -62,7 +59,6 @@ export class PasswordAuthService extends BaseAuthService {
       auditLogEntry.action = 'PASSWORD_RESET_SUCCESS'
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
-      // Send password change notification email
       try {
         await this.emailService.sendSecurityAlertEmail({
           to: user.email,
@@ -89,11 +85,10 @@ export class PasswordAuthService extends BaseAuthService {
           actionButtonText: await this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
             lang: I18nContext.current()?.lang
           }),
-          actionButtonUrl: `${envConfig.FRONTEND_URL}/login` // Or account security page
+          actionButtonUrl: `${envConfig.FRONTEND_URL}/login`
         })
       } catch (emailError) {
         this.logger.error(`Failed to send password reset notification email to ${user.email}: ${emailError.message}`)
-        // Do not let email failure block the main operation
       }
 
       const message = await this.i18nService.translate('Auth.Password.ResetSuccess', {
@@ -125,7 +120,7 @@ export class PasswordAuthService extends BaseAuthService {
       if (!user) {
         auditLogEntry.errorMessage = 'User not found.'
         auditLogEntry.details.reason = 'USER_NOT_FOUND'
-        throw EmailNotFoundException // Or a more generic user not found
+        throw EmailNotFoundException
       }
       auditLogEntry.userEmail = user.email
 
@@ -139,7 +134,6 @@ export class PasswordAuthService extends BaseAuthService {
       const newHashedPassword = await this.hashingService.hash(newPassword)
       await this.authRepository.updateUser({ id: userId }, { password: newHashedPassword })
 
-      // Invalidate all sessions for the user to force re-login
       await this.tokenService.invalidateAllUserSessions(userId, 'PASSWORD_CHANGE_SUCCESS')
       auditLogEntry.details.allSessionsInvalidated = true
 
@@ -147,7 +141,6 @@ export class PasswordAuthService extends BaseAuthService {
       auditLogEntry.action = 'PASSWORD_CHANGE_SUCCESS'
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
-      // Send password change notification email
       try {
         await this.emailService.sendSecurityAlertEmail({
           to: user.email,
@@ -174,7 +167,7 @@ export class PasswordAuthService extends BaseAuthService {
           actionButtonText: await this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
             lang: I18nContext.current()?.lang
           }),
-          actionButtonUrl: `${envConfig.FRONTEND_URL}/login` // Or account security page
+          actionButtonUrl: `${envConfig.FRONTEND_URL}/login`
         })
       } catch (emailError) {
         this.logger.error(`Failed to send password change notification email to ${user.email}: ${emailError.message}`)

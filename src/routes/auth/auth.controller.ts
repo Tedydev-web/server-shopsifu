@@ -195,13 +195,6 @@ export class AuthController {
   @ZodSerializerDto(MessageResDTO)
   // @Throttle({ short: { limit: 5, ttl: 10000 } })
   logout(@Body() _: LogoutBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const cookieToken = req.cookies?.[CookieNames.REFRESH_TOKEN]
-    if (cookieToken) {
-      this.logger.log('Refresh token found in cookie, will be used for logout')
-    } else {
-      this.logger.log('Refresh token not found in cookie, will only clear current cookies')
-    }
-
     return this.authService.logout(req, res)
   }
 
@@ -216,8 +209,6 @@ export class AuthController {
     })
 
     const nonceCookieConfig = envConfig.cookie.nonce
-    const isDevelopment = envConfig.NODE_ENV === 'development'
-
     res.cookie(CookieNames.OAUTH_NONCE, nonce, {
       path: nonceCookieConfig.path,
       domain: nonceCookieConfig.domain,
@@ -242,13 +233,6 @@ export class AuthController {
     @UserAgent() userAgent: string,
     @Ip() ip: string
   ) {
-    this.logger.log('[GoogleCallback] Received callback from Google.')
-    this.logger.debug(`[GoogleCallback] Request Cookies: ${JSON.stringify(req.cookies)}`)
-    this.logger.debug(`[GoogleCallback] Request Cookie Header: ${req.headers.cookie}`)
-    this.logger.debug(`[GoogleCallback] Request Origin Header: ${req.headers.origin}`)
-    this.logger.debug(`[GoogleCallback] Request Referer Header: ${req.headers.referer}`)
-    this.logger.debug(`[GoogleCallback] Full Request URL: ${req.protocol}://${req.get('host')}${req.originalUrl}`)
-
     const currentLang = I18nContext.current()?.lang
     const nonceFromCookie = req.cookies?.[CookieNames.OAUTH_NONCE]
     const nonceCookieConfig = envConfig.cookie.nonce
@@ -352,8 +336,7 @@ export class AuthController {
       }
 
       const googleAuthResult = googleAuthResultFromService as GoogleCallbackSuccessResult
-      const { user, device, requiresTwoFactorAuth, requiresUntrustedDeviceVerification, twoFactorMethod } =
-        googleAuthResult
+      const { user, device, requiresTwoFactorAuth, requiresUntrustedDeviceVerification } = googleAuthResult
 
       const sltCookieConfig = envConfig.cookie.sltToken
 
@@ -394,7 +377,7 @@ export class AuthController {
             sameSite: nonceCookieConfig.sameSite
           })
         }
-        return res.redirect(`${envConfig.FRONTEND_URL}/login/verify-2fa?${queryParams.toString()}`)
+        return res.redirect(`${envConfig.FRONTEND_URL}/buyer/verify-2fa?${queryParams.toString()}`)
       }
 
       if (requiresUntrustedDeviceVerification) {
@@ -432,7 +415,7 @@ export class AuthController {
             sameSite: nonceCookieConfig.sameSite
           })
         }
-        return res.redirect(`${envConfig.FRONTEND_URL}/login/verify-device?${queryParams.toString()}`)
+        return res.redirect(`${envConfig.FRONTEND_URL}/buyer/verify-2fa?${queryParams.toString()}`)
       }
 
       this.logger.log(
@@ -449,7 +432,7 @@ export class AuthController {
         res
       )
 
-      const successRedirectUrl = `${envConfig.FRONTEND_URL}` // Or a more specific success page like /dashboard or /login/oauth-success
+      const successRedirectUrl = `${envConfig.FRONTEND_URL}`
       this.logger.log(
         `[GoogleCallback] Successful login for user ${user.id} via google-oauth. Redirecting to ${successRedirectUrl}`
       )
@@ -587,20 +570,6 @@ export class AuthController {
     return this.authService.setRememberMe(activeUser, body.rememberMe, req, res, ip, userAgent)
   }
 
-  // @Post('logout-all') // Bắt đầu comment hoặc xóa
-  // @HttpCode(HttpStatus.OK)
-  // @ZodSerializerDto(MessageResDTO)
-  // // @Throttle({ short: { limit: 3, ttl: 60000 } })
-  // logoutFromAllDevices(
-  //   @ActiveUser() activeUser: AccessTokenPayload,
-  //   @Req() req: Request,
-  //   @Res({ passthrough: true }) res: Response,
-  //   @Ip() ip: string,
-  //   @UserAgent() userAgent: string
-  // ) {
-  //   return this.authService.logoutFromAllDevices(activeUser, ip, userAgent, req, res)
-  // } // Kết thúc comment hoặc xóa
-
   @Get('sessions')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @ZodSerializerDto(GetSessionsGroupedByDeviceResDTO)
@@ -675,7 +644,6 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
   trustCurrentDevice(@ActiveUser() activeUser: AccessTokenPayload, @Body() _body: EmptyBodyDTO) {
-    // activeUser.deviceId is the ID of the device record in the database
     return this.sessionManagementService.trustCurrentDevice(activeUser.userId, activeUser.deviceId)
   }
 
