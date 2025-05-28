@@ -56,7 +56,8 @@ import { PasswordReverificationGuard } from './routes/auth/guards/password-rever
         path: path.join(__dirname, '../i18n/'),
         watch: true
       },
-      resolvers: [new QueryResolver(['lang', 'l']), AcceptLanguageResolver, new HeaderResolver(['x-lang'])]
+      resolvers: [new QueryResolver(['lang', 'l']), AcceptLanguageResolver, new HeaderResolver(['x-lang'])],
+      typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
     }),
     WinstonModule.forRoot({
       transports: [consoleTransport(), dailyRotateFileTransport('error'), dailyRotateFileTransport('info')]
