@@ -200,6 +200,14 @@ export class AuthenticationService extends BaseAuthService {
       }
       auditLogEntry.userId = user.id
 
+      if (user.status !== UserStatus.ACTIVE) {
+        this.logger.warn(`[DEBUG AuthenticationService login] User ${user.email} is not active. Status: ${user.status}`)
+        auditLogEntry.errorMessage = 'User account is not active.'
+        auditLogEntry.details.reason = 'USER_NOT_ACTIVE'
+        auditLogEntry.details.userStatus = user.status
+        throw new ApiException(HttpStatus.FORBIDDEN, 'UserInactive', 'Error.Auth.User.NotActive')
+      }
+
       const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
       if (!isPasswordMatch) {
         this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
@@ -811,6 +819,17 @@ export class AuthenticationService extends BaseAuthService {
         auditLogEntry.userId = user.id
         auditLogEntry.userEmail = user.email
 
+        if (user.status !== UserStatus.ACTIVE) {
+          this.logger.warn(
+            `[DEBUG AuthenticationService completeLoginWithUntrustedDeviceOtp] User ${user.email} is not active. Status: ${user.status}`
+          )
+          auditLogEntry.errorMessage = 'User account is not active.'
+          auditLogEntry.details.reason = 'USER_NOT_ACTIVE_ON_OTP_LOGIN'
+          auditLogEntry.details.userStatus = user.status
+          await this.otpService.finalizeSlt(sltContext.sltJti)
+          throw new ApiException(HttpStatus.FORBIDDEN, 'UserInactive', 'Error.Auth.User.NotActive')
+        }
+
         if (typeof effectiveEmail !== 'string' || effectiveEmail.length === 0) {
           auditLogEntry.errorMessage = 'Effective email became invalid before OTP verification within transaction.'
           auditLogEntry.details.reason = 'EFFECTIVE_EMAIL_INVALID_IN_TX'
@@ -946,6 +965,34 @@ export class AuthenticationService extends BaseAuthService {
         return userToReturn
       })
       await this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
+
+      if (
+        auditLogEntry.status === AuditLogStatus.SUCCESS &&
+        resultFromTransaction?.id &&
+        auditLogEntry.details?.finalDeviceId &&
+        auditLogEntry.details?.finalSessionId
+      ) {
+        this.sessionManagementService
+          .enforceSessionAndDeviceLimits(
+            resultFromTransaction.id,
+            auditLogEntry.details.finalSessionId as string,
+            auditLogEntry.details.finalDeviceId as number
+          )
+          .then((limitsResult) => {
+            if (limitsResult.deviceLimitApplied || limitsResult.sessionLimitApplied) {
+              this.logger.log(
+                `Session/device limits applied for user ${resultFromTransaction.id} after OTP login. Devices removed: ${limitsResult.devicesRemovedCount}, Sessions revoked: ${limitsResult.sessionsRevokedCount}`
+              )
+            }
+          })
+          .catch((limitError) => {
+            this.logger.error(
+              `Error enforcing session/device limits for user ${resultFromTransaction.id} after OTP login: ${limitError.message}`,
+              limitError.stack
+            )
+          })
+      }
+
       return resultFromTransaction
     } catch (error) {
       this.logger.error(

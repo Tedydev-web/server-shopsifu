@@ -34,19 +34,32 @@ model User {
   id                  Int                  @id @default(autoincrement())
   email               String               @unique
   password            String               @db.VarChar(500)
+  googleId            String?              @unique
   status              UserStatus           @default(ACTIVE)
-  roleId              Int
-  role                Role                 @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  devices             Device[]
+  isEmailVerified     Boolean              @default(true)
+  pendingEmail        String?              @unique @db.VarChar(255)
+  emailVerificationToken             String?   @db.VarChar(255)
+  emailVerificationTokenExpiresAt    DateTime?
+  emailVerificationSentAt            DateTime?
+
   twoFactorEnabled    Boolean?             @default(false)
   twoFactorSecret     String?              @db.VarChar(1000)
   twoFactorMethod     TwoFactorMethodType?
   twoFactorVerifiedAt DateTime?
+
+  roleId              Int
+  role                Role                 @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  userProfile         UserProfile?
+
+  devices             Device[]
   carts               CartItem[]
   orders              Order[]
   reviews             Review[]
-  googleId            String?              @unique
-  userProfile         UserProfile?
+  RecoveryCode        RecoveryCode[]
+  auditLogs           AuditLog[]
+  userTranslations    UserTranslation[]    @relation("User")
+  sentMessages        Message[]            @relation("FromUser")
+  receivedMessages    Message[]            @relation("ToUser")
 
   createdPermissions Permission[] @relation("PermissionCreatedBy")
   updatedPermissions Permission[] @relation("PermissionUpdatedBy")
@@ -103,9 +116,6 @@ model User {
   createdUserTranslations UserTranslation[] @relation("UserTranslationCreatedBy")
   updatedUserTranslations UserTranslation[] @relation("UserTranslationUpdatedBy")
   deletedUserTranslations UserTranslation[] @relation("UserTranslationDeletedBy")
-  userTranslations        UserTranslation[] @relation("User")
-  sentMessages            Message[]         @relation("FromUser")
-  receivedMessages        Message[]         @relation("ToUser")
 
   createdById  Int?
   createdBy    User?  @relation("CreatorUsers", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -119,11 +129,9 @@ model User {
   deletedBy    User?  @relation("DeletorUsers", fields: [deletedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
   deletedUsers User[] @relation("DeletorUsers")
 
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  RecoveryCode RecoveryCode[]
-  auditLogs    AuditLog[]
 
   @@index([deletedAt])
 }
@@ -524,8 +532,6 @@ model RecoveryCode {
 
 model UserProfile {
   id                       Int       @id @default(autoincrement())
-  userId                   Int       @unique
-  user                     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   firstName                String?   @db.VarChar(255)
   lastName                 String?   @db.VarChar(255)
   username                 String?   @unique @db.VarChar(100)
@@ -535,9 +541,10 @@ model UserProfile {
   isPhoneNumberVerified    Boolean   @default(false)
   phoneNumberVerifiedAt    DateTime?
   countryCode              String?   @db.VarChar(10)
-  secondaryEmail           String?   @unique @db.VarChar(255)
-  isSecondaryEmailVerified Boolean   @default(false)
-  secondaryEmailVerifiedAt DateTime?
+
+  userId                   Int       @unique
+  user                     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 

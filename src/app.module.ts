@@ -26,6 +26,7 @@ import { TokenRefreshInterceptor } from 'src/routes/auth/interceptors/token-refr
 import { AuditLogInterceptor } from './shared/interceptor/audit-log.interceptor'
 import { AuthenticationGuard } from './shared/guards/authentication.guard'
 import { PasswordReverificationGuard } from './routes/auth/guards/password-reverification.guard'
+import { ProfileModule } from './routes/profile/profile.module'
 
 @Module({
   imports: [
@@ -69,7 +70,8 @@ import { PasswordReverificationGuard } from './routes/auth/guards/password-rever
     AuditLogModule,
     RoleModule,
     PermissionModule,
-    LanguageModule
+    LanguageModule,
+    ProfileModule
   ],
   controllers: [AppController],
   providers: [

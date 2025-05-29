@@ -72,7 +72,8 @@ const configSchema = z.object({
   NONCE_COOKIE_MAX_AGE: z.string().optional(),
   COOKIE_DOMAIN: z.string().optional(),
   PENDING_LINK_TOKEN_SECRET: z.string(),
-  PENDING_LINK_TOKEN_EXPIRES_IN: z.string().default('15m')
+  PENDING_LINK_TOKEN_EXPIRES_IN: z.string().default('15m'),
+  EMAIL_VERIFICATION_TOKEN_EXPIRES_IN: z.string().default('15m')
 })
 
 const configServer = configSchema.safeParse(process.env)

@@ -98,5 +98,19 @@
   "Error.Auth.Google.AlreadyLinkedToOtherGoogle": "This Shopsifu account is already linked to a different Google account.",
   "Error.Auth.Google.GoogleIdConflict": "This Google account is already linked to another Shopsifu user.",
   "Error.Auth.Google.LinkAccountFailed": "Failed to link Google account. Please try again.",
-  "Error.Server.ConfigError.MissingOAuthCookie": "Server configuration error: OAuth cookie settings are missing or incomplete. Please contact support."
+  "Error.Server.ConfigError.MissingOAuthCookie": "Server configuration error: OAuth cookie settings are missing or incomplete. Please contact support.",
+  "Error.Profile.Email.Unchanged": "The new email address is the same as the current one.",
+  "Error.Profile.Email.AlreadyExists": "The email address '{email}' is already in use by another account.",
+  "Error.Profile.PendingEmail.MatchesCurrent": "The email address you are trying to verify is already your current primary email.",
+  "Error.Profile.Email.NoPendingChange": "There is no pending email change request for your account.",
+  "Error.Profile.Email.InvalidVerificationToken": "The email verification token is invalid or has been used.",
+  "Error.Profile.Email.VerificationTokenExpired": "The email verification token has expired. Please request a new one.",
+  "Error.Profile.Email.AlreadyVerified": "Your current email address is already verified.",
+  "Error.Profile.UpdateFailed": "Failed to update profile. Please try again.",
+  "Error.Profile.Username.Length": "Username must be between {min} and {max} characters.",
+  "Error.Profile.Username.InvalidChars": "Username can only contain letters, numbers, and underscores.",
+  "Error.Profile.Username.Taken": "The username '{username}' is already taken.",
+  "Error.Profile.PhoneNumber.Taken": "The phone number is already in use by another account.",
+  "Success.Profile.Email.ChangeOtpSent": "An OTP has been sent to {email} to verify your new email address. Please check your inbox.",
+  "Success.Profile.Email.Verified": "Your email address has been successfully updated to {email}."
 }

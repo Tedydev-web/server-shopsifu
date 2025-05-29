@@ -98,5 +98,19 @@
   "Error.Auth.Google.AlreadyLinkedToOtherGoogle": "Tài khoản Shopsifu này đã được liên kết với một tài khoản Google khác.",
   "Error.Auth.Google.GoogleIdConflict": "Tài khoản Google này đã được liên kết với một người dùng Shopsifu khác.",
   "Error.Auth.Google.LinkAccountFailed": "Không thể liên kết tài khoản Google. Vui lòng thử lại.",
-  "Error.Server.ConfigError.MissingOAuthCookie": "Lỗi cấu hình máy chủ: Cài đặt cookie OAuth bị thiếu hoặc không đầy đủ. Vui lòng liên hệ hỗ trợ."
+  "Error.Server.ConfigError.MissingOAuthCookie": "Lỗi cấu hình máy chủ: Cài đặt cookie OAuth bị thiếu hoặc không đầy đủ. Vui lòng liên hệ hỗ trợ.",
+  "Error.Profile.Email.Unchanged": "Địa chỉ email mới giống với địa chỉ email hiện tại.",
+  "Error.Profile.Email.AlreadyExists": "Địa chỉ email '{email}' đã được sử dụng bởi một tài khoản khác.",
+  "Error.Profile.PendingEmail.MatchesCurrent": "Địa chỉ email bạn đang cố gắng xác thực đã là email chính hiện tại của bạn.",
+  "Error.Profile.Email.NoPendingChange": "Không có yêu cầu thay đổi email nào đang chờ xử lý cho tài khoản của bạn.",
+  "Error.Profile.Email.InvalidVerificationToken": "Mã xác thực email không hợp lệ hoặc đã được sử dụng.",
+  "Error.Profile.Email.VerificationTokenExpired": "Mã xác thực email đã hết hạn. Vui lòng yêu cầu mã mới.",
+  "Error.Profile.Email.AlreadyVerified": "Địa chỉ email hiện tại của bạn đã được xác thực.",
+  "Error.Profile.UpdateFailed": "Cập nhật hồ sơ thất bại. Vui lòng thử lại.",
+  "Error.Profile.Username.Length": "Tên người dùng phải có từ {min} đến {max} ký tự.",
+  "Error.Profile.Username.InvalidChars": "Tên người dùng chỉ có thể chứa chữ cái, số và dấu gạch dưới.",
+  "Error.Profile.Username.Taken": "Tên người dùng '{username}' đã được sử dụng.",
+  "Error.Profile.PhoneNumber.Taken": "Số điện thoại đã được sử dụng bởi một tài khoản khác.",
+  "Success.Profile.Email.ChangeOtpSent": "Một mã OTP đã được gửi đến {email} để xác minh địa chỉ email mới của bạn. Vui lòng kiểm tra hộp thư đến.",
+  "Success.Profile.Email.Verified": "Địa chỉ email của bạn đã được cập nhật thành công thành {email}."
 }

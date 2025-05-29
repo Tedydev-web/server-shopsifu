@@ -52,5 +52,6 @@
   "Email.OTPSubject.Register": "Shopsifu - Xác minh đăng ký tài khoản của bạn",
   "Email.OTPSubject.ResetPassword": "Shopsifu - Đặt lại mật khẩu của bạn (Mã OTP)",
   "Email.OTPSubject.LoginUntrustedDevice": "Shopsifu - Xác minh đăng nhập từ thiết bị mới",
-  "Email.OTPSubject.Default": "Shopsifu - Mã OTP của bạn"
+  "Email.OTPSubject.Default": "Shopsifu - Mã OTP của bạn",
+  "Email.Subject.VerifyNewEmail": "Shopsifu - Xác thực địa chỉ email mới của bạn"
 }

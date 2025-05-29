@@ -54,6 +54,7 @@ export type I18nTranslations = {
         "Email.OTPSubject.ResetPassword": string;
         "Email.OTPSubject.LoginUntrustedDevice": string;
         "Email.OTPSubject.Default": string;
+        "Email.Subject.VerifyNewEmail": string;
     };
     "error": {
         "Auth.Logout.Success": string;
@@ -156,6 +157,20 @@ export type I18nTranslations = {
         "Error.Auth.Google.GoogleIdConflict": string;
         "Error.Auth.Google.LinkAccountFailed": string;
         "Error.Server.ConfigError.MissingOAuthCookie": string;
+        "Error.Profile.Email.Unchanged": string;
+        "Error.Profile.Email.AlreadyExists": string;
+        "Error.Profile.PendingEmail.MatchesCurrent": string;
+        "Error.Profile.Email.NoPendingChange": string;
+        "Error.Profile.Email.InvalidVerificationToken": string;
+        "Error.Profile.Email.VerificationTokenExpired": string;
+        "Error.Profile.Email.AlreadyVerified": string;
+        "Error.Profile.UpdateFailed": string;
+        "Error.Profile.Username.Length": string;
+        "Error.Profile.Username.InvalidChars": string;
+        "Error.Profile.Username.Taken": string;
+        "Error.Profile.PhoneNumber.Taken": string;
+        "Success.Profile.Email.ChangeOtpSent": string;
+        "Success.Profile.Email.Verified": string;
     };
 };
 /* prettier-ignore */

@@ -216,6 +216,17 @@ export class GoogleService {
 
       const clientRoleId = await this.rolesService.getClientRoleId()
 
+      if (user && user.status !== 'ACTIVE') {
+        this.logger.warn(
+          `[GoogleCallback] Google authenticated user ${user.email} (ID: ${user.id}) is not active. Status: ${user.status}. Denying login.`
+        )
+        return {
+          errorCode: 'USER_NOT_ACTIVE',
+          errorMessage: await this.i18nService.translate('Error.Auth.User.NotActive', { lang: currentLang }),
+          redirectToError: true
+        }
+      }
+
       if (!user) {
         const userByEmail = await this.prismaService.user.findUnique({
           where: { email: payload.email },
@@ -238,6 +249,18 @@ export class GoogleService {
             this.logger.log(
               `[GoogleCallback] User with email ${payload.email} (ID: ${userByEmail.id}) found, but not linked to any Google account. Google ID from this login: ${googleUserId}. Prompting user for linking.`
             )
+            if (userByEmail.status !== 'ACTIVE') {
+              this.logger.warn(
+                `[GoogleCallback] User ${userByEmail.email} (ID: ${userByEmail.id}) found by email (for linking) is not active. Status: ${userByEmail.status}. Denying link/login.`
+              )
+              return {
+                errorCode: 'USER_NOT_ACTIVE_FOR_LINKING',
+                errorMessage: await this.i18nService.translate('Error.Auth.User.NotActiveForLinking', {
+                  lang: currentLang
+                }),
+                redirectToError: true
+              }
+            }
             return {
               needsLinking: true,
               existingUserId: userByEmail.id,
@@ -454,19 +477,26 @@ export class GoogleService {
     googleName: string | null | undefined,
     googleAvatar: string | null | undefined
   ): Promise<User & { role: Role; userProfile: UserProfile | null }> {
-    const currentUser = await this.prismaService.user.findUnique({
+    const userToLink = await this.prismaService.user.findUnique({
       where: { id: loggedInUserId },
       include: { role: true, userProfile: true }
     })
 
-    if (!currentUser) {
-      this.logger.error(`[linkGoogleAccount] User with ID ${loggedInUserId} not found.`)
-      throw new ApiException(HttpStatus.NOT_FOUND, 'USER_NOT_FOUND', 'Error.User.NotFound')
+    if (!userToLink) {
+      this.logger.error(`[linkGoogleAccount] User with ID ${loggedInUserId} not found to link Google account.`)
+      throw new ApiException(HttpStatus.NOT_FOUND, 'USER_NOT_FOUND_FOR_LINKING', 'Error.User.NotFound')
     }
 
-    if (currentUser.googleId && currentUser.googleId !== googleIdToLink) {
+    if (userToLink.status !== 'ACTIVE') {
+      this.logger.warn(
+        `[linkGoogleAccount] User ${userToLink.email} (ID: ${userToLink.id}) is not active. Status: ${userToLink.status}. Cannot link Google account.`
+      )
+      throw new ApiException(HttpStatus.FORBIDDEN, 'USER_NOT_ACTIVE_FOR_LINKING', 'Error.Auth.User.NotActiveForLinking')
+    }
+
+    if (userToLink.googleId && userToLink.googleId !== googleIdToLink) {
       this.logger.error(
-        `[linkGoogleAccount] User ${loggedInUserId} is already linked to a different Google ID (${currentUser.googleId}). Cannot link to ${googleIdToLink}.`
+        `[linkGoogleAccount] User ${loggedInUserId} is already linked to a different Google ID (${userToLink.googleId}). Cannot link to ${googleIdToLink}.`
       )
       throw new ApiException(
         HttpStatus.CONFLICT,
@@ -474,11 +504,11 @@ export class GoogleService {
         'Error.Auth.Google.AlreadyLinkedToOtherGoogle'
       )
     }
-    if (currentUser.googleId === googleIdToLink) {
+    if (userToLink.googleId === googleIdToLink) {
       this.logger.log(
         `[linkGoogleAccount] User ${loggedInUserId} is already linked to this Google ID (${googleIdToLink}). No action needed.`
       )
-      return currentUser
+      return userToLink
     }
 
     const userWithThisGoogleId = await this.prismaService.user.findUnique({
@@ -493,7 +523,7 @@ export class GoogleService {
     }
 
     this.logger.log(
-      `[linkGoogleAccount] Linking Google ID ${googleIdToLink} to user ${loggedInUserId} (Email: ${currentUser.email}). Google email: ${googleEmail}`
+      `[linkGoogleAccount] Linking Google ID ${googleIdToLink} to user ${loggedInUserId} (Email: ${userToLink.email}). Google email: ${googleEmail}`
     )
 
     const updateData: Prisma.UserUpdateInput = {
@@ -501,15 +531,15 @@ export class GoogleService {
     }
 
     const profileUpdates: Prisma.UserProfileUpdateInput = {}
-    if (googleName && currentUser.userProfile?.firstName !== googleName) {
+    if (googleName && userToLink.userProfile?.firstName !== googleName) {
       profileUpdates.firstName = googleName
     }
-    if (googleAvatar && currentUser.userProfile?.avatar !== googleAvatar) {
+    if (googleAvatar && userToLink.userProfile?.avatar !== googleAvatar) {
       profileUpdates.avatar = googleAvatar
     }
 
     if (Object.keys(profileUpdates).length > 0) {
-      if (currentUser.userProfile) {
+      if (userToLink.userProfile) {
         updateData.userProfile = { update: profileUpdates }
       } else {
         updateData.userProfile = { create: profileUpdates as Prisma.UserProfileCreateInput }

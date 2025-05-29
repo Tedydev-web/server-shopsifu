@@ -574,7 +574,7 @@ export class AuthController {
             id: loginResult.userId,
             email: loginResult.email,
             role: loginResult.role,
-            isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession as boolean,
+            isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession,
             userProfile: loginResult.userProfile
           }
           return result
@@ -969,7 +969,7 @@ export class AuthController {
         id: loginResult.userId,
         email: loginResult.email,
         role: loginResult.role,
-        isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession as boolean,
+        isDeviceTrustedInSession: loginResult.isDeviceTrustedInSession,
         userProfile: loginResult.userProfile
       }
       return result
