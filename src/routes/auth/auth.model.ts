@@ -7,7 +7,6 @@ import { z } from 'zod'
 
 export const RegisterBodySchema = z
   .object({
-    email: z.string().email('validation.email.invalid').max(100, 'validation.string.max.100'),
     password: z.string().min(8, 'validation.password.min.8').max(100, 'validation.string.max.100'),
     confirmPassword: z.string().min(8, 'validation.password.min.8').max(100, 'validation.string.max.100'),
     firstName: z.string().min(1, 'validation.string.min.1').max(50, 'validation.string.max.50'),
@@ -17,14 +16,8 @@ export const RegisterBodySchema = z
       .min(3, 'validation.username.min.3')
       .max(30, 'validation.username.max.30')
       .regex(/^[a-zA-Z0-9_.]+$/, 'validation.username.invalidFormat')
-      .optional()
-      .nullable(),
-    phoneNumber: z
-      .string()
-      .min(10, 'validation.phoneNumber.min.10')
-      .max(15, 'validation.phoneNumber.max.15')
-      .optional()
-      .nullable()
+      .optional(),
+    phoneNumber: z.string().min(10, 'validation.phoneNumber.min.10').max(15, 'validation.phoneNumber.max.15').optional()
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: 'error.Auth.Password.PasswordsDoNotMatch',
@@ -32,33 +25,7 @@ export const RegisterBodySchema = z
   })
 
 export const RegisterResSchema = z.object({
-  id: z.number(),
-  email: z.string().email(),
-  googleId: z.string().nullable().optional(),
-  status: z.nativeEnum(UserStatus),
-  roleId: z.number(),
-  roleName: z.string().optional(),
-  twoFactorEnabled: z.boolean(),
-  twoFactorMethod: z.nativeEnum(TwoFactorMethodType).nullable().optional(),
-  twoFactorVerifiedAt: z.date().nullable().optional(),
-  isEmailVerified: z.boolean(),
-  pendingEmail: z.string().email().nullable().optional(),
-  emailVerificationToken: z.string().nullable().optional(),
-  emailVerificationTokenExpiresAt: z.date().nullable().optional(),
-  emailVerificationSentAt: z.date().nullable().optional(),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
-  deletedAt: z.date().nullable().optional(),
-  createdById: z.number().nullable().optional(),
-  updatedById: z.number().nullable().optional(),
-  deletedById: z.number().nullable().optional(),
-  userProfile: UserProfileSchema.pick({
-    firstName: true,
-    lastName: true,
-    avatar: true,
-    username: true,
-    phoneNumber: true
-  }).nullable()
+  message: z.string()
 })
 
 export const VerificationCodeSchema = z.object({
@@ -101,7 +68,8 @@ export const LoginSessionResSchema = z.object({
 
 export const VerifyCodeBodySchema = z
   .object({
-    code: z.string().length(6, 'validation.otp.length')
+    code: z.string().length(6, 'validation.otp.length'),
+    rememberMe: z.boolean().optional().default(false)
   })
   .strict()
 

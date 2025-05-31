@@ -2,7 +2,7 @@
 CREATE TYPE "OrderStatus" AS ENUM ('PENDING_CONFIRMATION', 'PENDING_PICKUP', 'PENDING_DELIVERY', 'DELIVERED', 'RETURNED', 'CANCELLED');
 
 -- CreateEnum
-CREATE TYPE "VerificationCodeType" AS ENUM ('REGISTER', 'RESET_PASSWORD', 'LOGIN', 'LOGIN_2FA', 'DISABLE_2FA', 'SETUP_2FA');
+CREATE TYPE "VerificationCodeType" AS ENUM ('REGISTER', 'RESET_PASSWORD', 'LOGIN', 'LOGIN_2FA', 'DISABLE_2FA', 'SETUP_2FA', 'LOGIN_UNTRUSTED_DEVICE_OTP', 'VERIFY_SECONDARY_EMAIL', 'VERIFY_PHONE_NUMBER');
 
 -- CreateEnum
 CREATE TYPE "UserStatus" AS ENUM ('ACTIVE', 'INACTIVE', 'BLOCKED');
@@ -19,6 +19,7 @@ CREATE TABLE "Language" (
     "name" VARCHAR(500) NOT NULL,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -30,21 +31,26 @@ CREATE TABLE "Language" (
 CREATE TABLE "User" (
     "id" SERIAL NOT NULL,
     "email" TEXT NOT NULL,
-    "name" VARCHAR(500) NOT NULL,
     "password" VARCHAR(500) NOT NULL,
-    "phoneNumber" VARCHAR(50) NOT NULL,
-    "avatar" VARCHAR(1000),
-    "status" "UserStatus" NOT NULL DEFAULT 'INACTIVE',
-    "roleId" INTEGER NOT NULL,
+    "googleId" TEXT,
+    "status" "UserStatus" NOT NULL DEFAULT 'ACTIVE',
+    "isEmailVerified" BOOLEAN NOT NULL DEFAULT true,
+    "pendingEmail" VARCHAR(255),
+    "emailVerificationToken" VARCHAR(255),
+    "emailVerificationTokenExpiresAt" TIMESTAMP(3),
+    "emailVerificationSentAt" TIMESTAMP(3),
     "twoFactorEnabled" BOOLEAN DEFAULT false,
     "twoFactorSecret" VARCHAR(1000),
     "twoFactorMethod" "TwoFactorMethodType",
     "twoFactorVerifiedAt" TIMESTAMP(3),
+    "passwordChangedAt" TIMESTAMP(3),
+    "roleId" INTEGER NOT NULL,
     "createdById" INTEGER,
     "updatedById" INTEGER,
-    "deletedAt" TIMESTAMP(3),
+    "deletedById" INTEGER,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "deletedAt" TIMESTAMP(3),
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
@@ -58,6 +64,7 @@ CREATE TABLE "UserTranslation" (
     "description" TEXT,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -66,53 +73,35 @@ CREATE TABLE "UserTranslation" (
 );
 
 -- CreateTable
-CREATE TABLE "VerificationCode" (
-    "id" SERIAL NOT NULL,
-    "email" VARCHAR(500) NOT NULL,
-    "code" VARCHAR(50) NOT NULL,
-    "type" "VerificationCodeType" NOT NULL,
-    "expiresAt" TIMESTAMP(3) NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "VerificationCode_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "Device" (
     "id" SERIAL NOT NULL,
     "userId" INTEGER NOT NULL,
+    "name" VARCHAR(255),
+    "fingerprint" VARCHAR(255),
     "userAgent" TEXT NOT NULL,
     "ip" TEXT NOT NULL,
     "lastActive" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "isTrusted" BOOLEAN NOT NULL DEFAULT false,
+    "lastKnownIp" VARCHAR(45),
+    "lastKnownCountry" VARCHAR(100),
+    "lastKnownCity" VARCHAR(100),
+    "lastNotificationSentAt" TIMESTAMP(3),
 
     CONSTRAINT "Device_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "RefreshToken" (
-    "id" SERIAL NOT NULL,
-    "token" TEXT NOT NULL,
-    "userId" INTEGER NOT NULL,
-    "deviceId" INTEGER NOT NULL,
-    "expiresAt" TIMESTAMP(3) NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "used" BOOLEAN NOT NULL DEFAULT false,
-    "rememberMe" BOOLEAN NOT NULL DEFAULT false,
-
-    CONSTRAINT "RefreshToken_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Permission" (
     "id" SERIAL NOT NULL,
     "name" VARCHAR(500) NOT NULL,
-    "description" TEXT NOT NULL,
+    "description" TEXT NOT NULL DEFAULT '',
     "path" VARCHAR(1000) NOT NULL,
     "method" "HTTPMethod" NOT NULL,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -124,10 +113,11 @@ CREATE TABLE "Permission" (
 CREATE TABLE "Role" (
     "id" SERIAL NOT NULL,
     "name" VARCHAR(500) NOT NULL,
-    "description" TEXT NOT NULL,
+    "description" TEXT NOT NULL DEFAULT '',
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -144,6 +134,7 @@ CREATE TABLE "Product" (
     "images" TEXT[],
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -160,6 +151,7 @@ CREATE TABLE "ProductTranslation" (
     "description" TEXT NOT NULL,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -173,6 +165,7 @@ CREATE TABLE "Category" (
     "parentCategoryId" INTEGER,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -189,6 +182,7 @@ CREATE TABLE "CategoryTranslation" (
     "description" TEXT NOT NULL,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -203,6 +197,7 @@ CREATE TABLE "Variant" (
     "productId" INTEGER NOT NULL,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -217,6 +212,7 @@ CREATE TABLE "VariantOption" (
     "variantId" INTEGER NOT NULL,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -234,6 +230,7 @@ CREATE TABLE "SKU" (
     "productId" INTEGER NOT NULL,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -247,6 +244,7 @@ CREATE TABLE "Brand" (
     "logo" VARCHAR(1000) NOT NULL,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -263,6 +261,7 @@ CREATE TABLE "BrandTranslation" (
     "description" TEXT NOT NULL,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -303,6 +302,7 @@ CREATE TABLE "Order" (
     "status" "OrderStatus" NOT NULL,
     "createdById" INTEGER,
     "updatedById" INTEGER,
+    "deletedById" INTEGER,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -355,22 +355,6 @@ CREATE TABLE "Message" (
 );
 
 -- CreateTable
-CREATE TABLE "VerificationToken" (
-    "id" SERIAL NOT NULL,
-    "token" VARCHAR(1000) NOT NULL,
-    "userId" INTEGER,
-    "email" VARCHAR(500) NOT NULL,
-    "deviceId" INTEGER,
-    "type" "VerificationCodeType" NOT NULL,
-    "tokenType" VARCHAR(50) NOT NULL,
-    "metadata" TEXT,
-    "expiresAt" TIMESTAMP(3) NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "VerificationToken_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "RecoveryCode" (
     "id" SERIAL NOT NULL,
     "userId" INTEGER NOT NULL,
@@ -379,6 +363,25 @@ CREATE TABLE "RecoveryCode" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "RecoveryCode_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "UserProfile" (
+    "id" SERIAL NOT NULL,
+    "firstName" VARCHAR(255),
+    "lastName" VARCHAR(255),
+    "username" VARCHAR(100),
+    "avatar" VARCHAR(1000),
+    "bio" TEXT,
+    "phoneNumber" VARCHAR(50),
+    "isPhoneNumberVerified" BOOLEAN NOT NULL DEFAULT false,
+    "phoneNumberVerifiedAt" TIMESTAMP(3),
+    "countryCode" VARCHAR(10),
+    "userId" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "UserProfile_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -396,6 +399,7 @@ CREATE TABLE "AuditLog" (
     "errorMessage" TEXT,
     "details" JSONB,
     "notes" TEXT,
+    "geoLocation" JSONB,
 
     CONSTRAINT "AuditLog_pkey" PRIMARY KEY ("id")
 );
@@ -431,31 +435,25 @@ CREATE INDEX "Language_deletedAt_idx" ON "Language"("deletedAt");
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "User_googleId_key" ON "User"("googleId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "User_pendingEmail_key" ON "User"("pendingEmail");
+
+-- CreateIndex
 CREATE INDEX "User_deletedAt_idx" ON "User"("deletedAt");
 
 -- CreateIndex
 CREATE INDEX "UserTranslation_deletedAt_idx" ON "UserTranslation"("deletedAt");
 
 -- CreateIndex
-CREATE INDEX "VerificationCode_expiresAt_idx" ON "VerificationCode"("expiresAt");
+CREATE INDEX "Device_userId_fingerprint_idx" ON "Device"("userId", "fingerprint");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "VerificationCode_email_code_type_key" ON "VerificationCode"("email", "code", "type");
-
--- CreateIndex
-CREATE UNIQUE INDEX "RefreshToken_token_key" ON "RefreshToken"("token");
-
--- CreateIndex
-CREATE INDEX "RefreshToken_userId_idx" ON "RefreshToken"("userId");
-
--- CreateIndex
-CREATE INDEX "RefreshToken_deviceId_idx" ON "RefreshToken"("deviceId");
+CREATE INDEX "Device_userId_lastActive_idx" ON "Device"("userId", "lastActive");
 
 -- CreateIndex
 CREATE INDEX "Permission_deletedAt_idx" ON "Permission"("deletedAt");
-
--- CreateIndex
-CREATE UNIQUE INDEX "Role_name_key" ON "Role"("name");
 
 -- CreateIndex
 CREATE INDEX "Role_deletedAt_idx" ON "Role"("deletedAt");
@@ -491,19 +489,22 @@ CREATE INDEX "BrandTranslation_deletedAt_idx" ON "BrandTranslation"("deletedAt")
 CREATE INDEX "Order_deletedAt_idx" ON "Order"("deletedAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "VerificationToken_token_key" ON "VerificationToken"("token");
-
--- CreateIndex
-CREATE INDEX "VerificationToken_email_type_idx" ON "VerificationToken"("email", "type");
-
--- CreateIndex
-CREATE INDEX "VerificationToken_expiresAt_idx" ON "VerificationToken"("expiresAt");
-
--- CreateIndex
 CREATE UNIQUE INDEX "RecoveryCode_code_key" ON "RecoveryCode"("code");
 
 -- CreateIndex
 CREATE INDEX "RecoveryCode_userId_idx" ON "RecoveryCode"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserProfile_username_key" ON "UserProfile"("username");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserProfile_phoneNumber_key" ON "UserProfile"("phoneNumber");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserProfile_userId_key" ON "UserProfile"("userId");
+
+-- CreateIndex
+CREATE INDEX "UserProfile_userId_idx" ON "UserProfile"("userId");
 
 -- CreateIndex
 CREATE INDEX "AuditLog_userId_idx" ON "AuditLog"("userId");
@@ -533,6 +534,9 @@ ALTER TABLE "Language" ADD CONSTRAINT "Language_createdById_fkey" FOREIGN KEY ("
 ALTER TABLE "Language" ADD CONSTRAINT "Language_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "Language" ADD CONSTRAINT "Language_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "Role"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
@@ -540,6 +544,9 @@ ALTER TABLE "User" ADD CONSTRAINT "User_createdById_fkey" FOREIGN KEY ("createdB
 
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "User" ADD CONSTRAINT "User_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "UserTranslation" ADD CONSTRAINT "UserTranslation_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
@@ -554,13 +561,10 @@ ALTER TABLE "UserTranslation" ADD CONSTRAINT "UserTranslation_createdById_fkey" 
 ALTER TABLE "UserTranslation" ADD CONSTRAINT "UserTranslation_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "UserTranslation" ADD CONSTRAINT "UserTranslation_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "Device" ADD CONSTRAINT "Device_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
-
--- AddForeignKey
-ALTER TABLE "RefreshToken" ADD CONSTRAINT "RefreshToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "RefreshToken" ADD CONSTRAINT "RefreshToken_deviceId_fkey" FOREIGN KEY ("deviceId") REFERENCES "Device"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Permission" ADD CONSTRAINT "Permission_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
@@ -569,10 +573,16 @@ ALTER TABLE "Permission" ADD CONSTRAINT "Permission_createdById_fkey" FOREIGN KE
 ALTER TABLE "Permission" ADD CONSTRAINT "Permission_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "Permission" ADD CONSTRAINT "Permission_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "Role" ADD CONSTRAINT "Role_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "Role" ADD CONSTRAINT "Role_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "Role" ADD CONSTRAINT "Role_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "Product" ADD CONSTRAINT "Product_brandId_fkey" FOREIGN KEY ("brandId") REFERENCES "Brand"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
@@ -582,6 +592,9 @@ ALTER TABLE "Product" ADD CONSTRAINT "Product_createdById_fkey" FOREIGN KEY ("cr
 
 -- AddForeignKey
 ALTER TABLE "Product" ADD CONSTRAINT "Product_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "Product" ADD CONSTRAINT "Product_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "ProductTranslation" ADD CONSTRAINT "ProductTranslation_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
@@ -596,6 +609,9 @@ ALTER TABLE "ProductTranslation" ADD CONSTRAINT "ProductTranslation_createdById_
 ALTER TABLE "ProductTranslation" ADD CONSTRAINT "ProductTranslation_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "ProductTranslation" ADD CONSTRAINT "ProductTranslation_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "Category" ADD CONSTRAINT "Category_parentCategoryId_fkey" FOREIGN KEY ("parentCategoryId") REFERENCES "Category"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
@@ -603,6 +619,9 @@ ALTER TABLE "Category" ADD CONSTRAINT "Category_createdById_fkey" FOREIGN KEY ("
 
 -- AddForeignKey
 ALTER TABLE "Category" ADD CONSTRAINT "Category_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "Category" ADD CONSTRAINT "Category_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "CategoryTranslation" ADD CONSTRAINT "CategoryTranslation_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Category"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
@@ -617,6 +636,9 @@ ALTER TABLE "CategoryTranslation" ADD CONSTRAINT "CategoryTranslation_createdByI
 ALTER TABLE "CategoryTranslation" ADD CONSTRAINT "CategoryTranslation_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "CategoryTranslation" ADD CONSTRAINT "CategoryTranslation_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "Variant" ADD CONSTRAINT "Variant_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
 -- AddForeignKey
@@ -624,6 +646,9 @@ ALTER TABLE "Variant" ADD CONSTRAINT "Variant_createdById_fkey" FOREIGN KEY ("cr
 
 -- AddForeignKey
 ALTER TABLE "Variant" ADD CONSTRAINT "Variant_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "Variant" ADD CONSTRAINT "Variant_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "VariantOption" ADD CONSTRAINT "VariantOption_variantId_fkey" FOREIGN KEY ("variantId") REFERENCES "Variant"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
@@ -635,6 +660,9 @@ ALTER TABLE "VariantOption" ADD CONSTRAINT "VariantOption_createdById_fkey" FORE
 ALTER TABLE "VariantOption" ADD CONSTRAINT "VariantOption_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "VariantOption" ADD CONSTRAINT "VariantOption_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "SKU" ADD CONSTRAINT "SKU_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
 -- AddForeignKey
@@ -644,10 +672,16 @@ ALTER TABLE "SKU" ADD CONSTRAINT "SKU_createdById_fkey" FOREIGN KEY ("createdByI
 ALTER TABLE "SKU" ADD CONSTRAINT "SKU_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "SKU" ADD CONSTRAINT "SKU_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "Brand" ADD CONSTRAINT "Brand_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "Brand" ADD CONSTRAINT "Brand_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "Brand" ADD CONSTRAINT "Brand_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "BrandTranslation" ADD CONSTRAINT "BrandTranslation_brandId_fkey" FOREIGN KEY ("brandId") REFERENCES "Brand"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
@@ -660,6 +694,9 @@ ALTER TABLE "BrandTranslation" ADD CONSTRAINT "BrandTranslation_createdById_fkey
 
 -- AddForeignKey
 ALTER TABLE "BrandTranslation" ADD CONSTRAINT "BrandTranslation_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "BrandTranslation" ADD CONSTRAINT "BrandTranslation_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "CartItem" ADD CONSTRAINT "CartItem_skuId_fkey" FOREIGN KEY ("skuId") REFERENCES "SKU"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
@@ -683,6 +720,9 @@ ALTER TABLE "Order" ADD CONSTRAINT "Order_createdById_fkey" FOREIGN KEY ("create
 ALTER TABLE "Order" ADD CONSTRAINT "Order_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "Order" ADD CONSTRAINT "Order_deletedById_fkey" FOREIGN KEY ("deletedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "Review" ADD CONSTRAINT "Review_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
@@ -695,13 +735,10 @@ ALTER TABLE "Message" ADD CONSTRAINT "Message_fromUserId_fkey" FOREIGN KEY ("fro
 ALTER TABLE "Message" ADD CONSTRAINT "Message_toUserId_fkey" FOREIGN KEY ("toUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "VerificationToken" ADD CONSTRAINT "VerificationToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
-
--- AddForeignKey
-ALTER TABLE "VerificationToken" ADD CONSTRAINT "VerificationToken_deviceId_fkey" FOREIGN KEY ("deviceId") REFERENCES "Device"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
-
--- AddForeignKey
 ALTER TABLE "RecoveryCode" ADD CONSTRAINT "RecoveryCode_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UserProfile" ADD CONSTRAINT "UserProfile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -723,4 +760,3 @@ ALTER TABLE "_SKUToVariantOption" ADD CONSTRAINT "_SKUToVariantOption_A_fkey" FO
 
 -- AddForeignKey
 ALTER TABLE "_SKUToVariantOption" ADD CONSTRAINT "_SKUToVariantOption_B_fkey" FOREIGN KEY ("B") REFERENCES "VariantOption"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-

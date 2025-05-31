@@ -6,6 +6,8 @@ import { OtpService } from '../providers/otp.service'
 import { TokenService } from '../providers/token.service'
 import { MaxVerificationAttemptsExceededException } from '../auth.error'
 import { ApiException } from 'src/shared/exceptions/api.exception'
+import { TypeOfVerificationCode } from '../constants/auth.constants'
+import envConfig from 'src/shared/config'
 
 @Injectable()
 export class SltHelperService {
@@ -15,6 +17,29 @@ export class SltHelperService {
     private readonly otpService: OtpService,
     private readonly tokenService: TokenService
   ) {}
+
+  /**
+   * Helper method to set SLT cookie in a standardized way
+   * @param res Express Response object
+   * @param sltJwt JWT token for SLT
+   * @param purpose Purpose of SLT for logging
+   */
+  setSltCookie(res: Response, sltJwt: string, purpose: TypeOfVerificationCode): void {
+    const sltCookieConfig = envConfig.cookie.sltToken
+    if (sltCookieConfig && sltJwt) {
+      res.cookie(sltCookieConfig.name, sltJwt, {
+        path: sltCookieConfig.path,
+        domain: sltCookieConfig.domain,
+        maxAge: sltCookieConfig.maxAge,
+        httpOnly: sltCookieConfig.httpOnly,
+        secure: sltCookieConfig.secure,
+        sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+      })
+      this.logger.debug(`SLT token cookie (${sltCookieConfig.name}) set for ${purpose}.`)
+    } else {
+      this.logger.warn(`SLT cookie configuration or SLT JWT missing for ${purpose}. Cookie not set.`)
+    }
+  }
 
   async handleSltAttemptIncrementAndFinalization(
     sltJti: string,

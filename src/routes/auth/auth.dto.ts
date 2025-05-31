@@ -22,6 +22,7 @@ import {
   RefreshTokenSuccessResSchema,
   ChangePasswordBodySchema
 } from 'src/routes/auth/auth.model'
+import { MessageResSchema } from 'src/shared/models/response.model'
 import { z } from 'zod'
 
 export class RegisterBodyDTO extends createZodDto(RegisterBodySchema) {}
@@ -67,6 +68,8 @@ export class RememberMeBodyDTO extends createZodDto(RememberMeBodySchema) {}
 export class RefreshTokenSuccessResDTO extends createZodDto(RefreshTokenSuccessResSchema) {}
 
 export class ChangePasswordBodyDTO extends createZodDto(ChangePasswordBodySchema) {}
+
+export class MessageResDTO extends createZodDto(MessageResSchema) {}
 
 export const ReverifyPasswordBodySchema = z.discriminatedUnion('verificationMethod', [
   z.object({

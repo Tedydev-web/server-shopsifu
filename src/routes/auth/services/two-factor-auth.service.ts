@@ -10,7 +10,10 @@ import {
   MaxVerificationAttemptsExceededException,
   EmailNotFoundException,
   InvalidPasswordException,
-  DeviceSetupFailedException
+  DeviceSetupFailedException,
+  SltCookieMissingException,
+  SltContextInvalidPurposeException,
+  InvalidRecoveryCodeException
 } from 'src/routes/auth/auth.error'
 import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { Response } from 'express'
@@ -26,18 +29,18 @@ import { EmailService } from '../providers/email.service'
 import { TokenService } from '../providers/token.service'
 import { TwoFactorService } from '../providers/2fa.service'
 import { AuditLogService as AuditLogServiceType } from 'src/routes/audit-log/audit-log.service'
-import { OtpService } from '../providers/otp.service'
+import { OtpService, SltContextData } from '../providers/otp.service'
 import { DeviceService } from '../providers/device.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { JwtService } from '@nestjs/jwt'
-import { SltContextData } from '../providers/otp.service'
 import { HttpException } from '@nestjs/common'
 import { SessionFinalizationService } from './session-finalization.service'
 import { SltHelperService } from './slt-helper.service'
 import { UserRepository } from '../repositories/shared-user.repo'
 
 const MAX_2FA_VERIFY_ATTEMPTS = 5
+const RECOVERY_CODES_COUNT = 8
 
 @Injectable()
 export class TwoFactorAuthService extends BaseAuthService {
@@ -167,81 +170,142 @@ export class TwoFactorAuthService extends BaseAuthService {
     }
 
     try {
-      const resultFromTransaction = await this.prismaService.$transaction(async (tx) => {
-        const user = await this.userRepository.findUniqueWithDetails({ id: userId }, tx)
-        if (!user || !user.role) {
-          auditLogEntry.errorMessage = 'User not found during 2FA confirmation.'
-          auditLogEntry.details.reason = 'USER_NOT_FOUND_2FA_CONFIRM'
-          throw new EmailNotFoundException()
-        }
-        auditLogEntry.userEmail = user.email
+      if (!sltCookieValue) {
+        this.logger.error('[TwoFactorAuthService.confirmTwoFactorSetup] SLT cookie value is missing.')
+        auditLogEntry.errorMessage = 'SLT cookie missing for 2FA setup confirmation'
+        auditLogEntry.details.reason = 'SLT_COOKIE_MISSING_2FA_SETUP'
+        throw new SltCookieMissingException()
+      }
 
-        if (user.twoFactorEnabled && user.twoFactorMethod === TwoFactorMethodType.TOTP) {
-          auditLogEntry.errorMessage = '2FA (TOTP) is already enabled for this user.'
-          auditLogEntry.details.reason = '2FA_ALREADY_ENABLED_CONFIRM'
-          throw new TOTPAlreadyEnabledException()
-        }
+      if (!totpCode) {
+        this.logger.warn('[TwoFactorAuthService.confirmTwoFactorSetup] TOTP code is missing.')
+        auditLogEntry.errorMessage = 'TOTP code missing for 2FA setup confirmation'
+        auditLogEntry.details.reason = 'TOTP_CODE_MISSING_2FA_SETUP'
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'TOTP_CODE_MISSING', 'Error.Auth.2FA.MissingTotpCode')
+      }
 
-        const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
+      let sltContext: (SltContextData & { sltJti: string }) | null = null
+      try {
+        sltContext = await this.otpService.validateSltFromCookieAndGetContext(
           sltCookieValue,
           requestIpAddress || 'N/A',
           requestUserAgent || 'N/A',
           TypeOfVerificationCode.SETUP_2FA
         )
-        auditLogEntry.details.sltJti = sltContext.sltJti
-        auditLogEntry.details.sltContextUserId = sltContext.userId
 
-        if (sltContext.userId !== userId) {
-          auditLogEntry.errorMessage = 'User ID mismatch between SLT context and request.'
-          auditLogEntry.details.reason = 'USER_ID_MISMATCH_SLT_CONFIRM'
-          await this.otpService.finalizeSlt(sltContext.sltJti)
-          if (res) this.tokenService.clearSltCookie(res)
-          throw new ApiException(HttpStatus.FORBIDDEN, 'AccessDenied', 'Error.Auth.AccessDenied')
+        if (sltContext) {
+          auditLogEntry.details.sltPurpose = sltContext.purpose
+          auditLogEntry.details.sltJti = sltContext.sltJti
+          auditLogEntry.details.sltUserId = sltContext.userId
+          auditLogEntry.details.sltDeviceId = sltContext.deviceId
+        }
+      } catch (error) {
+        this.logger.error(
+          `[TwoFactorAuthService.confirmTwoFactorSetup] SLT validation failed: ${error.message}`,
+          error.stack
+        )
+        auditLogEntry.errorMessage = `SLT validation failed: ${error.message}`
+        auditLogEntry.details.reason = 'SLT_VALIDATION_FAILED_2FA_SETUP'
+
+        throw error
+      }
+
+      if (!sltContext) {
+        this.logger.error('[TwoFactorAuthService.confirmTwoFactorSetup] SLT context is null after validation')
+        auditLogEntry.errorMessage = 'SLT context is null after validation'
+        auditLogEntry.details.reason = 'SLT_CONTEXT_NULL_AFTER_VALIDATION'
+        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'SltContextError', 'Error.Auth.Session.SltInvalid')
+      }
+
+      if (sltContext.purpose !== TypeOfVerificationCode.SETUP_2FA) {
+        this.logger.error(
+          `[TwoFactorAuthService.confirmTwoFactorSetup] Invalid SLT purpose: ${sltContext.purpose}. Expected: ${TypeOfVerificationCode.SETUP_2FA}`
+        )
+        auditLogEntry.errorMessage = `Invalid SLT purpose: ${sltContext.purpose}`
+        auditLogEntry.details.reason = 'SLT_INVALID_PURPOSE_2FA_SETUP'
+
+        throw new SltContextInvalidPurposeException()
+      }
+
+      if (sltContext.userId !== userId) {
+        this.logger.error(
+          `[TwoFactorAuthService.confirmTwoFactorSetup] User mismatch: SLT context user ${sltContext.userId}, request user ${userId}`
+        )
+        auditLogEntry.errorMessage = `User mismatch: SLT context user ${sltContext.userId}, request user ${userId}`
+        auditLogEntry.details.reason = 'USER_MISMATCH_2FA_SETUP'
+
+        throw new ApiException(HttpStatus.UNAUTHORIZED, 'Error.Auth.User.Mismatch', 'Error.Auth.Access.Unauthorized')
+      }
+
+      const resultFromTransaction = await this.prismaService.$transaction(async (tx) => {
+        const user = await this.userRepository.findUniqueWithDetails({ id: userId }, tx)
+
+        if (!user) {
+          this.logger.error(
+            `[TwoFactorAuthService.confirmTwoFactorSetup] User not found for ID: ${userId} during 2FA setup confirmation.`
+          )
+          auditLogEntry.errorMessage = `User not found for ID: ${userId}`
+          auditLogEntry.details.reason = 'USER_NOT_FOUND_2FA_SETUP'
+          throw new ApiException(HttpStatus.NOT_FOUND, 'USER_NOT_FOUND', 'Error.User.NotFound')
         }
 
-        const tempTwoFactorSecret = sltContext.metadata?.tempTwoFactorSecret as string | undefined
-        if (!tempTwoFactorSecret) {
-          auditLogEntry.errorMessage = 'Temporary 2FA secret missing from SLT context.'
-          auditLogEntry.details.reason = 'MISSING_TEMP_SECRET_IN_SLT'
-          await this.otpService.finalizeSlt(sltContext.sltJti)
-          if (res) this.tokenService.clearSltCookie(res)
-          throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'SltProcessingError', 'Error.Auth.2FA.SetupFailed')
+        if (user.twoFactorEnabled) {
+          this.logger.warn(
+            `[TwoFactorAuthService.confirmTwoFactorSetup] 2FA is already enabled for user ${userId}. Method: ${user.twoFactorMethod}`
+          )
+          auditLogEntry.errorMessage = '2FA is already enabled for user'
+          auditLogEntry.details.reason = 'TWO_FACTOR_ALREADY_ENABLED'
+          auditLogEntry.details.existingTwoFactorMethod = user.twoFactorMethod
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'TWO_FACTOR_ALREADY_ENABLED', 'Error.Auth.2FA.AlreadyEnabled')
         }
 
-        const isValidTOTP = this.twoFactorService.verifyTOTP({
+        const twoFactorSecret = sltContext.metadata?.tempTwoFactorSecret as string
+        if (!twoFactorSecret) {
+          this.logger.error(
+            `[TwoFactorAuthService.confirmTwoFactorSetup] No 2FA secret found in SLT metadata for user ${userId}`
+          )
+          auditLogEntry.errorMessage = 'No 2FA secret found in SLT metadata'
+          auditLogEntry.details.reason = 'TWO_FACTOR_SECRET_MISSING'
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'TWO_FACTOR_SECRET_MISSING', 'Error.Auth.2FA.SetupIncomplete')
+        }
+
+        const isValidTotp = this.twoFactorService.verifyTOTP({
           email: user.email,
-          secret: tempTwoFactorSecret,
+          secret: twoFactorSecret,
           token: totpCode
         })
+        this.logger.debug(`[TwoFactorService] Verifying TOTP for user: ${user.email}`)
 
-        if (!isValidTOTP) {
-          auditLogEntry.errorMessage = 'Invalid TOTP code provided during 2FA setup confirmation (SLT).'
-          auditLogEntry.details.reason = 'INVALID_TOTP_CODE_SLT_CONFIRM'
+        if (!isValidTotp) {
+          this.logger.warn(`[TwoFactorAuthService.confirmTwoFactorSetup] Invalid TOTP code for user ${userId}`)
+          auditLogEntry.errorMessage = 'Invalid TOTP code'
+          auditLogEntry.details.reason = 'INVALID_TOTP_CODE'
+
           await this.sltHelperService.handleSltAttemptIncrementAndFinalization(
             sltContext.sltJti,
             MAX_2FA_VERIFY_ATTEMPTS,
-            'confirmTwoFactorSetup',
-            auditLogEntry,
-            res
+            'confirmTwoFactorSetup-invalid-totp',
+            auditLogEntry
           )
-          throw new InvalidTOTPException()
+
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_TOTP_CODE', 'Error.Auth.2FA.InvalidCode')
         }
 
-        const recoveryCodes = this.twoFactorService.generateRecoveryCodes()
-        await this.twoFactorService.saveRecoveryCodes(userId, recoveryCodes, tx)
-        auditLogEntry.details.recoveryCodesGeneratedCount = recoveryCodes.length
+        this.logger.debug(`[TwoFactorService] Generating ${RECOVERY_CODES_COUNT} recovery codes`)
+        const recoveryCodes = this.twoFactorService.generateRecoveryCodes(RECOVERY_CODES_COUNT)
 
-        await this.userRepository.updateUser(
-          { id: userId },
-          {
+        this.logger.debug(`[TwoFactorService] Saving ${recoveryCodes.length} recovery codes for user ${user.id}`)
+        await this.twoFactorService.saveRecoveryCodes(user.id, recoveryCodes, tx)
+
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
             twoFactorEnabled: true,
-            twoFactorSecret: tempTwoFactorSecret,
             twoFactorMethod: TwoFactorMethodType.TOTP,
-            twoFactorVerifiedAt: new Date()
-          },
-          tx
-        )
-        auditLogEntry.details.twoFactorMethodSet = TwoFactorMethodType.TOTP
+            twoFactorSecret: twoFactorSecret,
+            passwordChangedAt: new Date()
+          }
+        })
 
         const device = await this.deviceService.findOrCreateDevice(
           {
@@ -252,11 +316,6 @@ export class TwoFactorAuthService extends BaseAuthService {
           tx
         )
         auditLogEntry.details.finalDeviceId = device.id
-
-        if (!device.isTrusted) {
-          await this.deviceService.trustDevice(device.id, user.id, tx)
-          auditLogEntry.details.deviceTrustedInThisFlow = true
-        }
 
         await this.otpService.finalizeSlt(sltContext.sltJti)
         if (res) this.tokenService.clearSltCookie(res)
@@ -343,65 +402,55 @@ export class TwoFactorAuthService extends BaseAuthService {
         verificationSuccessful = true
         auditLogEntry.details.passwordVerificationSuccess = true
       } else if (data.code || data.recoveryCode) {
-        if (!data.sltCookieValue) {
-          auditLogEntry.errorMessage = 'SLT cookie is required when disabling 2FA with TOTP/Recovery code.'
-          auditLogEntry.details.reason = 'MISSING_SLT_FOR_CODE_DISABLE_2FA'
-          throw new ApiException(HttpStatus.BAD_REQUEST, 'SltTokenMissing', 'Error.Auth.Session.InvalidLogin')
+        if (data.sltCookieValue) {
+          try {
+            sltContextToFinalize = await this.otpService.validateSltFromCookieAndGetContext(
+              data.sltCookieValue,
+              data.ip || 'N/A',
+              data.userAgent || 'N/A',
+              TypeOfVerificationCode.DISABLE_2FA
+            )
+            auditLogEntry.details.sltJti = sltContextToFinalize.sltJti
+            auditLogEntry.details.sltPurpose = sltContextToFinalize.purpose
+            auditLogEntry.details.sltUserId = sltContextToFinalize.userId
+
+            if (sltContextToFinalize.userId !== user.id) {
+              auditLogEntry.errorMessage = 'User ID mismatch between SLT context and current user for disabling 2FA.'
+              auditLogEntry.details.reason = 'USER_ID_MISMATCH_SLT_DISABLE_2FA'
+              throw new ApiException(HttpStatus.FORBIDDEN, 'AccessDenied', 'Error.Auth.AccessDenied')
+            }
+          } catch (sltError) {
+            this.logger.warn(`Error validating SLT for 2FA disable (continuing): ${sltError.message}`)
+            auditLogEntry.details.sltValidationError = sltError.message
+          }
         }
 
-        try {
-          sltContextToFinalize = await this.otpService.validateSltFromCookieAndGetContext(
-            data.sltCookieValue,
-            data.ip || 'N/A',
-            data.userAgent || 'N/A',
-            TypeOfVerificationCode.DISABLE_2FA
-          )
-          auditLogEntry.details.sltJti = sltContextToFinalize.sltJti
-          auditLogEntry.details.sltPurpose = sltContextToFinalize.purpose
-          auditLogEntry.details.sltUserId = sltContextToFinalize.userId
+        if (data.code) {
+          const isValidTOTP = this.twoFactorService.verifyTOTP({
+            email: user.email,
+            secret: user.twoFactorSecret,
+            token: data.code
+          })
+          if (!isValidTOTP) {
+            auditLogEntry.errorMessage = 'Invalid TOTP code for disabling 2FA.'
+            auditLogEntry.details.reason = 'INVALID_TOTP_DISABLE_2FA'
 
-          if (sltContextToFinalize.userId !== user.id) {
-            auditLogEntry.errorMessage = 'User ID mismatch between SLT context and current user for disabling 2FA.'
-            auditLogEntry.details.reason = 'USER_ID_MISMATCH_SLT_DISABLE_2FA'
-            throw new ApiException(HttpStatus.FORBIDDEN, 'AccessDenied', 'Error.Auth.AccessDenied')
-          }
-
-          if (data.code) {
-            const isValidTOTP = this.twoFactorService.verifyTOTP({
-              email: user.email,
-              secret: user.twoFactorSecret,
-              token: data.code
-            })
-            if (!isValidTOTP) {
-              auditLogEntry.errorMessage = 'Invalid TOTP code for disabling 2FA.'
-              auditLogEntry.details.reason = 'INVALID_TOTP_DISABLE_2FA'
+            if (sltContextToFinalize) {
               const newAttempts = await this.otpService.incrementSltAttempts(sltContextToFinalize.sltJti)
               auditLogEntry.details.sltAttempts = newAttempts
               if (newAttempts >= MAX_2FA_VERIFY_ATTEMPTS) {
                 auditLogEntry.details.sltFinalizedMaxAttempts = true
                 throw new MaxVerificationAttemptsExceededException()
               }
-              throw InvalidTOTPException
             }
-            verificationSuccessful = true
-            auditLogEntry.details.totpVerificationSuccess = true
-          } else if (data.recoveryCode) {
-            await this.twoFactorService.verifyRecoveryCode(user.id, data.recoveryCode, this.prismaService)
-            verificationSuccessful = true
-            auditLogEntry.details.recoveryCodeVerificationSuccess = true
+            throw InvalidTOTPException
           }
-        } catch (sltOrVerificationError) {
-          if (sltContextToFinalize) {
-            await this.otpService
-              .finalizeSlt(sltContextToFinalize.sltJti)
-              .catch((ef) =>
-                this.logger.error(
-                  `Error finalizing SLT ${sltContextToFinalize?.sltJti} in disable 2FA error path: ${ef.message}`
-                )
-              )
-            auditLogEntry.details.sltFinalizedOnError = sltContextToFinalize.sltJti
-          }
-          throw sltOrVerificationError
+          verificationSuccessful = true
+          auditLogEntry.details.totpVerificationSuccess = true
+        } else if (data.recoveryCode) {
+          await this.twoFactorService.verifyRecoveryCode(user.id, data.recoveryCode, this.prismaService)
+          verificationSuccessful = true
+          auditLogEntry.details.recoveryCodeVerificationSuccess = true
         }
       } else {
         auditLogEntry.errorMessage =
@@ -548,6 +597,70 @@ export class TwoFactorAuthService extends BaseAuthService {
       }
       auditLogEntry.userEmail = user.email
 
+      if (!user.twoFactorEnabled || !user.twoFactorSecret || !user.twoFactorMethod) {
+        auditLogEntry.errorMessage = '2FA is not enabled for user attempting 2FA verification.'
+        auditLogEntry.details.reason = 'TWO_FACTOR_NOT_ENABLED'
+        await this.otpService.finalizeSlt(sltContext.sltJti)
+        if (res) this.tokenService.clearSltCookie(res)
+        throw new TOTPNotEnabledException()
+      }
+
+      // Kiểm tra xem người dùng đã cung cấp mã TOTP hay recovery code
+      if (!body.code && !body.recoveryCode) {
+        auditLogEntry.errorMessage = 'Neither TOTP code nor recovery code provided for 2FA verification.'
+        auditLogEntry.details.reason = 'NO_VERIFICATION_CODE_PROVIDED'
+        const newAttempts = await this.otpService.incrementSltAttempts(sltContext.sltJti)
+        auditLogEntry.details.sltAttempts = newAttempts
+        if (newAttempts >= MAX_2FA_VERIFY_ATTEMPTS) {
+          await this.otpService.finalizeSlt(sltContext.sltJti)
+          if (res) this.tokenService.clearSltCookie(res)
+          throw new MaxVerificationAttemptsExceededException()
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'NO_VERIFICATION_CODE', 'Error.Auth.2FA.NoVerificationCode')
+      }
+
+      // Xác thực mã TOTP hoặc recovery code
+      let verificationMethod = ''
+      if (body.code) {
+        // Xác thực TOTP
+        const isValid = this.twoFactorService.verifyTOTP({
+          email: user.email,
+          secret: user.twoFactorSecret,
+          token: body.code
+        })
+
+        if (!isValid) {
+          auditLogEntry.errorMessage = 'Invalid TOTP code provided for 2FA verification.'
+          auditLogEntry.details.reason = 'INVALID_TOTP_CODE'
+          const newAttempts = await this.otpService.incrementSltAttempts(sltContext.sltJti)
+          auditLogEntry.details.sltAttempts = newAttempts
+          if (newAttempts >= MAX_2FA_VERIFY_ATTEMPTS) {
+            await this.otpService.finalizeSlt(sltContext.sltJti)
+            if (res) this.tokenService.clearSltCookie(res)
+            throw new MaxVerificationAttemptsExceededException()
+          }
+          throw new InvalidTOTPException()
+        }
+        verificationMethod = 'TOTP'
+      } else if (body.recoveryCode) {
+        // Xác thực recovery code
+        try {
+          await this.twoFactorService.verifyRecoveryCode(user.id, body.recoveryCode, this.prismaService)
+          verificationMethod = 'RECOVERY'
+        } catch (error) {
+          auditLogEntry.errorMessage = 'Invalid recovery code provided for 2FA verification.'
+          auditLogEntry.details.reason = 'INVALID_RECOVERY_CODE'
+          const newAttempts = await this.otpService.incrementSltAttempts(sltContext.sltJti)
+          auditLogEntry.details.sltAttempts = newAttempts
+          if (newAttempts >= MAX_2FA_VERIFY_ATTEMPTS) {
+            await this.otpService.finalizeSlt(sltContext.sltJti)
+            if (res) this.tokenService.clearSltCookie(res)
+            throw new MaxVerificationAttemptsExceededException()
+          }
+          throw new InvalidRecoveryCodeException()
+        }
+      }
+
       let deviceToUse = await this.deviceService.findDeviceById(sltContext.deviceId)
       if (!deviceToUse) {
         this.logger.warn(
@@ -596,7 +709,7 @@ export class TwoFactorAuthService extends BaseAuthService {
       auditLogEntry.details.finalSessionId = finalizationResult.sessionId
       auditLogEntry.details.finalAccessTokenJti = finalizationResult.accessTokenJti
       auditLogEntry.details.isTwoFactorAuthenticated = true
-      auditLogEntry.details.verificationMethodUsed = 'TOTP'
+      auditLogEntry.details.verificationMethodUsed = verificationMethod
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
       return {

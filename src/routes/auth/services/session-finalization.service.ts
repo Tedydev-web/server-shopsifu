@@ -229,6 +229,9 @@ export class SessionFinalizationService {
         if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
           auditLogEntry.details.sltFinalizedOnSuccess = sltToFinalize.jti
         }
+      } else {
+        // Always clear SLT cookie if exists to prevent leftover tokens
+        this.tokenService.clearSltCookie(res)
       }
 
       auditLogEntry.status = AuditLogStatus.SUCCESS

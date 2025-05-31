@@ -32,14 +32,14 @@ import {
   TwoFactorSetupResDTO,
   TwoFactorVerifyBodyDTO,
   VerifyCodeBodyDTO,
-  VerifyCodeResDTO,
   TwoFactorConfirmSetupBodyDTO,
   TwoFactorConfirmSetupResDTO,
   RememberMeBodyDTO,
   RefreshTokenSuccessResDTO,
   UserProfileResDTO,
   ReverifyPasswordBodyType,
-  ChangePasswordBodyDTO
+  ChangePasswordBodyDTO,
+  MessageResDTO
 } from 'src/routes/auth/auth.dto'
 import {
   RevokeSessionParamsDTO,
@@ -60,9 +60,9 @@ import { ActiveUser } from './decorators/active-user.decorator'
 import { IsPublic } from './decorators/auth.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { EmptyBodyDTO } from 'src/shared/dtos/request.dto'
-import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { MessageResSchema } from 'src/shared/models/response.model'
 import { TokenService } from 'src/routes/auth/providers/token.service'
-import { SkipThrottle } from '@nestjs/throttler'
+import { SkipThrottle, Throttle } from '@nestjs/throttler'
 import { CookieNames, AuthType } from 'src/shared/constants/auth.constant'
 import { AccessTokenPayload, PendingLinkTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import { I18nContext } from 'nestjs-i18n'
@@ -87,24 +87,22 @@ import { UserProfileResSchema, LoginSessionResSchema, GoogleAuthStateType } from
 import { ZodValidationPipe } from 'nestjs-zod'
 import { PendingLinkDetailsResSchema, PendingLinkDetailsResDto } from './dtos/pending-link-details.dto'
 import { DeviceService } from './providers/device.service'
-import { ms } from 'ms'
+import ms from 'ms'
 import { TwoFactorAuthService } from './services/two-factor-auth.service'
 import { AuditLogService } from '../audit-log/audit-log.service'
 import {
   SltCookieMissingException,
-  SltContextFinalizedException,
   SltContextMaxAttemptsReachedException,
-  InvalidOTPException,
-  InvalidTOTPException,
-  InvalidRecoveryCodeException,
   MaxVerificationAttemptsExceededException,
   InvalidRefreshTokenException,
   SltContextInvalidPurposeException,
-  DeviceMismatchException
+  DeviceMismatchException,
+  SltContextFinalizedException
 } from './auth.error'
 import { Prisma } from '@prisma/client'
 import { AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { PasswordAuthService } from './services/password-auth.service'
+import { SltHelperService } from './services/slt-helper.service'
 
 interface PltCookieConfigType {
   name: string
@@ -133,19 +131,41 @@ export class AuthController {
     private readonly deviceService: DeviceService,
     private readonly twoFactorAuthService: TwoFactorAuthService,
     private readonly auditLogService: AuditLogService,
-    private readonly passwordAuthService: PasswordAuthService
+    private readonly passwordAuthService: PasswordAuthService,
+    private readonly sltHelperService: SltHelperService
   ) {}
 
   @Post('register')
   @IsPublic()
+  @Throttle({ short: { limit: 5, ttl: 10000 } })
   @ZodSerializerDto(RegisterResDTO)
-  register(@Body() body: RegisterBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string, @Req() req: Request) {
+  async register(
+    @Body() body: RegisterBodyDTO,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response
+  ) {
     const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
-    return this.authenticationService.register({ ...body, userAgent, ip, sltCookieValue })
+    if (!sltCookieValue) {
+      throw new SltCookieMissingException()
+    }
+
+    await this.authenticationService.register({ ...body, userAgent, ip, sltCookieValue })
+
+    // Clear SLT token after successful registration as flow is complete
+    this.tokenService.clearSltCookie(res)
+
+    return {
+      message: await this.i18nService.translate('Auth.Register.Success', {
+        lang: I18nContext.current()?.lang
+      })
+    }
   }
 
   @Post('send-otp')
   @IsPublic()
+  @Throttle({ short: { limit: 3, ttl: 60000 } })
   @ZodSerializerDto(MessageResDTO)
   async sendOTP(
     @Body() body: SendOTPBodyDTO,
@@ -188,20 +208,7 @@ export class AuthController {
         purpose: type
       })
 
-      const sltCookieConfig = envConfig.cookie.sltToken
-      if (sltCookieConfig && sltJwt) {
-        res.cookie(sltCookieConfig.name, sltJwt, {
-          path: sltCookieConfig.path,
-          domain: sltCookieConfig.domain,
-          maxAge: sltCookieConfig.maxAge,
-          httpOnly: sltCookieConfig.httpOnly,
-          secure: sltCookieConfig.secure,
-          sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
-        })
-        this.logger.debug(`[sendOTP - ${type}] SLT token cookie (${sltCookieConfig.name}) set.`)
-      } else {
-        this.logger.warn(`[sendOTP - ${type}] SLT cookie configuration or SLT JWT missing. Cookie not set.`)
-      }
+      this.sltHelperService.setSltCookie(res, sltJwt, type)
     } else {
       await this.otpService.sendOTP(email, type, user?.id)
     }
@@ -214,12 +221,18 @@ export class AuthController {
 
   @Post('verify-code')
   @IsPublic()
-  @ZodSerializerDto(MessageResDTO)
+  @Throttle({ short: { limit: 5, ttl: 10000 } })
+  @UseZodSchemas(
+    { schema: UserProfileResSchema, predicate: hasProperty('id') },
+    { schema: LoginSessionResSchema, predicate: hasProperty('message') },
+    { schema: MessageResSchema, predicate: hasProperty('message') }
+  )
   async verifyCode(
     @Body() body: VerifyCodeBodyDTO,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
-    @Req() req: Request
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response
   ) {
     const sltCookieValue = req.cookies?.[envConfig.cookie.sltToken.name]
     if (!sltCookieValue) {
@@ -229,22 +242,55 @@ export class AuthController {
       throw new SltCookieMissingException()
     }
 
-    await this.otpService.verifySltOtpStage(sltCookieValue, body.code, ip, userAgent)
+    try {
+      // Kiểm tra và lấy context của SLT mà không xác minh OTP
+      const sltContext = await this.otpService.validateSltFromCookieAndGetContext(sltCookieValue, ip, userAgent)
 
-    const message = await this.i18nService.translate('Auth.Otp.VerifiedSuccessfully', {
-      lang: I18nContext.current()?.lang
-    })
-    return { message }
+      // Xử lý các loại purpose khác nhau
+      switch (sltContext.purpose) {
+        case TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP: {
+          // Hoàn tất đăng nhập cho untrusted device - phương thức này sẽ tự xác minh OTP
+          const result = await this.authenticationService.completeLoginWithUntrustedDeviceOtp(
+            { code: body.code, rememberMe: body.rememberMe, userAgent, ip },
+            sltContext,
+            res
+          )
+          return result
+        }
+        case TypeOfVerificationCode.LOGIN_2FA: {
+          // Hoàn tất đăng nhập 2FA - phương thức này sẽ tự xác minh OTP
+          const result = await this.twoFactorAuthService.verifyTwoFactor(
+            { code: body.code, rememberMe: body.rememberMe, userAgent, ip },
+            sltContext,
+            res
+          )
+          return result
+        }
+        // Các trường hợp khác: REGISTER, RESET_PASSWORD, VERIFY_NEW_EMAIL, v.v.
+        default: {
+          // Với các trường hợp không phải đăng nhập, thực hiện xác minh OTP
+          await this.otpService.verifySltOtpStage(sltCookieValue, body.code, ip, userAgent)
+          const message = await this.i18nService.translate('Auth.Otp.VerifiedSuccessfully', {
+            lang: I18nContext.current()?.lang
+          })
+          return { message }
+        }
+      }
+    } catch (error) {
+      this.logger.error(`[AuthController.verifyCode] Error verifying code: ${error.message}`, error.stack)
+      throw error
+    }
   }
 
   @Post('login')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
+  @Throttle({ short: { limit: 5, ttl: 10000 } })
   @UseZodSchemas(
     { schema: UserProfileResSchema, predicate: hasProperty('id') },
     { schema: LoginSessionResSchema, predicate: hasProperty('message') }
   )
-  login(
+  async login(
     @Body() body: LoginBodyDTO,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
@@ -256,6 +302,7 @@ export class AuthController {
   @Post('refresh-token')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
+  @Throttle({ short: { limit: 10, ttl: 10000 } })
   @ZodSerializerDto(RefreshTokenSuccessResDTO)
   async refreshToken(
     @Body() _: RefreshTokenBodyDTO,
@@ -727,6 +774,7 @@ export class AuthController {
 
   @Post('reset-password')
   @IsPublic()
+  @Throttle({ short: { limit: 3, ttl: 60000 } })
   @ZodSerializerDto(MessageResDTO)
   resetPassword(
     @Body() body: ResetPasswordBodyDTO,
@@ -747,6 +795,7 @@ export class AuthController {
   @Post('password/change')
   @HttpCode(HttpStatus.OK)
   @UseGuards(AccessTokenGuard)
+  @Throttle({ short: { limit: 5, ttl: 10000 } })
   @ZodSerializerDto(MessageResDTO)
   changePassword(
     @ActiveUser('userId') userId: number,
@@ -760,6 +809,7 @@ export class AuthController {
   @Post('2fa/setup')
   @UseGuards(AccessTokenGuard)
   @HttpCode(HttpStatus.OK)
+  @Throttle({ short: { limit: 5, ttl: 10000 } })
   @ZodSerializerDto(TwoFactorSetupResDTO)
   async setupTwoFactorAuth(
     @ActiveUser() activeUser: AccessTokenPayload,
@@ -786,7 +836,7 @@ export class AuthController {
         httpOnly: true,
         secure: envConfig.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: ms(sltCookieConfig.maxAge),
+        maxAge: sltCookieConfig.maxAge,
         path: sltCookieConfig.path || '/'
       })
     } else {
@@ -805,6 +855,7 @@ export class AuthController {
   @Post('2fa/confirm-setup')
   @UseGuards(AccessTokenGuard)
   @HttpCode(HttpStatus.OK)
+  @Throttle({ short: { limit: 5, ttl: 10000 } })
   @ZodSerializerDto(TwoFactorConfirmSetupResDTO)
   async confirmTwoFactorSetup(
     @ActiveUser() activeUser: AccessTokenPayload,
@@ -841,6 +892,7 @@ export class AuthController {
   }
 
   @Post('2fa/disable')
+  @Throttle({ short: { limit: 3, ttl: 60000 } })
   @ZodSerializerDto(MessageResDTO)
   disableTwoFactorAuth(
     @Body() body: DisableTwoFactorBodyDTO,
@@ -849,6 +901,7 @@ export class AuthController {
     @UserAgent() userAgent: string,
     @Req() req: Request
   ) {
+    // Lấy SLT cookie nếu có, nhưng không bắt buộc
     const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
 
     return this.twoFactorAuthService.disableTwoFactorAuth({
@@ -862,6 +915,7 @@ export class AuthController {
 
   @Post('2fa/verify')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ short: { limit: 5, ttl: 10000 } })
   @ZodSerializerDto(LoginSessionResSchema)
   async verifyTwoFactor(
     @Body() body: TwoFactorVerifyBodyDTO,
@@ -882,10 +936,19 @@ export class AuthController {
         sltCookieProvided: !!sltCookieValue,
         codeProvided: !!body.code,
         recoveryCodeProvided: !!body.recoveryCode
-      } as Prisma.JsonObject
+      }
     }
 
     try {
+      // Kiểm tra SLT - bắt buộc vì đây là luồng đa bước (đăng nhập)
+      if (!sltCookieValue) {
+        this.logger.error('[AuthController.verifyTwoFactor] Missing SLT cookie for 2FA verification')
+        auditLogEntry.errorMessage = 'SLT cookie is required for 2FA verification'
+        auditLogEntry.details.reason = 'MISSING_SLT_COOKIE_2FA_VERIFY'
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw new SltCookieMissingException()
+      }
+
       sltContext = await this.otpService.validateSltFromCookieAndGetContext(
         sltCookieValue as string,
         ip,
@@ -1094,7 +1157,7 @@ export class AuthController {
       res.cookie(sltCookieConfig.name, sltJwt, {
         path: sltCookieConfig.path,
         domain: sltCookieConfig.domain,
-        maxAge: ms(sltCookieConfig.maxAge),
+        maxAge: sltCookieConfig.maxAge,
         httpOnly: sltCookieConfig.httpOnly,
         secure: sltCookieConfig.secure,
         sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
@@ -1323,6 +1386,7 @@ export class AuthController {
 
   @Post('login/untrusted-device/complete')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ short: { limit: 5, ttl: 10000 } })
   @ZodSerializerDto(LoginSessionResSchema)
   async completeLoginUntrustedDevice(
     @Body() body: TwoFactorVerifyBodyDTO,

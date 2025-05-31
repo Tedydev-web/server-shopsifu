@@ -35,13 +35,14 @@ Module `@auth` chịu trách nhiệm cho tất cả các quy trình liên quan �
   - `TwoFactorAuthService`: Xử lý logic 2FA (setup, confirm, disable, verify).
   - `SessionManagementService`: Quản lý phiên hoạt động, thiết bị được quản lý.
   - `GoogleService`: Xử lý đăng nhập qua Google.
+  - `SltHelperService`: Hỗ trợ xử lý SLT token.
 - **Provider Service**:
   - `TokenService`: Tạo, xác minh, quản lý vòng đời của access token và refresh token (JTI).
   - `DeviceService`: Tìm, tạo, xác thực, quản lý thiết bị (fingerprint, trust status).
   - `OtpService`: Logic cốt lõi của việc tạo, xác minh mã OTP/token (lưu trữ trong DB).
   - `EmailService`: Gửi email (OTP, thông báo bảo mật).
   - `TwoFactorService`: Logic cốt lõi của TOTP (tạo secret, verify code) và mã khôi phục.
-- **Repository**: `AuthRepository`, `SharedUserRepository` tương tác với Prisma.
+- **Repository**: `AuthRepository`, `UserRepository` tương tác với Prisma.
 - **Guards**: `AccessTokenGuard`, `RolesGuard`, `AuthenticationGuard` (guard chung).
 - **Interceptor**: `TokenRefreshInterceptor` (có thể không còn dùng nếu client chủ động refresh), `AuditLogInterceptor`.
 - **Khác**: `HashingService`, `I18nService`, `RedisService`, `AuditLogService`, `GeolocationService`.
@@ -68,127 +69,120 @@ Module `@auth` chịu trách nhiệm cho tất cả các quy trình liên quan �
 - **Public**: Có (`@IsPublic()`)
 - **Request Headers**:
   - `User-Agent`: (Tự động lấy bởi `@UserAgent()`)
+  - `Cookie`: Phải chứa SLT token từ quy trình xác thực OTP
 - **Request Body**: `RegisterBodyDTO`
   ```json
   {
-    "email": "user@example.com",
     "password": "password123",
     "confirmPassword": "password123",
-    "name": "User Name",
-    "phoneNumber": "0123456789",
-    "otpToken": "jwt_otp_token_from_verify_code_step" // Token nhận được sau khi xác minh OTP loại REGISTER
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "username": "username123", // Tùy chọn, sẽ tự động tạo nếu không cung cấp
+    "phoneNumber": "0123456789" // Tùy chọn
   }
   ```
 - **Authorization**: Không cần.
 - **Luồng xử lý**:
   1.  `AuthController.register` nhận request.
-  2.  Gọi `AuthService.register` (thực chất là `AuthenticationService.register`).
-  3.  `OtpService.validateVerificationToken`: Xác thực `otpToken` (loại `REGISTER`, email phải khớp).
-  4.  Kiểm tra email đã tồn tại chưa (`SharedUserRepository.findUnique`).
-  5.  Hash mật khẩu (`HashingService.hash`).
-  6.  Lấy `roleId` mặc định (`RolesService.getClientRoleId`).
-  7.  Tạo user mới trong DB (`AuthRepository.createUser`).
-  8.  Xóa `otpToken` đã sử dụng (`OtpService.deleteOtpToken`).
-  9.  Ghi Audit Log.
-  10. Trả về thông tin user đã lược bỏ (không có password, 2FA secret).
-- **Response Body (Success - 201 Created)**: `RegisterResDTO` (thông tin user)
+  2.  Kiểm tra SLT token từ cookie.
+  3.  Gọi `AuthenticationService.register`.
+  4.  Xác thực SLT token và lấy thông tin email từ context SLT.
+  5.  Kiểm tra email đã tồn tại chưa.
+  6.  Tạo username duy nhất nếu không được cung cấp.
+  7.  Hash mật khẩu.
+  8.  Lấy `roleId` mặc định.
+  9.  Tạo user và user profile mới trong DB.
+  10. Xóa SLT token cookie sau khi quy trình đăng ký hoàn tất.
+  11. Ghi Audit Log.
+  12. Trả về thông báo thành công.
+- **Response Body (Success - 201 Created)**: `MessageResDTO`
   ```json
   {
-    "id": 1,
-    "email": "user@example.com",
-    "name": "User Name",
-    "phoneNumber": "0123456789",
-    "avatar": null,
-    "status": "ACTIVE",
-    "roleId": 2,
-    "twoFactorEnabled": false,
-    "twoFactorMethod": null,
-    "twoFactorVerifiedAt": null,
-    "deletedAt": null,
-    "createdAt": "2023-10-27T10:00:00.000Z",
-    "updatedAt": "2023-10-27T10:00:00.000Z"
+    "message": "Registration successful." // (Key i18n: Auth.Register.Success)
   }
   ```
-- **Response Body (Error)**: Cấu trúc lỗi chuẩn (xem `AllExceptionsFilter`).
-  - `422 Unprocessable Entity`: Nếu `otpToken` không hợp lệ/hết hạn, email/password không đúng định dạng, password không khớp.
-  - `409 Conflict`: Nếu email đã tồn tại.
+- **Response Body (Error)**: Cấu trúc lỗi chuẩn
+  - `400 Bad Request`: Nếu SLT token không hợp lệ/không có, hoặc email/password không đúng định dạng.
+  - `409 Conflict`: Nếu email hoặc username đã tồn tại.
 - **Rủi ro/Cải tiến**:
-  - Trạng thái `INACTIVE` sau đăng ký có thể yêu cầu một bước kích hoạt email khác (nếu `otpToken` chỉ để xác minh email trước khi đăng ký). Nếu `otpToken` đã là kích hoạt thì nên là `ACTIVE`. Cần làm rõ logic này.
-  - Xem xét việc gửi email chào mừng sau khi đăng ký thành công.
+  - SLT token được tự động xóa sau khi hoàn tất quy trình đăng ký.
+  - Không trả về thông tin chi tiết người dùng vì lý do bảo mật.
+  - Email đã được xác minh thông qua quy trình OTP trong bước trước.
 
 ---
 
 ### Gửi OTP
 
 - **Endpoint**: `POST /auth/send-otp`
-- **Mục đích**: Yêu cầu hệ thống gửi mã OTP đến email người dùng cho các mục đích khác nhau (đăng ký, đặt lại mật khẩu, đăng nhập thiết bị lạ).
+- **Mục đích**: Yêu cầu hệ thống gửi mã OTP đến email người dùng và khởi tạo SLT token.
 - **Public**: Có (`@IsPublic()`)
 - **Request Body**: `SendOTPBodyDTO`
   ```json
   {
     "email": "user@example.com",
-    "type": "REGISTER" // hoặc "RESET_PASSWORD", "LOGIN_UNTRUSTED_DEVICE_OTP"
+    "type": "REGISTER" // hoặc "RESET_PASSWORD", "LOGIN_UNTRUSTED_DEVICE_OTP", "VERIFY_NEW_EMAIL"
   }
   ```
 - **Authorization**: Không cần.
 - **Luồng xử lý**:
   1.  `AuthController.sendOTP` nhận request.
-  2.  Gọi `AuthService.sendOTP` (thực chất là `OtpAuthService.sendOTP`).
-  3.  `OtpService.sendOTP` được gọi:
-      - Kiểm tra email có tồn tại không (tùy theo `type` - ví dụ `RESET_PASSWORD` cần email tồn tại, `REGISTER` thì không).
-      - Tạo mã OTP (6 chữ số).
-      - Lưu `VerificationCode` vào DB (email, code, type, expiresAt).
-      - Gửi email chứa mã OTP (`EmailService.sendOTP`).
-  4.  Ghi Audit Log.
-- **Response Body (Success - 201 Created)**: `MessageResDTO`
+  2.  Kiểm tra email có tồn tại không (tùy theo `type`).
+  3.  Nếu là loại OTP cần lưu trạng thái (REGISTER, RESET_PASSWORD, VERIFY_NEW_EMAIL):
+      - Khởi tạo SLT token thông qua `OtpService.initiateOtpWithSltCookie`.
+      - Thiết lập SLT token vào cookie thông qua `SltHelperService.setSltCookie`.
+      - Gửi email chứa mã OTP.
+  4.  Nếu là loại OTP khác:
+      - Gọi `OtpService.sendOTP`.
+  5.  Ghi Audit Log.
+- **Response Body (Success - 200 OK)**: `MessageResDTO`
   ```json
   {
-    "message": "OTP has been sent successfully." // (Key i18n: error.Auth.Otp.SentSuccessfully)
+    "message": "OTP has been sent successfully." // (Key i18n: Auth.Otp.SentSuccessfully)
   }
   ```
 - **Response Body (Error)**:
   - `404 Not Found`: Nếu `type` là `RESET_PASSWORD` và email không tồn tại.
+  - `409 Conflict`: Nếu `type` là `REGISTER` và email đã tồn tại.
   - `500 Internal Server Error`: Nếu gửi email thất bại.
-- **Rủi ro/Cải tiến**:
-  - Rate limiting mạnh mẽ để chống spam OTP.
-  - OTP nên có thời gian sống ngắn.
+- **Lưu ý**:
+  - SLT (Stateful Login Token) cookie sẽ chứa context bảo mật để theo dõi quy trình xác thực đa bước.
+  - SLT cookie được đặt với HttpOnly, Secure và SameSite=lax.
 
 ---
 
 ### Xác minh Mã (Chung)
 
 - **Endpoint**: `POST /auth/verify-code`
-- **Mục đích**: Xác minh mã OTP đã được gửi trước đó và nếu thành công, trả về một `otpToken` (JWT ngắn hạn) để sử dụng cho các bước tiếp theo (đăng ký, hoàn tất reset mật khẩu).
+- **Mục đích**: Xác minh mã OTP và cập nhật trạng thái trong SLT token.
 - **Public**: Có (`@IsPublic()`)
 - **Request Headers**:
   - `User-Agent`
+  - `Cookie`: Phải chứa SLT token
 - **Request Body**: `VerifyCodeBodyDTO`
   ```json
   {
-    "email": "user@example.com",
-    "code": "123456",
-    "type": "REGISTER" // hoặc "RESET_PASSWORD", "LOGIN_UNTRUSTED_DEVICE_OTP"
+    "code": "123456"
   }
   ```
 - **Authorization**: Không cần.
 - **Luồng xử lý**:
   1.  `AuthController.verifyCode` nhận request.
-  2.  Gọi `AuthService.verifyCode` (thực chất là `OtpAuthService.verifyCode`).
-  3.  `OtpService.verifyOTPAndCreateToken` được gọi:
-      - `OtpService.validateVerificationCode`: Kiểm tra code, email, type trong DB, kiểm tra hết hạn.
-      - Nếu mã hợp lệ, tạo một `otpToken` (JWT) chứa (email, type, userId (nếu có), deviceId (nếu có), metadata) và có thời gian sống ngắn (ví dụ 5-10 phút). Token này được lưu vào bảng `VerificationToken`.
-      - Xóa `VerificationCode` đã sử dụng.
-  4.  Ghi Audit Log.
-- **Response Body (Success - 201 Created)**: `VerifyCodeResDTO`
+  2.  Kiểm tra SLT token từ cookie.
+  3.  Gọi `OtpService.verifySltOtpStage`.
+  4.  SLT token được giữ nguyên cho các bước tiếp theo (đăng ký, reset mật khẩu).
+  5.  Ghi Audit Log.
+- **Response Body (Success - 200 OK)**: `MessageResDTO`
   ```json
   {
-    "otpToken": "jwt_string_representing_verified_otp_state"
+    "message": "Code verified successfully." // (Key i18n: Auth.Otp.VerifiedSuccessfully)
   }
   ```
 - **Response Body (Error)**:
-  - `422 Unprocessable Entity`: Nếu mã OTP không hợp lệ, hết hạn, hoặc không khớp với email/type.
-- **Rủi ro/Cải tiến**:
-  - `otpToken` nên chỉ được sử dụng một lần. Logic xóa `VerificationToken` sau khi sử dụng cần được đảm bảo.
+  - `400 Bad Request`: Nếu SLT token không có hoặc không hợp lệ.
+  - `422 Unprocessable Entity`: Nếu mã OTP không hợp lệ, hết hạn, hoặc không khớp.
+- **Lưu ý**:
+  - SLT token chứa context OTP được cập nhật khi mã xác minh thành công.
+  - Khi hoàn thành quy trình (đăng ký hoặc reset mật khẩu), SLT token sẽ bị xóa.
 
 ---
 
@@ -227,7 +221,7 @@ Module `@auth` chịu trách nhiệm cho tất cả các quy trình liên quan �
       - `TokenService.generateTokens`: Tạo `accessToken` (JWT) và `refreshTokenJti`.
       - Lưu thông tin session vào Redis (`session:details:<sessionId>`), bao gồm `userId`, `deviceId`, `currentRefreshTokenJti`, `currentAccessTokenJti`, `createdAt`, `lastActiveAt`, `ipAddress`, `userAgent`, `isDeviceTrusted`.
       - Thêm `sessionId` vào set `user:sessions:<userId>`.
-      - `TokenService.setTokenCookies`: Gửi `accessToken` trong body (theo `UserProfileResSchema`), `refreshToken` (chứa JTI) trong HTTPOnly cookie.
+      - `TokenService.setTokenCookies`: Gửi `accessToken` trong body (theo `UserProfileResSchema`), `refreshToken` (chứa JTI mới) trong HTTPOnly cookie.
       - `SessionManagementService.enforceSessionAndDeviceLimits`: Kiểm tra và thu hồi bớt session/thiết bị nếu vượt giới hạn.
       - Ghi Audit Log.
       - Trả về `UserProfileResSchema` chứa thông tin user và `currentDeviceId`.
@@ -615,7 +609,7 @@ Module `@auth` chịu trách nhiệm cho tất cả các quy trình liên quan �
 
 #### Lấy Danh sách Phiên Hoạt Động
 
-- **Endpoint**: `GET /auth/sessions`  
+- **Endpoint**: `GET /auth/sessions`
 - **Mục đích**: Lấy danh sách các phiên đang hoạt động của người dùng.
 - **Authorization**: Bearer Token.
 - **Query Params**: `GetActiveSessionsQueryDTO`

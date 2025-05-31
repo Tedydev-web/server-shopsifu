@@ -79,6 +79,7 @@ export type I18nTranslations = {
         "Auth.Device.LogoutSpecificSuccess": string;
         "Auth.Session.ReverifiedSuccessfully": string;
         "Auth.Session.SendReverificationOtpSuccess": string;
+        "Auth.Register.Success": string;
         "Error.Auth.Otp.Invalid": string;
         "Error.Auth.Otp.Expired": string;
         "Error.Auth.Otp.FailedToSend": string;
@@ -86,6 +87,8 @@ export type I18nTranslations = {
         "Error.Auth.Email.NotFound": string;
         "Error.Auth.Password.Invalid": string;
         "Error.Auth.Password.Mismatch": string;
+        "Error.Auth.Register.UsernameTaken": string;
+        "Error.Auth.Register.PhoneNumberTaken": string;
         "Error.Auth.Token.MissingAccessToken": string;
         "Error.Auth.Token.InvalidAccessToken": string;
         "Error.Auth.Token.ExpiredAccessToken": string;
