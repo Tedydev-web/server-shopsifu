@@ -3,13 +3,13 @@ import { Reflector } from '@nestjs/core'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { GqlExecutionContext } from '@nestjs/graphql' // Nếu dùng GraphQL
+import { GqlExecutionContext } from '@nestjs/graphql'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { HttpStatus } from '@nestjs/common'
-import { AUTH_TYPE_KEY } from 'src/routes/auth/decorators/auth.decorator' // Chỉ import AUTH_TYPE_KEY
-import { AuthType } from 'src/shared/constants/auth.constant' // Import AuthType từ nguồn
-import { AuthTypeDecoratorPayload } from 'src/routes/auth/decorators/auth.decorator' // Import kiểu payload
+import { AUTH_TYPE_KEY } from 'src/routes/auth/decorators/auth.decorator'
+import { AuthType } from 'src/shared/constants/auth.constant'
+import { AuthTypeDecoratorPayload } from 'src/routes/auth/decorators/auth.decorator'
 
 export const SKIP_PASSWORD_REVERIFICATION_CHECK = 'skipPasswordReverificationCheck'
 export const AllowWithoutPasswordReverification = () => SetMetadata(SKIP_PASSWORD_REVERIFICATION_CHECK, true)
@@ -34,7 +34,6 @@ export class PasswordReverificationGuard implements CanActivate {
       return true
     }
 
-    // Kiểm tra nếu endpoint là public thông qua @IsPublic() (sử dụng AUTH_TYPE_KEY)
     const authTypePayload = this.reflector.getAllAndOverride<AuthTypeDecoratorPayload | undefined>(AUTH_TYPE_KEY, [
       context.getHandler(),
       context.getClass()
@@ -49,11 +48,9 @@ export class PasswordReverificationGuard implements CanActivate {
     if (context.getType() === 'http') {
       request = context.switchToHttp().getRequest()
     } else if (context.getType() === 'rpc') {
-      // Xử lý cho RPC context nếu cần
       this.logger.warn('PasswordReverificationGuard not implemented for RPC context type.')
-      return true // Hoặc false tùy theo yêu cầu bảo mật
+      return true
     } else if (context.getType<any>() === 'graphql') {
-      // Cần ép kiểu nếu dùng GqlExecutionContext
       const gqlCtx = GqlExecutionContext.create(context)
       request = gqlCtx.getContext().req
       if (!request) {
@@ -62,7 +59,7 @@ export class PasswordReverificationGuard implements CanActivate {
       }
     } else {
       this.logger.warn(`PasswordReverificationGuard encountered an unknown context type: ${context.getType()}`)
-      return false // Chặn nếu không biết context
+      return false
     }
 
     const activeUser = request.user as AccessTokenPayload | undefined
@@ -71,8 +68,7 @@ export class PasswordReverificationGuard implements CanActivate {
       this.logger.warn(
         'PasswordReverificationGuard: No active user or session ID found in request. Access will be denied unless skipped.'
       )
-      // Điều này không nên xảy ra nếu AccessTokenGuard chạy trước nó
-      // Ném lỗi rõ ràng hơn, yêu cầu đăng nhập lại
+
       throw new ApiException(HttpStatus.UNAUTHORIZED, 'Unauthorized', 'Error.Auth.Access.Unauthorized')
     }
 
@@ -88,7 +84,7 @@ export class PasswordReverificationGuard implements CanActivate {
         lang: currentLang,
         defaultValue: 'Your session requires password reverification to continue. Please re-enter your password.'
       })
-      // Dùng một mã lỗi cụ thể để client có thể xử lý (ví dụ: redirect đến trang reverify)
+
       throw new ApiException(HttpStatus.FORBIDDEN, 'PasswordReverificationRequired', message, [
         {
           code: 'PASSWORD_REVERIFICATION_REQUIRED',

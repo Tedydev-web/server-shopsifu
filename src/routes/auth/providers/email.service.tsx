@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common'
 import { Resend } from 'resend'
 import envConfig from 'src/shared/config'
 import * as React from 'react'
-import OTPEmail from '../../../../emails/otp' // Updated import path
-import SecurityAlertEmail from '../../../../emails/security-alert' // Added import
+import OTPEmail from '../../../../emails/otp'
+import SecurityAlertEmail from '../../../../emails/security-alert'
 import { render } from '@react-email/render'
 
 interface SecurityAlertEmailPayload {
@@ -61,7 +61,7 @@ export class EmailService {
 
     try {
       const data = await this.resend.emails.send({
-        from: 'Shopsifu Security <security@shopsifu.live>', // Using a different sender for security alerts
+        from: 'Shopsifu Security <security@shopsifu.live>',
         to: [payload.to],
         subject: payload.alertSubject,
         html: emailHtml
@@ -72,8 +72,6 @@ export class EmailService {
       const errorMessage = error instanceof Error ? error.message : String(error)
       const errorStack = error instanceof Error ? error.stack : undefined
       this.logger.error(`Failed to send security alert email to ${payload.to}: ${errorMessage}`, errorStack)
-      // Do not re-throw here to prevent blocking the main flow,
-      // but ensure the error is logged comprehensively.
     }
   }
 }

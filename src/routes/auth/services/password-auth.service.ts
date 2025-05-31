@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { ResetPasswordBodyType } from 'src/routes/auth/auth.model'
 import { TypeOfVerificationCode } from '../constants/auth.constants'
@@ -13,49 +13,87 @@ import envConfig from 'src/shared/config'
 export class PasswordAuthService extends BaseAuthService {
   private readonly logger = new Logger(PasswordAuthService.name)
 
-  async resetPassword(body: ResetPasswordBodyType & { userAgent?: string; ip?: string }) {
+  async resetPassword(body: ResetPasswordBodyType & { userAgent?: string; ip?: string; sltCookieValue?: string }) {
     const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
       action: 'PASSWORD_RESET_ATTEMPT',
       userEmail: body.email,
       ipAddress: body.ip,
       userAgent: body.userAgent,
       status: AuditLogStatus.FAILURE,
-      details: { email: body.email, type: TypeOfVerificationCode.RESET_PASSWORD } as Prisma.JsonObject
+      details: {
+        email: body.email,
+        type: TypeOfVerificationCode.RESET_PASSWORD,
+        sltCookieProvided: !!body.sltCookieValue
+      } as Prisma.JsonObject
     }
 
-    try {
-      const verificationPayload = await this.otpService.validateVerificationToken(
-        body.otpToken,
-        TypeOfVerificationCode.RESET_PASSWORD,
-        body.email
-      )
+    if (!body.sltCookieValue) {
+      auditLogEntry.errorMessage = 'SLT cookie is missing for password reset.'
+      auditLogEntry.details.reason = 'MISSING_SLT_COOKIE_RESET_PASSWORD'
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw new ApiException(HttpStatus.BAD_REQUEST, 'SltTokenMissing', 'Error.Auth.Session.InvalidLogin')
+    }
 
-      if (!verificationPayload.userId) {
-        auditLogEntry.errorMessage = 'User ID missing in OTP token payload for password reset.'
-        auditLogEntry.details.reason = 'MISSING_USER_ID_IN_OTP_TOKEN'
-        throw InvalidOTPTokenException
+    let sltJtiForFinalizeOnError: string | undefined
+
+    try {
+      const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
+        body.sltCookieValue,
+        body.ip!,
+        body.userAgent!,
+        TypeOfVerificationCode.RESET_PASSWORD
+      )
+      sltJtiForFinalizeOnError = sltContext.sltJti
+      auditLogEntry.details.sltJti = sltContext.sltJti
+      auditLogEntry.details.sltPurpose = sltContext.purpose
+      auditLogEntry.userEmail = sltContext.email
+
+      if (body.email && sltContext.email !== body.email) {
+        auditLogEntry.errorMessage = 'Email mismatch between SLT context and reset password body.'
+        auditLogEntry.details.reason = 'EMAIL_MISMATCH_SLT_RESET_PASSWORD'
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Email.Mismatch')
       }
 
-      const user = await this.sharedUserRepository.findUniqueWithRole({ id: verificationPayload.userId })
+      if (
+        !sltContext.metadata?.otpVerified ||
+        sltContext.metadata?.stageVerified !== TypeOfVerificationCode.RESET_PASSWORD
+      ) {
+        auditLogEntry.errorMessage = 'OTP not verified for password reset via SLT context.'
+        auditLogEntry.details.reason = 'SLT_OTP_NOT_VERIFIED_FOR_RESET_PASSWORD'
+        auditLogEntry.details.sltMetadata = sltContext.metadata as Prisma.JsonObject | undefined
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'OtpVerificationRequired', 'Error.Auth.Otp.VerificationRequired')
+      }
+      auditLogEntry.details.sltOtpStageVerified = true
+
+      if (!sltContext.userId) {
+        auditLogEntry.errorMessage = 'User ID missing in SLT context payload for password reset.'
+        auditLogEntry.details.reason = 'MISSING_USER_ID_IN_SLT_CONTEXT'
+        throw new InvalidOTPTokenException()
+      }
+      auditLogEntry.userId = sltContext.userId
+
+      const user = await this.userRepository.findUniqueWithDetails({ id: sltContext.userId })
       if (!user) {
-        auditLogEntry.errorMessage = `User with ID ${verificationPayload.userId} not found during password reset.`
-        auditLogEntry.details.reason = 'USER_NOT_FOUND'
-        throw EmailNotFoundException
+        auditLogEntry.errorMessage = `User with ID ${sltContext.userId} not found during password reset (from SLT).`
+        auditLogEntry.details.reason = 'USER_NOT_FOUND_FROM_SLT'
+        throw new EmailNotFoundException()
       }
 
       const hashedPassword = await this.hashingService.hash(body.newPassword)
 
       await this.prismaService.$transaction(async (tx) => {
-        await this.authRepository.updateUser({ id: user.id }, { password: hashedPassword }, tx)
-
-        const now = Math.floor(Date.now() / 1000)
-        await this.otpService.blacklistVerificationToken(verificationPayload.jti, now, verificationPayload.exp, tx)
-
+        await this.userRepository.updateUser(
+          { id: user.id },
+          { password: hashedPassword, passwordChangedAt: new Date() },
+          tx
+        )
         await this.tokenService.invalidateAllUserSessions(user.id, 'PASSWORD_RESET_SUCCESS')
       })
 
+      await this.otpService.finalizeSlt(sltContext.sltJti)
+      auditLogEntry.details.finalizedSltJtiOnSuccess = sltContext.sltJti
+
       auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.userId = user.id
       auditLogEntry.action = 'PASSWORD_RESET_SUCCESS'
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
@@ -102,7 +140,18 @@ export class PasswordAuthService extends BaseAuthService {
         auditLogEntry.details.originalError = error.details as unknown as Prisma.JsonObject[]
       }
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      this.logger.error(`Password reset failed for ${body.email}: ${error.message}`, error.stack)
+      this.logger.error(
+        `Password reset failed for ${auditLogEntry.userEmail || 'unknown user'}: ${error.message}`,
+        error.stack
+      )
+
+      if (sltJtiForFinalizeOnError && !auditLogEntry.details.finalizedSltJtiOnSuccess) {
+        if (error instanceof ApiException && error.getStatus() === (HttpStatus.BAD_REQUEST as number)) {
+          await this.otpService.finalizeSlt(sltJtiForFinalizeOnError)
+          auditLogEntry.details.finalizedSltJtiOnError = sltJtiForFinalizeOnError
+          this.logger.warn(`SLT ${sltJtiForFinalizeOnError} finalized due to error: ${error.message}`)
+        }
+      }
       throw error
     }
   }
@@ -117,11 +166,11 @@ export class PasswordAuthService extends BaseAuthService {
       details: { userId } as Prisma.JsonObject
     }
     try {
-      const user = await this.sharedUserRepository.findUniqueWithRole({ id: userId })
+      const user = await this.userRepository.findUniqueWithDetails({ id: userId })
       if (!user) {
         auditLogEntry.errorMessage = 'User not found.'
         auditLogEntry.details.reason = 'USER_NOT_FOUND'
-        throw EmailNotFoundException
+        throw new EmailNotFoundException()
       }
       auditLogEntry.userEmail = user.email
 
@@ -129,11 +178,14 @@ export class PasswordAuthService extends BaseAuthService {
       if (!isPasswordValid) {
         auditLogEntry.errorMessage = 'Invalid current password.'
         auditLogEntry.details.reason = 'INVALID_CURRENT_PASSWORD'
-        throw InvalidPasswordException
+        throw new InvalidPasswordException()
       }
 
       const newHashedPassword = await this.hashingService.hash(newPassword)
-      await this.authRepository.updateUser({ id: userId }, { password: newHashedPassword })
+      await this.userRepository.updateUser(
+        { id: userId },
+        { password: newHashedPassword, passwordChangedAt: new Date() }
+      )
 
       await this.tokenService.invalidateAllUserSessions(userId, 'PASSWORD_CHANGE_SUCCESS')
       auditLogEntry.details.allSessionsInvalidated = true

@@ -13,7 +13,6 @@ const BaseDeviceSchema = z.object({
   browser: z.string().nullable().describe('Browser name')
 })
 
-// Schema for a session when nested within a device
 export const NestedSessionSchema = z.object({
   sessionId: z.string().uuid(),
   ipAddress: z.string().ip().nullable().describe('IP address of this session'),
@@ -23,9 +22,7 @@ export const NestedSessionSchema = z.object({
   isCurrentSession: z.boolean().describe('Is this the session of the current request?')
 })
 
-// Schema for a device, including its active sessions
 export const DeviceWithSessionsSchema = BaseDeviceSchema.extend({
-  // Fields from BaseDeviceSchema are inherited
   firstSeenAt: z.string().datetime().describe('Timestamp when this device was first recorded for the user'),
   lastSeenAt: z.string().datetime().describe('Timestamp when this device was last active overall for the user'),
   isTrusted: z.boolean().describe('Whether this device is marked as trusted by the user'),
@@ -33,12 +30,10 @@ export const DeviceWithSessionsSchema = BaseDeviceSchema.extend({
   sessions: z.array(NestedSessionSchema).describe('List of active sessions on this device')
 })
 
-// DTO for the new response structure of GET /sessions
 export const GetSessionsGroupedByDeviceResSchema = createPaginatedResponseSchema(DeviceWithSessionsSchema)
 
 export class GetSessionsGroupedByDeviceResDTO extends createZodDto(GetSessionsGroupedByDeviceResSchema) {}
 
-// Old Schemas - to be reviewed/removed later if GET /devices is removed
 const ActiveSessionDeviceSchema = BaseDeviceSchema.extend({
   isCurrentDevice: z.boolean().describe('Is this the device making the current request?')
 })
@@ -56,16 +51,13 @@ export const ActiveSessionSchema = z.object({
 export const GetActiveSessionsResSchema = createPaginatedResponseSchema(ActiveSessionSchema)
 
 export class GetActiveSessionsResDTO extends createZodDto(GetActiveSessionsResSchema) {}
-// End of Old Schemas for GetActiveSessions
 
-// Query DTO for the new GET /sessions grouped by device
 export const GetSessionsByDeviceQuerySchema = BasePaginationQuerySchema.extend({
   sortBy: z
     .enum(['lastSeenAt', 'firstSeenAt', 'name'])
     .default('lastSeenAt')
     .optional()
     .describe('Field to sort devices by. lastSeenAt recommended for chronological view of recent devices.')
-  // sortOrder is inherited from BasePaginationQuerySchema (asc, desc)
 })
 
 export class GetSessionsByDeviceQueryDTO extends createZodDto(GetSessionsByDeviceQuerySchema) {}
@@ -89,7 +81,6 @@ export const RevokeSessionParamsSchema = z.object({
 
 export class RevokeSessionParamsDTO extends createZodDto(RevokeSessionParamsSchema) {}
 
-// DeviceInfoSchema for the old GET /devices endpoint - to be removed
 export const DeviceInfoSchema = BaseDeviceSchema.extend({
   ip: z.string().optional().nullable(),
   location: z.string().optional().nullable(),
@@ -98,11 +89,6 @@ export const DeviceInfoSchema = BaseDeviceSchema.extend({
   isTrusted: z.boolean(),
   isCurrentDevice: z.boolean().optional()
 })
-
-// export const GetDevicesResSchema = createPaginatedResponseSchema(DeviceInfoSchema)
-
-// export class GetDevicesResDTO extends createZodDto(GetDevicesResSchema) {}
-// End of DeviceInfoSchema for GET /devices
 
 export const DeviceIdParamsSchema = z.object({
   deviceId: z.coerce.number().int().positive()
@@ -137,7 +123,7 @@ export const RevokeSessionsBodySchema = z
     },
     {
       message: 'Exactly one of sessionIds, deviceIds, or revokeAll must be provided and be valid.',
-      path: [] // General error for the whole object
+      path: []
     }
   )
   .superRefine((data, ctx) => {
@@ -159,6 +145,3 @@ export const RevokeSessionsResSchema = MessageResSchema.extend({
 })
 
 export class RevokeSessionsResDTO extends createZodDto(RevokeSessionsResSchema) {}
-
-// GET DEVICES (Removed - Functionality merged into GetActiveSessions)
-// ... existing code ...

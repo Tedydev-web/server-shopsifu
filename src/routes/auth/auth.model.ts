@@ -1,35 +1,64 @@
 import { TwoFactorMethodType, TypeOfVerificationCode } from './constants/auth.constants'
+import { UserStatus } from '@prisma/client'
 import { UserSchema } from 'src/shared/models/shared-user.model'
 import { UserProfileSchema } from 'src/shared/models/user-profile.model'
+import { MessageResSchema } from 'src/shared/models/response.model'
 import { z } from 'zod'
-import { PasswordsDoNotMatchException } from './auth.error'
 
-export const RegisterBodySchema = UserSchema.pick({
-  email: true,
-  password: true
-})
-  .extend({
-    confirmPassword: z.string().min(6).max(100),
-    otpToken: z.string()
+export const RegisterBodySchema = z
+  .object({
+    email: z.string().email('validation.email.invalid').max(100, 'validation.string.max.100'),
+    password: z.string().min(8, 'validation.password.min.8').max(100, 'validation.string.max.100'),
+    confirmPassword: z.string().min(8, 'validation.password.min.8').max(100, 'validation.string.max.100'),
+    firstName: z.string().min(1, 'validation.string.min.1').max(50, 'validation.string.max.50'),
+    lastName: z.string().min(1, 'validation.string.min.1').max(50, 'validation.string.max.50'),
+    username: z
+      .string()
+      .min(3, 'validation.username.min.3')
+      .max(30, 'validation.username.max.30')
+      .regex(/^[a-zA-Z0-9_.]+$/, 'validation.username.invalidFormat')
+      .optional()
+      .nullable(),
+    phoneNumber: z
+      .string()
+      .min(10, 'validation.phoneNumber.min.10')
+      .max(15, 'validation.phoneNumber.max.15')
+      .optional()
+      .nullable()
   })
-  .strict()
-  .superRefine(({ confirmPassword, password }, ctx) => {
-    if (confirmPassword !== password) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: PasswordsDoNotMatchException.message,
-        path: ['confirmPassword']
-      })
-    }
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'error.Auth.Password.PasswordsDoNotMatch',
+    path: ['confirmPassword']
   })
 
-export const RegisterResSchema = UserSchema.omit({
-  password: true,
-  twoFactorSecret: true
-}).extend({
-  userProfile: UserProfileSchema.pick({ firstName: true, lastName: true, avatar: true, username: true })
-    .nullable()
-    .optional()
+export const RegisterResSchema = z.object({
+  id: z.number(),
+  email: z.string().email(),
+  googleId: z.string().nullable().optional(),
+  status: z.nativeEnum(UserStatus),
+  roleId: z.number(),
+  roleName: z.string().optional(),
+  twoFactorEnabled: z.boolean(),
+  twoFactorMethod: z.nativeEnum(TwoFactorMethodType).nullable().optional(),
+  twoFactorVerifiedAt: z.date().nullable().optional(),
+  isEmailVerified: z.boolean(),
+  pendingEmail: z.string().email().nullable().optional(),
+  emailVerificationToken: z.string().nullable().optional(),
+  emailVerificationTokenExpiresAt: z.date().nullable().optional(),
+  emailVerificationSentAt: z.date().nullable().optional(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  deletedAt: z.date().nullable().optional(),
+  createdById: z.number().nullable().optional(),
+  updatedById: z.number().nullable().optional(),
+  deletedById: z.number().nullable().optional(),
+  userProfile: UserProfileSchema.pick({
+    firstName: true,
+    lastName: true,
+    avatar: true,
+    username: true,
+    phoneNumber: true
+  }).nullable()
 })
 
 export const VerificationCodeSchema = z.object({
@@ -44,7 +73,7 @@ export const VerificationCodeSchema = z.object({
 export const SendOTPBodySchema = VerificationCodeSchema.pick({
   email: true,
   type: true
-}).strict()
+})
 
 export const LoginBodySchema = UserSchema.pick({
   email: true,
@@ -72,15 +101,11 @@ export const LoginSessionResSchema = z.object({
 
 export const VerifyCodeBodySchema = z
   .object({
-    email: z.string().email(),
-    code: z.string().length(6),
-    type: z.nativeEnum(TypeOfVerificationCode)
+    code: z.string().length(6, 'validation.otp.length')
   })
   .strict()
 
-export const VerifyCodeResSchema = z.object({
-  otpToken: z.string()
-})
+export const VerifyCodeResSchema = MessageResSchema
 
 export const RefreshTokenBodySchema = z.object({}).strict()
 
@@ -136,57 +161,37 @@ export const GetAuthorizationUrlResSchema = z.object({
   url: z.string().url()
 })
 
-export const ResetPasswordBodySchema = z
-  .object({
-    email: z.string().email(),
-    otpToken: z.string(),
-    newPassword: z.string().min(6).max(100),
-    confirmNewPassword: z.string().min(6).max(100)
-  })
-  .strict()
-  .superRefine(({ confirmNewPassword, newPassword }, ctx) => {
-    if (confirmNewPassword !== newPassword) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: PasswordsDoNotMatchException.message,
-        path: ['confirmNewPassword']
-      })
-    }
-  })
+export const ResetPasswordBodySchema = z.object({
+  email: z.string().email('validation.email.invalid').max(100, 'validation.string.max.100'),
+  newPassword: z.string().min(8, 'validation.password.min.8').max(100, 'validation.string.max.100')
+})
 
 export const DisableTwoFactorBodySchema = z
   .object({
-    otpToken: z.string().optional(),
-    totpCode: z.string().length(6).optional()
+    password: z.string().min(8, 'validation.password.min.8').optional(),
+    code: z.string().length(6, 'validation.otp.length').optional(),
+    recoveryCode: z.string().optional()
   })
-  .strict()
-  .superRefine((data, ctx) => {
-    if (!data.otpToken && !data.totpCode) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Either otpToken or totpCode must be provided.',
-        path: ['otpToken']
-      })
+  .refine(
+    (data) => {
+      const providedMethods = [data.password, data.code, data.recoveryCode].filter(Boolean).length
+      return providedMethods === 1
+    },
+    {
+      message: 'validation.2fa.disable.oneMethodRequired',
+
+      path: ['_error']
     }
-    if (data.otpToken && data.totpCode) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Provide either otpToken or totpCode, not both.',
-        path: ['otpToken']
-      })
-    }
-  })
+  )
 
 export const TwoFactorSetupResSchema = z.object({
   secret: z.string(),
-  uri: z.string(),
-  setupToken: z.string()
+  uri: z.string()
 })
 
 export const TwoFactorConfirmSetupBodySchema = z
   .object({
-    setupToken: z.string(),
-    totpCode: z.string().length(6)
+    totpCode: z.string().length(6, 'validation.otp.length')
   })
   .strict()
 
@@ -224,6 +229,8 @@ export const UserProfileResSchema = UserSchema.pick({ email: true, id: true }).e
   role: z.string(),
   isDeviceTrustedInSession: z.boolean(),
   userProfile: UserProfileSchema.pick({
+    firstName: true,
+    lastName: true,
     avatar: true,
     username: true
   })
@@ -258,7 +265,8 @@ export type UserProfileResType = z.infer<typeof UserProfileResSchema>
 export type AccessTokenResType = z.infer<typeof AccessTokenResSchema>
 
 export const RefreshTokenSuccessResSchema = z.object({
-  message: z.string()
+  message: z.string(),
+  accessToken: z.string()
 })
 
 export const TrustDeviceBodySchema = z.object({}).strict()
@@ -284,3 +292,8 @@ export const LogoutFromDeviceBodySchema = z
 
 export type UntrustDeviceBodyType = z.infer<typeof UntrustDeviceBodySchema>
 export type LogoutFromDeviceBodyType = z.infer<typeof LogoutFromDeviceBodySchema>
+
+export const ChangePasswordBodySchema = z.object({
+  currentPassword: z.string().min(1, 'validation.password.required'),
+  newPassword: z.string().min(8, 'validation.password.min.8').max(100, 'validation.string.max.100')
+})

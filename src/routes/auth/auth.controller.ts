@@ -14,7 +14,8 @@ import {
   Patch,
   Delete,
   UseGuards,
-  UsePipes
+  UsePipes,
+  HttpException
 } from '@nestjs/common'
 import { Response, Request } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
@@ -37,12 +38,11 @@ import {
   RememberMeBodyDTO,
   RefreshTokenSuccessResDTO,
   UserProfileResDTO,
-  ReverifyPasswordBodyType
+  ReverifyPasswordBodyType,
+  ChangePasswordBodyDTO
 } from 'src/routes/auth/auth.dto'
 import {
-  // GetActiveSessionsResDTO, // Keep for now if other parts of the app use it, otherwise remove
   RevokeSessionParamsDTO,
-  // GetDevicesResDTO, // Removed as the endpoint is being phased out
   DeviceIdParamsDTO,
   UpdateDeviceNameBodyDTO,
   TrustDeviceBodyDTO as SessionTrustDeviceBodyDTO,
@@ -54,7 +54,6 @@ import {
 } from './dtos/session-management.dto'
 import { UseZodSchemas, hasProperty } from 'src/shared/decorators/use-zod-schema.decorator'
 
-import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleService } from './google.service'
 import envConfig from 'src/shared/config'
 import { ActiveUser } from './decorators/active-user.decorator'
@@ -73,7 +72,7 @@ import { AccessTokenGuard } from './guards/access-token.guard'
 import { RolesGuard } from './guards/roles.guard'
 import { z } from 'zod'
 import { Auth } from './decorators/auth.decorator'
-import { OtpService } from './providers/otp.service'
+import { OtpService, SltContextData } from './providers/otp.service'
 import { TypeOfVerificationCode } from './constants/auth.constants'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { JwtService } from '@nestjs/jwt'
@@ -82,19 +81,36 @@ import { ApiException } from 'src/shared/exceptions/api.exception'
 import { Buffer } from 'buffer'
 import { RevokeSessionsResDTO } from './dtos/session-management.dto'
 import { AllowWithoutPasswordReverification } from './guards/password-reverification.guard'
-import { SharedUserRepository } from './repositories/shared-user.repo'
+import { UserRepository } from './repositories/shared-user.repo'
 import { LinkGoogleAccountReqDto, LinkGoogleAccountReqSchema } from './dtos/link-google-account.dto'
 import { UserProfileResSchema, LoginSessionResSchema, GoogleAuthStateType } from './auth.model'
 import { ZodValidationPipe } from 'nestjs-zod'
 import { PendingLinkDetailsResSchema, PendingLinkDetailsResDto } from './dtos/pending-link-details.dto'
 import { DeviceService } from './providers/device.service'
+import { ms } from 'ms'
+import { TwoFactorAuthService } from './services/two-factor-auth.service'
+import { AuditLogService } from '../audit-log/audit-log.service'
+import {
+  SltCookieMissingException,
+  SltContextFinalizedException,
+  SltContextMaxAttemptsReachedException,
+  InvalidOTPException,
+  InvalidTOTPException,
+  InvalidRecoveryCodeException,
+  MaxVerificationAttemptsExceededException,
+  InvalidRefreshTokenException,
+  SltContextInvalidPurposeException,
+  DeviceMismatchException
+} from './auth.error'
+import { Prisma } from '@prisma/client'
+import { AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
+import { PasswordAuthService } from './services/password-auth.service'
 
-// Định nghĩa một type cục bộ cho cấu hình cookie PLT, chỉ chứa các trường cần thiết
 interface PltCookieConfigType {
   name: string
   path?: string
   domain?: string
-  maxAge: number // Bắt buộc khi set cookie
+  maxAge: number
   httpOnly?: boolean
   secure?: boolean
   sameSite?: 'lax' | 'strict' | 'none' | boolean
@@ -105,7 +121,6 @@ export class AuthController {
   private readonly logger = new Logger(AuthController.name)
 
   constructor(
-    private readonly authService: AuthService,
     private readonly googleService: GoogleService,
     private readonly tokenService: TokenService,
     private readonly i18nService: I18nService,
@@ -114,40 +129,112 @@ export class AuthController {
     private readonly redisService: RedisService,
     private readonly jwtService: JwtService,
     private readonly authenticationService: AuthenticationService,
-    private readonly sharedUserRepository: SharedUserRepository,
-    private readonly deviceService: DeviceService
+    private readonly userRepository: UserRepository,
+    private readonly deviceService: DeviceService,
+    private readonly twoFactorAuthService: TwoFactorAuthService,
+    private readonly auditLogService: AuditLogService,
+    private readonly passwordAuthService: PasswordAuthService
   ) {}
 
   @Post('register')
   @IsPublic()
   @ZodSerializerDto(RegisterResDTO)
-  // @Throttle({ short: { limit: 5, ttl: 10000 }, long: { limit: 20, ttl: 60000 } })
-  register(@Body() body: RegisterBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
-    return this.authService.register({
-      ...body,
-      userAgent,
-      ip
-    })
+  register(@Body() body: RegisterBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string, @Req() req: Request) {
+    const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+    return this.authenticationService.register({ ...body, userAgent, ip, sltCookieValue })
   }
 
   @Post('send-otp')
   @IsPublic()
   @ZodSerializerDto(MessageResDTO)
-  // @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })
-  sendOTP(@Body() body: SendOTPBodyDTO) {
-    return this.authService.sendOTP(body)
+  async sendOTP(
+    @Body() body: SendOTPBodyDTO,
+    @Res({ passthrough: true }) res: Response,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string
+  ) {
+    const { email, type } = body
+    const userIdForCooldown: number | undefined = undefined
+
+    const user = await this.userRepository.findUnique({ email })
+
+    if (type === TypeOfVerificationCode.REGISTER && user) {
+      throw new ApiException(HttpStatus.CONFLICT, 'EmailInUse', 'Error.Auth.Register.EmailInUse')
+    }
+    if (type === TypeOfVerificationCode.RESET_PASSWORD && !user) {
+      throw new ApiException(HttpStatus.NOT_FOUND, 'EmailNotFound', 'Error.Auth.Email.NotFound')
+    }
+
+    if (
+      type === TypeOfVerificationCode.REGISTER ||
+      type === TypeOfVerificationCode.RESET_PASSWORD ||
+      type === TypeOfVerificationCode.VERIFY_NEW_EMAIL
+    ) {
+      const tempDeviceId = 0
+
+      const sltInitiationUserId = user?.id
+
+      if (type === TypeOfVerificationCode.VERIFY_NEW_EMAIL && !sltInitiationUserId) {
+        this.logger.error('Cannot send VERIFY_NEW_EMAIL OTP without a valid user context for SLT.')
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'UserContextRequired', 'Error.Auth.User.NotFound')
+      }
+
+      const sltJwt = await this.otpService.initiateOtpWithSltCookie({
+        email: email,
+        userId: sltInitiationUserId || 0,
+        deviceId: tempDeviceId,
+        ipAddress: ip,
+        userAgent: userAgent,
+        purpose: type
+      })
+
+      const sltCookieConfig = envConfig.cookie.sltToken
+      if (sltCookieConfig && sltJwt) {
+        res.cookie(sltCookieConfig.name, sltJwt, {
+          path: sltCookieConfig.path,
+          domain: sltCookieConfig.domain,
+          maxAge: sltCookieConfig.maxAge,
+          httpOnly: sltCookieConfig.httpOnly,
+          secure: sltCookieConfig.secure,
+          sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+        })
+        this.logger.debug(`[sendOTP - ${type}] SLT token cookie (${sltCookieConfig.name}) set.`)
+      } else {
+        this.logger.warn(`[sendOTP - ${type}] SLT cookie configuration or SLT JWT missing. Cookie not set.`)
+      }
+    } else {
+      await this.otpService.sendOTP(email, type, user?.id)
+    }
+
+    const message = await this.i18nService.translate('Auth.Otp.SentSuccessfully', {
+      lang: I18nContext.current()?.lang
+    })
+    return { message }
   }
 
   @Post('verify-code')
   @IsPublic()
-  @ZodSerializerDto(VerifyCodeResDTO)
-  // @Throttle({ short: { limit: 5, ttl: 10000 }, long: { limit: 30, ttl: 60000 } })
-  verifyCode(@Body() body: VerifyCodeBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
-    return this.authService.verifyCode({
-      ...body,
-      userAgent,
-      ip
+  @ZodSerializerDto(MessageResDTO)
+  async verifyCode(
+    @Body() body: VerifyCodeBodyDTO,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Req() req: Request
+  ) {
+    const sltCookieValue = req.cookies?.[envConfig.cookie.sltToken.name]
+    if (!sltCookieValue) {
+      this.logger.warn(
+        `[AuthController.verifyCode] SLT cookie (${envConfig.cookie.sltToken.name}) not found for verifyCode.`
+      )
+      throw new SltCookieMissingException()
+    }
+
+    await this.otpService.verifySltOtpStage(sltCookieValue, body.code, ip, userAgent)
+
+    const message = await this.i18nService.translate('Auth.Otp.VerifiedSuccessfully', {
+      lang: I18nContext.current()?.lang
     })
+    return { message }
   }
 
   @Post('login')
@@ -157,51 +244,65 @@ export class AuthController {
     { schema: UserProfileResSchema, predicate: hasProperty('id') },
     { schema: LoginSessionResSchema, predicate: hasProperty('message') }
   )
-  // @Throttle({ short: { limit: 5, ttl: 60000 }, medium: { limit: 20, ttl: 300000 } })
   login(
     @Body() body: LoginBodyDTO,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
     @Res({ passthrough: true }) res: Response
   ) {
-    return this.authService.login(
-      {
-        ...body,
-        userAgent,
-        ip
-      },
-      res
-    )
+    return this.authenticationService.login({ ...body, userAgent, ip }, res)
   }
 
   @Post('refresh-token')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(RefreshTokenSuccessResDTO)
-  // @Throttle({ medium: { limit: 10, ttl: 60000 } })
-  refreshToken(
+  async refreshToken(
     @Body() _: RefreshTokenBodyDTO,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
-  ) {
-    return this.authService.refreshToken(
-      {
-        userAgent,
-        ip
-      },
-      req,
-      res
+  ): Promise<RefreshTokenSuccessResDTO> {
+    this.logger.debug(`[AuthController] Refresh token request from IP: ${ip}, User-Agent: ${userAgent}`)
+
+    const refreshTokenFromCookie = this.tokenService.extractRefreshTokenFromRequest(req)
+
+    if (!refreshTokenFromCookie) {
+      this.logger.warn('[AuthController refreshToken] Refresh token not found in request cookie.')
+
+      throw new InvalidRefreshTokenException()
+    }
+
+    const result = await this.tokenService.refreshTokenSilently(refreshTokenFromCookie, userAgent, ip)
+
+    if (!result) {
+      this.logger.warn(
+        `[AuthController refreshToken] refreshTokenSilently returned null for RT JTI: ${refreshTokenFromCookie}. This should ideally be handled by an exception within the service.`
+      )
+      throw new InvalidRefreshTokenException()
+    }
+
+    this.tokenService.setTokenCookies(
+      res,
+      result.accessToken,
+      result.refreshToken || refreshTokenFromCookie,
+      result.maxAgeForRefreshTokenCookie
     )
+
+    const message = await this.i18nService.translate('Auth.Token.Refreshed', {
+      lang: I18nContext.current()?.lang
+    })
+
+    return { message, accessToken: result.accessToken }
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(AccessTokenGuard)
   @ZodSerializerDto(MessageResDTO)
-  // @Throttle({ short: { limit: 5, ttl: 10000 } })
   logout(@Body() _: LogoutBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    return this.authService.logout(req, res)
+    return this.authenticationService.logout(req, res)
   }
 
   @Get('google-link')
@@ -212,8 +313,8 @@ export class AuthController {
     @UserAgent() userAgent: string,
     @Ip() ip: string,
     @Res({ passthrough: true }) res: Response,
-    @Query('flow') flow?: string, // 'profile_link'
-    @ActiveUser() activeUser?: AccessTokenPayload // Optional active user
+    @Query('flow') flow?: string,
+    @ActiveUser() activeUser?: AccessTokenPayload
   ) {
     let stateObjectExtra: Record<string, any> = {}
     if (flow === 'profile_link' && activeUser?.userId) {
@@ -227,7 +328,7 @@ export class AuthController {
     const { url, nonce } = this.googleService.getAuthorizationUrl({
       userAgent,
       ip,
-      ...stateObjectExtra // Truyền thêm thông tin vào state
+      ...stateObjectExtra
     })
 
     const nonceCookieConfig = envConfig.cookie.nonce
@@ -276,16 +377,15 @@ export class AuthController {
       try {
         const decodedStateObj = JSON.parse(
           Buffer.from(stateFromGoogle, 'base64').toString('utf-8')
-        ) as GoogleAuthStateType & { nonce: string } // Ép kiểu đầy đủ
+        ) as GoogleAuthStateType & { nonce: string }
         nonceFromStateParam = decodedStateObj?.nonce
-        // Ưu tiên userAgent, ip từ state nếu có
+
         userAgent = decodedStateObj?.userAgent || userAgent
         ip = decodedStateObj?.ip || ip
         if (typeof decodedStateObj?.rememberMe === 'boolean') {
           rememberMeFromState = decodedStateObj.rememberMe
         }
 
-        // Kiểm tra Profile Linking Flow
         if (decodedStateObj?.flow === 'profile_link' && typeof decodedStateObj?.userIdIfLinking === 'number') {
           this.logger.log(
             `[GoogleCallback] Detected profile_link flow from state for user ID: ${decodedStateObj.userIdIfLinking}`
@@ -330,7 +430,7 @@ export class AuthController {
               `${envConfig.FRONTEND_URL}/profile/settings?googleLinkStatus=error&errorCode=${errorCode}&message=${encodeURIComponent(linkError.message)}`
             )
           }
-        } // Kết thúc xử lý profile_link flow
+        }
       } catch (e) {
         this.logger.error('[GoogleCallback] Failed to parse state parameter from Google.', e)
         const genericErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
@@ -437,7 +537,7 @@ export class AuthController {
             'Error.Server.ConfigError.MissingOAuthCookie'
           )
         }
-        // Sử dụng type vừa định nghĩa
+
         const pltCookieConfig = pltCookieConfigFromEnv as Required<PltCookieConfigType>
 
         res.cookie(pltCookieConfig.name, pendingLinkToken, {
@@ -628,73 +728,213 @@ export class AuthController {
   @Post('reset-password')
   @IsPublic()
   @ZodSerializerDto(MessageResDTO)
-  // @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })
-  resetPassword(@Body() body: ResetPasswordBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
-    return this.authService.resetPassword({
-      ...body,
-      userAgent,
-      ip
-    })
+  resetPassword(
+    @Body() body: ResetPasswordBodyDTO,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Req() req: Request
+  ) {
+    const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+    if (!sltCookieValue) {
+      this.logger.warn(
+        `[ResetPasswordController] SLT cookie (${envConfig.cookie.sltToken.name}) not found for reset password flow.`
+      )
+      throw new ApiException(HttpStatus.BAD_REQUEST, 'SltTokenMissing', 'Error.Auth.Session.InvalidLogin')
+    }
+    return this.passwordAuthService.resetPassword({ ...body, userAgent, ip, sltCookieValue })
   }
 
-  @Post('2fa/setup')
-  @ZodSerializerDto(TwoFactorSetupResDTO)
-  // @Throttle({ short: { limit: 3, ttl: 60000 } })
-  setupTwoFactorAuth(@Body() _: EmptyBodyDTO, @ActiveUser('userId') userId: number) {
-    return this.authService.setupTwoFactorAuth(userId)
-  }
-
-  @Post('2fa/confirm-setup')
-  @ZodSerializerDto(TwoFactorConfirmSetupResDTO)
-  // @Throttle({ short: { limit: 3, ttl: 60000 } })
-  confirmTwoFactorSetup(
-    @Body() body: TwoFactorConfirmSetupBodyDTO,
+  @Post('password/change')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AccessTokenGuard)
+  @ZodSerializerDto(MessageResDTO)
+  changePassword(
     @ActiveUser('userId') userId: number,
-    @Res({ passthrough: true }) res: Response,
+    @Body() body: ChangePasswordBodyDTO,
     @Ip() ip: string,
     @UserAgent() userAgent: string
   ) {
-    return this.authService.confirmTwoFactorSetup(userId, body.setupToken, body.totpCode, res, ip, userAgent)
+    return this.passwordAuthService.changePassword(userId, body.currentPassword, body.newPassword, ip, userAgent)
+  }
+
+  @Post('2fa/setup')
+  @UseGuards(AccessTokenGuard)
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(TwoFactorSetupResDTO)
+  async setupTwoFactorAuth(
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    if (!activeUser || !activeUser.userId || activeUser.deviceId === undefined) {
+      this.logger.error(
+        '[AuthController setupTwoFactorAuth] ActiveUser or its properties (userId, deviceId) are missing.'
+      )
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'Unauthorized', 'Error.Auth.Access.Unauthorized')
+    }
+    const result = await this.twoFactorAuthService.setupTwoFactorAuth(
+      activeUser.userId,
+      activeUser.deviceId,
+      ip,
+      userAgent
+    )
+
+    if (result.sltJwt) {
+      const sltCookieConfig = envConfig.cookie.sltToken
+      res.cookie(sltCookieConfig.name, result.sltJwt, {
+        httpOnly: true,
+        secure: envConfig.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: ms(sltCookieConfig.maxAge),
+        path: sltCookieConfig.path || '/'
+      })
+    } else {
+      this.logger.error(
+        `[AuthController.setupTwoFactorAuth] SLT JWT not returned from service for user ${activeUser.userId}.`
+      )
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, '2FASetupError', 'Error.Auth.2FA.SetupFailed')
+    }
+
+    return {
+      secret: result.secret,
+      uri: result.uri
+    }
+  }
+
+  @Post('2fa/confirm-setup')
+  @UseGuards(AccessTokenGuard)
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(TwoFactorConfirmSetupResDTO)
+  async confirmTwoFactorSetup(
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Body() body: TwoFactorConfirmSetupBodyDTO,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request
+  ) {
+    if (!activeUser || !activeUser.userId) {
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'Unauthorized', 'Error.Auth.Access.Unauthorized')
+    }
+
+    const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+    if (!sltCookieValue) {
+      this.logger.warn(
+        `[AuthController.confirmTwoFactorSetup] SLT cookie (${envConfig.cookie.sltToken.name}) not found for user ${activeUser.userId}.`
+      )
+      throw new ApiException(HttpStatus.BAD_REQUEST, 'SltCookieMissing', 'Error.Auth.2FA.SetupTokenMissing')
+    }
+
+    const result = await this.twoFactorAuthService.confirmTwoFactorSetup(
+      activeUser.userId,
+      sltCookieValue,
+      body.totpCode,
+      res,
+      ip,
+      userAgent
+    )
+
+    this.tokenService.clearSltCookie(res)
+
+    return result
   }
 
   @Post('2fa/disable')
   @ZodSerializerDto(MessageResDTO)
-  // @Throttle({ short: { limit: 3, ttl: 60000 } })
-  disableTwoFactorAuth(@Body() body: DisableTwoFactorBodyDTO, @ActiveUser('userId') userId: number) {
-    return this.authService.disableTwoFactorAuth({
+  disableTwoFactorAuth(
+    @Body() body: DisableTwoFactorBodyDTO,
+    @ActiveUser('userId') userId: number,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string,
+    @Req() req: Request
+  ) {
+    const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+
+    return this.twoFactorAuthService.disableTwoFactorAuth({
       ...body,
-      userId
+      userId,
+      ip,
+      userAgent,
+      sltCookieValue
     })
   }
 
-  @Post('login/verify')
-  @IsPublic()
+  @Post('2fa/verify')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(UserProfileResSchema)
-  // @Throttle({ short: { limit: 5, ttl: 60000 } })
-  verifyTwoFactor(
+  @ZodSerializerDto(LoginSessionResSchema)
+  async verifyTwoFactor(
     @Body() body: TwoFactorVerifyBodyDTO,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
-  ) {
-    const sltCookie = req.cookies?.[CookieNames.SLT_TOKEN]
-    return this.authService.verifyTwoFactor(
-      {
-        ...body,
-        userAgent,
+  ): Promise<any> {
+    const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+    let sltContext: (SltContextData & { sltJti: string }) | null = null
+
+    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
+      action: 'CONTROLLER_2FA_VERIFY_ATTEMPT',
+      ipAddress: ip,
+      userAgent: userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: {
+        sltCookieProvided: !!sltCookieValue,
+        codeProvided: !!body.code,
+        recoveryCodeProvided: !!body.recoveryCode
+      } as Prisma.JsonObject
+    }
+
+    try {
+      sltContext = await this.otpService.validateSltFromCookieAndGetContext(
+        sltCookieValue as string,
         ip,
-        sltCookie
-      },
-      res
-    )
+        userAgent,
+        TypeOfVerificationCode.LOGIN_2FA
+      )
+      auditLogEntry.userId = sltContext.userId
+      auditLogEntry.userEmail = sltContext.email
+      if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+        auditLogEntry.details.sltJti = sltContext.sltJti
+        auditLogEntry.details.sltPurposeValidated = sltContext.purpose
+      }
+
+      const result = await this.twoFactorAuthService.verifyTwoFactor({ ...body, userAgent, ip }, sltContext, res)
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'CONTROLLER_2FA_VERIFY_SUCCESS'
+      if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+        auditLogEntry.details.finalSessionId = result.sessionId
+        auditLogEntry.details.finalAccessTokenJti = result.accessTokenJti
+      }
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+      return result
+    } catch (error) {
+      this.logger.error(
+        `[AuthController verifyTwoFactor] Failed for user ${sltContext?.email || 'unknown'} (SLT JTI: ${sltContext?.sltJti || 'N/A'}): ${error.message}`,
+        error.stack,
+        auditLogEntry.details
+      )
+
+      if (!auditLogEntry.errorMessage) {
+        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during 2FA verification'
+        if (error instanceof ApiException) {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
+      }
+      if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && error instanceof ApiException) {
+        auditLogEntry.details.errorCode = error.errorCode
+      }
+
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
+    }
   }
 
   @Post('remember-me')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  // @Throttle({ short: { limit: 5, ttl: 60000 } })
   setRememberMe(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: RememberMeBodyDTO,
@@ -703,7 +943,7 @@ export class AuthController {
     @Ip() ip: string,
     @UserAgent() userAgent: string
   ) {
-    return this.authService.setRememberMe(activeUser, body.rememberMe, req, res, ip, userAgent)
+    return this.authenticationService.setRememberMe(activeUser, body.rememberMe, req, res, ip, userAgent)
   }
 
   @Get('sessions')
@@ -792,10 +1032,48 @@ export class AuthController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: ReverifyPasswordBodyType,
     @Ip() ip: string,
-    @UserAgent() userAgent: string
+    @UserAgent() userAgent: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response
   ) {
-    this.logger.log(`User ${activeUser.userId} attempting to reverify password for session ${activeUser.sessionId}.`)
-    return this.authenticationService.reverifyPassword(activeUser.userId, activeUser.sessionId, body, ip, userAgent)
+    const auditDetails: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
+      action: 'SESSION_REVERIFY_PASSWORD_CONTROLLER_ATTEMPT',
+      userId: activeUser.userId,
+      ipAddress: ip,
+      userAgent: userAgent,
+      entity: 'Session',
+      entityId: activeUser.sessionId,
+      status: AuditLogStatus.FAILURE,
+      details: {
+        verificationMethod: body.verificationMethod,
+        sltCookieProvided: !!req.cookies?.[CookieNames.SLT_TOKEN]
+      }
+    }
+
+    try {
+      const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+      const result = await this.authenticationService.reverifyPassword(
+        activeUser.userId,
+        activeUser.sessionId,
+        body,
+        ip,
+        userAgent,
+        sltCookieValue,
+        res
+      )
+      auditDetails.status = AuditLogStatus.SUCCESS
+      auditDetails.action = 'SESSION_REVERIFY_PASSWORD_CONTROLLER_SUCCESS'
+      await this.auditLogService.record(auditDetails as AuditLogData)
+      return result
+    } catch (error) {
+      if (error instanceof HttpException) {
+        auditDetails.errorMessage = JSON.stringify(error.getResponse())
+      } else if (error instanceof Error) {
+        auditDetails.errorMessage = error.message
+      }
+      await this.auditLogService.record(auditDetails as AuditLogData)
+      throw error
+    }
   }
 
   @Post('session/send-reverification-otp')
@@ -803,15 +1081,32 @@ export class AuthController {
   @UseGuards(AccessTokenGuard)
   @AllowWithoutPasswordReverification()
   @ZodSerializerDto(MessageResDTO)
-  async sendReverificationOtp(@ActiveUser() activeUser: AccessTokenPayload): Promise<{ message: string }> {
-    const user = await this.sharedUserRepository.findUnique({ id: activeUser.userId })
+  async sendReverificationOtp(
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<{ message: string }> {
+    const sltJwt = await this.authenticationService.initiateSessionReverificationOtp(activeUser, ip, userAgent)
 
-    if (!user || !user.email) {
-      this.logger.error(`[sendReverificationOtp] User or email not found for ID: ${activeUser.userId}`)
-      throw new ApiException(HttpStatus.NOT_FOUND, 'USER_NOT_FOUND', 'Error.User.NotFound')
+    const sltCookieConfig = envConfig.cookie.sltToken
+    if (sltCookieConfig && sltJwt) {
+      res.cookie(sltCookieConfig.name, sltJwt, {
+        path: sltCookieConfig.path,
+        domain: sltCookieConfig.domain,
+        maxAge: ms(sltCookieConfig.maxAge),
+        httpOnly: sltCookieConfig.httpOnly,
+        secure: sltCookieConfig.secure,
+        sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+      })
+      this.logger.debug(`[sendReverificationOtp] SLT token cookie (${sltCookieConfig.name}) set.`)
+    } else {
+      this.logger.error(
+        `[AuthController.sendReverificationOtp] SLT cookie configuration or SLT JWT missing for user ${activeUser.userId}. Cookie not set.`
+      )
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'SltSetupError', 'Error.Auth.Slt.SetupFailed')
     }
 
-    await this.authenticationService.initiateSessionReverificationOtp(activeUser.userId, user.email)
     return {
       message: await this.i18nService.translate('Auth.Session.SendReverificationOtpSuccess')
     }
@@ -881,7 +1176,7 @@ export class AuthController {
     try {
       const pltPayload = await this.tokenService.verifyPendingLinkToken(pltCookieValue)
 
-      const existingUser = await this.sharedUserRepository.findUnique({ id: pltPayload.existingUserId })
+      const existingUser = await this.userRepository.findUnique({ id: pltPayload.existingUserId })
       if (!existingUser) {
         this.logger.error(
           `[getPendingLinkDetails] Existing user ID ${pltPayload.existingUserId} from PLT not found in DB.`
@@ -958,7 +1253,7 @@ export class AuthController {
       const loginResult = await this.authenticationService.finalizeOauthLogin(
         linkedUser,
         device,
-        false, // rememberMe: false (default)
+        false,
         ip,
         userAgent,
         'google-link-completion',
@@ -1023,6 +1318,104 @@ export class AuthController {
       return {
         message: await this.i18nService.translate('Auth.Google.Link.NoPendingStateToCancel')
       }
+    }
+  }
+
+  @Post('login/untrusted-device/complete')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(LoginSessionResSchema)
+  async completeLoginUntrustedDevice(
+    @Body() body: TwoFactorVerifyBodyDTO,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<any> {
+    const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+    let sltContext: (SltContextData & { sltJti: string }) | null = null
+
+    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
+      action: 'CONTROLLER_LOGIN_UNTRUSTED_COMPLETE_ATTEMPT',
+      ipAddress: ip,
+      userAgent: userAgent,
+      status: AuditLogStatus.FAILURE,
+      details: {
+        sltCookieProvided: !!sltCookieValue,
+        otpCodeProvided: !!body.code,
+        rememberMeProvided: body.rememberMe
+      } as Prisma.JsonObject
+    }
+
+    try {
+      if (!sltCookieValue) {
+        auditLogEntry.errorMessage = 'SLT cookie is missing for untrusted device login completion.'
+        auditLogEntry.details.reason = 'SLT_COOKIE_MISSING_UNTRUSTED_LOGIN_COMPLETE'
+        throw new SltCookieMissingException()
+      }
+
+      sltContext = await this.otpService.validateSltFromCookieAndGetContext(
+        sltCookieValue,
+        ip,
+        userAgent,
+        TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP
+      )
+      auditLogEntry.userId = sltContext.userId
+      auditLogEntry.userEmail = sltContext.email
+      if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+        auditLogEntry.details.sltJti = sltContext.sltJti
+        auditLogEntry.details.sltPurposeValidated = sltContext.purpose
+      }
+
+      const result = await this.authenticationService.completeLoginWithUntrustedDeviceOtp(
+        { ...body, userAgent, ip },
+        sltContext,
+        res
+      )
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'CONTROLLER_LOGIN_UNTRUSTED_COMPLETE_SUCCESS'
+      if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+        auditLogEntry.details.finalSessionId = result.sessionId
+        auditLogEntry.details.finalAccessTokenJti = result.accessTokenJti
+      }
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      return result
+    } catch (error) {
+      this.logger.error(
+        `[AuthController completeLoginUntrustedDevice] Failed for user ${sltContext?.email || 'unknown'} (SLT JTI: ${sltContext?.sltJti || 'N/A'}): ${error.message}`,
+        error.stack,
+        auditLogEntry.details
+      )
+
+      if (!auditLogEntry.errorMessage) {
+        auditLogEntry.errorMessage =
+          error instanceof Error ? error.message : 'Unknown error during untrusted device login'
+        if (error instanceof ApiException) {
+          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
+        }
+      }
+      if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && error instanceof ApiException) {
+        auditLogEntry.details.errorCode = error.errorCode
+      }
+
+      if (
+        error instanceof SltContextFinalizedException ||
+        error instanceof SltContextMaxAttemptsReachedException ||
+        error instanceof MaxVerificationAttemptsExceededException ||
+        error instanceof SltContextInvalidPurposeException ||
+        error instanceof DeviceMismatchException ||
+        error instanceof SltCookieMissingException ||
+        (error instanceof ApiException && error.errorCode === 'Error.Auth.Session.SltContextNotFound') ||
+        (error instanceof ApiException && error.errorCode === 'Error.Auth.Session.SltExpired') ||
+        (error instanceof ApiException && error.errorCode === 'Error.Auth.Session.SltInvalid')
+      ) {
+        this.logger.debug(
+          `Error type ${error.constructor.name} (code: ${error.errorCode}) encountered. Cookie clearing should have been handled by services.`
+        )
+      }
+
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw error
     }
   }
 }

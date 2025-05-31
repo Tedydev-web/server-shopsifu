@@ -1,6 +1,6 @@
 import { Injectable, HttpStatus, Logger } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
-import { LoginBodyType, RegisterBodyType, TwoFactorVerifyBodyType } from 'src/routes/auth/auth.model'
+import { LoginBodyType, RegisterBodyType, TwoFactorVerifyBodyType, RegisterResType } from 'src/routes/auth/auth.model'
 import { Response, Request } from 'express'
 import {
   DeviceMismatchException,
@@ -10,27 +10,28 @@ import {
   InvalidPasswordException,
   MissingRefreshTokenException,
   SessionNotFoundException,
-  InvalidRefreshTokenException
+  InvalidRefreshTokenException,
+  UnauthorizedAccessException,
+  SltCookieMissingException
 } from 'src/routes/auth/auth.error'
 import { AuditLogData, AuditLogStatus, AuditLogService } from 'src/routes/audit-log/audit-log.service'
 import { isUniqueConstraintPrismaError } from 'src/shared/utils/type-guards.utils'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { Device, Prisma, User, UserProfile, UserStatus } from '@prisma/client'
+import { Device, Prisma, User, UserProfile, UserStatus, Role } from '@prisma/client'
 import { TypeOfVerificationCode, TwoFactorMethodType } from '../constants/auth.constants'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import envConfig from 'src/shared/config'
-import ms from 'ms'
 import { GeolocationData, GeolocationService } from 'src/shared/services/geolocation.service'
 import { SessionManagementService } from './session-management.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { RolesService } from '../roles.service'
 import { AuthRepository } from '../auth.repo'
-import { SharedUserRepository } from '../repositories/shared-user.repo'
+import { UserRepository } from '../repositories/shared-user.repo'
 import { EmailService } from '../providers/email.service'
 import { TokenService } from '../providers/token.service'
 import { TwoFactorService } from '../providers/2fa.service'
@@ -40,9 +41,11 @@ import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { JwtService } from '@nestjs/jwt'
 import { ReverifyPasswordBodyType } from '../auth.dto'
 import { SltContextData } from '../providers/otp.service'
-import { MaxVerificationAttemptsExceededException, InvalidOTPException } from '../auth.error'
+import { InvalidOTPException } from '../auth.error'
+import { SessionFinalizationService } from './session-finalization.service'
+import { SltHelperService } from './slt-helper.service'
 
-const MAX_OTP_VERIFY_ATTEMPTS = 5
+const MAX_SLT_ATTEMPTS_CONST = 5
 
 @Injectable()
 export class AuthenticationService extends BaseAuthService {
@@ -53,7 +56,7 @@ export class AuthenticationService extends BaseAuthService {
     hashingService: HashingService,
     rolesService: RolesService,
     authRepository: AuthRepository,
-    sharedUserRepository: SharedUserRepository,
+    userRepository: UserRepository,
     emailService: EmailService,
     tokenService: TokenService,
     twoFactorService: TwoFactorService,
@@ -64,14 +67,16 @@ export class AuthenticationService extends BaseAuthService {
     redisService: RedisService,
     geolocationService: GeolocationService,
     jwtService: JwtService,
-    private readonly sessionManagementService: SessionManagementService
+    private readonly sessionManagementService: SessionManagementService,
+    private readonly sessionFinalizationService: SessionFinalizationService,
+    private readonly sltHelperService: SltHelperService
   ) {
     super(
       prismaService,
       hashingService,
       rolesService,
       authRepository,
-      sharedUserRepository,
+      userRepository,
       emailService,
       tokenService,
       twoFactorService,
@@ -85,95 +90,285 @@ export class AuthenticationService extends BaseAuthService {
     )
   }
 
-  async register(body: RegisterBodyType & { userAgent?: string; ip?: string }) {
+  private async generateUniqueUsername(baseUsername: string, tx: PrismaTransactionClient): Promise<string> {
+    let username = baseUsername.toLowerCase().replace(/\s+/g, '_').substring(0, 20)
+    username = username.replace(/[^a-z0-9_.]/g, '')
+
+    if (username.length < 3) {
+      username = `user_${username}`.substring(0, 20)
+    }
+
+    let counter = 0
+    let finalUsername = username
+    const MAX_USERNAME_LENGTH = 30
+
+    while (true) {
+      const existingProfile = await tx.userProfile.findUnique({
+        where: { username: finalUsername }
+      })
+      if (!existingProfile) {
+        break
+      }
+      counter++
+      const suffix = `_${counter}`
+      const availableLength = MAX_USERNAME_LENGTH - suffix.length
+      finalUsername = `${username.substring(0, availableLength)}${suffix}`
+      if (counter > 1000) {
+        this.logger.error(`Could not generate unique username for base: ${baseUsername} after 1000 attempts.`)
+
+        finalUsername = `user_${uuidv4().substring(0, 8)}`
+        const checkRandom = await tx.userProfile.findUnique({ where: { username: finalUsername } })
+        if (checkRandom) {
+          throw new ApiException(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            'UsernameGenerationFailed',
+            'Error.Auth.Register.UsernameGenerationFailed'
+          )
+        }
+        break
+      }
+    }
+    return finalUsername
+  }
+
+  async register(body: RegisterBodyType & { userAgent?: string; ip?: string; sltCookieValue?: string }) {
     const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
       action: 'USER_REGISTER_ATTEMPT',
-      userEmail: body.email,
       ipAddress: body.ip,
       userAgent: body.userAgent,
       status: AuditLogStatus.FAILURE,
       details: {
-        otpTokenProvided: !!body.otpToken
+        sltCookieProvided: !!body.sltCookieValue,
+        providedEmail: body.email,
+        providedFirstName: body.firstName,
+        providedLastName: body.lastName,
+        providedUsername: body.username,
+        providedPhoneNumber: body.phoneNumber
       }
     }
 
+    if (!body.sltCookieValue) {
+      auditLogEntry.errorMessage = 'SLT cookie is missing for registration.'
+      auditLogEntry.details.reason = 'MISSING_SLT_COOKIE_REGISTER'
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+      throw new ApiException(HttpStatus.BAD_REQUEST, 'SltTokenMissing', 'Error.Auth.Session.InvalidLogin')
+    }
+
+    let sltJtiForFinalizeOnError: string | undefined
+
     try {
-      const user = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
-        const verificationPayload = await this.otpService.validateVerificationToken(
-          body.otpToken,
-          TypeOfVerificationCode.REGISTER,
-          body.email
+      const userWithProfile = await this.prismaService.$transaction(async (tx: PrismaTransactionClient) => {
+        const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
+          body.sltCookieValue!,
+          body.ip!,
+          body.userAgent!,
+          TypeOfVerificationCode.REGISTER
         )
-
-        if (verificationPayload.userId) {
-          auditLogEntry.userId = verificationPayload.userId
+        sltJtiForFinalizeOnError = sltContext.sltJti
+        if (!auditLogEntry.userEmail && sltContext.email) {
+          auditLogEntry.userEmail = sltContext.email
         }
-        auditLogEntry.details.verificationTokenDeviceId = verificationPayload.deviceId
-        auditLogEntry.details.jwtJti = verificationPayload.jti
 
-        if (verificationPayload.deviceId && body.userAgent && body.ip) {
+        auditLogEntry.details.sltJti = sltContext.sltJti
+        auditLogEntry.details.sltPurpose = sltContext.purpose
+        auditLogEntry.details.sltDeviceIdFromContext = sltContext.deviceId
+        auditLogEntry.details.sltUserIdFromContext = sltContext.userId
+        auditLogEntry.details.sltEmailFromContext = sltContext.email
+
+        if (sltContext.email !== body.email) {
+          auditLogEntry.errorMessage = 'Email mismatch between SLT context and registration body.'
+          auditLogEntry.details.reason = 'EMAIL_MISMATCH_SLT_BODY_REGISTER'
+          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Email.Mismatch')
+        }
+
+        if (
+          !sltContext.metadata?.otpVerified ||
+          sltContext.metadata?.stageVerified !== TypeOfVerificationCode.REGISTER
+        ) {
+          auditLogEntry.errorMessage = 'OTP not verified for registration via SLT context.'
+          auditLogEntry.details.reason = 'SLT_OTP_NOT_VERIFIED_FOR_REGISTER'
+          auditLogEntry.details.sltMetadata = sltContext.metadata as Prisma.JsonObject | undefined
+          throw new ApiException(
+            HttpStatus.BAD_REQUEST,
+            'OtpVerificationRequired',
+            'Error.Auth.Otp.VerificationRequired'
+          )
+        }
+        auditLogEntry.details.sltOtpStageVerified = true
+
+        if (sltContext.deviceId && sltContext.deviceId !== 0 && body.userAgent && body.ip) {
           const isValidDevice = await this.deviceService.validateDevice(
-            verificationPayload.deviceId,
+            sltContext.deviceId,
             body.userAgent,
             body.ip,
             tx
           )
           if (!isValidDevice) {
-            auditLogEntry.errorMessage = DeviceMismatchException.message
-            auditLogEntry.details.reason = 'DEVICE_MISMATCH_ON_REGISTER'
-            auditLogEntry.details.validatedDeviceId = verificationPayload.deviceId
-            throw DeviceMismatchException
+            auditLogEntry.errorMessage = 'Device mismatch on register SLT'
+            auditLogEntry.details.reason = 'DEVICE_MISMATCH_ON_REGISTER_SLT'
+            auditLogEntry.details.validatedDeviceId = sltContext.deviceId
+            throw new DeviceMismatchException()
           }
-          auditLogEntry.details.deviceValidatedOnRegister = true
+          auditLogEntry.details.deviceValidatedOnRegisterSlt = true
+        } else if (sltContext.deviceId === 0) {
+          auditLogEntry.details.sltDeviceWasPlaceholder = true
         }
 
         const clientRoleId = await this.rolesService.getClientRoleId()
         const hashedPassword = await this.hashingService.hash(body.password)
 
-        const existingUserCheck = await tx.user.findUnique({ where: { email: body.email }, select: { id: true } })
+        const existingUserCheck = await tx.user.findUnique({
+          where: { email: sltContext.email },
+          select: { id: true }
+        })
         if (existingUserCheck) {
-          auditLogEntry.errorMessage = EmailAlreadyExistsException.message
+          auditLogEntry.errorMessage = 'Email already exists (pre-create check)'
           auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK'
+          throw new EmailAlreadyExistsException()
         }
 
-        const createdUser = await this.authRepository.createUser(
-          {
-            email: body.email,
-            password: hashedPassword,
-            roleId: clientRoleId,
-            status: UserStatus.ACTIVE
-          },
-          tx
-        )
+        let finalUsername: string
+        if (body.username) {
+          finalUsername = body.username
+          const existingProfileByUsername = await tx.userProfile.findUnique({
+            where: { username: finalUsername }
+          })
+          if (existingProfileByUsername) {
+            auditLogEntry.errorMessage = `Username '${finalUsername}' already exists.`
+            auditLogEntry.details.reason = 'USERNAME_ALREADY_EXISTS'
+            throw new ApiException(HttpStatus.CONFLICT, 'UsernameTaken', 'Error.Auth.Register.UsernameTaken')
+          }
+        } else {
+          const baseUsername = `${body.lastName}${body.firstName}`
+          finalUsername = await this.generateUniqueUsername(baseUsername, tx)
+        }
+        auditLogEntry.details.finalUsername = finalUsername
 
-        auditLogEntry.userId = createdUser.id
+        const userDataToCreate: Omit<Prisma.UserCreateInput, 'role'> & { roleId: number } = {
+          email: sltContext.email,
+          password: hashedPassword,
+          roleId: clientRoleId,
+          status: UserStatus.ACTIVE,
+          isEmailVerified: true,
+          userProfile: {
+            create: {
+              firstName: body.firstName,
+              lastName: body.lastName,
+              username: finalUsername,
+              phoneNumber: body.phoneNumber
+            }
+          }
+        }
+
+        const createdUserWithRelations = (await this.userRepository.createUserInternal(
+          userDataToCreate,
+          tx
+        )) as User & { userProfile: UserProfile | null; role: Role | null }
+
+        auditLogEntry.userId = createdUserWithRelations.id
         auditLogEntry.status = AuditLogStatus.SUCCESS
         auditLogEntry.action = 'USER_REGISTER_SUCCESS'
         auditLogEntry.details.roleIdAssigned = clientRoleId
+        auditLogEntry.details.profileCreated = true
 
-        return createdUser
+        await this.otpService.finalizeSlt(sltContext.sltJti)
+
+        if (!createdUserWithRelations) {
+          this.logger.error(`User with id ${auditLogEntry.userId} not found immediately after creation with profile.`)
+          throw new ApiException(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            'UserCreationError',
+            'Error.Auth.Register.UserNotFoundAfterCreation'
+          )
+        }
+        return createdUserWithRelations
       })
+
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      const userToReturn = user
-      return userToReturn
+
+      const { password, twoFactorSecret, ...userSafeData } = userWithProfile
+
+      const responseUserProfile = userWithProfile.userProfile
+        ? {
+            firstName: userWithProfile.userProfile.firstName,
+            lastName: userWithProfile.userProfile.lastName,
+            avatar: userWithProfile.userProfile.avatar,
+            username: userWithProfile.userProfile.username,
+            phoneNumber: userWithProfile.userProfile.phoneNumber
+          }
+        : null
+
+      return {
+        id: userSafeData.id,
+        email: userSafeData.email,
+        googleId: userSafeData.googleId,
+        status: userSafeData.status,
+        roleId: userSafeData.roleId,
+        roleName: userWithProfile.role?.name,
+        twoFactorEnabled: userSafeData.twoFactorEnabled,
+        twoFactorMethod: userSafeData.twoFactorMethod,
+        twoFactorVerifiedAt: userSafeData.twoFactorVerifiedAt,
+        isEmailVerified: userSafeData.isEmailVerified,
+        pendingEmail: userSafeData.pendingEmail,
+        emailVerificationToken: userSafeData.emailVerificationToken,
+        emailVerificationTokenExpiresAt: userSafeData.emailVerificationTokenExpiresAt,
+        emailVerificationSentAt: userSafeData.emailVerificationSentAt,
+        createdAt: userSafeData.createdAt,
+        updatedAt: userSafeData.updatedAt,
+        deletedAt: userSafeData.deletedAt,
+        createdById: userSafeData.createdById,
+        updatedById: userSafeData.updatedById,
+        deletedById: userSafeData.deletedById,
+        userProfile: responseUserProfile
+      } as RegisterResType
     } catch (error) {
+      if (sltJtiForFinalizeOnError && !auditLogEntry.details.finalizedSltJtiOnSuccess) {
+        if (error instanceof ApiException && error.getStatus() === HttpStatus.BAD_REQUEST.valueOf()) {
+          await this.otpService.finalizeSlt(sltJtiForFinalizeOnError)
+          auditLogEntry.details.finalizedSltJtiOnError = sltJtiForFinalizeOnError
+          this.logger.warn(`SLT ${sltJtiForFinalizeOnError} finalized due to error: ${error.message}`)
+        }
+      }
+
       if (
         isUniqueConstraintPrismaError(error) ||
         (auditLogEntry.details.reason === 'EMAIL_ALREADY_EXISTS_PRE_CREATE_CHECK' && !auditLogEntry.errorMessage)
       ) {
-        auditLogEntry.errorMessage = EmailAlreadyExistsException.message
-        auditLogEntry.details.reason = 'EMAIL_ALREADY_EXISTS'
+        auditLogEntry.errorMessage = auditLogEntry.errorMessage || 'Email already exists.'
+        auditLogEntry.details.reason = auditLogEntry.details.reason || 'EMAIL_ALREADY_EXISTS'
       } else if (!auditLogEntry.errorMessage) {
         auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during registration'
         if (error instanceof ApiException) {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
       }
+      if (auditLogEntry.status !== AuditLogStatus.SUCCESS) {
+        auditLogEntry.status = AuditLogStatus.FAILURE
+      }
       await this.auditLogService.record(auditLogEntry as AuditLogData)
-      if (isUniqueConstraintPrismaError(error)) {
-        throw EmailAlreadyExistsException
+      if (isUniqueConstraintPrismaError(error) && !(error instanceof EmailAlreadyExistsException)) {
+        throw new EmailAlreadyExistsException()
       }
       throw error
+    }
+  }
+
+  private _setSltCookie(res: Response, sltJwt: string, purpose: TypeOfVerificationCode) {
+    const sltCookieConfig = envConfig.cookie.sltToken
+    if (res && sltCookieConfig) {
+      res.cookie(sltCookieConfig.name, sltJwt, {
+        path: sltCookieConfig.path,
+        domain: sltCookieConfig.domain,
+        maxAge: sltCookieConfig.maxAge,
+        httpOnly: sltCookieConfig.httpOnly,
+        secure: sltCookieConfig.secure,
+        sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
+      })
+      this.logger.debug(`[Login] SLT token cookie (${sltCookieConfig.name}) set for purpose: ${purpose}.`)
+    } else if (!res) {
+      this.logger.warn(`[Login] Response object (res) not available to set SLT cookie for purpose: ${purpose}.`)
+    } else if (!sltCookieConfig) {
+      this.logger.warn(`[Login] SLT cookie configuration not found. Cannot set cookie for purpose: ${purpose}.`)
     }
   }
 
@@ -189,14 +384,11 @@ export class AuthenticationService extends BaseAuthService {
       }
     }
     try {
-      const user = await this.prismaService.user.findUnique({
-        where: { email: body.email },
-        include: { role: true, userProfile: true }
-      })
+      const user = await this.userRepository.findUniqueWithDetails({ email: body.email })
       if (!user) {
-        auditLogEntry.errorMessage = EmailNotFoundException.message
+        auditLogEntry.errorMessage = 'User not found for login.'
         auditLogEntry.details.reason = 'USER_NOT_FOUND'
-        throw EmailNotFoundException
+        throw new EmailNotFoundException()
       }
       auditLogEntry.userId = user.id
 
@@ -208,12 +400,22 @@ export class AuthenticationService extends BaseAuthService {
         throw new ApiException(HttpStatus.FORBIDDEN, 'UserInactive', 'Error.Auth.User.NotActive')
       }
 
+      if (!user.role) {
+        this.logger.error(
+          `[AuthenticationService.login] User ${user.id} does not have a role. Cannot finalize session.`
+        )
+        auditLogEntry.errorMessage = 'User role not found during login finalization.'
+        auditLogEntry.details.reason = 'USER_ROLE_MISSING_LOGIN_FINALIZE'
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'UserRoleMissing', 'Error.Auth.User.RoleMissing')
+      }
+
       const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
       if (!isPasswordMatch) {
         this.logger.warn('[DEBUG AuthenticationService login] Invalid password for user:', user.email)
-        auditLogEntry.errorMessage = InvalidPasswordException.message
+        auditLogEntry.errorMessage = 'Invalid password provided for login.'
         auditLogEntry.details.reason = 'INVALID_PASSWORD'
-        throw InvalidPasswordException
+        throw new InvalidPasswordException()
       }
 
       let device: Device
@@ -226,9 +428,9 @@ export class AuthenticationService extends BaseAuthService {
         auditLogEntry.details.deviceId = device.id
       } catch (error) {
         this.logger.error('[DEBUG AuthenticationService login] Error creating/finding device:', error)
-        auditLogEntry.errorMessage = DeviceSetupFailedException.message
+        auditLogEntry.errorMessage = 'Failed to setup or find device during login.'
         auditLogEntry.details.deviceError = 'DeviceSetupFailed'
-        throw DeviceSetupFailedException
+        throw new DeviceSetupFailedException()
       }
 
       const shouldAskToTrustDevice = !device.isTrusted
@@ -257,16 +459,7 @@ export class AuthenticationService extends BaseAuthService {
         })
 
         if (res) {
-          const sltCookieConfig = envConfig.cookie.sltToken
-          res.cookie(sltCookieConfig.name, sltJwt, {
-            path: sltCookieConfig.path,
-            domain: sltCookieConfig.domain,
-            maxAge: sltCookieConfig.maxAge,
-            httpOnly: sltCookieConfig.httpOnly,
-            secure: sltCookieConfig.secure,
-            sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
-          })
-          this.logger.debug(`[Login] SLT token cookie (${sltCookieConfig.name}) set for 2FA.`)
+          this._setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_2FA)
         } else {
           this.logger.warn('[Login] Response object (res) not available to set SLT cookie for 2FA.')
         }
@@ -294,16 +487,7 @@ export class AuthenticationService extends BaseAuthService {
         })
 
         if (res) {
-          const sltCookieConfig = envConfig.cookie.sltToken
-          res.cookie(sltCookieConfig.name, sltJwt, {
-            path: sltCookieConfig.path,
-            domain: sltCookieConfig.domain,
-            maxAge: sltCookieConfig.maxAge,
-            httpOnly: sltCookieConfig.httpOnly,
-            secure: sltCookieConfig.secure,
-            sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
-          })
-          this.logger.debug(`[Login] SLT token cookie (${sltCookieConfig.name}) set for untrusted device OTP.`)
+          this._setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
         } else {
           this.logger.warn('[Login] Response object (res) not available to set SLT cookie for untrusted device OTP.')
         }
@@ -317,187 +501,37 @@ export class AuthenticationService extends BaseAuthService {
         }
       }
 
-      const sessionData: Record<string, string | number | boolean | undefined | null> = {
-        userId: user.id,
-        deviceId: device.id,
-        ipAddress: body.ip,
-        userAgent: body.userAgent,
-        createdAt: now.toISOString(),
-        lastActiveAt: now.toISOString(),
-        isTrusted: device.isTrusted,
-        rememberMe: body.rememberMe,
-        roleId: user.roleId,
-        roleName: user.role.name,
-        geoCountry: geoLocation?.country,
-        geoCity: geoLocation?.city
+      if (!res) {
+        this.logger.error('[AuthenticationService.login] Response object (res) is undefined. Cannot finalize session.')
+        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
       }
 
-      const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenJti } =
-        await this.tokenService.generateTokens(
-          {
-            userId: user.id,
-            deviceId: device.id,
-            roleId: user.roleId,
-            roleName: user.role.name,
-            sessionId,
-            isDeviceTrustedInSession: device.isTrusted
-          },
-          this.prismaService,
-          body.rememberMe
-        )
-
-      sessionData.currentAccessTokenJti = accessTokenJti
-      sessionData.currentRefreshTokenJti = refreshTokenJti
-      const decodedToken = this.jwtService.decode(accessToken)
-      sessionData.accessTokenExp = decodedToken.exp
-
-      let absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
-      if (isNaN(absoluteSessionLifetimeMs)) {
-        this.logger.warn(
-          `[AuthenticationService.login] Invalid ABSOLUTE_SESSION_LIFETIME_MS detected (NaN): ${envConfig.ABSOLUTE_SESSION_LIFETIME}. Falling back to 30 days.`
-        )
-        absoluteSessionLifetimeMs = ms('30d')
-      }
-      sessionData.maxLifetimeExpiresAt = new Date(Date.now() + absoluteSessionLifetimeMs).toISOString()
-
-      const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
-      const userSessionsKey = `${REDIS_KEY_PREFIX.USER_SESSIONS}${user.id}`
-      const refreshTokenJtiToSessionKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
-
-      const absoluteSessionLifetimeSeconds = Math.floor(absoluteSessionLifetimeMs / 1000)
-      const refreshTokenTTL = maxAgeForRefreshTokenCookie
-        ? Math.floor(maxAgeForRefreshTokenCookie / 1000)
-        : absoluteSessionLifetimeSeconds
-
-      this.logger.debug(
-        `[AuthenticationService.login] Preparing Redis pipeline for session ${sessionId}. ` +
-          `sessionKey TTL: ${absoluteSessionLifetimeSeconds}, refreshTokenJtiToSessionKey TTL: ${refreshTokenTTL}`
-      )
-
-      await this.redisService.pipeline((pipeline) => {
-        pipeline.hmset(sessionKey, sessionData as Record<string, string>)
-        pipeline.expire(sessionKey, absoluteSessionLifetimeSeconds)
-        pipeline.sadd(userSessionsKey, sessionId)
-        pipeline.sadd(`${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${device.id}`, sessionId)
-        pipeline.set(refreshTokenJtiToSessionKey, sessionId, 'EX', refreshTokenTTL)
-        return pipeline
-      })
-
-      if (res) {
-        this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
-      } else {
-        this.logger.warn(
-          '[DEBUG AuthenticationService login - Direct login] Response object (res) is NOT present. Cookies will not be set by login function directly.'
-        )
-      }
-
-      if (device.isTrusted && geoLocation && geoLocation.country && geoLocation.city && user.userProfile) {
-        const displayName = user.userProfile.firstName || user.userProfile.lastName || user.email
-        const knownLocationsKey = `${REDIS_KEY_PREFIX.USER_KNOWN_LOCATIONS}${user.id}`
-        const locationString = `${geoLocation.city?.toLowerCase()}_${geoLocation.country?.toLowerCase()}`
-
-        this.logger.debug(`Attempting to SADD location: ${locationString} to key: ${knownLocationsKey}`)
-        const isNewLocation = await this.redisService.sadd(knownLocationsKey, locationString)
-        this.logger.debug(`SADD result for location ${locationString}: ${isNewLocation}`)
-
-        if (isNewLocation === 1) {
-          this.logger.warn(
-            `New login location detected for user ${user.id} on trusted device ${device.id}: ${locationString}. Sending alert.`
-          )
-          auditLogEntry.notes = (
-            (auditLogEntry.notes ? auditLogEntry.notes + '; ' : '') +
-            `New trusted device login location: ${locationString}. Alert email sent.`
-          ).trim()
-
-          const i18nCtx = I18nContext.current()
-          this.logger.debug('[AuthenticationService.login] I18nContext for new location email:', i18nCtx)
-          const lang = i18nCtx?.lang || 'en'
-          try {
-            await this.emailService.sendSecurityAlertEmail({
-              to: user.email,
-              userName: displayName,
-              alertSubject: this.i18nService.translate(
-                'email.Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation',
-                { lang }
-              ),
-              alertTitle: this.i18nService.translate('email.Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation', {
-                lang
-              }),
-              mainMessage: this.i18nService.translate(
-                'email.Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation',
-                { lang }
-              ),
-              actionDetails: [
-                {
-                  label: this.i18nService.translate('email.Email.Field.Time', { lang }),
-                  value: new Date().toLocaleString(lang)
-                },
-                {
-                  label: this.i18nService.translate('email.Email.Field.IPAddress', { lang }),
-                  value: body.ip
-                },
-                {
-                  label: this.i18nService.translate('email.Email.Field.Device', { lang }),
-                  value: body.userAgent
-                },
-                {
-                  label: this.i18nService.translate('email.Email.Field.Location', { lang }),
-                  value: `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
-                }
-              ],
-              secondaryMessage: this.i18nService.translate('email.Email.SecurityAlert.SecondaryMessage.NotYou', {
-                lang
-              }),
-              actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', {
-                lang
-              }),
-              actionButtonUrl: `${envConfig.FRONTEND_URL}/account/security`
-            })
-          } catch (emailError) {
-            const errorMessage = emailError instanceof Error ? emailError.message : String(emailError)
-            const errorStack = emailError instanceof Error ? emailError.stack : undefined
-            this.logger.error(
-              `Failed to send new trusted device login location alert to ${user.email}: ${errorMessage}`,
-              errorStack
-            )
-          }
+      const userForFinalization = {
+        ...user,
+        userProfile: user.userProfile,
+        role: {
+          id: user.role.id,
+          name: user.role.name
         }
       }
 
+      const finalizationResult = await this.sessionFinalizationService.finalizeSuccessfulAuthentication({
+        user: userForFinalization,
+        device,
+        rememberMe: body.rememberMe,
+        ipAddress: body.ip,
+        userAgent: body.userAgent,
+        source: 'direct-login',
+        res,
+        existingSessionId: sessionId
+      })
+
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'USER_LOGIN_SUCCESS'
-      auditLogEntry.details.sessionId = sessionId
-
-      if (user && device && sessionId && accessToken) {
-        this.sessionManagementService
-          .enforceSessionAndDeviceLimits(user.id, sessionId, device.id)
-          .then((limitsResult) => {
-            if (limitsResult.deviceLimitApplied || limitsResult.sessionLimitApplied) {
-              this.logger.log(
-                `Session/device limits applied for user ${user.id} after login. Devices removed: ${limitsResult.devicesRemovedCount}, Sessions revoked: ${limitsResult.sessionsRevokedCount}`
-              )
-            }
-          })
-          .catch((limitError) => {
-            this.logger.error(
-              `Error enforcing session/device limits for user ${user.id} after login: ${limitError.message}`,
-              limitError.stack
-            )
-          })
-      }
 
       return {
-        id: user.id,
-        email: user.email,
-        role: user.role.name,
-        isDeviceTrustedInSession: device.isTrusted,
-        askToTrustDevice: shouldAskToTrustDevice,
-        userProfile: user.userProfile
-          ? {
-              avatar: user.userProfile.avatar,
-              username: user.userProfile.username
-            }
-          : null
+        ...finalizationResult,
+        askToTrustDevice: shouldAskToTrustDevice
       }
     } catch (error) {
       this.logger.error('[AuthenticationService.login] Caught error:', error, typeof error)
@@ -577,6 +611,7 @@ export class AuthenticationService extends BaseAuthService {
         res.clearCookie(sltCookieConfig.name, { path: sltCookieConfig.path, domain: sltCookieConfig.domain })
 
         auditLogEntry.status = AuditLogStatus.SUCCESS
+        auditLogEntry.action = 'USER_LOGOUT_SUCCESS'
         await this.auditLogService.record(auditLogEntry as AuditLogData)
         const message = await this.i18nService.translate('Auth.Logout.Processed', {
           lang: I18nContext.current()?.lang
@@ -721,301 +756,187 @@ export class AuthenticationService extends BaseAuthService {
 
   async completeLoginWithUntrustedDeviceOtp(
     body: TwoFactorVerifyBodyType & { userAgent: string; ip: string },
-    sltContext: (SltContextData & { sltJti: string }) | null,
+    sltContext: SltContextData & { sltJti: string },
     res?: Response
   ) {
     const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'COMPLETE_LOGIN_UNTRUSTED_DEVICE_OTP_ATTEMPT',
-      userEmail: body.email,
+      action: 'LOGIN_UNTRUSTED_DEVICE_OTP_ATTEMPT',
+      userId: sltContext.userId,
+      userEmail: sltContext.email,
       ipAddress: body.ip,
       userAgent: body.userAgent,
       status: AuditLogStatus.FAILURE,
       details: {
-        rememberMeRequested: body.rememberMe,
-        codeProvided: !!body.code,
-        sltContextProvided: !!sltContext,
-        emailFromBody: body.email
-      }
+        sltJti: sltContext.sltJti,
+        sltPurpose: sltContext.purpose,
+        sltDeviceIdFromContext: sltContext.deviceId,
+        otpCodeProvided: !!body.code
+      } as Prisma.JsonObject
     }
 
-    let effectiveEmail: string = ''
-    let effectiveUserId: number
-
     try {
-      if (!sltContext || !sltContext.sltJti) {
-        auditLogEntry.errorMessage = 'SLT context or JTI is missing.'
-        auditLogEntry.details.reason = 'MISSING_SLT_CONTEXT_OR_JTI'
+      if (!res) {
         this.logger.error(
-          '[AuthenticationService completeLoginWithUntrustedDeviceOtp] SLT context or JTI missing.',
-          auditLogEntry.details
+          '[completeLoginWithUntrustedDeviceOtp] Response object (res) is required but was not provided. Cannot finalize session.'
         )
-        throw new ApiException(
-          HttpStatus.INTERNAL_SERVER_ERROR,
-          'SltProcessingError',
-          'Error.Auth.Session.InvalidLogin'
-        )
+        auditLogEntry.errorMessage = 'Response object missing, cannot finalize session.'
+        auditLogEntry.details.reason = 'MISSING_RESPONSE_OBJECT_UNTRUSTED_LOGIN'
+        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
       }
 
-      if (typeof sltContext.userId !== 'number') {
-        auditLogEntry.errorMessage = 'User ID missing or invalid in SLT context.'
-        auditLogEntry.details.reason = 'MISSING_OR_INVALID_USER_ID_IN_SLT'
-        this.logger.error(auditLogEntry.errorMessage, sltContext)
+      const user = await this.userRepository.findUniqueWithDetails({ id: sltContext.userId })
+      if (!user || !user.role) {
+        auditLogEntry.errorMessage = 'User not found from SLT context for untrusted device login.'
+        auditLogEntry.details.reason = 'USER_NOT_FOUND_UNTRUSTED_LOGIN_SLT'
         await this.otpService.finalizeSlt(sltContext.sltJti)
-        throw new ApiException(
-          HttpStatus.INTERNAL_SERVER_ERROR,
-          'SltProcessingError',
-          'Error.Auth.Session.InvalidLogin'
-        )
+        if (res) this.tokenService.clearSltCookie(res)
+        throw new EmailNotFoundException()
       }
-      effectiveUserId = sltContext.userId
-      auditLogEntry.userId = effectiveUserId
+      auditLogEntry.userEmail = user.email
 
-      if (typeof sltContext.email === 'string' && sltContext.email.length > 0) {
-        effectiveEmail = sltContext.email
-      } else if (typeof body.email === 'string' && body.email.length > 0) {
-        effectiveEmail = body.email
-        this.logger.warn(
-          `[AuthService completeLoginWithUntrustedDeviceOtp] SLT context for JTI ${sltContext.sltJti} is missing email. Using email from body: ${body.email}.`
+      if (!user.role) {
+        this.logger.error(
+          `[completeLoginWithUntrustedDeviceOtp] User ${user.id} does not have a role. Cannot finalize session.`
         )
-      } else {
-        auditLogEntry.errorMessage = 'Email is required (missing in SLT context and body).'
-        auditLogEntry.details.reason = 'MISSING_EMAIL_SLT_AND_BODY'
-        this.logger.error(auditLogEntry.errorMessage, sltContext)
-        await this.otpService.finalizeSlt(sltContext.sltJti)
-        throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Email.NotFound', [
-          { code: 'validation.email.required', path: 'email' }
-        ])
-      }
-      auditLogEntry.userEmail = effectiveEmail
-
-      auditLogEntry.details.sltJti = sltContext.sltJti
-      auditLogEntry.details.sltPurpose = sltContext.purpose
-      auditLogEntry.details.sltDeviceIdFromContext = sltContext.deviceId
-      auditLogEntry.details.sltUserIdFromContext = sltContext.userId
-      auditLogEntry.details.sltEmailFromContext = sltContext.email
-      auditLogEntry.details.sltMetadata = sltContext.metadata as Prisma.JsonObject
-
-      const currentAttempts = await this.otpService.getSltAttempts(sltContext.sltJti)
-      auditLogEntry.details.currentSltAttempts = currentAttempts
-
-      if (currentAttempts >= MAX_OTP_VERIFY_ATTEMPTS) {
-        this.logger.warn(
-          `[AuthService completeLoginWithUntrustedDeviceOtp] Max SLT verification attempts reached for JTI ${sltContext.sltJti}. Attempts: ${currentAttempts}`
-        )
-        await this.otpService.finalizeSlt(sltContext.sltJti)
-        auditLogEntry.errorMessage = 'Max SLT verification attempts reached for untrusted device OTP.'
-        auditLogEntry.details.reason = 'MAX_SLT_ATTEMPTS_REACHED_OTP'
-        throw MaxVerificationAttemptsExceededException
+        auditLogEntry.errorMessage = 'User role not found during untrusted device login finalization.'
+        auditLogEntry.details.reason = 'USER_ROLE_MISSING_UNTRUSTED_LOGIN_FINALIZE'
+        await this.auditLogService.record(auditLogEntry as AuditLogData)
+        if (sltContext.sltJti) await this.otpService.finalizeSlt(sltContext.sltJti)
+        if (res) this.tokenService.clearSltCookie(res)
+        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'UserRoleMissing', 'Error.Auth.User.RoleMissing')
       }
 
-      const resultFromTransaction = await this.prismaService.$transaction(async (tx) => {
-        const user = await this.sharedUserRepository.findUniqueWithRole({ id: effectiveUserId }, tx)
+      if (!body.code) {
+        auditLogEntry.errorMessage = 'OTP code is required for untrusted device login.'
+        auditLogEntry.details.reason = 'OTP_CODE_MISSING_UNTRUSTED_LOGIN'
+        throw new InvalidOTPException()
+      }
 
-        if (!user || !user.role) {
-          auditLogEntry.errorMessage = 'User or user role not found for untrusted device OTP login.'
-          auditLogEntry.details.reason = 'USER_OR_ROLE_NOT_FOUND_OTP'
-          throw EmailNotFoundException
-        }
-        auditLogEntry.userId = user.id
-        auditLogEntry.userEmail = user.email
-
-        if (user.status !== UserStatus.ACTIVE) {
-          this.logger.warn(
-            `[DEBUG AuthenticationService completeLoginWithUntrustedDeviceOtp] User ${user.email} is not active. Status: ${user.status}`
-          )
-          auditLogEntry.errorMessage = 'User account is not active.'
-          auditLogEntry.details.reason = 'USER_NOT_ACTIVE_ON_OTP_LOGIN'
-          auditLogEntry.details.userStatus = user.status
-          await this.otpService.finalizeSlt(sltContext.sltJti)
-          throw new ApiException(HttpStatus.FORBIDDEN, 'UserInactive', 'Error.Auth.User.NotActive')
-        }
-
-        if (typeof effectiveEmail !== 'string' || effectiveEmail.length === 0) {
-          auditLogEntry.errorMessage = 'Effective email became invalid before OTP verification within transaction.'
-          auditLogEntry.details.reason = 'EFFECTIVE_EMAIL_INVALID_IN_TX'
-          this.logger.error(auditLogEntry.errorMessage, { currentEffectiveEmail: effectiveEmail })
-
-          throw new ApiException(
-            HttpStatus.INTERNAL_SERVER_ERROR,
-            'InternalServerError',
-            'Error.Global.InternalServerError'
-          )
-        }
-
-        if (sltContext.purpose !== TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
-          auditLogEntry.errorMessage = `Invalid SLT purpose: ${sltContext.purpose}. Expected LOGIN_UNTRUSTED_DEVICE_OTP.`
-          auditLogEntry.details.reason = 'INVALID_SLT_PURPOSE_FOR_UNTRUSTED_OTP'
-          await this.otpService.finalizeSlt(sltContext.sltJti)
-          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.InvalidPurpose')
-        }
-
-        if (typeof body.code !== 'string' || body.code.length === 0) {
-          auditLogEntry.errorMessage = 'OTP code is missing or invalid in the request body.'
-          auditLogEntry.details.reason = 'INVALID_OTP_CODE_IN_BODY'
-
-          throw InvalidOTPException
-        }
-
-        const isValidOtp = await this.otpService.verifyOtpOnly(
-          effectiveEmail,
+      try {
+        await this.otpService.verifyOtpOnly(
+          user.email,
           body.code,
           TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
           user.id,
           body.ip,
           body.userAgent
         )
-
-        if (!isValidOtp) {
-          await this.otpService.incrementSltAttempts(sltContext.sltJti)
-          auditLogEntry.details.sltAttemptIncremented = true
-          const attemptsAfterIncrement = await this.otpService.getSltAttempts(sltContext.sltJti)
-          auditLogEntry.details.sltAttemptsAfterIncrement = attemptsAfterIncrement
-          auditLogEntry.errorMessage = 'Invalid OTP for untrusted device login.'
-
-          if (attemptsAfterIncrement >= MAX_OTP_VERIFY_ATTEMPTS) {
-            this.logger.warn(
-              `[AuthService completeLoginWithUntrustedDeviceOtp] Max SLT attempts reached for JTI ${sltContext.sltJti} after failed OTP verification. Finalizing.`
-            )
-            await this.otpService.finalizeSlt(sltContext.sltJti)
-            auditLogEntry.details.sltFinalizedAfterMaxAttemptsIncrement = true
-            throw MaxVerificationAttemptsExceededException
-          }
-          throw InvalidOTPException
-        }
-
-        // Log user object here
-        this.logger.debug(
-          '[CompleteLoginWithUntrustedDeviceOtp] User object before generating tokens and userToReturn:',
-          JSON.stringify(user)
+        auditLogEntry.details.otpVerifiedSuccessfully = true
+      } catch (error) {
+        this.logger.warn(
+          `OTP verification failed for user ${user.email} (SLT JTI: ${sltContext.sltJti}) during untrusted device login: ${error.message}`
         )
+        auditLogEntry.errorMessage = `OTP verification failed: ${error.message}`
+        auditLogEntry.details.otpVerificationError = error.message
+        if (error instanceof ApiException) {
+          auditLogEntry.details.otpVerificationErrorCode = error.errorCode
+        }
 
-        const deviceFromFindOrCreate = await this.deviceService.findOrCreateDevice(
-          {
-            userId: user.id,
-            userAgent: sltContext.userAgent || body.userAgent,
-            ip: sltContext.ipAddress || body.ip
-          },
-          tx
+        await this.sltHelperService.handleSltAttemptIncrementAndFinalization(
+          sltContext.sltJti,
+          MAX_SLT_ATTEMPTS_CONST,
+          'completeLoginWithUntrustedDeviceOtp',
+          auditLogEntry,
+          res
         )
-        auditLogEntry.details.finalDeviceId = deviceFromFindOrCreate.id
-
-        if (sltContext.deviceId && sltContext.deviceId !== deviceFromFindOrCreate.id) {
-          auditLogEntry.errorMessage = `Device ID mismatch during untrusted device OTP login. SLT Device ID: ${sltContext.deviceId}, Identified Device ID: ${deviceFromFindOrCreate.id}.`
-          auditLogEntry.details.reason = 'SLT_DEVICE_ID_MISMATCH_UNTRUSTED_OTP_LOGIN'
-          this.logger.error(auditLogEntry.errorMessage)
-
-          throw DeviceMismatchException
-        }
-        const device = deviceFromFindOrCreate
-
-        let shouldRememberDevice = body.rememberMe
-        if (shouldRememberDevice === undefined && sltContext?.metadata) {
-          shouldRememberDevice = sltContext.metadata.rememberMe === true
-        }
-        shouldRememberDevice = shouldRememberDevice ?? false
-
-        auditLogEntry.details.shouldRememberDevice = shouldRememberDevice
-        auditLogEntry.details.initialDeviceIsTrusted = device.isTrusted
-
-        if (shouldRememberDevice && !device.isTrusted) {
-          await this.deviceService.trustDevice(device.id, user.id, tx)
-          auditLogEntry.details.deviceTrustedInThisFlow = true
-        }
-
-        const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenPayload } =
-          await this.tokenService.generateTokens(
-            {
-              userId: user.id,
-              deviceId: device.id,
-              roleId: user.role.id,
-              roleName: user.role.name,
-              sessionId: uuidv4(),
-              isDeviceTrustedInSession: device.isTrusted || shouldRememberDevice
-            },
-            tx,
-            shouldRememberDevice
-          )
-
-        await this.otpService.finalizeSlt(sltContext.sltJti)
-        auditLogEntry.details.finalizedSltJtiOnSuccess = sltContext.sltJti
-
-        if (res) {
-          this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
-          this.tokenService.clearSltCookie(res)
-        }
-
-        auditLogEntry.status = AuditLogStatus.SUCCESS
-        auditLogEntry.action = 'COMPLETE_LOGIN_UNTRUSTED_DEVICE_OTP_SUCCESS'
-        auditLogEntry.details.finalSessionId = accessTokenPayload.sessionId
-        auditLogEntry.details.isDeviceTrustedInSession = accessTokenPayload.isDeviceTrustedInSession
-
-        const userToReturn = {
-          id: user.id,
-          email: user.email,
-          role: user.role.name,
-          isDeviceTrustedInSession: accessTokenPayload.isDeviceTrustedInSession,
-          userProfile: user.userProfile
-            ? {
-                avatar: user.userProfile.avatar,
-                username: user.userProfile.username
-              }
-            : null
-        }
-
-        return userToReturn
-      })
-      await this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
-
-      if (
-        auditLogEntry.status === AuditLogStatus.SUCCESS &&
-        resultFromTransaction?.id &&
-        auditLogEntry.details?.finalDeviceId &&
-        auditLogEntry.details?.finalSessionId
-      ) {
-        this.sessionManagementService
-          .enforceSessionAndDeviceLimits(
-            resultFromTransaction.id,
-            auditLogEntry.details.finalSessionId as string,
-            auditLogEntry.details.finalDeviceId as number
-          )
-          .then((limitsResult) => {
-            if (limitsResult.deviceLimitApplied || limitsResult.sessionLimitApplied) {
-              this.logger.log(
-                `Session/device limits applied for user ${resultFromTransaction.id} after OTP login. Devices removed: ${limitsResult.devicesRemovedCount}, Sessions revoked: ${limitsResult.sessionsRevokedCount}`
-              )
-            }
-          })
-          .catch((limitError) => {
-            this.logger.error(
-              `Error enforcing session/device limits for user ${resultFromTransaction.id} after OTP login: ${limitError.message}`,
-              limitError.stack
-            )
-          })
+        throw error
       }
 
-      return resultFromTransaction
+      let deviceToUseId = sltContext.deviceId
+      let deviceObject: Device | null = null
+
+      if (deviceToUseId && deviceToUseId !== 0) {
+        deviceObject = await this.deviceService.findDeviceById(deviceToUseId)
+        if (deviceObject && deviceObject.userId !== user.id) {
+          this.logger.warn(
+            `Device ID ${deviceToUseId} from SLT context found, but does not belong to user ${user.id}. Device belongs to ${deviceObject.userId}. Treating as if not found.`
+          )
+          if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+            auditLogEntry.details.sltDeviceFoundButNotBelongingToUser = true
+          }
+          deviceObject = null
+        }
+        if (deviceObject) {
+          await this.deviceService.updateDevice(deviceToUseId, { lastActive: new Date() })
+          if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+            auditLogEntry.details.sltDeviceFoundAndUpdated = true
+          }
+        } else if (deviceToUseId !== 0) {
+          this.logger.warn(
+            `Device ID ${deviceToUseId} from SLT context not found or does not belong to user ${user.id}. Will create new device.`
+          )
+          if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
+            auditLogEntry.details.sltDeviceNotFoundForUserOrMismatch = true
+          }
+          deviceToUseId = 0
+        }
+      }
+
+      if (!deviceObject && (!deviceToUseId || deviceToUseId === 0)) {
+        this.logger.log(`Creating new device for user ${user.id} during untrusted device OTP login.`)
+        const newDevice = await this.deviceService.findOrCreateDevice({
+          userId: user.id,
+          userAgent: body.userAgent,
+          ip: body.ip
+        })
+        deviceObject = newDevice
+        auditLogEntry.details.newDeviceCreatedForUntrustedLogin = newDevice.id
+      }
+
+      if (!deviceObject) {
+        auditLogEntry.errorMessage = 'Failed to find or create a device for the user.'
+        auditLogEntry.details.reason = 'DEVICE_PROCESSING_ERROR_UNTRUSTED_LOGIN'
+        await this.otpService.finalizeSlt(sltContext.sltJti)
+        if (res) this.tokenService.clearSltCookie(res)
+        throw new DeviceSetupFailedException()
+      }
+
+      const userForFinalizationUntrusted = {
+        ...user,
+        userProfile: user.userProfile,
+        role: {
+          id: user.role.id,
+          name: user.role.name
+        }
+      }
+
+      const finalizationResult = await this.sessionFinalizationService.finalizeSuccessfulAuthentication({
+        user: userForFinalizationUntrusted,
+        device: deviceObject,
+        rememberMe: body.rememberMe === undefined ? true : body.rememberMe,
+        ipAddress: body.ip,
+        userAgent: body.userAgent,
+        source: 'untrusted-device-otp-login',
+        res,
+        sltToFinalize: { jti: sltContext.sltJti, purpose: sltContext.purpose as TypeOfVerificationCode }
+      })
+
+      auditLogEntry.status = AuditLogStatus.SUCCESS
+      auditLogEntry.action = 'LOGIN_UNTRUSTED_DEVICE_OTP_SUCCESS'
+      auditLogEntry.details.finalDeviceId = deviceObject.id
+      auditLogEntry.details.finalSessionId = finalizationResult.sessionId
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
+
+      return finalizationResult
     } catch (error) {
       this.logger.error(
-        `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Failed for email ${effectiveEmail || auditLogEntry.userEmail || 'unknown'}: ${error.message}`,
+        `[AuthService completeLoginWithUntrustedDeviceOtp] Failed for user ${sltContext?.email || 'unknown'} (SLT JTI: ${sltContext?.sltJti || 'N/A'}): ${error.message}`,
         error.stack,
         auditLogEntry.details
       )
 
-      if (sltContext?.sltJti) {
-        this.logger.warn(
-          `[AuthenticationService completeLoginWithUntrustedDeviceOtp] Caught error. SLT JTI ${sltContext.sltJti}. Error: ${error.message}. Ensure SLT is not prematurely finalized here.`
-        )
-      }
-
       if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        auditLogEntry.errorMessage =
+          error instanceof Error ? error.message : 'Unknown error during untrusted device OTP login'
         if (error instanceof ApiException) {
           auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
         }
       }
+      if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && error instanceof ApiException) {
+        auditLogEntry.details.errorCode = error.errorCode
+      }
 
-      this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
-
+      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
@@ -1045,78 +966,38 @@ export class AuthenticationService extends BaseAuthService {
 
     try {
       const sessionId = uuidv4()
-      const now = new Date()
-      const geoLocation: GeolocationData | null = this.geolocationService.lookup(ipAddress)
 
-      const sessionData: Record<string, string | number | boolean | undefined | null> = {
-        userId: user.id,
-        deviceId: device.id,
-        ipAddress: ipAddress,
-        userAgent: userAgent,
-        createdAt: now.toISOString(),
-        lastActiveAt: now.toISOString(),
-        isTrusted: device.isTrusted,
-        rememberMe: rememberMe,
-        roleId: user.role.id,
-        roleName: user.role.name,
-        geoCountry: geoLocation?.country,
-        geoCity: geoLocation?.city,
-        source: source
+      if (!res) {
+        this.logger.error(
+          '[AuthenticationService.finalizeOauthLogin] Response object (res) is undefined. Cannot finalize session.'
+        )
+        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
       }
 
-      const { accessTokenPayload, sessionId: newSessionId } = await this.prismaService.$transaction<{
-        accessTokenPayload: AccessTokenPayload
-        sessionId: string
-      }>(async (tx) => {
-        const tokens = await this.tokenService.generateTokens(
-          {
-            userId: user.id,
-            deviceId: device.id,
-            roleId: user.role.id,
-            roleName: user.role.name,
-            sessionId: newSessionId,
-            isDeviceTrustedInSession: device.isTrusted || rememberMe
-          },
-          tx,
-          rememberMe
-        )
-
-        if (res) {
-          this.tokenService.setTokenCookies(
-            res,
-            tokens.accessToken,
-            tokens.refreshTokenJti,
-            tokens.maxAgeForRefreshTokenCookie
-          )
-        }
-        return { accessTokenPayload: tokens.accessTokenPayload, sessionId: newSessionId }
+      const finalizationResult = await this.sessionFinalizationService.finalizeSuccessfulAuthentication({
+        user,
+        device,
+        rememberMe,
+        ipAddress,
+        userAgent,
+        source,
+        res,
+        existingSessionId: sessionId
       })
 
       auditLogEntry.status = AuditLogStatus.SUCCESS
       auditLogEntry.action = 'USER_OAUTH_LOGIN_FINALIZE_SUCCESS'
-      auditLogEntry.details.sessionId = sessionId
+
       await this.auditLogService.record(auditLogEntry as AuditLogData)
 
-      this.sessionManagementService.enforceSessionAndDeviceLimits(user.id, sessionId, device.id).catch((err) => {
-        this.logger.error(
-          `[AuthenticationService.finalizeOauthLogin] Failed to enforce session limits for user ${user.id}, session ${sessionId}, device ${device.id}:`,
-          err
-        )
-      })
-
       return {
-        userId: user.id,
-        email: user.email,
-        role: user.role.name,
+        userId: finalizationResult.id,
+        email: finalizationResult.email,
+        role: finalizationResult.role,
         roleId: user.role.id,
-        isDeviceTrustedInSession: accessTokenPayload.isDeviceTrustedInSession,
+        isDeviceTrustedInSession: finalizationResult.isDeviceTrustedInSession,
         currentDeviceId: device.id,
-        userProfile: user.userProfile
-          ? {
-              avatar: user.userProfile.avatar,
-              username: user.userProfile.username
-            }
-          : null
+        userProfile: finalizationResult.userProfile
       }
     } catch (error) {
       this.logger.error(
@@ -1137,7 +1018,9 @@ export class AuthenticationService extends BaseAuthService {
     sessionId: string,
     body: ReverifyPasswordBodyType,
     ipAddress?: string,
-    userAgent?: string
+    userAgent?: string,
+    sltCookieValue?: string,
+    res?: Response
   ): Promise<{ message: string }> {
     const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
       action: 'SESSION_REVERIFY_ATTEMPT',
@@ -1164,6 +1047,7 @@ export class AuthenticationService extends BaseAuthService {
       auditLogEntry.userEmail = user.email
 
       let verificationSuccess = false
+      let sltContextForOtp: (SltContextData & { sltJti: string }) | null = null
 
       if (body.verificationMethod === 'password') {
         if (!body.password) {
@@ -1173,9 +1057,9 @@ export class AuthenticationService extends BaseAuthService {
         }
         const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
         if (!isPasswordMatch) {
-          auditLogEntry.errorMessage = InvalidPasswordException.message
-          auditLogEntry.details.reason = 'INVALID_PASSWORD'
-          throw InvalidPasswordException
+          auditLogEntry.errorMessage = 'Invalid current password for reverification.'
+          auditLogEntry.details.reason = 'INVALID_CURRENT_PASSWORD'
+          throw new InvalidPasswordException()
         }
         verificationSuccess = true
         auditLogEntry.details.passwordVerified = true
@@ -1183,23 +1067,64 @@ export class AuthenticationService extends BaseAuthService {
         if (!body.otpCode) {
           auditLogEntry.errorMessage = 'OTP code is required for OTP verification method.'
           auditLogEntry.details.reason = 'MISSING_OTP_CODE_FIELD'
-          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.Invalid')
+          throw new InvalidOTPException()
         }
-        const isOtpValid = await this.otpService.verifyOtpOnly(
-          user.email,
-          body.otpCode,
-          TypeOfVerificationCode.REVERIFY_SESSION_OTP,
-          userId,
-          ipAddress,
-          userAgent
-        )
-        if (!isOtpValid) {
-          auditLogEntry.errorMessage = 'Invalid OTP code for session reverification.'
-          auditLogEntry.details.reason = 'INVALID_OTP_FOR_REVERIFICATION'
-          throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Otp.Invalid')
+        if (!sltCookieValue) {
+          auditLogEntry.errorMessage = 'SLT cookie is required for OTP-based session reverification.'
+          auditLogEntry.details.reason = 'MISSING_SLT_COOKIE_FOR_OTP_REVERIFY'
+          throw new SltCookieMissingException()
         }
-        verificationSuccess = true
-        auditLogEntry.details.otpVerified = true
+
+        try {
+          sltContextForOtp = await this.otpService.validateSltFromCookieAndGetContext(
+            sltCookieValue,
+            ipAddress || 'N/A',
+            userAgent || 'N/A',
+            TypeOfVerificationCode.REVERIFY_SESSION_OTP
+          )
+          auditLogEntry.details.sltJti = sltContextForOtp.sltJti
+          auditLogEntry.details.sltPurposeValidated = sltContextForOtp.purpose
+
+          if (sltContextForOtp.userId !== userId) {
+            auditLogEntry.errorMessage = 'User ID mismatch between SLT context and active user for OTP reverification.'
+            auditLogEntry.details.reason = 'USER_ID_MISMATCH_SLT_OTP_REVERIFY'
+            await this.otpService.finalizeSlt(sltContextForOtp.sltJti)
+            if (res) this.tokenService.clearSltCookie(res)
+            throw new UnauthorizedAccessException()
+          }
+
+          await this.otpService.verifyOtpOnly(
+            user.email,
+            body.otpCode,
+            TypeOfVerificationCode.REVERIFY_SESSION_OTP,
+            userId,
+            ipAddress,
+            userAgent
+          )
+          verificationSuccess = true
+          auditLogEntry.details.otpVerified = true
+
+          await this.otpService.finalizeSlt(sltContextForOtp.sltJti)
+          auditLogEntry.details.sltFinalizedOnOtpSuccess = sltContextForOtp.sltJti
+          if (res) this.tokenService.clearSltCookie(res)
+        } catch (otpOrSltError) {
+          auditLogEntry.errorMessage = `OTP/SLT verification failed for session reverification: ${otpOrSltError.message}`
+          auditLogEntry.details.otpOrSltError = otpOrSltError.message
+          if (otpOrSltError instanceof ApiException) {
+            auditLogEntry.details.otpOrSltErrorCode = otpOrSltError.errorCode
+          }
+
+          if (sltContextForOtp) {
+            await this.sltHelperService.handleSltAttemptIncrementAndFinalization(
+              sltContextForOtp.sltJti,
+              MAX_SLT_ATTEMPTS_CONST,
+              'reverifyPasswordWithOtp',
+              auditLogEntry,
+              res
+            )
+          }
+          throw otpOrSltError
+        }
       } else if (body.verificationMethod === 'totp') {
         if (!body.totpCode) {
           auditLogEntry.errorMessage = 'TOTP code is required for TOTP verification method.'
@@ -1287,36 +1212,83 @@ export class AuthenticationService extends BaseAuthService {
     }
   }
 
-  async initiateSessionReverificationOtp(userId: number, userEmail: string): Promise<void> {
-    const user = await this.sharedUserRepository.findUniqueWithRole({ id: userId })
-    const displayName = user?.userProfile?.firstName || user?.userProfile?.lastName || userEmail
+  async initiateSessionReverificationOtp(
+    activeUser: AccessTokenPayload,
+    ipAddress: string,
+    userAgent: string
+  ): Promise<string> {
+    const user = await this.userRepository.findUnique({ id: activeUser.userId })
+    if (!user || !user.email) {
+      this.logger.error(
+        `[AuthenticationService] User not found or email missing for ID: ${activeUser.userId} during SLT initiation for session reverification.`
+      )
+      throw new ApiException(HttpStatus.NOT_FOUND, 'UserNotFoundForSlt', 'Error.User.NotFound')
+    }
+    const userEmail = user.email
+
+    const userProfile = await this.prismaService.userProfile.findUnique({ where: { userId: activeUser.userId } })
+    const displayName = userProfile?.firstName || userProfile?.lastName || userEmail
 
     this.logger.log(
-      `[AuthenticationService] Initiating session reverification OTP for user ${userId} (Email: ${userEmail}, DisplayName: ${displayName})`
+      `[AuthenticationService] Initiating session reverification OTP via SLT for user ${activeUser.userId} (Email: ${userEmail}, Device: ${activeUser.deviceId})`
     )
 
     try {
-      await this.otpService.sendOTP(userEmail, TypeOfVerificationCode.REVERIFY_SESSION_OTP, userId)
-      this.logger.log(`Successfully sent session reverification OTP to ${userEmail}`)
+      const sltJwt = await this.otpService.initiateOtpWithSltCookie({
+        email: userEmail,
+        userId: activeUser.userId,
+        deviceId: activeUser.deviceId,
+        ipAddress: ipAddress,
+        userAgent: userAgent,
+        purpose: TypeOfVerificationCode.REVERIFY_SESSION_OTP
+      })
+
+      this.logger.log(
+        `Successfully initiated SLT for session reverification for user ${userEmail}. SLT JTI (from decoded JWT if possible, or just acknowledge): ${sltJwt ? 'Generated' : 'Not Generated (Error?)'}`
+      )
 
       await this.auditLogService.record({
-        action: 'REVERIFICATION_OTP_SENT',
-        userId,
-        userEmail,
+        action: 'REVERIFICATION_OTP_SLT_INITIATED',
+        userId: activeUser.userId,
+        userEmail: userEmail,
+        ipAddress: ipAddress,
+        userAgent: userAgent,
         status: AuditLogStatus.SUCCESS,
-        details: { context: 'session_reverification', userNameAttempted: displayName }
+        details: {
+          context: 'session_reverification_slt',
+          displayName,
+          deviceId: activeUser.deviceId,
+          sltPurpose: TypeOfVerificationCode.REVERIFY_SESSION_OTP
+        } as Prisma.JsonObject
       })
+      return sltJwt
     } catch (error) {
-      this.logger.error(`[AuthenticationService] Failed to send session reverification OTP to ${userEmail}:`, error)
+      this.logger.error(
+        `[AuthenticationService] Failed to initiate SLT for session reverification OTP for user ${userEmail}:`,
+        error
+      )
       await this.auditLogService.record({
-        action: 'REVERIFICATION_OTP_SENT_FAILED',
-        userId,
-        userEmail,
+        action: 'REVERIFICATION_OTP_SLT_INITIATE_FAILED',
+        userId: activeUser.userId,
+        userEmail: userEmail,
+        ipAddress: ipAddress,
+        userAgent: userAgent,
         status: AuditLogStatus.FAILURE,
-        errorMessage: error instanceof Error ? error.message : 'Unknown OTP send error',
-        details: { context: 'session_reverification', userNameAttempted: displayName }
+        errorMessage: error instanceof Error ? error.message : 'Unknown SLT initiation error',
+        details: {
+          context: 'session_reverification_slt',
+          displayName,
+          deviceId: activeUser.deviceId
+        } as Prisma.JsonObject
       })
-      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'OTP_SEND_FAILED', 'Error.Auth.Otp.SendFailed')
+      if (error instanceof ApiException) {
+        throw error
+      }
+      throw new ApiException(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        'SLT_INITIATION_FAILED',
+        'Error.Auth.Slt.InitiationFailed'
+      )
     }
   }
 }

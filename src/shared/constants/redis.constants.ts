@@ -18,6 +18,7 @@ export const REDIS_KEY_PREFIX = {
   SLT_CONTEXT: 'slt_ctx:', // Hash: slt_ctx:<jti> -> { userId, deviceId, ipAddress, userAgent, purpose, sltExp, finalized, metadata? } (with TTL matching SLT_JWT_EXPIRES_IN)
   DEVICE_SESSIONS: 'd_s:', // Set of session IDs for a device
   OTP_LAST_SENT: 'otp_ls:', // String: otp_ls:{userId}:{purpose} -> timestamp (with TTL for OTP_SEND_COOLDOWN_SECONDS + buffer)
+  SLT_BLACKLIST_JTI: 'slt_bl_jti:', // String: slt_bl_jti:<jti> -> "1" (with TTL)
   SLT_FINALIZED: 'slt_fin:', // Key to mark an SLT as finalized (value can be '1' or similar)
   OTP_DISABLE_2FA: 'otp_dis_2fa:',
   OTP_REVERIFY_SESSION: 'otp_reverify_sess:',

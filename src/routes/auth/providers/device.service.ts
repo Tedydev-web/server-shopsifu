@@ -8,7 +8,7 @@ import { UAParser } from 'ua-parser-js'
 import { EmailService } from './email.service'
 import { I18nService, I18nContext } from 'nestjs-i18n'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
-import { SharedUserRepository } from '../repositories/shared-user.repo'
+import { UserRepository } from '../repositories/shared-user.repo'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 
 interface UserForNotification {
@@ -27,10 +27,9 @@ export class DeviceService {
     private readonly emailService: EmailService,
     private readonly i18nService: I18nService,
     private readonly geolocationService: GeolocationService,
-    private readonly sharedUserRepository: SharedUserRepository
+    private readonly userRepository: UserRepository
   ) {}
 
-  // Added _normalizeDeviceType (can be moved to a shared util)
   private _normalizeDeviceType(
     parsedDeviceType?: string,
     osName?: string,
@@ -63,22 +62,20 @@ export class DeviceService {
     const os = parser.getOS()
     const browser = parser.getBrowser()
 
-    const type = device.type || 'unknown_type' // ví dụ: 'mobile', 'tablet', 'desktop' (suy luận từ os/browser nếu không có)
+    const type = device.type || 'unknown_type'
     let osName = os.name ? os.name.toLowerCase().replace(/\s+/g, '_') : 'unknown_os'
-    const osVersion = os.version ? os.version.split('.')[0] : 'any_version' // Lấy phiên bản chính
+    const osVersion = os.version ? os.version.split('.')[0] : 'any_version'
     let browserName = browser.name ? browser.name.toLowerCase().replace(/\s+/g, '_') : 'unknown_browser'
-    const browserVersion = browser.version ? browser.version.split('.')[0] : 'any_version' // Lấy phiên bản chính
+    const browserVersion = browser.version ? browser.version.split('.')[0] : 'any_version'
 
-    // Chuẩn hóa một số trường hợp phổ biến
     if (osName.includes('mac_os') || osName.includes('macos')) osName = 'macos'
     if (osName.includes('windows')) osName = 'windows'
     if (browserName.includes('mobile_safari')) browserName = 'safari_mobile'
     if (browserName.includes('chrome') && type === 'mobile') browserName = 'chrome_mobile'
 
-    // Suy luận 'desktop' nếu device.type không có nhưng có OS và browser
     const inferredType = device.type || (os.name && browser.name ? 'desktop' : 'unknown_type')
 
-    return `${inferredType}-${osName}_${osVersion}-${browserName}_${browserVersion}`.substring(0, 255) // Ensure it fits VarChar(255)
+    return `${inferredType}-${osName}_${osVersion}-${browserName}_${browserVersion}`.substring(0, 255)
   }
 
   @AuditLog({
@@ -240,7 +237,7 @@ export class DeviceService {
 
       const updates: Prisma.DeviceUpdateInput = {
         lastActive: new Date(),
-        ip: data.ip // Always update IP to the latest one from the request
+        ip: data.ip
       }
 
       let userAgentChanged = false
@@ -254,11 +251,10 @@ export class DeviceService {
         deviceLogDetails.oldUserAgent = device.userAgent
       }
 
-      // Location change detection and notification logic
       const significantLocationChange =
         (currentCity && device.lastKnownCity !== currentCity) ||
         (currentCountry && device.lastKnownCountry !== currentCountry) ||
-        (data.ip !== device.lastKnownIp && // Also consider if IP changed and one of the location fields was unknown
+        (data.ip !== device.lastKnownIp &&
           ((!device.lastKnownCity && currentCity) || (!device.lastKnownCountry && currentCountry)))
 
       if (data.ip !== device.lastKnownIp) {
@@ -278,13 +274,13 @@ export class DeviceService {
         deviceLogDetails.oldCountry = device.lastKnownCountry
 
         const now = new Date()
-        const notificationCooldownMs = 24 * 60 * 60 * 1000 // 24 hours
+        const notificationCooldownMs = 24 * 60 * 60 * 1000
         const canSendNotification =
           !device.lastNotificationSentAt ||
           now.getTime() - device.lastNotificationSentAt.getTime() > notificationCooldownMs
 
         if (canSendNotification) {
-          const userWithProfile = await this.sharedUserRepository.findUniqueWithRole({ id: data.userId }, client)
+          const userWithProfile = await this.userRepository.findUniqueWithDetails({ id: data.userId }, client)
           if (userWithProfile) {
             const userForNotification: UserForNotification = {
               id: userWithProfile.id,
@@ -298,7 +294,7 @@ export class DeviceService {
             }
             this._sendKnownDeviceNewLocationNotification(
               userForNotification,
-              device, // Pass the existing device object
+              device,
               data.ip,
               currentCity,
               currentCountry,
@@ -355,7 +351,7 @@ export class DeviceService {
         lastKnownIp: data.ip,
         lastKnownCity: currentCity,
         lastKnownCountry: currentCountry,
-        lastNotificationSentAt: new Date() // Sent notification for new device
+        lastNotificationSentAt: new Date()
       }
 
       device = await this.createDeviceRecordInternal(newDeviceData, client)
@@ -376,7 +372,7 @@ export class DeviceService {
         notes: 'New device record created due to login with an unrecognized fingerprint.'
       })
 
-      const userWithProfile = await this.sharedUserRepository.findUniqueWithRole({ id: data.userId }, client)
+      const userWithProfile = await this.userRepository.findUniqueWithDetails({ id: data.userId }, client)
       const uaParsed = new UAParser(data.userAgent)
       const fingerprintDetails = {
         type: this._normalizeDeviceType(uaParsed.getDevice().type, uaParsed.getOS().name, uaParsed.getBrowser().name),
@@ -405,7 +401,6 @@ export class DeviceService {
             )
           }
         )
-        // lastNotificationSentAt is already set in newDeviceData
       } else {
         deviceLogDetails.notificationSkippedReason = 'USER_NOT_FOUND_FOR_NEW_DEVICE_NOTIFICATION'
       }
@@ -464,9 +459,6 @@ export class DeviceService {
         isValid = false
       }
     } else {
-      // Fallback for devices without a fingerprint (older records)
-      // Consider these less secure; exact User-Agent match might be required, or always fail to force re-authentication and fingerprint generation.
-      // For now, let's be strict: if no fingerprint, it must be an exact UA match.
       if (device.userAgent === userAgent) {
         this.logger.debug(
           `Device ${deviceId} (no fingerprint): Validated successfully with exact User-Agent match. Consider re-authentication to generate fingerprint.`
@@ -480,8 +472,6 @@ export class DeviceService {
       }
     }
 
-    // Always update lastActive and IP if device was found and active, regardless of validation outcome for this specific check,
-    // as this indicates an attempt to use the device session.
     await this.updateDevice(deviceId, updates, client)
 
     return isValid
@@ -590,7 +580,7 @@ export class DeviceService {
 
     const updatedDevice = await client.device.update({
       where: { id: deviceId },
-      data: { isTrusted: true, lastActive: new Date() } // Update lastActive as well
+      data: { isTrusted: true, lastActive: new Date() }
     })
 
     this.auditLogService.recordAsync({
@@ -601,7 +591,7 @@ export class DeviceService {
       status: AuditLogStatus.SUCCESS,
       details: {
         deviceUserAgent: device.userAgent,
-        trustedBy: 'USER_ACTION' // Or system action if applicable
+        trustedBy: 'USER_ACTION'
       } as Prisma.JsonObject,
       notes: `Device ${deviceId} explicitly trusted by user ${userId}.`
     })
@@ -609,10 +599,9 @@ export class DeviceService {
     return updatedDevice
   }
 
-  // New private method to send notification for known device, new location
   private async _sendKnownDeviceNewLocationNotification(
     user: UserForNotification,
-    device: Device, // Pass the existing device object
+    device: Device,
     newIpAddress: string,
     newCity: string | null,
     newCountry: string | null,
@@ -676,7 +665,7 @@ export class DeviceService {
             lang,
             defaultValue: `Device ID: ${device.id}`
           })) ||
-          `Device ID: ${device.id}` // Fallback if translate returns null/undefined
+          `Device ID: ${device.id}`
       },
       {
         label: await this.i18nService.translate('Email.Field.NewIPAddress', { lang, defaultValue: 'New IP Address' }),
@@ -731,7 +720,6 @@ export class DeviceService {
         this.logger.log(
           `Known device new location notification sent to ${user.email} for user ID ${user.id}, device ID ${device.id}`
         )
-        // Update lastNotificationSentAt is handled by the caller (findOrCreateDevice)
       })
       .catch((error) => {
         this.logger.error(

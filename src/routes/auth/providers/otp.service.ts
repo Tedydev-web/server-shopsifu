@@ -15,11 +15,13 @@ import {
   InvalidOTPException,
   OTPExpiredException,
   FailedToSendOTPException,
-  InvalidOTPTokenException,
-  OTPTokenExpiredException,
   DeviceMismatchException,
   TooManyOTPAttemptsException,
-  TooManyRequestsException
+  TooManyRequestsException,
+  MaxVerificationAttemptsExceededException,
+  SltContextMaxAttemptsReachedException,
+  SltContextFinalizedException,
+  SltCookieMissingException
 } from 'src/routes/auth/auth.error'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
@@ -27,32 +29,20 @@ import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { JwtService } from '@nestjs/jwt'
 import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 
 interface OtpData {
   code: string
   attempts: number
-  createdAt: number // Unix timestamp in milliseconds
-  userId?: number // ID của user mà OTP này gắn liền (cho VERIFY_NEW_EMAIL thì đây là user ID)
+  createdAt: number
+  userId?: number
   deviceId?: number
   metadata?: Record<string, any>
-}
-
-export interface VerificationJwtPayload {
-  jti: string
-  sub: string // email (có thể là email chính hoặc pendingEmail tùy context)
-  type: TypeOfVerificationCodeType
-  userId?: number // Luôn là ID của user
-  deviceId?: number
-  metadata?: Record<string, any>
-  iat: number
-  exp: number
 }
 
 interface SltJwtPayload {
   jti: string
-  sub: number // userId
-  pur: TypeOfVerificationCodeType // purpose
+  sub: number
+  pur: TypeOfVerificationCodeType
   exp: number
 }
 
@@ -67,7 +57,7 @@ export interface SltContextData {
   finalized: '0' | '1'
   attempts: number
   metadata?: Record<string, any> & { twoFactorMethod?: TwoFactorMethodTypeType }
-  email?: string // Email đích cho OTP (ví dụ: pendingEmail)
+  email?: string
 }
 
 const OTP_SEND_COOLDOWN_SECONDS = 60
@@ -91,16 +81,12 @@ export class OtpService {
     return `${REDIS_KEY_PREFIX.OTP_CODE}${type}:${identifier}`
   }
 
-  private _getVerificationJwtPayloadKey(jti: string): string {
-    return `${REDIS_KEY_PREFIX.VERIFICATION_JWT_PAYLOAD}${jti}`
-  }
-
-  private _getVerificationJwtBlacklistKey(jti: string): string {
-    return `${REDIS_KEY_PREFIX.VERIFICATION_JWT_BLACKLIST_JTI}${jti}`
-  }
-
   private _getSltContextKey(jti: string): string {
     return `${REDIS_KEY_PREFIX.SLT_CONTEXT}${jti}`
+  }
+
+  private _getSltBlacklistKey(jti: string): string {
+    return `${REDIS_KEY_PREFIX.SLT_BLACKLIST_JTI}${jti}`
   }
 
   private _getOtpLastSentKey(identifierForCooldown: string, purpose: TypeOfVerificationCodeType): string {
@@ -108,31 +94,30 @@ export class OtpService {
   }
 
   async sendOTP(
-    targetEmail: string, // Email đích để gửi OTP
+    targetEmail: string,
     type: TypeOfVerificationCodeType,
-    userIdForCooldownAndOtpData?: number // User ID thực hiện hành động (để rate limit và lưu trong OtpData)
+    userIdForCooldownAndOtpData?: number
   ): Promise<{ message: string }> {
     const lang = I18nContext.current()?.lang || 'en'
 
     if (userIdForCooldownAndOtpData) {
-      const cooldownIdentifier = userIdForCooldownAndOtpData.toString() // Sửa lỗi linter: chuyển sang string
+      const cooldownIdentifier = userIdForCooldownAndOtpData.toString()
       const cooldownKey = this._getOtpLastSentKey(cooldownIdentifier, type)
       const lastSentTimestampStr = await this.redisService.get(cooldownKey)
       if (lastSentTimestampStr) {
         const lastSentTimestamp = parseInt(lastSentTimestampStr, 10)
         if (Date.now() - lastSentTimestamp < OTP_SEND_COOLDOWN_SECONDS * 1000) {
           this.logger.warn(`OTP send cooldown active for identifier ${cooldownIdentifier}, type ${type}.`)
-          throw TooManyRequestsException(
-            await this.i18nService.translate('error.Error.Auth.Otp.CooldownActive', {
-              lang,
-              args: { seconds: OTP_SEND_COOLDOWN_SECONDS }
-            })
-          )
+          const cooldownMessage = await this.i18nService.translate('error.Error.Auth.Otp.CooldownActive', {
+            lang,
+            args: { seconds: OTP_SEND_COOLDOWN_SECONDS }
+          })
+          throw new TooManyRequestsException(cooldownMessage)
         }
       }
     }
 
-    const otpKey = this._getOtpKey(type, targetEmail) // OTP key dựa trên email đích và type
+    const otpKey = this._getOtpKey(type, targetEmail)
     const code = generateOTP()
     const otpTTLSeconds = Math.floor(ms(envConfig.OTP_EXPIRES_IN) / 1000)
 
@@ -140,7 +125,7 @@ export class OtpService {
       code,
       attempts: 0,
       createdAt: Date.now(),
-      userId: userIdForCooldownAndOtpData // userId của người thực hiện hành động
+      userId: userIdForCooldownAndOtpData
     }
 
     await this.redisService.set(otpKey, JSON.stringify(otpData), 'EX', otpTTLSeconds)
@@ -177,7 +162,7 @@ export class OtpService {
       })
 
       if (userIdForCooldownAndOtpData) {
-        const cooldownIdentifier = userIdForCooldownAndOtpData.toString() // Sửa lỗi linter: chuyển sang string
+        const cooldownIdentifier = userIdForCooldownAndOtpData.toString()
         const cooldownKey = this._getOtpLastSentKey(cooldownIdentifier, type)
         await this.redisService.set(cooldownKey, Date.now().toString(), 'EX', OTP_SEND_COOLDOWN_SECONDS)
       }
@@ -200,10 +185,10 @@ export class OtpService {
   }
 
   async verifyOtpOnly(
-    emailToVerifyAgainst: string, // Email dùng để tạo otpKey (VD: pendingEmail)
+    emailToVerifyAgainst: string,
     code: string,
     type: TypeOfVerificationCodeType,
-    userIdForAudit?: number, // User ID thực hiện hành động
+    userIdForAudit?: number,
     ip?: string,
     userAgent?: string
   ): Promise<boolean> {
@@ -212,12 +197,12 @@ export class OtpService {
   }
 
   private async _verifyOtpCore(
-    identifierForOtpKey: string, // Email hoặc ID dùng trong _getOtpKey
+    identifierForOtpKey: string,
     code: string,
     type: TypeOfVerificationCodeType,
     ip?: string,
     userAgent?: string,
-    userIdForAudit?: number // User ID thực hiện hành động
+    userIdForAudit?: number
   ): Promise<{ otpKey: string; otpData: OtpData }> {
     const otpKey = this._getOtpKey(type, identifierForOtpKey)
     const otpDataString = await this.redisService.get(otpKey)
@@ -241,17 +226,16 @@ export class OtpService {
         errorMessage: 'OTP_EXPIRED_OR_NOT_FOUND',
         details: auditDetailsBase as Prisma.JsonObject
       })
-      throw OTPExpiredException
+      throw new OTPExpiredException()
     }
 
     const otpData: OtpData = JSON.parse(otpDataString)
 
-    // Đối với VERIFY_NEW_EMAIL, kiểm tra xem userId trong OtpData có khớp với userIdForAudit không
     if (type === TypeOfVerificationCode.VERIFY_NEW_EMAIL && otpData.userId !== userIdForAudit) {
       this.logger.warn(
         `OTP verification failed for ${identifierForOtpKey} (type ${type}): OTP data user ID (${otpData.userId}) does not match audit user ID (${userIdForAudit}). Key: ${otpKey}`
       )
-      otpData.attempts += 1 // Tăng số lần thử cho key OTP cụ thể này
+      otpData.attempts += 1
       const ttl = await this.redisService.ttl(otpKey)
       if (ttl > 0) {
         await this.redisService.set(otpKey, JSON.stringify(otpData), 'EX', ttl)
@@ -264,7 +248,7 @@ export class OtpService {
         errorMessage: 'OTP_USER_MISMATCH',
         details: { ...auditDetailsBase, otpUserId: otpData.userId, attempts: otpData.attempts } as Prisma.JsonObject
       })
-      throw InvalidOTPException // Hoặc lỗi cụ thể hơn
+      throw new InvalidOTPException()
     }
 
     if (otpData.attempts >= this.MAX_OTP_ATTEMPTS) {
@@ -278,7 +262,7 @@ export class OtpService {
         errorMessage: 'MAX_OTP_ATTEMPTS_REACHED',
         details: { ...auditDetailsBase, attempts: otpData.attempts } as Prisma.JsonObject
       })
-      throw TooManyOTPAttemptsException
+      throw new TooManyOTPAttemptsException()
     }
 
     if (otpData.code !== code) {
@@ -298,7 +282,7 @@ export class OtpService {
         errorMessage: 'INVALID_OTP_CODE',
         details: { ...auditDetailsBase, attempts: otpData.attempts } as Prisma.JsonObject
       })
-      throw InvalidOTPException
+      throw new InvalidOTPException()
     }
 
     await this.redisService.del(otpKey)
@@ -315,8 +299,8 @@ export class OtpService {
   }
 
   async initiateOtpWithSltCookie(payload: {
-    email: string // Email đích để gửi OTP (VD: pendingEmail cho VERIFY_NEW_EMAIL)
-    userId: number // User ID thực hiện hành động
+    email: string
+    userId: number
     deviceId: number
     ipAddress: string
     userAgent: string
@@ -331,12 +315,11 @@ export class OtpService {
       const lastSentTimestamp = parseInt(lastSentTimestampStr, 10)
       if (Date.now() - lastSentTimestamp < OTP_SEND_COOLDOWN_SECONDS * 1000) {
         this.logger.warn(`SLT OTP send cooldown active for user ${payload.userId}, purpose ${payload.purpose}.`)
-        throw TooManyRequestsException(
-          await this.i18nService.translate('error.Error.Auth.Otp.CooldownActive', {
-            lang,
-            args: { seconds: OTP_SEND_COOLDOWN_SECONDS }
-          })
-        )
+        const cooldownMessage = await this.i18nService.translate('error.Error.Auth.Otp.CooldownActive', {
+          lang,
+          args: { seconds: OTP_SEND_COOLDOWN_SECONDS }
+        })
+        throw new TooManyRequestsException(cooldownMessage)
       }
     }
 
@@ -368,7 +351,7 @@ export class OtpService {
       finalized: '0',
       attempts: 0,
       metadata,
-      email // Lưu email đích (pendingEmail) trong context
+      email
     }
 
     const sltContextKey = this._getSltContextKey(sltJti)
@@ -376,12 +359,12 @@ export class OtpService {
     this.logger.debug(`SLT context for JTI ${sltJti} stored in Redis. Key: ${sltContextKey}`)
 
     if (
+      purpose === TypeOfVerificationCode.REGISTER ||
+      purpose === TypeOfVerificationCode.RESET_PASSWORD ||
       purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP ||
       purpose === TypeOfVerificationCode.REVERIFY_SESSION_OTP ||
-      purpose === TypeOfVerificationCode.VERIFY_NEW_EMAIL // Thêm VERIFY_NEW_EMAIL
+      purpose === TypeOfVerificationCode.VERIFY_NEW_EMAIL
     ) {
-      // "email" trong payload là email đích (targetEmail) để gửi OTP.
-      // "userId" trong payload là userId thực tế của người dùng để rate limiting và lưu trong OtpData.
       await this.sendOTP(email, purpose, userId)
       this.logger.debug(`OTP sent for SLT purpose: ${purpose} to email: ${email} for user: ${userId}`)
     }
@@ -396,7 +379,7 @@ export class OtpService {
         sltJti,
         purpose,
         deviceId,
-        targetEmail: email, // Log email đích
+        targetEmail: email,
         metadata
       } as Prisma.JsonObject
     })
@@ -409,16 +392,16 @@ export class OtpService {
   }
 
   async verifyOTPAndCreateToken(payload: {
-    email: string // Identifier for OTP key
+    email: string
     code: string
     type: TypeOfVerificationCodeType
-    userId?: number // The actual user ID
+    userId?: number
     deviceId?: number
     metadata?: Record<string, any>
     ip?: string
     userAgent?: string
   }): Promise<string> {
-    const { otpData } = await this._verifyOtpCore(
+    const { otpData, otpKey } = await this._verifyOtpCore(
       payload.email,
       payload.code,
       payload.type,
@@ -427,45 +410,21 @@ export class OtpService {
       payload.userId
     )
 
-    const jwtJti = uuidv4()
     const nowSeconds = Math.floor(Date.now() / 1000)
     const expiresInSeconds = Math.floor(ms(envConfig.VERIFICATION_JWT_EXPIRES_IN) / 1000)
-
-    const verificationJwtPayload: VerificationJwtPayload = {
-      jti: jwtJti,
-      sub: payload.email,
-      type: payload.type,
-      userId: payload.userId,
-      deviceId: payload.deviceId,
-      metadata: payload.metadata,
-      iat: nowSeconds,
-      exp: nowSeconds + expiresInSeconds
-    }
-
-    const verificationJwt = this.jwtService.sign(verificationJwtPayload, {
-      secret: envConfig.VERIFICATION_JWT_SECRET,
-      expiresIn: envConfig.VERIFICATION_JWT_EXPIRES_IN
-    })
-
-    await this.redisService.set(
-      this._getVerificationJwtPayloadKey(jwtJti),
-      JSON.stringify(verificationJwtPayload),
-      'EX',
-      expiresInSeconds
-    )
-    this.logger.debug(
-      `Verification JWT payload for JTI ${jwtJti} stored in Redis. Key: ${this._getVerificationJwtPayloadKey(jwtJti)}`
-    )
 
     this.auditLogService.recordAsync({
       userEmail: payload.email,
       action: 'OTP_VERIFY_SUCCESS_JWT_CREATED',
       userId: payload.userId,
       status: AuditLogStatus.SUCCESS,
-      details: { ...otpData, verificationJwtJti: jwtJti, forUserId: payload.userId } as Prisma.JsonObject
+      details: { ...otpData, verifiedOtpKey: otpKey } as Prisma.JsonObject
     })
 
-    return verificationJwt
+    this.logger.warn(
+      'verifyOTPAndCreateToken called, but JWT creation part is deprecated and removed. Returning placeholder for otpToken.'
+    )
+    return `deprecated_otp_token_for_${payload.type}_${payload.email}`
   }
 
   async validateSltFromCookieAndGetContext(
@@ -474,65 +433,70 @@ export class OtpService {
     currentUserAgent: string,
     expectedPurpose?: TypeOfVerificationCodeType
   ): Promise<SltContextData & { sltJti: string }> {
-    let sltPayloadFromVerify: SltJwtPayload
+    const auditDetails: Record<string, any> = {
+      sltCookieProvided: !!sltCookieValue,
+      currentIpAddress,
+      currentUserAgent,
+      expectedPurpose
+    }
+
+    if (!sltCookieValue) {
+      this.logger.warn('SLT cookie value is missing.')
+      this.auditLogService.recordAsync({
+        action: 'SLT_VALIDATE_FAIL',
+        status: AuditLogStatus.FAILURE,
+        errorMessage: 'SLT_COOKIE_MISSING',
+        details: auditDetails as Prisma.JsonObject
+      })
+      throw new SltCookieMissingException()
+    }
+
+    let payload: SltJwtPayload
     try {
-      sltPayloadFromVerify = this.jwtService.verify<SltJwtPayload>(sltCookieValue, {
+      payload = this.jwtService.verify<SltJwtPayload>(sltCookieValue, {
         secret: envConfig.SLT_JWT_SECRET
       })
     } catch (error) {
-      this.logger.warn(`SLT JWT verification failed: ${error.message}. Token: ${sltCookieValue.substring(0, 20)}...`)
+      this.logger.warn(`SLT JWT verification failed: ${error.message}`)
+      auditDetails.jwtVerificationError = error.message
       this.auditLogService.recordAsync({
-        action: 'SLT_VALIDATION_FAIL',
+        action: 'SLT_VALIDATE_FAIL',
         status: AuditLogStatus.FAILURE,
-        ipAddress: currentIpAddress,
-        userAgent: currentUserAgent,
-        errorMessage: 'INVALID_SLT_JWT_SIGNATURE_OR_EXPIRED',
-        details: {
-          error: error.message,
-          expectedPurposeProvided: !!expectedPurpose,
-          expectedPurposeValue: expectedPurpose
-        } as Prisma.JsonObject
-      })
-      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.Session.InvalidLogin', [
-        { code: 'Error.Auth.Session.InvalidLogin', path: 'slt_token' }
-      ])
-    }
-
-    const { jti: sltJti, pur: sltPurposeFromJwt, sub: sltUserId, exp: sltExpFromJwt } = sltPayloadFromVerify
-
-    const auditDetails: Record<string, any> = {
-      sltJti,
-      sltPurposeFromJwt,
-      sltUserId,
-      expectedPurposeProvided: !!expectedPurpose,
-      expectedPurposeValue: expectedPurpose,
-      currentIpAddress,
-      currentUserAgent
-    }
-
-    if (expectedPurpose && sltPurposeFromJwt !== expectedPurpose) {
-      this.logger.warn(`SLT purpose mismatch for JTI ${sltJti}. Expected ${expectedPurpose}, got ${sltPurposeFromJwt}.`)
-      this.auditLogService.recordAsync({
-        userId: sltUserId,
-        action: 'SLT_VALIDATION_FAIL',
-        status: AuditLogStatus.FAILURE,
-        ipAddress: currentIpAddress,
-        userAgent: currentUserAgent,
-        errorMessage: 'SLT_PURPOSE_MISMATCH',
+        errorMessage: 'SLT_JWT_INVALID_OR_EXPIRED',
         details: auditDetails as Prisma.JsonObject
       })
-      throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Session.InvalidLogin', [
-        { code: 'Error.Auth.Session.InvalidLogin', path: 'slt_token' }
-      ])
+      if (error.name === 'TokenExpiredError') {
+        throw new ApiException(HttpStatus.UNAUTHORIZED, 'SltTokenExpired', 'Error.Auth.Session.SltExpired')
+      }
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'SltTokenInvalid', 'Error.Auth.Session.SltInvalid')
     }
 
-    const sltContextKey = this._getSltContextKey(sltJti)
-    const sltContextString = await this.redisService.get(sltContextKey)
+    auditDetails.sltJti = payload.jti
+    auditDetails.sltSub = payload.sub
+    auditDetails.sltPurpose = payload.pur
+    auditDetails.sltExp = payload.exp
 
-    if (!sltContextString) {
-      this.logger.warn(`SLT context not found in Redis for JTI ${sltJti}. Key: ${sltContextKey}.`)
+    const blacklistedSlt = await this.redisService.get(this._getSltBlacklistKey(payload.jti))
+    if (blacklistedSlt) {
+      this.logger.warn(`SLT JTI ${payload.jti} is blacklisted.`)
+      auditDetails.sltBlacklisted = true
       this.auditLogService.recordAsync({
-        userId: sltUserId,
+        userId: payload.sub,
+        action: 'SLT_VALIDATE_FAIL',
+        status: AuditLogStatus.FAILURE,
+        errorMessage: 'SLT_JTI_BLACKLISTED',
+        details: auditDetails as Prisma.JsonObject
+      })
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'SltTokenInvalid', 'Error.Auth.Session.SltInvalid')
+    }
+
+    const sltContextKey = this._getSltContextKey(payload.jti)
+    const contextString = await this.redisService.get(sltContextKey)
+
+    if (!contextString) {
+      this.logger.warn(`SLT context not found in Redis for JTI ${payload.jti}. Key: ${sltContextKey}.`)
+      this.auditLogService.recordAsync({
+        userId: payload.sub,
         action: 'SLT_VALIDATION_FAIL',
         status: AuditLogStatus.FAILURE,
         ipAddress: currentIpAddress,
@@ -540,17 +504,17 @@ export class OtpService {
         errorMessage: 'SLT_CONTEXT_NOT_FOUND_OR_EXPIRED_IN_REDIS',
         details: auditDetails as Prisma.JsonObject
       })
-      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.Session.InvalidLogin', [
-        { code: 'Error.Auth.Session.InvalidLogin', path: 'slt_token' }
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'SltContextNotFound', 'Error.Auth.Session.SltContextNotFound', [
+        { code: 'Error.Auth.Session.SltContextNotFound', path: 'slt_token' }
       ])
     }
 
-    const sltContext: SltContextData = JSON.parse(sltContextString)
+    const sltContext: SltContextData = JSON.parse(contextString)
 
     if (sltContext.finalized === '1') {
-      this.logger.warn(`Attempt to use an already finalized SLT context for JTI ${sltJti}.`)
+      this.logger.warn(`Attempt to use an already finalized SLT context for JTI ${payload.jti}.`)
       this.auditLogService.recordAsync({
-        userId: sltUserId,
+        userId: payload.sub,
         action: 'SLT_VALIDATION_FAIL',
         status: AuditLogStatus.FAILURE,
         ipAddress: currentIpAddress,
@@ -558,19 +522,37 @@ export class OtpService {
         errorMessage: 'SLT_CONTEXT_ALREADY_FINALIZED',
         details: auditDetails as Prisma.JsonObject
       })
-      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.Session.InvalidLogin', [
-        { code: 'Error.Auth.Session.InvalidLogin', path: 'slt_token' }
-      ])
+      throw new SltContextFinalizedException()
+    }
+
+    if (sltContext.attempts >= MAX_SLT_ATTEMPTS) {
+      this.logger.warn(
+        `SLT JTI ${payload.jti} has already reached max attempts (${sltContext.attempts}/${MAX_SLT_ATTEMPTS}) upon validation.`
+      )
+      this.auditLogService.recordAsync({
+        userId: payload.sub,
+        action: 'SLT_VALIDATE_FAIL_MAX_ATTEMPTS_PRE_CHECK',
+        status: AuditLogStatus.FAILURE,
+        ipAddress: currentIpAddress,
+        userAgent: currentUserAgent,
+        errorMessage: 'SLT_CONTEXT_MAX_ATTEMPTS_REACHED_ON_VALIDATE',
+        details: {
+          ...auditDetails,
+          currentAttempts: sltContext.attempts,
+          maxAttempts: MAX_SLT_ATTEMPTS
+        } as Prisma.JsonObject
+      })
+      throw new SltContextMaxAttemptsReachedException()
     }
 
     const nowSeconds = Math.floor(Date.now() / 1000)
-    if (sltExpFromJwt !== sltContext.sltJwtExp || nowSeconds >= sltContext.sltJwtExp) {
+    if (payload.exp !== sltContext.sltJwtExp || nowSeconds >= sltContext.sltJwtExp) {
       this.logger.warn(
-        `SLT JWT/Context expiry mismatch or SLT expired for JTI ${sltJti}. JWT exp: ${sltExpFromJwt}, Context exp: ${sltContext.sltJwtExp}, Now: ${nowSeconds}`
+        `SLT JWT/Context expiry mismatch or SLT expired for JTI ${payload.jti}. JWT exp: ${payload.exp}, Context exp: ${sltContext.sltJwtExp}, Now: ${nowSeconds}`
       )
       if (nowSeconds >= sltContext.sltJwtExp) await this.redisService.del(sltContextKey)
       this.auditLogService.recordAsync({
-        userId: sltUserId,
+        userId: payload.sub,
         action: 'SLT_VALIDATION_FAIL',
         status: AuditLogStatus.FAILURE,
         ipAddress: currentIpAddress,
@@ -578,19 +560,48 @@ export class OtpService {
         errorMessage: 'SLT_EXPIRED_OR_EXPIRY_MISMATCH',
         details: {
           ...auditDetails,
-          jwtExp: sltExpFromJwt,
+          jwtExp: payload.exp,
           contextExp: sltContext.sltJwtExp,
           actualPurposeInContext: sltContext.purpose
         } as Prisma.JsonObject
       })
-      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AuthenticationError', 'Error.Auth.Session.InvalidLogin', [
-        { code: 'Error.Auth.Session.InvalidLogin', path: 'slt_token' }
-      ])
+      throw new ApiException(
+        HttpStatus.UNAUTHORIZED,
+        'SltTokenExpiredOrContextMismatch',
+        'Error.Auth.Session.SltExpiredOrContextMismatch',
+        [{ code: 'Error.Auth.Session.SltExpiredOrContextMismatch', path: 'slt_token' }]
+      )
+    }
+
+    if (expectedPurpose && sltContext.purpose !== expectedPurpose) {
+      this.logger.warn(
+        `SLT JTI ${payload.jti}: Purpose mismatch. Expected: ${expectedPurpose}, Actual: ${sltContext.purpose}.`
+      )
+      this.auditLogService.recordAsync({
+        userId: payload.sub,
+        action: 'SLT_VALIDATE_FAIL_PURPOSE_MISMATCH',
+        status: AuditLogStatus.FAILURE,
+        ipAddress: currentIpAddress,
+        userAgent: currentUserAgent,
+        errorMessage: 'SLT_CONTEXT_PURPOSE_MISMATCH',
+        details: {
+          ...auditDetails,
+          expectedPurpose,
+          actualPurpose: sltContext.purpose
+        } as Prisma.JsonObject
+      })
+      await this.finalizeSlt(payload.jti)
+      throw new ApiException(
+        HttpStatus.BAD_REQUEST,
+        'SltContextInvalidPurpose',
+        'Error.Auth.SltContext.InvalidPurpose',
+        [{ code: 'Error.Auth.SltContext.InvalidPurpose', path: 'slt_token' }]
+      )
     }
 
     if (currentIpAddress !== sltContext.ipAddress) {
       this.logger.warn(
-        `SLT JTI ${sltJti}: IP address mismatch. Context IP: ${sltContext.ipAddress}, Current IP: ${currentIpAddress}.`
+        `SLT JTI ${payload.jti}: IP address mismatch. Context IP: ${sltContext.ipAddress}, Current IP: ${currentIpAddress}.`
       )
       this.auditLogService.recordAsync({
         action: 'SLT_CONTEXT_VALIDATION_FAIL',
@@ -601,19 +612,19 @@ export class OtpService {
         status: AuditLogStatus.FAILURE,
         errorMessage: 'SLT_IP_MISMATCH',
         details: {
-          sltJti,
+          sltJti: payload.jti,
           expectedIp: sltContext.ipAddress,
           actualIp: currentIpAddress,
           expectedUserAgent: sltContext.userAgent,
           actualUserAgent: currentUserAgent
         } as Prisma.JsonObject
       })
-      await this.finalizeSlt(sltJti)
+      await this.finalizeSlt(payload.jti)
       throw DeviceMismatchException
     }
 
     this.auditLogService.recordAsync({
-      userId: sltUserId,
+      userId: payload.sub,
       userEmail: sltContext.email,
       action: 'SLT_VALIDATION_SUCCESS',
       status: AuditLogStatus.SUCCESS,
@@ -626,47 +637,70 @@ export class OtpService {
         actualPurposeInContext: sltContext.purpose
       } as Prisma.JsonObject
     })
-    return { ...sltContext, sltJti }
+    return { ...sltContext, sltJti: payload.jti }
   }
 
   async finalizeSlt(sltJti: string): Promise<void> {
     const sltContextKey = this._getSltContextKey(sltJti)
-    const sltContextRaw = await this.redisService.get(sltContextKey)
+    const contextString = await this.redisService.get(sltContextKey)
+    let userIdForAudit: number | undefined
+    let sltPurposeForAudit: TypeOfVerificationCodeType | undefined
+    let sltOriginalExp: number | undefined
 
-    if (!sltContextRaw) {
-      this.logger.warn(`SLT context for JTI ${sltJti} not found in Redis during finalize. Key: ${sltContextKey}`)
-      return
+    if (contextString) {
+      try {
+        const contextData: SltContextData = JSON.parse(contextString)
+        userIdForAudit = contextData.userId
+        sltPurposeForAudit = contextData.purpose
+        sltOriginalExp = contextData.sltJwtExp
+      } catch (e) {
+        this.logger.error(`Failed to parse SLT context for JTI ${sltJti} during finalization: ${e.message}`)
+      }
     }
 
-    try {
-      const sltContext = JSON.parse(sltContextRaw) as SltContextData
-      if (sltContext.finalized === '1') {
-        this.logger.log(`SLT context for JTI ${sltJti} is already finalized. Skipping re-finalization.`)
-        return
-      }
+    const deletedCount = await this.redisService.del(sltContextKey)
+    if (deletedCount > 0) {
+      this.logger.debug(`SLT context for JTI ${sltJti} finalized and deleted from Redis.`)
 
-      sltContext.finalized = '1'
-      const ttl = await this.redisService.ttl(sltContextKey)
-      if (ttl > 0) {
-        await this.redisService.set(sltContextKey, JSON.stringify(sltContext), 'EX', ttl)
-        this.logger.log(`SLT context for JTI ${sltJti} marked as finalized in Redis with remaining TTL ${ttl}s.`)
-      } else {
-        await this.redisService.set(sltContextKey, JSON.stringify(sltContext), 'EX', 60)
-        this.logger.log(
-          `SLT context for JTI ${sltJti} marked as finalized in Redis. Original TTL was <=0, set with 60s TTL.`
-        )
+      let blacklistDurationSeconds = Math.floor(ms(envConfig.SLT_JWT_EXPIRES_IN) / 1000)
+      if (sltOriginalExp) {
+        const nowSeconds = Math.floor(Date.now() / 1000)
+        const remainingLifetime = sltOriginalExp - nowSeconds
+        if (remainingLifetime > 0) {
+          blacklistDurationSeconds = remainingLifetime
+        } else {
+          blacklistDurationSeconds = 60
+        }
       }
+      await this.redisService.set(this._getSltBlacklistKey(sltJti), '1', 'EX', blacklistDurationSeconds)
+      this.logger.debug(`SLT JTI ${sltJti} blacklisted for ${blacklistDurationSeconds} seconds.`)
 
       this.auditLogService.recordAsync({
-        userId: sltContext.userId,
+        userId: userIdForAudit,
         action: 'SLT_FINALIZED',
         status: AuditLogStatus.SUCCESS,
-        ipAddress: sltContext.ipAddress,
-        userAgent: sltContext.userAgent,
-        details: { sltJti, purpose: sltContext.purpose } as Prisma.JsonObject
+        details: {
+          sltJti,
+          purpose: sltPurposeForAudit,
+          contextDeleted: true,
+          jtiBlacklisted: true
+        } as Prisma.JsonObject
       })
-    } catch (error) {
-      this.logger.error(`Error parsing SLT context for JTI ${sltJti} during finalize: ${error.message}`, error.stack)
+    } else {
+      this.logger.warn(
+        `Attempted to finalize SLT JTI ${sltJti}, but no context was found in Redis. It might have expired or been finalized already.`
+      )
+      this.auditLogService.recordAsync({
+        userId: userIdForAudit,
+        action: 'SLT_FINALIZE_NO_CONTEXT',
+        status: AuditLogStatus.FAILURE,
+        details: {
+          sltJti,
+          purpose: sltPurposeForAudit,
+          contextFound: false,
+          note: 'Context might have expired or been finalized already.'
+        } as Prisma.JsonObject
+      })
     }
   }
 
@@ -703,7 +737,7 @@ export class OtpService {
 
     if (!sltContextRaw) {
       this.logger.warn(`SLT context for JTI ${sltJti} not found in Redis during incrementSltAttempts.`)
-      throw new ApiException(HttpStatus.BAD_REQUEST, 'SltContextInvalid', 'Error.Auth.OtpToken.Invalid')
+      throw new ApiException(HttpStatus.BAD_REQUEST, 'SltContextInvalid', 'Error.Auth.SltContext.NotFound')
     }
 
     try {
@@ -711,7 +745,7 @@ export class OtpService {
 
       if (sltContext.finalized === '1') {
         this.logger.warn(`Attempt to increment attempts for already finalized SLT JTI ${sltJti}.`)
-        throw new ApiException(HttpStatus.BAD_REQUEST, 'SltContextFinalized', 'Error.Auth.OtpToken.AlreadyUsed')
+        throw new ApiException(HttpStatus.BAD_REQUEST, 'SltContextFinalized', 'Error.Auth.SltContext.AlreadyUsed')
       }
 
       sltContext.attempts += 1
@@ -726,7 +760,6 @@ export class OtpService {
         this.logger.warn(
           `SLT context for JTI ${sltJti} expired before attempts could be incremented or had no TTL. Discarding increment.`
         )
-        throw new ApiException(HttpStatus.BAD_REQUEST, 'SltContextExpired', 'Error.Auth.OtpToken.Expired')
       }
 
       this.auditLogService.recordAsync({
@@ -754,112 +787,98 @@ export class OtpService {
     }
   }
 
-  /**
-   * @deprecated This method creates a short-lived JWT primarily for multi-step auth flows like 2FA.
-   * It's being replaced by the State-Linking Token (SLT) mechanism.
-   * Use initiateOtpWithSltCookie for new flows requiring an OTP step followed by verification.
-   */
-  createLoginSessionToken(payload: {
-    email: string
-    type: TypeOfVerificationCodeType
-    userId: number
-    deviceId: number
-    metadata?: Record<string, any>
-    tx?: PrismaTransactionClient
-  }): Promise<string> {
-    this.logger.warn(
-      `[OtpService] createLoginSessionToken is deprecated and will be removed. Use SLT mechanism. Called for: ${payload.email}, type: ${payload.type}`
-    )
-    const { email, type, userId, deviceId, metadata } = payload
-    const jti = uuidv4()
-    const now = Math.floor(Date.now() / 1000)
-    const expiresInSeconds = 5 * 60 // 5 minutes
-    const expiresAt = now + expiresInSeconds
-
-    const tokenPayload: VerificationJwtPayload = {
-      jti,
-      sub: email,
-      type,
-      userId,
-      deviceId,
-      metadata,
-      iat: now,
-      exp: expiresAt
-    }
-    const signedToken = this.jwtService.sign(tokenPayload, { secret: envConfig.VERIFICATION_JWT_SECRET })
-    return Promise.resolve(signedToken)
-  }
-
-  async blacklistVerificationToken(
-    jti: string,
-    currentTimestamp: number,
-    expiresAtTimestamp: number,
-    tx?: PrismaTransactionClient
+  async verifySltOtpStage(
+    sltCookieValue: string,
+    otpCode: string,
+    currentIpAddress: string,
+    currentUserAgent: string
   ): Promise<void> {
-    this.logger.warn(
-      `[OtpService] blacklistVerificationToken is part of an older OTP flow. Called for JTI: ${jti}. Consider SLT finalization for new flows.`
-    )
-    const blacklistKey = this._getVerificationJwtBlacklistKey(jti)
-    const ttl = expiresAtTimestamp - currentTimestamp
-    if (ttl > 0) {
-      await this.redisService.set(blacklistKey, 'blacklisted', 'EX', ttl)
-      this.logger.debug(`Blacklisted verification token JTI: ${jti} for ${ttl} seconds.`)
-    }
-  }
+    const sltContext = await this.validateSltFromCookieAndGetContext(sltCookieValue, currentIpAddress, currentUserAgent)
 
-  async validateVerificationToken(
-    token: string,
-    expectedType: TypeOfVerificationCodeType,
-    expectedEmail?: string,
-    expectedDeviceId?: number
-  ): Promise<VerificationJwtPayload> {
-    this.logger.warn(
-      `[OtpService] validateVerificationToken is part of an older OTP flow. Called for token (type ${expectedType}). Consider SLT validation for new flows.`
-    )
-    let payload: VerificationJwtPayload
+    if (!sltContext.email) {
+      this.logger.error(
+        `SLT context for JTI ${sltContext.sltJti} is missing email, cannot verify OTP for purpose ${sltContext.purpose}.`
+      )
+      await this.finalizeSlt(sltContext.sltJti)
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'SltContextError', 'Error.Auth.Session.SltInvalid')
+    }
+
     try {
-      payload = this.jwtService.verify<VerificationJwtPayload>(token, { secret: envConfig.VERIFICATION_JWT_SECRET })
+      await this.verifyOtpOnly(
+        sltContext.email,
+        otpCode,
+        sltContext.purpose,
+        sltContext.userId,
+        currentIpAddress,
+        currentUserAgent
+      )
+
+      sltContext.metadata = {
+        ...sltContext.metadata,
+        otpVerified: true,
+        stageVerified: sltContext.purpose,
+        otpVerifiedAt: new Date().toISOString()
+      }
+      sltContext.attempts = 0
+
+      const sltContextKey = this._getSltContextKey(sltContext.sltJti)
+      const ttl = await this.redisService.ttl(sltContextKey)
+
+      if (ttl > 0) {
+        await this.redisService.set(sltContextKey, JSON.stringify(sltContext), 'EX', ttl)
+        this.logger.log(
+          `SLT JTI ${sltContext.sltJti} OTP verified for stage ${sltContext.purpose}. Metadata updated. Key: ${sltContextKey}`
+        )
+        this.auditLogService.recordAsync({
+          userId: sltContext.userId,
+          action: 'SLT_OTP_STAGE_VERIFIED',
+          status: AuditLogStatus.SUCCESS,
+          ipAddress: currentIpAddress,
+          userAgent: currentUserAgent,
+          details: {
+            sltJti: sltContext.sltJti,
+            purpose: sltContext.purpose,
+            emailVerifiedAgainst: sltContext.email,
+            metadataUpdated: sltContext.metadata
+          } as Prisma.JsonObject
+        })
+      } else {
+        this.logger.warn(
+          `SLT JTI ${sltContext.sltJti} context expired before OTP stage verification metadata could be updated. This should ideally not happen if SLT is still valid.`
+        )
+
+        throw new ApiException(HttpStatus.CONFLICT, 'SltContextExpired', 'Error.Auth.Session.SltExpired')
+      }
     } catch (error) {
-      this.logger.warn(`
-        Failed to verify old verification token: ${error.message}.
-        Token: ${token.substring(0, 20)}...
-        Expected Type: ${expectedType}
-      `)
-      throw InvalidOTPTokenException
-    }
-
-    const blacklistKey = this._getVerificationJwtBlacklistKey(payload.jti)
-    if (await this.redisService.exists(blacklistKey)) {
-      this.logger.warn(`Attempt to use blacklisted verification token JTI: ${payload.jti}`)
-      throw OTPTokenExpiredException
-    }
-
-    const now = Math.floor(Date.now() / 1000)
-    if (payload.exp < now) {
-      this.logger.warn(`Old verification token expired: JTI ${payload.jti}, EXP ${payload.exp}, NOW ${now}`)
-      throw OTPTokenExpiredException
-    }
-
-    if (payload.type !== expectedType) {
       this.logger.warn(
-        `Old verification token type mismatch: JTI ${payload.jti}, Expected ${expectedType}, Got ${payload.type}`
+        `OTP verification failed for SLT JTI ${sltContext.sltJti} (purpose: ${sltContext.purpose}). Error: ${error.message}`
       )
-      throw InvalidOTPTokenException
-    }
+      const currentAttempts = await this.incrementSltAttempts(sltContext.sltJti)
+      this.auditLogService.recordAsync({
+        userId: sltContext.userId,
+        action: 'SLT_OTP_STAGE_VERIFY_FAIL',
+        status: AuditLogStatus.FAILURE,
+        ipAddress: currentIpAddress,
+        userAgent: currentUserAgent,
+        errorMessage: error.message,
+        details: {
+          sltJti: sltContext.sltJti,
+          purpose: sltContext.purpose,
+          attempts: currentAttempts,
+          maxAttempts: MAX_SLT_ATTEMPTS
+        } as Prisma.JsonObject
+      })
 
-    if (expectedEmail && payload.sub !== expectedEmail) {
-      this.logger.warn(
-        `Old verification token email mismatch: JTI ${payload.jti}, Expected ${expectedEmail}, Got ${payload.sub}`
-      )
-      throw InvalidOTPTokenException
-    }
+      if (currentAttempts >= MAX_SLT_ATTEMPTS) {
+        this.logger.warn(
+          `Max SLT attempts reached for JTI ${sltContext.sltJti} after failed OTP stage verification. Finalizing.`
+        )
+        await this.finalizeSlt(sltContext.sltJti)
+        throw new MaxVerificationAttemptsExceededException()
+      }
 
-    if (expectedDeviceId && payload.deviceId !== expectedDeviceId) {
-      this.logger.warn(
-        `Old verification token deviceId mismatch: JTI ${payload.jti}, Expected ${expectedDeviceId}, Got ${payload.deviceId}`
-      )
-      throw DeviceMismatchException
+      if (error instanceof ApiException) throw error
+      throw new InvalidOTPException()
     }
-    return payload
   }
 }

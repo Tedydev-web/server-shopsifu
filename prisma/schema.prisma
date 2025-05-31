@@ -47,6 +47,8 @@ model User {
   twoFactorMethod     TwoFactorMethodType?
   twoFactorVerifiedAt DateTime?
 
+  passwordChangedAt   DateTime?
+
   roleId              Int
   role                Role                 @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   userProfile         UserProfile?

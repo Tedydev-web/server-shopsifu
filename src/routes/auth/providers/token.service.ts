@@ -73,7 +73,6 @@ export class TokenService {
     })
   }
 
-  // --- Pending Link Token Methods ---
   signPendingLinkToken(payload: PendingLinkTokenPayloadCreate): string {
     const jti = uuidv4()
     this.logger.debug(
@@ -126,7 +125,6 @@ export class TokenService {
       throw InvalidRefreshTokenException
     }
   }
-  // --- End Pending Link Token Methods ---
 
   extractTokenFromRequest(req: Request): string | null {
     return req.cookies?.[envConfig.cookie.accessToken.name] || this.extractTokenFromHeader(req)
@@ -293,19 +291,17 @@ export class TokenService {
     this.logger.verbose(
       `Attempting to mark RT JTI ${refreshTokenJti} as used for session ${sessionId} with TTL ${effectiveTtl}s. Key: ${usedKey}`
     )
-    // Set the value to the session ID that used it.
-    // 'NX' ensures this is set only if the JTI hasn't been marked as used before.
+
     const result = await this.redisService.set(usedKey, sessionId, 'EX', effectiveTtl, 'NX')
 
     if (result === null) {
-      // This means the key already existed (NX condition failed).
       this.logger.warn(
         `RT JTI ${refreshTokenJti} was already marked as used. Current session trying to mark: ${sessionId}. Associated session (if set by other): ${await this.redisService.get(usedKey)}.`
       )
-      return false // Indicate that marking failed because it already existed
+      return false
     }
     this.logger.verbose(`RT JTI ${refreshTokenJti} successfully marked as used for session ${sessionId}.`)
-    return true // Indicate successful marking
+    return true
   }
 
   async invalidateRefreshTokenJti(refreshTokenJti: string, sessionId: string) {
@@ -484,7 +480,7 @@ export class TokenService {
       ...accessTokenPayloadToSign,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + Math.floor(ms(envConfig.ACCESS_TOKEN_EXPIRES_IN) / 1000),
-      // Ensure all fields from AccessTokenPayloadCreate are present
+
       isDeviceTrustedInSession: accessTokenPayloadToSign.isDeviceTrustedInSession ?? false
     }
 
@@ -505,10 +501,9 @@ export class TokenService {
         this.logger.warn(
           `Refresh token JTI ${clientRefreshTokenJti} for session ${sessionId} was already marked as used by another process. Aborting refresh.`
         )
-        // This session is now potentially compromised or a race condition was lost.
-        // Invalidate the session as a security measure if it wasn't already.
+
         await this.invalidateSession(sessionId, 'RT_JTI_ALREADY_USED_ON_REFRESH_ATTEMPT')
-        throw RefreshTokenAlreadyUsedException // Specific exception for client
+        throw RefreshTokenAlreadyUsedException
       }
 
       newRefreshTokenJti = uuidv4()
@@ -656,7 +651,7 @@ export class TokenService {
     let invalidatedCount = 0
     const pipeline = this.redisService.client.pipeline()
     const sessionKeysToDelete: string[] = []
-    const deviceSessionUpdates: Map<string, string[]> = new Map() // Key: deviceSessionKey, Value: array of sessionIds to SREM
+    const deviceSessionUpdates: Map<string, string[]> = new Map()
 
     for (const sessionId of sessionIds) {
       if (sessionId === sessionIdToExclude) {
@@ -667,20 +662,19 @@ export class TokenService {
       const sessionDetails = await this.redisService.hgetall(sessionDetailsKey)
 
       if (sessionDetails && Object.keys(sessionDetails).length > 0) {
-        // Blacklist Access Token if JTI exists
         if (sessionDetails.currentAccessTokenJti) {
           const accessTokenExp = parseInt(sessionDetails.accessTokenExp, 10)
           if (!isNaN(accessTokenExp)) {
             this.invalidateAccessTokenJti(sessionDetails.currentAccessTokenJti, accessTokenExp)
           }
         }
-        // Blacklist Refresh Token if JTI exists
+
         if (sessionDetails.currentRefreshTokenJti) {
           this.markRefreshTokenJtiAsUsed(sessionDetails.currentRefreshTokenJti, sessionId)
         }
 
-        pipeline.srem(userSessionsKey, sessionId) // Remove from user's set of sessions
-        sessionKeysToDelete.push(sessionDetailsKey) // Mark session details for deletion
+        pipeline.srem(userSessionsKey, sessionId)
+        sessionKeysToDelete.push(sessionDetailsKey)
 
         if (sessionDetails.deviceId) {
           const deviceSessionKey = `${REDIS_KEY_PREFIX.DEVICE_SESSIONS}${sessionDetails.deviceId}`
@@ -698,7 +692,6 @@ export class TokenService {
       pipeline.del(sessionKeysToDelete)
     }
 
-    // Remove specific sessionIds from their respective DEVICE_SESSIONS sets
     deviceSessionUpdates.forEach((sessionsToRemove, deviceKey) => {
       if (sessionsToRemove.length > 0) {
         pipeline.srem(deviceKey, ...sessionsToRemove)
@@ -729,24 +722,22 @@ export class TokenService {
         if (sessionDetails.currentAccessTokenJti) {
           const accessTokenExp = parseInt(sessionDetails.accessTokenExp, 10)
           if (!isNaN(accessTokenExp)) {
-            await this.invalidateAccessTokenJti(sessionDetails.currentAccessTokenJti, accessTokenExp) // Blacklist AT
+            await this.invalidateAccessTokenJti(sessionDetails.currentAccessTokenJti, accessTokenExp)
           }
         }
         if (sessionDetails.currentRefreshTokenJti) {
-          await this.markRefreshTokenJtiAsUsed(sessionDetails.currentRefreshTokenJti, sessionId) // Blacklist RT
+          await this.markRefreshTokenJtiAsUsed(sessionDetails.currentRefreshTokenJti, sessionId)
         }
         pipeline.del(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`)
         invalidatedCount++
         this.logger.verbose(`Session ${sessionId} for device ${deviceId} marked for invalidation. Reason: ${reason}`)
 
-        // Remove session from user's set of sessions
         if (sessionDetails.userId) {
           pipeline.srem(`${REDIS_KEY_PREFIX.USER_SESSIONS}${sessionDetails.userId}`, sessionId)
         }
       }
     }
 
-    // Remove the device's own set of sessions
     pipeline.del(deviceSessionsKey)
 
     await pipeline.exec()

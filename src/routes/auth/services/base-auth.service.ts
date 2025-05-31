@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { AuthRepository } from '../auth.repo'
-import { SharedUserRepository } from '../repositories/shared-user.repo'
+import { UserRepository } from '../repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from '../providers/token.service'
 import { EmailService } from '../providers/email.service'
@@ -22,7 +22,7 @@ export class BaseAuthService {
     protected readonly hashingService: HashingService,
     protected readonly rolesService: RolesService,
     protected readonly authRepository: AuthRepository,
-    protected readonly sharedUserRepository: SharedUserRepository,
+    protected readonly userRepository: UserRepository,
     protected readonly emailService: EmailService,
     protected readonly tokenService: TokenService,
     protected readonly twoFactorService: TwoFactorService,

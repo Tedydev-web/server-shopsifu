@@ -19,7 +19,8 @@ import {
   VerifyCodeResSchema,
   AccessTokenResSchema,
   RememberMeBodySchema,
-  RefreshTokenSuccessResSchema
+  RefreshTokenSuccessResSchema,
+  ChangePasswordBodySchema
 } from 'src/routes/auth/auth.model'
 import { z } from 'zod'
 
@@ -65,6 +66,8 @@ export class RememberMeBodyDTO extends createZodDto(RememberMeBodySchema) {}
 
 export class RefreshTokenSuccessResDTO extends createZodDto(RefreshTokenSuccessResSchema) {}
 
+export class ChangePasswordBodyDTO extends createZodDto(ChangePasswordBodySchema) {}
+
 export const ReverifyPasswordBodySchema = z.discriminatedUnion('verificationMethod', [
   z.object({
     verificationMethod: z.literal('password'),
@@ -85,3 +88,5 @@ export const ReverifyPasswordBodySchema = z.discriminatedUnion('verificationMeth
 ])
 
 export type ReverifyPasswordBodyType = z.infer<typeof ReverifyPasswordBodySchema>
+
+export type ChangePasswordBodyType = z.infer<typeof ChangePasswordBodySchema>

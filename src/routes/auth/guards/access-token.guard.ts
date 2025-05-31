@@ -13,12 +13,12 @@ import {
   RemoteSessionRevokedException
 } from 'src/routes/auth/auth.error'
 import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
-import { ApiException } from 'src/shared/exceptions/api.exception'
 import { Prisma } from '@prisma/client'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import { AUTH_TYPE_KEY, AuthTypeDecoratorPayload } from 'src/routes/auth/decorators/auth.decorator'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { MissingAccessTokenException } from 'src/routes/auth/auth.error'
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
@@ -42,7 +42,7 @@ export class AccessTokenGuard implements CanActivate {
     const token = this.tokenService.extractTokenFromRequest(request)
 
     if (!token) {
-      throw MissingAccessTokenException
+      throw new MissingAccessTokenException()
     }
 
     let decodedAccessToken: AccessTokenPayload | undefined = undefined
@@ -72,7 +72,7 @@ export class AccessTokenGuard implements CanActivate {
           errorMessage: 'Missing sessionId or JTI in access token payload.',
           details: { reason: 'MISSING_SESSION_ID_OR_JTI_IN_TOKEN' } as Prisma.JsonObject
         })
-        throw InvalidAccessTokenException
+        throw new InvalidAccessTokenException()
       }
 
       const isBlacklisted = await this.tokenService.isAccessTokenJtiBlacklisted(accessTokenJti)
@@ -86,7 +86,7 @@ export class AccessTokenGuard implements CanActivate {
           errorMessage: `Access token JTI ${accessTokenJti} is blacklisted.`,
           details: { reason: 'ACCESS_TOKEN_JTI_BLACKLISTED', accessTokenJti } as Prisma.JsonObject
         })
-        throw InvalidAccessTokenException
+        throw new InvalidAccessTokenException()
       }
 
       const sessionKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
@@ -102,7 +102,7 @@ export class AccessTokenGuard implements CanActivate {
           errorMessage: `Session ${sessionId} not found in Redis. Assumed revoked remotely.`,
           details: { reason: 'SESSION_NOT_FOUND_IN_REDIS_REVOKED_REMOTELY', sessionId } as Prisma.JsonObject
         })
-        throw RemoteSessionRevokedException
+        throw new RemoteSessionRevokedException()
       }
 
       if (parseInt(sessionDetails.userId, 10) !== userId || parseInt(sessionDetails.deviceId, 10) !== deviceId) {
@@ -122,7 +122,7 @@ export class AccessTokenGuard implements CanActivate {
             sessionDeviceId: sessionDetails.deviceId
           } as Prisma.JsonObject
         })
-        throw MismatchedSessionTokenException
+        throw new MismatchedSessionTokenException()
       }
 
       if (sessionDetails.currentAccessTokenJti !== accessTokenJti) {
@@ -140,7 +140,7 @@ export class AccessTokenGuard implements CanActivate {
             sessionCurrentJti: sessionDetails.currentAccessTokenJti
           } as Prisma.JsonObject
         })
-        throw InvalidAccessTokenException
+        throw new InvalidAccessTokenException()
       }
 
       if (sessionDetails.createdAt) {
@@ -162,7 +162,7 @@ export class AccessTokenGuard implements CanActivate {
             } as Prisma.JsonObject
           })
           await this.tokenService.invalidateSession(sessionId, 'ABSOLUTE_LIFETIME_EXCEEDED')
-          throw AbsoluteSessionLifetimeExceededException
+          throw new AbsoluteSessionLifetimeExceededException()
         }
       } else {
         this.auditLogService.recordAsync({
@@ -174,7 +174,7 @@ export class AccessTokenGuard implements CanActivate {
           errorMessage: `Session ${sessionId} is missing createdAt field in Redis. Could indicate data issue or remote revocation. `,
           details: { reason: 'SESSION_MISSING_CREATED_AT_IN_REDIS', sessionId } as Prisma.JsonObject
         })
-        throw RemoteSessionRevokedException
+        throw new RemoteSessionRevokedException()
       }
 
       await this.redisService.hset(sessionKey, 'lastActiveAt', new Date().toISOString())
@@ -210,14 +210,22 @@ export class AccessTokenGuard implements CanActivate {
       }
 
       if (
-        error instanceof ApiException &&
-        (error.message === AbsoluteSessionLifetimeExceededException.message ||
-          error.message === SessionNotFoundException.message ||
-          error.message === RemoteSessionRevokedException.message ||
-          error.message === InvalidAccessTokenException.message ||
-          error.message === MismatchedSessionTokenException.message ||
-          error.message === InvalidDeviceException.message)
+        error instanceof AbsoluteSessionLifetimeExceededException ||
+        error instanceof SessionNotFoundException ||
+        error instanceof RemoteSessionRevokedException ||
+        error instanceof InvalidAccessTokenException ||
+        error instanceof MismatchedSessionTokenException ||
+        error instanceof InvalidDeviceException
       ) {
+        this.auditLogService.recordAsync({
+          action: 'ACCESS_TOKEN_GUARD_DENY',
+          userId: userIdFromToken,
+          status: AuditLogStatus.FAILURE,
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'] as string,
+          errorMessage: error instanceof Error ? error.message : 'Invalid or expired access token (specific).',
+          details
+        })
         throw error
       }
 
@@ -227,12 +235,10 @@ export class AccessTokenGuard implements CanActivate {
         status: AuditLogStatus.FAILURE,
         ipAddress: request.ip,
         userAgent: request.headers['user-agent'] as string,
-        errorMessage: error instanceof Error ? error.message : 'Invalid or expired access token.',
+        errorMessage: error instanceof Error ? error.message : 'Invalid or expired access token (generic).',
         details
       })
       throw new UnauthorizedException('Error.Auth.Token.InvalidOrExpiredAccessToken')
     }
   }
 }
-
-const MissingAccessTokenException = new UnauthorizedException('Error.Auth.Token.MissingAccessToken')
