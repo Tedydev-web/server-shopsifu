@@ -609,7 +609,7 @@ Module `@auth` chịu trách nhiệm cho tất cả các quy trình liên quan �
 
 #### Lấy Danh sách Phiên Hoạt Động
 
-- **Endpoint**: `GET /auth/sessions`
+- **Endpoint**: `GET /auth/sessions`  
 - **Mục đích**: Lấy danh sách các phiên đang hoạt động của người dùng.
 - **Authorization**: Bearer Token.
 - **Query Params**: `GetActiveSessionsQueryDTO`
