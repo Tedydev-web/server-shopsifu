@@ -30,7 +30,6 @@ export class TwoFactorService {
   }
 
   generateTOTPSecret(email: string) {
-    this.logger.debug(`Generating TOTP secret for user: ${email}`)
     const totp = this.createTOTP(email)
     return {
       secret: totp.secret.base32,
@@ -39,14 +38,12 @@ export class TwoFactorService {
   }
 
   verifyTOTP({ email, token, secret }: { email: string; secret: string; token: string }): boolean {
-    this.logger.debug(`Verifying TOTP for user: ${email}`)
     const totp = this.createTOTP(email, secret)
     const delta = totp.validate({ token, window: 1 })
     return delta !== null
   }
 
   generateRecoveryCodes(count: number = 8): string[] {
-    this.logger.debug(`Generating ${count} recovery codes`)
     const codes: string[] = []
     for (let i = 0; i < count; i++) {
       const group1 = Math.random().toString(36).substring(2, 7).toUpperCase()
@@ -61,7 +58,6 @@ export class TwoFactorService {
     recoveryCodes: string[],
     tx?: PrismaTransactionClient
   ): Promise<Prisma.BatchPayload> {
-    this.logger.debug(`Saving ${recoveryCodes.length} recovery codes for user ${userId}`)
     const client = tx || this.prismaService
 
     const hashedRecoveryCodes = await Promise.all(
@@ -77,7 +73,6 @@ export class TwoFactorService {
   }
 
   async verifyRecoveryCode(userId: number, recoveryCodeInput: string, tx?: PrismaTransactionClient) {
-    this.logger.debug(`Verifying recovery code for user ${userId}`)
     const client = tx || this.prismaService
 
     const recoveryCodes = await client.recoveryCode.findMany({
@@ -88,7 +83,6 @@ export class TwoFactorService {
     })
 
     if (!recoveryCodes || recoveryCodes.length === 0) {
-      this.logger.warn(`No recovery codes found for user ${userId}`)
       throw InvalidRecoveryCodeException
     }
 
@@ -101,12 +95,10 @@ export class TwoFactorService {
     }
 
     if (!matchedCodeEntry) {
-      this.logger.warn(`Invalid recovery code provided for user ${userId}`)
       throw InvalidRecoveryCodeException
     }
 
     if (matchedCodeEntry.used) {
-      this.logger.warn(`Used recovery code attempted for user ${userId}`)
       throw InvalidRecoveryCodeException
     }
 
@@ -115,12 +107,10 @@ export class TwoFactorService {
       data: { used: true }
     })
 
-    this.logger.debug(`Recovery code successfully verified and marked as used for user ${userId}`)
     return matchedCodeEntry
   }
 
   async getUnusedRecoveryCodes(userId: number, tx?: PrismaTransactionClient) {
-    this.logger.debug(`Getting unused recovery codes for user ${userId}`)
     const client = tx || this.prismaService
 
     return client.recoveryCode.findMany({
@@ -132,7 +122,6 @@ export class TwoFactorService {
   }
 
   async deleteAllRecoveryCodes(userId: number, tx?: PrismaTransactionClient) {
-    this.logger.debug(`Deleting all recovery codes for user ${userId}`)
     const client = tx || this.prismaService
 
     return client.recoveryCode.deleteMany({
@@ -162,7 +151,6 @@ export class TwoFactorService {
       updateData.twoFactorVerifiedAt = data.twoFactorVerifiedAt
 
     if (Object.keys(updateData).length === 0) {
-      this.logger.warn(`updateUserTwoFactorStatus called for user ${userId} with no data to update.`)
       const currentUser = await client.user.findUnique({ where: { id: userId } })
       if (!currentUser) {
         throw new ApiException(HttpStatus.NOT_FOUND, 'ResourceNotFound', 'Error.User.NotFound')
@@ -182,7 +170,6 @@ export class TwoFactorService {
   }
 
   async getUserTwoFactorStatus(userId: number, tx?: PrismaTransactionClient) {
-    this.logger.debug(`Getting 2FA status for user ${userId}`)
     const client = tx || this.prismaService
 
     const user = await client.user.findUnique({

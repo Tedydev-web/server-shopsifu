@@ -7,11 +7,10 @@ import { APIKeyGuard } from './guards/api-key.guard'
 import { AuthenticationGuard } from './guards/authentication.guard'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import CustomZodValidationPipe from './pipes/custom-zod-validation.pipe'
-import { AuditLogInterceptor } from './interceptor/audit-log.interceptor'
-import { AuditLogModule } from 'src/routes/audit-log/audit-log.module'
 import { CacheModule } from '@nestjs/cache-manager'
 import { ConfigService } from '@nestjs/config'
 import { GeolocationService } from './services/geolocation.service'
+import { TransformInterceptor } from './interceptor/transform.interceptor'
 
 const SHARED_PIPES = [
   {
@@ -22,7 +21,7 @@ const SHARED_PIPES = [
 
 const SHARED_INTERCEPTORS = [
   { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
-  { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor }
+  { provide: APP_INTERCEPTOR, useClass: TransformInterceptor }
 ]
 
 // Concrete guard classes that can be provided and exported
@@ -33,7 +32,6 @@ const SHARED_SERVICES = [PrismaService, HashingService]
 @Global()
 @Module({
   imports: [
-    AuditLogModule,
     CacheModule.registerAsync({
       isGlobal: true,
       useFactory: (configService: ConfigService) => ({

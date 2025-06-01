@@ -20,7 +20,6 @@ export class TokenRefreshInterceptor implements NestInterceptor {
           return throwError(() => error)
         }
 
-        this.logger.debug('Caught UnauthorizedException - attempting token refresh')
 
         const request = context.switchToHttp().getRequest<Request>()
         const response = context.switchToHttp().getResponse<Response>()
@@ -28,7 +27,6 @@ export class TokenRefreshInterceptor implements NestInterceptor {
         const refreshToken = this.tokenService.extractRefreshTokenFromRequest(request)
 
         if (!refreshToken) {
-          this.logger.debug('No refresh token available for auto-refresh')
           return throwError(() => error)
         }
 
@@ -73,13 +71,11 @@ export class TokenRefreshInterceptor implements NestInterceptor {
         .refreshTokenSilently(refreshToken, request.headers['user-agent']?.toString() || '', request.ip || '')
         .then((result) => {
           if (!result || !result.accessToken || !result.accessTokenPayload) {
-            this.logger.debug('Failed to silently refresh token or missing payload')
             subscriber.next({ success: false })
             subscriber.complete()
             return
           }
 
-          this.logger.debug('Token refreshed successfully, using direct payload')
 
           subscriber.next({
             success: true,
@@ -93,7 +89,6 @@ export class TokenRefreshInterceptor implements NestInterceptor {
           subscriber.complete()
         })
         .catch((refreshError) => {
-          this.logger.warn('Error during silent token refresh attempt in TokenRefreshInterceptor:', refreshError)
           subscriber.next({ success: false })
           subscriber.complete()
         })

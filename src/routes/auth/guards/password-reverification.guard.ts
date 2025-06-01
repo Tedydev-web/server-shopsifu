@@ -40,7 +40,6 @@ export class PasswordReverificationGuard implements CanActivate {
     ])
 
     if (authTypePayload && authTypePayload.authTypes.includes(AuthType.None)) {
-      this.logger.verbose('PasswordReverificationGuard: Skipping check for @IsPublic() endpoint.')
       return true
     }
 
@@ -48,27 +47,20 @@ export class PasswordReverificationGuard implements CanActivate {
     if (context.getType() === 'http') {
       request = context.switchToHttp().getRequest()
     } else if (context.getType() === 'rpc') {
-      this.logger.warn('PasswordReverificationGuard not implemented for RPC context type.')
       return true
     } else if (context.getType<any>() === 'graphql') {
       const gqlCtx = GqlExecutionContext.create(context)
       request = gqlCtx.getContext().req
       if (!request) {
-        this.logger.error('Request object is undefined in GraphQL context for PasswordReverificationGuard.')
         throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
       }
     } else {
-      this.logger.warn(`PasswordReverificationGuard encountered an unknown context type: ${context.getType()}`)
       return false
     }
 
     const activeUser = request.user as AccessTokenPayload | undefined
 
     if (!activeUser || !activeUser.sessionId) {
-      this.logger.warn(
-        'PasswordReverificationGuard: No active user or session ID found in request. Access will be denied unless skipped.'
-      )
-
       throw new ApiException(HttpStatus.UNAUTHORIZED, 'Unauthorized', 'Error.Auth.Access.Unauthorized')
     }
 
@@ -76,9 +68,6 @@ export class PasswordReverificationGuard implements CanActivate {
     const requiresReverification = await this.redisService.hget(sessionDetailsKey, 'requiresPasswordReverification')
 
     if (requiresReverification === 'true') {
-      this.logger.log(
-        `Session ${activeUser.sessionId} for user ${activeUser.userId} requires password reverification. Access denied.`
-      )
       const currentLang = I18nContext.current()?.lang
       const message = await this.i18nService.translate('error.Error.Auth.Password.ReverificationRequired', {
         lang: currentLang,

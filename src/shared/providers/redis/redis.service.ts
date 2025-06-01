@@ -1,7 +1,8 @@
-import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit, HttpStatus } from '@nestjs/common'
 import Redis, { RedisKey, RedisValue } from 'ioredis'
 import { IORedisKey } from './redis.constants'
 import envConfig from 'src/shared/config'
+import { ApiException } from 'src/shared/exceptions/api.exception'
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -12,16 +13,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     try {
       await this.redisClient.ping()
-      this.logger.log('Successfully connected to Redis and ping was successful.')
     } catch (error) {
-      this.logger.error('Failed to connect to Redis or ping was unsuccessful:', error)
-      // Tuỳ theo chiến lược, có thể throw error để dừng app hoặc cho phép app chạy mà không có Redis
-      // throw error;
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
     }
   }
 
   onModuleDestroy() {
-    this.logger.log('Closing Redis connection...')
     void this.redisClient.quit()
   }
 
@@ -50,16 +47,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return this.redisClient.set(key, value, 'EX', ttlValue)
       } else {
         // Should not happen if condition is only NX or XX, or undefined
-        this.logger.error(`Unsupported condition '${String(condition)}' with EX mode for key ${String(key)}`)
         throw new Error('Unsupported condition with EX mode for RedisService.set')
       }
     } else if (!mode && !ttlValue && !condition) {
       // Basic SET key value (no expiry, no condition)
       return this.redisClient.set(key, value)
     } else {
-      this.logger.error(
-        `Unsupported combination of set parameters for key ${String(key)}: mode=${mode}, ttlValue=${ttlValue}, condition=${condition}. Only SET key value, SET key value EX ttl, and SET key value EX ttl NX/XX are currently supported.`
-      )
       throw new Error(
         'Unsupported combination of parameters for RedisService.set. Check implementation for supported overloads.'
       )
@@ -79,16 +72,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async expire(key: RedisKey, seconds: number): Promise<number> {
-    this.logger.debug(
-      `[RedisService.expire] Called with key: "${String(key)}", seconds: ${seconds}, type of seconds: ${typeof seconds}`
-    )
     if (typeof seconds !== 'number' || isNaN(seconds) || !isFinite(seconds) || Math.floor(seconds) !== seconds) {
-      this.logger.error(
-        `[RedisService.expire] Invalid 'seconds' argument. Key: "${String(key)}", Seconds: ${seconds} (Type: ${typeof seconds}). Must be a finite integer.`
-      )
-      // Potentially throw an error here, or return a specific value indicating failure, e.g., 0 or -1
-      // For now, let ioredis handle it to see if it surfaces a more specific error or if this log catches it first.
-      // throw new Error(`Invalid 'seconds' argument for EXPIRE command: ${seconds}`);
+      throw new ApiException(HttpStatus.BAD_REQUEST, 'BadRequest', 'Error.Global.BadRequest')
     }
     return await this.redisClient.expire(key, seconds)
   }
@@ -214,7 +199,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     try {
       return JSON.parse(jsonString) as T
     } catch (error) {
-      this.logger.error(`Failed to parse JSON for key ${String(key)}:`, error)
       return null
     }
   }
@@ -224,8 +208,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     try {
       jsonString = JSON.stringify(value)
     } catch (error) {
-      this.logger.error(`Failed to stringify JSON for key ${String(key)}:`, error)
-      throw error
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
     }
     if (ttlSeconds !== undefined) {
       return this.set(key, jsonString, 'EX', ttlSeconds)
@@ -299,12 +282,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    */
   async flushDb(): Promise<'OK'> {
     if (envConfig.NODE_ENV === 'production') {
-      this.logger.warn('FLUSHDB command was called in production. This is highly discouraged. Aborting.')
-      throw new Error('FLUSHDB is not allowed in production environment via RedisService.')
+      throw new ApiException(HttpStatus.FORBIDDEN, 'Forbidden', 'Error.Global.Forbidden')
     }
-    this.logger.warn(
-      `Executing FLUSHDB on database ${this.redisClient.options.db}. This will delete all keys in the current DB.`
-    )
     return await this.redisClient.flushdb()
   }
 }

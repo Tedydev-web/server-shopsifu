@@ -27,32 +27,16 @@ export class CsrfMiddleware implements NestMiddleware {
   }
 
   use(req: Request, res: Response, next: NextFunction) {
-    this.logger.debug(`CSRF Middleware - Incoming request: ${req.method} ${req.path}`)
-
     if (
       req.path.startsWith('/api/v1/auth/google/callback') ||
       req.path.startsWith('/api/v1/webhook') ||
       req.path.startsWith('/api/v1/health')
     ) {
-      this.logger.debug(`CSRF Middleware - Bypassing for specific path: ${req.path}`)
       return next()
     }
 
     this.csrfProtection(req, res, (err: any) => {
       if (err) {
-        this.logger.error(
-          `CSRF Protection Error: ${err.code === 'EBADCSRFTOKEN' ? 'Invalid CSRF token' : err.message}`,
-          err.stack
-        )
-        this.logger.error(
-          `CSRF Secret Cookie (${envConfig.cookie.csrfSecret.name} value from req.signedCookies): ${req.signedCookies?.[envConfig.cookie.csrfSecret.name]}`
-        )
-        this.logger.error(
-          `CSRF Token Cookie (${envConfig.cookie.csrfToken.name} value from req.cookies): ${req.cookies?.[envConfig.cookie.csrfToken.name]}`
-        )
-        this.logger.error(
-          `Header value (${SecurityHeaders.CSRF_TOKEN_HEADER} from req.headers): ${String(req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()] || '')}`
-        )
         res.status(403).json({
           statusCode: 403,
           message: 'Invalid CSRF token',
@@ -72,11 +56,6 @@ export class CsrfMiddleware implements NestMiddleware {
           path: csrfTokenCookieConfig.path,
           domain: csrfTokenCookieConfig.domain
         })
-        this.logger.debug(
-          `CSRF Middleware - CSRF token (${csrfTokenCookieConfig.name}) set for client: ${csrfTokenVal}`
-        )
-      } else {
-        this.logger.warn(`CSRF Middleware - req.csrfToken() did not return a token for path: ${req.path}`)
       }
 
       next()
@@ -84,7 +63,6 @@ export class CsrfMiddleware implements NestMiddleware {
   }
 
   private csrfTokenExtractor(req: Request): string {
-    this.logger.debug(`CSRF Extractor - Attempting to extract token for: ${req.method} ${req.path}`)
     const tokenFromHeader = req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()]
     const tokenFromBodyOrQuery = req.body?._csrf || req.query?._csrf
 
@@ -93,7 +71,7 @@ export class CsrfMiddleware implements NestMiddleware {
     if (Array.isArray(token)) {
       token = token[0]
     }
-    this.logger.debug(`CSRF Extractor - Token found in request (presence): ${!!token}`)
+
     return (token as string) || ''
   }
 }

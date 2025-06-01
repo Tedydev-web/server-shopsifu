@@ -89,7 +89,6 @@ import { PendingLinkDetailsResSchema, PendingLinkDetailsResDto } from './dtos/pe
 import { DeviceService } from './providers/device.service'
 import ms from 'ms'
 import { TwoFactorAuthService } from './services/two-factor-auth.service'
-import { AuditLogService } from '../audit-log/audit-log.service'
 import {
   SltCookieMissingException,
   SltContextMaxAttemptsReachedException,
@@ -100,7 +99,6 @@ import {
   SltContextFinalizedException
 } from './auth.error'
 import { Prisma } from '@prisma/client'
-import { AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { PasswordAuthService } from './services/password-auth.service'
 import { SltHelperService } from './services/slt-helper.service'
 
@@ -130,7 +128,6 @@ export class AuthController {
     private readonly userRepository: UserRepository,
     private readonly deviceService: DeviceService,
     private readonly twoFactorAuthService: TwoFactorAuthService,
-    private readonly auditLogService: AuditLogService,
     private readonly passwordAuthService: PasswordAuthService,
     private readonly sltHelperService: SltHelperService
   ) {}
@@ -195,7 +192,6 @@ export class AuthController {
       const sltInitiationUserId = user?.id
 
       if (type === TypeOfVerificationCode.VERIFY_NEW_EMAIL && !sltInitiationUserId) {
-        this.logger.error('Cannot send VERIFY_NEW_EMAIL OTP without a valid user context for SLT.')
         throw new ApiException(HttpStatus.BAD_REQUEST, 'UserContextRequired', 'Error.Auth.User.NotFound')
       }
 
@@ -236,9 +232,6 @@ export class AuthController {
   ) {
     const sltCookieValue = req.cookies?.[envConfig.cookie.sltToken.name]
     if (!sltCookieValue) {
-      this.logger.warn(
-        `[AuthController.verifyCode] SLT cookie (${envConfig.cookie.sltToken.name}) not found for verifyCode.`
-      )
       throw new SltCookieMissingException()
     }
 
@@ -311,22 +304,15 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<RefreshTokenSuccessResDTO> {
-    this.logger.debug(`[AuthController] Refresh token request from IP: ${ip}, User-Agent: ${userAgent}`)
-
     const refreshTokenFromCookie = this.tokenService.extractRefreshTokenFromRequest(req)
 
     if (!refreshTokenFromCookie) {
-      this.logger.warn('[AuthController refreshToken] Refresh token not found in request cookie.')
-
       throw new InvalidRefreshTokenException()
     }
 
     const result = await this.tokenService.refreshTokenSilently(refreshTokenFromCookie, userAgent, ip)
 
     if (!result) {
-      this.logger.warn(
-        `[AuthController refreshToken] refreshTokenSilently returned null for RT JTI: ${refreshTokenFromCookie}. This should ideally be handled by an exception within the service.`
-      )
       throw new InvalidRefreshTokenException()
     }
 
@@ -369,7 +355,6 @@ export class AuthController {
         flow: 'profile_link',
         userIdIfLinking: activeUser.userId
       }
-      this.logger.log(`[getAuthorizationUrl] Profile linking flow initiated for user ${activeUser.userId}`)
     }
 
     const { url, nonce } = this.googleService.getAuthorizationUrl({
@@ -434,12 +419,8 @@ export class AuthController {
         }
 
         if (decodedStateObj?.flow === 'profile_link' && typeof decodedStateObj?.userIdIfLinking === 'number') {
-          this.logger.log(
-            `[GoogleCallback] Detected profile_link flow from state for user ID: ${decodedStateObj.userIdIfLinking}`
-          )
           const googleTokens = await this.googleService.getGoogleTokens(code)
           if (!googleTokens || !googleTokens.id_token) {
-            this.logger.error('[GoogleCallback-ProfileLink] Failed to get Google tokens or missing id_token.')
             return res.redirect(
               `${envConfig.FRONTEND_URL}/profile/settings?googleLinkStatus=error&errorCode=TOKEN_FETCH_FAILED`
             )
@@ -447,7 +428,6 @@ export class AuthController {
           const googlePayload = await this.googleService.verifyGoogleIdToken(googleTokens.id_token)
 
           if (!googlePayload || !googlePayload.sub || !googlePayload.email) {
-            this.logger.error('[GoogleCallback-ProfileLink] Invalid Google payload for profile link.')
             return res.redirect(
               `${envConfig.FRONTEND_URL}/profile/settings?googleLinkStatus=error&errorCode=INVALID_GOOGLE_PAYLOAD`
             )
@@ -461,14 +441,10 @@ export class AuthController {
               googlePayload.name,
               googlePayload.picture
             )
-            this.logger.log(
-              `[GoogleCallback-ProfileLink] Successfully linked Google account for user ${linkedUserProfile.id}. Redirecting to profile.`
-            )
             return res.redirect(
               `${envConfig.FRONTEND_URL}/profile/settings?googleLinkStatus=success&userEmail=${encodeURIComponent(linkedUserProfile.email)}`
             )
           } catch (linkError) {
-            this.logger.error('[GoogleCallback-ProfileLink] Error linking account:', linkError)
             let errorCode = 'LINK_FAILED'
             if (linkError instanceof ApiException) {
               errorCode = linkError.errorCode || errorCode
@@ -479,7 +455,6 @@ export class AuthController {
           }
         }
       } catch (e) {
-        this.logger.error('[GoogleCallback] Failed to parse state parameter from Google.', e)
         const genericErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
           lang: currentLang
         })
@@ -499,9 +474,6 @@ export class AuthController {
     }
 
     if (!nonceFromCookie || !nonceFromStateParam || nonceFromCookie !== nonceFromStateParam) {
-      this.logger.error(
-        `[GoogleCallback] Nonce mismatch or missing. Cookie: ${nonceFromCookie ? 'present' : 'missing'}, StateParam: ${nonceFromStateParam ? 'present' : 'missing'}. CSRF attempt?`
-      )
       const csrfErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CsrfOrStateMismatch', {
         lang: currentLang,
         defaultValue: 'Login with Google failed due to a security check. Please try again.'
@@ -547,17 +519,11 @@ export class AuthController {
       })
 
       if ('redirectToError' in googleAuthResultFromService && googleAuthResultFromService.redirectToError) {
-        this.logger.error(
-          `[AuthController googleCallback] Error from GoogleService: ${googleAuthResultFromService.errorMessage}`
-        )
         return res.redirect(
           `${envConfig.FRONTEND_URL}/auth/callback/google?error=${googleAuthResultFromService.errorCode}&errorMessage=${encodeURIComponent(googleAuthResultFromService.errorMessage)}`
         )
       } else if ('needsLinking' in googleAuthResultFromService && googleAuthResultFromService.needsLinking) {
         const linkResult = googleAuthResultFromService
-        this.logger.log(
-          `[AuthController googleCallback] Account ${linkResult.existingUserEmail} (ID: ${linkResult.existingUserId}) needs linking with Google ID ${linkResult.googleId}.`
-        )
 
         const pltPayload: PendingLinkTokenPayloadCreate = {
           existingUserId: linkResult.existingUserId,
@@ -575,9 +541,6 @@ export class AuthController {
           typeof pltCookieConfigFromEnv.name !== 'string' ||
           typeof pltCookieConfigFromEnv.maxAge !== 'number'
         ) {
-          this.logger.error(
-            '[AuthController googleCallback] OAUTH_PENDING_LINK_TOKEN cookie configuration is critically missing or incomplete in envConfig.'
-          )
           throw new ApiException(
             HttpStatus.INTERNAL_SERVER_ERROR,
             'SERVER_CONFIG_ERROR',
@@ -604,9 +567,6 @@ export class AuthController {
         const sltCookieConfig = envConfig.cookie.sltToken
 
         if (requiresTwoFactorAuth && user.twoFactorMethod) {
-          this.logger.log(
-            `[GoogleCallback] User ${user.id} requires 2FA (${user.twoFactorMethod}). Initiating SLT flow.`
-          )
           const sltJwt = await this.otpService.initiateOtpWithSltCookie({
             email: user.email,
             userId: user.id,
@@ -646,9 +606,6 @@ export class AuthController {
         }
 
         if (requiresUntrustedDeviceVerification) {
-          this.logger.log(
-            `[GoogleCallback] User ${user.id} requires untrusted device verification. Initiating SLT flow.`
-          )
           const sltJwt = await this.otpService.initiateOtpWithSltCookie({
             email: user.email,
             userId: user.id,
@@ -685,10 +642,6 @@ export class AuthController {
           return res.redirect(`${envConfig.FRONTEND_URL}/buyer/verify-2fa?type=OTP&${queryParams.toString()}`)
         }
 
-        this.logger.log(
-          `[GoogleCallback] User ${user.id} passed OAuth security checks. Finalizing login directly via Google. Device ID: ${device.id}. Remember Me: ${rememberMeFromState}`
-        )
-
         const loginResult = await this.authenticationService.finalizeOauthLogin(
           user,
           device,
@@ -700,9 +653,6 @@ export class AuthController {
         )
 
         const successRedirectUrl = `${envConfig.FRONTEND_URL}`
-        this.logger.log(
-          `[GoogleCallback] Successful login for user ${user.id} via google-oauth. Redirecting to ${successRedirectUrl}`
-        )
         if (res) {
           res.redirect(successRedirectUrl)
           res.clearCookie(CookieNames.OAUTH_NONCE, {
@@ -714,9 +664,6 @@ export class AuthController {
           })
           return
         } else {
-          this.logger.warn(
-            `[GoogleCallback] Response object not available for redirect. Returning login result as JSON for user ${user.id}.`
-          )
           const result: UserProfileResDTO = {
             id: loginResult.userId,
             email: loginResult.email,
@@ -727,17 +674,13 @@ export class AuthController {
           return result
         }
       }
-      this.logger.error(
-        '[AuthController googleCallback] Unexpected googleAuthResultFromService structure after checks.',
-        googleAuthResultFromService
-      )
+
       throw new ApiException(
         HttpStatus.INTERNAL_SERVER_ERROR,
         'UNEXPECTED_AUTH_RESULT',
         'Error.Auth.Google.UnexpectedResult'
       )
     } catch (error) {
-      this.logger.error('Google OAuth callback error in controller:', error.stack, error.message)
       const genericErrorMessage = await this.i18nService.translate('error.Error.Auth.Google.CallbackErrorGeneric', {
         lang: currentLang
       })
@@ -784,9 +727,6 @@ export class AuthController {
   ) {
     const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
     if (!sltCookieValue) {
-      this.logger.warn(
-        `[ResetPasswordController] SLT cookie (${envConfig.cookie.sltToken.name}) not found for reset password flow.`
-      )
       throw new ApiException(HttpStatus.BAD_REQUEST, 'SltTokenMissing', 'Error.Auth.Session.InvalidLogin')
     }
     return this.passwordAuthService.resetPassword({ ...body, userAgent, ip, sltCookieValue })
@@ -818,9 +758,6 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response
   ) {
     if (!activeUser || !activeUser.userId || activeUser.deviceId === undefined) {
-      this.logger.error(
-        '[AuthController setupTwoFactorAuth] ActiveUser or its properties (userId, deviceId) are missing.'
-      )
       throw new ApiException(HttpStatus.UNAUTHORIZED, 'Unauthorized', 'Error.Auth.Access.Unauthorized')
     }
     const result = await this.twoFactorAuthService.setupTwoFactorAuth(
@@ -840,9 +777,6 @@ export class AuthController {
         path: sltCookieConfig.path || '/'
       })
     } else {
-      this.logger.error(
-        `[AuthController.setupTwoFactorAuth] SLT JWT not returned from service for user ${activeUser.userId}.`
-      )
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, '2FASetupError', 'Error.Auth.2FA.SetupFailed')
     }
 
@@ -871,9 +805,6 @@ export class AuthController {
 
     const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
     if (!sltCookieValue) {
-      this.logger.warn(
-        `[AuthController.confirmTwoFactorSetup] SLT cookie (${envConfig.cookie.sltToken.name}) not found for user ${activeUser.userId}.`
-      )
       throw new ApiException(HttpStatus.BAD_REQUEST, 'SltCookieMissing', 'Error.Auth.2FA.SetupTokenMissing')
     }
 
@@ -927,25 +858,9 @@ export class AuthController {
     const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
     let sltContext: (SltContextData & { sltJti: string }) | null = null
 
-    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'CONTROLLER_2FA_VERIFY_ATTEMPT',
-      ipAddress: ip,
-      userAgent: userAgent,
-      status: AuditLogStatus.FAILURE,
-      details: {
-        sltCookieProvided: !!sltCookieValue,
-        codeProvided: !!body.code,
-        recoveryCodeProvided: !!body.recoveryCode
-      }
-    }
-
     try {
       // Kiểm tra SLT - bắt buộc vì đây là luồng đa bước (đăng nhập)
       if (!sltCookieValue) {
-        this.logger.error('[AuthController.verifyTwoFactor] Missing SLT cookie for 2FA verification')
-        auditLogEntry.errorMessage = 'SLT cookie is required for 2FA verification'
-        auditLogEntry.details.reason = 'MISSING_SLT_COOKIE_2FA_VERIFY'
-        await this.auditLogService.record(auditLogEntry as AuditLogData)
         throw new SltCookieMissingException()
       }
 
@@ -955,42 +870,15 @@ export class AuthController {
         userAgent,
         TypeOfVerificationCode.LOGIN_2FA
       )
-      auditLogEntry.userId = sltContext.userId
-      auditLogEntry.userEmail = sltContext.email
-      if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
-        auditLogEntry.details.sltJti = sltContext.sltJti
-        auditLogEntry.details.sltPurposeValidated = sltContext.purpose
-      }
 
       const result = await this.twoFactorAuthService.verifyTwoFactor({ ...body, userAgent, ip }, sltContext, res)
 
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'CONTROLLER_2FA_VERIFY_SUCCESS'
-      if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
-        auditLogEntry.details.finalSessionId = result.sessionId
-        auditLogEntry.details.finalAccessTokenJti = result.accessTokenJti
-      }
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-
       return result
     } catch (error) {
-      this.logger.error(
-        `[AuthController verifyTwoFactor] Failed for user ${sltContext?.email || 'unknown'} (SLT JTI: ${sltContext?.sltJti || 'N/A'}): ${error.message}`,
-        error.stack,
-        auditLogEntry.details
-      )
-
-      if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage = error instanceof Error ? error.message : 'Unknown error during 2FA verification'
-        if (error instanceof ApiException) {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        }
-      }
-      if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && error instanceof ApiException) {
-        auditLogEntry.details.errorCode = error.errorCode
+      if (error instanceof ApiException) {
+        throw error
       }
 
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }
@@ -1016,9 +904,6 @@ export class AuthController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Query() query: GetSessionsByDeviceQueryDTO
   ): Promise<z.infer<typeof GetSessionsGroupedByDeviceResSchema>> {
-    this.logger.debug(
-      `User ${activeUser.userId} fetching active sessions (grouped by device). Current session: ${activeUser.sessionId}, current device: ${activeUser.deviceId}, query: ${JSON.stringify(query)}`
-    )
     return this.sessionManagementService.getActiveSessions(
       activeUser.userId,
       activeUser.sessionId,
@@ -1099,20 +984,6 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ) {
-    const auditDetails: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'SESSION_REVERIFY_PASSWORD_CONTROLLER_ATTEMPT',
-      userId: activeUser.userId,
-      ipAddress: ip,
-      userAgent: userAgent,
-      entity: 'Session',
-      entityId: activeUser.sessionId,
-      status: AuditLogStatus.FAILURE,
-      details: {
-        verificationMethod: body.verificationMethod,
-        sltCookieProvided: !!req.cookies?.[CookieNames.SLT_TOKEN]
-      }
-    }
-
     try {
       const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
       const result = await this.authenticationService.reverifyPassword(
@@ -1124,17 +995,11 @@ export class AuthController {
         sltCookieValue,
         res
       )
-      auditDetails.status = AuditLogStatus.SUCCESS
-      auditDetails.action = 'SESSION_REVERIFY_PASSWORD_CONTROLLER_SUCCESS'
-      await this.auditLogService.record(auditDetails as AuditLogData)
       return result
     } catch (error) {
       if (error instanceof HttpException) {
-        auditDetails.errorMessage = JSON.stringify(error.getResponse())
-      } else if (error instanceof Error) {
-        auditDetails.errorMessage = error.message
+        throw error
       }
-      await this.auditLogService.record(auditDetails as AuditLogData)
       throw error
     }
   }
@@ -1162,11 +1027,7 @@ export class AuthController {
         secure: sltCookieConfig.secure,
         sameSite: sltCookieConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
       })
-      this.logger.debug(`[sendReverificationOtp] SLT token cookie (${sltCookieConfig.name}) set.`)
     } else {
-      this.logger.error(
-        `[AuthController.sendReverificationOtp] SLT cookie configuration or SLT JWT missing for user ${activeUser.userId}. Cookie not set.`
-      )
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'SltSetupError', 'Error.Auth.Slt.SetupFailed')
     }
 
@@ -1187,7 +1048,6 @@ export class AuthController {
     const loggedInUser = req.user as AccessTokenPayload
 
     try {
-      this.logger.log(`[LinkGoogleAccount] User ${loggedInUser.userId} attempting to link Google ID: ${body.googleId}`)
       const updatedUser = await this.googleService.linkGoogleAccount(
         loggedInUser.userId,
         body.googleId,
@@ -1196,16 +1056,8 @@ export class AuthController {
         body.googleAvatar
       )
 
-      this.logger.log(
-        `[LinkGoogleAccount] Successfully linked Google ID ${body.googleId} to user ${loggedInUser.userId}.`
-      )
-
       return updatedUser
     } catch (error) {
-      this.logger.error(
-        `[LinkGoogleAccount] Error linking Google ID ${body.googleId} for user ${loggedInUser.userId}:`,
-        error
-      )
       if (error instanceof ApiException) {
         throw error
       }
@@ -1232,7 +1084,6 @@ export class AuthController {
     const clearCookieDomain = pltCookieConfigFromEnv?.domain
 
     if (!pltCookieValue) {
-      this.logger.warn('[getPendingLinkDetails] OAUTH_PENDING_LINK_TOKEN cookie not found.')
       throw new ApiException(HttpStatus.UNAUTHORIZED, 'PLT_COOKIE_MISSING', 'Error.Auth.Google.Link.NoPendingState')
     }
 
@@ -1241,9 +1092,6 @@ export class AuthController {
 
       const existingUser = await this.userRepository.findUnique({ id: pltPayload.existingUserId })
       if (!existingUser) {
-        this.logger.error(
-          `[getPendingLinkDetails] Existing user ID ${pltPayload.existingUserId} from PLT not found in DB.`
-        )
         if (pltCookieConfigFromEnv) {
           res.clearCookie(clearCookieName, { path: clearCookiePath, domain: clearCookieDomain })
         }
@@ -1260,7 +1108,6 @@ export class AuthController {
         })
       }
     } catch (error) {
-      this.logger.warn('[getPendingLinkDetails] Error verifying PLT or fetching user details:', error.message)
       if (pltCookieConfigFromEnv) {
         res.clearCookie(clearCookieName, { path: clearCookiePath, domain: clearCookieDomain })
       }
@@ -1286,16 +1133,12 @@ export class AuthController {
     const clearCookieDomain = pltCookieConfigFromEnv?.domain
 
     if (!pltCookieValue) {
-      this.logger.warn('[completeLinkAndLogin] OAUTH_PENDING_LINK_TOKEN cookie not found.')
       throw new ApiException(HttpStatus.UNAUTHORIZED, 'PLT_COOKIE_MISSING', 'Error.Auth.Google.Link.NoPendingState')
     }
     res.clearCookie(clearCookieName, { path: clearCookiePath, domain: clearCookieDomain })
 
     try {
       const pltPayload = await this.tokenService.verifyPendingLinkToken(pltCookieValue)
-      this.logger.log(
-        `[completeLinkAndLogin] Attempting to link Google ID ${pltPayload.googleId} to existing user ${pltPayload.existingUserId}.`
-      )
 
       const linkedUser = await this.googleService.linkGoogleAccount(
         pltPayload.existingUserId,
@@ -1304,8 +1147,6 @@ export class AuthController {
         pltPayload.googleName,
         pltPayload.googleAvatar
       )
-
-      this.logger.log(`[completeLinkAndLogin] Google account linked. Proceeding to login user ${linkedUser.id}.`)
 
       const device = await this.deviceService.findOrCreateDevice({
         userId: linkedUser.id,
@@ -1332,7 +1173,6 @@ export class AuthController {
       }
       return result
     } catch (error) {
-      this.logger.error('[completeLinkAndLogin] Error completing Google link and login:', error.message, error.stack)
       if (error instanceof ApiException) throw error
       throw new ApiException(
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -1353,31 +1193,16 @@ export class AuthController {
     const clearCookiePath = pltCookieConfigFromEnv?.path || '/'
     const clearCookieDomain = pltCookieConfigFromEnv?.domain
 
-    if (pltCookieValue && (!pltCookieConfigFromEnv || !pltCookieConfigFromEnv.name)) {
-      this.logger.error(
-        '[cancelPendingLink] OAUTH_PENDING_LINK_TOKEN cookie configuration is critically missing or incomplete in envConfig, but a PLT cookie was found.'
-      )
-    }
-
     if (pltCookieValue && pltCookieConfigFromEnv && pltCookieConfigFromEnv.name) {
       try {
         const pltPayload = await this.tokenService.verifyPendingLinkToken(pltCookieValue)
-        this.logger.log(
-          `[cancelPendingLink] Cancelling pending link for existing user ${pltPayload.existingUserId} with Google ID ${pltPayload.googleId}.`
-        )
       } catch (error) {
-        this.logger.warn(
-          '[cancelPendingLink] PLT cookie was present but invalid during cancellation. Clearing anyway.',
-          error.message
-        )
+        res.clearCookie(clearCookieName, { path: clearCookiePath, domain: clearCookieDomain })
       }
-      res.clearCookie(clearCookieName, { path: clearCookiePath, domain: clearCookieDomain })
-      this.logger.log('[cancelPendingLink] OAUTH_PENDING_LINK_TOKEN cookie cleared.')
       return {
         message: await this.i18nService.translate('Auth.Google.Link.CancelledSuccessfully')
       }
     } else {
-      this.logger.log('[cancelPendingLink] No OAUTH_PENDING_LINK_TOKEN cookie found to cancel.')
       return {
         message: await this.i18nService.translate('Auth.Google.Link.NoPendingStateToCancel')
       }
@@ -1398,22 +1223,8 @@ export class AuthController {
     const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
     let sltContext: (SltContextData & { sltJti: string }) | null = null
 
-    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'CONTROLLER_LOGIN_UNTRUSTED_COMPLETE_ATTEMPT',
-      ipAddress: ip,
-      userAgent: userAgent,
-      status: AuditLogStatus.FAILURE,
-      details: {
-        sltCookieProvided: !!sltCookieValue,
-        otpCodeProvided: !!body.code,
-        rememberMeProvided: body.rememberMe
-      } as Prisma.JsonObject
-    }
-
     try {
       if (!sltCookieValue) {
-        auditLogEntry.errorMessage = 'SLT cookie is missing for untrusted device login completion.'
-        auditLogEntry.details.reason = 'SLT_COOKIE_MISSING_UNTRUSTED_LOGIN_COMPLETE'
         throw new SltCookieMissingException()
       }
 
@@ -1423,12 +1234,6 @@ export class AuthController {
         userAgent,
         TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP
       )
-      auditLogEntry.userId = sltContext.userId
-      auditLogEntry.userEmail = sltContext.email
-      if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
-        auditLogEntry.details.sltJti = sltContext.sltJti
-        auditLogEntry.details.sltPurposeValidated = sltContext.purpose
-      }
 
       const result = await this.authenticationService.completeLoginWithUntrustedDeviceOtp(
         { ...body, userAgent, ip },
@@ -1436,32 +1241,8 @@ export class AuthController {
         res
       )
 
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'CONTROLLER_LOGIN_UNTRUSTED_COMPLETE_SUCCESS'
-      if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
-        auditLogEntry.details.finalSessionId = result.sessionId
-        auditLogEntry.details.finalAccessTokenJti = result.accessTokenJti
-      }
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
       return result
     } catch (error) {
-      this.logger.error(
-        `[AuthController completeLoginUntrustedDevice] Failed for user ${sltContext?.email || 'unknown'} (SLT JTI: ${sltContext?.sltJti || 'N/A'}): ${error.message}`,
-        error.stack,
-        auditLogEntry.details
-      )
-
-      if (!auditLogEntry.errorMessage) {
-        auditLogEntry.errorMessage =
-          error instanceof Error ? error.message : 'Unknown error during untrusted device login'
-        if (error instanceof ApiException) {
-          auditLogEntry.errorMessage = JSON.stringify(error.getResponse())
-        }
-      }
-      if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && error instanceof ApiException) {
-        auditLogEntry.details.errorCode = error.errorCode
-      }
-
       if (
         error instanceof SltContextFinalizedException ||
         error instanceof SltContextMaxAttemptsReachedException ||
@@ -1473,12 +1254,9 @@ export class AuthController {
         (error instanceof ApiException && error.errorCode === 'Error.Auth.Session.SltExpired') ||
         (error instanceof ApiException && error.errorCode === 'Error.Auth.Session.SltInvalid')
       ) {
-        this.logger.debug(
-          `Error type ${error.constructor.name} (code: ${error.errorCode}) encountered. Cookie clearing should have been handled by services.`
-        )
+        throw error
       }
 
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw error
     }
   }

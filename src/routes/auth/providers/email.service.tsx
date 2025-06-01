@@ -37,7 +37,6 @@ export class EmailService {
         subject: payload.title,
         html: emailHtml
       })
-      this.logger.log(`OTP Email sent successfully to ${payload.email}, ID: ${data?.data?.id}`)
       return data
     } catch (error) {
       this.logger.error(`Error sending OTP email to ${payload.email}:`, error)
@@ -66,12 +65,10 @@ export class EmailService {
         subject: payload.alertSubject,
         html: emailHtml
       })
-      this.logger.log(`Security alert email sent successfully to ${payload.to}, ID: ${data.data?.id}`)
       return data
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      const errorStack = error instanceof Error ? error.stack : undefined
-      this.logger.error(`Failed to send security alert email to ${payload.to}: ${errorMessage}`, errorStack)
+      this.logger.error(`Error sending security alert email to ${payload.to}:`, error)
+      throw error
     }
   }
 }

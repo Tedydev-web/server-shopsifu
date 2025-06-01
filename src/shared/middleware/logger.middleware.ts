@@ -1,14 +1,11 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
-import { AuditLogService, AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
-import { REQUEST_USER_KEY } from '../constants/auth.constant'
 import { AccessTokenPayload } from '../types/jwt.type'
+import { REQUEST_USER_KEY } from '../constants/auth.constant'
 
 @Injectable()
 export class LoggerMiddleware implements NestMiddleware {
   private readonly builtInLogger = new Logger('HTTP')
-
-  constructor(private readonly auditLogService: AuditLogService) {}
 
   use(request: Request, response: Response, next: NextFunction): void {
     const { ip, method, originalUrl, headers: originalHeaders } = request
@@ -30,7 +27,7 @@ export class LoggerMiddleware implements NestMiddleware {
         this.builtInLogger.log(message)
       }
 
-      void (async () => {
+      void (() => {
         const activeUser = request[REQUEST_USER_KEY] as AccessTokenPayload | undefined
         let userId: number | undefined
         let userEmail: string | undefined
@@ -77,30 +74,6 @@ export class LoggerMiddleware implements NestMiddleware {
           } else if (allowedHeaderKeys.includes(lowerKey)) {
             filteredHeaders[key] = originalHeaders[key]
           }
-        }
-
-        const auditLogEntry: AuditLogData = {
-          action: 'HTTP_REQUEST',
-          userId: userId,
-          userEmail: userEmail,
-          entity: originalUrl,
-          details: {
-            method,
-            statusCode,
-            contentLength: contentLength || undefined,
-            elapsedTimeMs: elapsedTime,
-            requestHeaders: filteredHeaders
-          },
-          ipAddress: ip,
-          userAgent: userAgent,
-          status: statusCode >= 400 ? AuditLogStatus.FAILURE : AuditLogStatus.SUCCESS,
-          errorMessage: statusCode >= 400 ? `HTTP Error: ${statusCode}` : undefined,
-          notes: `Access log for ${method} ${originalUrl}`
-        }
-        try {
-          await this.auditLogService.record(auditLogEntry)
-        } catch (error) {
-          this.builtInLogger.error('Failed to record HTTP access audit log:', error)
         }
       })()
     })

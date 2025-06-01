@@ -79,7 +79,6 @@ export class GoogleService {
     try {
       const { tokens } = await this.oauth2Client.getToken(code)
       if (!tokens || !tokens.id_token) {
-        this.logger.error('[getGoogleTokens] Failed to retrieve tokens or id_token is missing from Google.', tokens)
         throw new ApiException(
           HttpStatus.INTERNAL_SERVER_ERROR,
           'GOOGLE_TOKEN_FETCH_FAILED',
@@ -88,7 +87,6 @@ export class GoogleService {
       }
       return tokens
     } catch (error) {
-      this.logger.error('[getGoogleTokens] Error fetching Google tokens:', error)
       const errorMessage = error instanceof Error ? error.message : 'Error.Auth.Google.TokenFetchFailed'
       const errorCode = error instanceof ApiException ? error.errorCode : 'GOOGLE_TOKEN_FETCH_ERROR'
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, errorCode, errorMessage)
@@ -97,7 +95,6 @@ export class GoogleService {
 
   async verifyGoogleIdToken(idToken: string): Promise<TokenPayload | undefined> {
     if (!idToken) {
-      this.logger.error('[verifyGoogleIdToken] idToken is missing.')
       return undefined
     }
     try {
@@ -107,7 +104,6 @@ export class GoogleService {
       })
       return ticket.getPayload()
     } catch (error) {
-      this.logger.error('[verifyGoogleIdToken] Error verifying Google ID token:', error)
       return undefined
     }
   }
@@ -120,12 +116,6 @@ export class GoogleService {
     const stateObject: GoogleAuthStateType & { nonce: string } = {
       ...stateParams,
       nonce
-    }
-
-    if (stateParams.flow === 'profile_link' && stateParams.userIdIfLinking) {
-      this.logger.log(
-        `[GoogleService getAuthorizationUrl] Preparing state for profile linking. User ID: ${stateParams.userIdIfLinking}, Flow: ${stateParams.flow}`
-      )
     }
 
     const stateString = Buffer.from(JSON.stringify(stateObject)).toString('base64')
@@ -167,10 +157,6 @@ export class GoogleService {
       const payload = await this.verifyGoogleIdToken(tokens.id_token as string)
 
       if (!payload || !payload.email || !payload.sub) {
-        this.logger.error(
-          '[GoogleCallback] Invalid payload from Google after verification: missing email or sub.',
-          payload
-        )
         return {
           errorCode: 'INVALID_PAYLOAD',
           errorMessage: await this.i18nService.translate('Error.Auth.Google.InvalidPayload'),
@@ -198,15 +184,10 @@ export class GoogleService {
             }
             userAgent = stateFromServer?.userAgent || userAgent
             ip = stateFromServer?.ip || ip
-          } else {
-            this.logger.warn('[GoogleCallback] Parsed state object is not in the expected format or missing nonce.')
           }
         }
       } catch (parseError) {
-        this.logger.warn(
-          '[GoogleCallback] Could not parse state string from Google, or state was empty. Using request IP/UserAgent.',
-          parseError
-        )
+        this.logger.error('[GoogleCallback] Error parsing state', parseError)
       }
 
       let user = await this.prismaService.user.findUnique({
@@ -217,9 +198,6 @@ export class GoogleService {
       const clientRoleId = await this.rolesService.getClientRoleId()
 
       if (user && user.status !== 'ACTIVE') {
-        this.logger.warn(
-          `[GoogleCallback] Google authenticated user ${user.email} (ID: ${user.id}) is not active. Status: ${user.status}. Denying login.`
-        )
         return {
           errorCode: 'USER_NOT_ACTIVE',
           errorMessage: await this.i18nService.translate('Error.Auth.User.NotActive', { lang: currentLang }),
@@ -235,9 +213,6 @@ export class GoogleService {
 
         if (userByEmail) {
           if (userByEmail.googleId && userByEmail.googleId !== googleUserId) {
-            this.logger.error(
-              `[GoogleCallback] User with email ${payload.email} (ID: ${userByEmail.id}) is already linked to a different Google ID (${userByEmail.googleId}). Attempted to link with ${googleUserId}.`
-            )
             return {
               errorCode: 'ACCOUNT_CONFLICT',
               errorMessage: await this.i18nService.translate('Error.Auth.Google.AccountConflict'),
@@ -246,13 +221,7 @@ export class GoogleService {
           }
 
           if (!userByEmail.googleId) {
-            this.logger.log(
-              `[GoogleCallback] User with email ${payload.email} (ID: ${userByEmail.id}) found, but not linked to any Google account. Google ID from this login: ${googleUserId}. Prompting user for linking.`
-            )
             if (userByEmail.status !== 'ACTIVE') {
-              this.logger.warn(
-                `[GoogleCallback] User ${userByEmail.email} (ID: ${userByEmail.id}) found by email (for linking) is not active. Status: ${userByEmail.status}. Denying link/login.`
-              )
               return {
                 errorCode: 'USER_NOT_ACTIVE_FOR_LINKING',
                 errorMessage: await this.i18nService.translate('Error.Auth.User.NotActiveForLinking', {
@@ -275,10 +244,6 @@ export class GoogleService {
               })
             }
           }
-
-          this.logger.log(
-            `[GoogleCallback] User with email ${payload.email} (ID: ${userByEmail.id}) found. Linking with Google ID ${googleUserId}.`
-          )
 
           const userProfileUpdateData: any = {}
           if (
@@ -313,9 +278,6 @@ export class GoogleService {
             include: { role: true, userProfile: true }
           })
         } else {
-          this.logger.log(
-            `[GoogleCallback] No user found for Google ID ${googleUserId} or email ${payload.email}. Creating new user.`
-          )
           user = await this.prismaService.user.create({
             data: {
               email: payload.email,
@@ -335,15 +297,9 @@ export class GoogleService {
           })
         }
       } else {
-        this.logger.log(`[GoogleCallback] User found by Google ID ${googleUserId}: ${user.email} (ID: ${user.id}).`)
         const updates: Prisma.UserUpdateInput = {}
         const profileUpdates: Prisma.UserProfileUpdateInput = {}
 
-        if (payload.email && user.email !== payload.email) {
-          this.logger.warn(
-            `[GoogleCallback] User ${user.id} (googleId: ${googleUserId}) has different email in DB (${user.email}) and Google (${payload.email}). Email NOT updated automatically.`
-          )
-        }
         // Update UserProfile fields
         if (payload.name && user.userProfile?.firstName !== payload.name) {
           profileUpdates.firstName = payload.name
@@ -367,7 +323,6 @@ export class GoogleService {
         }
 
         if (Object.keys(updates).length > 0) {
-          this.logger.log(`[GoogleCallback] Updating user ${user.id} details from Google:`, updates)
           user = await this.prismaService.user.update({
             where: { id: user.id },
             data: updates,
@@ -377,7 +332,6 @@ export class GoogleService {
       }
 
       if (!user.role) {
-        this.logger.warn(`[GoogleCallback] User ${user.id} still has no role after processing. Forcing client role.`)
         user = await this.prismaService.user.update({
           where: { id: user.id },
           data: { role: { connect: { id: clientRoleId } } },
@@ -399,10 +353,6 @@ export class GoogleService {
       )
       const requiresUntrustedDeviceVerification = !user.twoFactorEnabled && !device.isTrusted
 
-      this.logger.log(
-        `[GoogleCallback] User: ${user.id}, Device: ${device.id} (isTrusted: ${device.isTrusted}), 2FA Enabled: ${user.twoFactorEnabled}, Requires 2FA: ${requiresTwoFactorAuth}, Requires Untrusted Verification: ${requiresUntrustedDeviceVerification}`
-      )
-
       return {
         user,
         device,
@@ -413,7 +363,6 @@ export class GoogleService {
         message: await this.i18nService.translate('Auth.Google.SuccessProceedToSecurityChecks', { lang: currentLang })
       }
     } catch (error) {
-      this.logger.error('[GoogleCallback] Error processing Google callback:', error)
       const resolveErrorCode = (): string => {
         if (error instanceof ApiException) {
           return error.getStatus().toString()
@@ -451,12 +400,6 @@ export class GoogleService {
       if (typeof translatedMessageFromService === 'string') {
         finalErrorMessage = translatedMessageFromService
       } else {
-        this.logger.error(
-          '[GoogleCallback] i18nService.translate did not return a string for key:',
-          errorMessageKey,
-          'Received:',
-          translatedMessageFromService
-        )
         finalErrorMessage = await this.i18nService.translate('Error.Auth.Google.CallbackErrorGeneric', {
           lang: currentLang
         })
@@ -483,21 +426,14 @@ export class GoogleService {
     })
 
     if (!userToLink) {
-      this.logger.error(`[linkGoogleAccount] User with ID ${loggedInUserId} not found to link Google account.`)
       throw new ApiException(HttpStatus.NOT_FOUND, 'USER_NOT_FOUND_FOR_LINKING', 'Error.User.NotFound')
     }
 
     if (userToLink.status !== 'ACTIVE') {
-      this.logger.warn(
-        `[linkGoogleAccount] User ${userToLink.email} (ID: ${userToLink.id}) is not active. Status: ${userToLink.status}. Cannot link Google account.`
-      )
       throw new ApiException(HttpStatus.FORBIDDEN, 'USER_NOT_ACTIVE_FOR_LINKING', 'Error.Auth.User.NotActiveForLinking')
     }
 
     if (userToLink.googleId && userToLink.googleId !== googleIdToLink) {
-      this.logger.error(
-        `[linkGoogleAccount] User ${loggedInUserId} is already linked to a different Google ID (${userToLink.googleId}). Cannot link to ${googleIdToLink}.`
-      )
       throw new ApiException(
         HttpStatus.CONFLICT,
         'GOOGLE_ALREADY_LINKED_OTHER',
@@ -505,9 +441,6 @@ export class GoogleService {
       )
     }
     if (userToLink.googleId === googleIdToLink) {
-      this.logger.log(
-        `[linkGoogleAccount] User ${loggedInUserId} is already linked to this Google ID (${googleIdToLink}). No action needed.`
-      )
       return userToLink
     }
 
@@ -516,15 +449,8 @@ export class GoogleService {
     })
 
     if (userWithThisGoogleId && userWithThisGoogleId.id !== loggedInUserId) {
-      this.logger.error(
-        `[linkGoogleAccount] Google ID ${googleIdToLink} is already linked to another user (ID: ${userWithThisGoogleId.id}).`
-      )
       throw new ApiException(HttpStatus.CONFLICT, 'GOOGLE_ID_CONFLICT', 'Error.Auth.Google.GoogleIdConflict')
     }
-
-    this.logger.log(
-      `[linkGoogleAccount] Linking Google ID ${googleIdToLink} to user ${loggedInUserId} (Email: ${userToLink.email}). Google email: ${googleEmail}`
-    )
 
     const updateData: Prisma.UserUpdateInput = {
       googleId: googleIdToLink
@@ -552,7 +478,6 @@ export class GoogleService {
       include: { role: true, userProfile: true }
     })
 
-    this.logger.log(`[linkGoogleAccount] Successfully linked Google ID ${googleIdToLink} to user ${loggedInUserId}.`)
     return updatedUser
   }
 }

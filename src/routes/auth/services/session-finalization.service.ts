@@ -1,9 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { HttpStatus, Injectable, Logger } from '@nestjs/common'
 import { Response } from 'express'
 import { Device, Prisma, User, UserProfile } from '@prisma/client'
 import { TokenService } from '../providers/token.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { AuditLogService, AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { SessionManagementService } from './session-management.service'
 import { OtpService } from '../providers/otp.service'
 import { EmailService } from '../providers/email.service'
@@ -17,6 +16,7 @@ import envConfig from 'src/shared/config'
 import ms from 'ms'
 import { TypeOfVerificationCode } from '../constants/auth.constants'
 import { JwtService } from '@nestjs/jwt'
+import { ApiException } from 'src/shared/exceptions/api.exception'
 
 export interface FinalizeAuthParams {
   user: User & { role: { id: number; name: string }; userProfile: UserProfile | null }
@@ -46,7 +46,6 @@ export class SessionFinalizationService {
   constructor(
     private readonly tokenService: TokenService,
     private readonly redisService: RedisService,
-    private readonly auditLogService: AuditLogService,
     private readonly sessionManagementService: SessionManagementService,
     private readonly otpService: OtpService,
     private readonly emailService: EmailService,
@@ -62,23 +61,6 @@ export class SessionFinalizationService {
     const prismaClient = tx || this.prismaService
     const currentSessionId = existingSessionId || uuidv4()
     const now = new Date()
-
-    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'USER_SESSION_FINALIZE_ATTEMPT',
-      userId: user.id,
-      userEmail: user.email,
-      ipAddress,
-      userAgent,
-      status: AuditLogStatus.FAILURE,
-      details: {
-        source,
-        sessionId: currentSessionId,
-        deviceId: device.id,
-        rememberMe,
-        sltJti: sltToFinalize?.jti,
-        sltPurpose: sltToFinalize?.purpose
-      }
-    }
 
     try {
       const { accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie, accessTokenPayload } =
@@ -98,18 +80,12 @@ export class SessionFinalizationService {
       this.tokenService.setTokenCookies(res, accessToken, refreshTokenJti, maxAgeForRefreshTokenCookie)
 
       const geoLocation: GeolocationData | null = this.geolocationService.lookup(ipAddress)
-      if (auditLogEntry.details && typeof auditLogEntry.details === 'object' && geoLocation) {
-        auditLogEntry.details.location = `${geoLocation.city || 'N/A'}, ${geoLocation.country || 'N/A'}`
-      }
 
       const decodedToken = this.jwtService.decode(accessToken)
       const accessTokenExp = decodedToken?.exp
 
       let absoluteSessionLifetimeMs = envConfig.ABSOLUTE_SESSION_LIFETIME_MS
       if (isNaN(absoluteSessionLifetimeMs)) {
-        this.logger.warn(
-          `Invalid ABSOLUTE_SESSION_LIFETIME_MS detected (NaN): ${envConfig.ABSOLUTE_SESSION_LIFETIME}. Falling back to 30 days.`
-        )
         absoluteSessionLifetimeMs = ms('30d')
       }
       const absoluteSessionLifetimeSeconds = Math.floor(absoluteSessionLifetimeMs / 1000)
@@ -150,22 +126,12 @@ export class SessionFinalizationService {
         pipeline.set(refreshTokenJtiToSessionKey, currentSessionId, 'EX', refreshTokenTTL)
         return pipeline
       })
-      this.logger.log(`Session ${currentSessionId} for user ${user.id} finalized and recorded in Redis.`)
 
       this.sessionManagementService
         .enforceSessionAndDeviceLimits(user.id, currentSessionId, device.id)
-        .then((limitsResult) => {
-          if (limitsResult.deviceLimitApplied || limitsResult.sessionLimitApplied) {
-            this.logger.log(
-              `Session/device limits applied for user ${user.id} (session: ${currentSessionId}). Devices removed: ${limitsResult.devicesRemovedCount}, Sessions revoked: ${limitsResult.sessionsRevokedCount}`
-            )
-          }
-        })
+        .then((limitsResult) => {})
         .catch((limitError) => {
-          this.logger.error(
-            `Error enforcing session/device limits for user ${user.id} (session: ${currentSessionId}): ${limitError.message}`,
-            limitError.stack
-          )
+          throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
         })
 
       if ((device.isTrusted || rememberMe) && geoLocation?.country && geoLocation?.city && user.userProfile) {
@@ -173,11 +139,6 @@ export class SessionFinalizationService {
         const locationString = `${geoLocation.city.toLowerCase()}_${geoLocation.country.toLowerCase()}`
         const isNewLocation = await this.redisService.sadd(knownLocationsKey, locationString)
         if (isNewLocation === 1) {
-          this.logger.warn(
-            `New login location detected for user ${user.id} on trusted/remembered device ${device.id}: ${locationString}. Sending alert.`
-          )
-          auditLogEntry.notes =
-            `${auditLogEntry.notes || ''}; New trusted device login location: ${locationString}. Alert email sent.`.trim()
           const lang = I18nContext.current()?.lang || 'en'
           const displayName = user.userProfile.firstName || user.userProfile.lastName || user.email
           this.emailService
@@ -213,30 +174,16 @@ export class SessionFinalizationService {
               actionButtonText: this.i18nService.translate('email.Email.SecurityAlert.Button.SecureAccount', { lang }),
               actionButtonUrl: `${envConfig.FRONTEND_URL}/account/security`
             })
-            .catch((emailError) => {
-              this.logger.error(
-                `Failed to send new trusted device login location alert to ${user.email}: ${emailError.message}`,
-                emailError.stack
-              )
-            })
+            .catch((emailError) => {})
         }
       }
 
       if (sltToFinalize?.jti) {
         await this.otpService.finalizeSlt(sltToFinalize.jti)
         this.tokenService.clearSltCookie(res)
-        this.logger.log(`SLT JTI ${sltToFinalize.jti} finalized and cookie cleared.`)
-        if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
-          auditLogEntry.details.sltFinalizedOnSuccess = sltToFinalize.jti
-        }
       } else {
-        // Always clear SLT cookie if exists to prevent leftover tokens
         this.tokenService.clearSltCookie(res)
       }
-
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'USER_SESSION_FINALIZED'
-      this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
 
       const userProfileData: UserProfileResType = {
         id: user.id,
@@ -259,46 +206,15 @@ export class SessionFinalizationService {
         accessTokenJti: accessTokenPayload.jti
       }
     } catch (error) {
-      this.logger.error(
-        `Error in finalizeSuccessfulAuthentication for user ${user.email} (source: ${source}): ${error.message}`,
-        error.stack
-      )
-      auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
-      if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
-        if (error.details && typeof error.details === 'object' && error.details !== null) {
-          auditLogEntry.details.originalErrorDetails = error.details as Prisma.JsonObject
-        } else if (error.details) {
-          auditLogEntry.details.originalErrorDetails = { message: String(error.details) }
-        }
-      } else if (error.details) {
-        auditLogEntry.details = { originalErrorDetails: { message: String(error.details) } }
-      }
-
-      if (
-        sltToFinalize?.jti &&
-        auditLogEntry.details &&
-        typeof auditLogEntry.details === 'object' &&
-        !auditLogEntry.details.sltFinalizedOnSuccess &&
-        !auditLogEntry.details.sltFinalizedOnError
-      ) {
+      if (sltToFinalize?.jti) {
         try {
           await this.otpService.finalizeSlt(sltToFinalize.jti)
           this.tokenService.clearSltCookie(res)
-          auditLogEntry.details.sltFinalizedOnError = sltToFinalize.jti
-          this.logger.warn(`SLT JTI ${sltToFinalize.jti} finalized due to error during session finalization.`)
         } catch (sltFinalizeError) {
-          this.logger.error(
-            `Failed to finalize SLT JTI ${sltToFinalize.jti} during error handling: ${sltFinalizeError.message}`
-          )
-          if (auditLogEntry.details && typeof auditLogEntry.details === 'object') {
-            auditLogEntry.details.sltFinalizationErrorOnError = sltFinalizeError.message
-          } else {
-            auditLogEntry.details = { sltFinalizationErrorOnError: sltFinalizeError.message }
-          }
+          throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
         }
       }
 
-      this.auditLogService.recordAsync(auditLogEntry as AuditLogData)
       throw error
     }
   }

@@ -2,7 +2,6 @@ import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { Prisma, Device, UserProfile } from '@prisma/client'
 import { AuditLog } from 'src/shared/decorators/audit-log.decorator'
-import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { UAParser } from 'ua-parser-js'
 import { EmailService } from './email.service'
@@ -23,7 +22,6 @@ export class DeviceService {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly auditLogService: AuditLogService,
     private readonly emailService: EmailService,
     private readonly i18nService: I18nService,
     private readonly geolocationService: GeolocationService,
@@ -86,7 +84,6 @@ export class DeviceService {
     getDetails: (args) => ({ userAgent: args[0]?.userAgent, ip: args[0]?.ip, fingerprint: args[0]?.fingerprint })
   })
   async createDeviceRecordInternal(data: Prisma.DeviceCreateInput, tx?: PrismaTransactionClient): Promise<Device> {
-    this.logger.debug(`Creating new device record for user ${data.user?.connect?.id}, fingerprint: ${data.fingerprint}`)
     const client = tx || this.prismaService
     return client.device.create({
       data
@@ -94,7 +91,6 @@ export class DeviceService {
   }
 
   async updateDevice(deviceId: number, data: Prisma.DeviceUpdateInput, tx?: PrismaTransactionClient): Promise<Device> {
-    this.logger.debug(`Updating device record ${deviceId}`)
     const client = tx || this.prismaService
     return client.device.update({
       where: { id: deviceId },
@@ -103,7 +99,6 @@ export class DeviceService {
   }
 
   async findDeviceById(deviceId: number, tx?: PrismaTransactionClient): Promise<Device | null> {
-    this.logger.debug(`Finding device record with ID ${deviceId}`)
     const client = tx || this.prismaService
     return client.device.findUnique({
       where: { id: deviceId }
@@ -117,9 +112,6 @@ export class DeviceService {
     fingerprintDetails: { type: string; osName: string; osVersion: string; browserName: string; browserVersion: string }
   ): Promise<void> {
     if (!user || !user.email) {
-      this.logger.warn(
-        `Cannot send new device notification for user ID ${user?.id || 'unknown'}: user data or email is missing.`
-      )
       return
     }
 
@@ -176,15 +168,8 @@ export class DeviceService {
         actionDetails,
         secondaryMessage
       })
-      .then(() => {
-        this.logger.log(`New device login notification sent to ${user.email} for user ID ${user.id}`)
-      })
-      .catch((error) => {
-        this.logger.error(
-          `Failed to send new device login notification to ${user.email} for user ID ${user.id}: ${error.message}`,
-          error.stack
-        )
-      })
+      .then(() => {})
+      .catch((error) => {})
   }
 
   @AuditLog({
@@ -207,10 +192,6 @@ export class DeviceService {
     const client = tx || this.prismaService
     const fingerprint = this.basicDeviceFingerprint(data.userAgent)
 
-    this.logger.debug(
-      `[DeviceService] findOrCreateDevice for user ${data.userId}, IP: ${data.ip}, UserAgent: ${data.userAgent}, Fingerprint: ${fingerprint}`
-    )
-
     let device = await client.device.findFirst({
       where: {
         userId: data.userId,
@@ -230,9 +211,6 @@ export class DeviceService {
     const currentCountry = currentGeoLocationData?.country || null
 
     if (device) {
-      this.logger.debug(
-        `[DeviceService] Found existing device ${device.id} for user ${data.userId} with fingerprint ${fingerprint}`
-      )
       deviceLogDetails.foundDeviceId = device.id
 
       const updates: Prisma.DeviceUpdateInput = {
@@ -244,9 +222,6 @@ export class DeviceService {
       if (device.userAgent !== data.userAgent) {
         updates.userAgent = data.userAgent
         userAgentChanged = true
-        this.logger.warn(
-          `[DeviceService] User agent changed for device ${device.id} (user ${data.userId}). Old: ${device.userAgent}, New: ${data.userAgent}. Fingerprint remains the same.`
-        )
         deviceLogDetails.userAgentChanged = true
         deviceLogDetails.oldUserAgent = device.userAgent
       }
@@ -299,12 +274,7 @@ export class DeviceService {
               currentCity,
               currentCountry,
               data.userAgent
-            ).catch((error) => {
-              this.logger.error(
-                `[DeviceService] Failed to send known device new location notification for user ${data.userId}, device ${device?.id}: ${error.message}`,
-                error.stack
-              )
-            })
+            ).catch((error) => {})
             updates.lastNotificationSentAt = now
             deviceLogDetails.notificationSent = 'KNOWN_DEVICE_NEW_LOCATION'
           } else {
@@ -312,34 +282,11 @@ export class DeviceService {
           }
         } else {
           deviceLogDetails.notificationSkippedReason = 'COOLDOWN_PERIOD_ACTIVE'
-          this.logger.debug(
-            `[DeviceService] Notification for location change on device ${device.id} (user ${data.userId}) skipped due to cooldown.`
-          )
         }
       }
 
       device = await this.updateDevice(device.id, updates, client)
-
-      this.auditLogService.recordAsync({
-        action: userAgentChanged ? 'DEVICE_DETAILS_UPDATED_ON_LOGIN' : 'DEVICE_ACTIVITY_LOGIN',
-        userId: data.userId,
-        entity: 'Device',
-        entityId: device.id,
-        status: AuditLogStatus.SUCCESS,
-        details: deviceLogDetails as Prisma.JsonObject,
-        ipAddress: data.ip,
-        userAgent: data.userAgent,
-        notes: userAgentChanged
-          ? 'Device last active, IP, and user agent updated due to login with matching fingerprint but different UA.'
-          : significantLocationChange
-            ? 'Device last active, IP updated. Significant location change detected.'
-            : 'Device last active and IP updated due to login with matching fingerprint.'
-      })
     } else {
-      this.logger.warn(
-        `[DeviceService] No device found for user ${data.userId} with fingerprint ${fingerprint}. Creating a new device.`
-      )
-
       const newDeviceData: Prisma.DeviceCreateInput = {
         user: { connect: { id: data.userId } },
         userAgent: data.userAgent,
@@ -359,18 +306,6 @@ export class DeviceService {
       deviceLogDetails.initialIp = data.ip
       deviceLogDetails.initialCity = currentCity
       deviceLogDetails.initialCountry = currentCountry
-
-      this.auditLogService.recordAsync({
-        action: 'NEW_DEVICE_CREATED_ON_LOGIN',
-        userId: data.userId,
-        entity: 'Device',
-        entityId: device.id,
-        status: AuditLogStatus.SUCCESS,
-        details: deviceLogDetails as Prisma.JsonObject,
-        ipAddress: data.ip,
-        userAgent: data.userAgent,
-        notes: 'New device record created due to login with an unrecognized fingerprint.'
-      })
 
       const userWithProfile = await this.userRepository.findUniqueWithDetails({ id: data.userId }, client)
       const uaParsed = new UAParser(data.userAgent)
@@ -394,12 +329,7 @@ export class DeviceService {
             : null
         }
         this._sendNewDeviceLoginNotification(userForNotification, data.userAgent, data.ip, fingerprintDetails).catch(
-          (error) => {
-            this.logger.error(
-              `[DeviceService] Failed to send new device login notification for user ${data.userId}, device ${device?.id}: ${error.message}`,
-              error.stack
-            )
-          }
+          (error) => {}
         )
       } else {
         deviceLogDetails.notificationSkippedReason = 'USER_NOT_FOUND_FOR_NEW_DEVICE_NOTIFICATION'
@@ -424,12 +354,10 @@ export class DeviceService {
     ip: string,
     tx?: PrismaTransactionClient
   ): Promise<boolean> {
-    this.logger.debug(`Validating device ${deviceId} with provided User-Agent and IP`)
     const client = tx || this.prismaService
     const device = await this.findDeviceById(deviceId, client)
 
     if (!device || !device.isActive) {
-      this.logger.warn(`Device ${deviceId} not found or inactive. Validation failed.`)
       return false
     }
 
@@ -442,32 +370,17 @@ export class DeviceService {
 
     if (device.fingerprint) {
       if (device.fingerprint === currentRequestFingerprint) {
-        this.logger.debug(
-          `Device ${deviceId} validated successfully with matching fingerprint: ${currentRequestFingerprint}.`
-        )
         isValid = true
         if (device.userAgent !== userAgent) {
-          this.logger.warn(
-            `Device ${deviceId} (fingerprint match): UserAgent updated from "${device.userAgent}" to "${userAgent}".`
-          )
           updates.userAgent = userAgent
         }
       } else {
-        this.logger.warn(
-          `Device ${deviceId} FINGERPRINT MISMATCH: DB fingerprint "${device.fingerprint}", current request fingerprint "${currentRequestFingerprint}". UA received: "${userAgent}". Validation failed.`
-        )
         isValid = false
       }
     } else {
       if (device.userAgent === userAgent) {
-        this.logger.debug(
-          `Device ${deviceId} (no fingerprint): Validated successfully with exact User-Agent match. Consider re-authentication to generate fingerprint.`
-        )
         isValid = true
       } else {
-        this.logger.warn(
-          `Device ${deviceId} (no fingerprint): User-Agent mismatch. DB UA: "${device.userAgent}", Request UA: "${userAgent}". Validation failed.`
-        )
         isValid = false
       }
     }
@@ -483,7 +396,6 @@ export class DeviceService {
     getEntityId: (args) => args[0]
   })
   async deactivateDevice(deviceId: number, tx?: PrismaTransactionClient): Promise<Device> {
-    this.logger.debug(`Deactivating device ${deviceId}`)
     const client = tx || this.prismaService
     return this.updateDevice(deviceId, { isActive: false }, client)
   }
@@ -501,9 +413,6 @@ export class DeviceService {
     excludeDeviceId?: number,
     tx?: PrismaTransactionClient
   ): Promise<Prisma.BatchPayload> {
-    this.logger.debug(
-      `Deactivating all devices for user ${userId}${excludeDeviceId ? ` except device ${excludeDeviceId}` : ''}`
-    )
     const client = tx || this.prismaService
     const whereClause: Prisma.DeviceWhereInput = {
       userId,
@@ -528,7 +437,6 @@ export class DeviceService {
     })
   })
   async getUserActiveDevices(userId: number, tx?: PrismaTransactionClient): Promise<Device[]> {
-    this.logger.debug(`Getting active devices for user ${userId}`)
     const client = tx || this.prismaService
     return client.device.findMany({
       where: {
@@ -542,7 +450,6 @@ export class DeviceService {
   }
 
   async isDeviceOwnedByUser(deviceId: number, userId: number, tx?: PrismaTransactionClient): Promise<boolean> {
-    this.logger.debug(`Checking if device ${deviceId} is owned by user ${userId}`)
     const client = tx || this.prismaService
     const device = await client.device.findUnique({
       where: {
@@ -567,14 +474,10 @@ export class DeviceService {
     const device = await client.device.findUnique({ where: { id: deviceId } })
 
     if (!device || device.userId !== userId) {
-      this.logger.warn(
-        `[DeviceService] Attempt to trust device ${deviceId} failed: Not found or not owned by user ${userId}.`
-      )
       throw new ApiException(HttpStatus.NOT_FOUND, 'DEVICE_NOT_FOUND', 'Error.Auth.Device.NotFoundForUser')
     }
 
     if (device.isTrusted) {
-      this.logger.debug(`[DeviceService] Device ${deviceId} is already trusted for user ${userId}. No action needed.`)
       return device
     }
 
@@ -583,19 +486,6 @@ export class DeviceService {
       data: { isTrusted: true, lastActive: new Date() }
     })
 
-    this.auditLogService.recordAsync({
-      action: 'DEVICE_TRUSTED',
-      userId,
-      entity: 'Device',
-      entityId: deviceId,
-      status: AuditLogStatus.SUCCESS,
-      details: {
-        deviceUserAgent: device.userAgent,
-        trustedBy: 'USER_ACTION'
-      } as Prisma.JsonObject,
-      notes: `Device ${deviceId} explicitly trusted by user ${userId}.`
-    })
-    this.logger.log(`[DeviceService] Device ${deviceId} trusted successfully for user ${userId}.`)
     return updatedDevice
   }
 
@@ -608,9 +498,6 @@ export class DeviceService {
     currentUserAgent: string
   ): Promise<void> {
     if (!user || !user.email) {
-      this.logger.warn(
-        `Cannot send known device new location notification for user ID ${user.id}: user data or email is missing.`
-      )
       return
     }
 
@@ -716,16 +603,7 @@ export class DeviceService {
         actionDetails,
         secondaryMessage
       })
-      .then(() => {
-        this.logger.log(
-          `Known device new location notification sent to ${user.email} for user ID ${user.id}, device ID ${device.id}`
-        )
-      })
-      .catch((error) => {
-        this.logger.error(
-          `Failed to send known device new location notification to ${user.email} for user ID ${user.id}, device ID ${device.id}: ${error.message}`,
-          error.stack
-        )
-      })
+      .then(() => {})
+      .catch((error) => {})
   }
 }

@@ -14,7 +14,6 @@ import { AuthenticationService } from './services/authentication.service'
 import { TwoFactorAuthService } from './services/two-factor-auth.service'
 import { PasswordAuthService } from './services/password-auth.service'
 import { SessionManagementService } from './services/session-management.service'
-import { AuditLogModule } from '../audit-log/audit-log.module'
 import { PasswordReverificationGuard } from './guards/password-reverification.guard'
 import { SessionFinalizationService } from './services/session-finalization.service'
 import { SltHelperService } from './services/slt-helper.service'
@@ -22,7 +21,7 @@ import { UserRepository } from './repositories/shared-user.repo'
 
 @Global()
 @Module({
-  imports: [PassportModule, JwtModule.register({}), AuditLogModule],
+  imports: [PassportModule, JwtModule.register({})],
   controllers: [AuthController],
   providers: [
     GoogleService,

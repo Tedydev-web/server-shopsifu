@@ -15,7 +15,6 @@ import { PrismaTransactionClient } from 'src/shared/repositories/base.repository
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { REDIS_KEY_PREFIX } from 'src/shared/constants/redis.constants'
 import ms from 'ms'
-import { AuditLogService, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import {
   InvalidRefreshTokenException,
   RefreshTokenAlreadyUsedException,
@@ -43,12 +42,10 @@ export class TokenService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly deviceService: DeviceService,
-    private readonly redisService: RedisService,
-    private readonly auditLogService: AuditLogService
+    private readonly redisService: RedisService
   ) {}
 
   signAccessToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>) {
-    this.logger.debug(`Signing access token for user ${payload.userId}, session ${payload.sessionId}`)
     return this.jwtService.sign(payload, {
       secret: envConfig.ACCESS_TOKEN_SECRET,
       expiresIn: envConfig.ACCESS_TOKEN_EXPIRES_IN,
@@ -57,9 +54,6 @@ export class TokenService {
   }
 
   signShortLivedToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>) {
-    this.logger.debug(
-      `Signing short-lived access token for testing purposes: userId=${payload.userId}, session ${payload.sessionId}`
-    )
     return this.jwtService.sign(payload, {
       secret: envConfig.ACCESS_TOKEN_SECRET,
       expiresIn: '30s',
@@ -75,17 +69,11 @@ export class TokenService {
 
   signPendingLinkToken(payload: PendingLinkTokenPayloadCreate): string {
     const jti = uuidv4()
-    this.logger.debug(
-      `Signing Pending Link Token for existing user ID ${payload.existingUserId}, googleId ${payload.googleId}`
-    )
 
     const secret = envConfig.PENDING_LINK_TOKEN_SECRET
     const expiresIn = envConfig.PENDING_LINK_TOKEN_EXPIRES_IN
 
     if (!secret || !expiresIn) {
-      this.logger.error(
-        '[TokenService signPendingLinkToken] PENDING_LINK_TOKEN_SECRET or PENDING_LINK_TOKEN_EXPIRES_IN is missing in envConfig.'
-      )
       throw new ApiException(
         HttpStatus.INTERNAL_SERVER_ERROR,
         'SERVER_CONFIG_ERROR',
@@ -106,7 +94,6 @@ export class TokenService {
   async verifyPendingLinkToken(token: string): Promise<PendingLinkTokenPayload> {
     const secret = envConfig.PENDING_LINK_TOKEN_SECRET
     if (!secret) {
-      this.logger.error('[TokenService verifyPendingLinkToken] PENDING_LINK_TOKEN_SECRET is missing in envConfig.')
       throw new ApiException(
         HttpStatus.INTERNAL_SERVER_ERROR,
         'SERVER_CONFIG_ERROR',
@@ -115,13 +102,11 @@ export class TokenService {
     }
 
     try {
-      this.logger.debug(`Verifying Pending Link Token.`)
       const payload = await this.jwtService.verifyAsync<PendingLinkTokenPayload>(token, {
         secret: secret
       })
       return payload
     } catch (error) {
-      this.logger.warn(`Pending Link Token verification failed: ${error.message}`)
       throw InvalidRefreshTokenException
     }
   }
@@ -151,9 +136,6 @@ export class TokenService {
         secure: config.secure,
         sameSite: config.sameSite
       })
-      this.logger.debug(`${name} cookie set successfully with maxAge: ${maxAgeToUse}`)
-    } else {
-      this.logger.warn(`res.cookie SKIPPED for ${name}. Reason:`, !value ? `${name} missing` : 'MaxAge not positive')
     }
   }
 
@@ -177,7 +159,6 @@ export class TokenService {
     const accessTokenConfig = envConfig.cookie.accessToken
     const refreshTokenConfig = envConfig.cookie.refreshToken
 
-    this.logger.debug(`Clearing access token cookie (${accessTokenConfig.name})`)
     res.clearCookie(accessTokenConfig.name, {
       path: accessTokenConfig.path,
       domain: accessTokenConfig.domain,
@@ -186,7 +167,6 @@ export class TokenService {
       sameSite: accessTokenConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
     })
 
-    this.logger.debug(`Clearing refresh token cookie (${refreshTokenConfig.name})`)
     res.clearCookie(refreshTokenConfig.name, {
       path: refreshTokenConfig.path,
       domain: refreshTokenConfig.domain,
@@ -199,7 +179,6 @@ export class TokenService {
   clearSltCookie(res: Response) {
     const sltTokenConfig = envConfig.cookie.sltToken
     if (sltTokenConfig) {
-      this.logger.debug(`Clearing SLT token cookie (${sltTokenConfig.name})`)
       res.clearCookie(sltTokenConfig.name, {
         path: sltTokenConfig.path,
         domain: sltTokenConfig.domain,
@@ -207,8 +186,6 @@ export class TokenService {
         secure: sltTokenConfig.secure,
         sameSite: sltTokenConfig.sameSite as 'lax' | 'strict' | 'none' | boolean
       })
-    } else {
-      this.logger.warn('SLT token cookie configuration not found, cannot clear SLT cookie.')
     }
   }
 
@@ -223,9 +200,6 @@ export class TokenService {
     rememberMe?: boolean
   ) {
     const { userId, deviceId, sessionId } = params
-    this.logger.debug(
-      `Generating tokens for user ${userId}, device ${deviceId}, session ${sessionId}, rememberMe: ${!!rememberMe}`
-    )
 
     const accessTokenJti = uuidv4()
     const refreshTokenJti = uuidv4()
@@ -249,10 +223,6 @@ export class TokenService {
     }
     const refreshTokenExpiresInSeconds = Math.floor(refreshTokenExpiresInMs / 1000)
 
-    this.logger.debug(
-      `Calculated refreshTokenExpiresInSeconds: ${refreshTokenExpiresInSeconds} (from ${refreshTokenExpiresInMs}ms)`
-    )
-
     await this.redisService.set(
       `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`,
       sessionId,
@@ -269,9 +239,6 @@ export class TokenService {
     const sessionTtl = await this.redisService.ttl(sessionKey)
     if (sessionTtl < 0 || sessionTtl < refreshTokenExpiresInSeconds) {
       const absoluteSessionLifetimeInSeconds = Math.floor(envConfig.ABSOLUTE_SESSION_LIFETIME_MS / 1000)
-      this.logger.debug(
-        `Calculated absoluteSessionLifetimeInSeconds for session ${sessionId}: ${absoluteSessionLifetimeInSeconds} (from ${envConfig.ABSOLUTE_SESSION_LIFETIME_MS}ms). Current TTL: ${sessionTtl}`
-      )
       await this.redisService.expire(sessionKey, absoluteSessionLifetimeInSeconds)
     }
 
@@ -288,24 +255,15 @@ export class TokenService {
     const usedKey = `${REDIS_KEY_PREFIX.USED_REFRESH_TOKEN_JTI}${refreshTokenJti}`
     const effectiveTtl = ttlSeconds ?? Math.floor(ms(envConfig.REFRESH_TOKEN_EXPIRES_IN) / 1000)
 
-    this.logger.verbose(
-      `Attempting to mark RT JTI ${refreshTokenJti} as used for session ${sessionId} with TTL ${effectiveTtl}s. Key: ${usedKey}`
-    )
-
     const result = await this.redisService.set(usedKey, sessionId, 'EX', effectiveTtl, 'NX')
 
     if (result === null) {
-      this.logger.warn(
-        `RT JTI ${refreshTokenJti} was already marked as used. Current session trying to mark: ${sessionId}. Associated session (if set by other): ${await this.redisService.get(usedKey)}.`
-      )
       return false
     }
-    this.logger.verbose(`RT JTI ${refreshTokenJti} successfully marked as used for session ${sessionId}.`)
     return true
   }
 
   async invalidateRefreshTokenJti(refreshTokenJti: string, sessionId: string) {
-    this.logger.debug(`Invalidating refresh token JTI: ${refreshTokenJti}`)
     const rtKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`
     const ttl = await this.redisService.ttl(rtKey)
     await this.redisService.set(
@@ -326,7 +284,6 @@ export class TokenService {
   }
 
   async invalidateAccessTokenJti(accessTokenJti: string, accessTokenExp: number) {
-    this.logger.debug(`Invalidating access token JTI: ${accessTokenJti}`)
     const nowInSeconds = Math.floor(Date.now() / 1000)
     const ttl = accessTokenExp - nowInSeconds
     if (ttl > 0) {
@@ -335,7 +292,6 @@ export class TokenService {
   }
 
   async findSessionIdByRefreshTokenJti(refreshTokenJti: string): Promise<string | null> {
-    this.logger.debug(`Finding sessionId by refresh token JTI: ${refreshTokenJti}`)
     return this.redisService.get(`${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${refreshTokenJti}`)
   }
 
@@ -359,7 +315,6 @@ export class TokenService {
     maxAgeForRefreshTokenCookie?: number
     accessTokenPayload: AccessTokenPayload
   } | null> {
-    this.logger.debug(`Attempting to silently refresh token with JTI: ${clientRefreshTokenJti}`)
     const auditLogDetails: Prisma.JsonObject = {
       refreshTokenJtiProvided: clientRefreshTokenJti,
       userAgent,
@@ -367,31 +322,15 @@ export class TokenService {
     }
 
     if (await this.isRefreshTokenJtiBlacklisted(clientRefreshTokenJti)) {
-      this.logger.warn(`Silent refresh failed: Refresh token JTI ${clientRefreshTokenJti} is blacklisted.`)
       auditLogDetails.reason = 'REFRESH_TOKEN_JTI_BLACKLISTED'
-      this.auditLogService.recordAsync({
-        action: 'REFRESH_TOKEN_SILENTLY_FAIL',
-        status: AuditLogStatus.FAILURE,
-        ipAddress: ip,
-        userAgent,
-        errorMessage: 'Refresh token JTI is blacklisted.',
-        details: auditLogDetails
-      })
+
       throw InvalidRefreshTokenException
     }
 
     const sessionId = await this.findSessionIdByRefreshTokenJti(clientRefreshTokenJti)
     if (!sessionId) {
-      this.logger.warn(`Silent refresh failed: No session found for refresh token JTI ${clientRefreshTokenJti}.`)
       auditLogDetails.reason = 'SESSION_NOT_FOUND_FOR_RT_JTI'
-      this.auditLogService.recordAsync({
-        action: 'REFRESH_TOKEN_SILENTLY_FAIL',
-        status: AuditLogStatus.FAILURE,
-        ipAddress: ip,
-        userAgent,
-        errorMessage: 'No session found for the provided refresh token JTI.',
-        details: auditLogDetails
-      })
+
       throw RefreshTokenNotFoundException
     }
     auditLogDetails.sessionId = sessionId
@@ -400,66 +339,34 @@ export class TokenService {
     const sessionDetails = await this.redisService.hgetall(sessionKey)
 
     if (!sessionDetails || Object.keys(sessionDetails).length === 0) {
-      this.logger.warn(`Silent refresh failed: Session ${sessionId} not found or empty.`)
       await this.invalidateRefreshTokenJti(clientRefreshTokenJti, sessionId)
       auditLogDetails.reason = 'SESSION_EMPTY_OR_NOT_FOUND_IN_REDIS'
-      this.auditLogService.recordAsync({
-        action: 'REFRESH_TOKEN_SILENTLY_FAIL',
-        userId: parseInt(sessionDetails?.userId, 10) || undefined,
-        status: AuditLogStatus.FAILURE,
-        ipAddress: ip,
-        userAgent,
-        errorMessage: 'Session not found in Redis or is empty.',
-        details: auditLogDetails
-      })
+
       throw RefreshTokenSessionInvalidException
     }
     auditLogDetails.sessionUserId = parseInt(sessionDetails.userId, 10)
     auditLogDetails.sessionDeviceId = parseInt(sessionDetails.deviceId, 10)
 
     if (sessionDetails.currentRefreshTokenJti !== clientRefreshTokenJti) {
-      this.logger.warn(
-        `Silent refresh failed: Provided RT JTI ${clientRefreshTokenJti} does not match current RT JTI ${sessionDetails.currentRefreshTokenJti} in session ${sessionId}. Potential token theft or replay.`
-      )
       await this.invalidateSession(sessionId, 'SUSPECTED_TOKEN_THEFT_ON_REFRESH')
       auditLogDetails.reason = 'REFRESH_TOKEN_JTI_MISMATCH'
       auditLogDetails.suspectedCurrentSessionRtJti = sessionDetails.currentRefreshTokenJti
-      this.auditLogService.recordAsync({
-        action: 'REFRESH_TOKEN_SILENTLY_FAIL',
-        userId: parseInt(sessionDetails.userId, 10),
-        status: AuditLogStatus.FAILURE,
-        ipAddress: ip,
-        userAgent,
-        errorMessage: 'Provided refresh token JTI does not match the current one in session. Session invalidated.',
-        details: auditLogDetails
-      })
+
       throw InvalidRefreshTokenException
     }
 
     const expectedUserAgentFingerprint = this.deviceService.basicDeviceFingerprint(sessionDetails.userAgent)
     const currentUserAgentFingerprint = this.deviceService.basicDeviceFingerprint(userAgent)
     if (expectedUserAgentFingerprint !== currentUserAgentFingerprint) {
-      this.logger.warn(
-        `Silent refresh failed for session ${sessionId}: User-Agent mismatch. Expected fingerprint: ${expectedUserAgentFingerprint}, got: ${currentUserAgentFingerprint}`
-      )
       auditLogDetails.reason = 'USER_AGENT_MISMATCH'
       auditLogDetails.expectedUserAgentFingerprint = expectedUserAgentFingerprint
       auditLogDetails.currentUserAgentFingerprint = currentUserAgentFingerprint
-      this.auditLogService.recordAsync({
-        action: 'REFRESH_TOKEN_SILENTLY_FAIL',
-        userId: parseInt(sessionDetails.userId, 10),
-        status: AuditLogStatus.FAILURE,
-        ipAddress: ip,
-        userAgent,
-        errorMessage: 'User-Agent mismatch during token refresh.',
-        details: auditLogDetails
-      })
+
       throw RefreshTokenDeviceMismatchException
     }
 
     const now = new Date()
     await this.redisService.hset(sessionKey, 'lastActiveAt', now.toISOString())
-    this.logger.debug(`Session ${sessionId} last active time updated.`)
 
     const isDeviceTrustedInSessionBoolean = sessionDetails.isTrusted === 'true'
 
@@ -491,17 +398,12 @@ export class TokenService {
     let maxAgeForCookie: number | undefined = undefined
 
     if (shouldRotateRefreshToken) {
-      this.logger.debug(`Rotating refresh token for session ${sessionId}. Old RT JTI: ${clientRefreshTokenJti}`)
       const oldRtKey = `${REDIS_KEY_PREFIX.REFRESH_TOKEN_JTI_TO_SESSION}${clientRefreshTokenJti}`
       const oldRtTtl = await this.redisService.ttl(oldRtKey)
       const blacklistTtl = oldRtTtl > 0 ? oldRtTtl : 300
       const markedSuccessfully = await this.markRefreshTokenJtiAsUsed(clientRefreshTokenJti, sessionId, blacklistTtl)
 
       if (!markedSuccessfully) {
-        this.logger.warn(
-          `Refresh token JTI ${clientRefreshTokenJti} for session ${sessionId} was already marked as used by another process. Aborting refresh.`
-        )
-
         await this.invalidateSession(sessionId, 'RT_JTI_ALREADY_USED_ON_REFRESH_ATTEMPT')
         throw RefreshTokenAlreadyUsedException
       }
@@ -538,30 +440,12 @@ export class TokenService {
           newRefreshTokenJti
         )
       }
-      this.logger.log(`Rotated Refresh Token for session ${sessionId}. New RT JTI: ${newRefreshTokenJti}`)
       auditLogDetails.rotatedToNewRefreshTokenJti = newRefreshTokenJti
     } else {
       newRefreshTokenJti = clientRefreshTokenJti
       maxAgeForCookie =
         parseInt(sessionDetails.maxAgeForRefreshTokenCookie, 10) || envConfig.REFRESH_TOKEN_COOKIE_MAX_AGE
-      this.logger.debug(
-        `Refresh token rotation is OFF. Reusing RT JTI: ${clientRefreshTokenJti} for session ${sessionId}`
-      )
     }
-
-    this.auditLogService.recordAsync({
-      action: 'REFRESH_TOKEN_SILENTLY_SUCCESS',
-      userId: parseInt(sessionDetails.userId, 10),
-      status: AuditLogStatus.SUCCESS,
-      ipAddress: ip,
-      userAgent,
-      details: {
-        ...auditLogDetails,
-        accessToken: newAccessToken,
-        refreshToken: shouldRotateRefreshToken ? newRefreshTokenJti : undefined,
-        maxAgeForRefreshTokenCookie: shouldRotateRefreshToken ? maxAgeForCookie : undefined
-      }
-    })
 
     return {
       accessToken: newAccessToken,
@@ -580,9 +464,6 @@ export class TokenService {
     const sessionDetails = await this.redisService.hgetall(sessionKey)
 
     if (Object.keys(sessionDetails).length === 0) {
-      this.logger.warn(
-        `[TokenService] Attempted to invalidate non-existent or empty session ${sessionId}. Reason: ${reason}. Skipping Redis operations for this session.`
-      )
       return
     }
 
@@ -612,10 +493,6 @@ export class TokenService {
         pipeline.set(accessTokenJtiBlacklistKey, `INVALIDATED:${reason}`, 'EX', ttl)
       }
     }
-
-    this.logger.log(
-      `[TokenService] Session ${sessionId} (User: ${userId || 'N/A'}) marked for invalidation in pipeline. Reason: ${reason}.`
-    )
   }
 
   async invalidateSession(sessionId: string, reason: string = 'UNKNOWN') {
@@ -623,16 +500,8 @@ export class TokenService {
     await this._addSessionInvalidationToPipeline(pipeline, sessionId, reason)
     const results = await pipeline.exec()
     if (results) {
-      results.forEach(([err, result], index) => {
-        if (err) {
-          this.logger.error(`Error in invalidateSession pipeline (command ${index}): ${err.message}`)
-        }
-      })
-    } else {
-      this.logger.error('invalidateSession pipeline execution returned null')
+      results.forEach(([err, result], index) => {})
     }
-
-    this.logger.log(`[TokenService] Session ${sessionId} invalidation process completed. Reason: ${reason}.`)
   }
 
   async invalidateAllUserSessions(
@@ -644,7 +513,6 @@ export class TokenService {
     const sessionIds = await this.redisService.smembers(userSessionsKey)
 
     if (!sessionIds || sessionIds.length === 0) {
-      this.logger.log(`No active sessions found for user ${userId} to invalidate.`)
       return { invalidatedCount: 0 }
     }
 
@@ -655,7 +523,6 @@ export class TokenService {
 
     for (const sessionId of sessionIds) {
       if (sessionId === sessionIdToExclude) {
-        this.logger.verbose(`Skipping excluded session ${sessionId} during bulk invalidation for user ${userId}.`)
         continue
       }
       const sessionDetailsKey = `${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`
@@ -684,7 +551,6 @@ export class TokenService {
           deviceSessionUpdates.get(deviceSessionKey)!.push(sessionId)
         }
         invalidatedCount++
-        this.logger.verbose(`Session ${sessionId} for user ${userId} marked for bulk invalidation. Reason: ${reason}`)
       }
     }
 
@@ -700,7 +566,6 @@ export class TokenService {
 
     await pipeline.exec()
 
-    this.logger.log(`Invalidated ${invalidatedCount} sessions for user ${userId}. Reason: ${reason}`)
     return { invalidatedCount }
   }
 
@@ -709,7 +574,6 @@ export class TokenService {
     const sessionIds = await this.redisService.smembers(deviceSessionsKey)
 
     if (!sessionIds || sessionIds.length === 0) {
-      this.logger.log(`No active sessions found for device ${deviceId} to invalidate.`)
       return 0
     }
 
@@ -730,7 +594,6 @@ export class TokenService {
         }
         pipeline.del(`${REDIS_KEY_PREFIX.SESSION_DETAILS}${sessionId}`)
         invalidatedCount++
-        this.logger.verbose(`Session ${sessionId} for device ${deviceId} marked for invalidation. Reason: ${reason}`)
 
         if (sessionDetails.userId) {
           pipeline.srem(`${REDIS_KEY_PREFIX.USER_SESSIONS}${sessionDetails.userId}`, sessionId)
@@ -741,7 +604,6 @@ export class TokenService {
     pipeline.del(deviceSessionsKey)
 
     await pipeline.exec()
-    this.logger.log(`Invalidated ${invalidatedCount} sessions for device ${deviceId}. Reason: ${reason}`)
     return invalidatedCount
   }
 }

@@ -21,7 +21,6 @@ export class GeolocationService {
 
     // Handle localhost or private IPs which geoip-lite cannot lookup
     if (ip === '127.0.0.1' || ip === '::1' || this.isPrivateIP(ip)) {
-      this.logger.debug(`Cannot lookup private or localhost IP: ${ip}`)
       return {
         ip,
         city: 'Local/Private',
@@ -41,10 +40,8 @@ export class GeolocationService {
           timezone: geo.timezone
         }
       }
-      this.logger.warn(`No geolocation data found for IP: ${ip}`)
       return { ip, country: 'Unknown', city: 'Unknown' } // Return a default for unresolvable public IPs
     } catch (error) {
-      this.logger.error(`Error looking up IP ${ip}: ${error.message}`, error.stack)
       return null
     }
   }

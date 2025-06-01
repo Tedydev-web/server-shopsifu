@@ -2,7 +2,6 @@ import { Injectable, Logger, HttpStatus } from '@nestjs/common'
 import { BaseAuthService } from './base-auth.service'
 import { ResetPasswordBodyType } from 'src/routes/auth/auth.model'
 import { TypeOfVerificationCode } from '../constants/auth.constants'
-import { AuditLogData, AuditLogStatus } from 'src/routes/audit-log/audit-log.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { EmailNotFoundException, InvalidPasswordException, InvalidOTPTokenException } from 'src/routes/auth/auth.error'
 import { Prisma } from '@prisma/client'
@@ -14,23 +13,7 @@ export class PasswordAuthService extends BaseAuthService {
   private readonly logger = new Logger(PasswordAuthService.name)
 
   async resetPassword(body: ResetPasswordBodyType & { userAgent?: string; ip?: string; sltCookieValue?: string }) {
-    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'PASSWORD_RESET_ATTEMPT',
-      userEmail: body.email,
-      ipAddress: body.ip,
-      userAgent: body.userAgent,
-      status: AuditLogStatus.FAILURE,
-      details: {
-        email: body.email,
-        type: TypeOfVerificationCode.RESET_PASSWORD,
-        sltCookieProvided: !!body.sltCookieValue
-      } as Prisma.JsonObject
-    }
-
     if (!body.sltCookieValue) {
-      auditLogEntry.errorMessage = 'SLT cookie is missing for password reset.'
-      auditLogEntry.details.reason = 'MISSING_SLT_COOKIE_RESET_PASSWORD'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
       throw new ApiException(HttpStatus.BAD_REQUEST, 'SltTokenMissing', 'Error.Auth.Session.InvalidLogin')
     }
 
@@ -44,13 +27,8 @@ export class PasswordAuthService extends BaseAuthService {
         TypeOfVerificationCode.RESET_PASSWORD
       )
       sltJtiForFinalizeOnError = sltContext.sltJti
-      auditLogEntry.details.sltJti = sltContext.sltJti
-      auditLogEntry.details.sltPurpose = sltContext.purpose
-      auditLogEntry.userEmail = sltContext.email
 
       if (body.email && sltContext.email !== body.email) {
-        auditLogEntry.errorMessage = 'Email mismatch between SLT context and reset password body.'
-        auditLogEntry.details.reason = 'EMAIL_MISMATCH_SLT_RESET_PASSWORD'
         throw new ApiException(HttpStatus.BAD_REQUEST, 'ValidationError', 'Error.Auth.Email.Mismatch')
       }
 
@@ -58,24 +36,15 @@ export class PasswordAuthService extends BaseAuthService {
         !sltContext.metadata?.otpVerified ||
         sltContext.metadata?.stageVerified !== TypeOfVerificationCode.RESET_PASSWORD
       ) {
-        auditLogEntry.errorMessage = 'OTP not verified for password reset via SLT context.'
-        auditLogEntry.details.reason = 'SLT_OTP_NOT_VERIFIED_FOR_RESET_PASSWORD'
-        auditLogEntry.details.sltMetadata = sltContext.metadata as Prisma.JsonObject | undefined
         throw new ApiException(HttpStatus.BAD_REQUEST, 'OtpVerificationRequired', 'Error.Auth.Otp.VerificationRequired')
       }
-      auditLogEntry.details.sltOtpStageVerified = true
 
       if (!sltContext.userId) {
-        auditLogEntry.errorMessage = 'User ID missing in SLT context payload for password reset.'
-        auditLogEntry.details.reason = 'MISSING_USER_ID_IN_SLT_CONTEXT'
         throw new InvalidOTPTokenException()
       }
-      auditLogEntry.userId = sltContext.userId
 
       const user = await this.userRepository.findUniqueWithDetails({ id: sltContext.userId })
       if (!user) {
-        auditLogEntry.errorMessage = `User with ID ${sltContext.userId} not found during password reset (from SLT).`
-        auditLogEntry.details.reason = 'USER_NOT_FOUND_FROM_SLT'
         throw new EmailNotFoundException()
       }
 
@@ -91,11 +60,6 @@ export class PasswordAuthService extends BaseAuthService {
       })
 
       await this.otpService.finalizeSlt(sltContext.sltJti)
-      auditLogEntry.details.finalizedSltJtiOnSuccess = sltContext.sltJti
-
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'PASSWORD_RESET_SUCCESS'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
 
       try {
         const displayName = user.userProfile?.firstName || user.userProfile?.lastName || user.email
@@ -127,7 +91,7 @@ export class PasswordAuthService extends BaseAuthService {
           actionButtonUrl: `${envConfig.FRONTEND_URL}/login`
         })
       } catch (emailError) {
-        this.logger.error(`Failed to send password reset notification email to ${user.email}: ${emailError.message}`)
+        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
       }
 
       const message = await this.i18nService.translate('Auth.Password.ResetSuccess', {
@@ -135,21 +99,9 @@ export class PasswordAuthService extends BaseAuthService {
       })
       return { message }
     } catch (error) {
-      auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
-      if (error instanceof ApiException && error.details) {
-        auditLogEntry.details.originalError = error.details as unknown as Prisma.JsonObject[]
-      }
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      this.logger.error(
-        `Password reset failed for ${auditLogEntry.userEmail || 'unknown user'}: ${error.message}`,
-        error.stack
-      )
-
-      if (sltJtiForFinalizeOnError && !auditLogEntry.details.finalizedSltJtiOnSuccess) {
+      if (sltJtiForFinalizeOnError) {
         if (error instanceof ApiException && error.getStatus() === (HttpStatus.BAD_REQUEST as number)) {
           await this.otpService.finalizeSlt(sltJtiForFinalizeOnError)
-          auditLogEntry.details.finalizedSltJtiOnError = sltJtiForFinalizeOnError
-          this.logger.warn(`SLT ${sltJtiForFinalizeOnError} finalized due to error: ${error.message}`)
         }
       }
       throw error
@@ -157,27 +109,14 @@ export class PasswordAuthService extends BaseAuthService {
   }
 
   async changePassword(userId: number, currentPassword: string, newPassword: string, ip?: string, userAgent?: string) {
-    const auditLogEntry: Partial<AuditLogData> & { details: Prisma.JsonObject } = {
-      action: 'PASSWORD_CHANGE_ATTEMPT',
-      userId,
-      ipAddress: ip,
-      userAgent,
-      status: AuditLogStatus.FAILURE,
-      details: { userId } as Prisma.JsonObject
-    }
     try {
       const user = await this.userRepository.findUniqueWithDetails({ id: userId })
       if (!user) {
-        auditLogEntry.errorMessage = 'User not found.'
-        auditLogEntry.details.reason = 'USER_NOT_FOUND'
         throw new EmailNotFoundException()
       }
-      auditLogEntry.userEmail = user.email
 
       const isPasswordValid = await this.hashingService.compare(currentPassword, user.password)
       if (!isPasswordValid) {
-        auditLogEntry.errorMessage = 'Invalid current password.'
-        auditLogEntry.details.reason = 'INVALID_CURRENT_PASSWORD'
         throw new InvalidPasswordException()
       }
 
@@ -188,11 +127,6 @@ export class PasswordAuthService extends BaseAuthService {
       )
 
       await this.tokenService.invalidateAllUserSessions(userId, 'PASSWORD_CHANGE_SUCCESS')
-      auditLogEntry.details.allSessionsInvalidated = true
-
-      auditLogEntry.status = AuditLogStatus.SUCCESS
-      auditLogEntry.action = 'PASSWORD_CHANGE_SUCCESS'
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
 
       try {
         const displayName = user.userProfile?.firstName || user.userProfile?.lastName || user.email
@@ -224,7 +158,7 @@ export class PasswordAuthService extends BaseAuthService {
           actionButtonUrl: `${envConfig.FRONTEND_URL}/login`
         })
       } catch (emailError) {
-        this.logger.error(`Failed to send password change notification email to ${user.email}: ${emailError.message}`)
+        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
       }
 
       const message = await this.i18nService.translate('Auth.Password.ChangeSuccess', {
@@ -232,13 +166,7 @@ export class PasswordAuthService extends BaseAuthService {
       })
       return { message }
     } catch (error) {
-      auditLogEntry.errorMessage = error instanceof Error ? error.message : String(error)
-      if (error instanceof ApiException && error.details) {
-        auditLogEntry.details.originalError = error.details as unknown as Prisma.JsonObject[]
-      }
-      await this.auditLogService.record(auditLogEntry as AuditLogData)
-      this.logger.error(`Password change failed for user ${userId}: ${error.message}`, error.stack)
-      throw error
+      throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
     }
   }
 }

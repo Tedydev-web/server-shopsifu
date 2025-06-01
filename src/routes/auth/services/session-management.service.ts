@@ -12,7 +12,6 @@ import { UAParser } from 'ua-parser-js'
 import { Device } from '@prisma/client'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { I18nContext } from 'nestjs-i18n'
-import { AuditLogStatus, AuditLogData } from 'src/routes/audit-log/audit-log.service'
 import { Prisma } from '@prisma/client'
 import { PaginatedResponseType, createPaginatedResponse } from 'src/shared/models/pagination.model'
 import { SessionNotFoundException } from '../auth.error'
@@ -224,15 +223,6 @@ export class SessionManagementService extends BaseAuthService {
     this.sessionManagementLogger.log(
       `Session ${sessionIdToRevoke} for user ${userId} revoked successfully. Reason: ${revokeReason}`
     )
-
-    await this.auditLogService.recordAsync({
-      action: 'REVOKE_SESSION_INTERNAL_SUCCESS',
-      userId,
-      status: AuditLogStatus.SUCCESS,
-      entity: 'Session',
-      entityId: sessionIdToRevoke,
-      details: { reason: revokeReason } as Prisma.JsonObject
-    })
   }
 
   async updateDeviceName(userId: number, deviceId: number, name: string): Promise<{ message: string }> {
@@ -246,15 +236,6 @@ export class SessionManagementService extends BaseAuthService {
       data: { name }
     })
 
-    await this.auditLogService.record({
-      action: 'DEVICE_NAME_UPDATE',
-      userId,
-      entity: 'Device',
-      entityId: deviceId,
-      status: AuditLogStatus.SUCCESS,
-      details: { oldName: device.name, newName: name } as Prisma.JsonObject
-    })
-
     const message = await this.i18nService.translate('error.Auth.Device.NameUpdatedSuccessfully', {
       lang: I18nContext.current()?.lang
     })
@@ -264,18 +245,8 @@ export class SessionManagementService extends BaseAuthService {
   async trustManagedDevice(userId: number, deviceId: number): Promise<{ message: string }> {
     this.sessionManagementLogger.debug(`Attempting to trust managed device ${deviceId} for user ${userId}`)
 
-    const auditEntry: Partial<AuditLogData> = {
-      action: 'TRUST_MANAGED_DEVICE_ATTEMPT',
-      entity: 'Device',
-      entityId: deviceId,
-      userId,
-      status: AuditLogStatus.FAILURE
-    }
-
     const device = await this.deviceService.findDeviceById(deviceId)
     if (!device || device.userId !== userId) {
-      auditEntry.errorMessage = 'Device not found or does not belong to user.'
-      await this.auditLogService.recordAsync(auditEntry as AuditLogData)
       throw DeviceNotFoundForUserException
     }
 
@@ -283,18 +254,10 @@ export class SessionManagementService extends BaseAuthService {
       const message = await this.i18nService.translate('Auth.Device.AlreadyTrusted', {
         lang: I18nContext.current()?.lang
       })
-      auditEntry.status = AuditLogStatus.SUCCESS
-      auditEntry.action = 'TRUST_MANAGED_DEVICE_ALREADY_TRUSTED'
-      auditEntry.notes = 'Device was already trusted.'
-      await this.auditLogService.recordAsync(auditEntry as AuditLogData)
       return { message }
     }
 
     await this.deviceService.updateDevice(deviceId, { isTrusted: true })
-
-    auditEntry.status = AuditLogStatus.SUCCESS
-    auditEntry.action = 'TRUST_MANAGED_DEVICE_SUCCESS'
-    await this.auditLogService.recordAsync(auditEntry as AuditLogData)
 
     const message = await this.i18nService.translate('Auth.Device.Trusted', { lang: I18nContext.current()?.lang })
     return { message }
@@ -350,18 +313,6 @@ export class SessionManagementService extends BaseAuthService {
       this.sessionManagementLogger.log(`Revoked ${revokedCount} sessions for device ${deviceId} after untrusting.`)
     }
 
-    await this.auditLogService.record({
-      action: 'DEVICE_UNTRUST_MANAGED',
-      userId,
-      entity: 'Device',
-      entityId: deviceId,
-      status: AuditLogStatus.SUCCESS,
-      details: {
-        deviceUserAgent: device.userAgent,
-        sessionsRevoked: revokedCount
-      } as Prisma.JsonObject
-    })
-
     const message = await this.i18nService.translate('Auth.Device.Untrusted', { lang: I18nContext.current()?.lang })
     return { message }
   }
@@ -375,26 +326,9 @@ export class SessionManagementService extends BaseAuthService {
       `User ${actionPerformer.userId} attempting to logout all sessions for device ${deviceIdToLogout} (owned by user ${userId}).`
     )
 
-    const auditEntry: Partial<AuditLogData> = {
-      action: 'LOGOUT_FROM_MANAGED_DEVICE_ATTEMPT',
-      entity: 'Device',
-      entityId: deviceIdToLogout,
-      userId: actionPerformer.userId,
-      status: AuditLogStatus.FAILURE,
-      details: {
-        targetUserId: userId,
-        targetDeviceId: deviceIdToLogout
-      } as Prisma.JsonObject
-    }
-
-    if (actionPerformer.ipAddress) auditEntry.ipAddress = actionPerformer.ipAddress
-    if (actionPerformer.userAgent) auditEntry.userAgent = actionPerformer.userAgent
-
     const deviceToLogout = await this.deviceService.findDeviceById(deviceIdToLogout)
 
     if (!deviceToLogout || deviceToLogout.userId !== userId) {
-      auditEntry.errorMessage = 'Device not found or does not belong to the specified target user.'
-      await this.auditLogService.recordAsync(auditEntry as AuditLogData)
       throw DeviceNotFoundForUserException
     }
 
@@ -402,11 +336,6 @@ export class SessionManagementService extends BaseAuthService {
       deviceIdToLogout,
       'MANAGED_DEVICE_LOGOUT'
     )
-
-    auditEntry.status = AuditLogStatus.SUCCESS
-    auditEntry.action = 'LOGOUT_FROM_MANAGED_DEVICE_SUCCESS'
-    ;(auditEntry.details as Prisma.JsonObject).sessionsRevokedCount = sessionsRevokedCount
-    await this.auditLogService.recordAsync(auditEntry as AuditLogData)
 
     const message = await this.i18nService.translate('Auth.Device.LogoutSpecificSuccess', {
       lang: I18nContext.current()?.lang
@@ -611,25 +540,11 @@ export class SessionManagementService extends BaseAuthService {
     }
 
     if (totalRevokedCount === 0 && devicesUntrustedCount === 0 && !currentDeviceUntrustedInThisOperation) {
-      await this.auditLogService.recordAsync({
-        action: 'REVOKE_MULTIPLE_SESSIONS_NO_ACTION',
-        userId,
-        status: AuditLogStatus.SUCCESS,
-        notes: 'No sessions were revoked or devices untrusted based on the criteria.',
-        details: auditDetails
-      })
       const noSessionsMessage = await this.i18nService.translate('error.Auth.Session.NoSessionsToRevoke', {
         lang: I18nContext.current()?.lang
       })
       return { message: noSessionsMessage }
     }
-
-    await this.auditLogService.recordAsync({
-      action: 'REVOKE_MULTIPLE_SESSIONS_SUCCESS',
-      userId,
-      status: AuditLogStatus.SUCCESS,
-      details: auditDetails
-    })
 
     const message = await this.i18nService.translate('error.Auth.Session.RevokedSuccessfullyCount', {
       lang: I18nContext.current()?.lang,
@@ -722,26 +637,6 @@ export class SessionManagementService extends BaseAuthService {
             }
             numDevicesToRemove--
           }
-          if (devicesActuallyRemoved.length > 0) {
-            await this.auditLogService.recordAsync({
-              userId,
-              action: 'AUTO_DEVICE_REMOVAL_LIMIT_EXCEEDED',
-              status: AuditLogStatus.SUCCESS,
-              entity: 'Device',
-              details: {
-                maxDevices,
-                currentDeviceCount: userDevices.length,
-                removedDevices: devicesActuallyRemoved.map((d) => ({
-                  id: d.id,
-                  name: d.name,
-                  isTrusted: d.isTrusted,
-                  lastActive: d.lastActive.toISOString()
-                })),
-                sessionsRevokedRelatedToDevices: sessionsRevokedByDeviceLimit
-              } as Prisma.JsonObject,
-              notes: `Automatically removed ${devicesActuallyRemoved.length} devices and related sessions due to exceeding device limit.`
-            })
-          }
         }
       }
     }
@@ -804,20 +699,6 @@ export class SessionManagementService extends BaseAuthService {
               )
             }
             numSessionsToRemove--
-          }
-          if (sessionsActuallyRevokedIds.length > 0) {
-            await this.auditLogService.recordAsync({
-              userId,
-              action: 'AUTO_SESSION_REVOCATION_LIMIT_EXCEEDED',
-              status: AuditLogStatus.SUCCESS,
-              entity: 'Session',
-              details: {
-                maxSessions,
-                currentSessionCount: userSessionIds.length,
-                revokedSessionIds: sessionsActuallyRevokedIds
-              } as Prisma.JsonObject,
-              notes: `Automatically revoked ${sessionsActuallyRevokedIds.length} sessions due to exceeding session limit.`
-            })
           }
         }
       }

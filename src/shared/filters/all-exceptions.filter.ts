@@ -29,9 +29,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
   constructor(
     private readonly httpAdapterHost: HttpAdapterHost,
     private readonly i18nService: I18nService
-  ) {
-    this.logger.log('AllExceptionsFilter initialized with i18n support')
-  }
+  ) {}
 
   private async _translateOrDefault(
     key: any,
@@ -41,7 +39,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
   ): Promise<string> {
     // Nếu key không phải string hoặc rỗng, sử dụng defaultMessageKey
     if (typeof key !== 'string' || !key) {
-      this.logger.debug(`Invalid translation key: ${key}, using default key: ${defaultMessageKey}`)
       key = defaultMessageKey
     }
 
@@ -50,7 +47,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     try {
       // Thử dịch với key đã cho
-      this.logger.debug(`Attempting to translate key: '${translationKey}' with language: ${lang || 'default'}`)
       const translatedMessage = await this.i18nService.translate(translationKey, {
         lang,
         args
@@ -59,27 +55,23 @@ export class AllExceptionsFilter implements ExceptionFilter {
       // Nếu kết quả dịch trả về giống hệt key gốc (tức là không có bản dịch)
       // và key đó không phải là defaultMessageKey, thử dịch defaultMessageKey
       if (translatedMessage === translationKey && translationKey !== defaultMessageKey) {
-        this.logger.debug(`No translation found for '${translationKey}', falling back to '${defaultMessageKey}'`)
         try {
           const defaultTranslation = await this.i18nService.translate(defaultMessageKey, { lang })
           return String(defaultTranslation)
         } catch (defaultError) {
-          this.logger.warn(`Failed to translate default key '${defaultMessageKey}': ${defaultError.message}`)
           return defaultMessageKey
         }
       }
 
       return String(translatedMessage)
     } catch (error) {
-      this.logger.warn(`Translation failed for key: '${translationKey}', error: ${error.message}`)
-
       // Nếu dịch thất bại và key khác defaultMessageKey, thử dịch defaultMessageKey
       if (translationKey !== defaultMessageKey) {
         try {
           const defaultTranslation = await this.i18nService.translate(defaultMessageKey, { lang })
           return String(defaultTranslation)
         } catch (defaultError) {
-          this.logger.error(`Failed to translate both original key and default key: ${defaultError.message}`)
+          return defaultMessageKey
         }
       }
 
@@ -101,7 +93,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
         lang = acceptLanguage.split(',')[0].trim()
       }
     }
-    this.logger.debug(`Using language: ${lang || 'default'} for request ${request.url}`)
 
     const requestId = request.headers['x-request-id']?.toString() || uuidv4()
     const timestamp = new Date().toISOString()
@@ -110,13 +101,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let errorCode: string = 'InternalServerError'
     let messageKeyForMainError: string = 'Error.Global.InternalServerError'
     let errors: DetailedErrorItem[] = []
-
-    this.logger.error(
-      `[${request.method} ${request.url}] [RequestID: ${requestId}] Exception: ${
-        exception instanceof Error ? exception.message : JSON.stringify(exception)
-      }`,
-      exception instanceof Error ? exception.stack : undefined
-    )
 
     if (exception instanceof ApiException) {
       httpStatus = exception.getStatus()
@@ -280,13 +264,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
       // Kiểm tra nếu kết quả dịch là key gốc, thì trả về fallback text tương ứng
       if (translatedTitle === titleKey) {
-        this.logger.debug(`Translation for '${titleKey}' not found, using fallback text`)
         return this.getFallbackTitleText(status)
       }
 
       return String(translatedTitle)
     } catch (error) {
-      this.logger.warn(`Failed to translate title key '${titleKey}': ${error.message}`)
       // Trả về text fallback nếu dịch thất bại
       return this.getFallbackTitleText(status)
     }

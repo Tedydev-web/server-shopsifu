@@ -7,14 +7,10 @@ import { AuthModule } from 'src/routes/auth/auth.module'
 import { APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_GUARD } from '@nestjs/core'
 import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
-import { LanguageModule } from './routes/language/language.module'
-import { AuditLogModule } from './routes/audit-log/audit-log.module'
 import { SecurityHeadersMiddleware } from './shared/middleware/security-headers.middleware'
 import { CsrfMiddleware } from './shared/middleware/csrf.middleware'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { LoggerMiddleware } from './shared/middleware/logger.middleware'
-import { PermissionModule } from './routes/permission/permission.module'
-import { RoleModule } from './routes/role/role.module'
 import { AcceptLanguageResolver, I18nModule, QueryResolver, HeaderResolver } from 'nestjs-i18n'
 import path from 'path'
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
@@ -23,7 +19,6 @@ import { WinstonModule } from 'nest-winston'
 import { dailyRotateFileTransport, consoleTransport } from './shared/logger/winston.config'
 import { RedisProviderModule } from './shared/providers/redis/redis.module'
 import { TokenRefreshInterceptor } from 'src/routes/auth/interceptors/token-refresh.interceptor'
-import { AuditLogInterceptor } from './shared/interceptor/audit-log.interceptor'
 import { AuthenticationGuard } from './shared/guards/authentication.guard'
 import { PasswordReverificationGuard } from './routes/auth/guards/password-reverification.guard'
 import { ProfileModule } from './routes/profile/profile.module'
@@ -67,10 +62,6 @@ import { ProfileModule } from './routes/profile/profile.module'
     SharedModule,
     RedisProviderModule,
     AuthModule,
-    AuditLogModule,
-    RoleModule,
-    PermissionModule,
-    LanguageModule,
     ProfileModule
   ],
   controllers: [AppController],
@@ -92,10 +83,6 @@ import { ProfileModule } from './routes/profile/profile.module'
     {
       provide: APP_GUARD,
       useClass: AuthenticationGuard
-    },
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: AuditLogInterceptor
     },
     {
       provide: APP_GUARD,
