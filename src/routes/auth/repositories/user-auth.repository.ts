@@ -137,4 +137,11 @@ export class UserAuthRepository {
     })
     return count > 0
   }
+
+  async doesPhoneNumberExist(phoneNumber: string): Promise<boolean> {
+    const count = await this.prismaService.userProfile.count({
+      where: { phoneNumber }
+    })
+    return count > 0
+  }
 }

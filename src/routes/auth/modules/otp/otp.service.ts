@@ -168,7 +168,7 @@ export class OtpService implements IOTPService {
   }
 
   /**
-   * Khởi tạo OTP với SLT cookie
+   * Khởi tạo OTP và SLT cookie
    */
   async initiateOtpWithSltCookie(payload: {
     email: string
@@ -180,28 +180,28 @@ export class OtpService implements IOTPService {
     metadata?: Record<string, any>
   }): Promise<string> {
     const { email, userId, deviceId, ipAddress, userAgent, purpose, metadata } = payload
+
     this.logger.debug(`[initiateOtpWithSltCookie] Initializing OTP for email ${email} with purpose ${purpose}`)
 
-    // Tạo mã OTP và gửi
-    const { otpCode } = await this.sendOTP(email, purpose, userId)
+    // Gửi OTP đến email
+    await this.sendOTP(email, purpose, userId)
     this.logger.debug(`[initiateOtpWithSltCookie] OTP sent successfully for ${email}`)
 
-    // Tạo SLT JWT
-    const jti = `slt_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
+    // Tạo JTI (JWT ID)
+    const jti = `slt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
     this.logger.debug(`[initiateOtpWithSltCookie] Generated JTI: ${jti}`)
 
-    // Tạo SLT JWT payload - Không bao gồm exp trong payload
-    const sltJwtPayload = {
+    // Tạo SLT JWT payload
+    const sltJwtPayload: SltJwtPayload = {
       jti,
       sub: userId,
       pur: purpose
     }
-
-    // Tính thời gian hết hạn cho context (10 phút)
-    const expiresInSeconds = 10 * 60
-    const expirationTime = Math.floor(Date.now() / 1000) + expiresInSeconds
-
     this.logger.debug(`[initiateOtpWithSltCookie] SLT JWT payload: ${JSON.stringify(sltJwtPayload)}`)
+
+    // Tính thời gian hết hạn (5 phút)
+    const expiresInSeconds = 300 // 5 phút
+    const expirationTime = Math.floor(Date.now() / 1000) + expiresInSeconds
 
     // Tạo SLT context
     const sltContext: SltContextData = {
@@ -222,7 +222,15 @@ export class OtpService implements IOTPService {
     // Lưu SLT context vào Redis
     const sltContextKey = this.getSltContextKey(jti)
     try {
-      await this.redisService.hset(sltContextKey, sltContext as any)
+      // Chuẩn bị dữ liệu để lưu vào Redis
+      const contextForRedis = {
+        ...sltContext,
+        userId: String(userId), // Chuyển đổi thành string trước khi lưu
+        deviceId: String(deviceId), // Chuyển đổi thành string trước khi lưu
+        metadata: metadata ? JSON.stringify(metadata) : undefined
+      }
+
+      await this.redisService.hset(sltContextKey, contextForRedis as any)
       const ttl = expiresInSeconds + 60 // Thêm 1 phút buffer
       await this.redisService.expire(sltContextKey, ttl)
       this.logger.debug(
@@ -308,16 +316,28 @@ export class OtpService implements IOTPService {
         throw AuthError.SLTExpired()
       }
 
-      // Chuyển đổi finalized và attempts từ string sang number
-      const sltContext = {
-        ...sltContextData,
+      // Chuyển đổi kiểu dữ liệu từ string sang kiểu dữ liệu gốc
+      const sltContext: SltContextData & { sltJti: string } = {
+        userId: parseInt(sltContextData.userId, 10),
+        deviceId: parseInt(sltContextData.deviceId, 10),
+        ipAddress: sltContextData.ipAddress,
+        userAgent: sltContextData.userAgent,
+        purpose: sltContextData.purpose as TypeOfVerificationCodeType,
+        sltJwtExp: parseInt(sltContextData.sltJwtExp, 10),
+        sltJwtCreatedAt: parseInt(sltContextData.sltJwtCreatedAt, 10),
+        finalized: sltContextData.finalized as '0' | '1',
         attempts: parseInt(sltContextData.attempts, 10),
         metadata: sltContextData.metadata ? JSON.parse(sltContextData.metadata) : undefined,
+        email: sltContextData.email,
         sltJti: jti
-      } as SltContextData & { sltJti: string }
+      }
 
       this.logger.debug(
-        `[validateSltFromCookieAndGetContext] SLT context processed successfully: ${JSON.stringify(sltContext)}`
+        `[validateSltFromCookieAndGetContext] SLT context processed successfully: ${JSON.stringify({
+          ...sltContext,
+          userId: typeof sltContext.userId === 'number' ? sltContext.userId : 'Invalid type',
+          deviceId: typeof sltContext.deviceId === 'number' ? sltContext.deviceId : 'Invalid type'
+        })}`
       )
 
       return sltContext
@@ -377,7 +397,7 @@ export class OtpService implements IOTPService {
     otpCode: string,
     currentIpAddress: string,
     currentUserAgent: string
-  ): Promise<void> {
+  ): Promise<SltContextData & { sltJti: string }> {
     // Xác minh SLT và lấy context
     const sltContext = await this.validateSltFromCookieAndGetContext(sltCookieValue, currentIpAddress, currentUserAgent)
 
@@ -393,5 +413,8 @@ export class OtpService implements IOTPService {
 
     // Cập nhật SLT context thành đã xác minh
     await this.updateSltContext(sltContext.sltJti, { finalized: '1' })
+
+    // Trả về context sau khi xác minh
+    return sltContext
   }
 }

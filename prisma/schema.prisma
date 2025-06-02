@@ -173,6 +173,7 @@ model Device {
   createdAt          DateTime            @default(now())
   isActive           Boolean             @default(true)
   isTrusted          Boolean             @default(false)
+  trustExpiration    DateTime?           // Thời hạn tin cậy của thiết bị
   lastKnownIp        String?             @db.VarChar(45)
   lastKnownCountry   String?             @db.VarChar(100)
   lastKnownCity      String?             @db.VarChar(100)

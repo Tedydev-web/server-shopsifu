@@ -4,15 +4,14 @@ import {
   RegisterBodySchema,
   LoginBodySchema,
   UserAuthResponseSchema,
-  MessageResponseSchema
+  MessageResponseSchema,
+  CompleteRegistrationSchema
 } from 'src/routes/auth/auth.model'
 
 // Register DTOs
 export const InitiateRegistrationSchema = z.object({
   email: z.string().email({ message: 'Email không hợp lệ' })
 })
-
-export const CompleteRegistrationSchema = RegisterBodySchema
 
 export const RegistrationResponseSchema = MessageResponseSchema
 

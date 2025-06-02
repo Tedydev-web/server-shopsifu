@@ -1,156 +1,62 @@
 {
-  "Email.SecurityAlert.Subject.Default": "Security Alert",
-  "Email.SecurityAlert.Subject.NewDeviceLogin": "New Device Login Detected",
-  "Email.SecurityAlert.Subject.PasswordChanged": "Password Changed Successfully",
-  "Email.SecurityAlert.Subject.PasswordReset": "Password Reset Successfully",
-  "Email.SecurityAlert.Subject.TwoFactorEnabled": "Two-Factor Authentication Enabled",
-  "Email.SecurityAlert.Subject.TwoFactorDisabled": "Two-Factor Authentication Disabled",
-  "Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation": "New Login Location Detected on a Trusted Device",
-  "Email.SecurityAlert.Subject.NewDeviceFingerprintLogin": "New Device or Browser Login Detected on Your Shopsifu Account",
-
-  "Email.SecurityAlert.Title.NewDeviceLogin": "New Login to Your Shopsifu Account",
-  "Email.SecurityAlert.Title.PasswordChanged": "Your Shopsifu Account Password Was Changed",
-  "Email.SecurityAlert.Title.PasswordReset": "Your Shopsifu Account Password Was Reset",
-  "Email.SecurityAlert.Title.TwoFactorEnabled": "Two-Factor Authentication (2FA) Enabled on Your Account",
-  "Email.SecurityAlert.Title.TwoFactorDisabled": "Two-Factor Authentication (2FA) Disabled on Your Account",
-  "Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation": "Login from a New Location on Your Trusted Device",
-  "Email.SecurityAlert.Title.NewDeviceFingerprintLogin": "Security Alert: Login from a New Device/Browser",
-
-  "Email.SecurityAlert.MainMessage.NewDeviceLogin": "We detected a new login to your Shopsifu account from a device we don't recognize. If this was you, you can safely ignore this email. If you don't recognize this activity, please secure your account immediately.",
-  "Email.SecurityAlert.MainMessage.PasswordChanged": "Your password for Shopsifu has been successfully changed. If you made this change, no further action is needed.",
-  "Email.SecurityAlert.MainMessage.PasswordReset": "Your password for Shopsifu has been successfully reset. If you made this change, no further action is needed.",
-  "Email.SecurityAlert.MainMessage.TwoFactorEnabled": "Two-Factor Authentication (2FA) has been successfully enabled for your Shopsifu account. Your account is now more secure.",
-  "Email.SecurityAlert.MainMessage.TwoFactorDisabled": "Two-Factor Authentication (2FA) has been disabled for your Shopsifu account. We recommend re-enabling 2FA to keep your account secure.",
-  "Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation": "We detected a login to your Shopsifu account from your trusted device but at a new location. If this was you, you can safely ignore this email. If you don't recognize this activity, please review your account activity and secure your account if necessary.",
-  "Email.SecurityAlert.MainMessage.NewDeviceFingerprintLogin": "Hello {userName},<br><br>We detected a login to your Shopsifu account from a device or browser that we haven't seen before, or one that has significantly changed. Here are the details:<br><br>If this was you, you can safely ignore this email. If you don't recognize this activity, please secure your account immediately by changing your password and reviewing your recent activity. Your account security is important to us.",
-
-  "Email.SecurityAlert.SecondaryMessage.NotYou": "If this wasn't you, please secure your account immediately. This may include changing your password and reviewing your account activity.",
-  "Email.SecurityAlert.SecondaryMessage.Password.NotYou": "If you did not make this change, please contact our support team immediately and secure your account.",
-  "Email.SecurityAlert.SecondaryMessage.2FA.NotYouEnable": "If you did not enable 2FA, please contact our support team immediately and review your account security settings.",
-  "Email.SecurityAlert.SecondaryMessage.2FA.NotYouDisable": "If you did not disable 2FA, please contact our support team immediately and re-enable it to secure your account.",
-
-  "Email.SecurityAlert.Button.ReviewActivity": "Review Login Activity",
-  "Email.SecurityAlert.Button.ChangePassword": "Change Password",
-  "Email.SecurityAlert.Button.SecureAccount": "Secure Your Account",
-  "Email.SecurityAlert.Button.Enable2FA": "Enable 2FA",
-
-  "Email.Field.Time": "Time",
-  "Email.Field.IPAddress": "IP Address",
-  "Email.Field.Device": "Device (User Agent)",
-  "Email.Field.Location": "Approximate Location",
-  "Email.Field.FingerprintDevice": "Device Type",
-  "Email.Field.FingerprintOS": "Operating System",
-  "Email.Field.FingerprintBrowser": "Browser",
-  "Email.Field.LocationUnknown": "Unknown (unable to determine location)",
-  "Email.Field.DeviceName": "Device Name",
-  "Email.Field.DeviceIdentifier": "Device ID: {id}",
-  "Email.Field.NewIPAddress": "New IP Address",
-  "Email.Field.NewApprox.Location": "New Approx. Location",
-  "Email.Field.OldIPAddress": "Previous IP Address",
-  "Email.Field.OldLocation": "Previous Approx. Location",
-
-  "Email.OTPSubject.Register": "Verify Your Shopsifu Account Registration",
-  "Email.OTPSubject.ResetPassword": "Reset Your Shopsifu Password - OTP Inside",
-  "Email.OTPSubject.LoginUntrustedDevice": "Verify Your Login from a New Device - Shopsifu",
-  "Email.OTPSubject.Default": "Your Shopsifu OTP Code",
-
-  "common": {
-    "time": "Time",
-    "ipAddress": "IP Address",
-    "device": "Device",
-    "location": "Location",
-    "footer": {
-      "copyright": "© {year} Shopsifu All Rights Reserved",
-      "contactUs": "Contact Us"
+  "Email": {
+    "OTPSubject": {
+      "Register": "Shopsifu Account Registration Verification Code",
+      "ResetPassword": "Shopsifu Password Reset Verification Code",
+      "LoginUntrustedDevice": "Verification Code for Login from New Device",
+      "Default": "Verification Code from Shopsifu"
+    },
+    "otp": {
+      "register": {
+        "headline": "Verify Your Email Address",
+        "content": "Thank you for starting the process of creating a new account on Shopsifu. We want to ensure it’s really you. Please enter the verification code below when prompted. If you do not wish to create an account, you can ignore this message."
+      },
+      "resetPassword": {
+        "headline": "Reset Your Password",
+        "content": "We received a request to reset the password for your account. Please use the verification code below to complete the password reset process. If you did not request a password reset, please ignore this email."
+      },
+      "login": {
+        "headline": "Login Verification",
+        "content": "Please use the verification code below to complete the login process for your Shopsifu account."
+      },
+      "login_2fa": {
+        "headline": "Two-Factor Authentication",
+        "content": "Please use the verification code below to complete the two-factor authentication process for your Shopsifu account."
+      },
+      "disable_2fa": {
+        "headline": "Disable Two-Factor Authentication",
+        "content": "You are requesting to disable two-factor authentication for your Shopsifu account. Please use the code below to confirm this change."
+      },
+      "setup_2fa": {
+        "headline": "Set Up Two-Factor Authentication",
+        "content": "You are setting up two-factor authentication for your Shopsifu account. Please use the code below to confirm."
+      },
+      "login_untrusted_device_otp": {
+        "headline": "Login from New Device",
+        "content": "We detected a new login request from an unrecognized device. Please use the verification code below to confirm it’s you. If you did not attempt to log in, please change your password immediately."
+      },
+      "reverify_session_otp": {
+        "headline": "Reverify Your Session",
+        "content": "To secure your account, we require re-verification of your current session. Please use the verification code below."
+      },
+      "verify_new_email": {
+        "headline": "Verify New Email Address",
+        "content": "You have requested to change the email address for your Shopsifu account. Please use the verification code below to confirm this new email address."
+      },
+      "codeLabel": "Verification Code",
+      "validity": "(This code is valid for 5 minutes)"
+    },
+    "disclaimer": "Shopsifu will never send an email asking you to disclose or verify your password, credit card number, or bank account details.",
+    "common": {
+      "contactUs": "Contact Us",
+      "time": "Time",
+      "ipAddress": "IP Address",
+      "device": "Device",
+      "location": "Location",
+      "footer": {
+        "copyright": "© {year} Shopsifu. All rights reserved.",
+        "contactUs": "Contact Us"
+      }
     }
-  },
-  "otp": {
-    "default": {
-      "title": "Shopsifu Verification Code"
-    },
-    "register": {
-      "title": "Verify Your Shopsifu Account Registration",
-      "headline": "Verify Your Email Address",
-      "content": "Thank you for starting the process of creating a new account on Shopsifu. We want to make sure it's really you. Please enter the verification code when prompted. If you don't want to create an account, you can ignore this message."
-    },
-    "resetPassword": {
-      "title": "Reset Your Shopsifu Password",
-      "headline": "Password Reset Request",
-      "content": "We received a request to reset the password for your account. Please enter this verification code to continue the password reset process. If you did not request a password reset, please ignore this email."
-    },
-    "login": {
-      "title": "Shopsifu Login Code",
-      "headline": "Sign In to Your Account",
-      "content": "Please use this verification code to sign in to your Shopsifu account."
-    },
-    "login2fa": {
-      "title": "Shopsifu Two-Factor Authentication Code",
-      "headline": "Verify Your Identity",
-      "content": "Please use this verification code to complete the login process with two-factor authentication."
-    },
-    "disable2fa": {
-      "title": "Disable Shopsifu Two-Factor Authentication",
-      "headline": "Confirm Disabling Two-Factor Authentication",
-      "content": "We received a request to disable two-factor authentication on your account. Please use this verification code to confirm this change."
-    },
-    "setup2fa": {
-      "title": "Set Up Shopsifu Two-Factor Authentication",
-      "headline": "Set Up Additional Security",
-      "content": "Please use this verification code to complete the process of setting up two-factor authentication for your account."
-    },
-    "untrustedDevice": {
-      "title": "Verify New Device on Shopsifu",
-      "headline": "Verify New Device",
-      "content": "We detected a login attempt from a new device. Please use this verification code to confirm that it's really you."
-    },
-    "reverifySession": {
-      "title": "Reverify Shopsifu Session",
-      "headline": "Reverify Your Login Session",
-      "content": "For security reasons, we need you to reverify your current login session. Please use this verification code to continue."
-    },
-    "verifyNewEmail": {
-      "title": "Verify New Email on Shopsifu",
-      "headline": "Verify Your New Email Address",
-      "content": "We received a request to change the email address on your account. Please use this verification code to confirm your new email address."
-    },
-    "codeLabel": "Verification Code",
-    "validity": "This code is valid for 5 minutes"
-  },
-  "security": {
-    "generic": {
-      "subject": "Shopsifu Security Alert",
-      "title": "Security Alert",
-      "message": "We detected a security event related to your account: {alertType}",
-      "secondaryMessage": "If you did not perform this action, please contact our support team immediately."
-    },
-    "passwordChanged": {
-      "subject": "Your Shopsifu Password Has Been Changed",
-      "title": "Your Password Has Been Changed",
-      "message": "The password for your Shopsifu account has been successfully changed. If you made this change, you can ignore this email.",
-      "buttonText": "View Account Activity",
-      "secondaryMessage": "If you did not make this change, please reset your password immediately and contact support."
-    },
-    "newDevice": {
-      "subject": "New Device Login - Shopsifu",
-      "title": "Login from New Device",
-      "message": "We detected a successful login to your Shopsifu account from a new device.",
-      "buttonText": "View Login Sessions",
-      "secondaryMessage": "If you don't recognize this activity, please change your password immediately and contact support."
-    },
-    "twoFactorEnabled": {
-      "subject": "Two-Factor Authentication Enabled - Shopsifu",
-      "title": "Two-Factor Authentication Enabled",
-      "message": "Two-factor authentication has been successfully enabled for your Shopsifu account. Your account is now better protected.",
-      "buttonText": "View Security Settings",
-      "secondaryMessage": "If you did not make this change, please contact our support team immediately."
-    },
-    "twoFactorDisabled": {
-      "subject": "Two-Factor Authentication Disabled - Shopsifu",
-      "title": "Two-Factor Authentication Disabled",
-      "message": "Two-factor authentication has been disabled for your Shopsifu account. Your account is no longer protected with this additional security layer.",
-      "buttonText": "View Security Settings",
-      "secondaryMessage": "If you did not make this change, please contact our support team immediately."
-    }
-  },
-  "disclaimer": "Shopsifu will never send you emails asking you to disclose or verify your password, credit card, or bank account number."
+  }
 }

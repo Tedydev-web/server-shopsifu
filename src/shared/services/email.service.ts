@@ -4,6 +4,7 @@ import { I18nService } from 'nestjs-i18n'
 import { Resend } from 'resend'
 import * as React from 'react'
 import { render } from '@react-email/render'
+import { I18nContext } from 'nestjs-i18n'
 
 // Import các template email
 import OTPEmail from '../../../emails/otp'
@@ -17,7 +18,8 @@ export enum SecurityAlertType {
   ACCOUNT_LOCKED = 'ACCOUNT_LOCKED',
   TWO_FACTOR_ENABLED = 'TWO_FACTOR_ENABLED',
   TWO_FACTOR_DISABLED = 'TWO_FACTOR_DISABLED',
-  EMAIL_CHANGED = 'EMAIL_CHANGED'
+  EMAIL_CHANGED = 'EMAIL_CHANGED',
+  DEVICE_TRUSTED = 'DEVICE_TRUSTED'
 }
 
 // Payload cho email cảnh báo bảo mật
@@ -57,19 +59,23 @@ export class EmailService {
     private readonly configService: ConfigService,
     private readonly i18nService: I18nService
   ) {
-    // Khởi tạo Resend với API key từ config
+    // Khởi tạo Resend API client
     const resendApiKey = this.configService.get<string>('RESEND_API_KEY')
+
     if (!resendApiKey) {
-      this.logger.warn('RESEND_API_KEY không được cấu hình, gửi email sẽ không hoạt động')
+      this.logger.warn('RESEND_API_KEY chưa được cấu hình. Email sẽ không được gửi.')
+    } else {
+      this.resend = new Resend(resendApiKey)
+      this.logger.log('Resend API client đã khởi tạo thành công.')
     }
 
-    this.resend = new Resend(resendApiKey)
-    this.isProduction =
-      this.configService.get<string>('NODE_ENV') === 'production' ||
-      this.configService.get<string>('NODE_ENV') === 'staging'
-    this.notificationEmailFrom = `Shopsifu <${this.configService.get<string>('NOTI_MAIL_FROM_ADDRESS') || 'no-reply@shopsifu.live'}>`
-    this.securityEmailFrom = `Shopsifu Security <${this.configService.get<string>('SEC_MAIL_FROM_ADDRESS') || 'security@shopsifu.live'}>`
-    this.frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://shopsifu.live'
+    // Cấu hình khác
+    this.isProduction = ['production', 'staging'].includes(this.configService.get<string>('NODE_ENV') || 'development')
+    this.notificationEmailFrom =
+      this.configService.get<string>('NOTI_MAIL_FROM_ADDRESS') || 'Shopsifu <no-reply@shopsifu.live>'
+    this.securityEmailFrom =
+      this.configService.get<string>('SEC_MAIL_FROM_ADDRESS') || 'Shopsifu Security <security@shopsifu.live>'
+    this.frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://localhost:8000'
 
     this.logger.debug(
       `EmailService khởi tạo với cấu hình: isProduction=${this.isProduction}, notificationEmailFrom=${this.notificationEmailFrom}, securityEmailFrom=${this.securityEmailFrom}, frontendUrl=${this.frontendUrl}`
@@ -82,54 +88,52 @@ export class EmailService {
   async sendOtpEmail(payload: OtpEmailPayload): Promise<void> {
     try {
       const { email, otpCode, otpType } = payload
+      const lang = I18nContext.current()?.lang || 'vi'
 
-      // Lấy tiêu đề email dựa trên loại OTP và ngôn ngữ
-      const title = await this.getOtpTitle(otpType)
+      // Dịch tiêu đề
+      const titleKey = `Email.OTPSubject.${otpType}`
+      const title: string = await this.i18nService.translate(titleKey, { lang })
 
-      // Render email với React
-      let emailHtml: string
-      try {
-        emailHtml = await render(
-          React.createElement(OTPEmail, {
-            otpCode,
-            title
-          })
-        )
-      } catch (renderError) {
-        this.logger.error(`Lỗi khi render email OTP template: ${renderError.message}`, renderError.stack)
-        throw new Error(`Không thể render email template: ${renderError.message}`)
-      }
+      // Dịch tiêu đề chính và nội dung
+      const headingText: string = await this.i18nService.translate(`Email.otp.${otpType.toLowerCase()}.headline`, {
+        lang
+      })
+      const contentText: string = await this.i18nService.translate(`Email.otp.${otpType.toLowerCase()}.content`, {
+        lang
+      })
+      const codeLabel: string = await this.i18nService.translate('Email.otp.codeLabel', { lang })
+      const validityText: string = await this.i18nService.translate('Email.otp.validity', { lang })
 
-      // Gửi email qua Resend trong cả môi trường production, staging và development
-      // Trong development, chỉ gửi nếu tồn tại API key
-      const resendApiKey = this.configService.get<string>('RESEND_API_KEY')
+      // Dịch phần footer
+      const disclaimerText: string = await this.i18nService.translate('Email.disclaimer', { lang })
+      const contactUsText: string = await this.i18nService.translate('Email.common.contactUs', { lang })
+      const copyrightText: string = await this.i18nService.translate('Email.common.footer.copyright', {
+        lang,
+        args: { year: new Date().getFullYear().toString() }
+      })
 
-      if (resendApiKey && resendApiKey.trim() !== '') {
-        try {
-          const result = await this.resend.emails.send({
-            from: this.notificationEmailFrom,
-            to: [email],
-            subject: title,
-            html: emailHtml
-          })
+      // Gửi email với nội dung đã được dịch
+      await this.resend.emails.send({
+        from: this.notificationEmailFrom,
+        to: email,
+        subject: title,
+        react: OTPEmail({
+          otpCode,
+          title,
+          headingText,
+          contentText,
+          codeLabel,
+          validityText,
+          disclaimerText,
+          contactUsText,
+          copyrightText
+        })
+      })
 
-          this.logger.debug(`Email OTP đã gửi thành công qua Resend API: ${JSON.stringify(result)}`)
-        } catch (sendError) {
-          this.logger.error(`Lỗi khi gửi email qua Resend: ${sendError.message}`, sendError.stack)
-          // Log thêm thông tin để debug
-          this.logger.debug(`Cấu hình email: from=${this.notificationEmailFrom}, to=${email}, subject=${title}`)
-          this.logger.debug(`HTML email (một phần): ${emailHtml.substring(0, 100)}...`)
-          // Không throw lỗi để không ảnh hưởng đến flow đăng ký
-        }
-      } else {
-        this.logger.warn(`Không thể gửi email - RESEND_API_KEY không được cấu hình hoặc rỗng. Mã OTP là: ${otpCode}`)
-      }
-
-      // Log thông tin chi tiết
-      this.logger.log(`Đã gửi email OTP ${otpCode} đến ${email} cho mục đích ${otpType}`)
+      this.logger.log(`Email OTP ${otpCode} đã được gửi đến ${email} cho mục đích ${otpType}`)
     } catch (error) {
-      this.logger.error(`Lỗi tổng thể khi gửi email OTP: ${error.message}`, error.stack)
-      // Không throw lỗi để không làm gián đoạn luồng xác thực
+      this.logger.error(`Không thể gửi email OTP: ${error.message}`, error.stack)
+      throw error
     }
   }
 
@@ -154,8 +158,8 @@ export class EmailService {
         throw new Error(`Không thể render email template: ${renderError.message}`)
       }
 
-      // Gửi email qua Resend trong môi trường production hoặc staging
-      if (this.isProduction) {
+      // Kiểm tra resendApiKey trước khi gửi
+      if (this.resend) {
         try {
           const result = await this.resend.emails.send({
             from: this.securityEmailFrom,
@@ -168,39 +172,17 @@ export class EmailService {
         } catch (sendError) {
           this.logger.error(`Lỗi khi gửi email cảnh báo qua Resend: ${sendError.message}`, sendError.stack)
         }
+      } else {
+        this.logger.warn(
+          `Resend API chưa được cấu hình. Email không được gửi đi (alertType: ${alertType}, to: ${email})`
+        )
       }
 
-      // Log thông tin trong môi trường development
+      // Log thông tin
       this.logger.log(`Đã gửi email thông báo bảo mật ${alertType} đến ${email}`, metadata)
     } catch (error) {
       this.logger.error(`Lỗi tổng thể khi gửi email thông báo bảo mật: ${error.message}`, error.stack)
       // Không throw lỗi để không làm gián đoạn luồng bảo mật
-    }
-  }
-
-  /**
-   * Lấy tiêu đề OTP dựa trên loại và ngôn ngữ
-   */
-  private async getOtpTitle(otpType: string): Promise<string> {
-    try {
-      const titleMap = {
-        [TypeOfVerificationCode.REGISTER]: await this.i18nService.translate('Email.OTPSubject.Register'),
-        [TypeOfVerificationCode.RESET_PASSWORD]: await this.i18nService.translate('Email.OTPSubject.ResetPassword'),
-        [TypeOfVerificationCode.LOGIN]: await this.i18nService.translate('Email.OTPSubject.Default'),
-        [TypeOfVerificationCode.LOGIN_2FA]: await this.i18nService.translate('Email.OTPSubject.Default'),
-        [TypeOfVerificationCode.DISABLE_2FA]: await this.i18nService.translate('Email.OTPSubject.Default'),
-        [TypeOfVerificationCode.SETUP_2FA]: await this.i18nService.translate('Email.OTPSubject.Default'),
-        [TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP]: await this.i18nService.translate(
-          'Email.OTPSubject.LoginUntrustedDevice'
-        ),
-        [TypeOfVerificationCode.REVERIFY_SESSION_OTP]: await this.i18nService.translate('Email.OTPSubject.Default'),
-        [TypeOfVerificationCode.VERIFY_NEW_EMAIL]: await this.i18nService.translate('Email.Subject.VerifyNewEmail')
-      }
-
-      return titleMap[otpType] || (await this.i18nService.translate('Email.OTPSubject.Default'))
-    } catch (error) {
-      this.logger.error(`Lỗi khi lấy tiêu đề OTP: ${error.message}`, error.stack)
-      return 'Mã xác minh Shopsifu' // Tiêu đề mặc định an toàn
     }
   }
 
@@ -212,91 +194,172 @@ export class EmailService {
     email: string,
     metadata?: Record<string, any>
   ): Promise<SecurityAlertEmailPayload> {
-    try {
-      // Thông tin cơ bản cho tất cả các loại cảnh báo
-      const baseContent = {
-        to: email,
-        userName: metadata?.userName || email.split('@')[0]
-      }
+    const lang = I18nContext.current()?.lang || 'vi'
+    const userName = metadata?.userName
 
-      // Chuẩn bị nội dung theo loại cảnh báo
-      switch (alertType) {
-        case SecurityAlertType.PASSWORD_CHANGED:
-          return {
-            ...baseContent,
-            alertSubject: await this.i18nService.translate('Email.SecurityAlert.Subject.PasswordChanged'),
-            alertTitle: await this.i18nService.translate('Email.SecurityAlert.Title.PasswordChanged'),
-            mainMessage: await this.i18nService.translate('Email.SecurityAlert.MainMessage.PasswordChanged'),
-            actionDetails: [
-              {
-                label: await this.i18nService.translate('Email.Field.Time'),
-                value: new Date().toLocaleString()
-              },
-              {
-                label: await this.i18nService.translate('Email.Field.IPAddress'),
-                value: metadata?.ipAddress || 'Unknown'
-              },
-              {
-                label: await this.i18nService.translate('Email.Field.Device'),
-                value: metadata?.device || 'Unknown'
-              }
-            ],
-            actionButtonText: await this.i18nService.translate('Email.SecurityAlert.Button.ReviewActivity'),
-            actionButtonUrl: `${this.frontendUrl}/account/security`,
-            secondaryMessage: await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.Password.NotYou')
-          }
+    let alertSubject: string
+    let alertTitle: string
+    let mainMessage: string
+    let secondaryMessage: string | undefined
+    let actionButtonText: string | undefined
+    let actionButtonUrl: string | undefined
+    let actionDetails: Array<{ label: string; value: string }> | undefined
 
-        case SecurityAlertType.LOGIN_FROM_NEW_DEVICE:
-          return {
-            ...baseContent,
-            alertSubject: await this.i18nService.translate('Email.SecurityAlert.Subject.NewDeviceLogin'),
-            alertTitle: await this.i18nService.translate('Email.SecurityAlert.Title.NewDeviceLogin'),
-            mainMessage: await this.i18nService.translate('Email.SecurityAlert.MainMessage.NewDeviceLogin'),
-            actionDetails: [
-              {
-                label: await this.i18nService.translate('Email.Field.Time'),
-                value: new Date().toLocaleString()
-              },
-              {
-                label: await this.i18nService.translate('Email.Field.IPAddress'),
-                value: metadata?.ipAddress || 'Unknown'
-              },
-              {
-                label: await this.i18nService.translate('Email.Field.Device'),
-                value: metadata?.device || 'Unknown'
-              },
-              {
-                label: await this.i18nService.translate('Email.Field.Location'),
-                value: metadata?.location || (await this.i18nService.translate('Email.Field.LocationUnknown'))
-              }
-            ],
-            actionButtonText: await this.i18nService.translate('Email.SecurityAlert.Button.ReviewActivity'),
-            actionButtonUrl: `${this.frontendUrl}/account/sessions`,
-            secondaryMessage: await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.NotYou')
+    // Lấy các nội dung đã được dịch
+    switch (alertType) {
+      case SecurityAlertType.PASSWORD_CHANGED:
+        alertSubject = await this.i18nService.translate('Email.SecurityAlert.Subject.PasswordChanged', { lang })
+        alertTitle = await this.i18nService.translate('Email.SecurityAlert.Title.PasswordChanged', { lang })
+        mainMessage = await this.i18nService.translate('Email.SecurityAlert.MainMessage.PasswordChanged', { lang })
+        secondaryMessage = await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.Password.NotYou', {
+          lang
+        })
+        actionButtonText = await this.i18nService.translate('Email.SecurityAlert.Button.ChangePassword', { lang })
+        actionButtonUrl = `${this.frontendUrl}/account/security/change-password`
+        actionDetails = [
+          {
+            label: await this.i18nService.translate('Email.Field.Time', { lang }),
+            value: new Date().toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US')
+          },
+          {
+            label: await this.i18nService.translate('Email.Field.IPAddress', { lang }),
+            value: metadata?.ipAddress || 'Unknown'
           }
+        ]
+        break
 
-        // Các loại cảnh báo khác
-        default:
-          return {
-            ...baseContent,
-            alertSubject: await this.i18nService.translate('Email.SecurityAlert.Subject.Default'),
-            alertTitle: await this.i18nService.translate('Email.SecurityAlert.Title.NewDeviceLogin'), // Fallback
-            mainMessage: await this.i18nService.translate('Email.SecurityAlert.MainMessage.NewDeviceLogin'), // Fallback
-            actionButtonText: await this.i18nService.translate('Email.SecurityAlert.Button.SecureAccount'),
-            actionButtonUrl: `${this.frontendUrl}/account/security`,
-            secondaryMessage: await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.NotYou')
+      case SecurityAlertType.LOGIN_FROM_NEW_DEVICE:
+        alertSubject = await this.i18nService.translate('Email.SecurityAlert.Subject.NewDeviceLogin', { lang })
+        alertTitle = await this.i18nService.translate('Email.SecurityAlert.Title.NewDeviceLogin', { lang })
+        mainMessage = await this.i18nService.translate('Email.SecurityAlert.MainMessage.NewDeviceLogin', { lang })
+        secondaryMessage = await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.NotYou', { lang })
+        actionButtonText = await this.i18nService.translate('Email.SecurityAlert.Button.ReviewActivity', { lang })
+        actionButtonUrl = `${this.frontendUrl}/account/sessions`
+        actionDetails = [
+          {
+            label: await this.i18nService.translate('Email.Field.Time', { lang }),
+            value: new Date().toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US')
+          },
+          {
+            label: await this.i18nService.translate('Email.Field.IPAddress', { lang }),
+            value: metadata?.ipAddress || 'Unknown'
+          },
+          {
+            label: await this.i18nService.translate('Email.Field.Device', { lang }),
+            value: metadata?.device || 'Unknown'
+          },
+          {
+            label: await this.i18nService.translate('Email.Field.Location', { lang }),
+            value: metadata?.location || (await this.i18nService.translate('Email.Field.LocationUnknown', { lang }))
           }
-      }
-    } catch (error) {
-      this.logger.error(`Lỗi khi chuẩn bị nội dung email cảnh báo: ${error.message}`, error.stack)
-      // Trả về nội dung cảnh báo mặc định an toàn
-      return {
-        to: email,
-        alertSubject: 'Cảnh báo bảo mật',
-        alertTitle: 'Cảnh báo bảo mật',
-        mainMessage: 'Phát hiện hoạt động bảo mật quan trọng trên tài khoản của bạn.',
-        secondaryMessage: 'Nếu bạn không thực hiện hành động này, vui lòng bảo vệ tài khoản của bạn ngay lập tức.'
-      }
+        ]
+        break
+
+      case SecurityAlertType.EMAIL_CHANGED:
+        alertSubject = await this.i18nService.translate('Email.SecurityAlert.Subject.EmailChanged', { lang })
+        alertTitle = await this.i18nService.translate('Email.SecurityAlert.Title.EmailChanged', { lang })
+        mainMessage = await this.i18nService.translate('Email.SecurityAlert.MainMessage.EmailChanged', {
+          lang,
+          args: { newEmail: metadata?.newEmail || '(unknown)' }
+        })
+        actionDetails = [
+          {
+            label: await this.i18nService.translate('Email.common.time', { lang }),
+            value: new Date().toLocaleString('vi-VN')
+          },
+          {
+            label: await this.i18nService.translate('Email.common.ipAddress', { lang }),
+            value: metadata?.ipAddress || 'Unknown'
+          }
+        ]
+        secondaryMessage = await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.Email.NotYou', {
+          lang
+        })
+        actionButtonText = 'Báo cáo hoạt động đáng ngờ'
+        actionButtonUrl = `${this.frontendUrl}/account/security/report-suspicious-activity`
+        break
+
+      case SecurityAlertType.DEVICE_TRUSTED:
+        alertSubject = 'Thiết bị của bạn đã được đánh dấu là tin cậy'
+        alertTitle = 'Thiết bị tin cậy được thiết lập'
+        mainMessage = `Một thiết bị đã được đánh dấu là tin cậy trong tài khoản của bạn. Điều này cho phép thiết bị này đăng nhập mà không cần xác thực 2FA trong tương lai.`
+
+        // Format expiration date
+        let expirationDate = 'không xác định'
+        if (metadata?.trustExpiration) {
+          try {
+            expirationDate = new Date(metadata.trustExpiration).toLocaleString('vi-VN')
+          } catch (error) {
+            this.logger.warn(`Không thể format ngày hết hạn tin cậy: ${error.message}`)
+          }
+        }
+
+        actionDetails = [
+          {
+            label: 'Tên thiết bị',
+            value: metadata?.deviceName || 'Thiết bị không xác định'
+          },
+          {
+            label: 'Trình duyệt',
+            value: metadata?.deviceUserAgent || 'Không xác định'
+          },
+          {
+            label: 'Địa chỉ IP',
+            value: metadata?.deviceIp || 'Không xác định'
+          },
+          {
+            label: 'Thời gian thiết lập',
+            value: new Date().toLocaleString('vi-VN')
+          },
+          {
+            label: 'Hiệu lực đến',
+            value: expirationDate
+          }
+        ]
+
+        secondaryMessage =
+          'Nếu bạn không đánh dấu thiết bị này là tin cậy, hãy hủy tin cậy ngay lập tức và đổi mật khẩu của bạn.'
+        actionButtonText = 'Quản lý thiết bị'
+        actionButtonUrl = `${this.frontendUrl}/account/security/devices`
+        break
+
+      default:
+        alertSubject = await this.i18nService.translate('Email.SecurityAlert.Subject.Default', { lang })
+        alertTitle = await this.i18nService.translate('Email.SecurityAlert.Title.NewDeviceLogin', { lang })
+        mainMessage = await this.i18nService.translate('Email.SecurityAlert.MainMessage.NewDeviceLogin', { lang })
+        secondaryMessage = await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.NotYou', { lang })
+        actionButtonText = await this.i18nService.translate('Email.SecurityAlert.Button.SecureAccount', { lang })
+        actionButtonUrl = `${this.frontendUrl}/account/security`
+        actionDetails = [
+          {
+            label: await this.i18nService.translate('Email.Field.Time', { lang }),
+            value: new Date().toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US')
+          },
+          {
+            label: await this.i18nService.translate('Email.Field.IPAddress', { lang }),
+            value: metadata?.ipAddress || 'Unknown'
+          },
+          {
+            label: await this.i18nService.translate('Email.Field.Device', { lang }),
+            value: metadata?.device || 'Unknown'
+          },
+          {
+            label: await this.i18nService.translate('Email.Field.Location', { lang }),
+            value: metadata?.location || (await this.i18nService.translate('Email.Field.LocationUnknown', { lang }))
+          }
+        ]
+    }
+
+    return {
+      to: email,
+      userName,
+      alertSubject,
+      alertTitle,
+      mainMessage,
+      actionDetails,
+      actionButtonText,
+      actionButtonUrl,
+      secondaryMessage
     }
   }
 }

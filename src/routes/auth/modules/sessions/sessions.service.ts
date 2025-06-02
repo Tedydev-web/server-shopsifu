@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, ConflictException } from '@nestjs/common'
 import { TokenService } from 'src/routes/auth/shared/token/token.service'
 import { I18nService } from 'nestjs-i18n'
 import { AuthError } from 'src/routes/auth/auth.error'
@@ -7,6 +7,9 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { SessionRepository, SessionPaginationOptions } from '../../repositories/session.repository'
 import { DeviceRepository } from '../../repositories/device.repository'
 import { ISessionService } from 'src/shared/types/auth.types'
+import { EmailService } from 'src/shared/services/email.service'
+import { SecurityAlertType } from 'src/shared/services/email.service'
+import { UserAuthRepository } from '../../repositories/user-auth.repository'
 
 @Injectable()
 export class SessionsService implements ISessionService {
@@ -17,7 +20,9 @@ export class SessionsService implements ISessionService {
     private readonly i18nService: I18nService,
     private readonly configService: ConfigService,
     private readonly sessionRepository: SessionRepository,
-    private readonly deviceRepository: DeviceRepository
+    private readonly deviceRepository: DeviceRepository,
+    private readonly userAuthRepository: UserAuthRepository,
+    private readonly emailService: EmailService
   ) {}
 
   /**
@@ -135,18 +140,44 @@ export class SessionsService implements ISessionService {
    * Đánh dấu thiết bị là đáng tin cậy
    */
   async trustDevice(userId: number, deviceId: string): Promise<{ message: string }> {
-    // Kiểm tra device có tồn tại và thuộc về user không
-    const device = await this.deviceRepository.findById(parseInt(deviceId))
+    // Kiểm tra thiết bị tồn tại và thuộc về user
+    const device = await this.deviceRepository.findById(Number(deviceId))
+    if (!device) {
+      throw AuthError.DeviceNotFound()
+    }
 
-    if (!device || device.userId !== userId) {
+    if (device.userId !== userId) {
       throw AuthError.DeviceNotOwnedByUser()
     }
 
-    // Đánh dấu thiết bị là đáng tin cậy
-    await this.deviceRepository.updateDeviceTrustStatus(parseInt(deviceId), true)
+    if (device.isTrusted) {
+      throw new ConflictException(await this.i18nService.translate('auth.Auth.Device.AlreadyTrusted'))
+    }
+
+    // Đánh dấu thiết bị là tin cậy
+    await this.deviceRepository.updateDeviceTrustStatus(device.id, true)
+
+    // Gửi thông báo cho người dùng
+    const user = await this.userAuthRepository.findById(userId)
+
+    if (user) {
+      // Gửi email thông báo thiết bị mới được tin cậy
+      try {
+        await this.emailService.sendSecurityAlertEmail(SecurityAlertType.DEVICE_TRUSTED, user.email, {
+          deviceName: device.name || 'Unknown device',
+          deviceUserAgent: device.userAgent,
+          deviceIp: device.ip,
+          userName: user.userProfile?.firstName || user.email,
+          trustExpiration: device.trustExpiration
+        })
+      } catch (error) {
+        this.logger.error(`Không thể gửi email thông báo thiết bị tin cậy: ${error.message}`)
+        // Tiếp tục xử lý dù không gửi được email
+      }
+    }
 
     return {
-      message: await this.i18nService.translate('Auth.Device.Trusted')
+      message: await this.i18nService.translate('auth.Auth.Device.Trusted')
     }
   }
 

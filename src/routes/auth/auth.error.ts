@@ -12,7 +12,11 @@ export class AuthError {
   }
 
   static EmailAlreadyExists(): ApiException {
-    return new ApiException(HttpStatus.CONFLICT, 'EmailAlreadyExists', 'Error.Email.AlreadyExists')
+    return new ApiException(HttpStatus.CONFLICT, 'EmailAlreadyExists', 'Auth.Error.Email.AlreadyExists')
+  }
+
+  static PhoneNumberAlreadyExists(): ApiException {
+    return new ApiException(HttpStatus.CONFLICT, 'PhoneNumberAlreadyExists', 'Auth.Error.Register.PhoneNumberTaken')
   }
 
   static UsernameAlreadyExists(username: string): HttpException {

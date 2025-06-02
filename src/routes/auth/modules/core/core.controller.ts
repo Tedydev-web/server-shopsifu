@@ -1,4 +1,16 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Req, Res, Get, Ip, UseGuards, Logger } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Ip,
+  Logger,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+  HttpException
+} from '@nestjs/common'
 import { Request, Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { I18nService, I18nContext } from 'nestjs-i18n'
@@ -116,38 +128,66 @@ export class CoreController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<RegistrationResponseDto> {
-    // Lấy SLT token từ cookie
-    const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
-    if (!sltCookieValue) {
-      throw AuthError.SLTCookieMissing()
-    }
+    this.logger.debug(`[completeRegistration] Processing registration completion, IP: ${ip}`)
 
-    // Xác minh SLT và lấy context
-    const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
-      sltCookieValue,
-      ip,
-      userAgent,
-      TypeOfVerificationCode.REGISTER
-    )
+    try {
+      // Lấy SLT token từ cookie
+      const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+      if (!sltCookieValue) {
+        this.logger.warn(`[completeRegistration] SLT cookie missing`)
+        throw AuthError.SLTCookieMissing()
+      }
 
-    // Kiểm tra SLT đã được xác minh chưa
-    if (sltContext.finalized !== '1') {
-      throw AuthError.InvalidOTP()
-    }
+      // Xác minh SLT và lấy context
+      const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
+        sltCookieValue,
+        ip,
+        userAgent,
+        TypeOfVerificationCode.REGISTER
+      )
 
-    // Hoàn tất đăng ký
-    await this.coreService.completeRegistration({
-      ...body,
-      email: sltContext.email || '',
-      ip,
-      userAgent
-    })
+      // Email đảm bảo được lấy từ SLT token context
+      const email = sltContext.email
+      if (!email) {
+        this.logger.error(`[completeRegistration] Email missing in SLT context`)
+        throw new HttpException(
+          'Email không tìm thấy trong context, vui lòng thực hiện lại từ đầu',
+          HttpStatus.BAD_REQUEST
+        )
+      }
 
-    // Xóa SLT cookie
-    this.cookieService.clearSltCookie(res)
+      this.logger.debug(`[completeRegistration] Using email from SLT context: ${email}`)
 
-    return {
-      message: await this.i18nService.translate('Auth.Register.Success')
+      // Kiểm tra SLT đã được xác minh chưa
+      if (sltContext.finalized !== '1') {
+        this.logger.warn(`[completeRegistration] SLT not finalized for email: ${email}`)
+        throw AuthError.InvalidOTP()
+      }
+
+      // Hoàn tất đăng ký với email từ SLT context
+      await this.coreService.completeRegistration({
+        ...body,
+        email, // Email lấy từ SLT context thay vì từ body
+        ip,
+        userAgent
+      })
+
+      // Xóa SLT cookie
+      this.cookieService.clearSltCookie(res)
+
+      // Lấy thông báo đã dịch
+      const translatedMessage = await this.i18nService.translate('Auth.Register.Success', {
+        lang: I18nContext.current()?.lang || 'vi'
+      })
+
+      this.logger.debug(`[completeRegistration] Registration completed successfully for ${email}`)
+
+      return {
+        message: translatedMessage
+      }
+    } catch (error) {
+      this.logger.error(`[completeRegistration] Error during registration completion: ${error.message}`, error.stack)
+      throw error
     }
   }
 
@@ -172,7 +212,28 @@ export class CoreController {
       res
     )
 
-    return result
+    // Đảm bảo message đã được dịch (nếu có)
+    const message = result.message
+
+    // Kiểm tra nếu kết quả có message dạng i18n key
+    if (result.requiresTwoFactorAuth !== undefined || result.requiresDeviceVerification !== undefined) {
+      return {
+        statusCode: 200,
+        message,
+        // Thêm dữ liệu phù hợp theo trạng thái
+        ...(result.requiresTwoFactorAuth ? { requiresTwoFactorAuth: true } : {}),
+        ...(result.requiresDeviceVerification ? { requiresDeviceVerification: true } : {})
+      }
+    }
+
+    // Trả về kết quả đăng nhập thành công với message tương ứng
+    return {
+      statusCode: 200,
+      message: await this.i18nService.translate('Auth.Login.Success', {
+        lang: I18nContext.current()?.lang || 'vi'
+      }),
+      data: result
+    }
   }
 
   /**

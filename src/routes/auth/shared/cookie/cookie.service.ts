@@ -11,15 +11,7 @@ import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
 export class CookieService implements ICookieService {
   private readonly logger = new Logger(CookieService.name)
 
-  constructor(private readonly configService: ConfigService) {
-    // In ra toàn bộ cookie config khi khởi tạo service để debug
-    const cookieConfig = this.configService.get('cookie')
-    this.logger.debug(`[INIT] Toàn bộ cookie config: ${JSON.stringify(cookieConfig, null, 2)}`)
-    this.logger.debug(`[INIT] NODE_ENV: ${this.configService.get('NODE_ENV')}`)
-    this.logger.debug(`[INIT] cookieConfig.secure: ${this.configService.get('cookieConfig.secure')}`)
-    this.logger.debug(`[INIT] cookieConfig.sameSite: ${this.configService.get('cookieConfig.sameSite')}`)
-    this.logger.debug(`[INIT] cookieConfig.domain: ${this.configService.get('cookieConfig.domain')}`)
-  }
+  constructor(private readonly configService: ConfigService) {}
 
   /**
    * Set cookie chung
@@ -184,7 +176,6 @@ export class CookieService implements ICookieService {
 
       // Log cấu hình để debug
       const allCookieConfig = this.configService.get('cookie')
-      this.logger.debug(`[getAccessTokenCookieConfig] Toàn bộ cookie config: ${JSON.stringify(allCookieConfig)}`)
     }
 
     const config = cookieConfig || {
@@ -230,10 +221,6 @@ export class CookieService implements ICookieService {
 
     if (!cookieConfig) {
       this.logger.warn('[getSltCookieConfig] Không thể truy cập cấu hình cookie.sltToken, sử dụng giá trị mặc định')
-      // Log toàn bộ cấu hình cookie hiện có
-      const allCookieConfig = this.configService.get('cookie')
-      this.logger.debug(`[getSltCookieConfig] Toàn bộ cookie config: ${JSON.stringify(allCookieConfig)}`)
-
       // Log cấu hình theo từng thành phần
       this.logger.debug(`[getSltCookieConfig] NODE_ENV: ${this.configService.get('NODE_ENV')}`)
       this.logger.debug(`[getSltCookieConfig] cookieConfig.secure: ${this.configService.get('cookieConfig.secure')}`)

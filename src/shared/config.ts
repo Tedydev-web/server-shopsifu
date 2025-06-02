@@ -77,6 +77,7 @@ const configSchema = z.object({
   // Session & Device
   MAX_ACTIVE_SESSIONS_PER_USER: z.coerce.number().int().positive().optional().default(10),
   MAX_DEVICES_PER_USER: z.coerce.number().int().positive().optional().default(5),
+  DEVICE_TRUST_DURATION: z.string().default('90d'),
 
   // Email
   RESEND_API_KEY: z.string(),
@@ -121,6 +122,11 @@ const convertMs = (value: string, defaultValue: number): number => {
 
 /**
  * Cấu hình cookie dựa trên môi trường
+ *
+ * Đặc biệt quan trọng cho 2FA flow:
+ * - SLT cookie phải được cấu hình đúng để lưu trữ trạng thái 2FA setup
+ * - CSRF token cần được xử lý đặc biệt trong môi trường development
+ * - Cookie security (httpOnly, secure, sameSite) ảnh hưởng trực tiếp đến bảo mật
  */
 const getCookieConfig = () => {
   let cookieSecure: boolean
@@ -230,6 +236,7 @@ const envConfig = {
   REFRESH_TOKEN_COOKIE_MAX_AGE: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d')),
   REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE: convertMs(parsedConfig.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN, ms('14d')),
   ABSOLUTE_SESSION_LIFETIME_MS: convertMs(parsedConfig.ABSOLUTE_SESSION_LIFETIME, ms('30d')),
+  DEVICE_TRUST_DURATION_MS: convertMs(parsedConfig.DEVICE_TRUST_DURATION, ms('90d')),
 
   // Cấu hình chung cho cookie
   cookieConfig: {

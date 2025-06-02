@@ -31,7 +31,25 @@ export const RegisterBodySchema = z
     path: ['confirmPassword']
   })
 
+/**
+ * CompleteRegistration không yêu cầu email vì sẽ được lấy từ SLT context
+ */
+export const CompleteRegistrationSchema = z
+  .object({
+    password: z.string().min(8, { message: 'Mật khẩu phải có ít nhất 8 ký tự' }),
+    confirmPassword: z.string().min(8, { message: 'Mật khẩu phải có ít nhất 8 ký tự' }),
+    firstName: z.string().min(1, { message: 'Tên không được để trống' }),
+    lastName: z.string().min(1, { message: 'Họ không được để trống' }),
+    username: z.string().optional(),
+    phoneNumber: z.string().optional()
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Mật khẩu không khớp',
+    path: ['confirmPassword']
+  })
+
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>
+export type CompleteRegistrationBodyType = z.infer<typeof CompleteRegistrationSchema>
 
 export const LoginBodySchema = z.object({
   emailOrUsername: z.string().min(1, { message: 'Email hoặc username không được để trống' }),

@@ -20,16 +20,34 @@ import React from 'react'
 interface OTPEmailProps {
   otpCode: string
   title: string
+  headingText: string
+  contentText: string
+  codeLabel?: string
+  validityText?: string
+  disclaimerText?: string
+  contactUsText?: string
+  copyrightText?: string
+  year?: string
 }
 
-export default function OTPEmail({ otpCode, title }: OTPEmailProps) {
+export default function OTPEmail({
+  otpCode,
+  title,
+  headingText,
+  contentText,
+  codeLabel = 'Mã xác minh',
+  validityText = '(Mã này có hiệu lực trong 5 phút)',
+  disclaimerText,
+  contactUsText = 'Liên hệ với chúng tôi',
+  copyrightText = '© 2025 Bản quyền thuộc về Shopsifu'
+}: OTPEmailProps) {
   return (
     <Html>
       <Head>
         <title>{title}</title>
       </Head>
       <Body style={main}>
-        <Preview>Shopsifu - Xác minh tài khoản</Preview>
+        <Preview>{title}</Preview>
         <Tailwind>
           <Container style={container}>
             <Section style={coverSection}>
@@ -42,28 +60,21 @@ export default function OTPEmail({ otpCode, title }: OTPEmailProps) {
                 />
               </Section>
               <Section style={upperSection}>
-                <Heading style={h1}>Xác minh địa chỉ email của bạn</Heading>
-                <Text style={mainText}>
-                  Cảm ơn bạn đã bắt đầu quá trình tạo tài khoản mới trên Shopsifu. Chúng tôi muốn đảm bảo rằng đó thực
-                  sự là bạn. Vui lòng nhập mã xác minh sau khi được yêu cầu. Nếu bạn không muốn tạo tài khoản, bạn có
-                  thể bỏ qua tin nhắn này.
-                </Text>
+                <Heading style={h1}>{headingText}</Heading>
+                <Text style={mainText}>{contentText}</Text>
               </Section>
               <Section style={verificationSection}>
-                <Text style={verifyText}>Mã xác minh</Text>
+                <Text style={verifyText}>{codeLabel}</Text>
                 <Text style={codeText}>{otpCode}</Text>
-                <Text style={validityText}>(Mã này có hiệu lực trong 5 phút)</Text>
+                <Text style={validityText}>{validityText}</Text>
               </Section>
               <Section style={lowerSection}>
-                <Text style={cautionText}>
-                  Shopsifu sẽ không bao giờ gửi email yêu cầu bạn tiết lộ hoặc xác minh mật khẩu, số thẻ tín dụng hoặc
-                  số tài khoản ngân hàng của bạn.
-                </Text>
+                <Text style={cautionText}>{disclaimerText}</Text>
                 <Hr style={hr} />
               </Section>
               <Section style={containerContact}>
                 <Row>
-                  <Text style={paragraph}>Liên hệ với chúng tôi</Text>
+                  <Text style={paragraph}>{contactUsText}</Text>
                 </Row>
                 <Row
                   align='left'
@@ -118,7 +129,7 @@ export default function OTPEmail({ otpCode, title }: OTPEmailProps) {
                     margin: 0
                   }}
                 >
-                  © 2025 Bản quyền thuộc về Shopsifu
+                  {copyrightText}
                 </Text>
               </Section>
             </Section>

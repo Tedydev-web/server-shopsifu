@@ -29,9 +29,29 @@ export const VerifyOtpWithRedirectSchema = z.object({
   redirectUrl: z.string().optional()
 })
 
+// UserProfile Schema dùng cho response
+export const UserProfileResponseSchema = z.object({
+  username: z.string().nullable(),
+  avatar: z.string().nullable()
+})
+
+// Schema khi xác minh OTP thành công và hoàn tất đăng nhập
+export const VerifyOtpSuccessResponseSchema = z.object({
+  message: z.string(),
+  user: z.object({
+    id: z.number(),
+    email: z.string().email(),
+    roleName: z.string(),
+    isDeviceTrustedInSession: z.boolean(),
+    userProfile: UserProfileResponseSchema.nullable()
+  }),
+  isTwoFactorEnabled: z.boolean().default(false)
+})
+
 // DTO classes
 export class SendOtpDto extends createZodDto(SendOtpSchema) {}
 export class SendOtpResponseDto extends createZodDto(SendOtpResponseSchema) {}
 export class VerifyOtpDto extends createZodDto(VerifyOtpSchema) {}
 export class VerifyOtpResponseDto extends createZodDto(VerifyOtpResponseSchema) {}
 export class VerifyOtpWithRedirectDto extends createZodDto(VerifyOtpWithRedirectSchema) {}
+export class VerifyOtpSuccessResponseDto extends createZodDto(VerifyOtpSuccessResponseSchema) {}

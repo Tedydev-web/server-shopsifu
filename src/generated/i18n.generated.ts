@@ -10,6 +10,7 @@ export type I18nTranslations = {
             "Register": {
                 "Success": string;
                 "EmailSent": string;
+                "PhoneNumberTaken": string;
             };
             "Login": {
                 "Success": string;
@@ -95,6 +96,10 @@ export type I18nTranslations = {
                 "Username": {
                     "AlreadyExists": string;
                 };
+                "Register": {
+                    "UsernameTaken": string;
+                    "PhoneNumberTaken": string;
+                };
                 "Otp": {
                     "Invalid": string;
                     "Expired": string;
@@ -137,10 +142,6 @@ export type I18nTranslations = {
                 "Social": {
                     "InvalidToken": string;
                 };
-                "Register": {
-                    "UsernameTaken": string;
-                    "PhoneNumberTaken": string;
-                };
                 "OtpToken": {
                     "Invalid": string;
                     "Expired": string;
@@ -181,154 +182,66 @@ export type I18nTranslations = {
         };
     };
     "email": {
-        "Email.SecurityAlert.Subject.Default": string;
-        "Email.SecurityAlert.Subject.NewDeviceLogin": string;
-        "Email.SecurityAlert.Subject.PasswordChanged": string;
-        "Email.SecurityAlert.Subject.PasswordReset": string;
-        "Email.SecurityAlert.Subject.TwoFactorEnabled": string;
-        "Email.SecurityAlert.Subject.TwoFactorDisabled": string;
-        "Email.SecurityAlert.Subject.NewTrustedDeviceLoginLocation": string;
-        "Email.SecurityAlert.Subject.NewDeviceFingerprintLogin": string;
-        "Email.SecurityAlert.Title.NewDeviceLogin": string;
-        "Email.SecurityAlert.Title.PasswordChanged": string;
-        "Email.SecurityAlert.Title.PasswordReset": string;
-        "Email.SecurityAlert.Title.TwoFactorEnabled": string;
-        "Email.SecurityAlert.Title.TwoFactorDisabled": string;
-        "Email.SecurityAlert.Title.NewTrustedDeviceLoginLocation": string;
-        "Email.SecurityAlert.Title.NewDeviceFingerprintLogin": string;
-        "Email.SecurityAlert.MainMessage.NewDeviceLogin": string;
-        "Email.SecurityAlert.MainMessage.PasswordChanged": string;
-        "Email.SecurityAlert.MainMessage.PasswordReset": string;
-        "Email.SecurityAlert.MainMessage.TwoFactorEnabled": string;
-        "Email.SecurityAlert.MainMessage.TwoFactorDisabled": string;
-        "Email.SecurityAlert.MainMessage.NewTrustedDeviceLoginLocation": string;
-        "Email.SecurityAlert.MainMessage.NewDeviceFingerprintLogin": string;
-        "Email.SecurityAlert.SecondaryMessage.NotYou": string;
-        "Email.SecurityAlert.SecondaryMessage.Password.NotYou": string;
-        "Email.SecurityAlert.SecondaryMessage.2FA.NotYouEnable": string;
-        "Email.SecurityAlert.SecondaryMessage.2FA.NotYouDisable": string;
-        "Email.SecurityAlert.Button.ReviewActivity": string;
-        "Email.SecurityAlert.Button.ChangePassword": string;
-        "Email.SecurityAlert.Button.SecureAccount": string;
-        "Email.SecurityAlert.Button.Enable2FA": string;
-        "Email.Field.Time": string;
-        "Email.Field.IPAddress": string;
-        "Email.Field.Device": string;
-        "Email.Field.Location": string;
-        "Email.Field.FingerprintDevice": string;
-        "Email.Field.FingerprintOS": string;
-        "Email.Field.FingerprintBrowser": string;
-        "Email.Field.LocationUnknown": string;
-        "Email.Field.DeviceName": string;
-        "Email.Field.DeviceIdentifier": string;
-        "Email.Field.NewIPAddress": string;
-        "Email.Field.NewApprox.Location": string;
-        "Email.Field.OldIPAddress": string;
-        "Email.Field.OldLocation": string;
-        "Email.OTPSubject.Register": string;
-        "Email.OTPSubject.ResetPassword": string;
-        "Email.OTPSubject.LoginUntrustedDevice": string;
-        "Email.OTPSubject.Default": string;
-        "common": {
-            "time": string;
-            "ipAddress": string;
-            "device": string;
-            "location": string;
-            "footer": {
-                "copyright": string;
+        "Email": {
+            "OTPSubject": {
+                "Register": string;
+                "ResetPassword": string;
+                "LoginUntrustedDevice": string;
+                "Default": string;
+            };
+            "otp": {
+                "register": {
+                    "headline": string;
+                    "content": string;
+                };
+                "resetPassword": {
+                    "headline": string;
+                    "content": string;
+                };
+                "login": {
+                    "headline": string;
+                    "content": string;
+                };
+                "login_2fa": {
+                    "headline": string;
+                    "content": string;
+                };
+                "disable_2fa": {
+                    "headline": string;
+                    "content": string;
+                };
+                "setup_2fa": {
+                    "headline": string;
+                    "content": string;
+                };
+                "login_untrusted_device_otp": {
+                    "headline": string;
+                    "content": string;
+                };
+                "reverify_session_otp": {
+                    "headline": string;
+                    "content": string;
+                };
+                "verify_new_email": {
+                    "headline": string;
+                    "content": string;
+                };
+                "codeLabel": string;
+                "validity": string;
+            };
+            "disclaimer": string;
+            "common": {
                 "contactUs": string;
+                "time": string;
+                "ipAddress": string;
+                "device": string;
+                "location": string;
+                "footer": {
+                    "copyright": string;
+                    "contactUs": string;
+                };
             };
         };
-        "otp": {
-            "default": {
-                "title": string;
-            };
-            "register": {
-                "title": string;
-                "headline": string;
-                "content": string;
-            };
-            "resetPassword": {
-                "title": string;
-                "headline": string;
-                "content": string;
-            };
-            "login": {
-                "title": string;
-                "headline": string;
-                "content": string;
-            };
-            "login2fa": {
-                "title": string;
-                "headline": string;
-                "content": string;
-            };
-            "disable2fa": {
-                "title": string;
-                "headline": string;
-                "content": string;
-            };
-            "setup2fa": {
-                "title": string;
-                "headline": string;
-                "content": string;
-            };
-            "untrustedDevice": {
-                "title": string;
-                "headline": string;
-                "content": string;
-            };
-            "reverifySession": {
-                "title": string;
-                "headline": string;
-                "content": string;
-            };
-            "verifyNewEmail": {
-                "title": string;
-                "headline": string;
-                "content": string;
-            };
-            "codeLabel": string;
-            "validity": string;
-        };
-        "security": {
-            "generic": {
-                "subject": string;
-                "title": string;
-                "message": string;
-                "secondaryMessage": string;
-            };
-            "passwordChanged": {
-                "subject": string;
-                "title": string;
-                "message": string;
-                "buttonText": string;
-                "secondaryMessage": string;
-            };
-            "newDevice": {
-                "subject": string;
-                "title": string;
-                "message": string;
-                "buttonText": string;
-                "secondaryMessage": string;
-            };
-            "twoFactorEnabled": {
-                "subject": string;
-                "title": string;
-                "message": string;
-                "buttonText": string;
-                "secondaryMessage": string;
-            };
-            "twoFactorDisabled": {
-                "subject": string;
-                "title": string;
-                "message": string;
-                "buttonText": string;
-                "secondaryMessage": string;
-            };
-        };
-        "disclaimer": string;
-        "Email.Subject.VerifyNewEmail": string;
     };
     "error": {
         "Error.Global.Unknown": string;

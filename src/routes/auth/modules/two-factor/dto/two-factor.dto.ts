@@ -2,11 +2,17 @@ import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
 
 // Setup 2FA DTOs
-export const TwoFactorSetupSchema = z.object({})
+export const TwoFactorSetupSchema = z.object({
+  // Không yêu cầu body input cho API này
+})
 
 export const TwoFactorSetupResponseSchema = z.object({
-  secret: z.string(),
-  uri: z.string()
+  secret: z
+    .string()
+    .describe(
+      'Secret key dạng BASE32 dùng để thiết lập ứng dụng authenticator. Chỉ hiển thị khi người dùng yêu cầu nhập thủ công.'
+    ),
+  uri: z.string().describe('URI dạng data:image/png;base64 chứa QR code để quét bằng ứng dụng authenticator.')
 })
 
 // Confirm 2FA Setup DTOs

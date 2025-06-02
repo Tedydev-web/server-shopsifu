@@ -2,6 +2,7 @@ import { Controller, Post, Body, HttpCode, HttpStatus, Req, Res, Ip, Logger } fr
 import { Request, Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { I18nService } from 'nestjs-i18n'
+import { UseZodSchemas } from 'src/shared/decorators/use-zod-schema.decorator'
 
 import { OtpService } from './otp.service'
 import { CookieService } from 'src/routes/auth/shared/cookie/cookie.service'
@@ -11,11 +12,15 @@ import {
   SendOtpResponseDto,
   VerifyOtpDto,
   VerifyOtpResponseDto,
-  VerifyOtpWithRedirectDto
+  VerifyOtpWithRedirectDto,
+  VerifyOtpSuccessResponseDto,
+  VerifyOtpSuccessResponseSchema
 } from './dto/otp.dto'
 import { CookieNames } from 'src/shared/constants/auth.constant'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { IsPublic } from 'src/routes/auth/decorators/auth.decorator'
+import { CoreService } from '../core/core.service'
+import { TypeOfVerificationCode } from 'src/routes/auth/constants/auth.constants'
 
 @Controller('auth/otp')
 export class OtpController {
@@ -24,7 +29,8 @@ export class OtpController {
   constructor(
     private readonly otpService: OtpService,
     private readonly cookieService: CookieService,
-    private readonly i18nService: I18nService
+    private readonly i18nService: I18nService,
+    private readonly coreService: CoreService
   ) {}
 
   /**
@@ -66,25 +72,99 @@ export class OtpController {
   @IsPublic()
   @Post('verify')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(VerifyOtpResponseDto)
+  @UseZodSchemas({
+    schema: VerifyOtpSuccessResponseSchema,
+    predicate: (data) => data && data.user
+  })
   async verifyOtp(
     @Body() body: VerifyOtpDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
-  ): Promise<VerifyOtpResponseDto | VerifyOtpWithRedirectDto> {
-    // Lấy SLT token từ cookie
-    const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
-    if (!sltCookieValue) {
-      throw AuthError.SLTCookieMissing()
-    }
+  ): Promise<any> {
+    try {
+      // Lấy SLT token từ cookie
+      const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+      if (!sltCookieValue) {
+        throw AuthError.SLTCookieMissing()
+      }
 
-    // Xác minh OTP
-    await this.otpService.verifySltOtpStage(sltCookieValue, body.code, ip, userAgent)
+      this.logger.debug(`[verifyOtp] Verifying OTP code ${body.code} with rememberMe: ${body.rememberMe || false}`)
 
-    return {
-      message: await this.i18nService.translate('Auth.Otp.Verified')
+      // Xác minh OTP và lấy context
+      const sltContext = await this.otpService.verifySltOtpStage(sltCookieValue, body.code, ip, userAgent)
+
+      this.logger.debug(`[verifyOtp] OTP verified successfully for purpose: ${sltContext.purpose}`)
+
+      // Kiểm tra loại xác minh OTP
+      if (sltContext.purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
+        this.logger.debug(`[verifyOtp] Finalizing login after device verification for user ID: ${sltContext.userId}`)
+
+        try {
+          // Lấy trạng thái rememberMe từ metadata hoặc từ request body
+          const rememberMe =
+            sltContext.metadata && typeof sltContext.metadata === 'object' && 'rememberMe' in sltContext.metadata
+              ? !!sltContext.metadata.rememberMe
+              : !!body.rememberMe
+
+          // Kiểm tra xem người dùng đã được xác thực 2FA chưa
+          const twoFactorVerified =
+            sltContext.metadata &&
+            typeof sltContext.metadata === 'object' &&
+            'twoFactorVerified' in sltContext.metadata &&
+            !!sltContext.metadata.twoFactorVerified
+
+          this.logger.debug(
+            `[verifyOtp] Using rememberMe=${rememberMe} from ${sltContext.metadata && typeof sltContext.metadata === 'object' && 'rememberMe' in sltContext.metadata ? 'metadata' : 'request body'}`
+          )
+          this.logger.debug(`[verifyOtp] 2FA verification status: ${twoFactorVerified ? 'verified' : 'not verified'}`)
+
+          // Hoàn tất đăng nhập sau khi xác minh thiết bị thành công
+          const userInfo = await this.coreService.finalizeLoginAfterVerification(
+            sltContext.userId,
+            sltContext.deviceId,
+            rememberMe,
+            res
+          )
+
+          this.logger.debug(`[verifyOtp] Login finalized successfully for user: ${userInfo.email}`)
+          this.logger.debug(`[verifyOtp] UserInfo object: ${JSON.stringify(userInfo)}`)
+
+          // Xóa SLT cookie vì đã hoàn tất quá trình xác minh
+          this.cookieService.clearSltCookie(res)
+
+          // Đảm bảo dữ liệu trả về khớp với schema VerifyOtpSuccessResponseDto
+          return {
+            message: await this.i18nService.translate('Auth.Otp.Verified'),
+            user: {
+              id: userInfo.id,
+              email: userInfo.email,
+              roleName: userInfo.roleName,
+              isDeviceTrustedInSession: false, // Không tự động đánh dấu thiết bị là trusted
+              userProfile: {
+                username: userInfo.userProfile?.username || null,
+                avatar: userInfo.userProfile?.avatar || null
+              }
+            },
+            isTwoFactorEnabled: twoFactorVerified
+          }
+        } catch (innerError) {
+          this.logger.error(
+            `[verifyOtp] Error in finalizeLoginAfterVerification: ${innerError.message}`,
+            innerError.stack
+          )
+          throw innerError
+        }
+      }
+
+      // Trả về thông báo xác minh thành công cho các loại OTP khác
+      return {
+        message: await this.i18nService.translate('Auth.Otp.Verified')
+      }
+    } catch (error) {
+      this.logger.error(`[verifyOtp] Error processing OTP verification: ${error.message}`, error.stack)
+      throw error
     }
   }
 
