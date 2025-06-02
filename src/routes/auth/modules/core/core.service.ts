@@ -167,19 +167,26 @@ export class CoreService implements IUserAuthService {
     const hasTwoFactorEnabled = user.twoFactorEnabled === true
     this.logger.debug(`[login] User ${user.email}: 2FA enabled=${hasTwoFactorEnabled}`)
 
-    // Xác định tình trạng tin cậy của thiết bị, kiểm tra cả thời hạn tin cậy
-    const isDeviceTrusted = await this.deviceRepository.isDeviceTrusted(device.id)
+    // Xác định tình trạng tin cậy của thiết bị
+    let isDeviceTrusted = device.isTrusted
+
+    // Nếu thiết bị được đánh dấu tin cậy, kiểm tra thời hạn
+    if (isDeviceTrusted) {
+      isDeviceTrusted = await this.deviceRepository.isDeviceTrustValid(device.id)
+      this.logger.debug(`[login] Checked device trust expiration: still valid=${isDeviceTrusted}`)
+    }
+
     this.logger.debug(`[login] Final device trust status: ${isDeviceTrusted}`)
 
     // Xác định nếu cần xác minh bổ sung
-    // Thiết bị tin cậy bypass cả 2FA và xác minh thiết bị
-    const requiresTwoFactorAuth = hasTwoFactorEnabled && !isDeviceTrusted
-    const requiresDeviceVerification = !isDeviceTrusted && !hasTwoFactorEnabled
+    const requiresTwoFactorAuth = hasTwoFactorEnabled && !isDeviceTrusted // Bypass 2FA cho thiết bị tin cậy
+    const requiresDeviceVerification = !isDeviceTrusted
+
     this.logger.debug(
       `[login] Additional verification needed: 2FA=${requiresTwoFactorAuth}, untrusted device=${requiresDeviceVerification}`
     )
 
-    // Ưu tiên xác minh 2FA nếu đã bật và thiết bị chưa tin cậy
+    // Ưu tiên xác minh 2FA nếu đã bật và thiết bị không được tin cậy
     if (requiresTwoFactorAuth) {
       this.logger.debug(`[login] Initiating 2FA verification for user ${user.email}`)
 
@@ -195,7 +202,7 @@ export class CoreService implements IUserAuthService {
           deviceId: device.id,
           rememberMe: rememberMe,
           twoFactorMethod: user.twoFactorMethod,
-          requiresDeviceVerification: false // Đã không cần xác minh thiết bị sau 2FA nữa
+          requiresDeviceVerification: requiresDeviceVerification // Thêm flag để biết sau khi xác minh 2FA có cần xác minh thiết bị không
         }
       })
 
@@ -208,7 +215,7 @@ export class CoreService implements IUserAuthService {
       }
     }
 
-    // Nếu không cần 2FA nhưng thiết bị không được tin cậy, và tài khoản chưa bật 2FA
+    // Nếu không cần 2FA nhưng thiết bị không được tin cậy
     if (requiresDeviceVerification) {
       this.logger.debug(`[login] Initiating device verification OTP for ${user.email}`)
 
@@ -421,11 +428,11 @@ export class CoreService implements IUserAuthService {
       rememberMe ? 30 * 24 * 60 * 60 * 1000 : undefined
     )
 
-    // Trả về thông tin user
+    // Trả về thông tin user với cấu trúc giống login
     return {
       id: user.id,
       email: user.email,
-      roleName: user.role.name,
+      roleName: user.role.name, // Sử dụng roleName để phù hợp với otp.controller
       isDeviceTrustedInSession: false,
       userProfile: {
         firstName: user.userProfile?.firstName,

@@ -77,7 +77,7 @@ const configSchema = z.object({
   // Session & Device
   MAX_ACTIVE_SESSIONS_PER_USER: z.coerce.number().int().positive().optional().default(10),
   MAX_DEVICES_PER_USER: z.coerce.number().int().positive().optional().default(5),
-  DEVICE_TRUST_DURATION: z.string().default('90d'),
+  DEVICE_TRUST_EXPIRATION_DAYS: z.coerce.number().int().positive().optional().default(30),
 
   // Email
   RESEND_API_KEY: z.string(),
@@ -236,7 +236,6 @@ const envConfig = {
   REFRESH_TOKEN_COOKIE_MAX_AGE: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d')),
   REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE: convertMs(parsedConfig.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN, ms('14d')),
   ABSOLUTE_SESSION_LIFETIME_MS: convertMs(parsedConfig.ABSOLUTE_SESSION_LIFETIME, ms('30d')),
-  DEVICE_TRUST_DURATION_MS: convertMs(parsedConfig.DEVICE_TRUST_DURATION, ms('90d')),
 
   // Cấu hình chung cho cookie
   cookieConfig: {

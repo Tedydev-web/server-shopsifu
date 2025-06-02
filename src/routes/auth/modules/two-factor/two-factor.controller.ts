@@ -62,13 +62,13 @@ export class TwoFactorController {
   ): Promise<void> {
     try {
       // Gọi service để thiết lập 2FA và trả về secret và URI
-      const result = await this.twoFactorService.setupTwoFactor(
-        activeUser.userId,
-        activeUser.deviceId,
-        ip,
-        userAgent,
-        res
-      )
+    const result = await this.twoFactorService.setupTwoFactor(
+      activeUser.userId,
+      activeUser.deviceId,
+      ip,
+      userAgent,
+      res
+    )
 
       this.logger.debug(
         `2FA setup initiated for user ${activeUser.userId} with result: ${JSON.stringify({
@@ -109,20 +109,20 @@ export class TwoFactorController {
     @Res({ passthrough: false }) res: Response
   ): Promise<void> {
     try {
-      // Lấy SLT token từ cookie
-      const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
-      if (!sltCookieValue) {
-        throw AuthError.SLTCookieMissing()
-      }
+    // Lấy SLT token từ cookie
+    const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+    if (!sltCookieValue) {
+      throw AuthError.SLTCookieMissing()
+    }
 
-      const result = await this.twoFactorService.confirmTwoFactorSetup(
-        activeUser.userId,
-        sltCookieValue,
-        body.totpCode,
-        ip,
-        userAgent,
-        res
-      )
+    const result = await this.twoFactorService.confirmTwoFactorSetup(
+      activeUser.userId,
+      sltCookieValue,
+      body.totpCode,
+      ip,
+      userAgent,
+      res
+    )
 
       this.logger.debug(
         `2FA setup confirmed for user ${activeUser.userId} with ${result.recoveryCodes.length} recovery codes generated`
@@ -156,20 +156,20 @@ export class TwoFactorController {
     @Res({ passthrough: false }) res: Response
   ): Promise<void> {
     try {
-      // Lấy SLT token từ cookie
-      const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
-      if (!sltCookieValue) {
-        throw AuthError.SLTCookieMissing()
-      }
+    // Lấy SLT token từ cookie
+    const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+    if (!sltCookieValue) {
+      throw AuthError.SLTCookieMissing()
+    }
 
-      const result = await this.twoFactorService.verifyTwoFactor(
-        body.code,
-        body.rememberMe || false,
-        sltCookieValue,
-        ip,
-        userAgent,
-        res
-      )
+    const result = await this.twoFactorService.verifyTwoFactor(
+      body.code,
+      body.rememberMe || false,
+      sltCookieValue,
+      ip,
+      userAgent,
+      res
+    )
 
       this.logger.debug(`2FA verification successful for code from token ${sltCookieValue.substring(0, 15)}...`)
 
@@ -212,22 +212,22 @@ export class TwoFactorController {
     @Res({ passthrough: false }) res: Response
   ): Promise<void> {
     try {
-      // Lấy SLT token từ cookie nếu có
-      const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+    // Lấy SLT token từ cookie nếu có
+    const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
 
-      const result = await this.twoFactorService.disableTwoFactor(
-        activeUser.userId,
-        body.code,
-        body.method,
-        ip,
-        userAgent,
-        sltCookieValue
-      )
+    const result = await this.twoFactorService.disableTwoFactor(
+      activeUser.userId,
+      body.code,
+      body.method,
+      ip,
+      userAgent,
+      sltCookieValue
+    )
 
-      // Xóa SLT cookie nếu có
-      if (sltCookieValue) {
-        this.cookieService.clearSltCookie(res)
-      }
+    // Xóa SLT cookie nếu có
+    if (sltCookieValue) {
+      this.cookieService.clearSltCookie(res)
+    }
 
       this.logger.debug(`2FA disabled for user ${activeUser.userId} using method ${body.method || 'default'}`)
 
@@ -258,7 +258,7 @@ export class TwoFactorController {
     @Res({ passthrough: false }) res: Response
   ): Promise<void> {
     try {
-      const result = await this.twoFactorService.regenerateRecoveryCodes(activeUser.userId, body.code, ip, userAgent)
+    const result = await this.twoFactorService.regenerateRecoveryCodes(activeUser.userId, body.code, ip, userAgent)
 
       this.logger.debug(
         `Recovery codes regenerated for user ${activeUser.userId}, total: ${result.recoveryCodes.length}`

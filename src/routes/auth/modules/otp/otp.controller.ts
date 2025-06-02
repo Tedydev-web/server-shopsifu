@@ -14,7 +14,8 @@ import {
   VerifyOtpResponseDto,
   VerifyOtpWithRedirectDto,
   VerifyOtpSuccessResponseDto,
-  VerifyOtpSuccessResponseSchema
+  VerifyOtpSuccessResponseSchema,
+  VerifyOtpResponseSchema
 } from './dto/otp.dto'
 import { CookieNames } from 'src/shared/constants/auth.constant'
 import { AuthError } from 'src/routes/auth/auth.error'
@@ -72,10 +73,7 @@ export class OtpController {
   @IsPublic()
   @Post('verify')
   @HttpCode(HttpStatus.OK)
-  @UseZodSchemas({
-    schema: VerifyOtpSuccessResponseSchema,
-    predicate: (data) => data && data.user
-  })
+  @ZodSerializerDto(VerifyOtpResponseDto)
   async verifyOtp(
     @Body() body: VerifyOtpDto,
     @Ip() ip: string,
@@ -84,18 +82,14 @@ export class OtpController {
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
     try {
-      // Lấy SLT token từ cookie
-      const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
+      // Lấy SLT cookie từ request
+      const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
       if (!sltCookieValue) {
         throw AuthError.SLTCookieMissing()
       }
 
-      this.logger.debug(`[verifyOtp] Verifying OTP code ${body.code} with rememberMe: ${body.rememberMe || false}`)
-
-      // Xác minh OTP và lấy context
+      // Xác minh OTP và SLT
       const sltContext = await this.otpService.verifySltOtpStage(sltCookieValue, body.code, ip, userAgent)
-
-      this.logger.debug(`[verifyOtp] OTP verified successfully for purpose: ${sltContext.purpose}`)
 
       // Kiểm tra loại xác minh OTP
       if (sltContext.purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
@@ -129,25 +123,21 @@ export class OtpController {
           )
 
           this.logger.debug(`[verifyOtp] Login finalized successfully for user: ${userInfo.email}`)
-          this.logger.debug(`[verifyOtp] UserInfo object: ${JSON.stringify(userInfo)}`)
 
           // Xóa SLT cookie vì đã hoàn tất quá trình xác minh
           this.cookieService.clearSltCookie(res)
 
-          // Đảm bảo dữ liệu trả về khớp với schema VerifyOtpSuccessResponseDto
+          // Sử dụng return hàm và sau đó không chạy thêm code nữa
           return {
+            statusCode: HttpStatus.OK,
             message: await this.i18nService.translate('Auth.Otp.Verified'),
-            user: {
+            data: {
               id: userInfo.id,
               email: userInfo.email,
-              roleName: userInfo.roleName,
-              isDeviceTrustedInSession: false, // Không tự động đánh dấu thiết bị là trusted
-              userProfile: {
-                username: userInfo.userProfile?.username || null,
-                avatar: userInfo.userProfile?.avatar || null
-              }
-            },
-            isTwoFactorEnabled: twoFactorVerified
+              role: userInfo.roleName,
+              isDeviceTrustedInSession: userInfo.isDeviceTrustedInSession,
+              userProfile: userInfo.userProfile
+            }
           }
         } catch (innerError) {
           this.logger.error(

@@ -1,4 +1,4 @@
-import { Injectable, Logger, ConflictException } from '@nestjs/common'
+import { Injectable, Logger, Inject } from '@nestjs/common'
 import { TokenService } from 'src/routes/auth/shared/token/token.service'
 import { I18nService } from 'nestjs-i18n'
 import { AuthError } from 'src/routes/auth/auth.error'
@@ -7,9 +7,10 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { SessionRepository, SessionPaginationOptions } from '../../repositories/session.repository'
 import { DeviceRepository } from '../../repositories/device.repository'
 import { ISessionService } from 'src/shared/types/auth.types'
-import { EmailService } from 'src/shared/services/email.service'
-import { SecurityAlertType } from 'src/shared/services/email.service'
-import { UserAuthRepository } from '../../repositories/user-auth.repository'
+import * as crypto from 'crypto'
+import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
+import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
+import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class SessionsService implements ISessionService {
@@ -21,8 +22,8 @@ export class SessionsService implements ISessionService {
     private readonly configService: ConfigService,
     private readonly sessionRepository: SessionRepository,
     private readonly deviceRepository: DeviceRepository,
-    private readonly userAuthRepository: UserAuthRepository,
-    private readonly emailService: EmailService
+    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
+    private readonly prismaService: PrismaService
   ) {}
 
   /**
@@ -137,47 +138,66 @@ export class SessionsService implements ISessionService {
   }
 
   /**
+   * Tạo device fingerprint từ các thông số thiết bị
+   */
+  private generateFingerprint(userAgent: string, ip: string): string {
+    // Sử dụng crypto để tạo ra hash từ thông tin thiết bị
+    const data = `${userAgent}|${ip}`
+    return crypto.createHash('md5').update(data).digest('hex')
+  }
+
+  /**
    * Đánh dấu thiết bị là đáng tin cậy
    */
-  async trustDevice(userId: number, deviceId: string): Promise<{ message: string }> {
-    // Kiểm tra thiết bị tồn tại và thuộc về user
-    const device = await this.deviceRepository.findById(Number(deviceId))
-    if (!device) {
-      throw AuthError.DeviceNotFound()
-    }
+  async trustDevice(userId: number, deviceId: string, ip?: string, userAgent?: string): Promise<{ message: string }> {
+    // Kiểm tra device có tồn tại và thuộc về user không
+    const device = await this.deviceRepository.findById(parseInt(deviceId))
 
-    if (device.userId !== userId) {
+    if (!device || device.userId !== userId) {
       throw AuthError.DeviceNotOwnedByUser()
     }
 
-    if (device.isTrusted) {
-      throw new ConflictException(await this.i18nService.translate('auth.Auth.Device.AlreadyTrusted'))
+    // Kiểm tra thiết bị đã được tin cậy chưa
+    if (device.isTrusted && device.trustExpiration && new Date() <= device.trustExpiration) {
+      return {
+        message: await this.i18nService.translate('Auth.Device.AlreadyTrusted')
+      }
     }
 
-    // Đánh dấu thiết bị là tin cậy
-    await this.deviceRepository.updateDeviceTrustStatus(device.id, true)
+    // Cập nhật fingerprint nếu có thông tin userAgent và IP
+    if (userAgent && ip) {
+      const fingerprint = this.generateFingerprint(userAgent, ip)
+      await this.deviceRepository.updateDeviceFingerprint(parseInt(deviceId), fingerprint)
+    }
 
-    // Gửi thông báo cho người dùng
-    const user = await this.userAuthRepository.findById(userId)
+    // Đánh dấu thiết bị là đáng tin cậy với thời hạn 30 ngày
+    await this.deviceRepository.updateDeviceTrustStatus(parseInt(deviceId), true)
+
+    // Tìm thông tin user để gửi email
+    const user = await this.prismaService.user.findUnique({
+      where: { id: userId },
+      select: { email: true, userProfile: true }
+    })
 
     if (user) {
-      // Gửi email thông báo thiết bị mới được tin cậy
+      // Gửi email thông báo về việc thiết bị được tin cậy
       try {
-        await this.emailService.sendSecurityAlertEmail(SecurityAlertType.DEVICE_TRUSTED, user.email, {
-          deviceName: device.name || 'Unknown device',
-          deviceUserAgent: device.userAgent,
-          deviceIp: device.ip,
+        await this.emailService.sendSecurityAlertEmail(SecurityAlertType.LOGIN_FROM_NEW_DEVICE, user.email, {
           userName: user.userProfile?.firstName || user.email,
-          trustExpiration: device.trustExpiration
+          ipAddress: ip || device.ip,
+          device: userAgent || device.userAgent,
+          location: device.lastKnownCity ? `${device.lastKnownCity}, ${device.lastKnownCountry}` : 'Unknown',
+          isTrusted: true,
+          deviceName: device.name || 'Unknown device'
         })
       } catch (error) {
-        this.logger.error(`Không thể gửi email thông báo thiết bị tin cậy: ${error.message}`)
-        // Tiếp tục xử lý dù không gửi được email
+        this.logger.error(`Failed to send device trust notification email: ${error.message}`, error.stack)
+        // Không break luồng nếu gửi email thất bại
       }
     }
 
     return {
-      message: await this.i18nService.translate('auth.Auth.Device.Trusted')
+      message: await this.i18nService.translate('Auth.Device.Trusted')
     }
   }
 
@@ -217,9 +237,57 @@ export class SessionsService implements ISessionService {
   /**
    * Đánh dấu thiết bị hiện tại là đáng tin cậy
    */
-  async trustCurrentDevice(userId: number, deviceId: number): Promise<{ message: string }> {
-    // Đánh dấu thiết bị là đáng tin cậy
+  async trustCurrentDevice(
+    userId: number,
+    deviceId: number,
+    ip?: string,
+    userAgent?: string
+  ): Promise<{ message: string }> {
+    // Lấy thông tin thiết bị
+    const device = await this.deviceRepository.findById(deviceId)
+
+    if (!device || device.userId !== userId) {
+      throw AuthError.DeviceNotOwnedByUser()
+    }
+
+    // Kiểm tra thiết bị đã được tin cậy chưa
+    if (device.isTrusted && device.trustExpiration && new Date() <= device.trustExpiration) {
+      return {
+        message: await this.i18nService.translate('Auth.Device.AlreadyTrusted')
+      }
+    }
+
+    // Cập nhật fingerprint nếu có thông tin
+    if (userAgent && ip) {
+      const fingerprint = this.generateFingerprint(userAgent, ip)
+      await this.deviceRepository.updateDeviceFingerprint(deviceId, fingerprint)
+    }
+
+    // Đánh dấu thiết bị là đáng tin cậy với thời hạn 30 ngày
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, true)
+
+    // Tìm thông tin user để gửi email
+    const user = await this.prismaService.user.findUnique({
+      where: { id: userId },
+      select: { email: true, userProfile: true }
+    })
+
+    if (user) {
+      // Gửi email thông báo về việc thiết bị được tin cậy
+      try {
+        await this.emailService.sendSecurityAlertEmail(SecurityAlertType.LOGIN_FROM_NEW_DEVICE, user.email, {
+          userName: user.userProfile?.firstName || user.email,
+          ipAddress: ip || device.ip,
+          device: userAgent || device.userAgent,
+          location: device.lastKnownCity ? `${device.lastKnownCity}, ${device.lastKnownCountry}` : 'Unknown',
+          isTrusted: true,
+          deviceName: device.name || 'Unknown device'
+        })
+      } catch (error) {
+        this.logger.error(`Failed to send device trust notification email: ${error.message}`, error.stack)
+        // Không break luồng nếu gửi email thất bại
+      }
+    }
 
     return {
       message: await this.i18nService.translate('Auth.Device.Trusted')

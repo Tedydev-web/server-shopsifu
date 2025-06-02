@@ -11,7 +11,8 @@ import {
   Req,
   HttpCode,
   HttpStatus,
-  Logger
+  Logger,
+  Ip
 } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { SessionsService } from './sessions.service'
@@ -19,6 +20,7 @@ import { AccessTokenGuard } from 'src/routes/auth/guards/access-token.guard'
 import { ActiveUser } from 'src/routes/auth/decorators/active-user.decorator'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { Request } from 'express'
+import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import {
   DeviceIdParamsDto,
   GetSessionsQueryDto,
@@ -116,9 +118,11 @@ export class SessionsController {
   async trustDevice(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Param() params: DeviceIdParamsDto,
-    @Body() _: TrustDeviceBodyDto
+    @Body() _: TrustDeviceBodyDto,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string
   ): Promise<TrustDeviceResponseDto> {
-    return this.sessionsService.trustDevice(activeUser.userId, params.deviceId)
+    return this.sessionsService.trustDevice(activeUser.userId, params.deviceId, ip, userAgent)
   }
 
   /**
@@ -143,9 +147,11 @@ export class SessionsController {
   @ZodSerializerDto(TrustDeviceResponseDto)
   async trustCurrentDevice(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Body() _: TrustDeviceBodyDto
+    @Body() _: TrustDeviceBodyDto,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string
   ): Promise<TrustDeviceResponseDto> {
-    return this.sessionsService.trustCurrentDevice(activeUser.userId, activeUser.deviceId)
+    return this.sessionsService.trustCurrentDevice(activeUser.userId, activeUser.deviceId, ip, userAgent)
   }
 
   /**

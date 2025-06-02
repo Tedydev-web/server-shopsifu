@@ -4,54 +4,6 @@
 
 Hệ thống hỗ trợ xác thực hai yếu tố (2FA) sử dụng chuẩn TOTP (Time-based One-Time Password) tương thích với các ứng dụng như Google Authenticator, Authy, hay Microsoft Authenticator.
 
-## Thiết bị tin cậy (Trusted Device)
-
-Hệ thống hỗ trợ cơ chế thiết bị tin cậy (trusted device) để nâng cao trải nghiệm người dùng:
-
-### Quy tắc xác thực dựa trên thiết bị tin cậy
-
-1. **Tài khoản đã bật 2FA:**
-
-   - Thiết bị tin cậy: Đăng nhập trực tiếp mà không cần xác thực TOTP
-   - Thiết bị chưa tin cậy: Yêu cầu xác thực TOTP hoặc recovery code
-
-2. **Tài khoản chưa bật 2FA:**
-   - Thiết bị tin cậy: Đăng nhập trực tiếp
-   - Thiết bị chưa tin cậy: Yêu cầu xác thực OTP qua email
-
-### Quản lý thiết bị tin cậy
-
-- **Thời hạn tin cậy:** Mặc định 90 ngày, có thể điều chỉnh trong cấu hình
-- **Tự động kiểm tra:** Hệ thống tự động kiểm tra thời hạn tin cậy mỗi khi đăng nhập
-- **Đánh dấu tin cậy:** Người dùng có thể đánh dấu thiết bị là tin cậy trong quá trình đăng nhập
-- **Hủy tin cậy:** Người dùng có thể quản lý và hủy tin cậy thiết bị qua trang quản lý thiết bị
-
-### Biện pháp bảo mật
-
-1. **Nhận diện thiết bị:** Hệ thống sử dụng thông tin userAgent và dấu vân tay thiết bị
-2. **Giám sát thiết bị:** Theo dõi địa chỉ IP, vị trí và thời gian hoạt động
-3. **Thông báo:** Gửi email thông báo khi có thiết bị mới được đánh dấu là tin cậy
-4. **Xác minh đặc biệt:** Luôn yêu cầu xác minh 2FA đối với các hoạt động nhạy cảm như thay đổi mật khẩu, email hoặc vô hiệu hóa 2FA
-
-### API Tin cậy thiết bị
-
-```http
-POST /api/v1/auth/devices/:deviceId/trust
-Authorization: Bearer {access_token}
-Content-Type: application/json
-
-{}
-```
-
-**Response:**
-
-```json
-{
-  "message": "Device has been marked as trusted",
-  "trustExpiration": "2025-09-02T13:35:46.350Z"
-}
-```
-
 ### 1. Thiết lập 2FA
 
 **Request:**

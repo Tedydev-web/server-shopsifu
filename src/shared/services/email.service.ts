@@ -18,8 +18,7 @@ export enum SecurityAlertType {
   ACCOUNT_LOCKED = 'ACCOUNT_LOCKED',
   TWO_FACTOR_ENABLED = 'TWO_FACTOR_ENABLED',
   TWO_FACTOR_DISABLED = 'TWO_FACTOR_DISABLED',
-  EMAIL_CHANGED = 'EMAIL_CHANGED',
-  DEVICE_TRUSTED = 'DEVICE_TRUSTED'
+  EMAIL_CHANGED = 'EMAIL_CHANGED'
 }
 
 // Payload cho email cảnh báo bảo mật
@@ -253,74 +252,6 @@ export class EmailService {
             value: metadata?.location || (await this.i18nService.translate('Email.Field.LocationUnknown', { lang }))
           }
         ]
-        break
-
-      case SecurityAlertType.EMAIL_CHANGED:
-        alertSubject = await this.i18nService.translate('Email.SecurityAlert.Subject.EmailChanged', { lang })
-        alertTitle = await this.i18nService.translate('Email.SecurityAlert.Title.EmailChanged', { lang })
-        mainMessage = await this.i18nService.translate('Email.SecurityAlert.MainMessage.EmailChanged', {
-          lang,
-          args: { newEmail: metadata?.newEmail || '(unknown)' }
-        })
-        actionDetails = [
-          {
-            label: await this.i18nService.translate('Email.common.time', { lang }),
-            value: new Date().toLocaleString('vi-VN')
-          },
-          {
-            label: await this.i18nService.translate('Email.common.ipAddress', { lang }),
-            value: metadata?.ipAddress || 'Unknown'
-          }
-        ]
-        secondaryMessage = await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.Email.NotYou', {
-          lang
-        })
-        actionButtonText = 'Báo cáo hoạt động đáng ngờ'
-        actionButtonUrl = `${this.frontendUrl}/account/security/report-suspicious-activity`
-        break
-
-      case SecurityAlertType.DEVICE_TRUSTED:
-        alertSubject = 'Thiết bị của bạn đã được đánh dấu là tin cậy'
-        alertTitle = 'Thiết bị tin cậy được thiết lập'
-        mainMessage = `Một thiết bị đã được đánh dấu là tin cậy trong tài khoản của bạn. Điều này cho phép thiết bị này đăng nhập mà không cần xác thực 2FA trong tương lai.`
-
-        // Format expiration date
-        let expirationDate = 'không xác định'
-        if (metadata?.trustExpiration) {
-          try {
-            expirationDate = new Date(metadata.trustExpiration).toLocaleString('vi-VN')
-          } catch (error) {
-            this.logger.warn(`Không thể format ngày hết hạn tin cậy: ${error.message}`)
-          }
-        }
-
-        actionDetails = [
-          {
-            label: 'Tên thiết bị',
-            value: metadata?.deviceName || 'Thiết bị không xác định'
-          },
-          {
-            label: 'Trình duyệt',
-            value: metadata?.deviceUserAgent || 'Không xác định'
-          },
-          {
-            label: 'Địa chỉ IP',
-            value: metadata?.deviceIp || 'Không xác định'
-          },
-          {
-            label: 'Thời gian thiết lập',
-            value: new Date().toLocaleString('vi-VN')
-          },
-          {
-            label: 'Hiệu lực đến',
-            value: expirationDate
-          }
-        ]
-
-        secondaryMessage =
-          'Nếu bạn không đánh dấu thiết bị này là tin cậy, hãy hủy tin cậy ngay lập tức và đổi mật khẩu của bạn.'
-        actionButtonText = 'Quản lý thiết bị'
-        actionButtonUrl = `${this.frontendUrl}/account/security/devices`
         break
 
       default:

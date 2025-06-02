@@ -1,10 +1,11 @@
 import { createZodDto } from 'nestjs-zod'
 import { TypeOfVerificationCode } from 'src/routes/auth/constants/auth.constants'
 import { z } from 'zod'
+import { UserAuthResponseSchema } from 'src/routes/auth/auth.model'
 
 // Send OTP DTOs
 export const SendOtpSchema = z.object({
-  email: z.string().email({ message: 'Email không hợp lệ' }),
+  email: z.string().email('Invalid email format'),
   type: z.nativeEnum(TypeOfVerificationCode, {
     errorMap: () => ({ message: 'Loại mã xác thực không hợp lệ' })
   })
@@ -16,12 +17,14 @@ export const SendOtpResponseSchema = z.object({
 
 // Verify OTP DTOs
 export const VerifyOtpSchema = z.object({
-  code: z.string().min(6, { message: 'Mã OTP phải có ít nhất 6 ký tự' }).max(6, { message: 'Mã OTP tối đa 6 ký tự' }),
+  code: z.string().min(6).max(6),
   rememberMe: z.boolean().optional().default(false)
 })
 
 export const VerifyOtpResponseSchema = z.object({
-  message: z.string()
+  message: z.string(),
+  statusCode: z.number().optional(),
+  data: UserAuthResponseSchema.optional()
 })
 
 export const VerifyOtpWithRedirectSchema = z.object({
@@ -36,16 +39,10 @@ export const UserProfileResponseSchema = z.object({
 })
 
 // Schema khi xác minh OTP thành công và hoàn tất đăng nhập
+// Sử dụng UserAuthResponseSchema để đảm bảo đồng bộ với login response
 export const VerifyOtpSuccessResponseSchema = z.object({
   message: z.string(),
-  user: z.object({
-    id: z.number(),
-    email: z.string().email(),
-    roleName: z.string(),
-    isDeviceTrustedInSession: z.boolean(),
-    userProfile: UserProfileResponseSchema.nullable()
-  }),
-  isTwoFactorEnabled: z.boolean().default(false)
+  user: UserAuthResponseSchema
 })
 
 // DTO classes

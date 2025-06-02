@@ -14,15 +14,11 @@ export type DeviceCreateData = {
 @Injectable()
 export class DeviceRepository {
   private readonly logger = new Logger(DeviceRepository.name)
-  private readonly deviceTrustDuration: number
 
   constructor(
     private readonly prismaService: PrismaService,
     private readonly configService: ConfigService
-  ) {
-    // Lấy thời gian tin cậy thiết bị từ config
-    this.deviceTrustDuration = configService.get<number>('DEVICE_TRUST_DURATION_MS', 90 * 24 * 60 * 60 * 1000) // Mặc định 90 ngày
-  }
+  ) {}
 
   /**
    * Tìm thiết bị theo ID
@@ -58,25 +54,15 @@ export class DeviceRepository {
       // Nếu đã tồn tại, cập nhật thông tin
       if (existingDevice) {
         this.logger.debug(`Updating existing device ID ${existingDevice.id} for user ${userId}`)
-        let updateData: Prisma.DeviceUpdateInput = {
-          lastActive: new Date(),
-          ip: ipAddress
-        }
-
-        // Kiểm tra thời hạn tin cậy
-        if (existingDevice.isTrusted && existingDevice.trustExpiration) {
-          if (new Date() > existingDevice.trustExpiration) {
-            this.logger.debug(`Trust expired for device ${existingDevice.id} of user ${userId}`)
-            updateData.isTrusted = false
-            updateData.trustExpiration = null
-          }
-        }
-
         return this.prismaService.device.update({
           where: {
             id: existingDevice.id
           },
-          data: updateData
+          data: {
+            lastActive: new Date(),
+            ip: ipAddress
+            // Không cập nhật trạng thái tin tưởng của thiết bị nếu đã tồn tại
+          }
         })
       }
 
@@ -89,8 +75,7 @@ export class DeviceRepository {
           ip: ipAddress,
           name: name || `Device ${new Date().toISOString().substring(0, 10)}`,
           isActive: true,
-          isTrusted: false, // Thiết bị mới mặc định không được tin tưởng
-          trustExpiration: null
+          isTrusted: false // Thiết bị mới mặc định không được tin tưởng
         }
       })
     } catch (error) {
@@ -103,44 +88,68 @@ export class DeviceRepository {
    * Cập nhật trạng thái tin cậy của thiết bị
    */
   async updateDeviceTrustStatus(deviceId: number, isTrusted: boolean): Promise<Device> {
-    const updateData: Prisma.DeviceUpdateInput = {
-      isTrusted,
-      trustExpiration: isTrusted ? new Date(Date.now() + this.deviceTrustDuration) : null
+    const data: any = { isTrusted }
+
+    // Nếu thiết bị được đánh dấu tin cậy, thiết lập thời gian hết hạn
+    if (isTrusted) {
+      // Tính thời gian hết hạn từ cấu hình
+      const expiryDays = this.configService.get<number>('DEVICE_TRUST_EXPIRATION_DAYS', 30)
+      const expiryDate = new Date()
+      expiryDate.setDate(expiryDate.getDate() + expiryDays)
+      data.trustExpiration = expiryDate
+    } else {
+      // Nếu bỏ tin cậy, xóa thời gian hết hạn
+      data.trustExpiration = null
     }
 
     return this.prismaService.device.update({
       where: { id: deviceId },
-      data: updateData
+      data
     })
   }
 
   /**
-   * Kiểm tra xem thiết bị có thực sự được tin cậy không (dựa vào thời hạn)
+   * Kiểm tra xem thiết bị có còn trong thời gian tin cậy hay không
    */
-  async isDeviceTrusted(deviceId: number): Promise<boolean> {
+  async isDeviceTrustValid(deviceId: number): Promise<boolean> {
     const device = await this.prismaService.device.findUnique({
       where: { id: deviceId }
     })
 
-    if (!device || !device.isTrusted) {
+    if (!device) {
       return false
     }
 
-    // Nếu không có thời hạn tin cậy (thiết lập trước khi thêm tính năng), coi như đã hết hạn
-    if (!device.trustExpiration) {
-      await this.updateDeviceTrustStatus(deviceId, false)
+    // Nếu thiết bị không được đánh dấu tin cậy, trả về false
+    if (!device.isTrusted) {
       return false
     }
 
-    // So sánh với thời gian hiện tại
-    const now = new Date()
-    if (now > device.trustExpiration) {
-      // Đã hết hạn, cập nhật lại trạng thái
-      await this.updateDeviceTrustStatus(deviceId, false)
-      return false
+    // Nếu không có thời gian hết hạn hoặc thời gian hết hạn còn hiệu lực
+    if (!device.trustExpiration || new Date() <= device.trustExpiration) {
+      return true
     }
 
-    return true
+    // Nếu đã hết hạn, cập nhật lại trạng thái tin cậy
+    await this.prismaService.device.update({
+      where: { id: deviceId },
+      data: {
+        isTrusted: false,
+        trustExpiration: null
+      }
+    })
+
+    return false
+  }
+
+  /**
+   * Cập nhật fingerprint của thiết bị
+   */
+  async updateDeviceFingerprint(deviceId: number, fingerprint: string): Promise<Device> {
+    return this.prismaService.device.update({
+      where: { id: deviceId },
+      data: { fingerprint }
+    })
   }
 
   /**
