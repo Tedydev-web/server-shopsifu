@@ -119,14 +119,14 @@ export class TwoFactorService {
       throw AuthError.EmailNotFound()
     }
 
-    // Kiểm tra 2FA đã được kích hoạt chưa
+    // Kiểm tra user đã bật 2FA chưa
     if (user.twoFactorEnabled) {
       this.logger.warn(`User ${userId} already has 2FA enabled`)
       throw AuthError.TOTPAlreadyEnabled()
     }
 
     try {
-      // Tạo secret cho TOTP
+      // Tạo secret và uri cho TOTP
       const { secret, otpauthUrl } = this.createTOTP(user.email)
       this.logger.debug(`TOTP secret generated for user ${userId}`)
 
@@ -134,7 +134,7 @@ export class TwoFactorService {
       const qrCodeUri = await QRCode.toDataURL(otpauthUrl)
       this.logger.debug(`QR code URI generated, length: ${qrCodeUri.length}`)
 
-      // Tạo JWT token (không gửi OTP email)
+      // Tạo SLT để lưu trữ thông tin giữa các bước
       const sltJwtPayload = {
         jti: `slt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
         sub: user.id,
@@ -143,7 +143,7 @@ export class TwoFactorService {
 
       const sltJwt = this.tokenService.signShortLivedToken(sltJwtPayload)
 
-      // Lưu context vào Redis dưới dạng hash
+      // Lưu context vào Redis
       const contextKey = `slt:context:${sltJwtPayload.jti}`
       const contextData = {
         userId: String(user.id),
@@ -158,8 +158,7 @@ export class TwoFactorService {
         metadata: JSON.stringify({
           secret,
           twoFactorMethod: TwoFactorMethodType.TOTP
-        }),
-        email: user.email
+        })
       }
 
       await this.otpService['redisService'].hset(contextKey, contextData as any)
@@ -168,6 +167,12 @@ export class TwoFactorService {
       // Set SLT cookie
       this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.SETUP_2FA)
       this.logger.debug(`SLT cookie set for user ${userId} for 2FA setup confirmation (no email OTP sent)`)
+
+      // Xóa các SLT token khác nếu có (ví dụ: từ flow trước đó)
+      const cookies = res.getHeader('Set-Cookie') as string[]
+      if (cookies && cookies.length > 1) {
+        this.logger.debug(`[setupTwoFactor] Multiple Set-Cookie headers found, ensuring only new SLT is set`)
+      }
 
       return {
         secret,

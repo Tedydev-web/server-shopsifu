@@ -210,12 +210,11 @@ export class SocialController {
   }
 
   /**
-   * Hoàn tất liên kết và đăng nhập
+   * Hoàn thành liên kết tài khoản Google và đăng nhập
    */
   @IsPublic()
   @Post('google/complete-link')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(CompleteLinkResponseDto)
   async completeLinkAndLogin(
     @Body() body: CompleteLinkDto,
     @Req() req: Request,
@@ -223,21 +222,40 @@ export class SocialController {
     @UserAgent() userAgent: string,
     @Ip() ip: string
   ): Promise<CompleteLinkResponseDto> {
-    return this.socialService.completeLinkAndLogin(req, res, userAgent, ip, body.password)
+    try {
+      const result = await this.socialService.completeLinkAndLogin(req, res, userAgent, ip, body.password)
+
+      // Xóa cookie pending link sau khi hoàn thành
+      this.cookieService.clearOAuthPendingLinkTokenCookie(res)
+
+      return result
+    } catch (error) {
+      this.logger.error(`Error completing Google account link: ${error.message}`, error.stack)
+      throw error
+    }
   }
 
   /**
-   * Hủy liên kết đang chờ
+   * Hủy liên kết đang chờ xử lý
    */
   @IsPublic()
   @Post('google/cancel-link')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(CancelLinkResponseDto)
   async cancelPendingLink(
     @Body() _: CancelLinkDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<CancelLinkResponseDto> {
-    return this.socialService.cancelPendingLink(req, res)
+    try {
+      const result = await this.socialService.cancelPendingLink(req, res)
+
+      // Xóa cookie pending link sau khi hủy
+      this.cookieService.clearOAuthPendingLinkTokenCookie(res)
+
+      return result
+    } catch (error) {
+      this.logger.error(`Error cancelling pending Google link: ${error.message}`, error.stack)
+      throw error
+    }
   }
 }

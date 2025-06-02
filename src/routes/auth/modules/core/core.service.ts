@@ -308,7 +308,22 @@ export class CoreService implements IUserAuthService {
     try {
       // Xóa cookie nếu có response
       if (res) {
+        // Xóa các cookie liên quan đến đăng nhập
         this.cookieService.clearTokenCookies(res)
+
+        // Xóa SLT cookie nếu có
+        this.cookieService.clearSltCookie(res)
+
+        // Xóa các cookie khác nếu có (trừ csrf)
+        const cookies = req?.cookies
+        if (cookies) {
+          Object.keys(cookies).forEach((cookieName) => {
+            if (cookieName !== '_csrf' && cookieName !== 'xsrf-token') {
+              res.clearCookie(cookieName, { path: '/' })
+              this.logger.debug(`[logout] Cookie ${cookieName} đã được xóa`)
+            }
+          })
+        }
       }
 
       // Đánh dấu session là đã vô hiệu hóa
