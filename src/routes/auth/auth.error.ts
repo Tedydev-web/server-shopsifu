@@ -1,369 +1,140 @@
-import { HttpStatus } from '@nestjs/common'
-import { ApiException as BaseApiException } from 'src/shared/exceptions/api.exception'
+import { HttpException, HttpStatus } from '@nestjs/common'
+import { ApiException } from 'src/shared/exceptions/api.exception'
 
-export class InvalidOTPException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNPROCESSABLE_ENTITY, 'ValidationError', 'error.Error.Auth.Otp.Invalid', [
-      { code: 'error.Error.Auth.Otp.Invalid', path: 'code' }
-    ])
+/**
+ * Lớp tiện ích để tạo các lỗi liên quan đến xác thực
+ * Thay thế cho các exceptions trong src/routes/auth/shared/exceptions/auth.exceptions.ts
+ */
+export class AuthError {
+  // Account Errors
+  static EmailNotFound(): HttpException {
+    return new HttpException('Email không tồn tại', HttpStatus.NOT_FOUND)
   }
-}
 
-export class OTPExpiredException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNPROCESSABLE_ENTITY, 'ValidationError', 'error.Error.Auth.Otp.Expired', [
-      { code: 'error.Error.Auth.Otp.Expired', path: 'code' }
-    ])
+  static EmailAlreadyExists(): ApiException {
+    return new ApiException(HttpStatus.CONFLICT, 'EmailAlreadyExists', 'Error.Email.AlreadyExists')
   }
-}
 
-export class FailedToSendOTPException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'error.Error.Auth.Otp.FailedToSend', [
-      { code: 'error.Error.Auth.Otp.FailedToSend', path: 'otp' }
-    ])
+  static UsernameAlreadyExists(username: string): HttpException {
+    return new HttpException(`Username ${username} đã tồn tại`, HttpStatus.CONFLICT)
   }
-}
 
-export class EmailAlreadyExistsException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.CONFLICT, 'ResourceConflict', 'error.Error.Auth.Email.AlreadyExists', [
-      { code: 'error.Error.Auth.Email.AlreadyExists', path: 'email' }
-    ])
+  static EmailAlreadyVerified(): HttpException {
+    return new HttpException('Email đã được xác minh', HttpStatus.BAD_REQUEST)
   }
-}
 
-export class EmailNotFoundException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.NOT_FOUND, 'ResourceNotFound', 'error.Error.Auth.Email.NotFound', [
-      { code: 'error.Error.Auth.Email.NotFound', path: 'email' }
-    ])
+  static InvalidPassword(): HttpException {
+    return new HttpException('Mật khẩu không đúng', HttpStatus.UNAUTHORIZED)
   }
-}
 
-export class InvalidPasswordException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNPROCESSABLE_ENTITY, 'ValidationError', 'error.Error.Auth.Password.Invalid', [
-      { code: 'error.Error.Auth.Password.Invalid', path: 'password' }
-    ])
+  static AccountLocked(): HttpException {
+    return new HttpException('Tài khoản đã bị khóa', HttpStatus.FORBIDDEN)
   }
-}
 
-export class PasswordsDoNotMatchException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNPROCESSABLE_ENTITY, 'ValidationError', 'error.Error.Auth.Password.Mismatch', [
-      { code: 'error.Error.Auth.Password.Mismatch', path: 'password' }
-    ])
+  static AccountNotActive(): HttpException {
+    return new HttpException('Tài khoản chưa được kích hoạt', HttpStatus.FORBIDDEN)
   }
-}
 
-export class MissingAccessTokenException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Token.MissingAccessToken', [
-      { code: 'error.Error.Auth.Token.MissingAccessToken', path: 'accessToken' }
-    ])
+  // Token Errors
+  static InvalidAccessToken(): HttpException {
+    return new HttpException('Access token không hợp lệ hoặc đã hết hạn', HttpStatus.UNAUTHORIZED)
   }
-}
 
-export class InvalidAccessTokenException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Token.InvalidAccessToken', [
-      { code: 'error.Error.Auth.Token.InvalidAccessToken', path: 'accessToken' }
-    ])
+  static InvalidRefreshToken(): HttpException {
+    return new HttpException('Refresh token không hợp lệ hoặc đã hết hạn', HttpStatus.UNAUTHORIZED)
   }
-}
 
-export class ExpiredAccessTokenException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Token.ExpiredAccessToken', [
-      { code: 'error.Error.Auth.Token.ExpiredAccessToken', path: 'accessToken' }
-    ])
+  static MissingRefreshToken(): HttpException {
+    return new HttpException('Refresh token bị thiếu', HttpStatus.BAD_REQUEST)
   }
-}
 
-export class MissingRefreshTokenException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Token.MissingRefreshToken', [
-      { code: 'error.Error.Auth.Token.MissingRefreshToken', path: 'refreshToken' }
-    ])
+  static MissingAccessToken(): HttpException {
+    return new HttpException('Access token bị thiếu', HttpStatus.UNAUTHORIZED)
   }
-}
 
-export class InvalidRefreshTokenException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Token.InvalidRefreshToken', [
-      { code: 'error.Error.Auth.Token.InvalidRefreshToken', path: 'refreshToken' }
-    ])
+  // OTP Errors
+  static InvalidOTP(): HttpException {
+    return new HttpException('Mã OTP không đúng', HttpStatus.BAD_REQUEST)
   }
-}
 
-export class ExpiredRefreshTokenException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Token.ExpiredRefreshToken', [
-      { code: 'error.Error.Auth.Token.ExpiredRefreshToken', path: 'refreshToken' }
-    ])
+  static OTPExpired(): HttpException {
+    return new HttpException('Mã OTP đã hết hạn', HttpStatus.BAD_REQUEST)
   }
-}
 
-export class RefreshTokenAlreadyUsedException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Token.RefreshTokenAlreadyUsed', [
-      { code: 'error.Error.Auth.Token.RefreshTokenAlreadyUsed', path: 'refreshToken' }
-    ])
+  static TooManyOTPAttempts(): HttpException {
+    return new HttpException('Quá nhiều lần nhập sai OTP', HttpStatus.TOO_MANY_REQUESTS)
   }
-}
 
-export class UnauthorizedAccessException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Access.Unauthorized')
+  static OTPSendingLimited(): HttpException {
+    return new HttpException('Đã gửi quá nhiều mã OTP, vui lòng thử lại sau', HttpStatus.TOO_MANY_REQUESTS)
   }
-}
 
-export class AccessDeniedException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.FORBIDDEN, 'Forbidden', 'error.Error.Auth.Access.Denied')
+  // SLT Errors
+  static SLTCookieMissing(): HttpException {
+    return new HttpException('SLT cookie bị thiếu', HttpStatus.BAD_REQUEST)
   }
-}
 
-export class InvalidLoginSessionException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Session.InvalidLogin')
+  static SLTExpired(): HttpException {
+    return new HttpException('SLT đã hết hạn', HttpStatus.UNAUTHORIZED)
   }
-}
 
-export class InvalidTOTPException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNPROCESSABLE_ENTITY, 'ValidationError', 'error.Error.Auth.2FA.InvalidTOTP', [
-      { code: 'error.Error.Auth.2FA.InvalidTOTP', path: 'totpCode' }
-    ])
+  static SLTInvalidPurpose(): HttpException {
+    return new HttpException('SLT không đúng mục đích', HttpStatus.BAD_REQUEST)
   }
-}
 
-export class TOTPAlreadyEnabledException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.CONFLICT, 'ResourceConflict', 'error.Error.Auth.2FA.AlreadyEnabled')
+  // 2FA Errors
+  static TOTPAlreadyEnabled(): HttpException {
+    return new HttpException('2FA đã được kích hoạt', HttpStatus.BAD_REQUEST)
   }
-}
 
-export class TOTPNotEnabledException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.PRECONDITION_FAILED, 'PreconditionFailed', 'error.Error.Auth.2FA.NotEnabled')
+  static TOTPNotEnabled(): HttpException {
+    return new HttpException('2FA chưa được kích hoạt', HttpStatus.BAD_REQUEST)
   }
-}
 
-export class InvalidRecoveryCodeException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNPROCESSABLE_ENTITY, 'ValidationError', 'error.Error.Auth.2FA.InvalidRecoveryCode', [
-      { code: 'error.Error.Auth.2FA.InvalidRecoveryCode', path: 'code' }
-    ])
+  static InvalidTOTP(): HttpException {
+    return new HttpException('Mã TOTP không đúng', HttpStatus.BAD_REQUEST)
   }
-}
 
-export class InvalidCodeFormatException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNPROCESSABLE_ENTITY, 'ValidationError', 'error.Error.Auth.2FA.InvalidCodeFormat', [
-      { code: 'error.Error.Auth.2FA.InvalidCodeFormat', path: 'code' }
-    ])
+  // Session Errors
+  static SessionNotFound(): HttpException {
+    return new HttpException('Phiên không tồn tại', HttpStatus.NOT_FOUND)
   }
-}
 
-export class InvalidPasswordReverificationTokenException extends BaseApiException {
-  constructor() {
-    super(
-      HttpStatus.UNAUTHORIZED,
-      'PasswordReverificationError',
-      'error.Error.Auth.PasswordReverification.InvalidToken',
-      [{ code: 'error.Error.Auth.PasswordReverification.InvalidToken', path: 'reverificationToken' }]
-    )
+  static DeviceNotFound(): HttpException {
+    return new HttpException('Thiết bị không tồn tại', HttpStatus.NOT_FOUND)
   }
-}
 
-export class InvalidOTPTokenException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.BAD_REQUEST, 'SltContextError', 'error.Error.Auth.SltContext.Invalid', [
-      { code: 'error.Error.Auth.SltContext.Invalid', path: 'sltCookie' }
-    ])
+  static DeviceNotOwnedByUser(): HttpException {
+    return new HttpException('Thiết bị không thuộc về người dùng', HttpStatus.FORBIDDEN)
   }
-}
 
-export class OTPTokenExpiredException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.BAD_REQUEST, 'SltContextError', 'error.Error.Auth.SltContext.Expired', [
-      { code: 'error.Error.Auth.SltContext.Expired', path: 'sltCookie' }
-    ])
+  // Permission Errors
+  static InsufficientPermissions(): HttpException {
+    return new HttpException('Không đủ quyền truy cập', HttpStatus.FORBIDDEN)
   }
-}
 
-export class InvalidDeviceException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Device.Invalid', [
-      { code: 'error.Error.Auth.Device.Invalid', path: 'device' }
-    ])
+  static RoleNotFound(): HttpException {
+    return new HttpException('Vai trò không tồn tại', HttpStatus.NOT_FOUND)
   }
-}
 
-export class DeviceMismatchException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.BAD_REQUEST, 'DeviceMismatch', 'error.Error.Auth.Device.Mismatch')
+  // Social Auth Errors
+  static SocialAuthFailed(): HttpException {
+    return new HttpException('Xác thực mạng xã hội thất bại', HttpStatus.UNAUTHORIZED)
   }
-}
 
-export class DeviceSetupFailedException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'error.Error.Auth.Device.SetupFailed', [
-      { code: 'error.Error.Auth.Device.SetupFailed', path: 'device' }
-    ])
+  static SocialEmailMismatch(): HttpException {
+    return new HttpException('Email từ mạng xã hội không khớp', HttpStatus.BAD_REQUEST)
   }
-}
 
-export class DeviceAssociationFailedException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'error.Error.Auth.Device.AssociationFailed', [
-      { code: 'error.Error.Auth.Device.AssociationFailed', path: 'device' }
-    ])
+  static SocialAccountAlreadyLinked(): HttpException {
+    return new HttpException('Tài khoản mạng xã hội đã được liên kết', HttpStatus.CONFLICT)
   }
-}
 
-export class TooManyOTPAttemptsException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.TOO_MANY_REQUESTS, 'TooManyOtpAttempts', 'error.Error.Auth.Otp.TooManyAttempts')
+  static InvalidSocialToken(): HttpException {
+    return new HttpException('Token mạng xã hội không hợp lệ', HttpStatus.BAD_REQUEST)
   }
-}
 
-export class GoogleUserInfoException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.INTERNAL_SERVER_ERROR, 'InternalServerError', 'error.Error.Auth.Google.UserInfoFailed', [
-      { code: 'error.Error.Auth.Google.UserInfoFailed', path: 'googleApi' }
-    ])
-  }
-}
-
-export class AbsoluteSessionLifetimeExceededException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Session.AbsoluteLifetimeExceeded')
-  }
-}
-
-export class DeviceMissingSessionCreationTimeException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Device.MissingSessionCreationTime')
-  }
-}
-
-export class RemoteSessionRevokedException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Session.RevokedRemotely')
-  }
-}
-
-export class MaxSessionsReachedException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.TOO_MANY_REQUESTS, 'LimitExceeded', 'error.Error.Auth.Session.MaxSessionsReached')
-  }
-}
-
-export class MaxDevicesReachedException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.TOO_MANY_REQUESTS, 'LimitExceeded', 'error.Error.Auth.Device.MaxDevicesReached')
-  }
-}
-
-export class SessionNotFoundException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Session.NotFound')
-  }
-}
-
-export class MismatchedSessionTokenException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Session.MismatchedToken', [
-      { code: 'error.Error.Auth.Session.MismatchedToken', path: 'session' }
-    ])
-  }
-}
-
-export class DeviceNotFoundForUserException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.NOT_FOUND, 'ResourceNotFound', 'error.Error.Auth.Device.NotFoundForUser', [
-      { code: 'error.Error.Auth.Device.NotFoundForUser', path: 'deviceId' }
-    ])
-  }
-}
-
-export class RefreshTokenNotFoundException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Token.RefreshTokenNotFound', [
-      { code: 'error.Error.Auth.Token.RefreshTokenNotFound', path: 'refreshToken' }
-    ])
-  }
-}
-
-export class RefreshTokenSessionInvalidException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Token.RefreshTokenSessionInvalid', [
-      { code: 'error.Error.Auth.Token.RefreshTokenSessionInvalid', path: 'refreshToken' }
-    ])
-  }
-}
-
-export class RefreshTokenDeviceMismatchException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'Unauthenticated', 'error.Error.Auth.Token.RefreshTokenDeviceMismatch', [
-      { code: 'error.Error.Auth.Token.RefreshTokenDeviceMismatch', path: 'refreshToken' }
-    ])
-  }
-}
-
-export class TooManyRequestsException extends BaseApiException {
-  constructor(messageKey: string = 'error.Error.Global.TooManyRequests') {
-    super(HttpStatus.TOO_MANY_REQUESTS, 'TooManyRequests', messageKey)
-  }
-}
-
-export class MaxLoginAttemptsReachedException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.TOO_MANY_REQUESTS, 'MaxLoginAttemptsReached', 'error.Error.Auth.Login.MaxAttemptsReached')
-  }
-}
-
-export class SltContextFinalizedException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.BAD_REQUEST, 'SltContextError', 'error.Error.Auth.SltContext.Finalized')
-  }
-}
-
-export class SltContextMaxAttemptsReachedException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.TOO_MANY_REQUESTS, 'SltContextError', 'error.Error.Auth.SltContext.MaxAttemptsReached')
-  }
-}
-
-export class MaxVerificationAttemptsExceededException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.TOO_MANY_REQUESTS, 'VerificationError', 'error.Error.Auth.Verification.MaxAttemptsExceeded')
-  }
-}
-
-export class SltCookieMissingException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.UNAUTHORIZED, 'SltCookieMissing', 'error.Error.Auth.Session.SltMissing', [
-      { code: 'error.Error.Auth.Session.SltMissing', path: 'slt_token' }
-    ])
-  }
-}
-
-export class SltContextInvalidPurposeException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.BAD_REQUEST, 'SltContextInvalidPurpose', 'error.Error.Auth.SltContext.InvalidPurpose', [
-      { code: 'error.Error.Auth.SltContext.InvalidPurpose', path: 'slt_token' }
-    ])
-  }
-}
-
-export class UsernameAlreadyExistsException extends BaseApiException {
-  constructor() {
-    super(HttpStatus.CONFLICT, 'UsernameAlreadyExists', 'error.Error.Auth.Username.AlreadyExists', [
-      { code: 'error.Error.Auth.Username.AlreadyExists', path: 'username' }
-    ])
+  static GoogleAccountAlreadyLinked(): HttpException {
+    return new HttpException('Tài khoản Google đã được liên kết với tài khoản khác', HttpStatus.CONFLICT)
   }
 }

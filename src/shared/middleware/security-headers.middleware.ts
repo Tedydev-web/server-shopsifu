@@ -1,29 +1,49 @@
-import { Injectable, NestMiddleware } from '@nestjs/common'
+import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
-import { SecurityHeaders } from '../constants/auth.constant'
-import envConfig from '../config'
+import { ConfigService } from '@nestjs/config'
+import { SecurityHeaders } from 'src/shared/constants/auth.constant'
 
 @Injectable()
 export class SecurityHeadersMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(SecurityHeadersMiddleware.name)
+
+  constructor(private readonly configService: ConfigService) {}
+
   use(req: Request, res: Response, next: NextFunction) {
-    res.setHeader(
-      SecurityHeaders.CONTENT_SECURITY_POLICY,
-      "default-src 'self'; script-src 'self'; object-src 'none'; img-src 'self' data:; style-src 'self';"
-    )
+    // XSS Protection
+    res.setHeader(SecurityHeaders.XSS_PROTECTION, '1; mode=block')
 
-    res.setHeader(SecurityHeaders.X_CONTENT_TYPE_OPTIONS, 'nosniff')
+    // Prevents MIME-sniffing
+    res.setHeader(SecurityHeaders.CONTENT_TYPE_OPTIONS, 'nosniff')
 
-    if (envConfig.NODE_ENV === 'production') {
-      res.setHeader(SecurityHeaders.STRICT_TRANSPORT_SECURITY, 'max-age=31536000; includeSubDomains; preload')
+    // Clickjacking protection
+    res.setHeader(SecurityHeaders.FRAME_OPTIONS, 'DENY')
+
+    // HSTS - Forces HTTPS
+    if (this.configService.get('app.secure', true)) {
+      res.setHeader(SecurityHeaders.HSTS, 'max-age=31536000; includeSubDomains; preload')
     }
 
-    res.setHeader(SecurityHeaders.X_FRAME_OPTIONS, 'DENY')
+    // Cache control
+    res.setHeader(SecurityHeaders.CACHE_CONTROL, 'no-store, no-cache, must-revalidate, proxy-revalidate')
 
-    res.setHeader(SecurityHeaders.X_XSS_PROTECTION, '1; mode=block')
+    // Referrer Policy
+    res.setHeader(SecurityHeaders.REFERRER_POLICY, 'no-referrer')
 
-    if (req.path.startsWith('/api/v1/auth/')) {
-      res.setHeader(SecurityHeaders.CACHE_CONTROL, 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    // Content Security Policy
+    if (this.configService.get('security.contentSecurityPolicy.enabled', true)) {
+      const cspValue = this.configService.get(
+        'security.contentSecurityPolicy.value',
+        "default-src 'self'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval';"
+      )
+      res.setHeader(SecurityHeaders.CONTENT_SECURITY_POLICY, cspValue)
     }
+
+    // Disallow embedding as Flash
+    res.setHeader(SecurityHeaders.PERMITTED_CROSS_DOMAIN_POLICIES, 'none')
+
+    // Certificate Transparency
+    res.setHeader(SecurityHeaders.EXPECT_CT, 'enforce, max-age=86400')
 
     next()
   }

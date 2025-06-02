@@ -48,7 +48,7 @@ export class CsrfMiddleware implements NestMiddleware {
       const csrfTokenVal = req.csrfToken?.()
       if (csrfTokenVal) {
         const csrfTokenCookieConfig = envConfig.cookie.csrfToken
-        res.setHeader(SecurityHeaders.CSRF_TOKEN_HEADER, csrfTokenVal)
+        res.setHeader(SecurityHeaders.XSRF_TOKEN_HEADER, csrfTokenVal)
         res.cookie(csrfTokenCookieConfig.name, csrfTokenVal, {
           httpOnly: csrfTokenCookieConfig.httpOnly,
           sameSite: csrfTokenCookieConfig.sameSite,
@@ -63,13 +63,22 @@ export class CsrfMiddleware implements NestMiddleware {
   }
 
   private csrfTokenExtractor(req: Request): string {
-    const tokenFromHeader = req.headers[SecurityHeaders.CSRF_TOKEN_HEADER.toLowerCase()]
+    const xsrfHeader = SecurityHeaders.XSRF_TOKEN_HEADER.toLowerCase()
+    const csrfHeader = 'x-csrf-token'
+
+    // Kiểm tra cả hai header
+    const tokenFromXsrfHeader = req.headers[xsrfHeader]
+    const tokenFromCsrfHeader = req.headers[csrfHeader]
     const tokenFromBodyOrQuery = req.body?._csrf || req.query?._csrf
 
-    let token = tokenFromHeader || tokenFromBodyOrQuery
+    let token = tokenFromXsrfHeader || tokenFromCsrfHeader || tokenFromBodyOrQuery
 
     if (Array.isArray(token)) {
       token = token[0]
+    }
+
+    if (token && typeof token === 'string') {
+      this.logger.debug(`CSRF token được trích xuất từ request: ${token.substring(0, 6)}...`)
     }
 
     return (token as string) || ''

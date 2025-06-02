@@ -18,8 +18,8 @@ async function bootstrap() {
     origin: envConfig.FRONTEND_URL,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'x-csrf-token'],
-    exposedHeaders: [SecurityHeaders.CSRF_TOKEN_HEADER]
+    allowedHeaders: ['Content-Type', 'Authorization', SecurityHeaders.XSRF_TOKEN_HEADER, 'x-csrf-token'],
+    exposedHeaders: [SecurityHeaders.XSRF_TOKEN_HEADER]
   })
 
   app.use(

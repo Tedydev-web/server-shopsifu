@@ -1,37 +1,54 @@
-export const REQUEST_USER_KEY = 'user'
+/**
+ * Auth Constants
+ */
 
-export const AuthType = {
-  Bearer: 'Bearer',
-  None: 'None',
-  APIKey: 'ApiKey'
-} as const
+export enum AuthType {
+  JWT = 'JWT',
+  ApiKey = 'ApiKey',
+  Basic = 'Basic',
+  Bearer = 'Bearer',
+  None = 'None'
+}
 
 export type AuthTypeType = (typeof AuthType)[keyof typeof AuthType]
 
-export const ConditionGuard = {
-  And: 'and',
-  Or: 'or'
-} as const
+export enum ConditionGuard {
+  PassThrough = 'PassThrough',
+  IsPublic = 'IsPublic',
+  RolesOnly = 'RolesOnly',
+  PermissionsOnly = 'PermissionsOnly',
+  RolesAndPermissions = 'RolesAndPermissions',
+  And = 'And'
+}
 
 export type ConditionGuardType = (typeof ConditionGuard)[keyof typeof ConditionGuard]
 
-export const CookieNames = {
-  ACCESS_TOKEN: 'access_token',
-  REFRESH_TOKEN: 'refresh_token',
-  CSRF_TOKEN: 'xsrf-token',
-  SLT_TOKEN: 'slt_token',
-  OAUTH_NONCE: 'oauth_nonce',
-  OAUTH_PENDING_LINK_TOKEN: 'oauth_pending_link_token'
-} as const
+export enum CookieNames {
+  ACCESS_TOKEN = 'access_token',
+  REFRESH_TOKEN = 'refresh_token',
+  SLT_TOKEN = 'slt_token',
+  XSRF_TOKEN = 'xsrf-token',
+  OAUTH_NONCE = 'oauth_nonce',
+  OAUTH_PENDING_LINK = 'oauth_pending_link',
+  NOTIFICATION_CONSENT = 'notification_consent'
+}
 
 export type CookieNamesType = (typeof CookieNames)[keyof typeof CookieNames]
 
-export const SecurityHeaders = {
-  CSRF_TOKEN_HEADER: 'x-csrf-token',
-  CONTENT_SECURITY_POLICY: 'Content-Security-Policy',
-  X_CONTENT_TYPE_OPTIONS: 'X-Content-Type-Options',
-  STRICT_TRANSPORT_SECURITY: 'Strict-Transport-Security',
-  X_FRAME_OPTIONS: 'X-Frame-Options',
-  X_XSS_PROTECTION: 'X-XSS-Protection',
-  CACHE_CONTROL: 'Cache-Control'
-} as const
+/**
+ * Security Headers
+ */
+export enum SecurityHeaders {
+  XSRF_TOKEN_HEADER = 'xsrf-token',
+  XSS_PROTECTION = 'X-XSS-Protection',
+  CONTENT_TYPE_OPTIONS = 'X-Content-Type-Options',
+  FRAME_OPTIONS = 'X-Frame-Options',
+  HSTS = 'Strict-Transport-Security',
+  CONTENT_SECURITY_POLICY = 'Content-Security-Policy',
+  CACHE_CONTROL = 'Cache-Control',
+  REFERRER_POLICY = 'Referrer-Policy',
+  PERMITTED_CROSS_DOMAIN_POLICIES = 'X-Permitted-Cross-Domain-Policies',
+  EXPECT_CT = 'Expect-CT'
+}
+
+export const REQUEST_USER_KEY = 'user'

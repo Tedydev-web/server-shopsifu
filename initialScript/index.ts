@@ -14,15 +14,15 @@ const main = async () => {
   const roles = await prisma.role.createMany({
     data: [
       {
-        name: RoleName.Admin,
+        name: RoleName.ADMIN,
         description: 'Admin role'
       },
       {
-        name: RoleName.Client,
+        name: RoleName.CLIENT,
         description: 'Client role'
       },
       {
-        name: RoleName.Seller,
+        name: RoleName.SELLER,
         description: 'Seller role'
       }
     ]
@@ -30,7 +30,7 @@ const main = async () => {
 
   const adminRole = await prisma.role.findFirstOrThrow({
     where: {
-      name: RoleName.Admin
+      name: RoleName.ADMIN
     }
   })
   const hashedPassword = await hashingService.hash(envConfig.ADMIN_PASSWORD)

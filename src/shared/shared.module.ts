@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common'
 import { PrismaService } from './services/prisma.service'
 import { HashingService } from './services/hashing.service'
+import { EmailService } from './services/email.service'
 import { APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
 import { AccessTokenGuard } from 'src/routes/auth/guards/access-token.guard'
 import { APIKeyGuard } from './guards/api-key.guard'
@@ -27,7 +28,7 @@ const SHARED_INTERCEPTORS = [
 // Concrete guard classes that can be provided and exported
 const CONCRETE_GUARDS = [AccessTokenGuard, APIKeyGuard, AuthenticationGuard]
 
-const SHARED_SERVICES = [PrismaService, HashingService]
+const SHARED_SERVICES = [PrismaService, HashingService, EmailService]
 
 @Global()
 @Module({

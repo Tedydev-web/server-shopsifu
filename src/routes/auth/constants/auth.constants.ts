@@ -1,3 +1,7 @@
+import { AuthType, ConditionGuard, CookieNames } from 'src/shared/constants/auth.constant'
+
+export { AuthType, ConditionGuard, CookieNames }
+
 export enum TypeOfVerificationCode {
   REGISTER = 'REGISTER',
   RESET_PASSWORD = 'RESET_PASSWORD',
@@ -12,24 +16,30 @@ export enum TypeOfVerificationCode {
 
 export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof typeof TypeOfVerificationCode]
 
-export const TwoFactorMethodType = {
-  TOTP: 'TOTP',
-  OTP: 'OTP',
-  RECOVERY: 'RECOVERY'
-} as const
+/**
+ * Enum phải giữ đồng bộ với schema.prisma
+ * enum TwoFactorMethodType {
+ *   TOTP
+ *   OTP
+ *   RECOVERY
+ * }
+ */
+export enum TwoFactorMethodType {
+  TOTP = 'TOTP',
+  OTP = 'OTP',
+  RECOVERY = 'RECOVERY'
+}
 
 export type TwoFactorMethodTypeType = (typeof TwoFactorMethodType)[keyof typeof TwoFactorMethodType]
 
-export const TokenType = {
-  OTP: 'OTP',
-  SETUP_2FA_TOKEN: 'SETUP_2FA_TOKEN'
-} as const
+export enum TokenType {
+  ACCESS = 'ACCESS',
+  REFRESH = 'REFRESH',
+  SLT = 'SLT'
+}
 
 export type TokenTypeType = (typeof TokenType)[keyof typeof TokenType]
 
-export const VERIFICATION_JWT_EXPIRES_IN = '5m'
-export const SLT_JWT_EXPIRES_IN = '5m'
-
-export const SESSION_ID_LENGTH = 24
-
-export const MAX_SLT_ATTEMPTS = 5
+export const OTP_EXPIRATION_TIME = 10 * 60 * 1000 // 10 phút
+export const MAX_OTP_ATTEMPTS = 5
+export const OTP_LENGTH = 6 // Độ dài mã OTP

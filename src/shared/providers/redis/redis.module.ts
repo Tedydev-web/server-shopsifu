@@ -1,58 +1,45 @@
-import { Module, Global, Provider, Logger } from '@nestjs/common'
+import { DynamicModule, Global, Logger, Module, Provider } from '@nestjs/common'
 import { CacheModule } from '@nestjs/cache-manager'
 import { redisStore } from 'cache-manager-redis-yet'
 import Redis, { RedisOptions } from 'ioredis'
 import envConfig from 'src/shared/config'
-import { IORedisKey } from './redis.constants'
+import { REDIS_CLIENT, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { RedisService } from './redis.service'
+import { ConfigService } from '@nestjs/config'
 
-const redisClientFactory: Provider = {
-  provide: IORedisKey,
-  useFactory: () => {
-    const logger = new Logger('RedisProvider')
-    const redisOptions: RedisOptions = {
-      host: envConfig.REDIS_HOST,
-      port: envConfig.REDIS_PORT,
-      password: envConfig.REDIS_PASSWORD || undefined, // Đảm bảo undefined nếu password rỗng
-      db: envConfig.REDIS_DB,
-      keyPrefix: envConfig.REDIS_KEY_PREFIX,
-      lazyConnect: true,
-      maxRetriesPerRequest: 3, // Giảm số lần thử lại để fail-fast hơn một chút
-      connectTimeout: 10000, // 10 giây timeout
-      retryStrategy: (times) => {
-        const delay = Math.min(times * 100, 2000) // Tăng dần delay, max 2s
-        logger.warn(`Redis connection failed. Retrying in ${delay}ms... (Attempt ${times})`)
-        return delay
-      },
-      reconnectOnError: (err) => {
-        logger.error(`Redis reconnectOnError: ${err.message}`)
-        // Chỉ thử lại kết nối cho một số lỗi nhất định, ví dụ ECONNREFUSED
-        const targetError = 'ECONNREFUSED'
-        return err.message.includes(targetError)
-      },
-      enableOfflineQueue: true // Cho phép queue command khi offline
-    }
-    const client = new Redis(redisOptions)
+export const IORedisKey = REDIS_CLIENT
 
-    client.on('connect', () => {
-      logger.log('Successfully connected to Redis.')
-    })
-
-    client.on('error', (error) => {
-      logger.error('Redis client error:', error.message, error.stack)
-    })
-
-    client.on('reconnecting', () => {
-      logger.warn('Redis client is reconnecting...')
-    })
-
-    client.on('end', () => {
-      logger.warn('Redis client connection ended.')
-    })
-
-    return client
-  }
+export interface RedisModuleOptions {
+  connectionOptions: RedisOptions
+  onClientReady?: (client: Redis) => void
 }
+
+export interface RedisAsyncModuleOptions {
+  useFactory: (...args: any[]) => Promise<RedisModuleOptions> | RedisModuleOptions
+  inject?: any[]
+}
+
+// Redis client factory
+const createRedisClient = (): Provider => ({
+  provide: REDIS_CLIENT,
+  useFactory: (configService: ConfigService) => {
+    // Tạo và trả về Redis client instance
+    const redisClient = new Redis({
+      host: configService.get('REDIS_HOST', 'localhost'),
+      port: configService.get('REDIS_PORT', 6379),
+      password: configService.get('REDIS_PASSWORD', ''),
+      db: configService.get('REDIS_DB', 0)
+    })
+    return redisClient
+  },
+  inject: [ConfigService]
+})
+
+// Redis service factory
+const createRedisService = (): Provider => ({
+  provide: REDIS_SERVICE,
+  useClass: RedisService
+})
 
 @Global()
 @Module({
@@ -87,7 +74,37 @@ const redisClientFactory: Provider = {
       }
     })
   ],
-  providers: [redisClientFactory, RedisService],
-  exports: [CacheModule, IORedisKey, RedisService]
+  providers: [createRedisClient(), createRedisService(), RedisService],
+  exports: [REDIS_CLIENT, REDIS_SERVICE]
 })
-export class RedisProviderModule {}
+export class RedisProviderModule {
+  static register(options: RedisModuleOptions): DynamicModule {
+    return {
+      module: RedisProviderModule,
+      providers: [
+        createRedisClient(),
+        {
+          provide: 'REDIS_MODULE_OPTIONS',
+          useValue: options
+        }
+      ],
+      exports: [REDIS_CLIENT]
+    }
+  }
+
+  static registerAsync(options: RedisAsyncModuleOptions): DynamicModule {
+    return {
+      module: RedisProviderModule,
+      imports: options.inject ? [] : [],
+      providers: [
+        createRedisClient(),
+        {
+          provide: 'REDIS_MODULE_OPTIONS',
+          useFactory: options.useFactory,
+          inject: options.inject || []
+        }
+      ],
+      exports: [REDIS_CLIENT]
+    }
+  }
+}

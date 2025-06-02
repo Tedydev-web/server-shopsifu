@@ -1,81 +1,39 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
-import { AccessTokenPayload } from '../types/jwt.type'
 import { REQUEST_USER_KEY } from '../constants/auth.constant'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class LoggerMiddleware implements NestMiddleware {
-  private readonly builtInLogger = new Logger('HTTP')
+  private logger = new Logger('HTTP')
 
-  use(request: Request, response: Response, next: NextFunction): void {
-    const { ip, method, originalUrl, headers: originalHeaders } = request
-    const userAgent = originalHeaders['user-agent'] || ''
+  use(req: Request, res: Response, next: NextFunction) {
+    const { method, originalUrl, ip } = req
+    const userAgent = req.get('user-agent') || ''
+
     const startTime = Date.now()
 
-    response.on('finish', () => {
-      const { statusCode } = response
-      const contentLength = response.get('content-length')
-      const elapsedTime = Date.now() - startTime
+    res.on('finish', () => {
+      const { statusCode } = res
+      const responseTime = Date.now() - startTime
+      const contentLength = res.get('content-length')
+      const user = req[REQUEST_USER_KEY] as AccessTokenPayload | undefined
+      const userId = user?.userId || 'anonymous'
 
-      const message = `${method} ${originalUrl} ${statusCode} ${contentLength || '-'} - ${elapsedTime}ms - ${userAgent} ${ip}`
+      this.logger.log(
+        `${method} ${originalUrl} ${statusCode} ${responseTime}ms ${contentLength || '-'} - ${userAgent} ${ip} - User: ${userId}`
+      )
 
-      if (statusCode >= 500) {
-        this.builtInLogger.error(message)
-      } else if (statusCode >= 400) {
-        this.builtInLogger.warn(message)
-      } else {
-        this.builtInLogger.log(message)
+      // Log slow requests
+      if (responseTime > 1000) {
+        this.logger.warn(`Slow request: ${method} ${originalUrl} - ${responseTime}ms`)
       }
 
-      void (() => {
-        const activeUser = request[REQUEST_USER_KEY] as AccessTokenPayload | undefined
-        let userId: number | undefined
-        let userEmail: string | undefined
-
-        if (activeUser) {
-          userId = activeUser.userId
-        }
-
-        const allowedHeaderKeys = [
-          'user-agent',
-          'referer',
-          'content-type',
-          'x-forwarded-for',
-          'accept-language',
-          'x-request-id'
-        ]
-        const sensitiveHeaderKeysPattern = [
-          /^authorization$/i,
-          /^cookie$/i,
-          /^x-api-key$/i,
-          /^x-csrf-token$/i,
-          /secret/i,
-          /token/i,
-          /password/i
-        ]
-
-        const filteredHeaders: Record<string, string | string[] | undefined> = {}
-        for (const key in originalHeaders) {
-          const lowerKey = key.toLowerCase()
-          let isSensitive = false
-          for (const pattern of sensitiveHeaderKeysPattern) {
-            if (typeof pattern === 'string' && lowerKey === pattern) {
-              isSensitive = true
-              break
-            }
-            if (pattern instanceof RegExp && pattern.test(lowerKey)) {
-              isSensitive = true
-              break
-            }
-          }
-
-          if (isSensitive) {
-            filteredHeaders[key] = '[REDACTED_SENSITIVE_HEADER]'
-          } else if (allowedHeaderKeys.includes(lowerKey)) {
-            filteredHeaders[key] = originalHeaders[key]
-          }
-        }
-      })()
+      // Log errors
+      if (statusCode >= 400) {
+        const level = statusCode >= 500 ? 'error' : 'warn'
+        this.logger[level](`Request error: ${method} ${originalUrl} ${statusCode}`)
+      }
     })
 
     next()

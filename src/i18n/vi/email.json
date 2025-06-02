@@ -53,5 +53,105 @@
   "Email.OTPSubject.ResetPassword": "Shopsifu - Đặt lại mật khẩu của bạn (Mã OTP)",
   "Email.OTPSubject.LoginUntrustedDevice": "Shopsifu - Xác minh đăng nhập từ thiết bị mới",
   "Email.OTPSubject.Default": "Shopsifu - Mã OTP của bạn",
-  "Email.Subject.VerifyNewEmail": "Shopsifu - Xác thực địa chỉ email mới của bạn"
+  "Email.Subject.VerifyNewEmail": "Shopsifu - Xác thực địa chỉ email mới của bạn",
+
+  "common": {
+    "time": "Thời gian",
+    "ipAddress": "Địa chỉ IP",
+    "device": "Thiết bị",
+    "location": "Vị trí",
+    "footer": {
+      "copyright": "© {year} Bản quyền thuộc về Shopsifu",
+      "contactUs": "Liên hệ với chúng tôi"
+    }
+  },
+  "otp": {
+    "default": {
+      "title": "Mã xác minh Shopsifu"
+    },
+    "register": {
+      "title": "Xác minh đăng ký tài khoản Shopsifu",
+      "headline": "Xác minh địa chỉ email của bạn",
+      "content": "Cảm ơn bạn đã bắt đầu quá trình tạo tài khoản mới trên Shopsifu. Chúng tôi muốn đảm bảo rằng đó thực sự là bạn. Vui lòng nhập mã xác minh sau khi được yêu cầu. Nếu bạn không muốn tạo tài khoản, bạn có thể bỏ qua tin nhắn này."
+    },
+    "resetPassword": {
+      "title": "Đặt lại mật khẩu Shopsifu",
+      "headline": "Yêu cầu đặt lại mật khẩu",
+      "content": "Chúng tôi đã nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn. Vui lòng nhập mã xác minh này để tiếp tục quá trình đặt lại mật khẩu. Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này."
+    },
+    "login": {
+      "title": "Mã đăng nhập Shopsifu",
+      "headline": "Đăng nhập vào tài khoản của bạn",
+      "content": "Vui lòng sử dụng mã xác minh này để đăng nhập vào tài khoản Shopsifu của bạn."
+    },
+    "login2fa": {
+      "title": "Mã xác thực hai yếu tố Shopsifu",
+      "headline": "Xác minh danh tính của bạn",
+      "content": "Vui lòng sử dụng mã xác minh này để hoàn tất quá trình đăng nhập với xác thực hai yếu tố."
+    },
+    "disable2fa": {
+      "title": "Tắt xác thực hai yếu tố Shopsifu",
+      "headline": "Xác nhận tắt xác thực hai yếu tố",
+      "content": "Chúng tôi đã nhận được yêu cầu tắt xác thực hai yếu tố trên tài khoản của bạn. Vui lòng sử dụng mã xác minh này để xác nhận thay đổi."
+    },
+    "setup2fa": {
+      "title": "Thiết lập xác thực hai yếu tố Shopsifu",
+      "headline": "Thiết lập bảo mật bổ sung",
+      "content": "Vui lòng sử dụng mã xác minh này để hoàn tất quá trình thiết lập xác thực hai yếu tố cho tài khoản của bạn."
+    },
+    "untrustedDevice": {
+      "title": "Xác minh thiết bị mới Shopsifu",
+      "headline": "Xác minh thiết bị mới",
+      "content": "Chúng tôi phát hiện một nỗ lực đăng nhập từ một thiết bị mới. Vui lòng sử dụng mã xác minh này để xác nhận rằng đó thực sự là bạn."
+    },
+    "reverifySession": {
+      "title": "Xác minh lại phiên Shopsifu",
+      "headline": "Xác minh lại phiên đăng nhập",
+      "content": "Vì lý do bảo mật, chúng tôi cần bạn xác minh lại phiên đăng nhập hiện tại. Vui lòng sử dụng mã xác minh này để tiếp tục."
+    },
+    "verifyNewEmail": {
+      "title": "Xác minh email mới Shopsifu",
+      "headline": "Xác minh địa chỉ email mới",
+      "content": "Chúng tôi đã nhận được yêu cầu thay đổi địa chỉ email trên tài khoản của bạn. Vui lòng sử dụng mã xác minh này để xác nhận địa chỉ email mới."
+    },
+    "codeLabel": "Mã xác minh",
+    "validity": "Mã này có hiệu lực trong 5 phút"
+  },
+  "security": {
+    "generic": {
+      "subject": "Cảnh báo bảo mật Shopsifu",
+      "title": "Cảnh báo bảo mật",
+      "message": "Chúng tôi phát hiện một sự kiện bảo mật liên quan đến tài khoản của bạn: {alertType}",
+      "secondaryMessage": "Nếu bạn không thực hiện hành động này, vui lòng liên hệ ngay với bộ phận hỗ trợ của chúng tôi."
+    },
+    "passwordChanged": {
+      "subject": "Mật khẩu Shopsifu đã được thay đổi",
+      "title": "Mật khẩu của bạn đã được thay đổi",
+      "message": "Mật khẩu cho tài khoản Shopsifu của bạn vừa được thay đổi thành công. Nếu bạn thực hiện thay đổi này, bạn có thể bỏ qua email này.",
+      "buttonText": "Xem hoạt động tài khoản",
+      "secondaryMessage": "Nếu bạn không thực hiện thay đổi này, vui lòng đặt lại mật khẩu của bạn ngay lập tức và liên hệ với bộ phận hỗ trợ."
+    },
+    "newDevice": {
+      "subject": "Đăng nhập từ thiết bị mới - Shopsifu",
+      "title": "Đăng nhập từ thiết bị mới",
+      "message": "Chúng tôi phát hiện một đăng nhập thành công vào tài khoản Shopsifu của bạn từ một thiết bị mới.",
+      "buttonText": "Xem phiên đăng nhập",
+      "secondaryMessage": "Nếu bạn không nhận ra hoạt động này, vui lòng thay đổi mật khẩu của bạn ngay lập tức và liên hệ với bộ phận hỗ trợ."
+    },
+    "twoFactorEnabled": {
+      "subject": "Xác thực hai yếu tố đã được bật - Shopsifu",
+      "title": "Xác thực hai yếu tố đã được bật",
+      "message": "Xác thực hai yếu tố đã được bật thành công cho tài khoản Shopsifu của bạn. Tài khoản của bạn giờ đây được bảo vệ tốt hơn.",
+      "buttonText": "Xem cài đặt bảo mật",
+      "secondaryMessage": "Nếu bạn không thực hiện thay đổi này, vui lòng liên hệ ngay với bộ phận hỗ trợ."
+    },
+    "twoFactorDisabled": {
+      "subject": "Xác thực hai yếu tố đã bị tắt - Shopsifu",
+      "title": "Xác thực hai yếu tố đã bị tắt",
+      "message": "Xác thực hai yếu tố đã bị tắt cho tài khoản Shopsifu của bạn. Tài khoản của bạn hiện không được bảo vệ bằng lớp bảo mật bổ sung này.",
+      "buttonText": "Xem cài đặt bảo mật",
+      "secondaryMessage": "Nếu bạn không thực hiện thay đổi này, vui lòng liên hệ ngay với bộ phận hỗ trợ."
+    }
+  },
+  "disclaimer": "Shopsifu sẽ không bao giờ gửi email yêu cầu bạn tiết lộ hoặc xác minh mật khẩu, số thẻ tín dụng hoặc số tài khoản ngân hàng của bạn."
 }

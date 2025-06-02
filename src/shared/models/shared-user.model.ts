@@ -2,7 +2,7 @@ import { TwoFactorMethodType } from '../../routes/auth/constants/auth.constants'
 import { UserStatus as PrismaUserStatus } from '@prisma/client'
 import { z } from 'zod'
 import { UserProfileSchema } from './user-profile.model'
-import { RoleSchema } from 'src/routes/auth/auth.model'
+import { RoleSchema } from 'src/shared/models/role.model'
 
 export const UserSchema = z.object({
   id: z.number().int(),

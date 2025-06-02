@@ -22,8 +22,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:csrf": "curl -v -X GET http://localhost:3000/api/v1/ -c cookies.txt && echo 'Token:' $(grep xsrf-token cookies.txt | awk '{print $7}') && curl -v -X POST http://localhost:3000/api/v1/auth/login -H \"Content-Type: application/json\" -H \"X-CSRF-Token: $(grep xsrf-token cookies.txt | awk '{print $7}')\" -b cookies.txt -d '{\"email\": \"hieudat2310.bh@gmail.com\", \"password\": \"Shopsifu2025@@\"}'"
+    "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",
@@ -61,11 +60,13 @@
     "otpauth": "^9.4.0",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
+    "qrcode": "^1.5.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "reflect-metadata": "^0.2.2",
     "resend": "^4.5.1",
     "rxjs": "^7.8.2",
+    "speakeasy": "^2.0.0",
     "ua-parser-js": "^2.0.3",
     "uuid": "^11.1.0",
     "winston": "^3.17.0",

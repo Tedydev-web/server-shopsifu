@@ -5,6 +5,181 @@
 import { Path } from "nestjs-i18n";
 /* prettier-ignore */
 export type I18nTranslations = {
+    "auth": {
+        "Auth": {
+            "Register": {
+                "Success": string;
+                "EmailSent": string;
+            };
+            "Login": {
+                "Success": string;
+                "2FARequired": string;
+                "DeviceVerificationRequired": string;
+                "DeviceVerificationOtpRequired": string;
+            };
+            "Logout": {
+                "Success": string;
+                "Processed": string;
+            };
+            "Password": {
+                "ResetEmailSent": string;
+                "ResetSuccess": string;
+                "ChangeSuccess": string;
+            };
+            "2FA": {
+                "Enabled": string;
+                "Disabled": string;
+                "RecoveryCodesRegenerated": string;
+                "Verify": {
+                    "Success": string;
+                    "AskToTrustDevice": string;
+                };
+                "Setup": {
+                    "Success": string;
+                };
+                "Confirm": {
+                    "Success": string;
+                };
+            };
+            "Otp": {
+                "SentSuccessfully": string;
+                "Verified": string;
+                "CooldownActive": string;
+            };
+            "Token": {
+                "Refreshed": string;
+            };
+            "Session": {
+                "Revoked": string;
+                "AllRevoked": string;
+                "Expired": string;
+                "RevokedSuccessfully": string;
+                "ReverifiedSuccessfully": string;
+                "SendReverificationOtpSuccess": string;
+                "RevokedSuccessfullyCount": string;
+                "NoSessionsToRevoke": string;
+            };
+            "Device": {
+                "Trusted": string;
+                "Untrusted": string;
+                "NameUpdated": string;
+                "NotFound": string;
+                "NotOwnedByUser": string;
+                "AlreadyTrusted": string;
+                "AlreadyUntrusted": string;
+                "NameUpdatedSuccessfully": string;
+                "LogoutSpecificSuccess": string;
+            };
+            "Google": {
+                "LoginSuccess": string;
+                "LinkSuccess": string;
+                "LinkCancelled": string;
+                "AccountNeedsLinking": string;
+                "AccountAlreadyLinked": string;
+                "SuccessProceedToSecurityChecks": string;
+                "ConfirmLinkDetailsMessage": string;
+                "Link": {
+                    "CancelledSuccessfully": string;
+                    "NoPendingStateToCancel": string;
+                };
+            };
+            "Error": {
+                "Email": {
+                    "AlreadyExists": string;
+                    "NotFound": string;
+                };
+                "Password": {
+                    "Invalid": string;
+                    "Mismatch": string;
+                };
+                "Username": {
+                    "AlreadyExists": string;
+                };
+                "Otp": {
+                    "Invalid": string;
+                    "Expired": string;
+                    "FailedToSend": string;
+                    "TooManyAttempts": string;
+                };
+                "Token": {
+                    "MissingAccessToken": string;
+                    "InvalidAccessToken": string;
+                    "ExpiredAccessToken": string;
+                    "MissingRefreshToken": string;
+                    "InvalidRefreshToken": string;
+                    "ExpiredRefreshToken": string;
+                    "RefreshTokenAlreadyUsed": string;
+                    "RefreshFailed": string;
+                };
+                "Session": {
+                    "SltMissing": string;
+                    "NotFound": string;
+                    "MaxSessionsReached": string;
+                    "InvalidLogin": string;
+                    "AbsoluteLifetimeExceeded": string;
+                    "CannotRevokeCurrent": string;
+                    "MissingSessionIdInToken": string;
+                    "InvalidRevokeOperation": string;
+                    "RevokedRemotely": string;
+                };
+                "SLT": {
+                    "CookieMissing": string;
+                    "InvalidPurpose": string;
+                    "Expired": string;
+                };
+                "2FA": {
+                    "InvalidTOTP": string;
+                    "AlreadyEnabled": string;
+                    "NotEnabled": string;
+                    "InvalidRecoveryCode": string;
+                    "InvalidCodeFormat": string;
+                };
+                "Social": {
+                    "InvalidToken": string;
+                };
+                "Register": {
+                    "UsernameTaken": string;
+                    "PhoneNumberTaken": string;
+                };
+                "OtpToken": {
+                    "Invalid": string;
+                    "Expired": string;
+                };
+                "Access": {
+                    "Unauthorized": string;
+                    "Denied": string;
+                };
+                "Device": {
+                    "Invalid": string;
+                    "Mismatch": string;
+                    "SetupFailed": string;
+                    "AssociationFailed": string;
+                    "MissingSessionCreationTime": string;
+                    "NotFoundForUser": string;
+                    "MaxDevicesReached": string;
+                };
+                "Google": {
+                    "UserInfoFailed": string;
+                    "CallbackErrorGeneric": string;
+                    "MissingCode": string;
+                    "StateMismatch": string;
+                    "InvalidPayload": string;
+                    "AccountConflict": string;
+                    "AlreadyLinkedToOtherGoogle": string;
+                    "GoogleIdConflict": string;
+                    "LinkAccountFailed": string;
+                    "Link": {
+                        "NoPendingState": string;
+                        "InvalidPendingState": string;
+                        "CompleteFailed": string;
+                    };
+                };
+            };
+            "RememberMe": {
+                "Set": string;
+            };
+        };
+    };
     "email": {
         "Email.SecurityAlert.Subject.Default": string;
         "Email.SecurityAlert.Subject.NewDeviceLogin": string;
@@ -54,68 +229,108 @@ export type I18nTranslations = {
         "Email.OTPSubject.ResetPassword": string;
         "Email.OTPSubject.LoginUntrustedDevice": string;
         "Email.OTPSubject.Default": string;
+        "common": {
+            "time": string;
+            "ipAddress": string;
+            "device": string;
+            "location": string;
+            "footer": {
+                "copyright": string;
+                "contactUs": string;
+            };
+        };
+        "otp": {
+            "default": {
+                "title": string;
+            };
+            "register": {
+                "title": string;
+                "headline": string;
+                "content": string;
+            };
+            "resetPassword": {
+                "title": string;
+                "headline": string;
+                "content": string;
+            };
+            "login": {
+                "title": string;
+                "headline": string;
+                "content": string;
+            };
+            "login2fa": {
+                "title": string;
+                "headline": string;
+                "content": string;
+            };
+            "disable2fa": {
+                "title": string;
+                "headline": string;
+                "content": string;
+            };
+            "setup2fa": {
+                "title": string;
+                "headline": string;
+                "content": string;
+            };
+            "untrustedDevice": {
+                "title": string;
+                "headline": string;
+                "content": string;
+            };
+            "reverifySession": {
+                "title": string;
+                "headline": string;
+                "content": string;
+            };
+            "verifyNewEmail": {
+                "title": string;
+                "headline": string;
+                "content": string;
+            };
+            "codeLabel": string;
+            "validity": string;
+        };
+        "security": {
+            "generic": {
+                "subject": string;
+                "title": string;
+                "message": string;
+                "secondaryMessage": string;
+            };
+            "passwordChanged": {
+                "subject": string;
+                "title": string;
+                "message": string;
+                "buttonText": string;
+                "secondaryMessage": string;
+            };
+            "newDevice": {
+                "subject": string;
+                "title": string;
+                "message": string;
+                "buttonText": string;
+                "secondaryMessage": string;
+            };
+            "twoFactorEnabled": {
+                "subject": string;
+                "title": string;
+                "message": string;
+                "buttonText": string;
+                "secondaryMessage": string;
+            };
+            "twoFactorDisabled": {
+                "subject": string;
+                "title": string;
+                "message": string;
+                "buttonText": string;
+                "secondaryMessage": string;
+            };
+        };
+        "disclaimer": string;
         "Email.Subject.VerifyNewEmail": string;
     };
     "error": {
-        "Auth.Logout.Success": string;
-        "Auth.Logout.Processed": string;
-        "Auth.Token.Refreshed": string;
-        "Auth.Device.Trusted": string;
-        "Auth.2FA.Disabled": string;
-        "Auth.2FA.Enabled": string;
-        "Auth.Otp.SentSuccessfully": string;
-        "Auth.Password.ResetSuccess": string;
-        "Auth.Password.ChangeSuccess": string;
-        "Auth.Login.Success": string;
-        "Auth.Login.2FARequired": string;
-        "Auth.Login.DeviceVerificationOtpRequired": string;
-        "Auth.RememberMe.Set": string;
-        "Auth.2FA.Setup.Success": string;
-        "Auth.2FA.Confirm.Success": string;
-        "Auth.2FA.Verify.Success": string;
-        "Auth.2FA.Verify.AskToTrustDevice": string;
-        "Auth.Otp.Verified": string;
-        "Auth.Device.Untrusted": string;
-        "Auth.Device.LogoutSpecificSuccess": string;
-        "Auth.Session.ReverifiedSuccessfully": string;
-        "Auth.Session.SendReverificationOtpSuccess": string;
-        "Auth.Register.Success": string;
-        "Error.Auth.Otp.Invalid": string;
-        "Error.Auth.Otp.Expired": string;
-        "Error.Auth.Otp.FailedToSend": string;
-        "Error.Auth.Email.AlreadyExists": string;
-        "Error.Auth.Email.NotFound": string;
-        "Error.Auth.Password.Invalid": string;
-        "Error.Auth.Password.Mismatch": string;
-        "Error.Auth.Register.UsernameTaken": string;
-        "Error.Auth.Register.PhoneNumberTaken": string;
-        "Error.Auth.Token.MissingAccessToken": string;
-        "Error.Auth.Token.InvalidAccessToken": string;
-        "Error.Auth.Token.ExpiredAccessToken": string;
-        "Error.Auth.Token.MissingRefreshToken": string;
-        "Error.Auth.Token.InvalidRefreshToken": string;
-        "Error.Auth.Token.ExpiredRefreshToken": string;
-        "Error.Auth.Token.RefreshTokenAlreadyUsed": string;
-        "Error.Auth.Token.RefreshFailed": string;
-        "Error.Auth.Access.Unauthorized": string;
-        "Error.Auth.Access.Denied": string;
-        "Error.Auth.Session.InvalidLogin": string;
-        "Error.Auth.2FA.InvalidTOTP": string;
-        "Error.Auth.2FA.AlreadyEnabled": string;
-        "Error.Auth.2FA.NotEnabled": string;
-        "Error.Auth.2FA.InvalidRecoveryCode": string;
-        "Error.Auth.2FA.InvalidCodeFormat": string;
-        "Error.Auth.OtpToken.Invalid": string;
-        "Error.Auth.OtpToken.Expired": string;
-        "Error.Auth.Device.Invalid": string;
-        "Error.Auth.Device.Mismatch": string;
-        "Error.Auth.Device.SetupFailed": string;
-        "Error.Auth.Device.AssociationFailed": string;
-        "Error.Auth.Google.UserInfoFailed": string;
-        "Error.Auth.Session.AbsoluteLifetimeExceeded": string;
-        "Error.Auth.Device.MissingSessionCreationTime": string;
-        "Error.Auth.Otp.TooManyAttempts": string;
-        "Error.Auth.Otp.CooldownActive": string;
         "Error.Global.Unknown": string;
         "Error.Global.ValidationFailed": string;
         "Error.Global.SerializationFailed": string;
@@ -130,36 +345,6 @@ export type I18nTranslations = {
         "HttpStatus.Title.InternalServerError": string;
         "HttpStatus.Title.ServiceUnavailable": string;
         "HttpStatus.Title.HttpError": string;
-        "Error.Auth.Google.CallbackErrorGeneric": string;
-        "Error.Auth.Google.MissingCode": string;
-        "Error.Auth.Google.StateMismatch": string;
-        "Error.Auth.Google.InvalidPayload": string;
-        "Error.Auth.Google.AccountConflict": string;
-        "Auth.Google.SuccessProceedToSecurityChecks": string;
-        "Auth.Session.RevokedSuccessfully": string;
-        "Error.Auth.Session.CannotRevokeCurrent": string;
-        "Error.Auth.Session.NotFound": string;
-        "Error.Auth.Session.MissingSessionIdInToken": string;
-        "Auth.Device.NameUpdatedSuccessfully": string;
-        "Error.Auth.Device.NotFoundForUser": string;
-        "error.Auth.Session.NoSessionsToRevoke": string;
-        "error.Auth.Session.RevokedSuccessfullyCount": string;
-        "Error.Auth.Session.InvalidRevokeOperation": string;
-        "Error.Auth.Session.RevokedRemotely": string;
-        "Error.Auth.Session.MaxSessionsReached": string;
-        "Error.Auth.Device.MaxDevicesReached": string;
-        "Auth.Device.AlreadyTrusted": string;
-        "Auth.Device.AlreadyUntrusted": string;
-        "Error.Auth.Google.Link.NoPendingState": string;
-        "Error.Auth.Google.Link.InvalidPendingState": string;
-        "Error.Auth.Google.Link.CompleteFailed": string;
-        "Auth.Google.ConfirmLinkDetailsMessage": string;
-        "Auth.Google.Link.CancelledSuccessfully": string;
-        "Auth.Google.Link.NoPendingStateToCancel": string;
-        "Error.Auth.Google.AlreadyLinkedToOtherGoogle": string;
-        "Error.Auth.Google.GoogleIdConflict": string;
-        "Error.Auth.Google.LinkAccountFailed": string;
-        "Error.Server.ConfigError.MissingOAuthCookie": string;
         "Error.Profile.Email.Unchanged": string;
         "Error.Profile.Email.AlreadyExists": string;
         "Error.Profile.PendingEmail.MatchesCurrent": string;
@@ -174,6 +359,7 @@ export type I18nTranslations = {
         "Error.Profile.PhoneNumber.Taken": string;
         "Success.Profile.Email.ChangeOtpSent": string;
         "Success.Profile.Email.Verified": string;
+        "Error.Server.ConfigError.MissingOAuthCookie": string;
     };
 };
 /* prettier-ignore */
