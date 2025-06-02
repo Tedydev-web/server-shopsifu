@@ -10,7 +10,7 @@ import { HashingService } from 'src/shared/services/hashing.service'
 import { UserAuthRepository } from '../../repositories/user-auth.repository'
 import { DeviceRepository } from '../../repositories/device.repository'
 import { IUserAuthService } from 'src/shared/types/auth.types'
-import { TypeOfVerificationCode } from '../../constants/auth.constants'
+import { TwoFactorMethodType, TypeOfVerificationCode } from '../../constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
 
 interface RegisterUserParams {
@@ -138,153 +138,117 @@ export class CoreService implements IUserAuthService {
    */
   async login(params: LoginParams, res: Response): Promise<any> {
     const { emailOrUsername, password, rememberMe = false, ip, userAgent } = params
+
     this.logger.debug(`[login] Trying to login user with email/username: ${emailOrUsername}`)
 
-    // Xác minh thông tin người dùng
+    // Kiểm tra user có tồn tại không
     const user = await this.validateUser(emailOrUsername, password)
-    if (!user) {
-      throw AuthError.InvalidPassword()
-    }
 
-    // Kiểm tra nếu user bị khóa hoặc không active
-    if (user.status === 'BLOCKED') {
-      this.logger.warn(`[login] Blocked user attempted login: ${user.email}`)
-      throw AuthError.AccountLocked()
-    } else if (user.status === 'INACTIVE') {
-      this.logger.warn(`[login] Inactive user attempted login: ${user.email}`)
-      throw AuthError.AccountNotActive()
-    }
-
+    // Tìm hoặc tạo thiết bị
+    const existingDevices = await this.deviceRepository.findDevicesByUserId(user.id)
+    const isFirstTimeLogin = existingDevices.length === 0
     this.logger.debug(
-      `[login] User ${user.email}: found ${user.devices?.length || 0} devices, isFirstTimeLogin=${!user.devices || user.devices.length === 0}`
+      `[login] User ${emailOrUsername}: found ${existingDevices.length} devices, isFirstTimeLogin=${isFirstTimeLogin}`
     )
 
-    // Lấy thông tin thiết bị truy cập hoặc tạo mới
+    // Tạo hoặc cập nhật thiết bị
     const device = await this.deviceRepository.upsertDevice(user.id, userAgent || 'Unknown', ip || 'Unknown')
-    this.logger.debug(`[login] User ${user.email}: Device ID=${device.id}, isTrusted=${device.isTrusted}`)
+    this.logger.debug(`[login] User ${emailOrUsername}: Device ID=${device.id}, isTrusted=${device.isTrusted}`)
 
-    // Kiểm tra 2FA
-    const hasTwoFactorEnabled = user.twoFactorEnabled === true
-    this.logger.debug(`[login] User ${user.email}: 2FA enabled=${hasTwoFactorEnabled}`)
+    // Check 2FA
+    const twoFactorEnabled = user.twoFactorEnabled === true
+    this.logger.debug(`[login] User ${emailOrUsername}: 2FA enabled=${twoFactorEnabled}`)
 
-    // Xác định tình trạng tin cậy của thiết bị
-    let isDeviceTrusted = device.isTrusted
-
-    // Nếu thiết bị được đánh dấu tin cậy, kiểm tra thời hạn
-    if (isDeviceTrusted) {
-      isDeviceTrusted = await this.deviceRepository.isDeviceTrustValid(device.id)
-      this.logger.debug(`[login] Checked device trust expiration: still valid=${isDeviceTrusted}`)
-    }
-
+    // Kiểm tra thiết bị có được tin tưởng hay không
+    const isDeviceTrusted = device.isTrusted && (await this.deviceRepository.isDeviceTrustValid(device.id))
     this.logger.debug(`[login] Final device trust status: ${isDeviceTrusted}`)
 
-    // Xác định nếu cần xác minh bổ sung
-    const requiresTwoFactorAuth = hasTwoFactorEnabled && !isDeviceTrusted // Bypass 2FA cho thiết bị tin cậy
-    const requiresDeviceVerification = !isDeviceTrusted
-
+    // Nếu 2FA được bật hoặc thiết bị chưa được tin cậy, yêu cầu xác thực thêm
+    const requiresAdditionalVerification = (twoFactorEnabled && !isDeviceTrusted) || !isDeviceTrusted
     this.logger.debug(
-      `[login] Additional verification needed: 2FA=${requiresTwoFactorAuth}, untrusted device=${requiresDeviceVerification}`
+      `[login] Additional verification needed: 2FA=${twoFactorEnabled}, untrusted device=${!isDeviceTrusted}, bypass 2FA=${twoFactorEnabled && isDeviceTrusted}`
     )
 
-    // Ưu tiên xác minh 2FA nếu đã bật và thiết bị không được tin cậy
-    if (requiresTwoFactorAuth) {
-      this.logger.debug(`[login] Initiating 2FA verification for user ${user.email}`)
+    if (requiresAdditionalVerification) {
+      // Nếu 2FA được bật, yêu cầu xác thực 2FA
+      if (twoFactorEnabled) {
+        this.logger.debug(`[login] Initiating 2FA verification for user ${emailOrUsername}`)
 
-      // Khởi tạo SLT token cho xác thực 2FA
-      const sltJwt = await this.otpService.initiateOtpWithSltCookie({
-        email: user.email,
-        userId: user.id,
-        deviceId: device.id,
-        ipAddress: ip || 'Unknown',
-        userAgent: userAgent || 'Unknown',
-        purpose: TypeOfVerificationCode.LOGIN_2FA,
-        metadata: {
-          deviceId: device.id,
-          rememberMe: rememberMe,
-          twoFactorMethod: user.twoFactorMethod,
-          requiresDeviceVerification: requiresDeviceVerification // Thêm flag để biết sau khi xác minh 2FA có cần xác minh thiết bị không
+        // Tạo JWT token để lưu thông tin phiên đăng nhập
+        const sltJwtPayload = {
+          jti: `slt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+          sub: user.id,
+          pur: TypeOfVerificationCode.LOGIN_2FA
         }
-      })
 
-      // Đặt cookie SLT cho 2FA
-      this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_2FA)
-      this.logger.debug(`[login] 2FA verification required, SLT cookie set for ${user.email}`)
+        const sltJwt = this.tokenService.signShortLivedToken(sltJwtPayload)
 
-      return {
-        message: this.i18nService.t('auth.Auth.Login.2FARequired')
-      }
-    }
-
-    // Nếu không cần 2FA nhưng thiết bị không được tin cậy
-    if (requiresDeviceVerification) {
-      this.logger.debug(`[login] Initiating device verification OTP for ${user.email}`)
-
-      // Khởi tạo OTP cho thiết bị mới
-      const sltJwt = await this.otpService.initiateOtpWithSltCookie({
-        email: user.email,
-        userId: user.id,
-        deviceId: device.id,
-        ipAddress: ip || 'Unknown',
-        userAgent: userAgent || 'Unknown',
-        purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
-        metadata: {
-          deviceId: device.id,
-          rememberMe: rememberMe // Thêm trường rememberMe vào metadata
+        // Lưu context vào Redis
+        const contextKey = `slt:context:${sltJwtPayload.jti}`
+        const contextData = {
+          userId: String(user.id),
+          deviceId: String(device.id),
+          ipAddress: ip || 'Unknown',
+          userAgent: userAgent || 'Unknown',
+          purpose: TypeOfVerificationCode.LOGIN_2FA,
+          sltJwtExp: String(Math.floor(Date.now() / 1000) + 300), // 5 phút
+          sltJwtCreatedAt: String(Date.now()),
+          finalized: '0',
+          attempts: '0',
+          metadata: JSON.stringify({
+            deviceId: device.id,
+            rememberMe,
+            twoFactorMethod: user.twoFactorMethod || TwoFactorMethodType.TOTP,
+            requiresDeviceVerification: !isDeviceTrusted
+          }),
+          email: user.email
         }
-      })
 
-      // Đặt cookie SLT
-      this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
-      this.logger.debug(`[login] OTP sent and SLT cookie set for ${user.email}`)
+        await this.otpService['redisService'].hset(contextKey, contextData as any)
+        await this.otpService['redisService'].expire(contextKey, 360) // 6 phút
 
-      // Trả về thông báo yêu cầu xác minh thiết bị
-      return {
-        message: this.i18nService.t('auth.Auth.Login.DeviceVerificationOtpRequired')
+        // Set SLT cookie
+        this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_2FA)
+        this.logger.debug(`[login] 2FA verification required, SLT cookie set for ${emailOrUsername}`)
+
+        // Return message asking for 2FA code
+        return {
+          message: await this.i18nService.translate('Auth.Login.2FARequired'),
+          requiresTwoFactor: true,
+          twoFactorMethod: user.twoFactorMethod || TwoFactorMethodType.TOTP
+        }
+      }
+
+      // Nếu thiết bị chưa được tin cậy, yêu cầu xác thực thiết bị qua OTP
+      if (!isDeviceTrusted) {
+        this.logger.debug(`[login] Initiating device verification for user ${emailOrUsername}`)
+
+        // Gửi OTP và tạo SLT cookie
+        const sltJwt = await this.otpService.initiateOtpWithSltCookie({
+          email: user.email,
+          userId: user.id,
+          deviceId: device.id,
+          ipAddress: ip || 'Unknown',
+          userAgent: userAgent || 'Unknown',
+          purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
+          metadata: { deviceId: device.id, rememberMe }
+        })
+
+        // Set SLT cookie
+        this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
+        this.logger.debug(`[login] Device verification required, SLT cookie set for ${emailOrUsername}`)
+
+        // Return message asking for device verification
+        return {
+          message: await this.i18nService.translate('Auth.Login.DeviceVerificationOtpRequired'),
+          requiresTwoFactor: false,
+          requiresDeviceVerification: true
+        }
       }
     }
 
-    // Nếu không cần thêm xác minh, hoàn tất đăng nhập
-    const sessionId = uuidv4()
-
-    // Tạo payload cho access token
-    const tokenPayload = {
-      userId: user.id,
-      deviceId: device.id,
-      roleId: user.roleId,
-      roleName: user.role.name,
-      sessionId,
-      jti: `access_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
-      isDeviceTrustedInSession: isDeviceTrusted
-    }
-
-    // Tạo tokens
-    const accessToken = this.tokenService.signAccessToken(tokenPayload)
-    const refreshToken = this.tokenService.signRefreshToken({
-      ...tokenPayload,
-      jti: `refresh_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
-    })
-
-    // Set cookie
-    this.cookieService.setTokenCookies(
-      res,
-      accessToken,
-      refreshToken,
-      rememberMe ? 30 * 24 * 60 * 60 * 1000 : undefined
-    )
-
-    // Trả về thông tin user
-    return {
-      id: user.id,
-      email: user.email,
-      role: user.role.name,
-      isDeviceTrustedInSession: isDeviceTrusted,
-      userProfile: {
-        firstName: user.userProfile?.firstName,
-        lastName: user.userProfile?.lastName,
-        username: user.userProfile?.username,
-        avatar: user.userProfile?.avatar
-      }
-    }
+    // Nếu không cần xác thực thêm, hoàn tất đăng nhập
+    return await this.finalizeLoginAfterVerification(user.id, device.id, rememberMe || false, res)
   }
 
   /**

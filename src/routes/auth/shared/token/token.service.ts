@@ -47,7 +47,8 @@ export class TokenService implements ITokenService {
    */
   signShortLivedToken(payload: any): string {
     return this.jwtService.sign(payload, {
-      expiresIn: this.configService.get('auth.sltToken.expiresIn', '10m')
+      secret: this.configService.get('SLT_JWT_SECRET'),
+      expiresIn: this.configService.get('SLT_JWT_EXPIRES_IN', '5m')
     })
   }
 

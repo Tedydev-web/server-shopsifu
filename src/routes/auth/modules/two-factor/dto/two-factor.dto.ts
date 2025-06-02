@@ -31,11 +31,31 @@ export const TwoFactorConfirmSetupResponseSchema = z.object({
 // Verify 2FA DTOs
 export const TwoFactorVerifySchema = z.object({
   code: z.string().min(6, { message: 'Mã xác thực phải có ít nhất 6 ký tự' }),
-  rememberMe: z.boolean().optional().default(false)
+  rememberMe: z.boolean().optional().default(false),
+  method: z.enum(['TOTP', 'RECOVERY_CODE']).optional().default('TOTP')
 })
 
 export const TwoFactorVerifyResponseSchema = z.object({
-  message: z.string()
+  message: z.string(),
+  requiresDeviceVerification: z.boolean().optional(),
+  verifiedMethod: z.enum(['TOTP', 'RECOVERY_CODE', 'OTP']).optional(),
+  user: z
+    .object({
+      id: z.number(),
+      email: z.string(),
+      roleName: z.string(),
+      isDeviceTrustedInSession: z.boolean(),
+      userProfile: z
+        .object({
+          firstName: z.string().nullable().optional(),
+          lastName: z.string().nullable().optional(),
+          username: z.string().nullable().optional(),
+          avatar: z.string().nullable().optional()
+        })
+        .nullable()
+        .optional()
+    })
+    .optional()
 })
 
 // Disable 2FA DTOs
