@@ -66,7 +66,7 @@ const configSchema = z.object({
   // OAuth
   GOOGLE_CLIENT_ID: z.string(),
   GOOGLE_CLIENT_SECRET: z.string(),
-  GOOGLE_CLIENT_REDIRECT_URI: z.string(),
+  GOOGLE_REDIRECT_URI: z.string(),
 
   // Redis
   REDIS_HOST: z.string().default('redis-18980.c1.ap-southeast-1-1.ec2.redns.redis-cloud.com'),
@@ -135,103 +135,79 @@ const convertMs = (value: string, defaultValue: number): number => {
  * - Cookie security (httpOnly, secure, sameSite) ảnh hưởng trực tiếp đến bảo mật
  */
 const getCookieConfig = () => {
-  let cookieSecure: boolean
-  let cookieSameSite: 'lax' | 'strict' | 'none'
-  let cookieDomain: string | undefined
-
-  switch (nodeEnv) {
-    case 'production':
-      cookieSecure = true
-      cookieSameSite = 'lax'
-      cookieDomain = parsedConfig.COOKIE_ROOT_DOMAIN || undefined
-      break
-    case 'staging':
-      cookieSecure = true
-      cookieSameSite = 'none'
-      cookieDomain = parsedConfig.COOKIE_ROOT_DOMAIN || undefined
-      break
-    case 'development':
-    default:
-      // Trong môi trường development, CSRF token vẫn cần secure=true và sameSite=none cho cross-site
-      // nhưng các cookie khác có thể giữ cấu hình ít hạn chế hơn
-      cookieSecure = false
-      cookieSameSite = 'lax'
-      cookieDomain = undefined
-      break
+  return {
+    ACCESS_TOKEN: {
+      path: '/',
+      domain: parsedConfig.COOKIE_DOMAIN,
+      maxAge: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('10m')),
+      httpOnly: true,
+      secure: nodeEnv === 'production',
+      sameSite: nodeEnv === 'production' ? 'none' : 'lax'
+    },
+    REFRESH_TOKEN: {
+      path: '/',
+      domain: parsedConfig.COOKIE_DOMAIN,
+      maxAge: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d')),
+      httpOnly: true,
+      secure: nodeEnv === 'production',
+      sameSite: nodeEnv === 'production' ? 'none' : 'lax'
+    },
+    SLT_TOKEN: {
+      path: '/',
+      domain: parsedConfig.COOKIE_DOMAIN,
+      maxAge: convertMs(parsedConfig.SLT_JWT_EXPIRES_IN, ms('5m')),
+      httpOnly: true,
+      secure: nodeEnv === 'production',
+      sameSite: nodeEnv === 'production' ? 'none' : 'lax'
+    },
+    OAUTH_NONCE: {
+      path: '/',
+      domain: parsedConfig.COOKIE_DOMAIN,
+      maxAge: convertMs(parsedConfig.NONCE_COOKIE_MAX_AGE || '5m', ms('5m')),
+      httpOnly: true,
+      secure: nodeEnv === 'production',
+      sameSite: 'none' // Luôn đặt là 'none' để dễ test với Postman
+    },
+    OAUTH_PENDING_LINK: {
+      path: '/',
+      domain: parsedConfig.COOKIE_DOMAIN,
+      maxAge: convertMs(parsedConfig.PENDING_LINK_TOKEN_EXPIRES_IN, ms('15m')),
+      httpOnly: true,
+      secure: nodeEnv === 'production',
+      sameSite: nodeEnv === 'production' ? 'none' : 'lax'
+    }
   }
-
-  return { cookieSecure, cookieSameSite, cookieDomain }
 }
 
 // Cấu hình chung cho cookie
-const { cookieSecure, cookieSameSite, cookieDomain } = getCookieConfig()
+const { ACCESS_TOKEN, REFRESH_TOKEN, SLT_TOKEN, OAUTH_NONCE, OAUTH_PENDING_LINK } = getCookieConfig()
 
 /**
  * Thiết lập cấu hình cookie
  */
 const cookieConfig = {
-  accessToken: {
-    name: CookieNames.ACCESS_TOKEN,
-    path: parsedConfig.COOKIE_PATH_ACCESS_TOKEN,
-    domain: cookieDomain,
-    maxAge: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('10m')),
-    httpOnly: true,
-    secure: cookieSecure,
-    sameSite: cookieSameSite
-  },
-  refreshToken: {
-    name: CookieNames.REFRESH_TOKEN,
-    path: parsedConfig.COOKIE_PATH_REFRESH_TOKEN,
-    domain: cookieDomain,
-    maxAge: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d')),
-    httpOnly: true,
-    secure: cookieSecure,
-    sameSite: cookieSameSite
-  },
-  sltToken: {
-    name: CookieNames.SLT_TOKEN,
-    path: '/',
-    domain: cookieDomain,
-    maxAge: convertMs(parsedConfig.SLT_JWT_EXPIRES_IN, ms('5m')),
-    httpOnly: true,
-    secure: cookieSecure,
-    sameSite: cookieSameSite
-  },
-  nonce: {
-    name: CookieNames.OAUTH_NONCE,
-    path: '/',
-    domain: cookieDomain,
-    maxAge: convertMs(parsedConfig.NONCE_COOKIE_MAX_AGE || '5m', ms('5m')),
-    httpOnly: true,
-    secure: cookieSecure,
-    sameSite: cookieSameSite
-  },
+  accessToken: ACCESS_TOKEN,
+  refreshToken: REFRESH_TOKEN,
+  sltToken: SLT_TOKEN,
+  nonce: OAUTH_NONCE,
   csrfToken: {
     name: CookieNames.XSRF_TOKEN,
     path: parsedConfig.COOKIE_PATH_CSRF,
-    domain: cookieDomain,
+    domain: parsedConfig.COOKIE_DOMAIN,
     httpOnly: false, // JavaScript cần đọc được
-    secure: nodeEnv === 'development' ? true : cookieSecure, // Trong development vẫn cần secure=true
-    sameSite: nodeEnv === 'development' ? 'none' : cookieSameSite // Trong development cần sameSite=none
+    secure: nodeEnv === 'development' ? true : nodeEnv === 'production', // Trong development vẫn cần secure=true
+    sameSite: nodeEnv === 'development' ? 'none' : nodeEnv === 'production' ? 'none' : 'lax' // Trong development cần sameSite=none
   },
   csrfSecret: {
     name: '_csrf',
     path: parsedConfig.COOKIE_PATH_CSRF,
-    domain: cookieDomain,
+    domain: parsedConfig.COOKIE_DOMAIN,
     httpOnly: true,
-    secure: cookieSecure,
-    sameSite: cookieSameSite,
+    secure: nodeEnv === 'production',
+    sameSite: nodeEnv === 'production' ? 'lax' : 'lax',
     signed: true
   },
-  oauthPendingLinkToken: {
-    name: CookieNames.OAUTH_PENDING_LINK,
-    path: '/',
-    domain: cookieDomain,
-    maxAge: convertMs(parsedConfig.PENDING_LINK_TOKEN_EXPIRES_IN, ms('15m')),
-    httpOnly: true,
-    secure: cookieSecure,
-    sameSite: cookieSameSite
-  }
+  oauthPendingLinkToken: OAUTH_PENDING_LINK
 }
 
 // Cấu hình chung đã chuyển đổi và tổng hợp
@@ -245,9 +221,9 @@ const envConfig = {
 
   // Cấu hình chung cho cookie
   cookieConfig: {
-    secure: cookieSecure,
-    sameSite: cookieSameSite,
-    domain: cookieDomain
+    secure: nodeEnv === 'production',
+    sameSite: nodeEnv === 'production' ? 'none' : 'lax',
+    domain: parsedConfig.COOKIE_DOMAIN
   },
 
   // Cấu hình chi tiết cho từng loại cookie

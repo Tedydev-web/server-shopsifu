@@ -9,7 +9,6 @@ import { I18nContext } from 'nestjs-i18n'
 // Import các template email
 import OTPEmail from '../../../emails/otp'
 import SecurityAlertEmail from '../../../emails/security-alert'
-import { TypeOfVerificationCode } from 'src/routes/auth/constants/auth.constants'
 
 // Các loại cảnh báo bảo mật
 export enum SecurityAlertType {

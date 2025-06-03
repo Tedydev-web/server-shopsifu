@@ -135,12 +135,8 @@ export class CookieService implements ICookieService {
   setOAuthNonceCookie(res: Response, nonce: string): void {
     // Set OAuth nonce cookie
     const config = this.getOAuthNonceCookieConfig()
-    this.setCookie(res, config.name, nonce, {
-      ...config,
-      sameSite: 'none',
-      secure: true
-    })
-    this.logger.debug(`Cookie ${CookieNames.OAUTH_NONCE} set successfully with SameSite=None and secure=true`)
+    this.setCookie(res, config.name, nonce, config)
+    this.logger.debug(`Cookie ${CookieNames.OAUTH_NONCE} set successfully with config: ${JSON.stringify(config)}`)
   }
 
   /**
@@ -157,8 +153,11 @@ export class CookieService implements ICookieService {
    */
   setOAuthPendingLinkTokenCookie(res: Response, token: string): void {
     // Set OAuth pending link token cookie
-    const oauthPendingLinkConfig = this.getOAuthPendingLinkTokenCookieConfig()
-    this.setCookie(res, CookieNames.OAUTH_PENDING_LINK, token, oauthPendingLinkConfig)
+    const config = this.getOAuthPendingLinkTokenCookieConfig()
+    this.setCookie(res, config.name, token, config)
+    this.logger.debug(
+      `Cookie ${CookieNames.OAUTH_PENDING_LINK} set successfully with config: ${JSON.stringify(config)}`
+    )
   }
 
   /**
@@ -166,8 +165,9 @@ export class CookieService implements ICookieService {
    */
   clearOAuthPendingLinkTokenCookie(res: Response): void {
     // Clear OAuth pending link token cookie
-    const oauthPendingLinkConfig = this.getOAuthPendingLinkTokenCookieConfig()
-    this.clearCookie(res, CookieNames.OAUTH_PENDING_LINK, oauthPendingLinkConfig.path, oauthPendingLinkConfig.domain)
+    const config = this.getOAuthPendingLinkTokenCookieConfig()
+    this.clearCookie(res, config.name, config.path, config.domain)
+    this.logger.debug(`Cookie ${config.name} cleared successfully`)
   }
 
   private getAccessTokenCookieConfig(): CookieConfig {
@@ -255,10 +255,11 @@ export class CookieService implements ICookieService {
     return {
       name: CookieNames.OAUTH_NONCE,
       path: '/',
-      maxAge: 300 * 1000, // 5 phút
+      domain: this.configService.get('cookieConfig.domain'),
+      maxAge: this.configService.get('cookieConfig.nonce.maxAge') || 5 * 60 * 1000, // 5 phút mặc định
       httpOnly: true,
-      secure: true, // Luôn secure để đảm bảo hoạt động với SameSite=None
-      sameSite: 'none' // Cấu hình mặc định là none để hỗ trợ OAuth redirect
+      secure: this.configService.get('NODE_ENV') === 'production',
+      sameSite: 'none' // SameSite=None để hỗ trợ OAuth redirect và dễ test với Postman
     }
   }
 
@@ -266,13 +267,25 @@ export class CookieService implements ICookieService {
    * Trả về cấu hình cookie cho OAuth pending link token
    */
   private getOAuthPendingLinkTokenCookieConfig(): CookieConfig {
-    return {
+    const cookieConfig = this.configService.get<CookieConfig>('cookie.oauthPendingLinkToken')
+
+    if (!cookieConfig) {
+      this.logger.warn(
+        '[getOAuthPendingLinkTokenCookieConfig] Không thể truy cập cấu hình cookie.oauthPendingLinkToken, sử dụng giá trị mặc định'
+      )
+    }
+
+    const config = cookieConfig || {
       name: CookieNames.OAUTH_PENDING_LINK,
       path: '/',
+      domain: this.configService.get('cookieConfig.domain'),
       maxAge: 300 * 1000, // 5 phút
       httpOnly: true,
-      secure: true, // Luôn secure để đảm bảo hoạt động với SameSite=None
-      sameSite: 'none' // Cấu hình mặc định là none để hỗ trợ OAuth redirect
+      secure: this.configService.get('NODE_ENV') === 'production',
+      sameSite: 'none' // Luôn dùng 'none' để dễ test với Postman
     }
+
+    this.logger.debug(`[getOAuthPendingLinkTokenCookieConfig] Using config: ${JSON.stringify(config)}`)
+    return config
   }
 }

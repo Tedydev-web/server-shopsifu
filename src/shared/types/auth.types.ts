@@ -1,6 +1,5 @@
-import { User, Device, Role, UserProfile } from '@prisma/client'
+import { Device } from '@prisma/client'
 import { Response, Request } from 'express'
-import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import { AccessTokenPayload } from './jwt.type'
 
 /**

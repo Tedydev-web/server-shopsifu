@@ -73,14 +73,13 @@ export class SocialController {
   @IsPublic()
   @Get('google')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(GoogleAuthUrlResponseDto)
   getGoogleAuthUrl(
     @Query() query: GoogleAuthUrlQueryDto,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
-    @Res({ passthrough: true }) res: Response,
+    @Res() res: Response,
     @ActiveUser() activeUser?: AccessTokenPayload
-  ): GoogleAuthUrlResponseDto {
+  ): void {
     try {
       // Xác định loại action: đăng nhập, đăng ký hoặc liên kết
       const action = query.action || 'login'
@@ -101,14 +100,15 @@ export class SocialController {
       // Set nonce cookie để xác thực khi callback
       this.cookieService.setOAuthNonceCookie(res, result.nonce)
 
-      // Trả về URL với format mới
+      // Trả về URL với format JSON thuần túy, không qua ZodSerializerDto
       this.logger.debug(`[getGoogleAuthUrl] URL xác thực Google đã được tạo thành công`)
-      return {
+
+      res.json({
         status: 'success',
         data: {
           url: result.url
         }
-      }
+      })
     } catch (error) {
       this.logger.error(`[getGoogleAuthUrl] Lỗi tạo URL xác thực Google: ${error.message}`, error.stack)
       throw error

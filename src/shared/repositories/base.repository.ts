@@ -11,10 +11,7 @@ export type PrismaTransactionClient = Omit<
 export abstract class BaseRepository<T> {
   protected readonly logger: Logger
 
-  constructor(
-    protected readonly prismaService: PrismaService,
-    loggerContext: string
-  ) {}
+  constructor(protected readonly prismaService: PrismaService) {}
 
   protected getClient(prismaClient?: PrismaTransactionClient): PrismaTransactionClient | PrismaService {
     return prismaClient || this.prismaService

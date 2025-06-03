@@ -215,8 +215,8 @@ export class SessionsService implements ISessionService {
         // Nếu revoke all, tất cả device liên quan cũng nên được xem xét để untrust
         devicesToUntrust.add(session.deviceId)
         devicesFullyRevoked.add(session.deviceId) // Đánh dấu là device này đã bị revoke hết session
-        }
-      } else {
+      }
+    } else {
       // 2. Xử lý revoke specific devices (deviceIds)
       if (deviceIds && deviceIds.length > 0) {
         this.logger.debug(`[revokeItems] Processing deviceIds for revocation: ${JSON.stringify(deviceIds)}`)
@@ -282,13 +282,13 @@ export class SessionsService implements ISessionService {
       try {
         await this.tokenService.invalidateSession(sessionIdToInvalidate, 'USER_REVOKED_ITEMS')
         revokedSessionsCount++
-        } catch (error) {
+      } catch (error) {
         this.logger.error(
           `[revokeItems] Failed to invalidate session ${sessionIdToInvalidate}: ${error.message}`,
           error.stack
         )
-        }
       }
+    }
 
     this.logger.log(
       `[revokeItems] Completed for user ${userId}. Revoked sessions: ${revokedSessionsCount}, Untrusted devices: ${untrustedDevicesCount}, Fully revoked devices: ${revokedDevicesCount}.`

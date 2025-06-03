@@ -11,7 +11,7 @@ export class ApiKeyGuard implements CanActivate {
     this.apiKey = this.configService.get<string>('SECRET_API_KEY', '')
   }
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
+  canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest()
 
     try {

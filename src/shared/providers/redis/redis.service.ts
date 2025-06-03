@@ -1,7 +1,5 @@
 import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit, HttpStatus } from '@nestjs/common'
 import Redis, { RedisKey, RedisValue } from 'ioredis'
-import { IORedisKey } from './redis.constants'
-import envConfig from 'src/shared/config'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { REDIS_CLIENT } from 'src/shared/constants/injection.tokens'
 
@@ -325,7 +323,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     if (!jsonString) return null
     try {
       return JSON.parse(jsonString) as T
-    } catch (error) {
+    } catch {
       return null
     }
   }
@@ -337,7 +335,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     let jsonString: string
     try {
       jsonString = JSON.stringify(value)
-    } catch (error) {
+    } catch {
       throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'ServerError', 'Error.Global.InternalServerError')
     }
     if (ttlSeconds !== undefined) {

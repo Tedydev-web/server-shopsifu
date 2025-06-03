@@ -16,7 +16,7 @@ export class CsrfMiddleware implements NestMiddleware {
         key: csrfSecretCookieConfig.name,
         httpOnly: csrfSecretCookieConfig.httpOnly,
         secure: csrfSecretCookieConfig.secure,
-        sameSite: csrfSecretCookieConfig.sameSite,
+        sameSite: csrfSecretCookieConfig.sameSite as 'none' | 'lax' | 'strict' | boolean,
         signed: csrfSecretCookieConfig.signed,
         path: csrfSecretCookieConfig.path,
         domain: csrfSecretCookieConfig.domain
@@ -51,7 +51,7 @@ export class CsrfMiddleware implements NestMiddleware {
         res.setHeader(SecurityHeaders.XSRF_TOKEN_HEADER, csrfTokenVal)
         res.cookie(csrfTokenCookieConfig.name, csrfTokenVal, {
           httpOnly: csrfTokenCookieConfig.httpOnly,
-          sameSite: csrfTokenCookieConfig.sameSite,
+          sameSite: csrfTokenCookieConfig.sameSite as 'none' | 'lax' | 'strict' | boolean,
           secure: csrfTokenCookieConfig.secure,
           path: csrfTokenCookieConfig.path,
           domain: csrfTokenCookieConfig.domain

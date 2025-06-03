@@ -41,7 +41,7 @@ export class GeolocationService {
         }
       }
       return { ip, country: 'Unknown', city: 'Unknown' } // Return a default for unresolvable public IPs
-    } catch (error) {
+    } catch {
       return null
     }
   }
