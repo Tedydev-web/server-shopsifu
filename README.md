@@ -417,7 +417,7 @@ Hệ thống tuân thủ thứ tự xác minh an toàn nhất:
 
 # Shopsifu Server
 
-## Xác thực Google OAuth Tối Ưu
+## Xác thực Google OAuth Tối Ưu (3 Endpoint)
 
 ### Biến môi trường cần thiết
 
@@ -428,11 +428,11 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_REDIRECT_URI=http://localhost:3000/api/v1/auth/social/google/callback
 
 # Cookie Configuration (Cấu hình cookie hoạt động với OAuth)
-COOKIE_SECURE=true  # Đặt false trong môi trường development
+COOKIE_SECURE=true  # Đặt false trong môi trường development nếu không dùng HTTPS
 COOKIE_SAME_SITE=none
 ```
 
-### Cách sử dụng API (3 Endpoint)
+### Flow Xác thực Google OAuth (3 Endpoint)
 
 #### 1. Lấy URL xác thực Google
 
@@ -445,8 +445,8 @@ Tham số:
 - `action`: loại hành động xác thực
   - `login`: Đăng nhập với tài khoản Google đã liên kết
   - `register`: Đăng ký tài khoản mới bằng Google
-  - `link`: Liên kết tài khoản Google với tài khoản hiện có
-- `redirectUrl`: URL chuyển hướng sau khi xác thực (tùy chọn)
+  - `link`: Liên kết tài khoản Google với tài khoản hiện tại
+- `redirectUrl`: URL chuyển hướng sau khi xác thực hoàn tất (tùy chọn)
 
 Phản hồi:
 
@@ -454,20 +454,25 @@ Phản hồi:
 {
   "status": "success",
   "data": {
-    "url": "https://accounts.google.com/o/oauth2/v2/auth?..."
+    "url": "https://accounts.google.com/o/oauth2/auth?client_id=..."
   }
 }
 ```
 
-#### 2. Xử lý callback từ Google
+#### 2. Xử lý Callback từ Google
 
 ```
-GET /api/v1/auth/social/google/callback?code=...&state=...
+GET /api/v1/auth/social/google/callback?code=[Code]&state=[State]
 ```
 
-Phản hồi (5 trạng thái):
+Tham số:
 
-1. Đăng nhập thành công
+- `code`: Mã xác thực từ Google
+- `state`: Dữ liệu trạng thái (đã mã hóa)
+
+Phản hồi (5 trạng thái có thể):
+
+1. Thành công:
 
 ```json
 {
@@ -476,18 +481,13 @@ Phản hồi (5 trạng thái):
     "id": 123,
     "email": "user@example.com",
     "roleName": "USER",
-    "isDeviceTrustedInSession": true,
-    "userProfile": {
-      "firstName": "John",
-      "lastName": "Doe",
-      "username": "johndoe",
-      "avatar": "https://example.com/avatar.jpg"
-    }
+    "isDeviceTrustedInSession": false,
+    "userProfile": { ... }
   }
 }
 ```
 
-2. Yêu cầu xác thực 2FA
+2. Yêu cầu 2FA:
 
 ```json
 {
@@ -495,24 +495,24 @@ Phản hồi (5 trạng thái):
   "data": {
     "requiresTwoFactorAuth": true,
     "twoFactorMethod": "TOTP",
-    "message": "Vui lòng nhập mã xác thực từ ứng dụng authenticator"
+    "message": "Vui lòng xác thực 2FA"
   }
 }
 ```
 
-3. Yêu cầu xác minh thiết bị
+3. Yêu cầu xác minh thiết bị:
 
 ```json
 {
   "status": "device_verification_required",
   "data": {
     "requiresDeviceVerification": true,
-    "message": "Thiết bị mới cần được xác minh"
+    "message": "Vui lòng xác minh thiết bị"
   }
 }
 ```
 
-4. Yêu cầu liên kết tài khoản
+4. Yêu cầu liên kết tài khoản:
 
 ```json
 {
@@ -523,14 +523,14 @@ Phản hồi (5 trạng thái):
     "existingUserEmail": "user@example.com",
     "googleId": "google-id",
     "googleEmail": "user@gmail.com",
-    "googleName": "John Doe",
-    "googleAvatar": "https://google.com/avatar.jpg",
-    "message": "Email này đã tồn tại, vui lòng liên kết tài khoản"
+    "googleName": "User Name",
+    "googleAvatar": "https://...",
+    "message": "Tài khoản Google chưa được liên kết"
   }
 }
 ```
 
-5. Lỗi
+5. Lỗi:
 
 ```json
 {
@@ -543,89 +543,65 @@ Phản hồi (5 trạng thái):
 }
 ```
 
-#### 3. Xác thực và các hoạt động liên quan
+#### 3. Xác thực và xử lý các hoạt động
 
 ```
 POST /api/v1/auth/social/verify
 ```
 
-Tùy vào `action` trong body, API này xử lý các tác vụ khác nhau:
-
-1. Xác minh 2FA
+Body:
 
 ```json
 {
-  "action": "2fa",
-  "code": "123456",
-  "rememberMe": true
+  "action": "2fa|device|link|unlink|pending-link-details|cancel-link",
+  "code": "123456", // Cho 2FA, device verification
+  "password": "password123", // Cho link, unlink
+  "rememberMe": true // Cho 2FA, device
 }
 ```
 
-2. Xác minh thiết bị không tin cậy
+Các action:
+
+- `2fa`: Xác minh 2FA (yêu cầu code)
+- `device`: Xác minh thiết bị không tin cậy (yêu cầu code)
+- `link`: Hoàn tất liên kết tài khoản (yêu cầu password)
+- `unlink`: Hủy liên kết Google (yêu cầu đăng nhập)
+- `pending-link-details`: Lấy thông tin liên kết đang chờ
+- `cancel-link`: Hủy liên kết đang chờ
+
+Phản hồi:
 
 ```json
 {
-  "action": "device",
-  "code": "123456"
+  "status": "success|error",
+  "message": "Thông báo",
+  "user": { ... }  // Nếu đăng nhập thành công
 }
 ```
 
-3. Hoàn tất liên kết tài khoản
+### Ví dụ luồng xác thực
 
-```json
-{
-  "action": "link",
-  "password": "your-password"
-}
-```
+1. Đăng nhập bằng Google:
 
-4. Hủy liên kết Google
+   - Gọi `GET /api/v1/auth/social/google?action=login`
+   - Chuyển hướng đến Google để xác thực
+   - Google chuyển hướng đến callback
+   - Nếu yêu cầu 2FA, gọi `POST /api/v1/auth/social/verify` với action="2fa" và code
+   - Nếu yêu cầu xác minh thiết bị, gọi `POST /api/v1/auth/social/verify` với action="device" và code
 
-```json
-{
-  "action": "unlink",
-  "password": "your-password"
-}
-```
+2. Đăng ký bằng Google:
 
-5. Lấy thông tin liên kết đang chờ xử lý
+   - Gọi `GET /api/v1/auth/social/google?action=register`
+   - Chuyển hướng đến Google để xác thực
+   - Google chuyển hướng đến callback
+   - Nếu tài khoản được tạo thành công, đăng nhập tự động
 
-```json
-{
-  "action": "pending-link-details"
-}
-```
-
-6. Hủy liên kết đang chờ xử lý
-
-```json
-{
-  "action": "cancel-link"
-}
-```
-
-### Luồng xác thực hoàn chỉnh
-
-1. **Đăng nhập/Đăng ký:**
-
-   - Gọi `GET /api/v1/auth/social/google?action=login` để lấy URL
-   - Chuyển hướng người dùng đến URL Google
-   - Google gọi callback sau khi xác thực
-   - Xử lý phản hồi từ callback:
-     - Nếu thành công: Đăng nhập hoàn tất
-     - Nếu yêu cầu 2FA: Gọi `POST /api/v1/auth/social/verify` với `action=2fa`
-     - Nếu yêu cầu xác minh thiết bị: Gọi `POST /api/v1/auth/social/verify` với `action=device`
-     - Nếu yêu cầu liên kết: Gọi `POST /api/v1/auth/social/verify` với `action=link`
-
-2. **Liên kết tài khoản:**
-
-   - Người dùng đã đăng nhập vào hệ thống
+3. Liên kết tài khoản:
+   - Đăng nhập vào hệ thống trước
    - Gọi `GET /api/v1/auth/social/google?action=link`
-   - Tiếp tục như luồng đăng nhập
-
-3. **Hủy liên kết:**
-   - Người dùng đã đăng nhập vào hệ thống
-   - Gọi `POST /api/v1/auth/social/verify` với `action=unlink`
+   - Chuyển hướng đến Google để xác thực
+   - Google chuyển hướng đến callback
+   - Nếu cần liên kết, gọi `POST /api/v1/auth/social/verify` với action="link" và password
 
 ### Ưu điểm của cách triển khai mới
 

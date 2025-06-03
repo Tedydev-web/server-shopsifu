@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 // Google Auth URL Query DTOs
 export const GoogleAuthUrlQuerySchema = z.object({
-  // Thay flow bằng action để thống nhất
+  // Thay flow bằng action để thống nhất với cấu trúc yêu cầu
   action: z.enum(['login', 'register', 'link']).default('login'),
   // Thêm redirectUrl tuỳ chọn để client có thể chỉ định URL chuyển hướng sau khi hoàn tất
   redirectUrl: z.string().url().optional()

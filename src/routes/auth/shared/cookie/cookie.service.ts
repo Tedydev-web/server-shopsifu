@@ -248,6 +248,9 @@ export class CookieService implements ICookieService {
     return config
   }
 
+  /**
+   * Trả về cấu hình cookie cho OAuth nonce
+   */
   private getOAuthNonceCookieConfig(): CookieConfig {
     return {
       name: CookieNames.OAUTH_NONCE,
@@ -255,30 +258,21 @@ export class CookieService implements ICookieService {
       maxAge: 300 * 1000, // 5 phút
       httpOnly: true,
       secure: true, // Luôn secure để đảm bảo hoạt động với SameSite=None
-      sameSite: 'none' // Cấu hình mặc định là none để hoạt động với OAuth redirect
+      sameSite: 'none' // Cấu hình mặc định là none để hỗ trợ OAuth redirect
     }
   }
 
+  /**
+   * Trả về cấu hình cookie cho OAuth pending link token
+   */
   private getOAuthPendingLinkTokenCookieConfig(): CookieConfig {
-    const cookieConfig = this.configService.get<CookieConfig>('cookie.oauthPendingLinkToken')
-
-    if (!cookieConfig) {
-      this.logger.warn(
-        '[getOAuthPendingLinkTokenCookieConfig] Không thể truy cập cấu hình cookie.oauthPendingLinkToken, sử dụng giá trị mặc định'
-      )
-    }
-
-    const config = cookieConfig || {
+    return {
       name: CookieNames.OAUTH_PENDING_LINK,
       path: '/',
-      domain: undefined,
-      maxAge: 15 * 60 * 1000, // 15 phút
+      maxAge: 300 * 1000, // 5 phút
       httpOnly: true,
-      secure: false,
-      sameSite: 'lax'
+      secure: true, // Luôn secure để đảm bảo hoạt động với SameSite=None
+      sameSite: 'none' // Cấu hình mặc định là none để hỗ trợ OAuth redirect
     }
-
-    this.logger.debug(`[getOAuthPendingLinkTokenCookieConfig] Using config: ${JSON.stringify(config)}`)
-    return config
   }
 }

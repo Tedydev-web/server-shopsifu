@@ -93,7 +93,7 @@ export class SocialController {
       // Lấy URL từ service
       const result = this.socialService.getGoogleAuthUrl({
         nonce,
-        flow: action, // Giữ flow trong service vì đang tương thích
+        action, // Sử dụng action thay cho flow
         userId: activeUser?.userId,
         redirectUrl: query.redirectUrl
       })
@@ -300,7 +300,6 @@ export class SocialController {
   @IsPublic()
   @Post('verify')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(VerifyAuthenticationResponseDto)
   async verifyAuthentication(
     @Body() body: VerifyAuthenticationDto,
     @Req() req: Request,

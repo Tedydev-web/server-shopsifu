@@ -32,6 +32,7 @@ interface GoogleAuthStateType {
   flow?: string
   userId?: number
   redirectUrl?: string
+  action?: string
 }
 
 @Injectable()
@@ -110,7 +111,7 @@ export class SocialService {
     // Tạo state để lưu thông tin với format chuẩn và mã hóa an toàn hơn
     const stateData = {
       nonce,
-      flow: stateParams.flow || 'login',
+      action: stateParams.action || stateParams.flow || 'login',
       userId: stateParams.userId,
       redirectUrl: stateParams.redirectUrl,
       timestamp: Date.now() // Thêm timestamp để tránh reuse state
@@ -229,6 +230,13 @@ export class SocialService {
             redirectToError: true
           }
         }
+      }
+
+      // Đảm bảo có action (cả flow cũ và action mới)
+      if (!decodedState.action && decodedState.flow) {
+        decodedState.action = decodedState.flow
+      } else if (!decodedState.action) {
+        decodedState.action = 'login' // Mặc định là login
       }
 
       return decodedState
@@ -862,10 +870,10 @@ export class SocialService {
         return decodedState
       }
 
-      const { flow } = decodedState
+      const { action } = decodedState
 
       // 2. Lấy và xác thực token
-      this.logger.debug(`[googleCallback] Lấy thông tin người dùng từ Google với flow: ${flow}`)
+      this.logger.debug(`[googleCallback] Lấy thông tin người dùng từ Google với action: ${action}`)
       const googleUserInfo = await this.getAndVerifyGoogleUserInfo(code)
 
       if ('errorCode' in googleUserInfo) {
@@ -906,12 +914,12 @@ export class SocialService {
         }
 
         // 5.2. Nếu đang đăng nhập hoặc liên kết, không tạo tài khoản mới
-        if (flow === 'login' || flow === 'link') {
-          this.logger.warn(`[googleCallback] Không tìm thấy tài khoản cho flow ${flow}`)
+        if (action === 'login' || action === 'link') {
+          this.logger.warn(`[googleCallback] Không tìm thấy tài khoản cho action ${action}`)
           return await this.createErrorResponse('ACCOUNT_NOT_FOUND', 'Auth.Error.AccountNotFound')
         }
 
-        // 5.3. Tạo user mới cho flow đăng ký
+        // 5.3. Tạo user mới cho action đăng ký
         this.logger.debug(`[googleCallback] Tạo tài khoản mới cho email: ${googleEmail}`)
         try {
           user = await this.createUserFromGoogle(googleId, googleEmail, googleName, googleAvatar)
