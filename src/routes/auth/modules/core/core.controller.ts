@@ -212,21 +212,20 @@ export class CoreController {
       res
     )
 
-    // Đảm bảo message đã được dịch (nếu có)
-    const message = result.message
-
-    // Kiểm tra nếu kết quả có message dạng i18n key
-    if (result.requiresTwoFactorAuth !== undefined || result.requiresDeviceVerification !== undefined) {
+    // Kiểm tra nếu cần xác thực thiết bị
+    if (result.requiresDeviceVerification) {
       return {
         statusCode: 200,
-        message,
-        // Thêm dữ liệu phù hợp theo trạng thái
-        ...(result.requiresTwoFactorAuth ? { requiresTwoFactorAuth: true } : {}),
-        ...(result.requiresDeviceVerification ? { requiresDeviceVerification: true } : {})
+        message: result.message,
+        data: {
+          requiresDeviceVerification: true,
+          verificationType: result.verificationType,
+          verificationRedirectUrl: result.verificationRedirectUrl
+        }
       }
     }
 
-    // Trả về kết quả đăng nhập thành công với message tương ứng
+    // Trả về kết quả đăng nhập thành công
     return {
       statusCode: 200,
       message: await this.i18nService.translate('Auth.Login.Success', {

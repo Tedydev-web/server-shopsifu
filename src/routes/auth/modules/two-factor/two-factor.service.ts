@@ -272,13 +272,17 @@ export class TwoFactorService {
       isDeviceTrustedInSession: boolean
       userProfile: any
     }
+    // Các trường bổ sung để xử lý các purpose khác
+    purpose?: string
+    userId?: number
+    metadata?: any
   }> {
     // Xác thực SLT token và lấy context
     const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
       sltCookieValue,
       ip,
-      userAgent,
-      TypeOfVerificationCode.LOGIN_2FA
+      userAgent
+      // Loại bỏ TypeOfVerificationCode.LOGIN_2FA để có thể sử dụng cho nhiều purpose
     )
 
     if (!sltContext.userId) {
@@ -325,6 +329,24 @@ export class TwoFactorService {
       throw AuthError.InvalidTOTP()
     }
 
+    // Đánh dấu SLT là đã finalized
+    await this.otpService.finalizeSlt(sltContext.sltJti)
+
+    // Kiểm tra purpose trong context
+    if (
+      sltContext.purpose === TypeOfVerificationCode.REVOKE_SESSIONS ||
+      sltContext.purpose === TypeOfVerificationCode.REVOKE_ALL_SESSIONS
+    ) {
+      // Trả về thông tin cần thiết để controller xử lý tiếp
+      return {
+        message: await this.i18nService.translate('Auth.2FA.Verify.Success'),
+        verifiedMethod: methodUsed,
+        purpose: sltContext.purpose,
+        userId: sltContext.userId,
+        metadata: sltContext.metadata
+      }
+    }
+
     // Tìm hoặc tạo device
     const device = await this.deviceRepository.upsertDevice(user.id, userAgent, ip)
 
@@ -332,7 +354,7 @@ export class TwoFactorService {
     const isDeviceTrusted = device.isTrusted && (await this.deviceRepository.isDeviceTrustValid(device.id))
     this.logger.debug(`2FA verification successful for user ${user.id}, device trust status: ${isDeviceTrusted}`)
 
-    // Xóa SLT cookie của 2FA
+    // Xóa SLT cookie của 2FA chỉ khi purpose không phải là REVOKE_SESSIONS hoặc REVOKE_ALL_SESSIONS
     this.cookieService.clearSltCookie(res)
 
     // Xác định xem 2FA đã xong và chúng ta có thể đăng nhập ngay sau khi verify 2FA

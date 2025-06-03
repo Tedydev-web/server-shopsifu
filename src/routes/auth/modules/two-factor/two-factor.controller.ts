@@ -10,7 +10,9 @@ import {
   UseGuards,
   Logger,
   InternalServerErrorException,
-  HttpException
+  HttpException,
+  Inject,
+  forwardRef
 } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
@@ -37,6 +39,9 @@ import {
 import { CookieNames } from 'src/shared/constants/auth.constant'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { IsPublic } from 'src/routes/auth/decorators/auth.decorator'
+import { TypeOfVerificationCode } from 'src/routes/auth/constants/auth.constants'
+import { SltContextData } from 'src/routes/auth/auth.types'
+import { SessionsService } from '../sessions/sessions.service'
 
 @Controller('auth/2fa')
 export class TwoFactorController {
@@ -45,7 +50,9 @@ export class TwoFactorController {
   constructor(
     private readonly twoFactorService: TwoFactorService,
     private readonly cookieService: CookieService,
-    private readonly i18nService: I18nService
+    private readonly i18nService: I18nService,
+    @Inject(forwardRef(() => SessionsService))
+    private readonly sessionsService: SessionsService
   ) {}
 
   /**
@@ -174,6 +181,19 @@ export class TwoFactorController {
 
       this.logger.debug(`2FA verification successful for code from token ${sltCookieValue.substring(0, 15)}...`)
 
+      // Xử lý các purpose đặc biệt
+      if (result.purpose) {
+        if (result.purpose === TypeOfVerificationCode.REVOKE_SESSIONS && result.userId && result.metadata) {
+          await this.handleRevokeSessionsVerification(result.userId, result.metadata, ip, userAgent, res)
+          return
+        }
+
+        if (result.purpose === TypeOfVerificationCode.REVOKE_ALL_SESSIONS && result.userId && result.metadata) {
+          await this.handleRevokeAllSessionsVerification(result.userId, result.metadata, ip, userAgent, res)
+          return
+        }
+      }
+
       // Kiểm tra nếu cần tiếp tục xác minh thiết bị (requiresDeviceVerification)
       if (result.requiresDeviceVerification) {
         res.status(200).json({
@@ -196,6 +216,127 @@ export class TwoFactorController {
         throw new InternalServerErrorException('An error occurred during 2FA verification')
       }
     }
+  }
+
+  /**
+   * Xử lý xác minh thu hồi sessions cụ thể thông qua 2FA
+   */
+  private async handleRevokeSessionsVerification(
+    userId: number,
+    metadata: any,
+    ip: string,
+    userAgent: string,
+    res: Response
+  ) {
+    this.logger.debug(`[handleRevokeSessionsVerification] Processing for userId: ${userId}`)
+
+    if (!metadata || (!metadata.sessionIds && !metadata.deviceIds)) {
+      throw new Error('Không có thông tin sessions để thu hồi')
+    }
+
+    const options = {
+      sessionIds: metadata.sessionIds,
+      deviceIds: metadata.deviceIds,
+      excludeCurrentSession: metadata.excludeCurrentSession ?? true
+    }
+
+    // Tạo active user để truyền vào service
+    const activeUser = {
+      userId,
+      deviceId: metadata.deviceId || 0,
+      sessionId: metadata.currentSessionId || '',
+      email: metadata.email || '',
+      roleId: 0,
+      roleName: '',
+      isDeviceTrustedInSession: false,
+      exp: 0,
+      iat: 0,
+      jti: ''
+    } as AccessTokenPayload
+
+    const result = await this.sessionsService.revokeItems(
+      userId,
+      options,
+      activeUser,
+      undefined,
+      undefined,
+      ip,
+      userAgent
+    )
+
+    // Xóa SLT cookie
+    this.cookieService.clearSltCookie(res)
+
+    res.status(200).json({
+      message: result.message,
+      data: {
+        revokedSessionsCount: result.revokedSessionsCount,
+        untrustedDevicesCount: result.untrustedDevicesCount,
+        revokedSessionIds: result.revokedSessionIds || [],
+        revokedDeviceIds: result.revokedDeviceIds || [],
+        requiresAdditionalVerification: false
+      }
+    })
+  }
+
+  /**
+   * Xử lý xác minh thu hồi tất cả sessions thông qua 2FA
+   */
+  private async handleRevokeAllSessionsVerification(
+    userId: number,
+    metadata: any,
+    ip: string,
+    userAgent: string,
+    res: Response
+  ) {
+    this.logger.debug(`[handleRevokeAllSessionsVerification] Processing for userId: ${userId}`)
+
+    if (!metadata) {
+      throw new Error('Không có thông tin để thu hồi')
+    }
+
+    const options = {
+      revokeAllUserSessions: true,
+      excludeCurrentSession: metadata.excludeCurrentSession ?? true
+    }
+
+    // Tạo active user để truyền vào service
+    const activeUser = {
+      userId,
+      deviceId: metadata.deviceId || 0,
+      sessionId: metadata.currentSessionId || '',
+      email: metadata.email || '',
+      roleId: 0,
+      roleName: '',
+      isDeviceTrustedInSession: false,
+      exp: 0,
+      iat: 0,
+      jti: ''
+    } as AccessTokenPayload
+
+    const result = await this.sessionsService.revokeItems(
+      userId,
+      options,
+      activeUser,
+      undefined,
+      undefined,
+      ip,
+      userAgent
+    )
+
+    // Xóa SLT cookie
+    this.cookieService.clearSltCookie(res)
+
+    res.status(200).json({
+      message: result.message,
+      data: {
+        revokedSessionsCount: result.revokedSessionsCount,
+        untrustedDevicesCount: result.untrustedDevicesCount,
+        revokedSessionIds: result.revokedSessionIds || [],
+        revokedDeviceIds: result.revokedDeviceIds || [],
+        requiresAdditionalVerification: false
+      }
+    })
   }
 
   /**

@@ -6,6 +6,7 @@ export interface AccessTokenPayloadCreate {
   sessionId: string
   jti: string
   isDeviceTrustedInSession: boolean
+  email?: string
 }
 
 export interface AccessTokenPayload extends AccessTokenPayloadCreate {

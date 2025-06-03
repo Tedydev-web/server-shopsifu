@@ -48,6 +48,10 @@ export class SessionsService implements ISessionService {
       limit: 1000 // Lấy tất cả session để có thể xử lý theo thiết bị
     })
 
+    // Lấy thông tin current session để biết current device
+    const currentSession = await this.sessionRepository.findById(currentSessionIdFromToken)
+    const currentDeviceId = currentSession?.deviceId
+
     // Lấy tất cả device của user
     const devices = await this.deviceRepository.findDevicesByUserId(userId)
 
@@ -78,11 +82,17 @@ export class SessionsService implements ISessionService {
       const lastActive = latestSession?.lastActive || device.lastActive
       const location = await this.getLocationFromIP(latestSession?.ipAddress || device.ip)
 
+      // Đánh dấu thiết bị hiện tại
+      const isCurrentDevice = device.id === currentDeviceId
+
       const sessionItems = await Promise.all(
         deviceSessions.map(async (session) => {
           const sessionInfo = this.parseUserAgent(session.userAgent)
           const inactiveDuration = session.isActive ? null : this.calculateInactiveDuration(session.lastActive)
           const sessionLocation = await this.getLocationFromIP(session.ipAddress)
+
+          // Đánh dấu session hiện tại
+          const isCurrentSession = session.id === currentSessionIdFromToken
 
           return {
             id: session.id,
@@ -95,7 +105,7 @@ export class SessionsService implements ISessionService {
             app: this.determineApp(session.userAgent),
             isActive: session.isActive !== undefined ? session.isActive : true,
             inactiveDuration,
-            isCurrentSession: session.id === currentSessionIdFromToken
+            isCurrentSession
           }
         })
       )
@@ -113,7 +123,8 @@ export class SessionsService implements ISessionService {
         lastActive,
         location,
         activeSessionsCount,
-        sessions: sessionItems
+        sessions: sessionItems,
+        isCurrentDevice
       })
     }
 
@@ -478,6 +489,29 @@ export class SessionsService implements ISessionService {
   }> {
     this.logger.debug(`[revokeItems] Đang thu hồi items cho userId: ${userId}, options: ${JSON.stringify(options)}`)
 
+    // Lấy thông tin về session và device hiện tại
+    const currentSessionId = activeUser.sessionId
+    const currentDeviceId = activeUser.deviceId
+
+    // Kiểm tra xem người dùng có đang cố gắng thu hồi session/device hiện tại không
+    const isRevokingCurrentSession = options.sessionIds?.includes(currentSessionId)
+    const isRevokingCurrentDevice = options.deviceIds?.includes(currentDeviceId)
+
+    // Nếu đang thu hồi session/device hiện tại nhưng excludeCurrentSession = true
+    if (options.excludeCurrentSession) {
+      if (isRevokingCurrentSession && options.sessionIds) {
+        // Loại bỏ session hiện tại khỏi danh sách thu hồi
+        options.sessionIds = options.sessionIds.filter((id) => id !== currentSessionId)
+        this.logger.debug(`[revokeItems] Loại bỏ session hiện tại ${currentSessionId} khỏi danh sách thu hồi`)
+      }
+
+      if (isRevokingCurrentDevice && options.deviceIds) {
+        // Loại bỏ device hiện tại khỏi danh sách thu hồi
+        options.deviceIds = options.deviceIds.filter((id) => id !== currentDeviceId)
+        this.logger.debug(`[revokeItems] Loại bỏ device hiện tại ${currentDeviceId} khỏi danh sách thu hồi`)
+      }
+    }
+
     // Kiểm tra xem hành động này có yêu cầu xác thực 2FA không (nếu gỡ tất cả thiết bị hoặc hơn 3 thiết bị)
     const requiresTwoFactorAuth = options.revokeAllUserSessions || (options.deviceIds && options.deviceIds.length > 3)
 
@@ -493,6 +527,10 @@ export class SessionsService implements ISessionService {
       // Đây là trường hợp bảo mật cao, cần xác thực OTP trước khi thực hiện hành động
       this.logger.debug(`[revokeItems] Yêu cầu xác thực 2FA trước khi thu hồi nhiều thiết bị`)
 
+      // Xác định loại hành động để hướng dẫn người dùng
+      const action = options.revokeAllUserSessions ? 'revoke-all-sessions' : 'revoke-sessions'
+      const verificationRedirectUrl = `/auth/verify-action?action=${action}`
+
       // Trả về thông báo yêu cầu xác thực bổ sung
       return {
         message: this.i18nService.t('auth.Auth.Session.RequiresAdditionalVerification'),
@@ -500,7 +538,7 @@ export class SessionsService implements ISessionService {
         revokedDevicesCount: 0,
         untrustedDevicesCount: 0,
         requiresAdditionalVerification: true,
-        verificationRedirectUrl: '/auth/verify-action?action=revoke-sessions'
+        verificationRedirectUrl
       }
     }
 
@@ -512,9 +550,6 @@ export class SessionsService implements ISessionService {
     // Danh sách các IDs đã xử lý
     const revokedSessionIds: string[] = []
     const revokedDeviceIds: number[] = []
-
-    // Session hiện tại của user
-    const currentSessionId = activeUser.sessionId
 
     try {
       // 1. Thu hồi theo session IDs
@@ -558,6 +593,12 @@ export class SessionsService implements ISessionService {
 
         for (const deviceId of options.deviceIds) {
           try {
+            // Bỏ qua device hiện tại nếu được yêu cầu
+            if (options.excludeCurrentSession && deviceId === currentDeviceId) {
+              this.logger.debug(`[revokeItems] Bỏ qua device hiện tại: ${deviceId}`)
+              continue
+            }
+
             // Kiểm tra device có thuộc về user không
             const device = await this.deviceRepository.findById(deviceId)
             if (!device || device.userId !== userId) {
@@ -615,35 +656,22 @@ export class SessionsService implements ISessionService {
         revokedSessionsCount += result.count
 
         // Đánh dấu tất cả devices không hoạt động (trừ device hiện tại nếu được yêu cầu)
-        if (options.excludeCurrentSession && activeUser.deviceId) {
-          // Tìm tất cả devices trừ device hiện tại
-          const devices = await this.deviceRepository.findDevicesByUserId(userId)
-          for (const device of devices) {
-            if (device.id !== activeUser.deviceId) {
-              await this.deviceRepository.markDeviceAsInactive(device.id)
-              revokedDevicesCount++
-              revokedDeviceIds.push(device.id)
+        const allDevices = await this.deviceRepository.findDevicesByUserId(userId)
 
-              // Bỏ tin tưởng nếu đang được tin tưởng
-              if (device.isTrusted) {
-                await this.deviceRepository.updateDeviceTrustStatus(device.id, false)
-                untrustedDevicesCount++
-              }
-            }
+        for (const device of allDevices) {
+          // Nếu loại trừ phiên hiện tại và đây là thiết bị hiện tại, bỏ qua
+          if (options.excludeCurrentSession && device.id === currentDeviceId) {
+            continue
           }
-        } else {
-          // Đánh dấu tất cả devices không hoạt động
-          const devices = await this.deviceRepository.findDevicesByUserId(userId)
-          for (const device of devices) {
-            await this.deviceRepository.markDeviceAsInactive(device.id)
-            revokedDevicesCount++
-            revokedDeviceIds.push(device.id)
 
-            // Bỏ tin tưởng nếu đang được tin tưởng
-            if (device.isTrusted) {
-              await this.deviceRepository.updateDeviceTrustStatus(device.id, false)
-              untrustedDevicesCount++
-            }
+          await this.deviceRepository.markDeviceAsInactive(device.id)
+          revokedDevicesCount++
+          revokedDeviceIds.push(device.id)
+
+          // Bỏ tin tưởng nếu đang được tin tưởng
+          if (device.isTrusted) {
+            await this.deviceRepository.updateDeviceTrustStatus(device.id, false)
+            untrustedDevicesCount++
           }
         }
 
@@ -845,5 +873,60 @@ export class SessionsService implements ISessionService {
   ): Promise<{ message: string }> {
     this.logger.debug(`[trustCurrentDevice] User ${userId} attempting to trust current device ${currentDeviceId}.`)
     return this.trustDevice(userId, currentDeviceId, ip, userAgent)
+  }
+
+  /**
+   * Kiểm tra xem hành động thu hồi có yêu cầu xác thực bổ sung không
+   * @param userId ID của người dùng
+   * @param options Các tùy chọn của hành động thu hồi
+   * @returns true nếu cần xác thực bổ sung, false nếu không
+   */
+  async checkIfActionRequiresVerification(
+    userId: number,
+    options: {
+      sessionIds?: string[]
+      deviceIds?: number[]
+      revokeAllUserSessions?: boolean
+      excludeCurrentSession?: boolean
+    }
+  ): Promise<boolean> {
+    // Kiểm tra xem người dùng đã bật 2FA chưa
+    const user = await this.prismaService.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorEnabled: true }
+    })
+
+    // Nếu đã bật 2FA, luôn yêu cầu xác thực
+    if (user?.twoFactorEnabled === true) {
+      return true
+    }
+
+    // Hoặc nếu đang thu hồi nhiều thiết bị/session
+    const hasMultipleItems =
+      (options.sessionIds && options.sessionIds.length > 1) || (options.deviceIds && options.deviceIds.length > 0)
+
+    return hasMultipleItems === true
+  }
+
+  /**
+   * Lấy thông tin người dùng theo ID
+   * @param userId ID của người dùng
+   * @returns Thông tin người dùng
+   */
+  async getUserById(userId: number) {
+    const user = await this.prismaService.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        twoFactorEnabled: true
+      }
+    })
+
+    if (!user) {
+      throw new Error(`User with ID ${userId} not found`)
+    }
+
+    return user
   }
 }

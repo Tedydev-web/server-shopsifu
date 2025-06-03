@@ -14,6 +14,7 @@ import { I18nService } from 'nestjs-i18n'
 import { IOTPService } from 'src/shared/types/auth.types'
 import { REDIS_SERVICE, EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService } from 'src/shared/services/email.service'
+import { CookieService } from 'src/routes/auth/shared/cookie/cookie.service'
 
 @Injectable()
 export class OtpService implements IOTPService {
@@ -416,5 +417,23 @@ export class OtpService implements IOTPService {
 
     // Trả về context sau khi xác minh
     return sltContext
+  }
+
+  /**
+   * Đặt SLT token vào cookie
+   * @param res Response object
+   * @param sltToken JWT token
+   * @param purpose Mục đích của SLT
+   */
+  setSltCookie(res: any, sltToken: string, purpose: TypeOfVerificationCodeType): void {
+    // Gọi cookieService để đặt cookie
+    try {
+      const cookieService = new CookieService(this.configService)
+      cookieService.setSltCookie(res, sltToken, purpose)
+      this.logger.debug(`[setSltCookie] Đã đặt SLT cookie cho purpose: ${purpose}`)
+    } catch (error) {
+      this.logger.error(`[setSltCookie] Lỗi khi đặt SLT cookie: ${error.message}`, error.stack)
+      throw error
+    }
   }
 }

@@ -1,30 +1,28 @@
-import { Module } from '@nestjs/common'
+import { Module, forwardRef } from '@nestjs/common'
 import { SessionsController } from './sessions.controller'
 import { SessionsService } from './sessions.service'
-import { PrismaService } from 'src/shared/services/prisma.service'
-import { TokenService } from 'src/routes/auth/shared/token/token.service'
-import { EmailService } from 'src/shared/services/email.service'
-import { DeviceRepository } from 'src/routes/auth/repositories/device.repository'
-import { SessionRepository } from 'src/routes/auth/repositories/session.repository'
-import { ConfigService } from '@nestjs/config'
-import { EMAIL_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { SharedModule } from 'src/shared/shared.module'
-import { VerifyActionController } from './verify-action.controller'
+import { OtpModule } from '../otp/otp.module'
+import { CookieService } from '../../shared/cookie/cookie.service'
+import { EmailService } from 'src/shared/services/email.service'
+import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
+import { DeviceRepository } from '../../repositories/device.repository'
+import { SessionRepository } from '../../repositories/session.repository'
+import { TokenService } from '../../shared/token/token.service'
 
 @Module({
-  imports: [SharedModule],
-  controllers: [SessionsController, VerifyActionController],
+  imports: [SharedModule, forwardRef(() => OtpModule)],
+  controllers: [SessionsController],
   providers: [
     SessionsService,
-    TokenService,
-    PrismaService,
-    DeviceRepository,
     SessionRepository,
-    ConfigService,
+    DeviceRepository,
+    TokenService,
     {
       provide: EMAIL_SERVICE,
       useClass: EmailService
-    }
+    },
+    CookieService
   ],
   exports: [SessionsService]
 })

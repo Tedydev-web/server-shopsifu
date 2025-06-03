@@ -13,7 +13,7 @@ export const SessionItemSchema = z.object({
   app: z.string().nullable().optional(),
   isActive: z.boolean().default(true),
   inactiveDuration: z.string().nullable().optional(),
-  isCurrentSession: z.boolean() // Để UI biết session hiện tại
+  isCurrentSession: z.boolean().default(false) // Đánh dấu session hiện tại
 })
 
 // Device Group DTO với thông tin chi tiết hơn
@@ -30,7 +30,8 @@ export const DeviceSessionGroupSchema = z.object({
   lastActive: z.date().nullable().optional(),
   location: z.string().nullable().optional(),
   activeSessionsCount: z.number().optional(),
-  sessions: z.array(SessionItemSchema)
+  sessions: z.array(SessionItemSchema),
+  isCurrentDevice: z.boolean().default(false) // Thêm trường đánh dấu thiết bị hiện tại
 })
 
 // Get Sessions DTOs
@@ -63,9 +64,6 @@ export const RevokeSessionsBodySchema = z
     // Các devices cần thu hồi (option 2)
     deviceIds: z.array(z.number()).optional(),
 
-    // Thu hồi tất cả (option 3)
-    revokeAll: z.boolean().default(false),
-
     // Loại trừ session hiện tại (thường là true để không tự logout)
     excludeCurrentSession: z.boolean().default(true),
 
@@ -73,10 +71,20 @@ export const RevokeSessionsBodySchema = z
     verificationToken: z.string().optional(),
     otpCode: z.string().optional()
   })
-  .refine(({ sessionIds, deviceIds, revokeAll }) => !!sessionIds?.length || !!deviceIds?.length || revokeAll === true, {
-    message: 'Bạn phải chỉ định ít nhất một trong các tùy chọn: sessionIds, deviceIds hoặc revokeAll',
+  .refine(({ sessionIds, deviceIds }) => !!sessionIds?.length || !!deviceIds?.length, {
+    message: 'Bạn phải chỉ định ít nhất một trong các tùy chọn: sessionIds hoặc deviceIds',
     path: ['invalidRevocationParameters']
   })
+
+// Thêm schema mới cho revoke-all
+export const RevokeAllSessionsBodySchema = z.object({
+  // Loại trừ session hiện tại (mặc định là true)
+  excludeCurrentSession: z.boolean().default(true),
+
+  // Xác thực bổ sung khi cần
+  verificationToken: z.string().optional(),
+  otpCode: z.string().optional()
+})
 
 // Thay thế RevokeItemsResponseSchema cũ
 export const RevokeSessionsResponseSchema = z.object({
@@ -95,6 +103,9 @@ export const RevokeSessionsResponseSchema = z.object({
   // Nếu cần xác thực bổ sung
   requiresAdditionalVerification: z.boolean().default(false),
 
+  // Loại xác thực: '2FA' hoặc 'OTP'
+  verificationType: z.enum(['2FA', 'OTP']).optional(),
+
   // URL để chuyển hướng nếu cần xác thực bổ sung
   verificationRedirectUrl: z.string().optional()
 })
@@ -102,6 +113,7 @@ export const RevokeSessionsResponseSchema = z.object({
 // Thay thế DTO cũ
 export class RevokeSessionsBodyDto extends createZodDto(RevokeSessionsBodySchema) {}
 export class RevokeSessionsResponseDto extends createZodDto(RevokeSessionsResponseSchema) {}
+export class RevokeAllSessionsBodyDto extends createZodDto(RevokeAllSessionsBodySchema) {}
 
 // Update Device DTOs
 export const DeviceIdParamsSchema = z.object({

@@ -216,8 +216,9 @@ export class CoreService implements IUserAuthService {
         // Return message asking for 2FA code
         return {
           message: await this.i18nService.translate('Auth.Login.2FARequired'),
-          requiresTwoFactor: true,
-          twoFactorMethod: user.twoFactorMethod || TwoFactorMethodType.TOTP
+          requiresDeviceVerification: true,
+          verificationType: '2FA',
+          verificationRedirectUrl: '/auth/2fa/verify'
         }
       }
 
@@ -243,8 +244,9 @@ export class CoreService implements IUserAuthService {
         // Return message asking for device verification
         return {
           message: await this.i18nService.translate('Auth.Login.DeviceVerificationOtpRequired'),
-          requiresTwoFactor: false,
-          requiresDeviceVerification: true
+          requiresDeviceVerification: true,
+          verificationType: 'OTP',
+          verificationRedirectUrl: '/auth/otp/verify'
         }
       }
     }

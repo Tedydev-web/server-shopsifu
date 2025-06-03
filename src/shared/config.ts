@@ -203,8 +203,8 @@ const cookieConfig = {
     path: parsedConfig.COOKIE_PATH_CSRF,
     domain: parsedConfig.COOKIE_DOMAIN,
     httpOnly: true,
-    secure: nodeEnv === 'production',
-    sameSite: nodeEnv === 'production' ? 'lax' : 'lax',
+    secure: true,
+    sameSite: 'none',
     signed: true
   },
   oauthPendingLinkToken: OAUTH_PENDING_LINK
