@@ -15,10 +15,7 @@ export const Auth = (
   authTypes: string[] = [AuthType.JWT],
   options: { condition: string } = { condition: ConditionGuard.RolesAndPermissions }
 ) => {
-  return applyDecorators(
-    SetMetadata('auth_type', authTypes),
-    SetMetadata('auth_options', options)
-  )
+  return applyDecorators(SetMetadata('auth_type', authTypes), SetMetadata('auth_options', options))
 }
 
 // Public decorator
@@ -29,4 +26,5 @@ export const IsPublic = () => applyDecorators(SetMetadata('is_public', true))
 export const ROLES_KEY = 'roles'
 export const RolesAllowed = (...roles: string[]) => applyDecorators(SetMetadata('roles', roles))
 
-export const PermissionsRequired = (...permissions: string[]) => applyDecorators(SetMetadata('permissions', permissions))
+export const PermissionsRequired = (...permissions: string[]) =>
+  applyDecorators(SetMetadata('permissions', permissions))

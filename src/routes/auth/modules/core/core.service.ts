@@ -9,6 +9,7 @@ import { TokenService } from '../../shared/token/token.service'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { UserAuthRepository } from '../../repositories/user-auth.repository'
 import { DeviceRepository } from '../../repositories/device.repository'
+import { SessionRepository } from '../../repositories/session.repository'
 import { IUserAuthService } from 'src/shared/types/auth.types'
 import { TwoFactorMethodType, TypeOfVerificationCode } from '../../constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
@@ -45,7 +46,8 @@ export class CoreService implements IUserAuthService {
     private readonly configService: ConfigService,
     private readonly userAuthRepository: UserAuthRepository,
     private readonly deviceRepository: DeviceRepository,
-    private readonly otpService: OtpService
+    private readonly otpService: OtpService,
+    private readonly sessionRepository: SessionRepository
   ) {}
 
   /**
@@ -248,7 +250,7 @@ export class CoreService implements IUserAuthService {
     }
 
     // Nếu không cần xác thực thêm, hoàn tất đăng nhập
-    return await this.finalizeLoginAfterVerification(user.id, device.id, rememberMe || false, res)
+    return await this.finalizeLoginAfterVerification(user.id, device.id, rememberMe || false, res, ip, userAgent)
   }
 
   /**
@@ -361,7 +363,9 @@ export class CoreService implements IUserAuthService {
     userId: number,
     deviceId: number,
     rememberMe: boolean,
-    res: Response
+    res: Response,
+    ipAddress?: string,
+    userAgent?: string
   ): Promise<any> {
     // Tìm user
     const user = await this.userAuthRepository.findById(userId)
@@ -406,6 +410,32 @@ export class CoreService implements IUserAuthService {
       refreshToken,
       rememberMe ? 30 * 24 * 60 * 60 * 1000 : undefined
     )
+
+    // Tạo session trong Redis
+    const sessionExpiresInMs = rememberMe
+      ? this.configService.get<number>('SESSION_REMEMBER_ME_DURATION_MS')
+      : this.configService.get<number>('SESSION_DEFAULT_DURATION_MS')
+
+    const expiresAt = new Date(Date.now() + (sessionExpiresInMs || 0))
+
+    try {
+      await this.sessionRepository.createSession({
+        id: sessionId,
+        userId,
+        deviceId,
+        ipAddress: ipAddress || 'Unknown',
+        userAgent: userAgent || 'Unknown',
+        expiresAt
+      })
+      this.logger.debug(`[finalizeLoginAfterVerification] Session ${sessionId} created in Redis for user ${userId}`)
+    } catch (error) {
+      this.logger.error(
+        `[finalizeLoginAfterVerification] Failed to create session ${sessionId} in Redis for user ${userId}: ${error.message}`,
+        error.stack
+      )
+      // Quyết định có nên throw lỗi ở đây hay không, hoặc chỉ log
+      // Hiện tại, chỉ log để không làm gián đoạn quá trình đăng nhập
+    }
 
     // Trả về thông tin user với cấu trúc giống login
     return {

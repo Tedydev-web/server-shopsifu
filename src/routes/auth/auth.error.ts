@@ -135,10 +135,46 @@ export class AuthError {
   }
 
   static InvalidSocialToken(): HttpException {
-    return new HttpException('Token mạng xã hội không hợp lệ', HttpStatus.BAD_REQUEST)
+    return new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, 'INVALID_SOCIAL_TOKEN', 'Auth.Error.Social.InvalidToken')
   }
 
   static GoogleAccountAlreadyLinked(): HttpException {
-    return new HttpException('Tài khoản Google đã được liên kết với tài khoản khác', HttpStatus.CONFLICT)
+    return new ApiException(
+      HttpStatus.CONFLICT,
+      'GOOGLE_ACCOUNT_ALREADY_LINKED',
+      'Auth.Error.Google.AccountAlreadyLinked'
+    )
+  }
+
+  static GoogleUserInfoFailed(): HttpException {
+    return new ApiException(
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      'GOOGLE_USER_INFO_FAILED',
+      'Auth.Error.Google.UserInfoFailed'
+    )
+  }
+
+  static GoogleInvalidGrant(): HttpException {
+    return new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, 'GOOGLE_INVALID_GRANT', 'Auth.Error.Google.InvalidGrant')
+  }
+
+  static GoogleMissingCode(): HttpException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'GOOGLE_MISSING_CODE', 'Auth.Error.Google.MissingCode')
+  }
+
+  static GoogleStateMismatch(): HttpException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'GOOGLE_STATE_MISMATCH', 'Auth.Error.Google.StateMismatch')
+  }
+
+  static GoogleInvalidPayload(): HttpException {
+    return new ApiException(
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      'GOOGLE_INVALID_PAYLOAD',
+      'Auth.Error.Google.InvalidPayload'
+    )
+  }
+
+  static GoogleAccountConflict(): HttpException {
+    return new ApiException(HttpStatus.CONFLICT, 'GOOGLE_ACCOUNT_CONFLICT', 'Auth.Error.Google.AccountConflict')
   }
 }

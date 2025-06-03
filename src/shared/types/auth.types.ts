@@ -1,6 +1,7 @@
 import { User, Device, Role, UserProfile } from '@prisma/client'
 import { Response, Request } from 'express'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
+import { AccessTokenPayload } from './jwt.type'
 
 /**
  * Auth Provider Interface - Định nghĩa các methods cho authentication provider
@@ -41,9 +42,9 @@ export interface IOTPService {
  * Session Service Interface
  */
 export interface ISessionService {
-  getSessions(userId: number, page?: number, limit?: number): Promise<any>
+  getSessions(userId: number, page?: number, limit?: number, currentSessionIdFromToken?: string): Promise<any>
   revokeSession(userId: number, sessionId: string, currentSessionId?: string): Promise<any>
-  revokeSessions(userId: number, options: any, currentSessionId?: string): Promise<any>
+  revokeItems(userId: number, options: any, activeUser: AccessTokenPayload): Promise<any>
 }
 
 /**

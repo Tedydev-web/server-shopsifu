@@ -134,8 +134,13 @@ export class CookieService implements ICookieService {
    */
   setOAuthNonceCookie(res: Response, nonce: string): void {
     // Set OAuth nonce cookie
-    const oauthNonceConfig = this.getOAuthNonceCookieConfig()
-    this.setCookie(res, CookieNames.OAUTH_NONCE, nonce, oauthNonceConfig)
+    const config = this.getOAuthNonceCookieConfig()
+    this.setCookie(res, config.name, nonce, {
+      ...config,
+      sameSite: 'none',
+      secure: true
+    })
+    this.logger.debug(`Cookie ${CookieNames.OAUTH_NONCE} set successfully with SameSite=None and secure=true`)
   }
 
   /**
@@ -244,24 +249,14 @@ export class CookieService implements ICookieService {
   }
 
   private getOAuthNonceCookieConfig(): CookieConfig {
-    const cookieConfig = this.configService.get<CookieConfig>('cookie.nonce')
-
-    if (!cookieConfig) {
-      this.logger.warn('[getOAuthNonceCookieConfig] Không thể truy cập cấu hình cookie.nonce, sử dụng giá trị mặc định')
-    }
-
-    const config = cookieConfig || {
+    return {
       name: CookieNames.OAUTH_NONCE,
       path: '/',
-      domain: undefined,
-      maxAge: 5 * 60 * 1000, // 5 phút
+      maxAge: 300 * 1000, // 5 phút
       httpOnly: true,
-      secure: false,
-      sameSite: 'lax'
+      secure: true, // Luôn secure để đảm bảo hoạt động với SameSite=None
+      sameSite: 'none' // Cấu hình mặc định là none để hoạt động với OAuth redirect
     }
-
-    this.logger.debug(`[getOAuthNonceCookieConfig] Using config: ${JSON.stringify(config)}`)
-    return config
   }
 
   private getOAuthPendingLinkTokenCookieConfig(): CookieConfig {

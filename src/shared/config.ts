@@ -35,6 +35,8 @@ const configSchema = z.object({
   COOKIE_PATH_REFRESH_TOKEN: z.string().default('/'),
   COOKIE_PATH_CSRF: z.string().default('/'),
   COOKIE_DOMAIN: z.string().optional(),
+  COOKIE_HTTP_ONLY: z.boolean().default(false),
+  COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
 
   // Access & Refresh Token
   ACCESS_TOKEN_SECRET: z.string(),
@@ -89,7 +91,11 @@ const configSchema = z.object({
   ADMIN_PASSWORD: z.string(),
   ADMIN_EMAIL: z.string(),
   ADMIN_PHONE_NUMBER: z.string(),
-  SECRET_API_KEY: z.string()
+  SECRET_API_KEY: z.string(),
+
+  // Session Durations
+  SESSION_DEFAULT_DURATION_MS: z.coerce.number().int().positive().default(86400000), // 1 day
+  SESSION_REMEMBER_ME_DURATION_MS: z.coerce.number().int().positive().default(2592000000) // 30 days
 })
 
 // Xác thực cấu hình

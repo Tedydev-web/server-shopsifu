@@ -11,7 +11,8 @@ export enum TypeOfVerificationCode {
   SETUP_2FA = 'SETUP_2FA',
   LOGIN_UNTRUSTED_DEVICE_OTP = 'LOGIN_UNTRUSTED_DEVICE_OTP',
   REVERIFY_SESSION_OTP = 'REVERIFY_SESSION_OTP',
-  VERIFY_NEW_EMAIL = 'VERIFY_NEW_EMAIL'
+  VERIFY_NEW_EMAIL = 'VERIFY_NEW_EMAIL',
+  UNLINK_GOOGLE_ACCOUNT = 'UNLINK_GOOGLE_ACCOUNT'
 }
 
 export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof typeof TypeOfVerificationCode]

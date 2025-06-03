@@ -119,7 +119,9 @@ export class OtpController {
             sltContext.userId,
             sltContext.deviceId,
             rememberMe,
-            res
+            res,
+            ip,
+            userAgent
           )
 
           this.logger.debug(`[verifyOtp] Login finalized successfully for user: ${userInfo.email}`)

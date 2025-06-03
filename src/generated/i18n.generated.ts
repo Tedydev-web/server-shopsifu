@@ -142,6 +142,24 @@ export type I18nTranslations = {
                 "Social": {
                     "InvalidToken": string;
                 };
+                "Google": {
+                    "UserInfoFailed": string;
+                    "CallbackErrorGeneric": string;
+                    "MissingCode": string;
+                    "StateMismatch": string;
+                    "InvalidPayload": string;
+                    "AccountConflict": string;
+                    "AlreadyLinkedToOtherGoogle": string;
+                    "GoogleIdConflict": string;
+                    "LinkAccountFailed": string;
+                    "InvalidGrant": string;
+                    "TokensRetrievalFailed": string;
+                    "Link": {
+                        "NoPendingState": string;
+                        "InvalidPendingState": string;
+                        "CompleteFailed": string;
+                    };
+                };
                 "OtpToken": {
                     "Invalid": string;
                     "Expired": string;
@@ -158,22 +176,6 @@ export type I18nTranslations = {
                     "MissingSessionCreationTime": string;
                     "NotFoundForUser": string;
                     "MaxDevicesReached": string;
-                };
-                "Google": {
-                    "UserInfoFailed": string;
-                    "CallbackErrorGeneric": string;
-                    "MissingCode": string;
-                    "StateMismatch": string;
-                    "InvalidPayload": string;
-                    "AccountConflict": string;
-                    "AlreadyLinkedToOtherGoogle": string;
-                    "GoogleIdConflict": string;
-                    "LinkAccountFailed": string;
-                    "Link": {
-                        "NoPendingState": string;
-                        "InvalidPendingState": string;
-                        "CompleteFailed": string;
-                    };
                 };
             };
             "RememberMe": {
