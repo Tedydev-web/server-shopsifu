@@ -3,7 +3,7 @@ import { ConfigModule } from '@nestjs/config'
 import { APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_GUARD } from '@nestjs/core'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
-import { AcceptLanguageResolver, I18nModule, QueryResolver, HeaderResolver } from 'nestjs-i18n'
+import { AcceptLanguageResolver, QueryResolver, HeaderResolver, I18nModule } from 'nestjs-i18n'
 import { WinstonModule } from 'nest-winston'
 import path from 'path'
 

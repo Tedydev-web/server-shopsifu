@@ -12,6 +12,7 @@ import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { DeviceSessionGroupDto, SessionItemDto, GetGroupedSessionsResponseDto } from './dto/session.dto'
+import { GeolocationService } from 'src/shared/services/geolocation.service'
 
 @Injectable()
 export class SessionsService implements ISessionService {
@@ -24,7 +25,8 @@ export class SessionsService implements ISessionService {
     private readonly sessionRepository: SessionRepository,
     private readonly deviceRepository: DeviceRepository,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
-    private readonly prismaService: PrismaService
+    private readonly prismaService: PrismaService,
+    private readonly geolocationService: GeolocationService
   ) {}
 
   /**
@@ -40,68 +42,85 @@ export class SessionsService implements ISessionService {
       `[getSessions] Attempting to get grouped sessions for userId: ${userId}, page: ${currentPage}, limit: ${itemsPerPage}, currentSessionId: ${currentSessionIdFromToken}`
     )
 
-    // Lấy TẤT CẢ session của user từ repository, không phân trang ở đây
-    // Repository sẽ trả về mảng Session[]
-    const allUserSessionsResult = await this.sessionRepository.findSessionsByUserId(userId, {
+    // Lấy tất cả session của user
+    const sessionResult = await this.sessionRepository.findSessionsByUserId(userId, {
       page: 1,
-      limit: 1000 // Lấy một số lượng lớn để đảm bảo lấy hết, hoặc sửa findSessionsByUserId để không phân trang
+      limit: 1000 // Lấy tất cả session để có thể xử lý theo thiết bị
     })
-    const allSessions: Session[] = allUserSessionsResult.data
-    this.logger.debug(`[getSessions] Fetched ${allSessions.length} total sessions for userId: ${userId}`)
 
-    if (allSessions.length === 0) {
-      return {
-        devices: [],
-        meta: { currentPage, itemsPerPage, totalItems: 0, totalPages: 0 }
-      }
-    }
-
-    // Nhóm session theo deviceId
-    const sessionsByDevice = new Map<number, Session[]>()
-    for (const session of allSessions) {
-      if (!sessionsByDevice.has(session.deviceId)) {
-        sessionsByDevice.set(session.deviceId, [])
-      }
-      sessionsByDevice.get(session.deviceId)?.push(session)
-    }
-    this.logger.debug(`[getSessions] Grouped sessions into ${sessionsByDevice.size} devices.`)
+    // Lấy tất cả device của user
+    const devices = await this.deviceRepository.findDevicesByUserId(userId)
 
     const deviceGroups: DeviceSessionGroupDto[] = []
-    const deviceIds = Array.from(sessionsByDevice.keys())
 
-    for (const deviceId of deviceIds) {
-      const device = await this.deviceRepository.findById(deviceId)
-      if (!device) {
-        this.logger.warn(`[getSessions] Device with ID ${deviceId} not found, skipping its sessions.`)
+    for (const device of devices) {
+      // Lọc ra các session thuộc về device hiện tại
+      const deviceSessions = sessionResult.data.filter((session) => session.deviceId === device.id)
+
+      if (deviceSessions.length === 0) {
+        // Skip nếu device không có session
         continue
       }
 
-      const deviceSessions = sessionsByDevice.get(deviceId) || []
-      // Sắp xếp session trong mỗi device theo lastActive giảm dần
+      // Parse user agent của thiết bị
+      const deviceInfo = this.parseUserAgent(deviceSessions[0]?.userAgent || 'Unknown')
+
+      // Sắp xếp session theo lastActive mới nhất trước
       deviceSessions.sort((a, b) => b.lastActive.getTime() - a.lastActive.getTime())
 
-      const sessionItems: SessionItemDto[] = deviceSessions.map((session) => ({
-        id: session.id,
-        createdAt: session.createdAt,
-        lastActive: session.lastActive,
-        ipAddress: session.ipAddress,
-        userAgent: session.userAgent,
-        isCurrentSession: session.id === currentSessionIdFromToken
-      }))
+      // Lấy session mới nhất
+      const latestSession = deviceSessions[0]
+
+      // Đếm số session đang hoạt động
+      const activeSessionsCount = deviceSessions.filter((s) => s.isActive).length
+
+      // Lấy thời gian hoạt động cuối cùng và vị trí từ session mới nhất
+      const lastActive = latestSession?.lastActive || device.lastActive
+      const location = await this.getLocationFromIP(latestSession?.ipAddress || device.ip)
+
+      const sessionItems = await Promise.all(
+        deviceSessions.map(async (session) => {
+          const sessionInfo = this.parseUserAgent(session.userAgent)
+          const inactiveDuration = session.isActive ? null : this.calculateInactiveDuration(session.lastActive)
+          const sessionLocation = await this.getLocationFromIP(session.ipAddress)
+
+          return {
+            id: session.id,
+            createdAt: session.createdAt,
+            lastActive: session.lastActive,
+            ipAddress: session.ipAddress,
+            location: sessionLocation,
+            browser: sessionInfo.browser,
+            browserVersion: sessionInfo.browserVersion,
+            app: this.determineApp(session.userAgent),
+            isActive: session.isActive !== undefined ? session.isActive : true,
+            inactiveDuration,
+            isCurrentSession: session.id === currentSessionIdFromToken
+          }
+        })
+      )
 
       deviceGroups.push({
         deviceId: device.id,
         deviceName: device.name,
+        deviceType: deviceInfo.deviceType,
+        os: deviceInfo.os,
+        osVersion: deviceInfo.osVersion,
+        browser: deviceInfo.browser,
+        browserVersion: deviceInfo.browserVersion,
         isDeviceTrusted: device.isTrusted,
         deviceTrustExpiration: device.trustExpiration,
+        lastActive,
+        location,
+        activeSessionsCount,
         sessions: sessionItems
       })
     }
 
     // Sắp xếp các device group: device có session mới nhất lên đầu
     deviceGroups.sort((a, b) => {
-      const lastActiveA = a.sessions[0]?.lastActive.getTime() || 0
-      const lastActiveB = b.sessions[0]?.lastActive.getTime() || 0
+      const lastActiveA = a.lastActive?.getTime() || 0
+      const lastActiveB = b.lastActive?.getTime() || 0
       return lastActiveB - lastActiveA
     })
 
@@ -125,6 +144,198 @@ export class SessionsService implements ISessionService {
         totalItems,
         totalPages
       }
+    }
+  }
+
+  /**
+   * Phân tích chuỗi User-Agent để lấy thông tin thiết bị, trình duyệt và hệ điều hành
+   */
+  private parseUserAgent(userAgent: string): {
+    deviceType: string
+    os: string
+    osVersion: string
+    browser: string
+    browserVersion: string
+  } {
+    try {
+      const userAgentLower = userAgent.toLowerCase()
+
+      // Xác định loại thiết bị
+      let deviceType = 'Desktop'
+      if (
+        userAgentLower.includes('mobile') ||
+        userAgentLower.includes('android') ||
+        userAgentLower.includes('iphone')
+      ) {
+        deviceType = 'Mobile'
+      } else if (userAgentLower.includes('tablet') || userAgentLower.includes('ipad')) {
+        deviceType = 'Tablet'
+      }
+
+      // Xác định hệ điều hành và phiên bản
+      let os = 'Unknown'
+      let osVersion = ''
+
+      if (userAgentLower.includes('windows')) {
+        os = 'Windows'
+        const windowsMatch = userAgentLower.match(/windows nt (\d+\.\d+)/)
+        if (windowsMatch) {
+          const ntVersion = parseFloat(windowsMatch[1])
+          if (ntVersion === 10.0) osVersion = '10'
+          else if (ntVersion === 6.3) osVersion = '8.1'
+          else if (ntVersion === 6.2) osVersion = '8'
+          else if (ntVersion === 6.1) osVersion = '7'
+          else osVersion = ntVersion.toString()
+        }
+      } else if (userAgentLower.includes('macintosh') || userAgentLower.includes('mac os')) {
+        os = 'macOS'
+        const macMatch = userAgentLower.match(/mac os x (\d+[._]\d+[._]?\d*)/)
+        if (macMatch) {
+          osVersion = macMatch[1].replace(/_/g, '.')
+        }
+      } else if (userAgentLower.includes('linux')) {
+        os = 'Linux'
+      } else if (userAgentLower.includes('android')) {
+        os = 'Android'
+        const androidMatch = userAgentLower.match(/android (\d+(\.\d+)*)/)
+        if (androidMatch) {
+          osVersion = androidMatch[1]
+        }
+      } else if (
+        userAgentLower.includes('iphone') ||
+        userAgentLower.includes('ipad') ||
+        userAgentLower.includes('ipod')
+      ) {
+        os = 'iOS'
+        const iosMatch = userAgentLower.match(/os (\d+[._]\d+[._]?\d*)/)
+        if (iosMatch) {
+          osVersion = iosMatch[1].replace(/_/g, '.')
+        }
+      }
+
+      // Xác định trình duyệt và phiên bản
+      let browser = 'Unknown'
+      let browserVersion = ''
+
+      if (userAgentLower.includes('edge') || userAgentLower.includes('edg/')) {
+        browser = 'Edge'
+        const edgeMatch = userAgentLower.match(/edge?\/(\d+(\.\d+)*)/)
+        if (edgeMatch) {
+          browserVersion = edgeMatch[1]
+        }
+      } else if (userAgentLower.includes('chrome')) {
+        browser = 'Chrome'
+        const chromeMatch = userAgentLower.match(/chrome\/(\d+(\.\d+)*)/)
+        if (chromeMatch) {
+          browserVersion = chromeMatch[1]
+        }
+      } else if (userAgentLower.includes('firefox')) {
+        browser = 'Firefox'
+        const firefoxMatch = userAgentLower.match(/firefox\/(\d+(\.\d+)*)/)
+        if (firefoxMatch) {
+          browserVersion = firefoxMatch[1]
+        }
+      } else if (userAgentLower.includes('safari') && !userAgentLower.includes('chrome')) {
+        browser = 'Safari'
+        const safariMatch = userAgentLower.match(/version\/(\d+(\.\d+)*)/)
+        if (safariMatch) {
+          browserVersion = safariMatch[1]
+        }
+      } else if (userAgentLower.includes('opera') || userAgentLower.includes('opr/')) {
+        browser = 'Opera'
+        const operaMatch = userAgentLower.match(/(?:opera|opr)\/(\d+(\.\d+)*)/)
+        if (operaMatch) {
+          browserVersion = operaMatch[1]
+        }
+      }
+
+      return {
+        deviceType,
+        os,
+        osVersion,
+        browser,
+        browserVersion
+      }
+    } catch (error) {
+      this.logger.error(`[parseUserAgent] Error parsing user agent: ${error.message}`)
+      return {
+        deviceType: 'Unknown',
+        os: 'Unknown',
+        osVersion: '',
+        browser: 'Unknown',
+        browserVersion: ''
+      }
+    }
+  }
+
+  /**
+   * Xác định ứng dụng từ user agent
+   */
+  private determineApp(userAgent: string): string {
+    try {
+      const userAgentLower = userAgent.toLowerCase()
+
+      if (userAgentLower.includes('instagram')) {
+        return 'Instagram'
+      } else if (userAgentLower.includes('youtube')) {
+        return 'YouTube'
+      } else if (userAgentLower.includes('facebook')) {
+        return 'Facebook'
+      } else if (userAgentLower.includes('twitter')) {
+        return 'Twitter'
+      } else if (userAgentLower.includes('linkedin')) {
+        return 'LinkedIn'
+      } else if (userAgentLower.includes('safari')) {
+        return 'Safari'
+      } else if (userAgentLower.includes('firefox')) {
+        return 'Firefox'
+      } else if (userAgentLower.includes('chrome')) {
+        return 'Google Chrome'
+      } else if (userAgentLower.includes('edge')) {
+        return 'Microsoft Edge'
+      } else if (userAgentLower.includes('opera')) {
+        return 'Opera'
+      }
+
+      return 'Unknown App'
+    } catch (error) {
+      return 'Unknown App'
+    }
+  }
+
+  /**
+   * Lấy thông tin vị trí từ địa chỉ IP (sử dụng GeolocationService)
+   */
+  private async getLocationFromIP(ip: string): Promise<string> {
+    try {
+      return await this.geolocationService.getLocationFromIP(ip)
+    } catch (error) {
+      this.logger.error(`Error getting location from IP: ${error.message}`)
+      return 'Vị trí không xác định'
+    }
+  }
+
+  /**
+   * Tính thời gian không hoạt động dựa trên thời gian hoạt động cuối
+   */
+  private calculateInactiveDuration(lastActiveDate: Date): string {
+    try {
+      const now = new Date()
+      const diffInMs = now.getTime() - lastActiveDate.getTime()
+
+      const minutes = Math.floor(diffInMs / (1000 * 60))
+      const hours = Math.floor(minutes / 60)
+      const days = Math.floor(hours / 24)
+
+      if (days > 0) {
+        return `${days} ngày`
+      } else if (hours > 0) {
+        return `${hours} giờ`
+      } else {
+        return `${minutes} phút`
+      }
+    } catch (error) {
+      return ''
     }
   }
 

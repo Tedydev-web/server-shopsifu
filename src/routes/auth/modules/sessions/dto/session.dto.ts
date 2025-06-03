@@ -1,22 +1,35 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
 
-// Session Item DTO (chỉ các trường cần thiết cho UI)
+// Session Item DTO (chi tiết theo yêu cầu)
 export const SessionItemSchema = z.object({
   id: z.string(),
   createdAt: z.date(),
   lastActive: z.date(),
   ipAddress: z.string(),
-  userAgent: z.string(),
-  isCurrentSession: z.boolean() // Thêm trường này để UI biết session hiện tại
+  location: z.string().nullable().optional(),
+  browser: z.string().nullable().optional(),
+  browserVersion: z.string().nullable().optional(),
+  app: z.string().nullable().optional(),
+  isActive: z.boolean().default(true),
+  inactiveDuration: z.string().nullable().optional(),
+  isCurrentSession: z.boolean() // Để UI biết session hiện tại
 })
 
-// Device Group DTO
+// Device Group DTO với thông tin chi tiết hơn
 export const DeviceSessionGroupSchema = z.object({
   deviceId: z.number(),
   deviceName: z.string().nullable(),
+  deviceType: z.string().nullable().optional(),
+  os: z.string().nullable().optional(),
+  osVersion: z.string().nullable().optional(),
+  browser: z.string().nullable().optional(),
+  browserVersion: z.string().nullable().optional(),
   isDeviceTrusted: z.boolean(),
-  deviceTrustExpiration: z.date().nullable().optional(), // Thêm thời gian hết hạn tin cậy
+  deviceTrustExpiration: z.date().nullable().optional(),
+  lastActive: z.date().nullable().optional(),
+  location: z.string().nullable().optional(),
+  activeSessionsCount: z.number().optional(),
   sessions: z.array(SessionItemSchema)
 })
 
@@ -65,7 +78,7 @@ export const UpdateDeviceNameBodySchema = z.object({
   name: z.string().min(1).max(100)
 })
 
-// Trust/Untrust Device DTOs (Không cần body nữa nếu chỉ dựa vào params)
+// Trust/Untrust Device DTOs (Không cần body nếu chỉ dựa vào params)
 
 // DTO classes
 export class GetSessionsQueryDto extends createZodDto(GetSessionsQuerySchema) {}

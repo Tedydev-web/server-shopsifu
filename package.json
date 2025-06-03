@@ -40,6 +40,7 @@
     "@types/cookie-parser": "^1.4.8",
     "@types/csurf": "^1.11.5",
     "@types/geoip-lite": "^1.4.4",
+    "axios": "^1.9.0",
     "bcrypt": "^5.1.1",
     "cache-manager-redis-yet": "^5.1.5",
     "compression": "^1.8.0",

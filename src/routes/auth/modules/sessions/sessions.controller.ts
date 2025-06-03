@@ -30,36 +30,65 @@ import {
   TrustDeviceResponseDto,
   UntrustDeviceResponseDto
 } from './dto/session.dto'
+import { ZodSerializerDto } from 'nestjs-zod'
+import { I18nService } from 'nestjs-i18n'
 
 @UseGuards(AccessTokenGuard)
 @Controller('auth/sessions')
 export class SessionsController {
   private readonly logger = new Logger(SessionsController.name)
 
-  constructor(private readonly sessionsService: SessionsService) {}
+  constructor(
+    private readonly sessionsService: SessionsService,
+    private readonly i18nService: I18nService
+  ) {}
 
   @Get()
   @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(GetGroupedSessionsResponseDto)
   async getSessions(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Query() query: GetSessionsQueryDto
-  ): Promise<GetGroupedSessionsResponseDto> {
+  ): Promise<{
+    statusCode: number
+    message: string
+    data: GetGroupedSessionsResponseDto
+  }> {
     this.logger.debug(
       `[SessionsController.getSessions] User ${activeUser.userId} requesting sessions. Page: ${query.page}, Limit: ${query.limit}`
     )
-    return this.sessionsService.getSessions(activeUser.userId, query.page, query.limit, activeUser.sessionId)
+    const sessionsData = await this.sessionsService.getSessions(
+      activeUser.userId,
+      query.page,
+      query.limit,
+      activeUser.sessionId
+    )
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Global.Success',
+      data: sessionsData
+    }
   }
 
   @Delete(':sessionId')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   async revokeSingleSession(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Param() params: RevokeSessionParamsDto
-  ): Promise<void> {
+  ): Promise<{
+    statusCode: number
+    message: string
+  }> {
     this.logger.debug(
       `[SessionsController.revokeSingleSession] User ${activeUser.userId} revoking session ${params.sessionId}`
     )
-    await this.sessionsService.revokeSession(activeUser.userId, params.sessionId, activeUser.sessionId)
+    const result = await this.sessionsService.revokeSession(activeUser.userId, params.sessionId, activeUser.sessionId)
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: result.message
+    }
   }
 
   @Post('revoke-items')
@@ -67,11 +96,21 @@ export class SessionsController {
   async revokeMultipleItems(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: RevokeItemsBodyDto
-  ): Promise<RevokeItemsResponseDto> {
+  ): Promise<{
+    statusCode: number
+    message: string
+    data: RevokeItemsResponseDto
+  }> {
     this.logger.debug(
       `[SessionsController.revokeMultipleItems] User ${activeUser.userId} revoking items with body: ${JSON.stringify(body)}`
     )
-    return this.sessionsService.revokeItems(activeUser.userId, body, activeUser)
+    const result = await this.sessionsService.revokeItems(activeUser.userId, body, activeUser)
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: result.message,
+      data: result
+    }
   }
 
   @Patch('devices/:deviceId/name')
@@ -80,11 +119,21 @@ export class SessionsController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Param() params: DeviceIdParamsDto,
     @Body() body: UpdateDeviceNameBodyDto
-  ): Promise<UpdateDeviceNameResponseDto> {
+  ): Promise<{
+    statusCode: number
+    message: string
+    data: UpdateDeviceNameResponseDto
+  }> {
     this.logger.debug(
       `[SessionsController.updateDeviceName] User ${activeUser.userId} updating device ${params.deviceId} name to "${body.name}"`
     )
-    return this.sessionsService.updateDeviceName(activeUser.userId, params.deviceId, body.name)
+    const result = await this.sessionsService.updateDeviceName(activeUser.userId, params.deviceId, body.name)
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: result.message,
+      data: result
+    }
   }
 
   @Post('devices/:deviceId/trust')
@@ -94,9 +143,19 @@ export class SessionsController {
     @Param() params: DeviceIdParamsDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string
-  ): Promise<TrustDeviceResponseDto> {
+  ): Promise<{
+    statusCode: number
+    message: string
+    data: TrustDeviceResponseDto
+  }> {
     this.logger.debug(`[SessionsController.trustDevice] User ${activeUser.userId} trusting device ${params.deviceId}`)
-    return this.sessionsService.trustDevice(activeUser.userId, params.deviceId, ip, userAgent)
+    const result = await this.sessionsService.trustDevice(activeUser.userId, params.deviceId, ip, userAgent)
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: result.message,
+      data: result
+    }
   }
 
   @Post('devices/:deviceId/untrust')
@@ -104,11 +163,21 @@ export class SessionsController {
   async untrustDevice(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Param() params: DeviceIdParamsDto
-  ): Promise<UntrustDeviceResponseDto> {
+  ): Promise<{
+    statusCode: number
+    message: string
+    data: UntrustDeviceResponseDto
+  }> {
     this.logger.debug(
       `[SessionsController.untrustDevice] User ${activeUser.userId} untrusting device ${params.deviceId}`
     )
-    return this.sessionsService.untrustDevice(activeUser.userId, params.deviceId)
+    const result = await this.sessionsService.untrustDevice(activeUser.userId, params.deviceId)
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: result.message,
+      data: result
+    }
   }
 
   @Post('current-device/trust')
@@ -117,10 +186,20 @@ export class SessionsController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Ip() ip: string,
     @UserAgent() userAgent: string
-  ): Promise<TrustDeviceResponseDto> {
+  ): Promise<{
+    statusCode: number
+    message: string
+    data: TrustDeviceResponseDto
+  }> {
     this.logger.debug(
       `[SessionsController.trustCurrentDevice] User ${activeUser.userId} trusting current device ${activeUser.deviceId}`
     )
-    return this.sessionsService.trustCurrentDevice(activeUser.userId, activeUser.deviceId, ip, userAgent)
+    const result = await this.sessionsService.trustCurrentDevice(activeUser.userId, activeUser.deviceId, ip, userAgent)
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: result.message,
+      data: result
+    }
   }
 }
