@@ -187,29 +187,115 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Vô hiệu hóa session
+   * Vô hiệu hóa một session
+   * @param sessionId ID của session cần vô hiệu hóa
+   * @param reason Lý do vô hiệu hóa
+   * @returns Promise<void>
    */
   async invalidateSession(sessionId: string, reason: string = 'UNKNOWN'): Promise<void> {
-    await this.redisService.set(`session_invalidated:${sessionId}`, reason, 'EX', 30 * 24 * 60 * 60)
+    if (!sessionId) {
+      this.logger.warn('[invalidateSession] Không thể vô hiệu hóa session với sessionId rỗng')
+      return
+    }
+
+    try {
+      // 1. Thêm session vào blacklist trong Redis với TTL dài (30 ngày)
+      const key = `invalidated:session:${sessionId}`
+      await this.redisService.set(key, reason, 'EX', 30 * 24 * 60 * 60) // 30 ngày
+
+      // 2. Publish sự kiện để các instances khác có thể cập nhật cache nội bộ
+      const eventData = JSON.stringify({ sessionId, reason, timestamp: Date.now() })
+      await this.redisService.publish('session:invalidated', eventData)
+
+      this.logger.debug(`[invalidateSession] Session ${sessionId} đã bị vô hiệu hóa với lý do: ${reason}`)
+    } catch (error) {
+      this.logger.error(`[invalidateSession] Lỗi khi vô hiệu hóa session ${sessionId}: ${error.message}`, error.stack)
+      throw error
+    }
   }
 
   /**
-   * Kiểm tra session có bị vô hiệu hóa không
+   * Kiểm tra xem session có bị vô hiệu hóa không
+   * @param sessionId ID của session cần kiểm tra
+   * @returns Promise<boolean> true nếu session đã bị vô hiệu hóa
    */
   async isSessionInvalidated(sessionId: string): Promise<boolean> {
-    const result = await this.redisService.exists(`session_invalidated:${sessionId}`)
-    return result > 0
+    if (!sessionId) {
+      this.logger.warn('[isSessionInvalidated] Không thể kiểm tra session với sessionId rỗng')
+      return true // Coi như session không hợp lệ nếu không có sessionId
+    }
+
+    try {
+      // Kiểm tra trong Redis
+      const key = `invalidated:session:${sessionId}`
+      const value = await this.redisService.get(key)
+
+      const isInvalidated = value !== null
+
+      if (isInvalidated) {
+        this.logger.debug(`[isSessionInvalidated] Session ${sessionId} đã bị vô hiệu hóa với lý do: ${value}`)
+      }
+
+      return isInvalidated
+    } catch (error) {
+      this.logger.error(`[isSessionInvalidated] Lỗi khi kiểm tra session ${sessionId}: ${error.message}`, error.stack)
+      // Nếu có lỗi, coi như session hợp lệ để tránh chặn truy cập không đáng có
+      return false
+    }
   }
 
   /**
-   * Vô hiệu hóa tất cả session của user
+   * Vô hiệu hóa tất cả session của một user
+   * @param userId ID của người dùng
+   * @param reason Lý do vô hiệu hóa
+   * @param sessionIdToExclude ID session cần loại trừ (thường là session hiện tại)
+   * @returns Promise<void>
    */
-  invalidateAllUserSessions(
+  async invalidateAllUserSessions(
     userId: number,
     reason: string = 'UNKNOWN_BULK_INVALIDATION',
     sessionIdToExclude?: string
-  ): void {
-    // Trong môi trường thực tế, sẽ triển khai logic để vô hiệu hóa tất cả session của user
-    this.logger.log(`Vô hiệu hóa tất cả session của user ${userId}, trừ session ${sessionIdToExclude}`)
+  ): Promise<void> {
+    if (!userId) {
+      this.logger.warn('[invalidateAllUserSessions] Không thể vô hiệu hóa session với userId rỗng')
+      return
+    }
+
+    try {
+      // 1. Lưu thông tin trong Redis để tra cứu nhanh
+      const userKey = `invalidated:user:${userId}`
+
+      // Thêm timestamp để biết khi nào tất cả sessions bị vô hiệu hóa
+      const invalidationData = JSON.stringify({
+        timestamp: Date.now(),
+        reason,
+        excludeSessionId: sessionIdToExclude
+      })
+
+      // Lưu với TTL 30 ngày
+      await this.redisService.set(userKey, invalidationData, 'EX', 30 * 24 * 60 * 60)
+
+      // 2. Thêm vào danh sách user có session bị vô hiệu hóa hàng loạt để kiểm tra nhanh
+      await this.redisService.sadd('invalidated:users', userId.toString())
+
+      // 3. Publish sự kiện để các instances khác có thể cập nhật cache nội bộ
+      const eventData = JSON.stringify({
+        userId,
+        reason,
+        excludeSessionId: sessionIdToExclude,
+        timestamp: Date.now()
+      })
+      await this.redisService.publish('user:sessions:invalidated', eventData)
+
+      this.logger.debug(
+        `[invalidateAllUserSessions] Tất cả sessions của user ${userId} đã bị vô hiệu hóa với lý do: ${reason}`
+      )
+    } catch (error) {
+      this.logger.error(
+        `[invalidateAllUserSessions] Lỗi khi vô hiệu hóa tất cả sessions của user ${userId}: ${error.message}`,
+        error.stack
+      )
+      throw error
+    }
   }
 }

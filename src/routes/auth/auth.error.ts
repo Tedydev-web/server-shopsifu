@@ -104,6 +104,10 @@ export class AuthError {
     return new HttpException('Phiên không tồn tại', HttpStatus.NOT_FOUND)
   }
 
+  static CannotRevokeCurrent(): HttpException {
+    return new HttpException('Không thể thu hồi phiên hiện tại', HttpStatus.BAD_REQUEST)
+  }
+
   static DeviceNotFound(): HttpException {
     return new HttpException('Thiết bị không tồn tại', HttpStatus.NOT_FOUND)
   }

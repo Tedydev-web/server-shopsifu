@@ -409,4 +409,19 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const pipeline = this.redisClient.pipeline()
     return await fn(pipeline).exec()
   }
+
+  /**
+   * PUBLISH - Phát hành tin nhắn đến một kênh
+   * @param channel Tên kênh
+   * @param message Tin nhắn
+   * @returns Số lượng clients đã nhận tin nhắn
+   */
+  async publish(channel: string, message: string): Promise<number> {
+    try {
+      return await this.redisClient.publish(channel, message)
+    } catch (error) {
+      this.logger.error(`Redis PUBLISH error: ${error.message}`)
+      throw error
+    }
+  }
 }

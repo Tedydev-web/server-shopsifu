@@ -304,74 +304,154 @@ export class SessionsService implements ISessionService {
   }
 
   /**
-   * Lấy thông tin vị trí từ địa chỉ IP (sử dụng GeolocationService)
+   * Lấy thông tin vị trí từ địa chỉ IP
    */
   private async getLocationFromIP(ip: string): Promise<string> {
     try {
+      // Sử dụng GeolocationService đã được cải tiến để lấy thông tin vị trí
       return await this.geolocationService.getLocationFromIP(ip)
     } catch (error) {
-      this.logger.error(`Error getting location from IP: ${error.message}`)
-      return 'Vị trí không xác định'
+      this.logger.error(`Lỗi khi lấy thông tin vị trí từ IP ${ip}: ${error.message}`)
+      return 'Việt Nam' // Fallback cuối cùng
     }
   }
 
   /**
-   * Tính thời gian không hoạt động dựa trên thời gian hoạt động cuối
+   * Tính toán thời gian không hoạt động dựa trên lastActive
+   * @param lastActiveDate Thời điểm hoạt động cuối cùng
+   * @returns Chuỗi mô tả thời gian không hoạt động (vd: "5 phút", "2 giờ", "3 ngày")
    */
   private calculateInactiveDuration(lastActiveDate: Date): string {
-    try {
-      const now = new Date()
-      const diffInMs = now.getTime() - lastActiveDate.getTime()
+    const now = new Date()
+    const lastActive = new Date(lastActiveDate)
 
-      const minutes = Math.floor(diffInMs / (1000 * 60))
-      const hours = Math.floor(minutes / 60)
-      const days = Math.floor(hours / 24)
-
-      if (days > 0) {
-        return `${days} ngày`
-      } else if (hours > 0) {
-        return `${hours} giờ`
-      } else {
-        return `${minutes} phút`
-      }
-    } catch (error) {
-      return ''
+    // Đảm bảo lastActive không trong tương lai
+    if (lastActive > now) {
+      return 'Vừa xong'
     }
+
+    const diffMs = now.getTime() - lastActive.getTime()
+    const diffSeconds = Math.floor(diffMs / 1000)
+
+    // Nếu ít hơn 60 giây
+    if (diffSeconds < 60) {
+      return 'Vừa xong'
+    }
+
+    // Nếu ít hơn 60 phút
+    const diffMinutes = Math.floor(diffSeconds / 60)
+    if (diffMinutes < 60) {
+      return `${diffMinutes} phút`
+    }
+
+    // Nếu ít hơn 24 giờ
+    const diffHours = Math.floor(diffMinutes / 60)
+    if (diffHours < 24) {
+      return `${diffHours} giờ`
+    }
+
+    // Nếu ít hơn 7 ngày
+    const diffDays = Math.floor(diffHours / 24)
+    if (diffDays < 7) {
+      return `${diffDays} ngày`
+    }
+
+    // Nếu ít hơn 30 ngày
+    const diffWeeks = Math.floor(diffDays / 7)
+    if (diffWeeks < 4) {
+      return `${diffWeeks} tuần`
+    }
+
+    // Nếu ít hơn 12 tháng
+    const diffMonths = Math.floor(diffDays / 30)
+    if (diffMonths < 12) {
+      return `${diffMonths} tháng`
+    }
+
+    // Nếu hơn 12 tháng
+    const diffYears = Math.floor(diffDays / 365)
+    return `${diffYears} năm`
   }
 
   /**
-   * Thu hồi một session
+   * Thu hồi một session cụ thể
+   * @param userId ID của người dùng
+   * @param sessionId ID của session cần thu hồi
+   * @param currentSessionId ID của session hiện tại đang sử dụng
+   * @returns Thông báo kết quả
    */
   async revokeSession(userId: number, sessionId: string, currentSessionId?: string): Promise<{ message: string }> {
-    this.logger.debug(
-      `[revokeSession] User ${userId} attempting to revoke session ${sessionId}. Current session: ${currentSessionId}`
-    )
-    // Kiểm tra session có tồn tại và thuộc về user không
+    this.logger.debug(`[revokeSession] Đang thu hồi session ${sessionId} cho userId: ${userId}`)
+
+    // Kiểm tra xem session có tồn tại không
     const session = await this.sessionRepository.findById(sessionId)
 
-    if (!session || session.userId !== userId) {
-      this.logger.warn(`[revokeSession] Session ${sessionId} not found or does not belong to user ${userId}.`)
+    if (!session) {
+      this.logger.warn(`[revokeSession] Session ${sessionId} không tồn tại`)
       throw AuthError.SessionNotFound()
     }
 
-    // Kiểm tra nếu user cố gắng thu hồi session hiện tại qua endpoint này
-    // (Logic phức tạp hơn về việc thu hồi session hiện tại sẽ nằm trong revokeItems)
-    // if (sessionId === currentSessionId) {
-    //   this.logger.warn(`[revokeSession] User ${userId} attempted to revoke their current session ${sessionId} via single revoke endpoint.`);
-    //   throw new AuthError.InvalidRevokeOperation('Cannot revoke current session via this endpoint. Use logout or specific device/session management features.');
-    // }
+    // Kiểm tra xem session có thuộc về user không
+    if (session.userId !== userId) {
+      this.logger.warn(
+        `[revokeSession] Session ${sessionId} không thuộc về userId: ${userId}, mà thuộc về userId: ${session.userId}`
+      )
+      throw AuthError.InsufficientPermissions()
+    }
 
-    // Thu hồi session
-    await this.tokenService.invalidateSession(sessionId, 'USER_REVOKED_SINGLE')
-    this.logger.log(`[revokeSession] Session ${sessionId} revoked by user ${userId}.`)
+    // Kiểm tra xem đang cố revoke session hiện tại không
+    if (sessionId === currentSessionId) {
+      this.logger.warn(`[revokeSession] Đang cố thu hồi session hiện tại: ${sessionId}`)
+      throw AuthError.CannotRevokeCurrent()
+    }
 
-    return {
-      message: await this.i18nService.translate('Auth.Session.Revoked')
+    try {
+      // 1. Đánh dấu session không hoạt động và xóa khỏi Redis
+      await this.sessionRepository.deleteSession(sessionId)
+      this.logger.debug(`[revokeSession] Đã xóa session ${sessionId} khỏi Redis`)
+
+      // 2. Vô hiệu hóa các token liên quan đến session
+      await this.tokenService.invalidateSession(sessionId, 'REVOKED_BY_USER')
+      this.logger.debug(`[revokeSession] Đã vô hiệu hóa session ${sessionId} trong TokenService`)
+
+      // 3. Kiểm tra và cập nhật device nếu cần thiết
+      if (session.deviceId) {
+        // Kiểm tra xem còn session nào khác cho device này không
+        const activeSessions = await this.sessionRepository.findSessionsByUserId(userId, { page: 1, limit: 1000 })
+        const hasOtherActiveSessions = activeSessions.data.some(
+          (s) => s.id !== sessionId && s.deviceId === session.deviceId && s.isActive
+        )
+
+        // Nếu không còn session nào khác, đánh dấu device là không hoạt động
+        if (!hasOtherActiveSessions) {
+          this.logger.debug(
+            `[revokeSession] Không còn session nào cho device ${session.deviceId}, đánh dấu device không hoạt động`
+          )
+          await this.deviceRepository.markDeviceAsInactive(session.deviceId)
+        }
+      }
+
+      // 4. Audit log
+      // TODO: Thêm audit log nếu cần
+
+      const message = this.i18nService.t('auth.Auth.Session.Revoked')
+      return { message }
+    } catch (error) {
+      this.logger.error(`[revokeSession] Lỗi khi thu hồi session ${sessionId}: ${error.message}`, error.stack)
+      throw error
     }
   }
 
   /**
-   * Thu hồi nhiều session và/hoặc devices
+   * Thu hồi nhiều sessions hoặc devices
+   * @param userId ID của người dùng
+   * @param options Tùy chọn thu hồi (sessionIds, deviceIds, revokeAllUserSessions, excludeCurrentSession)
+   * @param activeUser Thông tin người dùng hiện tại
+   * @param verificationToken Token xác thực nếu cần
+   * @param otpCode Mã OTP nếu cần xác thực 2FA
+   * @param ipAddress Địa chỉ IP của người dùng
+   * @param userAgent Thông tin User-Agent của trình duyệt
+   * @returns Thông tin về số lượng items đã thu hồi
    */
   async revokeItems(
     userId: number,
@@ -381,138 +461,247 @@ export class SessionsService implements ISessionService {
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
     },
-    activeUser: AccessTokenPayload
+    activeUser: AccessTokenPayload,
+    verificationToken?: string,
+    otpCode?: string,
+    ipAddress?: string,
+    userAgent?: string
   ): Promise<{
     message: string
     revokedSessionsCount: number
-    revokedDevicesCount: number // Số device bị revoke (tức là tất cả session của nó bị xóa)
-    untrustedDevicesCount: number // Số device bị untrusted
+    revokedDevicesCount: number
+    untrustedDevicesCount: number
+    revokedSessionIds?: string[]
+    revokedDeviceIds?: number[]
+    requiresAdditionalVerification?: boolean
+    verificationRedirectUrl?: string
   }> {
-    const { sessionIds, deviceIds, revokeAllUserSessions, excludeCurrentSession } = options
-    const currentSessionId = activeUser.sessionId
-    const currentDeviceId = activeUser.deviceId
+    this.logger.debug(`[revokeItems] Đang thu hồi items cho userId: ${userId}, options: ${JSON.stringify(options)}`)
 
+    // Kiểm tra xem hành động này có yêu cầu xác thực 2FA không (nếu gỡ tất cả thiết bị hoặc hơn 3 thiết bị)
+    const requiresTwoFactorAuth = options.revokeAllUserSessions || (options.deviceIds && options.deviceIds.length > 3)
+
+    // Kiểm tra xem người dùng đã bật 2FA chưa
+    const user = await this.prismaService.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorEnabled: true, email: true }
+    })
+
+    // Nếu cần xác thực 2FA nhưng chưa cung cấp xác thực
+    if (requiresTwoFactorAuth && user?.twoFactorEnabled && !otpCode && !verificationToken) {
+      // Tạo SLT token và gửi mã OTP
+      // Đây là trường hợp bảo mật cao, cần xác thực OTP trước khi thực hiện hành động
+      this.logger.debug(`[revokeItems] Yêu cầu xác thực 2FA trước khi thu hồi nhiều thiết bị`)
+
+      // Trả về thông báo yêu cầu xác thực bổ sung
+      return {
+        message: this.i18nService.t('auth.Auth.Session.RequiresAdditionalVerification'),
+        revokedSessionsCount: 0,
+        revokedDevicesCount: 0,
+        untrustedDevicesCount: 0,
+        requiresAdditionalVerification: true,
+        verificationRedirectUrl: '/auth/verify-action?action=revoke-sessions'
+      }
+    }
+
+    // Đếm số lượng items bị thu hồi
     let revokedSessionsCount = 0
     let revokedDevicesCount = 0
     let untrustedDevicesCount = 0
 
-    const sessionsToInvalidate = new Set<string>()
-    const devicesToUntrust = new Set<number>()
-    const devicesFullyRevoked = new Set<number>() // Devices mà tất cả sessions của nó đã bị revoke
+    // Danh sách các IDs đã xử lý
+    const revokedSessionIds: string[] = []
+    const revokedDeviceIds: number[] = []
 
-    this.logger.debug(
-      `[revokeItems] User ${userId} initiated revoke with options: ${JSON.stringify(options)}. Current session: ${currentSessionId}, current device: ${currentDeviceId}`
-    )
+    // Session hiện tại của user
+    const currentSessionId = activeUser.sessionId
 
-    // 0. Lấy tất cả session của user để xử lý logic
-    const allUserSessionsResult = await this.sessionRepository.findSessionsByUserId(userId, { page: 1, limit: 1000 })
-    const allUserSessions = allUserSessionsResult.data
-    const sessionsByDeviceIdMap = new Map<number, Session[]>()
-    allUserSessions.forEach((s) => {
-      if (!sessionsByDeviceIdMap.has(s.deviceId)) sessionsByDeviceIdMap.set(s.deviceId, [])
-      sessionsByDeviceIdMap.get(s.deviceId)!.push(s)
-    })
+    try {
+      // 1. Thu hồi theo session IDs
+      if (options.sessionIds && options.sessionIds.length > 0) {
+        this.logger.debug(`[revokeItems] Thu hồi ${options.sessionIds.length} sessions cụ thể`)
 
-    // 1. Xử lý revokeAllUserSessions
-    if (revokeAllUserSessions) {
-      this.logger.log(
-        `[revokeItems] User ${userId} requested to revoke all their sessions. Exclude current: ${excludeCurrentSession}`
-      )
-      for (const session of allUserSessions) {
-        if (excludeCurrentSession && session.id === currentSessionId) {
-          continue
-        }
-        sessionsToInvalidate.add(session.id)
-        // Nếu revoke all, tất cả device liên quan cũng nên được xem xét để untrust
-        devicesToUntrust.add(session.deviceId)
-        devicesFullyRevoked.add(session.deviceId) // Đánh dấu là device này đã bị revoke hết session
-      }
-    } else {
-      // 2. Xử lý revoke specific devices (deviceIds)
-      if (deviceIds && deviceIds.length > 0) {
-        this.logger.debug(`[revokeItems] Processing deviceIds for revocation: ${JSON.stringify(deviceIds)}`)
-        for (const deviceId of deviceIds) {
-          const device = await this.deviceRepository.findById(deviceId)
-          if (device && device.userId === userId) {
-            devicesToUntrust.add(deviceId)
-            devicesFullyRevoked.add(deviceId)
-            const sessionsOfDevice = sessionsByDeviceIdMap.get(deviceId) || []
-            sessionsOfDevice.forEach((s) => sessionsToInvalidate.add(s.id))
-            this.logger.log(
-              `[revokeItems] Device ${deviceId} marked for full revocation and untrust by user ${userId}.`
-            )
-          } else {
-            this.logger.warn(`[revokeItems] Device ${deviceId} not found or not owned by user ${userId}.`)
+        for (const sessionId of options.sessionIds) {
+          // Bỏ qua session hiện tại nếu được yêu cầu
+          if (options.excludeCurrentSession && sessionId === currentSessionId) {
+            this.logger.debug(`[revokeItems] Bỏ qua session hiện tại: ${sessionId}`)
+            continue
           }
-        }
-      }
 
-      // 3. Xử lý revoke specific sessions (sessionIds)
-      if (sessionIds && sessionIds.length > 0) {
-        this.logger.debug(`[revokeItems] Processing sessionIds for revocation: ${JSON.stringify(sessionIds)}`)
-        for (const sessionId of sessionIds) {
-          const session = allUserSessions.find((s) => s.id === sessionId)
-          if (session && session.userId === userId) {
-            sessionsToInvalidate.add(sessionId)
-            this.logger.log(`[revokeItems] Session ${sessionId} marked for revocation by user ${userId}.`)
+          try {
+            // Lấy thông tin session trước khi xóa
+            const session = await this.sessionRepository.findById(sessionId)
 
-            // Kiểm tra nếu đây là session cuối cùng của device
-            const deviceSessions = sessionsByDeviceIdMap.get(session.deviceId) || []
-            const activeSessionsOnDevice = deviceSessions.filter((s) => !sessionsToInvalidate.has(s.id))
-            if (activeSessionsOnDevice.length === 0) {
-              this.logger.log(
-                `[revokeItems] Session ${sessionId} was the last active session for device ${session.deviceId}. Marking device for untrust.`
+            // Chỉ xử lý session thuộc về user
+            if (session && session.userId === userId) {
+              await this.sessionRepository.deleteSession(sessionId)
+              await this.tokenService.invalidateSession(sessionId, 'BULK_REVOKE_BY_USER')
+              revokedSessionsCount++
+              revokedSessionIds.push(sessionId)
+
+              this.logger.debug(`[revokeItems] Đã thu hồi session: ${sessionId}`)
+            } else {
+              this.logger.warn(
+                `[revokeItems] Bỏ qua session ${sessionId} vì không tìm thấy hoặc không thuộc về userId: ${userId}`
               )
-              devicesToUntrust.add(session.deviceId)
-              devicesFullyRevoked.add(session.deviceId)
             }
-          } else {
-            this.logger.warn(`[revokeItems] Session ${sessionId} not found or not owned by user ${userId}.`)
+          } catch (error) {
+            this.logger.error(`[revokeItems] Lỗi khi thu hồi session ${sessionId}: ${error.message}`)
+            // Tiếp tục xử lý các session khác
           }
         }
       }
-    }
 
-    // Thực hiện untrust devices
-    for (const deviceIdToUntrust of devicesToUntrust) {
-      try {
-        await this.deviceRepository.updateDeviceTrustStatus(deviceIdToUntrust, false)
-        untrustedDevicesCount++
-        this.logger.log(`[revokeItems] Device ${deviceIdToUntrust} untrusted successfully for user ${userId}.`)
-      } catch (error) {
-        this.logger.error(
-          `[revokeItems] Failed to untrust device ${deviceIdToUntrust} for user ${userId}: ${error.message}`,
-          error.stack
-        )
+      // 2. Thu hồi theo device IDs
+      if (options.deviceIds && options.deviceIds.length > 0) {
+        this.logger.debug(`[revokeItems] Thu hồi sessions của ${options.deviceIds.length} thiết bị`)
+
+        for (const deviceId of options.deviceIds) {
+          try {
+            // Kiểm tra device có thuộc về user không
+            const device = await this.deviceRepository.findById(deviceId)
+            if (!device || device.userId !== userId) {
+              this.logger.warn(
+                `[revokeItems] Bỏ qua device ${deviceId} vì không tìm thấy hoặc không thuộc về userId: ${userId}`
+              )
+              continue
+            }
+
+            // Lấy tất cả sessions của device
+            const sessions = await this.getDeviceSessions(userId, deviceId)
+
+            // Thu hồi từng session của device
+            for (const session of sessions) {
+              // Bỏ qua session hiện tại nếu được yêu cầu
+              if (options.excludeCurrentSession && session.id === currentSessionId) {
+                this.logger.debug(`[revokeItems] Bỏ qua session hiện tại: ${session.id}`)
+                continue
+              }
+
+              await this.sessionRepository.deleteSession(session.id)
+              await this.tokenService.invalidateSession(session.id, 'DEVICE_REVOKE_BY_USER')
+              revokedSessionsCount++
+              revokedSessionIds.push(session.id)
+            }
+
+            // Đánh dấu device không hoạt động
+            await this.deviceRepository.markDeviceAsInactive(deviceId)
+            revokedDevicesCount++
+            revokedDeviceIds.push(deviceId)
+
+            // Bỏ tin tưởng device nếu đang được tin tưởng
+            if (device.isTrusted) {
+              await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+              untrustedDevicesCount++
+            }
+
+            this.logger.debug(`[revokeItems] Đã thu hồi device ${deviceId} và ${sessions.length} sessions liên quan`)
+          } catch (error) {
+            this.logger.error(`[revokeItems] Lỗi khi thu hồi device ${deviceId}: ${error.message}`)
+            // Tiếp tục xử lý các device khác
+          }
+        }
       }
-    }
-    revokedDevicesCount = devicesFullyRevoked.size
 
-    // Thực hiện invalidate sessions
-    for (const sessionIdToInvalidate of sessionsToInvalidate) {
-      try {
-        await this.tokenService.invalidateSession(sessionIdToInvalidate, 'USER_REVOKED_ITEMS')
-        revokedSessionsCount++
-      } catch (error) {
-        this.logger.error(
-          `[revokeItems] Failed to invalidate session ${sessionIdToInvalidate}: ${error.message}`,
-          error.stack
-        )
+      // 3. Thu hồi tất cả sessions của user
+      if (options.revokeAllUserSessions) {
+        this.logger.debug(`[revokeItems] Thu hồi tất cả sessions của userId: ${userId}`)
+
+        // Xác định session ID cần loại trừ (nếu có)
+        const excludeSessionId = options.excludeCurrentSession ? currentSessionId : undefined
+
+        // Thu hồi tất cả sessions
+        const result = await this.sessionRepository.deleteAllUserSessions(userId, excludeSessionId)
+        revokedSessionsCount += result.count
+
+        // Đánh dấu tất cả devices không hoạt động (trừ device hiện tại nếu được yêu cầu)
+        if (options.excludeCurrentSession && activeUser.deviceId) {
+          // Tìm tất cả devices trừ device hiện tại
+          const devices = await this.deviceRepository.findDevicesByUserId(userId)
+          for (const device of devices) {
+            if (device.id !== activeUser.deviceId) {
+              await this.deviceRepository.markDeviceAsInactive(device.id)
+              revokedDevicesCount++
+              revokedDeviceIds.push(device.id)
+
+              // Bỏ tin tưởng nếu đang được tin tưởng
+              if (device.isTrusted) {
+                await this.deviceRepository.updateDeviceTrustStatus(device.id, false)
+                untrustedDevicesCount++
+              }
+            }
+          }
+        } else {
+          // Đánh dấu tất cả devices không hoạt động
+          const devices = await this.deviceRepository.findDevicesByUserId(userId)
+          for (const device of devices) {
+            await this.deviceRepository.markDeviceAsInactive(device.id)
+            revokedDevicesCount++
+            revokedDeviceIds.push(device.id)
+
+            // Bỏ tin tưởng nếu đang được tin tưởng
+            if (device.isTrusted) {
+              await this.deviceRepository.updateDeviceTrustStatus(device.id, false)
+              untrustedDevicesCount++
+            }
+          }
+        }
+
+        this.logger.debug(`[revokeItems] Đã thu hồi tất cả sessions của userId: ${userId}, số lượng: ${result.count}`)
       }
-    }
 
-    this.logger.log(
-      `[revokeItems] Completed for user ${userId}. Revoked sessions: ${revokedSessionsCount}, Untrusted devices: ${untrustedDevicesCount}, Fully revoked devices: ${revokedDevicesCount}.`
-    )
+      // Gửi email thông báo nếu hành động có rủi ro cao
+      if (revokedDevicesCount > 0 || revokedSessionsCount >= 3) {
+        try {
+          const userEmail = user?.email
+          if (userEmail) {
+            await this.emailService.sendSecurityAlertEmail(SecurityAlertType.SESSIONS_REVOKED, userEmail, {
+              userName: user?.email || 'Người dùng',
+              sessionCount: revokedSessionsCount,
+              deviceCount: revokedDevicesCount,
+              ipAddress: ipAddress || 'Không xác định',
+              userAgent: userAgent || 'Không xác định',
+              location: await this.geolocationService.getLocationFromIP(ipAddress || '')
+            })
+          }
+        } catch (error) {
+          this.logger.error(`[revokeItems] Lỗi khi gửi email thông báo: ${error.message}`)
+        }
+      }
 
-    return {
-      message: await this.i18nService.translate('Auth.Session.RevokedSuccessfullyCount', {
-        args: { count: revokedSessionsCount }
-      }),
-      revokedSessionsCount,
-      revokedDevicesCount,
-      untrustedDevicesCount
+      // Trả về thông báo phù hợp
+      let message: string
+      if (revokedSessionsCount === 0) {
+        message = this.i18nService.t('auth.Auth.Session.NoSessionsToRevoke')
+      } else {
+        message = this.i18nService.t('auth.Auth.Session.RevokedSuccessfullyCount', {
+          args: { count: revokedSessionsCount }
+        })
+      }
+
+      return {
+        message,
+        revokedSessionsCount,
+        revokedDevicesCount,
+        untrustedDevicesCount,
+        revokedSessionIds,
+        revokedDeviceIds
+      }
+    } catch (error) {
+      this.logger.error(`[revokeItems] Lỗi khi thu hồi items: ${error.message}`, error.stack)
+      throw error
     }
+  }
+
+  /**
+   * Lấy tất cả sessions của một device
+   * @param userId ID của người dùng
+   * @param deviceId ID của thiết bị
+   * @returns Danh sách sessions
+   */
+  private async getDeviceSessions(userId: number, deviceId: number): Promise<Session[]> {
+    const allSessions = await this.sessionRepository.findSessionsByUserId(userId, { page: 1, limit: 1000 })
+    return allSessions.data.filter((session) => session.deviceId === deviceId)
   }
 
   /**

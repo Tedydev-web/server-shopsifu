@@ -22,16 +22,16 @@ import {
   GetSessionsQueryDto,
   GetGroupedSessionsResponseDto,
   RevokeSessionParamsDto,
-  RevokeItemsBodyDto,
-  RevokeItemsResponseDto,
+  RevokeSessionsBodyDto,
+  RevokeSessionsResponseDto,
   DeviceIdParamsDto,
   UpdateDeviceNameBodyDto,
   UpdateDeviceNameResponseDto,
   TrustDeviceResponseDto,
   UntrustDeviceResponseDto
 } from './dto/session.dto'
-import { ZodSerializerDto } from 'nestjs-zod'
 import { I18nService } from 'nestjs-i18n'
+import { DynamicZodSerializer } from 'src/shared/interceptor/dynamic-zod-serializer.interceptor'
 
 @UseGuards(AccessTokenGuard)
 @Controller('auth/sessions')
@@ -45,71 +45,87 @@ export class SessionsController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(GetGroupedSessionsResponseDto)
+  @DynamicZodSerializer({
+    schema: GetGroupedSessionsResponseDto.schema,
+    predicate: () => true
+  })
   async getSessions(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Query() query: GetSessionsQueryDto
-  ): Promise<{
-    statusCode: number
-    message: string
-    data: GetGroupedSessionsResponseDto
-  }> {
+  ): Promise<GetGroupedSessionsResponseDto> {
     this.logger.debug(
       `[SessionsController.getSessions] User ${activeUser.userId} requesting sessions. Page: ${query.page}, Limit: ${query.limit}`
     )
-    const sessionsData = await this.sessionsService.getSessions(
-      activeUser.userId,
-      query.page,
-      query.limit,
-      activeUser.sessionId
-    )
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Global.Success',
-      data: sessionsData
-    }
+    return await this.sessionsService.getSessions(activeUser.userId, query.page, query.limit, activeUser.sessionId)
   }
 
-  @Delete(':sessionId')
+  /**
+   * Thu hồi sessions và devices
+   * Một endpoint duy nhất để xử lý tất cả các trường hợp thu hồi:
+   * 1. Thu hồi một hoặc nhiều sessions cụ thể
+   * 2. Thu hồi một hoặc nhiều devices (và tất cả sessions liên quan)
+   * 3. Thu hồi tất cả sessions (trừ session hiện tại nếu cần)
+   */
+  @Post('revoke')
   @HttpCode(HttpStatus.OK)
-  async revokeSingleSession(
+  async revokeSessions(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Param() params: RevokeSessionParamsDto
+    @Body() body: RevokeSessionsBodyDto,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string
   ): Promise<{
     statusCode: number
     message: string
+    data: RevokeSessionsResponseDto
   }> {
     this.logger.debug(
-      `[SessionsController.revokeSingleSession] User ${activeUser.userId} revoking session ${params.sessionId}`
+      `[SessionsController.revokeSessions] User ${activeUser.userId} revoking sessions/devices with: ${JSON.stringify(body)}`
     )
-    const result = await this.sessionsService.revokeSession(activeUser.userId, params.sessionId, activeUser.sessionId)
 
-    return {
-      statusCode: HttpStatus.OK,
-      message: result.message
+    // Single session revocation (backward compatibility)
+    if (body.sessionIds?.length === 1 && !body.deviceIds?.length && !body.revokeAll) {
+      const sessionId = body.sessionIds[0]
+      const result = await this.sessionsService.revokeSession(
+        activeUser.userId,
+        sessionId,
+        body.excludeCurrentSession ? activeUser.sessionId : undefined
+      )
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: result.message,
+        data: {
+          revokedSessionsCount: 1,
+          untrustedDevicesCount: 0,
+          revokedSessionIds: [sessionId],
+          revokedDeviceIds: [],
+          requiresAdditionalVerification: false,
+          verificationRedirectUrl: undefined
+        }
+      }
     }
-  }
 
-  @Post('revoke-items')
-  @HttpCode(HttpStatus.OK)
-  async revokeMultipleItems(
-    @ActiveUser() activeUser: AccessTokenPayload,
-    @Body() body: RevokeItemsBodyDto
-  ): Promise<{
-    statusCode: number
-    message: string
-    data: RevokeItemsResponseDto
-  }> {
-    this.logger.debug(
-      `[SessionsController.revokeMultipleItems] User ${activeUser.userId} revoking items with body: ${JSON.stringify(body)}`
-    )
-    const result = await this.sessionsService.revokeItems(activeUser.userId, body, activeUser)
+    // Nhiều sessions/devices hoặc tất cả
+    const options = {
+      sessionIds: body.sessionIds,
+      deviceIds: body.deviceIds,
+      revokeAllUserSessions: body.revokeAll,
+      excludeCurrentSession: body.excludeCurrentSession
+    }
+
+    const result = await this.sessionsService.revokeItems(activeUser.userId, options, activeUser)
 
     return {
       statusCode: HttpStatus.OK,
       message: result.message,
-      data: result
+      data: {
+        revokedSessionsCount: result.revokedSessionsCount,
+        untrustedDevicesCount: result.untrustedDevicesCount,
+        revokedSessionIds: result.revokedSessionIds || [],
+        revokedDeviceIds: result.revokedDeviceIds || [],
+        requiresAdditionalVerification: result.requiresAdditionalVerification || false,
+        verificationRedirectUrl: result.verificationRedirectUrl
+      }
     }
   }
 

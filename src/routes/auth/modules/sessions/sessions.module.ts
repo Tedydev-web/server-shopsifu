@@ -9,10 +9,11 @@ import { SessionRepository } from 'src/routes/auth/repositories/session.reposito
 import { ConfigService } from '@nestjs/config'
 import { EMAIL_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { SharedModule } from 'src/shared/shared.module'
+import { VerifyActionController } from './verify-action.controller'
 
 @Module({
   imports: [SharedModule],
-  controllers: [SessionsController],
+  controllers: [SessionsController, VerifyActionController],
   providers: [
     SessionsService,
     TokenService,

@@ -54,20 +54,54 @@ export const RevokeSessionParamsSchema = z.object({
   sessionId: z.string()
 })
 
-// Schema cho body khi revoke nhiều items (có thể là session hoặc device)
-export const RevokeItemsBodySchema = z.object({
-  sessionIds: z.array(z.string()).optional(),
-  deviceIds: z.array(z.number()).optional(),
-  revokeAllUserSessions: z.boolean().optional().default(false),
-  excludeCurrentSession: z.boolean().optional().default(false) // Áp dụng nếu revokeAllUserSessions là true
+// Thay thế RevokeItemsBodySchema cũ
+export const RevokeSessionsBodySchema = z
+  .object({
+    // Các sessions cần thu hồi (option 1)
+    sessionIds: z.array(z.string()).optional(),
+
+    // Các devices cần thu hồi (option 2)
+    deviceIds: z.array(z.number()).optional(),
+
+    // Thu hồi tất cả (option 3)
+    revokeAll: z.boolean().default(false),
+
+    // Loại trừ session hiện tại (thường là true để không tự logout)
+    excludeCurrentSession: z.boolean().default(true),
+
+    // Xác thực bổ sung khi cần
+    verificationToken: z.string().optional(),
+    otpCode: z.string().optional()
+  })
+  .refine(({ sessionIds, deviceIds, revokeAll }) => !!sessionIds?.length || !!deviceIds?.length || revokeAll === true, {
+    message: 'Bạn phải chỉ định ít nhất một trong các tùy chọn: sessionIds, deviceIds hoặc revokeAll',
+    path: ['invalidRevocationParameters']
+  })
+
+// Thay thế RevokeItemsResponseSchema cũ
+export const RevokeSessionsResponseSchema = z.object({
+  // Số lượng sessions đã được thu hồi
+  revokedSessionsCount: z.number(),
+
+  // Số lượng devices đã bị untrust
+  untrustedDevicesCount: z.number(),
+
+  // Chi tiết các sessions đã thu hồi (tùy chọn)
+  revokedSessionIds: z.array(z.string()).optional(),
+
+  // Chi tiết các devices đã thu hồi (tùy chọn)
+  revokedDeviceIds: z.array(z.number()).optional(),
+
+  // Nếu cần xác thực bổ sung
+  requiresAdditionalVerification: z.boolean().default(false),
+
+  // URL để chuyển hướng nếu cần xác thực bổ sung
+  verificationRedirectUrl: z.string().optional()
 })
 
-export const RevokeItemsResponseSchema = z.object({
-  message: z.string(),
-  revokedSessionsCount: z.number(),
-  revokedDevicesCount: z.number(),
-  untrustedDevicesCount: z.number()
-})
+// Thay thế DTO cũ
+export class RevokeSessionsBodyDto extends createZodDto(RevokeSessionsBodySchema) {}
+export class RevokeSessionsResponseDto extends createZodDto(RevokeSessionsResponseSchema) {}
 
 // Update Device DTOs
 export const DeviceIdParamsSchema = z.object({
@@ -87,9 +121,6 @@ export class DeviceSessionGroupDto extends createZodDto(DeviceSessionGroupSchema
 export class GetGroupedSessionsResponseDto extends createZodDto(GetGroupedSessionsResponseSchema) {}
 
 export class RevokeSessionParamsDto extends createZodDto(RevokeSessionParamsSchema) {}
-export class RevokeItemsBodyDto extends createZodDto(RevokeItemsBodySchema) {}
-export class RevokeItemsResponseDto extends createZodDto(RevokeItemsResponseSchema) {}
-
 export class DeviceIdParamsDto extends createZodDto(DeviceIdParamsSchema) {}
 export class UpdateDeviceNameBodyDto extends createZodDto(UpdateDeviceNameBodySchema) {}
 
