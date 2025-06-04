@@ -12,6 +12,9 @@ import { CacheModule } from '@nestjs/cache-manager'
 import { ConfigService } from '@nestjs/config'
 import { GeolocationService } from './services/geolocation.service'
 import { TransformInterceptor } from './interceptor/transform.interceptor'
+import { CryptoService } from './services/crypto.service'
+import { RedisProviderModule } from './providers/redis/redis.module'
+import { RedisService } from './providers/redis/redis.service'
 
 const SHARED_PIPES = [
   {
@@ -28,11 +31,12 @@ const SHARED_INTERCEPTORS = [
 // Concrete guard classes that can be provided and exported
 const CONCRETE_GUARDS = [AccessTokenGuard, APIKeyGuard, AuthenticationGuard]
 
-const SHARED_SERVICES = [PrismaService, HashingService, EmailService]
+const SHARED_SERVICES = [PrismaService, HashingService, EmailService, CryptoService, RedisService]
 
 @Global()
 @Module({
   imports: [
+    RedisProviderModule,
     CacheModule.registerAsync({
       isGlobal: true,
       useFactory: (configService: ConfigService) => ({
@@ -55,9 +59,18 @@ const SHARED_SERVICES = [PrismaService, HashingService, EmailService]
       provide: APP_GUARD,
       useClass: AuthenticationGuard
     },
-    GeolocationService
+    GeolocationService,
+    CryptoService
   ],
   // Export concrete services and guards for other modules to inject if needed
-  exports: [...SHARED_SERVICES, ...CONCRETE_GUARDS, CacheModule, APIKeyGuard, GeolocationService]
+  exports: [
+    ...SHARED_SERVICES,
+    ...CONCRETE_GUARDS,
+    CacheModule,
+    APIKeyGuard,
+    GeolocationService,
+    CryptoService,
+    RedisProviderModule
+  ]
 })
 export class SharedModule {}

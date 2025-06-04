@@ -27,6 +27,8 @@ import { SltContextData } from 'src/routes/auth/auth.types'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { SessionsService } from '../sessions/sessions.service'
 import { CookieNames } from 'src/shared/constants/auth.constant'
+import { IsPublic } from 'src/routes/auth/decorators/auth.decorator'
+import { TokenService } from '../../shared/token/token.service'
 
 @Controller('auth/otp')
 export class OtpController {
@@ -38,12 +40,14 @@ export class OtpController {
     private readonly i18nService: I18nService,
     private readonly coreService: CoreService,
     @Inject(forwardRef(() => SessionsService))
-    private readonly sessionsService: SessionsService
+    private readonly sessionsService: SessionsService,
+    private readonly tokenService: TokenService
   ) {}
 
   /**
    * Gửi OTP
    */
+  @IsPublic()
   @Post('send')
   @HttpCode(HttpStatus.OK)
   async sendOtp(
@@ -75,6 +79,7 @@ export class OtpController {
   /**
    * Xác minh OTP
    */
+  @IsPublic()
   @Post('verify')
   @HttpCode(HttpStatus.OK)
   async verifyOtp(
@@ -134,25 +139,27 @@ export class OtpController {
   ) {
     this.logger.debug(`[handleLoginVerification] Finalizing login for user ID: ${sltContext.userId}`)
 
-    // Lấy trạng thái rememberMe từ metadata hoặc từ request body
-    const rememberMe =
-      sltContext.metadata && typeof sltContext.metadata === 'object' && 'rememberMe' in sltContext.metadata
-        ? !!sltContext.metadata.rememberMe
-        : !!body.rememberMe
+    // Cập nhật SLT context để đánh dấu là đã hoàn thành
+    await this.otpService.finalizeSlt(sltContext.sltJti)
 
-    // Kiểm tra xem người dùng đã được xác thực 2FA chưa
-    const twoFactorVerified =
-      sltContext.metadata &&
-      typeof sltContext.metadata === 'object' &&
-      'twoFactorVerified' in sltContext.metadata &&
-      !!sltContext.metadata.twoFactorVerified
+    const metadata = sltContext.metadata || {}
+    const rememberMe = metadata.rememberMe || false
 
-    this.logger.debug(
-      `[handleLoginVerification] Using rememberMe=${rememberMe}, 2FA verification status: ${twoFactorVerified ? 'verified' : 'not verified'}`
-    )
+    // Xóa đánh dấu xác thực lại cho thiết bị nếu có
+    if (sltContext.purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP && sltContext.metadata?.deviceId) {
+      try {
+        await this.tokenService.clearDeviceReverification(sltContext.userId, sltContext.metadata.deviceId)
+        this.logger.debug(`Cleared device reverification for device ${sltContext.metadata.deviceId}`)
+      } catch (error) {
+        this.logger.error(`Failed to clear device reverification: ${error.message}`, error.stack)
+        // Không throw lỗi ở đây để không ảnh hưởng đến luồng xác thực
+      }
+    }
 
-    // Hoàn tất đăng nhập sau khi xác minh
-    const userInfo = await this.coreService.finalizeLoginAfterVerification(
+    this.logger.debug(`[handleLoginVerification] Using rememberMe=${rememberMe}, 2FA verification status: not verified`)
+
+    // Hoàn tất đăng nhập
+    const loginResult = await this.coreService.finalizeLoginAfterVerification(
       sltContext.userId,
       sltContext.deviceId,
       rememberMe,
@@ -161,21 +168,15 @@ export class OtpController {
       userAgent
     )
 
-    this.logger.debug(`[handleLoginVerification] Login finalized successfully for user: ${userInfo.email}`)
+    this.logger.debug(`[handleLoginVerification] Login finalized successfully for user: ${sltContext.email}`)
 
-    // Xóa SLT cookie vì đã hoàn tất quá trình xác minh
+    // Xóa SLT cookie
     this.cookieService.clearSltCookie(res)
 
     return {
       statusCode: HttpStatus.OK,
-      message: await this.i18nService.translate('Auth.Otp.Verified'),
-      data: {
-        id: userInfo.id,
-        email: userInfo.email,
-        role: userInfo.roleName,
-        isDeviceTrustedInSession: userInfo.isDeviceTrustedInSession,
-        userProfile: userInfo.userProfile
-      }
+      message: this.i18nService.translate('auth.Auth.Otp.Verified'),
+      data: loginResult
     }
   }
 
@@ -285,6 +286,7 @@ export class OtpController {
   /**
    * Resend OTP
    */
+  @IsPublic()
   @Post('resend')
   @HttpCode(HttpStatus.OK)
   async resendOtp(

@@ -24,7 +24,7 @@ import { UserAuthRepository } from './repositories/user-auth.repository'
 import { DeviceRepository } from './repositories/device.repository'
 import { RecoveryCodeRepository } from './repositories/recovery-code.repository'
 import { SessionRepository } from './repositories/session.repository'
-import { RedisProviderModule } from 'src/shared/providers/redis/redis.module'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import {
   COOKIE_SERVICE,
   TOKEN_SERVICE,
@@ -37,16 +37,12 @@ import {
   REDIS_CLIENT,
   EMAIL_SERVICE
 } from 'src/shared/constants/injection.tokens'
+import { DeviceService } from './services/device.service'
+import { UserActivityService } from './services/user-activity.service'
 
 @Global()
 @Module({
   imports: [
-    RedisProviderModule.register({
-      connectionOptions: {
-        host: 'localhost',
-        port: 6379
-      }
-    }),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -65,7 +61,6 @@ import {
     SocialModule
   ],
   providers: [
-    // Providers với tokens
     {
       provide: COOKIE_SERVICE,
       useClass: CookieService
@@ -98,7 +93,6 @@ import {
       provide: EMAIL_SERVICE,
       useClass: EmailService
     },
-    // Đăng ký các service trực tiếp
     CookieService,
     TokenService,
     CoreService,
@@ -107,25 +101,21 @@ import {
     SocialService,
     TwoFactorService,
     EmailService,
-    // Guards
     JwtAuthGuard,
     BasicAuthGuard,
     ApiKeyGuard,
     AccessTokenGuard,
-    // Repositories
     UserAuthRepository,
     DeviceRepository,
     RecoveryCodeRepository,
     SessionRepository,
-    // Services
-    HashingService
+    HashingService,
+    DeviceService,
+    UserActivityService
   ],
   exports: [
-    // Modules
     PassportModule,
     JwtModule,
-    RedisProviderModule,
-    // Tokens
     COOKIE_SERVICE,
     TOKEN_SERVICE,
     USER_AUTH_SERVICE,
@@ -134,7 +124,6 @@ import {
     DEVICE_SERVICE,
     HASHING_SERVICE,
     EMAIL_SERVICE,
-    // Services
     CookieService,
     TokenService,
     CoreService,
@@ -143,18 +132,17 @@ import {
     SocialService,
     TwoFactorService,
     EmailService,
-    // Guards
     JwtAuthGuard,
     BasicAuthGuard,
     ApiKeyGuard,
     AccessTokenGuard,
-    // Repositories
     UserAuthRepository,
     DeviceRepository,
     RecoveryCodeRepository,
     SessionRepository,
-    // Other services
-    HashingService
+    HashingService,
+    DeviceService,
+    UserActivityService
   ]
 })
 export class AuthModule {

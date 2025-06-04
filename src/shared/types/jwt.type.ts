@@ -1,3 +1,6 @@
+/**
+ * Định nghĩa payload của Access Token khi tạo mới
+ */
 export interface AccessTokenPayloadCreate {
   userId: number
   deviceId: number
@@ -7,8 +10,13 @@ export interface AccessTokenPayloadCreate {
   jti: string
   isDeviceTrustedInSession: boolean
   email?: string
+  exp?: number
+  iat?: number
 }
 
+/**
+ * Định nghĩa payload của Access Token khi đã được verify
+ */
 export interface AccessTokenPayload extends AccessTokenPayloadCreate {
   exp: number
   iat: number
@@ -24,7 +32,9 @@ export interface AccessTokenPayload extends AccessTokenPayloadCreate {
 //   iat: number
 // }
 
-// Định nghĩa cho Pending Link Token
+/**
+ * Định nghĩa cho Pending Link Token
+ */
 export interface PendingLinkTokenPayloadCreate {
   existingUserId: number
   googleId: string

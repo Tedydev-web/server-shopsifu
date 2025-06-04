@@ -91,40 +91,12 @@ export class SessionsController {
       `[SessionsController.revokeSessions] User ${activeUser.userId} revoking sessions/devices with: ${JSON.stringify(body)}`
     )
 
-    // Single session revocation (backward compatibility)
-    if (body.sessionIds?.length === 1 && !body.deviceIds?.length) {
-      const sessionId = body.sessionIds[0]
-      const result = await this.sessionsService.revokeSession(
-        activeUser.userId,
-        sessionId,
-        body.excludeCurrentSession ? activeUser.sessionId : undefined
-      )
-
-      return {
-        statusCode: HttpStatus.OK,
-        message: result.message,
-        data: {
-          revokedSessionsCount: 1,
-          untrustedDevicesCount: 0,
-          revokedSessionIds: [sessionId],
-          revokedDeviceIds: [],
-          requiresAdditionalVerification: false
-        }
-      }
-    }
-
-    // Nhiều sessions/devices
-    const options = {
+    // Kiểm tra xem hành động này có yêu cầu xác thực bổ sung không
+    const requiresVerification = await this.sessionsService.checkIfActionRequiresVerification(activeUser.userId, {
       sessionIds: body.sessionIds,
       deviceIds: body.deviceIds,
       excludeCurrentSession: body.excludeCurrentSession
-    }
-
-    // Kiểm tra xem có cần xác thực bổ sung không
-    const requiresVerification = await this.sessionsService.checkIfActionRequiresVerification(
-      activeUser.userId,
-      options
-    )
+    })
 
     if (requiresVerification) {
       // Tạo SLT token với context data chứa thông tin thu hồi
@@ -161,10 +133,36 @@ export class SessionsController {
       }
     }
 
+    // Trường hợp xử lý thu hồi một session duy nhất (backward compatibility)
+    if (body.sessionIds?.length === 1 && !body.deviceIds?.length) {
+      const sessionId = body.sessionIds[0]
+      const result = await this.sessionsService.revokeSession(
+        activeUser.userId,
+        sessionId,
+        body.excludeCurrentSession ? activeUser.sessionId : undefined
+      )
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: result.message,
+        data: {
+          revokedSessionsCount: 1,
+          untrustedDevicesCount: 0,
+          revokedSessionIds: [sessionId],
+          revokedDeviceIds: [],
+          requiresAdditionalVerification: false
+        }
+      }
+    }
+
     // Nếu không cần xác thực thêm, thực hiện thu hồi ngay
     const result = await this.sessionsService.revokeItems(
       activeUser.userId,
-      options,
+      {
+        sessionIds: body.sessionIds,
+        deviceIds: body.deviceIds,
+        excludeCurrentSession: body.excludeCurrentSession
+      },
       activeUser,
       undefined,
       undefined,

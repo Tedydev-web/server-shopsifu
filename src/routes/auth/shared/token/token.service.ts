@@ -13,6 +13,15 @@ import { AuthError } from 'src/routes/auth/auth.error'
 import { ConfigService } from '@nestjs/config'
 import { ITokenService } from 'src/shared/types/auth.types'
 import { REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
+import {
+  DEVICE_REVOKE_HISTORY_TTL,
+  DEVICE_REVERIFICATION_TTL,
+  DEVICE_REVERIFY_KEY_PREFIX,
+  SESSION_INVALIDATED_KEY_PREFIX,
+  REVOKE_HISTORY_KEY_PREFIX
+} from '../../constants/auth.constants'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { CryptoService } from 'src/shared/services/crypto.service'
 
 @Injectable()
 export class TokenService implements ITokenService {
@@ -21,7 +30,8 @@ export class TokenService implements ITokenService {
   constructor(
     private readonly jwtService: JwtService,
     @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly cryptoService?: CryptoService
   ) {}
 
   /**
@@ -135,7 +145,8 @@ export class TokenService implements ITokenService {
     const ttl = accessTokenExp - now
 
     if (ttl > 0) {
-      await this.redisService.set(`access_token_blacklist:${accessTokenJti}`, '1', 'EX', ttl)
+      const key = RedisKeyManager.accessTokenBlacklistKey(accessTokenJti)
+      await this.redisService.set(key, '1', 'EX', ttl)
     }
   }
 
@@ -143,8 +154,9 @@ export class TokenService implements ITokenService {
    * Đánh dấu refresh token là đã vô hiệu hóa
    */
   async invalidateRefreshTokenJti(refreshTokenJti: string, sessionId: string): Promise<void> {
+    const key = RedisKeyManager.refreshTokenBlacklistKey(refreshTokenJti)
     await this.redisService.set(
-      `refresh_token_blacklist:${refreshTokenJti}`,
+      key,
       sessionId,
       'EX',
       this.configService.get('auth.refreshToken.expiresInSeconds', 7 * 24 * 60 * 60)
@@ -155,7 +167,8 @@ export class TokenService implements ITokenService {
    * Kiểm tra access token có trong blacklist không
    */
   async isAccessTokenJtiBlacklisted(accessTokenJti: string): Promise<boolean> {
-    const result = await this.redisService.exists(`access_token_blacklist:${accessTokenJti}`)
+    const key = RedisKeyManager.accessTokenBlacklistKey(accessTokenJti)
+    const result = await this.redisService.exists(key)
     return result > 0
   }
 
@@ -163,7 +176,8 @@ export class TokenService implements ITokenService {
    * Kiểm tra refresh token có trong blacklist không
    */
   async isRefreshTokenJtiBlacklisted(refreshTokenJti: string): Promise<boolean> {
-    const result = await this.redisService.exists(`refresh_token_blacklist:${refreshTokenJti}`)
+    const key = RedisKeyManager.refreshTokenBlacklistKey(refreshTokenJti)
+    const result = await this.redisService.exists(key)
     return result > 0
   }
 
@@ -171,7 +185,8 @@ export class TokenService implements ITokenService {
    * Tìm session ID từ refresh token
    */
   async findSessionIdByRefreshTokenJti(refreshTokenJti: string): Promise<string | null> {
-    return this.redisService.get(`refresh_token_blacklist:${refreshTokenJti}`)
+    const key = RedisKeyManager.refreshTokenBlacklistKey(refreshTokenJti)
+    return this.redisService.get(key)
   }
 
   /**
@@ -182,64 +197,171 @@ export class TokenService implements ITokenService {
     sessionId: string,
     ttlSeconds: number = 30 * 24 * 60 * 60
   ): Promise<boolean> {
-    const result = await this.redisService.set(`refresh_token_used:${refreshTokenJti}`, sessionId, 'EX', ttlSeconds)
+    const key = RedisKeyManager.refreshTokenUsedKey(refreshTokenJti)
+    const result = await this.redisService.set(key, sessionId, 'EX', ttlSeconds)
     return !!result
   }
 
   /**
-   * Vô hiệu hóa một session
+   * Vô hiệu hóa một session cụ thể
    * @param sessionId ID của session cần vô hiệu hóa
    * @param reason Lý do vô hiệu hóa
    * @returns Promise<void>
    */
   async invalidateSession(sessionId: string, reason: string = 'UNKNOWN'): Promise<void> {
-    if (!sessionId) {
-      this.logger.warn('[invalidateSession] Không thể vô hiệu hóa session với sessionId rỗng')
-      return
+    this.logger.debug(`[invalidateSession] Invalidating session: ${sessionId} with reason: ${reason}`)
+
+    // Xác định khóa vô hiệu hóa phiên
+    const invalidatedSessionKey = RedisKeyManager.sessionInvalidatedKey(sessionId)
+
+    try {
+      // Lưu lý do vô hiệu hóa
+      await this.redisService.set(invalidatedSessionKey, reason, 'EX', DEVICE_REVERIFICATION_TTL)
+      this.logger.debug(`[invalidateSession] Session ${sessionId} invalidated with TTL: ${DEVICE_REVERIFICATION_TTL}`)
+
+      // Lưu thông tin về thiết bị để yêu cầu xác thực lại trong tương lai
+      try {
+        // Lấy thông tin phiên từ Redis
+        const sessionKey = RedisKeyManager.sessionKey(sessionId)
+        const sessionData = await this.redisService.hgetall(sessionKey)
+
+        if (sessionData && sessionData.userId && sessionData.deviceId) {
+          const userId = parseInt(sessionData.userId, 10)
+          const deviceId = parseInt(sessionData.deviceId, 10)
+
+          // Đánh dấu thiết bị cần xác thực lại
+          await this.markDeviceForReverification(userId, deviceId, reason)
+
+          // Lưu trữ phiên bị thu hồi
+          await this.archiveRevokedSession(sessionId, sessionData, reason)
+        }
+      } catch (error) {
+        this.logger.error(`[invalidateSession] Failed to process device reverification: ${error.message}`, error.stack)
+      }
+    } catch (error) {
+      this.logger.error(`[invalidateSession] Failed to invalidate session ${sessionId}: ${error.message}`, error.stack)
+      throw error
+    }
+  }
+
+  /**
+   * Đánh dấu thiết bị để yêu cầu xác thực lại trong lần đăng nhập tiếp theo
+   */
+  async markDeviceForReverification(userId: number, deviceId: number, reason: string): Promise<void> {
+    this.logger.debug(`[markDeviceForReverification] Marking device ${deviceId} for user ${userId} for reverification`)
+
+    const deviceReverificationKey = RedisKeyManager.deviceReverifyKey(userId, deviceId)
+    const data = {
+      userId,
+      deviceId,
+      reason,
+      timestamp: Date.now()
     }
 
     try {
-      // 1. Thêm session vào blacklist trong Redis với TTL dài (30 ngày)
-      const key = `invalidated:session:${sessionId}`
-      await this.redisService.set(key, reason, 'EX', 30 * 24 * 60 * 60) // 30 ngày
+      // Lưu trữ dữ liệu mã hóa nếu CryptoService khả dụng
+      if (this.cryptoService) {
+        await this.redisService.setEncrypted(deviceReverificationKey, data, DEVICE_REVERIFICATION_TTL)
+      } else {
+        await this.redisService.setJson(deviceReverificationKey, data, DEVICE_REVERIFICATION_TTL)
+      }
 
-      // 2. Publish sự kiện để các instances khác có thể cập nhật cache nội bộ
-      const eventData = JSON.stringify({ sessionId, reason, timestamp: Date.now() })
-      await this.redisService.publish('session:invalidated', eventData)
-
-      this.logger.debug(`[invalidateSession] Session ${sessionId} đã bị vô hiệu hóa với lý do: ${reason}`)
+      this.logger.debug(
+        `[markDeviceForReverification] Device ${deviceId} marked for reverification with TTL: ${DEVICE_REVERIFICATION_TTL}`
+      )
     } catch (error) {
-      this.logger.error(`[invalidateSession] Lỗi khi vô hiệu hóa session ${sessionId}: ${error.message}`, error.stack)
+      this.logger.error(`[markDeviceForReverification] Failed to mark device: ${error.message}`, error.stack)
       throw error
+    }
+  }
+
+  /**
+   * Kiểm tra xem thiết bị có yêu cầu xác thực lại hay không
+   */
+  async checkDeviceNeedsReverification(userId: number, deviceId: number): Promise<boolean> {
+    const deviceReverificationKey = RedisKeyManager.deviceReverifyKey(userId, deviceId)
+
+    try {
+      const exists = await this.redisService.exists(deviceReverificationKey)
+      return exists > 0
+    } catch (error) {
+      this.logger.error(`[checkDeviceNeedsReverification] Failed to check device: ${error.message}`, error.stack)
+      return false
+    }
+  }
+
+  /**
+   * Xóa yêu cầu xác thực lại cho thiết bị sau khi đã xác thực thành công
+   */
+  async clearDeviceReverification(userId: number, deviceId: number): Promise<void> {
+    const deviceReverificationKey = RedisKeyManager.deviceReverifyKey(userId, deviceId)
+
+    try {
+      await this.redisService.del(deviceReverificationKey)
+      this.logger.debug(
+        `[clearDeviceReverification] Cleared reverification requirement for device ${deviceId}, user ${userId}`
+      )
+    } catch (error) {
+      this.logger.error(
+        `[clearDeviceReverification] Failed to clear device reverification: ${error.message}`,
+        error.stack
+      )
+    }
+  }
+
+  /**
+   * Lưu trữ thông tin phiên bị thu hồi để phân tích sau này
+   */
+  private async archiveRevokedSession(sessionId: string, sessionData: any, reason: string): Promise<void> {
+    if (!sessionData) return
+
+    try {
+      // Lưu trữ lịch sử thu hồi
+      const historyKey = RedisKeyManager.sessionRevokeHistoryKey(sessionId)
+      const historyData = {
+        ...sessionData,
+        revokeTimestamp: Date.now(),
+        reason
+      }
+
+      // Lưu trữ dữ liệu mã hóa nếu CryptoService khả dụng
+      if (this.cryptoService) {
+        await this.redisService.setEncrypted(historyKey, historyData, DEVICE_REVOKE_HISTORY_TTL)
+      } else {
+        await this.redisService.setJson(historyKey, historyData, DEVICE_REVOKE_HISTORY_TTL)
+      }
+
+      this.logger.debug(`[archiveRevokedSession] Archived session ${sessionId} revocation history`)
+    } catch (error) {
+      this.logger.error(`[archiveRevokedSession] Error archiving session: ${error.message}`, error.stack)
     }
   }
 
   /**
    * Kiểm tra xem session có bị vô hiệu hóa không
    * @param sessionId ID của session cần kiểm tra
-   * @returns Promise<boolean> true nếu session đã bị vô hiệu hóa
+   * @returns Promise<boolean> true nếu bị vô hiệu hóa, false nếu không
    */
   async isSessionInvalidated(sessionId: string): Promise<boolean> {
     if (!sessionId) {
-      this.logger.warn('[isSessionInvalidated] Không thể kiểm tra session với sessionId rỗng')
-      return true // Coi như session không hợp lệ nếu không có sessionId
+      this.logger.warn('[isSessionInvalidated] Session ID không hợp lệ')
+      return true
     }
 
     try {
-      // Kiểm tra trong Redis
-      const key = `invalidated:session:${sessionId}`
-      const value = await this.redisService.get(key)
+      // Kiểm tra session trong blacklist
+      const key = RedisKeyManager.sessionInvalidatedKey(sessionId)
+      const exists = await this.redisService.exists(key)
 
-      const isInvalidated = value !== null
-
-      if (isInvalidated) {
-        this.logger.debug(`[isSessionInvalidated] Session ${sessionId} đã bị vô hiệu hóa với lý do: ${value}`)
+      if (exists) {
+        this.logger.debug(`[isSessionInvalidated] Session ${sessionId} đã bị vô hiệu hóa`)
+        return true
       }
 
-      return isInvalidated
+      this.logger.debug(`[isSessionInvalidated] Session ${sessionId} không bị vô hiệu hóa`)
+      return false
     } catch (error) {
-      this.logger.error(`[isSessionInvalidated] Lỗi khi kiểm tra session ${sessionId}: ${error.message}`, error.stack)
-      // Nếu có lỗi, coi như session hợp lệ để tránh chặn truy cập không đáng có
+      this.logger.error(`[isSessionInvalidated] Lỗi khi kiểm tra session ${sessionId}: ${error.message}`)
       return false
     }
   }
@@ -262,8 +384,16 @@ export class TokenService implements ITokenService {
     }
 
     try {
+      // Sử dụng batch processing để cải thiện hiệu suất
+      interface RedisOperation {
+        command: string
+        args: any[]
+      }
+
+      const operations: RedisOperation[] = []
+
       // 1. Lưu thông tin trong Redis để tra cứu nhanh
-      const userKey = `invalidated:user:${userId}`
+      const userKey = RedisKeyManager.invalidatedUserKey(userId)
 
       // Thêm timestamp để biết khi nào tất cả sessions bị vô hiệu hóa
       const invalidationData = JSON.stringify({
@@ -272,11 +402,20 @@ export class TokenService implements ITokenService {
         excludeSessionId: sessionIdToExclude
       })
 
-      // Lưu với TTL 30 ngày
-      await this.redisService.set(userKey, invalidationData, 'EX', 30 * 24 * 60 * 60)
+      // Lưu với TTL 30 ngày (chuẩn bị thêm vào batch)
+      operations.push({
+        command: 'set',
+        args: [userKey, invalidationData, 'EX', 30 * 24 * 60 * 60]
+      })
 
       // 2. Thêm vào danh sách user có session bị vô hiệu hóa hàng loạt để kiểm tra nhanh
-      await this.redisService.sadd('invalidated:users', userId.toString())
+      operations.push({
+        command: 'sadd',
+        args: ['invalidated:users', userId.toString()]
+      })
+
+      // Thực thi tất cả các thao tác trong một lệnh pipeline
+      await this.redisService.batchProcess(operations)
 
       // 3. Publish sự kiện để các instances khác có thể cập nhật cache nội bộ
       const eventData = JSON.stringify({

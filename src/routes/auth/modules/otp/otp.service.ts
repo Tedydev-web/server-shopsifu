@@ -15,6 +15,7 @@ import { IOTPService } from 'src/shared/types/auth.types'
 import { REDIS_SERVICE, EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService } from 'src/shared/services/email.service'
 import { CookieService } from 'src/routes/auth/shared/cookie/cookie.service'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 @Injectable()
 export class OtpService implements IOTPService {
@@ -44,30 +45,28 @@ export class OtpService implements IOTPService {
    * Tạo key cho Redis OTP
    */
   private getOtpKey(type: TypeOfVerificationCodeType, identifier: string): string {
-    return `otp:${type}:${identifier}`
+    return RedisKeyManager.otpKey(type, identifier)
   }
 
   /**
    * Tạo key cho Redis SLT context
    */
   private getSltContextKey(jti: string): string {
-    const key = `slt:context:${jti}`
-    this.logger.debug(`[getSltContextKey] Generated Redis key: ${key}`)
-    return key
+    return RedisKeyManager.sltContextKey(jti)
   }
 
   /**
    * Tạo key cho Redis SLT blacklist
    */
   private getSltBlacklistKey(jti: string): string {
-    return `slt:blacklist:${jti}`
+    return RedisKeyManager.sltBlacklistKey(jti)
   }
 
   /**
    * Tạo key cho cooldown của OTP
    */
   private getOtpLastSentKey(identifierForCooldown: string, purpose: TypeOfVerificationCodeType): string {
-    return `otp:cooldown:${purpose}:${identifierForCooldown}`
+    return RedisKeyManager.otpLastSentKey(identifierForCooldown, purpose)
   }
 
   /**
@@ -78,13 +77,30 @@ export class OtpService implements IOTPService {
     type: TypeOfVerificationCodeType,
     userIdForCooldownAndOtpData?: number
   ): Promise<{ message: string; otpCode: string }> {
-    // Tạo key cho Redis
-    const otpKey = this.getOtpKey(type, targetEmail)
-
     // Tạo mã OTP
     const otpCode = this.generateOTP()
 
-    // Tạo OTP data
+    // Xác định identifier cho cooldown và lưu trữ OTP
+    const identifierForCooldown = userIdForCooldownAndOtpData ? userIdForCooldownAndOtpData.toString() : targetEmail
+
+    // Kiểm tra thời gian chờ để gửi OTP
+    const cooldownKey = this.getOtpLastSentKey(identifierForCooldown, type)
+    const lastSent = await this.redisService.get(cooldownKey)
+
+    if (lastSent) {
+      const cooldownSeconds = this.configService.get('otp.cooldownSeconds', 60)
+      const elapsedTime = Math.floor(Date.now() / 1000) - parseInt(lastSent, 10)
+
+      if (elapsedTime < cooldownSeconds) {
+        const remainingTime = cooldownSeconds - elapsedTime
+        throw AuthError.OTPSendingLimited()
+      }
+    }
+
+    // Lưu thời gian gửi OTP
+    await this.redisService.set(cooldownKey, Math.floor(Date.now() / 1000).toString(), 'EX', 300) // 5 phút
+
+    // Lưu mã OTP với TTL
     const otpData: OtpData = {
       code: otpCode,
       attempts: 0,
@@ -92,24 +108,21 @@ export class OtpService implements IOTPService {
       userId: userIdForCooldownAndOtpData
     }
 
-    // Lưu OTP vào Redis
-    await this.redisService.set(otpKey, JSON.stringify(otpData), 'EX', OTP_EXPIRATION_TIME / 1000)
+    const otpKey = this.getOtpKey(type, targetEmail)
+    const otpTtl = this.configService.get('otp.expirationSeconds', 300) // 5 phút
+
+    await this.redisService.setJson(otpKey, otpData, otpTtl)
 
     // Gửi email OTP
-    try {
-      await this.emailService.sendOtpEmail({
-        email: targetEmail,
-        otpCode: otpCode,
-        otpType: type
-      })
-    } catch (error) {
-      this.logger.error(`Chi tiết lỗi gửi email: ${JSON.stringify(error)}`, error.stack)
-      // Vẫn trả về thành công nếu đã tạo OTP
-    }
+    await this.emailService.sendOtpEmail({
+      email: targetEmail,
+      otpCode,
+      otpType: type
+    })
 
     return {
       message: await this.i18nService.translate('Auth.Otp.SentSuccessfully'),
-      otpCode // Trong môi trường production, không nên trả về mã OTP
+      otpCode
     }
   }
 
@@ -124,45 +137,51 @@ export class OtpService implements IOTPService {
     ip?: string,
     userAgent?: string
   ): Promise<boolean> {
-    // Tạo key cho Redis
-    const otpKey = this.getOtpKey(type, emailToVerifyAgainst)
+    if (!code || !emailToVerifyAgainst) {
+      throw AuthError.InvalidOTP()
+    }
 
-    // Lấy dữ liệu OTP từ Redis
-    const otpDataStr = await this.redisService.get(otpKey)
-    if (!otpDataStr) {
+    const otpKey = this.getOtpKey(type, emailToVerifyAgainst)
+    const otpData = await this.redisService.getJson<OtpData>(otpKey)
+
+    if (!otpData) {
       throw AuthError.OTPExpired()
     }
 
-    // Parse dữ liệu OTP
-    const otpData = JSON.parse(otpDataStr) as OtpData
-
     // Kiểm tra số lần thử
-    if (otpData.attempts >= MAX_OTP_ATTEMPTS) {
-      // Xóa OTP nếu vượt quá số lần thử
+    const maxAttempts = this.configService.get('otp.maxVerificationAttempts', 5)
+
+    if (otpData.attempts >= maxAttempts) {
       await this.redisService.del(otpKey)
       throw AuthError.TooManyOTPAttempts()
     }
 
     // Tăng số lần thử
     otpData.attempts += 1
-    await this.redisService.set(
-      otpKey,
-      JSON.stringify(otpData),
-      'EX',
-      OTP_EXPIRATION_TIME / 1000 - Math.floor((Date.now() - otpData.createdAt) / 1000)
-    )
+
+    // Cập nhật số lần thử vào Redis
+    const otpTtl = this.configService.get('otp.expirationSeconds', 300)
+    await this.redisService.setJson(otpKey, otpData, otpTtl)
 
     // Kiểm tra mã OTP
     if (otpData.code !== code) {
+      if (otpData.attempts >= maxAttempts) {
+        await this.redisService.del(otpKey)
+      }
       throw AuthError.InvalidOTP()
     }
 
-    // Kiểm tra hết hạn
-    if (Date.now() - otpData.createdAt > OTP_EXPIRATION_TIME) {
+    // Kiểm tra thời gian hiệu lực
+    const now = Date.now()
+    const otpCreatedAt = otpData.createdAt
+    const otpExpirationTime = this.configService.get('otp.expirationSeconds', 300) * 1000 // chuyển sang milliseconds
+
+    if (now - otpCreatedAt > otpExpirationTime) {
+      await this.redisService.del(otpKey)
       throw AuthError.OTPExpired()
     }
 
-    // Xóa OTP sau khi xác minh thành công
+    // Xác minh thành công, xóa mã OTP
     await this.redisService.del(otpKey)
 
     return true

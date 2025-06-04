@@ -32,22 +32,27 @@ export class AccessTokenGuard implements CanActivate {
     }
 
     try {
-      // Xác minh token
       const payload = await this.tokenService.verifyAccessToken(token)
 
       // Kiểm tra session có bị vô hiệu hóa không
+      if (!payload.sessionId) {
+        throw AuthError.MissingSessionIdInToken()
+      }
+
       const isSessionInvalidated = await this.tokenService.isSessionInvalidated(payload.sessionId)
       if (isSessionInvalidated) {
-        this.logger.debug(`Session ${payload.sessionId} has been invalidated`)
+        this.logger.debug(`Session ${payload.sessionId} has been invalidated. Access denied.`)
+        throw AuthError.SessionNotFound()
+      }
+
+      request.user = payload
+      return true
+    } catch (error) {
+      if (error.message === 'jwt expired') {
         throw AuthError.InvalidAccessToken()
       }
 
-      // Gán payload vào request
-      request['user'] = payload
-      return true
-    } catch (error) {
-      this.logger.error(`Error validating access token: ${error.message}`)
-      throw AuthError.InvalidAccessToken()
+      throw error
     }
   }
 }

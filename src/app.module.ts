@@ -1,7 +1,6 @@
 import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_GUARD } from '@nestjs/core'
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
+import { APP_PIPE, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import { AcceptLanguageResolver, QueryResolver, HeaderResolver, I18nModule } from 'nestjs-i18n'
 import { WinstonModule } from 'nest-winston'
@@ -20,12 +19,12 @@ import { LoggerMiddleware } from './shared/middleware/logger.middleware'
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
 import envConfig from './shared/config'
 import { dailyRotateFileTransport, consoleTransport } from './shared/logger/winston.config'
-import { RedisProviderModule } from './shared/providers/redis/redis.module'
+import { InterceptorsModule } from './shared/interceptor/interceptors.module'
+import { MiddlewaresModule } from './shared/middleware/middlewares.module'
+import { GuardsModule } from './shared/guards/guards.module'
 
 // Auth components
 import { AuthModule } from './routes/auth/auth.module'
-import { TokenRefreshInterceptor } from './routes/auth/interceptors/token-refresh.interceptor'
-import { AuthenticationGuard } from './shared/guards/authentication.guard'
 
 // Tạm thời comment lại cho đến khi module được tạo
 // import { ProfileModule } from './routes/profile/profile.module'
@@ -39,24 +38,10 @@ import { AuthenticationGuard } from './shared/guards/authentication.guard'
       cache: true
     }),
 
-    // 2. Utils và Interceptors
-    ThrottlerModule.forRoot([
-      {
-        name: 'short',
-        ttl: 1000,
-        limit: 10
-      },
-      {
-        name: 'medium',
-        ttl: 10000,
-        limit: 40
-      },
-      {
-        name: 'long',
-        ttl: 60000,
-        limit: 100
-      }
-    ]),
+    // 2. Logger
+    WinstonModule.forRoot({
+      transports: [consoleTransport(), dailyRotateFileTransport('error'), dailyRotateFileTransport('info')]
+    }),
 
     // 3. I18n
     I18nModule.forRoot({
@@ -69,15 +54,13 @@ import { AuthenticationGuard } from './shared/guards/authentication.guard'
       typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
     }),
 
-    // 4. Logger
-    WinstonModule.forRoot({
-      transports: [consoleTransport(), dailyRotateFileTransport('error'), dailyRotateFileTransport('info')]
-    }),
-
-    // 5. Shared
+    // 4. Core Modules
     SharedModule,
+    MiddlewaresModule,
+    GuardsModule,
+    InterceptorsModule,
 
-    // 6. Cuối cùng phải là AuthModule
+    // 5. Cuối cùng phải là AuthModule
     AuthModule.register({ isGlobal: true })
     // Tạm thời comment lại
     // ProfileModule
@@ -94,20 +77,8 @@ import { AuthenticationGuard } from './shared/guards/authentication.guard'
       useClass: ZodSerializerInterceptor
     },
     {
-      provide: APP_INTERCEPTOR,
-      useClass: TokenRefreshInterceptor
-    },
-    {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter
-    },
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard
-    },
-    {
-      provide: APP_GUARD,
-      useClass: AuthenticationGuard
     }
   ]
 })

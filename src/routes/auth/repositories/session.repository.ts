@@ -1,7 +1,10 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { LOGIN_HISTORY_TTL } from '../constants/auth.constants'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { CryptoService } from 'src/shared/services/crypto.service'
 
 export interface Session {
   id: string
@@ -33,226 +36,173 @@ export interface SessionPaginationResult {
   totalPages: number
 }
 
+// Định nghĩa interface cho Redis operation
+interface RedisOperation {
+  command: string
+  args: any[]
+}
+
+// Định nghĩa interface cho phiên được lưu trong Redis
+interface SessionInRedis {
+  key: string
+  data: Record<string, string>
+}
+
 @Injectable()
 export class SessionRepository {
   private readonly logger = new Logger(SessionRepository.name)
-  private readonly sessionPrefix = 'session:'
 
   constructor(
     private readonly prismaService: PrismaService,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly cryptoService?: CryptoService
   ) {}
 
   /**
    * Tìm session theo ID
    */
   async findById(sessionId: string): Promise<Session | null> {
-    const data = await this.redisService.hgetall(`${this.sessionPrefix}${sessionId}`)
+    const key = RedisKeyManager.sessionKey(sessionId)
+    this.logger.debug(`[findById] Looking for session with ID ${sessionId}, Redis key: ${key}`)
 
-    if (!data || Object.keys(data).length === 0) {
-      return null
-    }
+    let sessionData: Record<string, string>
 
-    const session: Session = {
-      id: sessionId,
-      userId: parseInt(data.userId, 10),
-      deviceId: parseInt(data.deviceId, 10),
-      createdAt: new Date(parseInt(data.createdAt, 10)),
-      expiresAt: new Date(parseInt(data.expiresAt, 10)),
-      lastActive: new Date(parseInt(data.lastActive, 10)),
-      ipAddress: data.ipAddress,
-      userAgent: data.userAgent,
-      isActive: data.isActive === '1'
-    }
-
-    // Lấy thông tin device nếu có
-    if (session.deviceId) {
-      const device = await this.prismaService.device.findUnique({
-        where: { id: session.deviceId },
-        select: {
-          id: true,
-          name: true,
-          isTrusted: true
+    // Nếu có cryptoService, kiểm tra xem có dữ liệu đã mã hóa không
+    if (this.cryptoService) {
+      try {
+        const encryptedData = await this.redisService.hgetall(key)
+        if (!encryptedData || Object.keys(encryptedData).length === 0) {
+          this.logger.debug(`[findById] No session found for ID ${sessionId}`)
+          return null
         }
-      })
 
-      if (device) {
-        session.device = device
+        // Giải mã các trường nhạy cảm
+        const sensitiveFields = ['ipAddress', 'userAgent']
+        sessionData = { ...encryptedData }
+
+        for (const field of sensitiveFields) {
+          if (encryptedData[field]) {
+            try {
+              const decrypted = this.cryptoService.decrypt(encryptedData[field])
+              if (decrypted) {
+                sessionData[field] = decrypted as string
+              }
+            } catch (error) {
+              this.logger.warn(`[findById] Failed to decrypt ${field} for session ${sessionId}, using raw value`)
+            }
+          }
+        }
+      } catch (error) {
+        this.logger.error(`[findById] Error retrieving or decrypting session data: ${error.message}`, error.stack)
+        return null
+      }
+    } else {
+      // Không sử dụng mã hóa, lấy dữ liệu thông thường
+      try {
+        sessionData = await this.redisService.hgetall(key)
+        if (!sessionData || Object.keys(sessionData).length === 0) {
+          this.logger.debug(`[findById] No session found for ID ${sessionId}`)
+          return null
+        }
+      } catch (error) {
+        this.logger.error(`[findById] Error retrieving session data: ${error.message}`, error.stack)
+        return null
       }
     }
 
-    return session
+    return this.mapRedisDataToSession(sessionData, sessionId)
   }
 
   /**
    * Tìm tất cả session của user
    */
   async findSessionsByUserId(userId: number, options: SessionPaginationOptions): Promise<SessionPaginationResult> {
-    this.logger.debug(
-      `[findSessionsByUserId] Finding sessions for userId: ${userId} with options: ${JSON.stringify(options)}`
-    )
-    // Lấy tất cả các key session chung
-    const allSessionKeysPattern = `${this.sessionPrefix}*`
-    this.logger.debug(`[findSessionsByUserId] Fetching all session keys with pattern: ${allSessionKeysPattern}`)
+    const { page = 1, limit = 10 } = options
 
-    let allPossibleSessionKeys: string[] = []
-    try {
-      allPossibleSessionKeys = await this.redisService.keys(allSessionKeysPattern)
-      this.logger.debug(
-        `[findSessionsByUserId] Found ${allPossibleSessionKeys.length} possible keys: ${JSON.stringify(
-          allPossibleSessionKeys
-        )}`
-      )
-    } catch (error) {
-      this.logger.error(`[findSessionsByUserId] Error fetching keys from Redis: ${error.message}`, error.stack)
-      return {
-        data: [],
-        total: 0,
-        page: options.page,
-        limit: options.limit,
-        totalPages: 0
-      }
+    const allKeys = await this.redisService.keys(RedisKeyManager.sessionKey('*'))
+    const allSessions: Session[] = []
+
+    // Sử dụng batch process để lấy nhiều session cùng một lúc
+    const batchSize = 10 // Số session xử lý trong một batch
+    const batches: string[][] = []
+
+    for (let i = 0; i < allKeys.length; i += batchSize) {
+      const batchKeys = allKeys.slice(i, i + batchSize)
+      batches.push(batchKeys)
     }
 
-    const userSessionKeys: string[] = []
-    for (const key of allPossibleSessionKeys) {
-      try {
-        const storedUserId = await this.redisService.hget(key, 'userId')
-        if (storedUserId && parseInt(storedUserId, 10) === userId) {
-          userSessionKeys.push(key)
-        }
-      } catch (error) {
-        this.logger.error(`[findSessionsByUserId] Error checking userId for key ${key}: ${error.message}`, error.stack)
-      }
-    }
+    for (const batch of batches) {
+      const operations: RedisOperation[] = batch.map((key) => ({
+        command: 'hgetall',
+        args: [key]
+      }))
 
-    this.logger.debug(
-      `[findSessionsByUserId] Found ${userSessionKeys.length} keys matching userId ${userId}: ${JSON.stringify(
-        userSessionKeys
-      )}`
-    )
+      const results = await this.redisService.batchProcess(operations)
 
-    if (userSessionKeys.length === 0) {
-      this.logger.debug(`[findSessionsByUserId] No session keys found for userId: ${userId}`)
-      return {
-        data: [],
-        total: 0,
-        page: options.page,
-        limit: options.limit,
-        totalPages: 0
-      }
-    }
+      // Xử lý kết quả của mỗi session trong batch
+      for (let i = 0; i < results.length; i++) {
+        const sessionData = results[i]
+        if (!sessionData) continue
 
-    const sessions: Session[] = []
-    for (const key of userSessionKeys) {
-      try {
-        const sessionData = await this.redisService.hgetall(key)
-        this.logger.debug(`[findSessionsByUserId] Raw data for key ${key}: ${JSON.stringify(sessionData)}`)
-        if (sessionData && Object.keys(sessionData).length > 0) {
-          const sessionIdFromKey = key.split(':')[1]
-          const session = this.mapRedisDataToSession(sessionData, sessionIdFromKey)
-          if (session) {
-            sessions.push(session)
+        const sessionId = batch[i].replace(RedisKeyManager.sessionKey('').replace('*', ''), '')
+
+        if (sessionData.userId === userId.toString()) {
+          const sessionObj = this.mapRedisDataToSession(sessionData, sessionId)
+          if (sessionObj) {
+            allSessions.push(sessionObj)
           }
-        } else {
-          this.logger.warn(`[findSessionsByUserId] No data or empty data found for key ${key}`)
-        }
-      } catch (error) {
-        this.logger.error(`[findSessionsByUserId] Error processing key ${key}: ${error.message}`, error.stack)
-      }
-    }
-
-    // Sắp xếp session theo lastActive giảm dần (mới nhất trước)
-    sessions.sort((a, b) => b.lastActive.getTime() - a.lastActive.getTime())
-    this.logger.debug(
-      `[findSessionsByUserId] Found ${sessions.length} sessions before pagination for userId: ${userId}`
-    )
-
-    const total = sessions.length
-    const { page, limit } = options
-    const offset = (page - 1) * limit
-    const totalPages = Math.ceil(total / limit)
-    const paginatedSessions = sessions.slice(offset, offset + limit)
-
-    // Lấy thông tin device cho các session đã phân trang
-    for (const session of paginatedSessions) {
-      if (session.deviceId) {
-        try {
-          const device = await this.prismaService.device.findUnique({
-            where: { id: session.deviceId },
-            select: { id: true, name: true, isTrusted: true }
-          })
-          session.device = device || undefined // Gán undefined nếu không tìm thấy device
-        } catch (error) {
-          this.logger.error(
-            `[findSessionsByUserId] Error fetching device info for deviceId: ${session.deviceId}, error: ${error.message}`,
-            error.stack
-          )
-          session.device = undefined // Gán undefined nếu có lỗi
         }
       }
     }
 
-    this.logger.debug(
-      `[findSessionsByUserId] Returning ${paginatedSessions.length} sessions for userId: ${userId} after pagination.`
-    )
+    this.logger.debug(`[findSessionsByUserId] Found ${allSessions.length} sessions for user ${userId}`)
+
+    // Sắp xếp theo lastActive giảm dần (mới nhất trước)
+    allSessions.sort((a, b) => b.lastActive.getTime() - a.lastActive.getTime())
+
+    // Tính toán phân trang
+    const startIndex = (page - 1) * limit
+    const endIndex = startIndex + limit
+    const paginatedSessions = allSessions.slice(startIndex, endIndex)
 
     return {
       data: paginatedSessions,
-      total,
+      total: allSessions.length,
       page,
       limit,
-      totalPages
+      totalPages: Math.ceil(allSessions.length / limit)
     }
   }
 
+  /**
+   * Map dữ liệu Redis sang đối tượng Session
+   */
   private mapRedisDataToSession(redisData: Record<string, string>, sessionId: string): Session | null {
-    if (
-      !redisData.userId ||
-      !redisData.deviceId ||
-      !redisData.createdAt ||
-      !redisData.lastActive ||
-      !redisData.expiresAt // Đảm bảo expiresAt tồn tại và là một số hợp lệ
-    ) {
-      this.logger.warn(
-        `[mapRedisDataToSession] Missing required fields for session ID: ${sessionId}. Data: ${JSON.stringify(
-          redisData
-        )}`
-      )
-      return null
-    }
     try {
+      // Convert data types
       const userId = parseInt(redisData.userId, 10)
       const deviceId = parseInt(redisData.deviceId, 10)
-      const createdAt = parseInt(redisData.createdAt, 10)
-      const expiresAt = parseInt(redisData.expiresAt, 10)
-      const lastActive = parseInt(redisData.lastActive, 10)
+      const createdAt = new Date(parseInt(redisData.createdAt, 10))
+      const expiresAt = new Date(parseInt(redisData.expiresAt, 10))
+      const lastActive = new Date(parseInt(redisData.lastActive, 10))
+      const isActive = redisData.isActive === '1'
 
-      if (isNaN(userId) || isNaN(deviceId) || isNaN(createdAt) || isNaN(expiresAt) || isNaN(lastActive)) {
-        this.logger.warn(
-          `[mapRedisDataToSession] Invalid numeric fields for session ID: ${sessionId}. Data: ${JSON.stringify(
-            redisData
-          )}`
-        )
-        return null
-      }
-
-      return {
+      // Create session object
+      const session: Session = {
         id: sessionId,
-        userId: userId,
-        deviceId: deviceId,
-        createdAt: new Date(createdAt),
-        expiresAt: new Date(expiresAt),
-        lastActive: new Date(lastActive),
-        ipAddress: redisData.ipAddress || 'N/A',
-        userAgent: redisData.userAgent || 'N/A',
-        isActive: redisData.isActive === '1'
-        // device sẽ được lấy sau khi phân trang
+        userId,
+        deviceId,
+        createdAt,
+        expiresAt,
+        lastActive,
+        ipAddress: redisData.ipAddress,
+        userAgent: redisData.userAgent,
+        isActive
       }
+
+      return session
     } catch (error) {
-      this.logger.error(
-        `[mapRedisDataToSession] Error mapping data for session ID: ${sessionId}. Data: ${JSON.stringify(redisData)}, Error: ${error.message}`
-      )
+      this.logger.error(`[mapRedisDataToSession] Error mapping Redis data to session: ${error.message}`, error.stack)
       return null
     }
   }
@@ -290,56 +240,59 @@ export class SessionRepository {
       throw new Error('Session expiration time is invalid.')
     }
 
+    // Chuẩn bị dữ liệu phiên
     const sessionRedisData: Record<string, string> = {
       userId: userId.toString(),
       deviceId: deviceId.toString(),
       createdAt: createdAtTimestamp.toString(),
       expiresAt: expiresAtTimestamp.toString(),
       lastActive: lastActiveTimestamp.toString(),
-      ipAddress,
-      userAgent,
       isActive: '1'
     }
 
-    const key = `${this.sessionPrefix}${id}`
-    this.logger.debug(`[createSession] Redis key: ${key}, Session data to store: ${JSON.stringify(sessionRedisData)}`)
+    const key = RedisKeyManager.sessionKey(id)
+    const ttlInSeconds = Math.floor((expiresAtTimestamp - createdAtTimestamp) / 1000) || 86400 // Mặc định 1 ngày nếu TTL không hợp lệ
 
-    try {
-      const hsetResult = await this.redisService.hset(key, sessionRedisData)
-      this.logger.debug(`[createSession] Redis hset result for key ${key}: ${hsetResult}`)
-    } catch (error) {
-      this.logger.error(`[createSession] Error during redisService.hset for key ${key}: ${error.message}`, error.stack)
-      throw error // Re-throw error để service gọi có thể xử lý
-    }
+    // Sử dụng batch process
+    const operations: RedisOperation[] = []
 
-    const ttlInSeconds = Math.floor((expiresAtTimestamp - createdAtTimestamp) / 1000)
-    this.logger.debug(`[createSession] Calculated TTL for key ${key}: ${ttlInSeconds}s`)
+    // Nếu có CryptoService, mã hóa các trường nhạy cảm
+    if (this.cryptoService) {
+      // Mã hóa các trường nhạy cảm
+      sessionRedisData.ipAddress = this.cryptoService.encrypt(ipAddress)
+      sessionRedisData.userAgent = this.cryptoService.encrypt(userAgent)
 
-    if (ttlInSeconds <= 0) {
-      this.logger.warn(
-        `[createSession] Calculated TTL for session ${id} is ${ttlInSeconds}s, which is invalid. Setting a default TTL of 1 day (86400s).`
-      )
-      try {
-        const expireResult = await this.redisService.expire(key, 86400) // Mặc định 1 ngày nếu TTL không hợp lệ
-        this.logger.debug(`[createSession] Redis expire (default TTL) result for key ${key}: ${expireResult}`)
-      } catch (error) {
-        this.logger.error(
-          `[createSession] Error during redisService.expire (default TTL) for key ${key}: ${error.message}`,
-          error.stack
-        )
-        throw error // Re-throw error
-      }
+      operations.push({
+        command: 'hset',
+        args: [key, sessionRedisData]
+      })
+
+      operations.push({
+        command: 'expire',
+        args: [key, ttlInSeconds]
+      })
+
+      this.logger.debug(`[createSession] Redis key: ${key}, Session data stored with encryption`)
+
+      await this.redisService.batchProcess(operations)
     } else {
-      try {
-        const expireResult = await this.redisService.expire(key, ttlInSeconds)
-        this.logger.debug(`[createSession] Redis expire result for key ${key}: ${expireResult}`)
-      } catch (error) {
-        this.logger.error(
-          `[createSession] Error during redisService.expire for key ${key}: ${error.message}`,
-          error.stack
-        )
-        throw error // Re-throw error
-      }
+      // Không mã hóa, lưu trữ như bình thường
+      sessionRedisData.ipAddress = ipAddress
+      sessionRedisData.userAgent = userAgent
+
+      operations.push({
+        command: 'hset',
+        args: [key, sessionRedisData]
+      })
+
+      operations.push({
+        command: 'expire',
+        args: [key, ttlInSeconds]
+      })
+
+      this.logger.debug(`[createSession] Redis key: ${key}, Session data to store: ${JSON.stringify(sessionRedisData)}`)
+
+      await this.redisService.batchProcess(operations)
     }
 
     const createdSessionObject: Session = {
@@ -353,6 +306,7 @@ export class SessionRepository {
       userAgent,
       isActive: true
     }
+
     this.logger.debug(
       `[createSession] Session created successfully and returning object: ${JSON.stringify(createdSessionObject)}`
     )
@@ -363,7 +317,7 @@ export class SessionRepository {
    * Cập nhật session
    */
   async updateSessionActivity(sessionId: string): Promise<void> {
-    const key = `${this.sessionPrefix}${sessionId}`
+    const key = RedisKeyManager.sessionKey(sessionId)
     const now = Date.now()
 
     await this.redisService.hset(key, {
@@ -375,7 +329,7 @@ export class SessionRepository {
    * Xóa một session
    */
   async deleteSession(sessionId: string): Promise<void> {
-    const key = `${this.sessionPrefix}${sessionId}`
+    const key = RedisKeyManager.sessionKey(sessionId)
     await this.redisService.del(key)
   }
 
@@ -383,18 +337,53 @@ export class SessionRepository {
    * Xóa tất cả session của user
    */
   async deleteAllUserSessions(userId: number, excludeSessionId?: string): Promise<{ count: number }> {
-    const allKeysPattern = `${this.sessionPrefix}*`
+    const allKeysPattern = RedisKeyManager.sessionKey('*')
     this.logger.debug(`[deleteAllUserSessions] Fetching all session keys with pattern: ${allKeysPattern}`)
     const keys = await this.redisService.keys(allKeysPattern)
     let count = 0
+
+    // Sử dụng batch process để xử lý các sessions
+    const operations: RedisOperation[] = []
+    const sessionsToDelete: string[] = []
 
     this.logger.debug(
       `[deleteAllUserSessions] Found ${keys.length} total session keys. Filtering for userId: ${userId}.`
     )
 
-    for (const key of keys) {
+    // Đầu tiên lấy tất cả thông tin session trong 1 batch
+    const allSessions: SessionInRedis[] = []
+    const batchSize = 20 // Số session xử lý trong một batch
+    const batches: string[][] = []
+
+    for (let i = 0; i < keys.length; i += batchSize) {
+      const batchKeys = keys.slice(i, i + batchSize)
+      batches.push(batchKeys)
+    }
+
+    for (const batch of batches) {
+      const batchOperations: RedisOperation[] = batch.map((key) => ({
+        command: 'hgetall',
+        args: [key]
+      }))
+
+      const results = await this.redisService.batchProcess(batchOperations)
+
+      for (let i = 0; i < results.length; i++) {
+        const sessionData = results[i]
+        if (sessionData) {
+          allSessions.push({
+            key: batch[i],
+            data: sessionData
+          })
+        }
+      }
+    }
+
+    // Bây giờ lọc ra các session cần xóa
+    for (const session of allSessions) {
       try {
-        const sessionIdFromKey = key.replace(this.sessionPrefix, '')
+        const sessionPrefix = RedisKeyManager.sessionKey('').replace('*', '')
+        const sessionIdFromKey = session.key.replace(sessionPrefix, '')
 
         // Skip session cần loại trừ
         if (excludeSessionId && sessionIdFromKey === excludeSessionId) {
@@ -402,28 +391,60 @@ export class SessionRepository {
           continue
         }
 
-        const sessionUserId = await this.redisService.hget(key, 'userId')
+        const sessionUserId = session.data.userId
 
         if (sessionUserId && parseInt(sessionUserId, 10) === userId) {
           this.logger.debug(
-            `[deleteAllUserSessions] Deleting session: ${key} for userId: ${userId} (sessionId: ${sessionIdFromKey})`
+            `[deleteAllUserSessions] Deleting session: ${session.key} for userId: ${userId} (sessionId: ${sessionIdFromKey})`
           )
-          await this.redisService.del(key)
+          sessionsToDelete.push(session.key)
           count++
         } else if (sessionUserId) {
-          this.logger.debug(`[deleteAllUserSessions] Skipping session: ${key} (belongs to userId: ${sessionUserId})`)
+          this.logger.debug(
+            `[deleteAllUserSessions] Skipping session: ${session.key} (belongs to userId: ${sessionUserId})`
+          )
         } else {
-          this.logger.warn(`[deleteAllUserSessions] Session key ${key} does not have a userId field. Skipping.`)
+          this.logger.warn(`[deleteAllUserSessions] Session key ${session.key} does not have a userId field. Skipping.`)
         }
       } catch (error) {
         this.logger.error(
-          `[deleteAllUserSessions] Error processing key ${key} for deletion: ${error.message}`,
+          `[deleteAllUserSessions] Error processing key ${session.key} for deletion: ${error.message}`,
           error.stack
         )
       }
     }
 
+    // Thực hiện xóa các sessions trong một batch nếu có
+    if (sessionsToDelete.length > 0) {
+      await this.redisService.del(sessionsToDelete)
+    }
+
     this.logger.debug(`[deleteAllUserSessions] Deleted ${count} sessions for userId: ${userId}`)
     return { count }
+  }
+
+  // Thêm phương thức để lưu trữ lịch sử phiên bị thu hồi
+  async archiveSession(sessionId: string): Promise<void> {
+    // Lấy dữ liệu phiên hiện tại
+    const sessionKey = RedisKeyManager.sessionKey(sessionId)
+    const sessionData = await this.redisService.hgetall(sessionKey)
+
+    if (!sessionData) {
+      this.logger.warn(`[archiveSession] Session ${sessionId} not found for archiving`)
+      return
+    }
+
+    // Lưu trữ như một bản lưu trữ
+    const archiveKey = RedisKeyManager.sessionArchivedKey(sessionId)
+
+    // Sử dụng mã hóa nếu có CryptoService
+    if (this.cryptoService) {
+      await this.redisService.setEncrypted(archiveKey, sessionData, LOGIN_HISTORY_TTL)
+      this.logger.debug(`[archiveSession] Session ${sessionId} archived with encryption`)
+    } else {
+      await this.redisService.hset(archiveKey, sessionData)
+      await this.redisService.expire(archiveKey, LOGIN_HISTORY_TTL)
+      this.logger.debug(`[archiveSession] Session ${sessionId} archived successfully`)
+    }
   }
 }

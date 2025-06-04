@@ -8,11 +8,12 @@ import { SessionRepository, Session } from '../../repositories/session.repositor
 import { DeviceRepository } from '../../repositories/device.repository'
 import { ISessionService } from 'src/shared/types/auth.types'
 import * as crypto from 'crypto'
-import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
+import { EMAIL_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { DeviceSessionGroupDto, SessionItemDto, GetGroupedSessionsResponseDto } from './dto/session.dto'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 
 @Injectable()
 export class SessionsService implements ISessionService {
@@ -26,7 +27,8 @@ export class SessionsService implements ISessionService {
     private readonly deviceRepository: DeviceRepository,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     private readonly prismaService: PrismaService,
-    private readonly geolocationService: GeolocationService
+    private readonly geolocationService: GeolocationService,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService
   ) {}
 
   /**
@@ -50,16 +52,51 @@ export class SessionsService implements ISessionService {
 
     // Lấy thông tin current session để biết current device
     const currentSession = await this.sessionRepository.findById(currentSessionIdFromToken)
+    if (!currentSession) {
+      this.logger.debug(`[getSessions] Current session not found in Redis: ${currentSessionIdFromToken}`)
+    } else {
+      this.logger.debug(`[getSessions] Found current session with deviceId: ${currentSession.deviceId}`)
+    }
+
     const currentDeviceId = currentSession?.deviceId
 
     // Lấy tất cả device của user
     const devices = await this.deviceRepository.findDevicesByUserId(userId)
+    this.logger.debug(`[getSessions] Found ${devices.length} devices for user ${userId}`)
 
     const deviceGroups: DeviceSessionGroupDto[] = []
 
+    // Tạo deviceGroup cho thiết bị hiện tại nếu không có trong kết quả Redis (đã expiration)
+    let hasCurrentDevice = false
+    if (currentDeviceId) {
+      hasCurrentDevice = devices.some((device) => device.id === currentDeviceId)
+
+      // Nếu thiết bị hiện tại không có trong danh sách
+      if (!hasCurrentDevice && currentSession) {
+        this.logger.debug(`[getSessions] Current device ${currentDeviceId} not in results, adding it manually`)
+
+        // Tìm thiết bị trong database
+        const currentDevice = await this.deviceRepository.findById(currentDeviceId)
+        if (currentDevice) {
+          devices.push(currentDevice)
+          this.logger.debug(`[getSessions] Added current device ${currentDeviceId} from database`)
+        }
+      }
+    }
+
     for (const device of devices) {
+      // Kiểm tra thiết bị hiện tại
+      const isCurrentDevice = device.id === currentDeviceId
+      this.logger.debug(`[getSessions] Processing device ${device.id}, isCurrentDevice: ${isCurrentDevice}`)
+
       // Lọc ra các session thuộc về device hiện tại
       const deviceSessions = sessionResult.data.filter((session) => session.deviceId === device.id)
+
+      // Thêm session hiện tại nếu không có trong Redis nhưng đang được sử dụng
+      if (isCurrentDevice && deviceSessions.length === 0 && currentSession) {
+        deviceSessions.push(currentSession)
+        this.logger.debug(`[getSessions] Added current session ${currentSessionIdFromToken} to device ${device.id}`)
+      }
 
       if (deviceSessions.length === 0) {
         // Skip nếu device không có session
@@ -67,7 +104,7 @@ export class SessionsService implements ISessionService {
       }
 
       // Parse user agent của thiết bị
-      const deviceInfo = this.parseUserAgent(deviceSessions[0]?.userAgent || 'Unknown')
+      const deviceInfo = this.parseUserAgent(deviceSessions[0]?.userAgent || device.userAgent || 'Unknown')
 
       // Sắp xếp session theo lastActive mới nhất trước
       deviceSessions.sort((a, b) => b.lastActive.getTime() - a.lastActive.getTime())
@@ -82,9 +119,6 @@ export class SessionsService implements ISessionService {
       const lastActive = latestSession?.lastActive || device.lastActive
       const location = await this.getLocationFromIP(latestSession?.ipAddress || device.ip)
 
-      // Đánh dấu thiết bị hiện tại
-      const isCurrentDevice = device.id === currentDeviceId
-
       const sessionItems = await Promise.all(
         deviceSessions.map(async (session) => {
           const sessionInfo = this.parseUserAgent(session.userAgent)
@@ -93,6 +127,7 @@ export class SessionsService implements ISessionService {
 
           // Đánh dấu session hiện tại
           const isCurrentSession = session.id === currentSessionIdFromToken
+          this.logger.debug(`[getSessions] Session ${session.id}, isCurrentSession: ${isCurrentSession}`)
 
           return {
             id: session.id,
@@ -394,59 +429,49 @@ export class SessionsService implements ISessionService {
   async revokeSession(userId: number, sessionId: string, currentSessionId?: string): Promise<{ message: string }> {
     this.logger.debug(`[revokeSession] Đang thu hồi session ${sessionId} cho userId: ${userId}`)
 
-    // Kiểm tra xem session có tồn tại không
-    const session = await this.sessionRepository.findById(sessionId)
+    // Kiểm tra xem session có thuộc về user không
+    const sessionData = await this.redisService.hgetall(`session:${sessionId}`)
 
-    if (!session) {
-      this.logger.warn(`[revokeSession] Session ${sessionId} không tồn tại`)
+    if (!sessionData || !sessionData.userId) {
+      this.logger.warn(`[revokeSession] Session ${sessionId} không tồn tại hoặc không có userId`)
       throw AuthError.SessionNotFound()
     }
 
-    // Kiểm tra xem session có thuộc về user không
-    if (session.userId !== userId) {
+    const sessionUserId = parseInt(sessionData.userId, 10)
+    if (sessionUserId !== userId) {
       this.logger.warn(
-        `[revokeSession] Session ${sessionId} không thuộc về userId: ${userId}, mà thuộc về userId: ${session.userId}`
+        `[revokeSession] Session ${sessionId} không thuộc về userId ${userId}, thực tế thuộc về userId ${sessionUserId}`
       )
       throw AuthError.InsufficientPermissions()
     }
 
-    // Kiểm tra xem đang cố revoke session hiện tại không
-    if (sessionId === currentSessionId) {
+    // Không cho phép thu hồi phiên hiện tại
+    if (currentSessionId && sessionId === currentSessionId) {
       this.logger.warn(`[revokeSession] Đang cố thu hồi session hiện tại: ${sessionId}`)
       throw AuthError.CannotRevokeCurrent()
     }
 
     try {
-      // 1. Đánh dấu session không hoạt động và xóa khỏi Redis
-      await this.sessionRepository.deleteSession(sessionId)
-      this.logger.debug(`[revokeSession] Đã xóa session ${sessionId} khỏi Redis`)
+      // Lưu trữ thông tin phiên trước khi vô hiệu hóa
+      await this.sessionRepository.archiveSession(sessionId)
 
-      // 2. Vô hiệu hóa các token liên quan đến session
-      await this.tokenService.invalidateSession(sessionId, 'REVOKED_BY_USER')
-      this.logger.debug(`[revokeSession] Đã vô hiệu hóa session ${sessionId} trong TokenService`)
+      // Vô hiệu hóa phiên
+      await this.tokenService.invalidateSession(sessionId, 'USER_REVOKED')
 
-      // 3. Kiểm tra và cập nhật device nếu cần thiết
-      if (session.deviceId) {
-        // Kiểm tra xem còn session nào khác cho device này không
-        const activeSessions = await this.sessionRepository.findSessionsByUserId(userId, { page: 1, limit: 1000 })
-        const hasOtherActiveSessions = activeSessions.data.some(
-          (s) => s.id !== sessionId && s.deviceId === session.deviceId && s.isActive
-        )
+      // Đánh dấu thiết bị cần xác thực lại nếu có
+      if (sessionData.deviceId) {
+        const deviceId = parseInt(sessionData.deviceId, 10)
+        await this.tokenService.markDeviceForReverification(userId, deviceId, 'SESSION_REVOKED')
 
-        // Nếu không còn session nào khác, đánh dấu device là không hoạt động
-        if (!hasOtherActiveSessions) {
-          this.logger.debug(
-            `[revokeSession] Không còn session nào cho device ${session.deviceId}, đánh dấu device không hoạt động`
-          )
-          await this.deviceRepository.markDeviceAsInactive(session.deviceId)
-        }
+        this.logger.debug(`[revokeSession] Đã đánh dấu thiết bị ${deviceId} cần xác thực lại cho userId ${userId}`)
       }
 
-      // 4. Audit log
-      // TODO: Thêm audit log nếu cần
+      this.logger.debug(`[revokeSession] Session ${sessionId} đã được thu hồi thành công`)
 
-      const message = this.i18nService.t('auth.Auth.Session.Revoked')
-      return { message }
+      // Nếu cần, gửi thông báo đến email hoặc thực hiện các hành động bổ sung
+      // await this.emailService.sendSecurityAlert(...);
+
+      return { message: this.i18nService.translate('Auth.Session.RevokedSuccessfully') }
     } catch (error) {
       this.logger.error(`[revokeSession] Lỗi khi thu hồi session ${sessionId}: ${error.message}`, error.stack)
       throw error
@@ -896,16 +921,27 @@ export class SessionsService implements ISessionService {
       select: { twoFactorEnabled: true }
     })
 
-    // Nếu đã bật 2FA, luôn yêu cầu xác thực
+    // Nếu đã bật 2FA, luôn yêu cầu xác thực cho bất kỳ hành động thu hồi nào
     if (user?.twoFactorEnabled === true) {
       return true
     }
 
-    // Hoặc nếu đang thu hồi nhiều thiết bị/session
-    const hasMultipleItems =
-      (options.sessionIds && options.sessionIds.length > 1) || (options.deviceIds && options.deviceIds.length > 0)
+    // Nếu đang thu hồi tất cả sessions
+    if (options.revokeAllUserSessions) {
+      return true
+    }
 
-    return hasMultipleItems === true
+    // Hoặc nếu đang thu hồi nhiều thiết bị
+    if (options.deviceIds && options.deviceIds.length > 0) {
+      return true
+    }
+
+    // Hoặc nếu đang thu hồi nhiều session
+    if (options.sessionIds && options.sessionIds.length > 1) {
+      return true
+    }
+
+    return false
   }
 
   /**

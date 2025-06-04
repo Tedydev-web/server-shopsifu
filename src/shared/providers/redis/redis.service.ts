@@ -2,12 +2,16 @@ import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit, HttpStatus }
 import Redis, { RedisKey, RedisValue } from 'ioredis'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { REDIS_CLIENT } from 'src/shared/constants/injection.tokens'
+import { CryptoService } from '../../services/crypto.service'
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name)
 
-  constructor(@Inject(REDIS_CLIENT) private readonly redisClient: Redis) {}
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly redisClient: Redis,
+    private readonly cryptoService?: CryptoService
+  ) {}
 
   async onModuleInit() {
     try {
@@ -207,15 +211,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * HINCRBY - Tăng giá trị của field trong hash
-   * @returns Giá trị sau khi tăng
    */
   async hincrby(key: RedisKey, field: string, increment: number): Promise<number> {
-    try {
-      return await this.redisClient.hincrby(key, field, increment)
-    } catch (error) {
-      this.logger.error(`Redis HINCRBY error: ${error.message}`)
-      throw error
-    }
+    return await this.redisClient.hincrby(key, field, increment)
   }
 
   // --- Set Commands ---
@@ -421,6 +419,241 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       return await this.redisClient.publish(channel, message)
     } catch (error) {
       this.logger.error(`Redis PUBLISH error: ${error.message}`)
+      throw error
+    }
+  }
+
+  // --- Mã hóa dữ liệu ---
+
+  /**
+   * Lưu trữ dữ liệu với mã hóa
+   * @param key Key để lưu trữ dữ liệu
+   * @param value Giá trị cần mã hóa và lưu trữ
+   * @param ttlSeconds Thời gian hết hạn (giây)
+   * @returns "OK" nếu thành công
+   */
+  async setEncrypted(key: RedisKey, value: string | object, ttlSeconds?: number): Promise<'OK' | null> {
+    if (!this.cryptoService) {
+      this.logger.warn('CryptoService không khả dụng. Dữ liệu sẽ được lưu không được mã hóa.')
+      return this.setJson(key, value, ttlSeconds)
+    }
+
+    try {
+      const encrypted = this.cryptoService.encrypt(value)
+      if (ttlSeconds !== undefined) {
+        return this.set(key, encrypted, 'EX', ttlSeconds)
+      } else {
+        return this.set(key, encrypted)
+      }
+    } catch (error) {
+      this.logger.error(`Redis setEncrypted error: ${error.message}`, error.stack)
+      throw error
+    }
+  }
+
+  /**
+   * Lấy và giải mã dữ liệu
+   * @param key Key của dữ liệu đã mã hóa
+   * @param asObject Trả về dưới dạng object
+   * @returns Dữ liệu đã giải mã
+   */
+  async getDecrypted<T = any>(key: RedisKey, asObject: boolean = true): Promise<string | T | null> {
+    if (!this.cryptoService) {
+      this.logger.warn('CryptoService không khả dụng. Dữ liệu sẽ được đọc mà không giải mã.')
+      return this.getJson<T>(key)
+    }
+
+    try {
+      const encrypted = await this.get(key)
+      if (!encrypted) return null
+
+      return this.cryptoService.decrypt<T>(encrypted, asObject)
+    } catch (error) {
+      this.logger.error(`Redis getDecrypted error: ${error.message}`, error.stack)
+      return null
+    }
+  }
+
+  /**
+   * Lưu trữ hash với các field được mã hóa
+   * @param key Key của hash
+   * @param fields Object chứa các field cần mã hóa và lưu trữ
+   * @param sensitiveFields Danh sách các field nhạy cảm cần mã hóa (mặc định tất cả)
+   * @returns Số field được tạo mới
+   */
+  async hsetEncrypted(
+    key: RedisKey,
+    fields: Record<string, string | number | boolean | object>,
+    sensitiveFields?: string[]
+  ): Promise<number> {
+    const hashedFields: Record<string, string> = {}
+
+    // Nếu CryptoService không khả dụng, lưu dữ liệu dưới dạng JSON
+    if (!this.cryptoService) {
+      for (const [field, value] of Object.entries(fields)) {
+        hashedFields[field] = typeof value === 'object' ? JSON.stringify(value) : String(value)
+      }
+      return this.hset(key, hashedFields)
+    }
+
+    // Mã hóa các field nhạy cảm
+    for (const [field, value] of Object.entries(fields)) {
+      const shouldEncrypt = !sensitiveFields || sensitiveFields.includes(field)
+      if (shouldEncrypt) {
+        const valueToEncrypt = typeof value === 'string' ? value : JSON.stringify(value)
+        hashedFields[field] = this.cryptoService.encrypt(valueToEncrypt)
+      } else {
+        hashedFields[field] = typeof value === 'object' ? JSON.stringify(value) : String(value)
+      }
+    }
+
+    return this.hset(key, hashedFields)
+  }
+
+  /**
+   * Lấy và giải mã field từ hash
+   * @param key Key của hash
+   * @param field Field cần lấy và giải mã
+   * @param isSensitive Field có phải là dữ liệu nhạy cảm không
+   * @param asObject Trả về dưới dạng object
+   * @returns Dữ liệu đã giải mã
+   */
+  async hgetDecrypted<T = any>(
+    key: RedisKey,
+    field: string,
+    isSensitive: boolean = true,
+    asObject: boolean = true
+  ): Promise<string | T | null> {
+    const value = await this.hget(key, field)
+    if (!value) return null
+
+    // Nếu không phải field nhạy cảm hoặc CryptoService không khả dụng
+    if (!isSensitive || !this.cryptoService) {
+      if (asObject) {
+        try {
+          return JSON.parse(value) as T
+        } catch {
+          return value as unknown as T
+        }
+      }
+      return value
+    }
+
+    // Giải mã dữ liệu
+    return this.cryptoService.decrypt<T>(value, asObject)
+  }
+
+  /**
+   * Lấy và giải mã tất cả field trong hash
+   * @param key Key của hash
+   * @param sensitiveFields Danh sách các field nhạy cảm cần giải mã
+   * @returns Object chứa tất cả các field đã giải mã
+   */
+  async hgetallDecrypted<T = Record<string, any>>(
+    key: RedisKey,
+    sensitiveFields?: string[]
+  ): Promise<T | Record<string, string> | null> {
+    const data = await this.hgetall(key)
+    if (!data || Object.keys(data).length === 0) return null
+
+    // Nếu CryptoService không khả dụng, trả về dữ liệu gốc
+    if (!this.cryptoService) {
+      return data
+    }
+
+    const result: Record<string, any> = {}
+
+    for (const [field, value] of Object.entries(data)) {
+      const isSensitive = !sensitiveFields || sensitiveFields.includes(field)
+      if (isSensitive) {
+        try {
+          result[field] = this.cryptoService.decrypt(value, true)
+        } catch {
+          result[field] = value
+        }
+      } else {
+        try {
+          result[field] = JSON.parse(value)
+        } catch {
+          result[field] = value
+        }
+      }
+    }
+
+    return result as T
+  }
+
+  /**
+   * Thực hiện nhiều thao tác Redis trong một pipeline duy nhất
+   * @param operations Mảng các thao tác để thực hiện
+   * @returns Kết quả của mỗi thao tác
+   */
+  async batchProcess(
+    operations: Array<{
+      command: string
+      args: any[]
+    }>
+  ): Promise<any[]> {
+    if (operations.length === 0) return []
+
+    const pipeline = this.redisClient.pipeline()
+
+    for (const op of operations) {
+      if (typeof pipeline[op.command] === 'function') {
+        pipeline[op.command](...op.args)
+      } else {
+        this.logger.warn(`Command không hợp lệ: ${op.command}`)
+      }
+    }
+
+    const results = (await pipeline.exec()) || []
+
+    // Trả về kết quả của mỗi hoạt động, bỏ qua lỗi
+    return results.map(([err, result]) => {
+      if (err) {
+        this.logger.error(`Pipeline error: ${err.message}`)
+        return null
+      }
+      return result
+    })
+  }
+
+  /**
+   * Lấy nhiều key trong một lần gọi
+   * @param keys Danh sách các key cần lấy
+   * @returns Mảng giá trị tương ứng với các key
+   */
+  async mget(keys: RedisKey[]): Promise<(string | null)[]> {
+    if (keys.length === 0) return []
+    return this.redisClient.mget(keys)
+  }
+
+  /**
+   * Thiết lập nhiều key-value trong một lần gọi
+   * @param keyValuePairs Mảng các cặp [key, value]
+   * @returns "OK" nếu thành công
+   */
+  async mset(keyValuePairs: Array<[RedisKey, RedisValue]>): Promise<'OK'> {
+    if (keyValuePairs.length === 0) return 'OK'
+
+    // Chuyển đổi mảng cặp thành mảng phẳng [key1, val1, key2, val2, ...]
+    const args: (RedisKey | RedisValue)[] = []
+    keyValuePairs.forEach(([key, value]) => {
+      args.push(key, value)
+    })
+
+    return this.redisClient.mset(args)
+  }
+
+  /**
+   * LTRIM - Cắt bớt danh sách để chỉ giữ các phần tử từ start đến stop
+   * @returns "OK" nếu thành công
+   */
+  async ltrim(key: RedisKey, start: number, stop: number): Promise<'OK'> {
+    try {
+      return await this.redisClient.ltrim(key, start, stop)
+    } catch (error) {
+      this.logger.error(`Redis LTRIM error: ${error.message}`)
       throw error
     }
   }

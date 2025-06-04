@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
@@ -13,6 +13,9 @@ import { SessionRepository } from '../../repositories/session.repository'
 import { IUserAuthService } from 'src/shared/types/auth.types'
 import { TwoFactorMethodType, TypeOfVerificationCode } from '../../constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
+import { User, Device, Role, UserProfile } from '@prisma/client'
+import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
+import { UserStatus } from '@prisma/client'
 
 interface RegisterUserParams {
   email: string
@@ -139,120 +142,81 @@ export class CoreService implements IUserAuthService {
    * Đăng nhập
    */
   async login(params: LoginParams, res: Response): Promise<any> {
-    const { emailOrUsername, password, rememberMe = false, ip, userAgent } = params
+    this.logger.debug(`[login] Trying to login user with email/username: ${params.emailOrUsername}`)
 
-    this.logger.debug(`[login] Trying to login user with email/username: ${emailOrUsername}`)
+    // Xác thực người dùng qua email hoặc username và mật khẩu
+    const user = await this.validateUser(params.emailOrUsername, params.password)
 
-    // Kiểm tra user có tồn tại không
-    const user = await this.validateUser(emailOrUsername, password)
-
-    // Tìm hoặc tạo thiết bị
-    const existingDevices = await this.deviceRepository.findDevicesByUserId(user.id)
-    const isFirstTimeLogin = existingDevices.length === 0
-    this.logger.debug(
-      `[login] User ${emailOrUsername}: found ${existingDevices.length} devices, isFirstTimeLogin=${isFirstTimeLogin}`
-    )
-
-    // Tạo hoặc cập nhật thiết bị
-    const device = await this.deviceRepository.upsertDevice(user.id, userAgent || 'Unknown', ip || 'Unknown')
-    this.logger.debug(`[login] User ${emailOrUsername}: Device ID=${device.id}, isTrusted=${device.isTrusted}`)
-
-    // Check 2FA
-    const twoFactorEnabled = user.twoFactorEnabled === true
-    this.logger.debug(`[login] User ${emailOrUsername}: 2FA enabled=${twoFactorEnabled}`)
-
-    // Kiểm tra thiết bị có được tin tưởng hay không
-    const isDeviceTrusted = device.isTrusted && (await this.deviceRepository.isDeviceTrustValid(device.id))
-    this.logger.debug(`[login] Final device trust status: ${isDeviceTrusted}`)
-
-    // Nếu 2FA được bật hoặc thiết bị chưa được tin cậy, yêu cầu xác thực thêm
-    const requiresAdditionalVerification = (twoFactorEnabled && !isDeviceTrusted) || !isDeviceTrusted
-    this.logger.debug(
-      `[login] Additional verification needed: 2FA=${twoFactorEnabled}, untrusted device=${!isDeviceTrusted}, bypass 2FA=${twoFactorEnabled && isDeviceTrusted}`
-    )
-
-    if (requiresAdditionalVerification) {
-      // Nếu 2FA được bật, yêu cầu xác thực 2FA
-      if (twoFactorEnabled) {
-        this.logger.debug(`[login] Initiating 2FA verification for user ${emailOrUsername}`)
-
-        // Tạo JWT token để lưu thông tin phiên đăng nhập
-        const sltJwtPayload = {
-          jti: `slt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
-          sub: user.id,
-          pur: TypeOfVerificationCode.LOGIN_2FA
-        }
-
-        const sltJwt = this.tokenService.signShortLivedToken(sltJwtPayload)
-
-        // Lưu context vào Redis
-        const contextKey = `slt:context:${sltJwtPayload.jti}`
-        const contextData = {
-          userId: String(user.id),
-          deviceId: String(device.id),
-          ipAddress: ip || 'Unknown',
-          userAgent: userAgent || 'Unknown',
-          purpose: TypeOfVerificationCode.LOGIN_2FA,
-          sltJwtExp: String(Math.floor(Date.now() / 1000) + 300), // 5 phút
-          sltJwtCreatedAt: String(Date.now()),
-          finalized: '0',
-          attempts: '0',
-          metadata: JSON.stringify({
-            deviceId: device.id,
-            rememberMe,
-            twoFactorMethod: user.twoFactorMethod || TwoFactorMethodType.TOTP,
-            requiresDeviceVerification: !isDeviceTrusted
-          }),
-          email: user.email
-        }
-
-        await this.otpService['redisService'].hset(contextKey, contextData as any)
-        await this.otpService['redisService'].expire(contextKey, 360) // 6 phút
-
-        // Set SLT cookie
-        this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_2FA)
-        this.logger.debug(`[login] 2FA verification required, SLT cookie set for ${emailOrUsername}`)
-
-        // Return message asking for 2FA code
-        return {
-          message: await this.i18nService.translate('Auth.Login.2FARequired'),
-          requiresDeviceVerification: true,
-          verificationType: '2FA',
-          verificationRedirectUrl: '/auth/2fa/verify'
-        }
-      }
-
-      // Nếu thiết bị chưa được tin cậy, yêu cầu xác thực thiết bị qua OTP
-      if (!isDeviceTrusted) {
-        this.logger.debug(`[login] Initiating device verification for user ${emailOrUsername}`)
-
-        // Gửi OTP và tạo SLT cookie
-        const sltJwt = await this.otpService.initiateOtpWithSltCookie({
-          email: user.email,
-          userId: user.id,
-          deviceId: device.id,
-          ipAddress: ip || 'Unknown',
-          userAgent: userAgent || 'Unknown',
-          purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
-          metadata: { deviceId: device.id, rememberMe }
-        })
-
-        // Set SLT cookie
-        this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
-        this.logger.debug(`[login] Device verification required, SLT cookie set for ${emailOrUsername}`)
-
-        // Return message asking for device verification
-        return {
-          message: await this.i18nService.translate('Auth.Login.DeviceVerificationOtpRequired'),
-          requiresDeviceVerification: true,
-          verificationType: 'OTP',
-          verificationRedirectUrl: '/auth/otp/verify'
-        }
-      }
+    if (!user) {
+      throw AuthError.InvalidPassword()
     }
 
-    // Nếu không cần xác thực thêm, hoàn tất đăng nhập
-    return await this.finalizeLoginAfterVerification(user.id, device.id, rememberMe || false, res, ip, userAgent)
+    // Kiểm tra tài khoản có đang bị khóa không
+    if (user.status === UserStatus.BLOCKED) {
+      throw AuthError.AccountLocked()
+    }
+
+    // Kiểm tra tài khoản có đang hoạt động không
+    if (user.status !== UserStatus.ACTIVE) {
+      throw AuthError.AccountNotActive()
+    }
+
+    // Đặt giá trị mặc định cho rememberMe nếu không được cung cấp
+    const rememberMe = params.rememberMe ?? false
+
+    // Lấy hoặc tạo thiết bị
+    let device
+    try {
+      // Kiểm tra xem người dùng đã có thiết bị với user-agent này chưa
+      device = await this.deviceRepository.upsertDevice(
+        user.id,
+        params.userAgent || 'Unknown',
+        params.ip || 'Unknown',
+        `Device ${new Date().toISOString().split('T')[0]}`
+      )
+      this.logger.debug(
+        `[login] User ${params.emailOrUsername}: found ${device ? 1 : 0} devices, isFirstTimeLogin=${!device}`
+      )
+    } catch (error) {
+      this.logger.error(`[login] Error upsert device: ${error.message}`, error.stack)
+      throw new InternalServerErrorException('Error creating device')
+    }
+
+    // Kiểm tra xem thiết bị này có cần xác thực lại hay không
+    const needsReverification = await this.tokenService.checkDeviceNeedsReverification(user.id, device.id)
+    if (needsReverification) {
+      this.logger.debug(`[login] Device ${device.id} for user ${user.id} needs reverification`)
+      return this.initiateDeviceVerification(user, device, rememberMe, res)
+    }
+
+    // Kiểm tra 2 yếu tố và thiết bị không tin cậy
+    const twoFactorEnabled = user.twoFactorEnabled
+    const isTrusted = await this.deviceRepository.isDeviceTrustValid(device.id)
+
+    this.logger.debug(`[login] User ${params.emailOrUsername}: Device ID=${device.id}, isTrusted=${isTrusted}`)
+    this.logger.debug(`[login] User ${params.emailOrUsername}: 2FA enabled=${twoFactorEnabled}`)
+
+    // Xác định xem có cần xác thực bổ sung hay không
+    const bypass2FA = false // Cờ này có thể được thiết lập khi có tình huống đặc biệt cho phép bỏ qua 2FA
+    const needsDeviceVerification = !isTrusted
+    const needs2FAVerification = twoFactorEnabled
+
+    this.logger.debug(`[login] Final device trust status: ${isTrusted}`)
+    this.logger.debug(
+      `[login] Additional verification needed: 2FA=${needs2FAVerification}, untrusted device=${needsDeviceVerification}, bypass 2FA=${bypass2FA}`
+    )
+
+    // Ưu tiên xác thực 2 yếu tố trước, sau đó đến thiết bị không tin cậy
+    if (needs2FAVerification && !bypass2FA) {
+      return this.initiate2FAVerification(user, device, rememberMe, res)
+    } else if (needsDeviceVerification) {
+      this.logger.debug(`[login] Initiating device verification for user ${params.emailOrUsername}`)
+      return this.initiateDeviceVerification(user, device, rememberMe, res)
+    }
+
+    // Nếu không cần xác thực bổ sung, hoàn tất đăng nhập
+    this.logger.debug(`[login] Completing login without additional verification for user ${params.emailOrUsername}`)
+    return this.finalizeLoginWithoutVerification(user, device, rememberMe, res, params.ip, params.userAgent)
   }
 
   /**
@@ -359,7 +323,185 @@ export class CoreService implements IUserAuthService {
   }
 
   /**
-   * Hoàn tất đăng nhập sau khi xác minh OTP
+   * Bắt đầu quá trình xác thực thiết bị thông qua OTP
+   */
+  private async initiateDeviceVerification(
+    user: User & { role: Role; userProfile: UserProfile | null },
+    device: Device,
+    rememberMe: boolean,
+    res: Response
+  ): Promise<any> {
+    try {
+      // Gửi OTP qua email và khởi tạo SLT cookie
+      const sltToken = await this.otpService.initiateOtpWithSltCookie({
+        email: user.email,
+        userId: user.id,
+        deviceId: device.id,
+        ipAddress: device.ip,
+        userAgent: device.userAgent,
+        purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
+        metadata: {
+          deviceId: device.id,
+          rememberMe: rememberMe
+        }
+      })
+
+      // Đặt cookie SLT
+      this.otpService.setSltCookie(res, sltToken, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
+
+      this.logger.debug(`[login] Device verification required, SLT cookie set for ${user.email}`)
+
+      // Phản hồi về client
+      return {
+        requiresDeviceVerification: true,
+        verificationType: 'OTP',
+        verificationRedirectUrl: '/auth/otp/verify'
+      }
+    } catch (error) {
+      this.logger.error(`[initiateDeviceVerification] Error: ${error.message}`, error.stack)
+      throw new InternalServerErrorException(this.i18nService.translate('error.Error.Global.InternalServerError'))
+    }
+  }
+
+  /**
+   * Bắt đầu quá trình xác thực hai yếu tố
+   */
+  private async initiate2FAVerification(
+    user: User & { role: Role; userProfile: UserProfile | null },
+    device: Device,
+    rememberMe: boolean,
+    res: Response
+  ): Promise<any> {
+    try {
+      // Tạo và đặt SLT token cho xác thực 2FA
+      const sltToken = await this.otpService.initiateOtpWithSltCookie({
+        email: user.email,
+        userId: user.id,
+        deviceId: device.id,
+        ipAddress: device.ip,
+        userAgent: device.userAgent,
+        purpose: TypeOfVerificationCode.LOGIN_2FA,
+        metadata: {
+          deviceId: device.id,
+          rememberMe: rememberMe,
+          twoFactorMethod: user.twoFactorMethod
+        }
+      })
+
+      // Đặt cookie SLT
+      this.otpService.setSltCookie(res, sltToken, TypeOfVerificationCode.LOGIN_2FA)
+
+      // Phản hồi về client
+      return {
+        requires2FA: true,
+        twoFactorMethod: user.twoFactorMethod,
+        verificationRedirectUrl: '/auth/2fa/verify'
+      }
+    } catch (error) {
+      this.logger.error(`[initiate2FAVerification] Error: ${error.message}`, error.stack)
+      throw new InternalServerErrorException(this.i18nService.translate('error.Error.Global.InternalServerError'))
+    }
+  }
+
+  /**
+   * Lấy thiết bị dựa trên ID
+   */
+  async getDeviceById(deviceId: number): Promise<Device | null> {
+    if (!deviceId) return null
+
+    try {
+      return this.deviceRepository.findById(deviceId)
+    } catch (error) {
+      this.logger.error(`[getDeviceById] Error: ${error.message}`, error.stack)
+      return null
+    }
+  }
+
+  /**
+   * Hoàn tất đăng nhập khi không cần xác thực bổ sung
+   */
+  async finalizeLoginWithoutVerification(
+    user: User & { role: Role; userProfile: UserProfile | null },
+    device: Device,
+    rememberMe: boolean,
+    res: Response,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<any> {
+    try {
+      // Tạo thông tin người dùng để phản hồi
+      const userResponse = {
+        id: user.id,
+        email: user.email,
+        role: user.role.name,
+        isDeviceTrustedInSession: device.isTrusted,
+        userProfile: user.userProfile
+      }
+
+      // Tạo session ID duy nhất
+      const sessionId = uuidv4()
+
+      // Tạo token
+      const payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
+        userId: user.id,
+        roleId: user.role.id,
+        roleName: user.role.name,
+        deviceId: device.id,
+        sessionId,
+        jti: `access_${Date.now()}_${this.generateRandomId()}`,
+        isDeviceTrustedInSession: device.isTrusted
+      }
+
+      const accessToken = this.tokenService.signAccessToken(payload)
+      const refreshToken = this.tokenService.signRefreshToken({
+        ...payload,
+        jti: `refresh_${Date.now()}_${this.generateRandomId()}`
+      })
+
+      // Đặt cookie token
+      const refreshCookieMaxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+      this.cookieService.setTokenCookies(res, accessToken, refreshToken, refreshCookieMaxAge)
+
+      // Tạo phiên trong Redis
+      // Tính thời gian hết hạn cho phiên
+      const refreshTokenExpiryDays = rememberMe ? 30 : 1
+      const expiresAt = new Date()
+      expiresAt.setDate(expiresAt.getDate() + refreshTokenExpiryDays)
+
+      await this.sessionRepository.createSession({
+        id: sessionId,
+        userId: user.id,
+        deviceId: device.id,
+        ipAddress: ipAddress || 'Unknown',
+        userAgent: userAgent || 'Unknown',
+        expiresAt
+      })
+
+      return {
+        accessToken,
+        refreshToken,
+        user: userResponse
+      }
+    } catch (error) {
+      this.logger.error(`[finalizeLoginWithoutVerification] Error: ${error.message}`, error.stack)
+      throw new InternalServerErrorException(this.i18nService.translate('error.Error.Global.InternalServerError'))
+    }
+  }
+
+  /**
+   * Helper để tạo ID ngẫu nhiên
+   */
+  private generateRandomId(length: number = 12): string {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+    let result = ''
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return result
+  }
+
+  /**
+   * Hoàn tất đăng nhập sau khi xác minh
    */
   async finalizeLoginAfterVerification(
     userId: number,
@@ -369,88 +511,73 @@ export class CoreService implements IUserAuthService {
     ipAddress?: string,
     userAgent?: string
   ): Promise<any> {
-    // Tìm user
-    const user = await this.userAuthRepository.findById(userId)
-    if (!user) {
-      throw AuthError.EmailNotFound()
-    }
-
-    // Tìm thiết bị
-    const device = await this.deviceRepository.findById(deviceId)
-    if (!device) {
-      throw AuthError.DeviceNotFound()
-    }
-
-    // Không tự động đánh dấu thiết bị là trusted, để người dùng xác nhận sau
-    // (Dòng code này đã bị xóa: await this.deviceRepository.updateDeviceTrustStatus(deviceId, true))
-
-    // Tạo session ID
-    const sessionId = uuidv4()
-
-    // Tạo payload cho access token
-    const tokenPayload = {
-      userId: user.id,
-      deviceId: device.id,
-      roleId: user.roleId,
-      roleName: user.role.name,
-      sessionId,
-      jti: `access_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
-      isDeviceTrustedInSession: false // Thiết bị chưa được tin cậy
-    }
-
-    // Tạo tokens
-    const accessToken = this.tokenService.signAccessToken(tokenPayload)
-    const refreshToken = this.tokenService.signRefreshToken({
-      ...tokenPayload,
-      jti: `refresh_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
-    })
-
-    // Set cookie
-    this.cookieService.setTokenCookies(
-      res,
-      accessToken,
-      refreshToken,
-      rememberMe ? 30 * 24 * 60 * 60 * 1000 : undefined
-    )
-
-    // Tạo session trong Redis
-    const sessionExpiresInMs = rememberMe
-      ? this.configService.get<number>('SESSION_REMEMBER_ME_DURATION_MS')
-      : this.configService.get<number>('SESSION_DEFAULT_DURATION_MS')
-
-    const expiresAt = new Date(Date.now() + (sessionExpiresInMs || 0))
-
     try {
+      // Tìm user
+      const user = await this.userAuthRepository.findById(userId)
+      if (!user) {
+        throw AuthError.EmailNotFound()
+      }
+
+      // Tìm thiết bị
+      const device = await this.deviceRepository.findById(deviceId)
+      if (!device) {
+        throw AuthError.DeviceNotFound()
+      }
+
+      // Tạo thông tin người dùng để phản hồi
+      const userResponse = {
+        id: user.id,
+        email: user.email,
+        role: user.role.name,
+        isDeviceTrustedInSession: device.isTrusted,
+        userProfile: user.userProfile
+      }
+
+      // Tạo session ID duy nhất
+      const sessionId = uuidv4()
+
+      // Tạo token
+      const payload = {
+        userId: user.id,
+        roleId: user.role.id,
+        roleName: user.role.name,
+        deviceId: device.id,
+        sessionId,
+        jti: `access_${Date.now()}_${this.generateRandomId()}`,
+        isDeviceTrustedInSession: device.isTrusted
+      }
+
+      const accessToken = this.tokenService.signAccessToken(payload)
+      const refreshToken = this.tokenService.signRefreshToken({
+        ...payload,
+        jti: `refresh_${Date.now()}_${this.generateRandomId()}`
+      })
+
+      // Đặt cookie token
+      const refreshCookieMaxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+      this.cookieService.setTokenCookies(res, accessToken, refreshToken, refreshCookieMaxAge)
+
+      // Tạo phiên trong Redis
+      // Tính thời gian hết hạn cho phiên
+      const refreshTokenExpiryDays = rememberMe ? 30 : 1
+      const expiresAt = new Date()
+      expiresAt.setDate(expiresAt.getDate() + refreshTokenExpiryDays)
+
       await this.sessionRepository.createSession({
         id: sessionId,
-        userId,
-        deviceId,
+        userId: user.id,
+        deviceId: device.id,
         ipAddress: ipAddress || 'Unknown',
         userAgent: userAgent || 'Unknown',
         expiresAt
       })
-      this.logger.debug(`[finalizeLoginAfterVerification] Session ${sessionId} created in Redis for user ${userId}`)
-    } catch (error) {
-      this.logger.error(
-        `[finalizeLoginAfterVerification] Failed to create session ${sessionId} in Redis for user ${userId}: ${error.message}`,
-        error.stack
-      )
-      // Quyết định có nên throw lỗi ở đây hay không, hoặc chỉ log
-      // Hiện tại, chỉ log để không làm gián đoạn quá trình đăng nhập
-    }
 
-    // Trả về thông tin user với cấu trúc giống login
-    return {
-      id: user.id,
-      email: user.email,
-      roleName: user.role.name, // Sử dụng roleName để phù hợp với otp.controller
-      isDeviceTrustedInSession: false,
-      userProfile: {
-        firstName: user.userProfile?.firstName,
-        lastName: user.userProfile?.lastName,
-        username: user.userProfile?.username,
-        avatar: user.userProfile?.avatar
-      }
+      this.logger.debug(`[finalizeLoginAfterVerification] Session ${sessionId} created in Redis for user ${userId}`)
+
+      return userResponse
+    } catch (error) {
+      this.logger.error(`[finalizeLoginAfterVerification] Error: ${error.message}`, error.stack)
+      throw error
     }
   }
 }

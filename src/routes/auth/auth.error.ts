@@ -105,11 +105,23 @@ export class AuthError {
   }
 
   static CannotRevokeCurrent(): HttpException {
-    return new HttpException('Không thể thu hồi phiên hiện tại', HttpStatus.BAD_REQUEST)
+    return new ApiException(
+      HttpStatus.BAD_REQUEST,
+      'SESSION_REVOKE_CURRENT',
+      'auth.Auth.Error.Session.CannotRevokeCurrent'
+    )
+  }
+
+  static MissingSessionIdInToken(): HttpException {
+    return new ApiException(
+      HttpStatus.UNAUTHORIZED,
+      'SESSION_ID_MISSING',
+      'auth.Auth.Error.Session.MissingSessionIdInToken'
+    )
   }
 
   static DeviceNotFound(): HttpException {
-    return new HttpException('Thiết bị không tồn tại', HttpStatus.NOT_FOUND)
+    return new ApiException(HttpStatus.NOT_FOUND, 'DEVICE_NOT_FOUND', 'auth.Auth.Error.Device.NotFound')
   }
 
   static DeviceNotOwnedByUser(): HttpException {

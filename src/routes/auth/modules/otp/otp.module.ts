@@ -1,14 +1,29 @@
-import { Module, forwardRef } from '@nestjs/common'
+import { forwardRef, Module } from '@nestjs/common'
 import { OtpController } from './otp.controller'
 import { OtpService } from './otp.service'
-import { SharedModule } from 'src/shared/shared.module'
-import { CoreService } from '../core/core.service'
+import { CoreModule } from '../core/core.module'
 import { SessionsModule } from '../sessions/sessions.module'
+import { TokenService } from '../../shared/token/token.service'
+import { JwtModule } from '@nestjs/jwt'
+import { ConfigModule, ConfigService } from '@nestjs/config'
 
 @Module({
-  imports: [SharedModule, forwardRef(() => SessionsModule)],
+  imports: [
+    CoreModule,
+    forwardRef(() => SessionsModule),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET') || 'SECRET',
+        signOptions: {
+          expiresIn: configService.get<string>('JWT_ACCESS_EXPIRATION', '1h')
+        }
+      })
+    })
+  ],
   controllers: [OtpController],
-  providers: [OtpService, CoreService],
+  providers: [OtpService, TokenService],
   exports: [OtpService]
 })
 export class OtpModule {}

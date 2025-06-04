@@ -436,4 +436,21 @@ export class DeviceRepository {
     // Mặc định là Desktop nếu không phải Mobile hoặc Tablet
     return 'Desktop'
   }
+
+  /**
+   * Cập nhật thông tin vị trí của thiết bị
+   */
+  async updateDeviceLocation(
+    deviceId: number,
+    locationData: {
+      lastKnownIp?: string
+      lastKnownCountry?: string
+      lastKnownCity?: string
+    }
+  ): Promise<Device> {
+    return this.prismaService.device.update({
+      where: { id: deviceId },
+      data: locationData
+    })
+  }
 }

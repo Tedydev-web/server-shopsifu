@@ -58,6 +58,14 @@ export type I18nTranslations = {
                 "NoSessionsToRevoke": string;
                 "RequiresAdditionalVerification": string;
                 "VerificationRequired": string;
+                "SltMissing": string;
+                "NotFound": string;
+                "MaxSessionsReached": string;
+                "InvalidLogin": string;
+                "AbsoluteLifetimeExceeded": string;
+                "CannotRevokeCurrent": string;
+                "MissingSessionIdInToken": string;
+                "InvalidRevokeOperation": string;
                 "RevokedSuccessfully": string;
                 "ReverifiedSuccessfully": string;
                 "SendReverificationOtpSuccess": string;
