@@ -66,6 +66,7 @@ export type I18nTranslations = {
                 "CannotRevokeCurrent": string;
                 "MissingSessionIdInToken": string;
                 "InvalidRevokeOperation": string;
+                "InsufficientDataForRevocation": string;
                 "RevokedSuccessfully": string;
                 "ReverifiedSuccessfully": string;
                 "SendReverificationOtpSuccess": string;
@@ -136,11 +137,13 @@ export type I18nTranslations = {
                     "MissingSessionIdInToken": string;
                     "InvalidRevokeOperation": string;
                     "RevokedRemotely": string;
+                    "InsufficientDataForRevocation": string;
                 };
                 "SLT": {
                     "CookieMissing": string;
                     "InvalidPurpose": string;
                     "Expired": string;
+                    "EmailMissingInContext": string;
                 };
                 "2FA": {
                     "InvalidTOTP": string;

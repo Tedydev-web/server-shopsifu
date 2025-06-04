@@ -13,6 +13,7 @@ import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import { UserStatus } from '@prisma/client'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/shared/repositories/auth'
+import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 
 interface RegisterUserParams {
   email: string
@@ -42,7 +43,7 @@ export class CoreService implements IUserAuthService {
     private readonly hashingService: HashingService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
-    private readonly i18nService: I18nService,
+    private readonly i18nService: I18nService<I18nTranslations>,
     private readonly configService: ConfigService,
     private readonly userAuthRepository: UserAuthRepository,
     private readonly deviceRepository: DeviceRepository,
@@ -176,7 +177,7 @@ export class CoreService implements IUserAuthService {
       )
     } catch (error) {
       this.logger.error(`[login] Error upsert device: ${error.message}`, error.stack)
-      throw new InternalServerErrorException('Error creating device')
+      throw AuthError.InternalServerError('Failed to process device information.')
     }
 
     // Kiểm tra xem thiết bị này có cần xác thực lại hay không
@@ -213,13 +214,13 @@ export class CoreService implements IUserAuthService {
 
     // Nếu không cần xác thực bổ sung, hoàn tất đăng nhập
     this.logger.debug(`[login] Completing login without additional verification for user ${params.emailOrUsername}`)
-    return this.finalizeLoginWithoutVerification(user, device, rememberMe, res, params.ip, params.userAgent)
+    return this.finalizeLoginAndCreateTokens(user, device, rememberMe, res, params.ip, params.userAgent)
   }
 
   /**
    * Làm mới token
    */
-  async refreshToken(refreshToken: string, deviceInfo: any, res: Response): Promise<any> {
+  async refreshToken(refreshToken: string, deviceInfo: any, res: Response): Promise<{ accessToken: string }> {
     try {
       const { userAgent, ip } = deviceInfo
 
@@ -260,9 +261,10 @@ export class CoreService implements IUserAuthService {
         accessToken: newAccessToken
       }
     } catch (error) {
-      this.logger.error(`Lỗi làm mới token: ${error.message}`)
+      this.logger.error(`Lỗi làm mới token: ${error.message}`, error.stack)
       this.cookieService.clearTokenCookies(res)
-      throw error
+      if (error instanceof AuthError) throw error
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
@@ -302,13 +304,14 @@ export class CoreService implements IUserAuthService {
             const payload = await this.tokenService.verifyAccessToken(accessToken)
             await this.tokenService.invalidateAccessTokenJti(payload.jti, payload.exp)
           } catch (error) {
-            this.logger.error(`Lỗi vô hiệu hóa token: ${error.message}`)
+            this.logger.warn(`Lỗi vô hiệu hóa access token khi logout: ${error.message}`)
           }
         }
       }
     } catch (error) {
-      this.logger.error(`Lỗi đăng xuất: ${error.message}`)
-      throw error
+      this.logger.error(`Lỗi đăng xuất: ${error.message}`, error.stack)
+      if (error instanceof AuthError) throw error
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
@@ -344,19 +347,21 @@ export class CoreService implements IUserAuthService {
       })
 
       // Đặt cookie SLT
-      this.otpService.setSltCookie(res, sltToken, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
+      this.cookieService.setSltCookie(res, sltToken, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
 
       this.logger.debug(`[login] Device verification required, SLT cookie set for ${user.email}`)
 
       // Phản hồi về client
       return {
+        messageKey: 'Auth.Login.DeviceVerificationRequired',
         requiresDeviceVerification: true,
-        verificationType: 'OTP',
+        verificationType: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
         verificationRedirectUrl: '/auth/otp/verify'
       }
     } catch (error) {
       this.logger.error(`[initiateDeviceVerification] Error: ${error.message}`, error.stack)
-      throw new InternalServerErrorException(this.i18nService.translate('error.Error.Global.InternalServerError'))
+      if (error instanceof AuthError) throw error
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
@@ -386,17 +391,19 @@ export class CoreService implements IUserAuthService {
       })
 
       // Đặt cookie SLT
-      this.otpService.setSltCookie(res, sltToken, TypeOfVerificationCode.LOGIN_2FA)
+      this.cookieService.setSltCookie(res, sltToken, TypeOfVerificationCode.LOGIN_2FA)
 
       // Phản hồi về client
       return {
+        messageKey: 'Auth.Login.2FARequired',
         requires2FA: true,
         twoFactorMethod: user.twoFactorMethod,
         verificationRedirectUrl: '/auth/2fa/verify'
       }
     } catch (error) {
       this.logger.error(`[initiate2FAVerification] Error: ${error.message}`, error.stack)
-      throw new InternalServerErrorException(this.i18nService.translate('error.Error.Global.InternalServerError'))
+      if (error instanceof AuthError) throw error
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
@@ -417,7 +424,7 @@ export class CoreService implements IUserAuthService {
   /**
    * Hoàn tất đăng nhập khi không cần xác thực bổ sung
    */
-  async finalizeLoginWithoutVerification(
+  async finalizeLoginAndCreateTokens(
     user: User & { role: Role; userProfile: UserProfile | null },
     device: Device,
     rememberMe: boolean,
@@ -480,8 +487,9 @@ export class CoreService implements IUserAuthService {
         user: userResponse
       }
     } catch (error) {
-      this.logger.error(`[finalizeLoginWithoutVerification] Error: ${error.message}`, error.stack)
-      throw new InternalServerErrorException(this.i18nService.translate('error.Error.Global.InternalServerError'))
+      this.logger.error(`[finalizeLoginAndCreateTokens] Error: ${error.message}`, error.stack)
+      if (error instanceof AuthError) throw error
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
@@ -571,10 +579,16 @@ export class CoreService implements IUserAuthService {
 
       this.logger.debug(`[finalizeLoginAfterVerification] Session ${sessionId} created in Redis for user ${userId}`)
 
-      return userResponse
+      return {
+        accessToken,
+        refreshToken,
+        user: userResponse,
+        messageKey: 'Auth.Login.Success'
+      }
     } catch (error) {
       this.logger.error(`[finalizeLoginAfterVerification] Error: ${error.message}`, error.stack)
-      throw error
+      if (error instanceof AuthError) throw error
+      throw AuthError.InternalServerError(error.message)
     }
   }
 }

@@ -32,12 +32,6 @@ export const VerifyOtpWithRedirectSchema = z.object({
   redirectUrl: z.string().optional()
 })
 
-// UserProfile Schema dùng cho response
-export const UserProfileResponseSchema = z.object({
-  username: z.string().nullable(),
-  avatar: z.string().nullable()
-})
-
 // Schema khi xác minh OTP thành công và hoàn tất đăng nhập
 // Sử dụng UserAuthResponseSchema để đảm bảo đồng bộ với login response
 export const VerifyOtpSuccessResponseSchema = z.object({

@@ -230,4 +230,4 @@ const envConfig = {
   cookie: cookieConfig
 }
 
-export default envConfig
+export default () => envConfig

@@ -6,13 +6,20 @@ import { Response } from 'express'
 import { I18nService } from 'nestjs-i18n'
 import { OtpService } from '../otp/otp.service'
 import { HashingService } from 'src/shared/services/hashing.service'
-import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/shared/constants/auth.constants'
+import {
+  TypeOfVerificationCode,
+  TwoFactorMethodType,
+  TypeOfVerificationCodeType
+} from 'src/shared/constants/auth.constants'
 import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { v4 as uuidv4 } from 'uuid'
-import { TwoFactorConfirmSetupDto } from './dto/two-factor.dto'
+import { TwoFactorConfirmSetupDto } from './two-factor.dto'
 import { UserAuthRepository, RecoveryCodeRepository, DeviceRepository } from 'src/shared/repositories/auth'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { PickedUserProfileResponseType } from 'src/shared/dtos/user.dto'
 
 @Injectable()
 export class TwoFactorService {
@@ -27,7 +34,8 @@ export class TwoFactorService {
     private readonly hashingService: HashingService,
     private readonly userAuthRepository: UserAuthRepository,
     private readonly recoveryCodeRepository: RecoveryCodeRepository,
-    private readonly deviceRepository: DeviceRepository
+    private readonly deviceRepository: DeviceRepository,
+    @Inject(RedisService) private readonly redisService: RedisService
   ) {}
 
   /**
@@ -142,7 +150,7 @@ export class TwoFactorService {
       const sltJwt = this.tokenService.signShortLivedToken(sltJwtPayload)
 
       // Lưu context vào Redis
-      const contextKey = `slt:context:${sltJwtPayload.jti}`
+      const contextKey = RedisKeyManager.sltContextKey(sltJwtPayload.jti)
       const contextData = {
         userId: String(user.id),
         deviceId: String(deviceId),
@@ -159,8 +167,8 @@ export class TwoFactorService {
         })
       }
 
-      await this.otpService['redisService'].hset(contextKey, contextData as any)
-      await this.otpService['redisService'].expire(contextKey, 360) // 6 phút
+      await this.redisService.hset(contextKey, contextData as any)
+      await this.redisService.expire(contextKey, 360) // 6 phút
 
       // Set SLT cookie
       this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.SETUP_2FA)
@@ -257,7 +265,6 @@ export class TwoFactorService {
     sltCookieValue: string,
     ip: string,
     userAgent: string,
-    res: Response,
     method: string = 'TOTP'
   ): Promise<{
     message: string
@@ -268,170 +275,112 @@ export class TwoFactorService {
       email: string
       roleName: string
       isDeviceTrustedInSession: boolean
-      userProfile: any
+      userProfile: PickedUserProfileResponseType | null
     }
-    // Các trường bổ sung để xử lý các purpose khác
-    purpose?: string
+    purpose?: TypeOfVerificationCodeType
     userId?: number
+    sltDeviceId?: number
     metadata?: any
   }> {
     // Xác thực SLT token và lấy context
-    const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
-      sltCookieValue,
-      ip,
-      userAgent
-      // Loại bỏ TypeOfVerificationCode.LOGIN_2FA để có thể sử dụng cho nhiều purpose
-    )
+    const sltContext = await this.otpService.validateSltFromCookieAndGetContext(sltCookieValue, ip, userAgent)
+
+    this.logger.debug(`[verifyTwoFactor] Verifying 2FA for user ${sltContext.userId} (from SLT) with method ${method}`)
 
     if (!sltContext.userId) {
-      throw AuthError.EmailNotFound()
+      this.logger.warn(`[verifyTwoFactor] User ID missing in SLT context for JTI: ${sltContext.sltJti}`)
+      throw AuthError.SLTInvalidPurpose() // Hoặc một lỗi cụ thể hơn
     }
 
-    // Tìm user
+    // Tìm user từ sltContext.userId
     const user = await this.userAuthRepository.findById(sltContext.userId)
-
     if (!user) {
+      this.logger.warn(`[verifyTwoFactor] User not found with ID: ${sltContext.userId} from SLT context`)
       throw AuthError.EmailNotFound()
     }
 
-    if (!user.twoFactorEnabled || !user.twoFactorSecret) {
-      throw AuthError.TOTPNotEnabled()
-    }
+    let isValid = false
+    const verifiedMethodUpper = method.toUpperCase() // Chuẩn hóa method và dùng const
 
-    let isVerified = false
-    let methodUsed =
-      method === 'RECOVERY_CODE' ? TwoFactorMethodType.RECOVERY : user.twoFactorMethod || TwoFactorMethodType.TOTP
-
-    // Kiểm tra phương thức xác thực
-    if (method === 'RECOVERY_CODE') {
-      // Xác minh recovery code
-      const recoveryCodeVerified = await this.verifyRecoveryCode(user.id, code)
-      if (recoveryCodeVerified) {
-        isVerified = true
-        methodUsed = TwoFactorMethodType.RECOVERY
+    if (verifiedMethodUpper === TwoFactorMethodType.TOTP.toString()) {
+      if (!user.twoFactorEnabled || !user.twoFactorSecret) {
+        this.logger.error(`[verifyTwoFactor] 2FA (TOTP) not enabled or secret missing for user ${user.id}`)
+        throw AuthError.TOTPNotEnabled()
       }
-    } else if (user.twoFactorMethod === TwoFactorMethodType.TOTP) {
-      // Xác minh TOTP
-      isVerified = this.verifyTOTP(user.twoFactorSecret, code)
-    } else if (user.twoFactorMethod === TwoFactorMethodType.OTP) {
-      // Xác minh OTP
-      try {
-        await this.otpService.verifyOTP(user.email, code, TypeOfVerificationCode.LOGIN_2FA)
-        isVerified = true
-      } catch (error) {
-        isVerified = false
+      isValid = this.verifyTOTP(user.twoFactorSecret, code)
+      if (!isValid) {
+        throw AuthError.InvalidTOTP()
       }
+    } else if (verifiedMethodUpper === TwoFactorMethodType.RECOVERY.toString()) {
+      // Sửa thành RECOVERY
+      isValid = await this.verifyRecoveryCode(sltContext.userId, code)
+      if (!isValid) {
+        throw AuthError.InvalidRecoveryCode()
+      }
+    } else {
+      this.logger.warn(`[verifyTwoFactor] Invalid 2FA method: ${method}`)
+      throw AuthError.InvalidTwoFactorMethod()
     }
 
-    if (!isVerified) {
-      throw AuthError.InvalidTOTP()
-    }
+    this.logger.debug(
+      `[verifyTwoFactor] Code verification successful for user ${sltContext.userId} using method ${verifiedMethodUpper}`
+    )
 
-    // Đánh dấu SLT là đã finalized
+    // Đánh dấu SLT là đã finalized NGAY SAU KHI mã được xác minh thành công
     await this.otpService.finalizeSlt(sltContext.sltJti)
+    this.logger.debug(`[verifyTwoFactor] SLT finalized for JTI: ${sltContext.sltJti}`)
 
-    // Kiểm tra purpose trong context
-    if (
-      sltContext.purpose === TypeOfVerificationCode.REVOKE_SESSIONS ||
-      sltContext.purpose === TypeOfVerificationCode.REVOKE_ALL_SESSIONS
-    ) {
-      // Trả về thông tin cần thiết để controller xử lý tiếp
+    // Xử lý rememberMe và tin cậy thiết bị nếu mục đích là đăng nhập
+    if (sltContext.purpose === TypeOfVerificationCode.LOGIN_2FA) {
+      if (rememberMe && sltContext.deviceId) {
+        await this.deviceRepository.updateDeviceTrustStatus(sltContext.deviceId, true)
+        this.logger.debug(`[verifyTwoFactor] Device ${sltContext.deviceId} trusted for user ${sltContext.userId}`)
+      }
+    }
+
+    // Chuẩn bị thông tin user để trả về nếu cần cho LOGIN_2FA
+    // UserAuthRepository.findById đã bao gồm role và userProfile
+    const userResponseForLogin = {
+      id: user.id,
+      email: user.email,
+      roleName: user.role.name,
+      isDeviceTrustedInSession:
+        sltContext.deviceId && rememberMe && sltContext.purpose === TypeOfVerificationCode.LOGIN_2FA
+          ? true
+          : await this.deviceRepository.isDeviceTrustValid(sltContext.deviceId || 0),
+      userProfile: user.userProfile
+        ? {
+            firstName: user.userProfile.firstName,
+            lastName: user.userProfile.lastName,
+            username: user.userProfile.username,
+            avatar: user.userProfile.avatar
+          }
+        : null
+    }
+
+    // Nếu mục đích là đăng nhập 2FA, controller sẽ gọi finalizeLogin dựa trên thông tin này
+    if (sltContext.purpose === TypeOfVerificationCode.LOGIN_2FA) {
       return {
         message: await this.i18nService.translate('Auth.2FA.Verify.Success'),
-        verifiedMethod: methodUsed,
+        verifiedMethod: verifiedMethodUpper,
+        user: userResponseForLogin,
         purpose: sltContext.purpose,
         userId: sltContext.userId,
+        sltDeviceId: sltContext.deviceId,
         metadata: sltContext.metadata
       }
     }
 
-    // Tìm hoặc tạo device
-    const device = await this.deviceRepository.upsertDevice(user.id, userAgent, ip)
-
-    // Lấy thông tin thiết bị có tin cậy không
-    const isDeviceTrusted = device.isTrusted && (await this.deviceRepository.isDeviceTrustValid(device.id))
-    this.logger.debug(`2FA verification successful for user ${user.id}, device trust status: ${isDeviceTrusted}`)
-
-    // Xóa SLT cookie của 2FA chỉ khi purpose không phải là REVOKE_SESSIONS hoặc REVOKE_ALL_SESSIONS
-    this.cookieService.clearSltCookie(res)
-
-    // Xác định xem 2FA đã xong và chúng ta có thể đăng nhập ngay sau khi verify 2FA
-    // Luôn hoàn tất đăng nhập sau khi xác thực 2FA thành công, không cần thêm xác minh thiết bị
-    const finalizeAfter2FA = true
-
-    if (finalizeAfter2FA) {
-      // Thiết bị đã được tin cậy nên hoàn tất đăng nhập sau 2FA
-      // Hoặc đã xác thực qua TOTP/Recovery code nên ko cần thêm xác minh thiết bị
-      const payload = {
-        userId: user.id,
-        deviceId: device.id,
-        roleId: user.roleId,
-        roleName: user.role.name,
-        sessionId: uuidv4(),
-        jti: `access_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
-        isDeviceTrustedInSession: isDeviceTrusted
-      }
-
-      // Tạo token
-      const accessToken = this.tokenService.signAccessToken(payload)
-      const refreshToken = this.tokenService.signRefreshToken({
-        ...payload,
-        jti: `refresh_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
-      })
-
-      // Set token cookies
-      this.cookieService.setTokenCookies(
-        res,
-        accessToken,
-        refreshToken,
-        sltContext.metadata?.rememberMe ? 30 * 24 * 60 * 60 * 1000 : undefined
-      )
-
-      // Trả về thông tin user đã đăng nhập
-      return {
-        message: await this.i18nService.translate('Auth.2FA.Verify.Success'),
-        verifiedMethod: methodUsed,
-        user: {
-          id: user.id,
-          email: user.email,
-          roleName: user.role.name,
-          isDeviceTrustedInSession: isDeviceTrusted,
-          userProfile: {
-            firstName: user.userProfile?.firstName,
-            lastName: user.userProfile?.lastName,
-            username: user.userProfile?.username,
-            avatar: user.userProfile?.avatar
-          }
-        }
-      }
-    } else {
-      // Tuy nhiên code branch này không bao giờ được thực thi do finalizeAfter2FA = true
-      // Giữ lại chỉ để tham khảo cho tương lai nếu cần
-      this.logger.debug(`Device verification required after successful 2FA for user ${user.id}`)
-
-      // Khởi tạo OTP cho verifications thiết bị sau khi 2FA thành công
-      const sltJwt = await this.otpService.initiateOtpWithSltCookie({
-        email: user.email,
-        userId: user.id,
-        deviceId: device.id,
-        ipAddress: ip,
-        userAgent: userAgent,
-        purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
-        metadata: {
-          deviceId: device.id,
-          rememberMe: sltContext.metadata?.rememberMe,
-          twoFactorVerified: true // Đánh dấu đã xác minh 2FA
-        }
-      })
-
-      // Đặt cookie SLT
-      this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
-
-      return {
-        message: await this.i18nService.translate('Auth.2FA.Verify.AskToTrustDevice'),
-        requiresDeviceVerification: true,
-        verifiedMethod: methodUsed
-      }
+    // Xử lý các mục đích khác (ví dụ: revoke session, disable 2fa)
+    // Trả về thông tin cần thiết để controller tiếp tục xử lý
+    return {
+      message: await this.i18nService.translate('Auth.2FA.Verify.Success'),
+      verifiedMethod: verifiedMethodUpper,
+      purpose: sltContext.purpose,
+      userId: sltContext.userId,
+      sltDeviceId: sltContext.deviceId,
+      metadata: sltContext.metadata
+      // Không trả về user object ở đây vì mục đích không phải là đăng nhập hoàn chỉnh
     }
   }
 

@@ -136,12 +136,6 @@ export class RevokeSessionParamsDto extends createZodDto(RevokeSessionParamsSche
 export class DeviceIdParamsDto extends createZodDto(DeviceIdParamsSchema) {}
 export class UpdateDeviceNameBodyDto extends createZodDto(UpdateDeviceNameBodySchema) {}
 
-// Các DTO không thay đổi nhiều có thể giữ lại hoặc gộp nếu cần
-export const RevokeSessionResponseSchema = z.object({
-  message: z.string()
-})
-export class RevokeSessionResponseDto extends createZodDto(RevokeSessionResponseSchema) {}
-
 export const UpdateDeviceNameResponseSchema = z.object({
   message: z.string()
 })

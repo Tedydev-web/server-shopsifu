@@ -418,69 +418,10 @@ export class SessionsService implements ISessionService {
   }
 
   /**
-   * Thu hồi một session cụ thể
-   * @param userId ID của người dùng
-   * @param sessionId ID của session cần thu hồi
-   * @param currentSessionId ID của session hiện tại đang sử dụng
-   * @returns Thông báo kết quả
-   */
-  async revokeSession(userId: number, sessionId: string, currentSessionId?: string): Promise<{ message: string }> {
-    this.logger.debug(`[revokeSession] Đang thu hồi session ${sessionId} cho userId: ${userId}`)
-
-    // Kiểm tra xem session có thuộc về user không
-    const sessionData = await this.redisService.hgetall(`session:${sessionId}`)
-
-    if (!sessionData || !sessionData.userId) {
-      this.logger.warn(`[revokeSession] Session ${sessionId} không tồn tại hoặc không có userId`)
-      throw AuthError.SessionNotFound()
-    }
-
-    const sessionUserId = parseInt(sessionData.userId, 10)
-    if (sessionUserId !== userId) {
-      this.logger.warn(
-        `[revokeSession] Session ${sessionId} không thuộc về userId ${userId}, thực tế thuộc về userId ${sessionUserId}`
-      )
-      throw AuthError.InsufficientPermissions()
-    }
-
-    // Không cho phép thu hồi phiên hiện tại
-    if (currentSessionId && sessionId === currentSessionId) {
-      this.logger.warn(`[revokeSession] Đang cố thu hồi session hiện tại: ${sessionId}`)
-      throw AuthError.CannotRevokeCurrent()
-    }
-
-    try {
-      // Lưu trữ thông tin phiên trước khi vô hiệu hóa
-      await this.sessionRepository.archiveSession(sessionId)
-
-      // Vô hiệu hóa phiên
-      await this.tokenService.invalidateSession(sessionId, 'USER_REVOKED')
-
-      // Đánh dấu thiết bị cần xác thực lại nếu có
-      if (sessionData.deviceId) {
-        const deviceId = parseInt(sessionData.deviceId, 10)
-        await this.tokenService.markDeviceForReverification(userId, deviceId, 'SESSION_REVOKED')
-
-        this.logger.debug(`[revokeSession] Đã đánh dấu thiết bị ${deviceId} cần xác thực lại cho userId ${userId}`)
-      }
-
-      this.logger.debug(`[revokeSession] Session ${sessionId} đã được thu hồi thành công`)
-
-      // Nếu cần, gửi thông báo đến email hoặc thực hiện các hành động bổ sung
-      // await this.emailService.sendSecurityAlert(...);
-
-      return { message: this.i18nService.translate('Auth.Session.RevokedSuccessfully') }
-    } catch (error) {
-      this.logger.error(`[revokeSession] Lỗi khi thu hồi session ${sessionId}: ${error.message}`, error.stack)
-      throw error
-    }
-  }
-
-  /**
    * Thu hồi nhiều sessions hoặc devices
    * @param userId ID của người dùng
    * @param options Tùy chọn thu hồi (sessionIds, deviceIds, revokeAllUserSessions, excludeCurrentSession)
-   * @param activeUser Thông tin người dùng hiện tại
+   * @param currentSessionDetails Thông tin session hiện tại
    * @param verificationToken Token xác thực nếu cần
    * @param otpCode Mã OTP nếu cần xác thực 2FA
    * @param ipAddress Địa chỉ IP của người dùng
@@ -495,7 +436,7 @@ export class SessionsService implements ISessionService {
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
     },
-    activeUser: AccessTokenPayload,
+    currentSessionDetails?: { sessionId?: string; deviceId?: number },
     verificationToken?: string,
     otpCode?: string,
     ipAddress?: string,
@@ -513,12 +454,12 @@ export class SessionsService implements ISessionService {
     this.logger.debug(`[revokeItems] Đang thu hồi items cho userId: ${userId}, options: ${JSON.stringify(options)}`)
 
     // Lấy thông tin về session và device hiện tại
-    const currentSessionId = activeUser.sessionId
-    const currentDeviceId = activeUser.deviceId
+    const currentSessionId = currentSessionDetails?.sessionId
+    const currentDeviceId = currentSessionDetails?.deviceId
 
     // Kiểm tra xem người dùng có đang cố gắng thu hồi session/device hiện tại không
-    const isRevokingCurrentSession = options.sessionIds?.includes(currentSessionId)
-    const isRevokingCurrentDevice = options.deviceIds?.includes(currentDeviceId)
+    const isRevokingCurrentSession = currentSessionId && options.sessionIds?.includes(currentSessionId)
+    const isRevokingCurrentDevice = currentDeviceId && options.deviceIds?.includes(currentDeviceId)
 
     // Nếu đang thu hồi session/device hiện tại nhưng excludeCurrentSession = true
     if (options.excludeCurrentSession) {
@@ -587,15 +528,27 @@ export class SessionsService implements ISessionService {
           }
 
           try {
-            // Lấy thông tin session trước khi xóa
+            // Lấy thông tin session trước khi xóa/archive
             const session = await this.sessionRepository.findById(sessionId)
 
             // Chỉ xử lý session thuộc về user
             if (session && session.userId === userId) {
-              await this.sessionRepository.deleteSession(sessionId)
+              await this.sessionRepository.archiveSession(sessionId)
               await this.tokenService.invalidateSession(sessionId, 'BULK_REVOKE_BY_USER')
               revokedSessionsCount++
               revokedSessionIds.push(sessionId)
+
+              // Thêm logic đánh dấu thiết bị cần xác thực lại
+              if (session.deviceId) {
+                await this.tokenService.markDeviceForReverification(
+                  userId,
+                  session.deviceId,
+                  'SESSION_REVOKED_VIA_ITEMS'
+                )
+                this.logger.debug(
+                  `[revokeItems] Đã đánh dấu thiết bị ${session.deviceId} cần xác thực lại cho session ${sessionId}`
+                )
+              }
 
               this.logger.debug(`[revokeItems] Đã thu hồi session: ${sessionId}`)
             } else {

@@ -23,6 +23,7 @@ import {
 } from '../../auth.types'
 import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { ApiException } from 'src/shared/exceptions/api.exception'
 
 /**
  * Interface để lưu thông tin state khi tạo URL xác thực Google
@@ -660,14 +661,14 @@ export class SocialService {
 
     // Nếu đã xác minh thành công, tiến hành hủy liên kết
     if (isVerified) {
-      const googleId = user.googleId // Lưu lại để gửi email thông báo
+      const googleIdBeforeUnlink = user.googleId // Lưu lại để gửi email thông báo
 
       // Cập nhật user, xóa googleId
-      await this.userAuthRepository.updateGoogleId(userId, '')
+      await this.userAuthRepository.updateGoogleId(userId, null) // Thay đổi '' thành null
 
       // Gửi email thông báo
       await this.sendSecurityAlert(SecurityAlertType.ACCOUNT_UNLINKED, user.email, {
-        googleId,
+        googleId: googleIdBeforeUnlink, // Sử dụng giá trị đã lưu
         unlinkedAt: new Date().toISOString()
       })
 
@@ -699,14 +700,14 @@ export class SocialService {
     if (!hasPassword) {
       // Xác thực bằng OTP
       if (!sltToken || !verificationCode) {
-        throw new Error('Yêu cầu mã OTP để xác minh')
+        throw AuthError.InvalidOTP()
       }
 
       try {
         const sltContext = await this.otpService.verifySltOtpStage(sltToken, verificationCode, 'Unknown', 'Unknown')
 
         if (sltContext.userId !== user.id) {
-          throw new Error('Mã OTP không hợp lệ')
+          throw AuthError.InvalidOTP()
         }
 
         // Xóa SLT cookie nếu có res
@@ -716,12 +717,13 @@ export class SocialService {
 
         return true
       } catch (error) {
-        throw new Error('Mã OTP không hợp lệ hoặc đã hết hạn')
+        if (error instanceof ApiException) throw error
+        throw AuthError.InvalidOTP()
       }
     } else {
       // Xác thực bằng mật khẩu
       if (!password) {
-        throw new Error('Yêu cầu mật khẩu để xác minh')
+        throw AuthError.InvalidPassword()
       }
 
       const isPasswordValid = await this.hashingService.compare(password, user.password)

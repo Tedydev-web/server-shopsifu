@@ -124,7 +124,7 @@ export class UserAuthRepository {
     })
   }
 
-  async updateGoogleId(userId: number, googleId: string): Promise<User> {
+  async updateGoogleId(userId: number, googleId: string | null): Promise<User> {
     return this.prismaService.user.update({
       where: { id: userId },
       data: { googleId }

@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
+import { UserProfileSchema as SharedUserProfileSchema } from 'src/shared/models/user-profile.model'
 
 // Google Auth URL Query DTOs
 export const GoogleAuthUrlQuerySchema = z.object({
@@ -23,12 +24,12 @@ export const GoogleCallbackQuerySchema = z.object({
   error: z.string().optional()
 })
 
-// User Profile Schema dùng chung
-export const UserProfileSchema = z.object({
-  firstName: z.string().nullable(),
-  lastName: z.string().nullable(),
-  username: z.string().nullable(),
-  avatar: z.string().nullable()
+// User Profile Schema đã được pick từ shared model
+const PickedGoogleUserProfileSchema = SharedUserProfileSchema.pick({
+  firstName: true,
+  lastName: true,
+  username: true,
+  avatar: true
 })
 
 // Google Login/Register Response DTOs
@@ -37,7 +38,7 @@ export const GoogleAuthResponseSchema = z.object({
   email: z.string().email(),
   roleName: z.string(),
   isDeviceTrustedInSession: z.boolean(),
-  userProfile: UserProfileSchema.nullable()
+  userProfile: PickedGoogleUserProfileSchema.nullable()
 })
 
 // Two Factor Auth Required Response Schema

@@ -4,16 +4,16 @@ import {
   RegisterBodySchema,
   LoginBodySchema,
   UserAuthResponseSchema,
-  MessageResponseSchema,
   CompleteRegistrationSchema
 } from 'src/routes/auth/auth.model'
+import { MessageResSchema } from 'src/shared/models/response.model'
 
 // Register DTOs
 export const InitiateRegistrationSchema = z.object({
   email: z.string().email({ message: 'Email không hợp lệ' })
 })
 
-export const RegistrationResponseSchema = MessageResponseSchema
+export const RegistrationResponseSchema = MessageResSchema
 
 // Login DTOs
 export const LoginSchema = LoginBodySchema
@@ -45,12 +45,11 @@ export const RefreshTokenResponseSchema = z.object({
 // Logout DTOs
 export const LogoutSchema = z.object({})
 
-export const LogoutResponseSchema = MessageResponseSchema
+export const LogoutResponseSchema = MessageResSchema
 
 // Create DTO classes
 export class InitiateRegistrationDto extends createZodDto(InitiateRegistrationSchema) {}
 export class CompleteRegistrationDto extends createZodDto(CompleteRegistrationSchema) {}
-export class RegistrationResponseDto extends createZodDto(RegistrationResponseSchema) {}
 export class LoginDto extends createZodDto(LoginSchema) {}
 export class LoginResponseDto extends createZodDto(LoginResponseSchema) {}
 export class LoginResponseWithTokenDto extends createZodDto(LoginResponseWithTokenSchema) {}
@@ -58,5 +57,3 @@ export class LoginWithOtpResponseDto extends createZodDto(LoginWithOtpResponseSc
 export class RefreshTokenDto extends createZodDto(RefreshTokenSchema) {}
 export class RefreshTokenResponseDto extends createZodDto(RefreshTokenResponseSchema) {}
 export class LogoutDto extends createZodDto(LogoutSchema) {}
-export class LogoutResponseDto extends createZodDto(LogoutResponseSchema) {}
-export class MessageResponseDto extends createZodDto(MessageResponseSchema) {}

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/shared/constants/auth.constants'
 import { RoleSchema } from 'src/shared/models/role.model'
+import { PickedUserProfileResponseSchema } from 'src/shared/dtos/user.dto'
 
 export { RoleSchema }
 
@@ -59,19 +60,12 @@ export const LoginBodySchema = z.object({
 
 export type LoginBodyType = z.infer<typeof LoginBodySchema>
 
-export const UserProfileBaseSchema = z.object({
-  firstName: z.string().nullable(),
-  lastName: z.string().nullable(),
-  username: z.string().nullable(),
-  avatar: z.string().nullable()
-})
-
 export const UserAuthResponseSchema = z.object({
   id: z.number(),
   email: z.string().email(),
   role: z.string(),
   isDeviceTrustedInSession: z.boolean(),
-  userProfile: UserProfileBaseSchema.nullable()
+  userProfile: PickedUserProfileResponseSchema.nullable()
 })
 
 export type UserAuthResponseType = z.infer<typeof UserAuthResponseSchema>

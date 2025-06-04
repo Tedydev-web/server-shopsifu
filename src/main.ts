@@ -3,23 +3,37 @@ import { AppModule } from './app.module'
 import compression from 'compression'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
-import envConfig from './shared/config'
-import { winstonLogger } from './shared/logger/winston.config'
 import { SecurityHeaders } from './shared/constants/auth.constants'
-import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
 import { I18nService } from 'nestjs-i18n'
+import { ConfigService } from '@nestjs/config'
+import { VersioningType, ValidationPipe, Logger as NestLogger, LoggerService } from '@nestjs/common'
+import { NestExpressApplication } from '@nestjs/platform-express'
+import { WinstonModule } from 'nest-winston'
+import { winstonLogger as winstonLoggerConfig, WinstonConfig } from './shared/logger/winston.config'
+import appConfig from './shared/config'
+import { I18nTranslations } from '../src/generated/i18n.generated'
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    logger: winstonLogger
+  const bootstrapLogger = new NestLogger('Bootstrap')
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger: WinstonModule.createLogger(WinstonConfig)
   })
 
+  const configService = app.get(ConfigService)
+  const httpAdapterHost = app.get(HttpAdapterHost)
+  const i18nService = app.get<I18nService<I18nTranslations>>(I18nService)
+
   app.enableCors({
-    origin: envConfig.FRONTEND_URL,
+    origin: appConfig().FRONTEND_URL,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', SecurityHeaders.XSRF_TOKEN_HEADER, 'x-csrf-token'],
-    exposedHeaders: [SecurityHeaders.XSRF_TOKEN_HEADER]
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      SecurityHeaders.XSRF_TOKEN_HEADER,
+      SecurityHeaders.CSRF_TOKEN_HEADER
+    ],
+    exposedHeaders: [SecurityHeaders.XSRF_TOKEN_HEADER, SecurityHeaders.CSRF_TOKEN_HEADER]
   })
 
   app.use(
@@ -27,35 +41,40 @@ async function bootstrap() {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
           objectSrc: ["'none'"],
           imgSrc: ["'self'", 'data:'],
-          styleSrc: ["'self'"]
+          styleSrc: ["'self'"],
+          upgradeInsecureRequests: []
         }
       },
-      hsts: envConfig.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
+      hsts:
+        appConfig().NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
       frameguard: { action: 'deny' },
-      xXssProtection: true,
-      noSniff: true
+      dnsPrefetchControl: { allow: false },
+      noSniff: true,
+      xssFilter: true
     })
   )
   app.use(compression())
 
   app.use(
-    cookieParser(envConfig.COOKIE_SECRET, {
+    cookieParser(appConfig().COOKIE_SECRET, {
       decode: decodeURIComponent
     })
   )
 
-  // Đảm bảo AllExceptionsFilter được áp dụng với đúng dependencies
-  const httpAdapterHost = app.get(HttpAdapterHost)
-  const i18n = app.get<I18nService>(I18nService)
-  app.useGlobalFilters(new AllExceptionsFilter(httpAdapterHost, i18n))
+  app.setGlobalPrefix('api/v1', {
+    exclude: ['/']
+  })
 
-  app.setGlobalPrefix('api/v1')
+  app.enableVersioning({
+    type: VersioningType.URI
+  })
 
-  const port = envConfig.PORT ?? 3000
+  const port = appConfig().PORT ?? 3000
   await app.listen(port)
-  winstonLogger.log(`Application is running on: ${envConfig.API_URL}/api/v1`, 'Bootstrap')
+  winstonLoggerConfig.log(`Application is running on: ${appConfig().API_URL}/api/v1`, 'Bootstrap')
+  bootstrapLogger.log(`Swagger documentation available at ${await app.getUrl()}/api-docs`)
 }
 void bootstrap()

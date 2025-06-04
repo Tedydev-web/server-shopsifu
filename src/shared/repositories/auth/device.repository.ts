@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { Device, Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { ConfigService } from '@nestjs/config'
+import { UAParser } from 'ua-parser-js'
 
 export type DeviceCreateData = {
   userId: number
@@ -239,121 +240,40 @@ export class DeviceRepository {
    * Trích xuất thông tin trình duyệt từ user agent
    */
   private extractBrowserInfo(userAgent: string): { browser: string; version: string } {
-    let browser = 'Unknown'
-    let version = ''
-
     try {
       if (!userAgent) {
-        return { browser, version }
+        return { browser: 'Unknown', version: '' }
       }
-
-      if (userAgent.includes('Edge') || userAgent.includes('Edg/')) {
-        browser = 'Edge'
-        const match = userAgent.match(/(?:Edge|Edg)\/(\d+(\.\d+)*)/)
-        if (match) {
-          version = match[1]
-        }
-      } else if (userAgent.includes('Chrome')) {
-        browser = 'Chrome'
-        const match = userAgent.match(/Chrome\/(\d+(\.\d+)*)/)
-        if (match) {
-          version = match[1]
-        }
-      } else if (userAgent.includes('Firefox')) {
-        browser = 'Firefox'
-        const match = userAgent.match(/Firefox\/(\d+(\.\d+)*)/)
-        if (match) {
-          version = match[1]
-        }
-      } else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
-        browser = 'Safari'
-        const match = userAgent.match(/Version\/(\d+(\.\d+)*)/)
-        if (match) {
-          version = match[1]
-        }
-      } else if (userAgent.includes('Opera') || userAgent.includes('OPR')) {
-        browser = 'Opera'
-        const match = userAgent.match(/(?:Opera|OPR)\/(\d+(\.\d+)*)/)
-        if (match) {
-          version = match[1]
-        }
+      const parser = new UAParser(userAgent)
+      const browserInfo = parser.getBrowser()
+      return {
+        browser: browserInfo.name || 'Unknown',
+        version: browserInfo.version || ''
       }
     } catch (error) {
-      this.logger.error(`Error extracting browser info: ${error.message}`)
+      this.logger.error(`Error extracting browser info using ua-parser-js: ${error.message}`)
+      return { browser: 'Unknown', version: '' } // Fallback
     }
-
-    return { browser, version }
   }
 
   /**
    * Trích xuất thông tin hệ điều hành từ user agent
    */
   private extractOSInfo(userAgent: string): { os: string; version: string } {
-    let os = 'Unknown'
-    let version = ''
-
     try {
       if (!userAgent) {
-        return { os, version }
+        return { os: 'Unknown', version: '' }
       }
-
-      // Windows
-      if (userAgent.includes('Windows')) {
-        os = 'Windows'
-        if (userAgent.includes('Windows NT 10.0')) {
-          version = '10'
-        } else if (userAgent.includes('Windows NT 6.3')) {
-          version = '8.1'
-        } else if (userAgent.includes('Windows NT 6.2')) {
-          version = '8'
-        } else if (userAgent.includes('Windows NT 6.1')) {
-          version = '7'
-        } else if (userAgent.includes('Windows NT 6.0')) {
-          version = 'Vista'
-        } else if (userAgent.includes('Windows NT 5.1')) {
-          version = 'XP'
-        }
-      }
-      // Mac OS
-      else if (userAgent.includes('Mac OS X') || userAgent.includes('Macintosh')) {
-        os = 'Mac OS'
-        const match = userAgent.match(/Mac OS X ([0-9_]+)/)
-        if (match) {
-          version = match[1].replace(/_/g, '.')
-        }
-      }
-      // iOS
-      else if (userAgent.includes('iPhone') || userAgent.includes('iPad') || userAgent.includes('iPod')) {
-        os = 'iOS'
-        const match = userAgent.match(/OS ([0-9_]+)/)
-        if (match) {
-          version = match[1].replace(/_/g, '.')
-        }
-      }
-      // Android
-      else if (userAgent.includes('Android')) {
-        os = 'Android'
-        const match = userAgent.match(/Android ([0-9\.]+)/)
-        if (match) {
-          version = match[1]
-        }
-      }
-      // Linux
-      else if (userAgent.includes('Linux')) {
-        os = 'Linux'
-        if (userAgent.includes('Ubuntu')) {
-          version = 'Ubuntu'
-        } else if (userAgent.includes('Fedora')) {
-          version = 'Fedora'
-        } else if (userAgent.includes('Debian')) {
-          version = 'Debian'
-        }
+      const parserInstance = new UAParser(userAgent)
+      const osInfo = parserInstance.getOS()
+      return {
+        os: osInfo.name || 'Unknown',
+        version: osInfo.version || ''
       }
     } catch (error) {
-      this.logger.error(`Error extracting OS info: ${error.message}`)
+      this.logger.error(`Error extracting OS info using ua-parser-js: ${error.message}`)
+      return { os: 'Unknown', version: '' } // Fallback
     }
-
-    return { os, version }
   }
 
   /**

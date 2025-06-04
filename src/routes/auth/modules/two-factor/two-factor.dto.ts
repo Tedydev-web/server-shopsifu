@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
+import { PickedUserProfileResponseSchema } from 'src/shared/dtos/user.dto'
 
 // Setup 2FA DTOs
 export const TwoFactorSetupSchema = z.object({
@@ -45,15 +46,7 @@ export const TwoFactorVerifyResponseSchema = z.object({
       email: z.string(),
       roleName: z.string(),
       isDeviceTrustedInSession: z.boolean(),
-      userProfile: z
-        .object({
-          firstName: z.string().nullable().optional(),
-          lastName: z.string().nullable().optional(),
-          username: z.string().nullable().optional(),
-          avatar: z.string().nullable().optional()
-        })
-        .nullable()
-        .optional()
+      userProfile: PickedUserProfileResponseSchema.nullable().optional()
     })
     .optional()
 })

@@ -42,8 +42,29 @@ export interface IOTPService {
  */
 export interface ISessionService {
   getSessions(userId: number, page?: number, limit?: number, currentSessionIdFromToken?: string): Promise<any>
-  revokeSession(userId: number, sessionId: string, currentSessionId?: string): Promise<any>
-  revokeItems(userId: number, options: any, activeUser: AccessTokenPayload): Promise<any>
+  revokeItems(
+    userId: number,
+    options: {
+      sessionIds?: string[]
+      deviceIds?: number[]
+      revokeAllUserSessions?: boolean
+      excludeCurrentSession?: boolean
+    },
+    currentSessionDetails?: { sessionId?: string; deviceId?: number },
+    verificationToken?: string,
+    otpCode?: string,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<{
+    message: string
+    revokedSessionsCount: number
+    revokedDevicesCount: number
+    untrustedDevicesCount: number
+    revokedSessionIds?: string[]
+    revokedDeviceIds?: number[]
+    requiresAdditionalVerification?: boolean
+    verificationRedirectUrl?: string
+  }>
 }
 
 /**

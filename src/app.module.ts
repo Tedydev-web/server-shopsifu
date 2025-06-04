@@ -1,94 +1,97 @@
-import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
-import { APP_PIPE, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core'
-import { ZodSerializerInterceptor } from 'nestjs-zod'
-import { AcceptLanguageResolver, QueryResolver, HeaderResolver, I18nModule } from 'nestjs-i18n'
-import { WinstonModule } from 'nest-winston'
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
+import { ScheduleModule } from '@nestjs/schedule'
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { I18nModule, AcceptLanguageResolver, QueryResolver } from 'nestjs-i18n'
 import path from 'path'
 
-// App components
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
 
 // Shared components
-import { SharedModule } from './shared/shared.module'
-import CustomZodValidationPipe from './shared/pipes/custom-zod-validation.pipe'
-import { SecurityHeadersMiddleware } from './shared/middleware/security-headers.middleware'
-import { CsrfMiddleware } from './shared/middleware/csrf.middleware'
-import { LoggerMiddleware } from './shared/middleware/logger.middleware'
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
-import envConfig from './shared/config'
-import { dailyRotateFileTransport, consoleTransport } from './shared/logger/winston.config'
-import { MiddlewaresModule } from './shared/middleware/middlewares.module'
-import { GuardsModule } from './shared/guards/guards.module'
+import CustomZodValidationPipe from './shared/pipes/custom-zod-validation.pipe'
+import { AuthenticationGuard } from './shared/guards/authentication.guard'
+import { TransformInterceptor } from './shared/interceptor/transform.interceptor'
 
-// Auth components
+// Middlewares
+import { CsrfMiddleware, LoggerMiddleware, SecurityHeadersMiddleware } from './shared/middleware'
+
+// Modules
+import { SharedModule } from './shared/shared.module'
+
+// Routes
 import { AuthModule } from './routes/auth/auth.module'
 
-// Tạm thời comment lại cho đến khi module được tạo
-// import { ProfileModule } from './routes/profile/profile.module'
+// Config
+import appConfig from './shared/config'
 
 @Module({
   imports: [
-    // 1. Configs
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [() => envConfig],
-      cache: true
+      load: [appConfig],
+      envFilePath: ['.env']
     }),
-
-    // 2. Logger
-    WinstonModule.forRoot({
-      transports: [consoleTransport(), dailyRotateFileTransport('error'), dailyRotateFileTransport('info')]
+    I18nModule.forRootAsync({
+      useFactory: (configService: ConfigService) => ({
+        fallbackLanguage: configService.get<string>('app.fallbackLanguage', 'en'),
+        loaderOptions: {
+          path: path.join(__dirname, '../i18n/'),
+          watch: true
+        },
+        typesOutputPath: path.join(__dirname, '../../src/generated/i18n.generated.ts')
+      }),
+      resolvers: [
+        AcceptLanguageResolver,
+        {
+          use: QueryResolver,
+          options: ['lang']
+        }
+      ],
+      imports: [ConfigModule],
+      inject: [ConfigService]
     }),
-
-    // 3. I18n
-    I18nModule.forRoot({
-      fallbackLanguage: 'en',
-      loaderOptions: {
-        path: path.join(__dirname, '../i18n/'),
-        watch: true
-      },
-      resolvers: [new QueryResolver(['lang', 'l']), AcceptLanguageResolver, new HeaderResolver(['x-lang'])],
-      typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
-    }),
-
-    // 4. Core Modules
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 60 seconds
+        limit: 10 // 10 requests per 60 seconds
+      }
+    ]),
+    ScheduleModule.forRoot(),
     SharedModule,
-    MiddlewaresModule,
-    GuardsModule,
-
-    // 5. Cuối cùng phải là AuthModule
     AuthModule
-    // Tạm thời comment lại
-    // ProfileModule
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard
+    },
+    {
+      provide: APP_GUARD,
+      useClass: AuthenticationGuard
+    },
+    {
+      provide: APP_FILTER,
+      useClass: AllExceptionsFilter
+    },
     {
       provide: APP_PIPE,
       useClass: CustomZodValidationPipe
     },
     {
       provide: APP_INTERCEPTOR,
-      useClass: ZodSerializerInterceptor
-    },
-    {
-      provide: APP_FILTER,
-      useClass: AllExceptionsFilter
+      useClass: TransformInterceptor
     }
   ]
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(SecurityHeadersMiddleware, CsrfMiddleware, LoggerMiddleware)
-      .exclude(
-        { path: 'api-docs', method: RequestMethod.ALL },
-        { path: 'api-docs/(.*)', method: RequestMethod.ALL },
-        { path: 'public/(.*)', method: RequestMethod.GET }
-      )
-      .forRoutes('*')
+    consumer.apply(LoggerMiddleware).forRoutes('*')
+    consumer.apply(SecurityHeadersMiddleware).forRoutes('*')
+    consumer.apply(CsrfMiddleware).forRoutes('*') // Áp dụng CSRF cho tất cả các routes
   }
 }

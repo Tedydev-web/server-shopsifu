@@ -41,6 +41,7 @@ export type CookieNamesType = (typeof CookieNames)[keyof typeof CookieNames]
  */
 export enum SecurityHeaders {
   XSRF_TOKEN_HEADER = 'xsrf-token',
+  CSRF_TOKEN_HEADER = 'x-csrf-token',
   XSS_PROTECTION = 'X-XSS-Protection',
   CONTENT_TYPE_OPTIONS = 'X-Content-Type-Options',
   FRAME_OPTIONS = 'X-Frame-Options',

@@ -21,12 +21,10 @@ import {
   CompleteRegistrationDto,
   InitiateRegistrationDto,
   LoginDto,
-  LogoutDto,
-  MessageResponseDto,
   RefreshTokenDto,
-  RefreshTokenResponseDto,
-  RegistrationResponseDto
+  RefreshTokenResponseDto
 } from './auth.dto'
+import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { OtpService } from '../otp/otp.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { AuthError } from 'src/routes/auth/auth.error'
@@ -36,6 +34,7 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 
 @Controller('auth')
 export class CoreController {
@@ -46,98 +45,76 @@ export class CoreController {
     private readonly otpService: OtpService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
-    private readonly i18nService: I18nService
+    private readonly i18nService: I18nService<I18nTranslations>
   ) {}
 
-  /**
-   * Khởi tạo quá trình đăng ký
-   * 1. Nhận email từ người dùng
-   * 2. Gửi OTP qua email
-   * 3. Tạo SLT token và trả về trong cookie
-   */
   @IsPublic()
   @Post('initiate-registration')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(MessageResponseDto)
+  @ZodSerializerDto(MessageResDTO)
   async initiateRegistration(
     @Body() body: InitiateRegistrationDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
-  ): Promise<MessageResponseDto> {
+  ): Promise<MessageResDTO> {
     this.logger.debug(`[initiateRegistration] Start registration process for email: ${body.email}, IP: ${ip}`)
-
     try {
-      // Kiểm tra xem email đã tồn tại chưa
       const existingUser = await this.coreService.findUserByEmail(body.email)
       if (existingUser) {
         this.logger.warn(`[initiateRegistration] Email ${body.email} already exists`)
         throw AuthError.EmailAlreadyExists()
       }
 
-      // Khởi tạo OTP với SLT cookie
-      this.logger.debug(`[initiateRegistration] Initiating OTP with SLT cookie`)
       const sltJwt = await this.otpService.initiateOtpWithSltCookie({
         email: body.email,
-        userId: 0, // 0 cho user chưa tồn tại
-        deviceId: 0, // 0 cho device chưa tồn tại
+        userId: 0,
+        deviceId: 0,
         ipAddress: ip,
         userAgent,
         purpose: TypeOfVerificationCode.REGISTER
       })
 
-      this.logger.debug(`[initiateRegistration] SLT JWT generated successfully, length: ${sltJwt.length}`)
-
-      // Set SLT cookie
-      this.logger.debug(`[initiateRegistration] Setting SLT cookie in response`)
       this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.REGISTER)
 
-      // Kiểm tra xem cookies đã được đặt trong response chưa
       this.logger.debug(
-        `[initiateRegistration] Response cookies: ${JSON.stringify(res.getHeaders()['set-cookie'] || 'No cookies set')}`
+        `[initiateRegistration] Language from context for Auth.Otp.SentSuccessfully: ${I18nContext.current()?.lang}`
       )
-
-      // Lấy thông báo đã dịch
-      const translatedMessage = await this.i18nService.translate('Auth.Otp.SentSuccessfully', {
-        lang: I18nContext.current()?.lang || 'vi'
-      })
-
-      this.logger.debug(`[initiateRegistration] Registration initiated successfully for ${body.email}`)
-
+      let translatedMessage = await this.i18nService.translate('Auth.Otp.SentSuccessfully' as I18nPath)
+      if (typeof translatedMessage !== 'string') {
+        this.logger.warn(
+          `[initiateRegistration] Translation for 'Auth.Otp.SentSuccessfully' did not return a string, falling back to key. Received: ${JSON.stringify(translatedMessage)}`
+        )
+        translatedMessage = 'Auth.Otp.SentSuccessfully'
+      }
+      this.logger.debug(`[initiateRegistration] Translated Auth.Otp.SentSuccessfully message: ${translatedMessage}`)
       return { message: translatedMessage }
     } catch (error) {
-      this.logger.error(`[initiateRegistration] Error during registration initiation: ${error.message}`, error.stack)
-      throw error
+      this.logger.error(`[initiateRegistration] Error: ${error.message}`, error.stack)
+      if (error instanceof HttpException) throw error
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
-  /**
-   * Hoàn tất đăng ký
-   * 1. Kiểm tra SLT token để đảm bảo OTP đã được xác minh
-   * 2. Tạo user với thông tin từ người dùng
-   */
   @IsPublic()
   @Post('complete-registration')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(RegistrationResponseDto)
+  @ZodSerializerDto(MessageResDTO)
   async completeRegistration(
     @Body() body: CompleteRegistrationDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
-  ): Promise<RegistrationResponseDto> {
+  ): Promise<MessageResDTO> {
     this.logger.debug(`[completeRegistration] Processing registration completion, IP: ${ip}`)
-
     try {
-      // Lấy SLT token từ cookie
       const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
       if (!sltCookieValue) {
         this.logger.warn(`[completeRegistration] SLT cookie missing`)
         throw AuthError.SLTCookieMissing()
       }
 
-      // Xác minh SLT và lấy context
       const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
         sltCookieValue,
         ip,
@@ -145,54 +122,45 @@ export class CoreController {
         TypeOfVerificationCode.REGISTER
       )
 
-      // Email đảm bảo được lấy từ SLT token context
       const email = sltContext.email
       if (!email) {
         this.logger.error(`[completeRegistration] Email missing in SLT context`)
-        throw new HttpException(
-          'Email không tìm thấy trong context, vui lòng thực hiện lại từ đầu',
-          HttpStatus.BAD_REQUEST
-        )
+        throw AuthError.EmailMissingInSltContext()
       }
 
-      this.logger.debug(`[completeRegistration] Using email from SLT context: ${email}`)
-
-      // Kiểm tra SLT đã được xác minh chưa
       if (sltContext.finalized !== '1') {
         this.logger.warn(`[completeRegistration] SLT not finalized for email: ${email}`)
         throw AuthError.InvalidOTP()
       }
 
-      // Hoàn tất đăng ký với email từ SLT context
       await this.coreService.completeRegistration({
         ...body,
-        email, // Email lấy từ SLT context thay vì từ body
+        email,
         ip,
         userAgent
       })
 
-      // Xóa SLT cookie
       this.cookieService.clearSltCookie(res)
 
-      // Lấy thông báo đã dịch
-      const translatedMessage = await this.i18nService.translate('Auth.Register.Success', {
-        lang: I18nContext.current()?.lang || 'vi'
-      })
-
-      this.logger.debug(`[completeRegistration] Registration completed successfully for ${email}`)
-
-      return {
-        message: translatedMessage
+      this.logger.debug(
+        `[completeRegistration] Language from context for Auth.Register.Success: ${I18nContext.current()?.lang}`
+      )
+      let translatedMessage = await this.i18nService.translate('Auth.Register.Success' as I18nPath)
+      if (typeof translatedMessage !== 'string') {
+        this.logger.warn(
+          `[completeRegistration] Translation for 'Auth.Register.Success' did not return a string, falling back to key. Received: ${JSON.stringify(translatedMessage)}`
+        )
+        translatedMessage = 'Auth.Register.Success'
       }
+      this.logger.debug(`[completeRegistration] Translated Auth.Register.Success message: ${translatedMessage}`)
+      return { message: translatedMessage }
     } catch (error) {
-      this.logger.error(`[completeRegistration] Error during registration completion: ${error.message}`, error.stack)
-      throw error
+      this.logger.error(`[completeRegistration] Error: ${error.message}`, error.stack)
+      if (error instanceof HttpException) throw error
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
-  /**
-   * Đăng nhập
-   */
   @IsPublic()
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -202,20 +170,30 @@ export class CoreController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ) {
-    const result = await this.coreService.login(
-      {
-        ...body,
-        ip,
-        userAgent
-      },
-      res
-    )
+    const result = await this.coreService.login({ ...body, ip, userAgent }, res)
 
-    // Kiểm tra nếu cần xác thực thiết bị
+    let message = result.message
+    if (
+      result.message &&
+      typeof result.message === 'string' &&
+      (result.message.startsWith('Auth.') || result.message.startsWith('error.'))
+    ) {
+      this.logger.debug(`[Login] Language from context for result.message: ${I18nContext.current()?.lang}`)
+      let translatedResultMessage = await this.i18nService.translate(result.message as I18nPath)
+      if (typeof translatedResultMessage !== 'string') {
+        this.logger.warn(
+          `[Login] Translation for result.message '${result.message}' did not return a string, falling back to key. Received: ${JSON.stringify(translatedResultMessage)}`
+        )
+        translatedResultMessage = result.message
+      }
+      message = translatedResultMessage
+      this.logger.debug(`[Login] Translated result.message: ${message}`)
+    }
+
     if (result.requiresDeviceVerification) {
       return {
-        statusCode: 200,
-        message: result.message,
+        statusCode: HttpStatus.OK,
+        message,
         data: {
           requiresDeviceVerification: true,
           verificationType: result.verificationType,
@@ -224,19 +202,38 @@ export class CoreController {
       }
     }
 
-    // Trả về kết quả đăng nhập thành công
+    this.logger.debug(`[Login] Language from context for Auth.Login.Success: ${I18nContext.current()?.lang}`)
+    let translatedLoginSuccessMessage = await this.i18nService.translate('Auth.Login.Success' as I18nPath)
+    if (typeof translatedLoginSuccessMessage !== 'string') {
+      this.logger.warn(
+        `[Login] Translation for 'Auth.Login.Success' did not return a string, falling back to key. Received: ${JSON.stringify(translatedLoginSuccessMessage)}`
+      )
+      translatedLoginSuccessMessage = 'Auth.Login.Success'
+    }
+    this.logger.debug(`[Login] Translated Auth.Login.Success message: ${translatedLoginSuccessMessage}`)
+
+    const responseData = {
+      user: {
+        id: result.user.id,
+        email: result.user.email,
+        role: result.user.role,
+        isDeviceTrustedInSession: result.user.isDeviceTrustedInSession,
+        userProfile: result.user.userProfile
+          ? {
+              username: result.user.userProfile.username,
+              avatar: result.user.userProfile.avatar
+            }
+          : null
+      }
+    }
+
     return {
-      statusCode: 200,
-      message: await this.i18nService.translate('Auth.Login.Success', {
-        lang: I18nContext.current()?.lang || 'vi'
-      }),
-      data: result
+      statusCode: HttpStatus.OK,
+      message: translatedLoginSuccessMessage,
+      data: responseData
     }
   }
 
-  /**
-   * Làm mới token
-   */
   @IsPublic()
   @Post('refresh-token')
   @HttpCode(HttpStatus.OK)
@@ -248,37 +245,50 @@ export class CoreController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<RefreshTokenResponseDto> {
-    // Lấy refresh token từ cookie
-    const refreshToken = this.tokenService.extractRefreshTokenFromRequest(req)
-    if (!refreshToken) {
+    const refreshTokenValue = this.tokenService.extractRefreshTokenFromRequest(req)
+    if (!refreshTokenValue) {
       throw AuthError.MissingRefreshToken()
     }
 
-    // Làm mới token
-    const result = await this.coreService.refreshToken(refreshToken, { userAgent, ip }, res)
+    const { accessToken } = await this.coreService.refreshToken(refreshTokenValue, { userAgent, ip }, res)
+
+    this.logger.debug(`[refreshToken] Language from context for Auth.Token.Refreshed: ${I18nContext.current()?.lang}`)
+    let translatedMessage = await this.i18nService.translate('Auth.Token.Refreshed' as I18nPath)
+    if (typeof translatedMessage !== 'string') {
+      this.logger.warn(
+        `[refreshToken] Translation for 'Auth.Token.Refreshed' did not return a string, falling back to key. Received: ${JSON.stringify(translatedMessage)}`
+      )
+      translatedMessage = 'Auth.Token.Refreshed'
+    }
+    this.logger.debug(`[refreshToken] Translated Auth.Token.Refreshed message: ${translatedMessage}`)
 
     return {
-      message: await this.i18nService.translate('Auth.Token.Refreshed')
+      message: translatedMessage,
+      accessToken
     }
   }
 
-  /**
-   * Đăng xuất
-   */
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(MessageResponseDto)
+  @ZodSerializerDto(MessageResDTO)
   async logout(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Body() _: LogoutDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
-  ): Promise<MessageResponseDto> {
-    // Đăng xuất
+  ): Promise<MessageResDTO> {
     await this.coreService.logout(activeUser.userId, activeUser.sessionId, req, res)
+    this.logger.debug(`[Logout] Language from context for Auth.Logout.Success: ${I18nContext.current()?.lang}`)
+    let translatedLogoutSuccessMessage = await this.i18nService.translate('Auth.Logout.Success' as I18nPath)
+    if (typeof translatedLogoutSuccessMessage !== 'string') {
+      this.logger.warn(
+        `[Logout] Translation for 'Auth.Logout.Success' did not return a string, falling back to key. Received: ${JSON.stringify(translatedLogoutSuccessMessage)}`
+      )
+      translatedLogoutSuccessMessage = 'Auth.Logout.Success'
+    }
+    this.logger.debug(`[Logout] Translated Auth.Logout.Success message: ${translatedLogoutSuccessMessage}`)
 
     return {
-      message: await this.i18nService.translate('Auth.Logout.Success')
+      message: translatedLogoutSuccessMessage
     }
   }
 }

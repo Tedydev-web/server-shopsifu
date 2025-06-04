@@ -8,13 +8,13 @@ import {
   Res,
   Ip,
   Logger,
-  InternalServerErrorException,
   HttpException,
   Inject,
   forwardRef
 } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 import { ZodSerializerDto } from 'nestjs-zod'
 
 import { TwoFactorService } from './two-factor.service'
@@ -30,7 +30,7 @@ import {
   TwoFactorConfirmSetupResponseDto,
   DisableTwoFactorResponseDto,
   RegenerateRecoveryCodesResponseDto
-} from './dto/two-factor.dto'
+} from './two-factor.dto'
 import { CookieNames } from 'src/shared/constants/auth.constants'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
@@ -38,6 +38,7 @@ import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { SessionsService } from '../sessions/sessions.service'
 import { ICookieService } from 'src/shared/types/auth.types'
 import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
+import { CoreService } from '../core/core.service'
 
 @Controller('auth/2fa')
 export class TwoFactorController {
@@ -46,9 +47,10 @@ export class TwoFactorController {
   constructor(
     private readonly twoFactorService: TwoFactorService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
-    private readonly i18nService: I18nService,
+    private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(forwardRef(() => SessionsService))
-    private readonly sessionsService: SessionsService
+    private readonly sessionsService: SessionsService,
+    private readonly coreService: CoreService
   ) {}
 
   /**
@@ -92,7 +94,7 @@ export class TwoFactorController {
       if (error instanceof HttpException) {
         throw error
       } else {
-        throw new InternalServerErrorException('An error occurred during 2FA setup')
+        throw AuthError.InternalServerError('An error occurred during 2FA setup')
       }
     }
   }
@@ -132,7 +134,7 @@ export class TwoFactorController {
       )
 
       res.status(200).json({
-        message: result.message,
+        message: await this.i18nService.translate(result.message as I18nPath),
         recoveryCodes: result.recoveryCodes
       })
     } catch (error) {
@@ -140,7 +142,7 @@ export class TwoFactorController {
       if (error instanceof HttpException) {
         throw error
       } else {
-        throw new InternalServerErrorException('An error occurred during 2FA setup confirmation')
+        throw AuthError.InternalServerError('An error occurred during 2FA setup confirmation')
       }
     }
   }
@@ -171,49 +173,86 @@ export class TwoFactorController {
         sltCookieValue,
         ip,
         userAgent,
-        res,
         body.method
       )
 
-      this.logger.debug(`2FA verification successful for code from token ${sltCookieValue.substring(0, 15)}...`)
+      this.logger.debug(
+        `2FA verification result for code from token ${sltCookieValue.substring(0, 15)}...: ${result.message}`
+      )
 
       // Xử lý các purpose đặc biệt
       if (result.purpose) {
-        if (result.purpose === (TypeOfVerificationCode.REVOKE_SESSIONS as string) && result.userId && result.metadata) {
+        if (result.purpose === TypeOfVerificationCode.REVOKE_SESSIONS && result.userId && result.metadata) {
           await this.handleRevokeSessionsVerification(result.userId, result.metadata, ip, userAgent, res)
           return
         }
 
-        if (
-          result.purpose === (TypeOfVerificationCode.REVOKE_ALL_SESSIONS as string) &&
-          result.userId &&
-          result.metadata
-        ) {
+        if (result.purpose === TypeOfVerificationCode.REVOKE_ALL_SESSIONS && result.userId && result.metadata) {
           await this.handleRevokeAllSessionsVerification(result.userId, result.metadata, ip, userAgent, res)
+          return
+        }
+
+        // Nếu là LOGIN_2FA, và xác minh thành công (không có lỗi nào được throw từ service)
+        if (result.purpose === TypeOfVerificationCode.LOGIN_2FA && result.userId && result.metadata?.deviceId) {
+          this.logger.debug(`Finalizing login for user ID: ${result.userId} after 2FA verification.`)
+
+          const loginResult = await this.coreService.finalizeLoginAfterVerification(
+            result.userId,
+            result.metadata.deviceId,
+            body.rememberMe || false,
+            res, // Truyền res để CoreService có thể set cookie
+            ip,
+            userAgent
+          )
+
+          // CoreService.finalizeLoginAfterVerification đã set cookie và trả về auth tokens + user info
+          // Nên wrapper nó trong một cấu trúc response chuẩn nếu cần
+          res.status(HttpStatus.OK).json({
+            message: await this.i18nService.translate(result.message as I18nPath), // Hoặc một message cụ thể hơn từ i18n
+            accessToken: loginResult.accessToken,
+            refreshToken: loginResult.refreshToken,
+            user: loginResult.user
+          })
           return
         }
       }
 
       // Kiểm tra nếu cần tiếp tục xác minh thiết bị (requiresDeviceVerification)
+      // Trường hợp này chỉ xảy ra nếu mục đích không phải là LOGIN_2FA hoàn chỉnh,
+      // ví dụ: 2FA thành công nhưng thiết bị mới và SLT được tạo cho mục đích xác minh thiết bị.
       if (result.requiresDeviceVerification) {
-        res.status(200).json({
-          message: result.message,
+        res.status(HttpStatus.OK).json({
+          message: await this.i18nService.translate(result.message as I18nPath), // Thông báo từ service có thể là "Vui lòng xác minh thiết bị của bạn"
           requiresDeviceVerification: true
+          // Không có user data ở đây vì login chưa hoàn tất
         })
-      } else {
-        // Trường hợp đăng nhập hoàn tất
-        res.status(200).json({
-          message: result.message,
-          requiresDeviceVerification: false,
-          user: result.user
-        })
+        return
       }
+
+      // Fallback nếu không rơi vào các trường hợp trên (ví dụ: mục đích không xác định hoặc lỗi logic)
+      // Hoặc nếu result.user được trả về cho mục đích không phải LOGIN_2FA (hiếm)
+      // Thông thường, nếu mục đích là LOGIN_2FA, nó sẽ được xử lý ở trên.
+      // Nếu là các mục đích khác không phải revoke, và không cần device verification,
+      // thì có thể là một xác minh 2FA đơn thuần.
+      // Tuy nhiên, hiện tại twoFactorService.verifyTwoFactor không có trường hợp này.
+      // Nó sẽ throw lỗi nếu mã sai, hoặc trả về thông tin cho các flow cụ thể.
+
+      // Nếu đến đây, có thể là một trạng thái không mong muốn hoặc một flow chưa được xử lý rõ ràng.
+      // Trả về message từ service.
+      this.logger.warn(`2FA verification handled with a generic response for purpose: ${result.purpose}`)
+      res.status(HttpStatus.OK).json({
+        message: await this.i18nService.translate(result.message as I18nPath),
+        verifiedMethod: result.verifiedMethod
+        // Không nên trả về user data ở đây trừ khi rất chắc chắn về flow
+      })
     } catch (error) {
-      this.logger.error(`Error in verifyTwoFactor: ${error.message}`, error.stack)
+      this.logger.error(`Error in verifyTwoFactor controller: ${error.message}`, error.stack)
+      // Xóa SLT cookie nếu có lỗi để tránh kẹt ở trạng thái lỗi
+      this.cookieService.clearSltCookie(res)
       if (error instanceof HttpException) {
         throw error
       } else {
-        throw new InternalServerErrorException('An error occurred during 2FA verification')
+        throw AuthError.InternalServerError('An error occurred during 2FA verification')
       }
     }
   }
@@ -228,55 +267,42 @@ export class TwoFactorController {
     userAgent: string,
     res: Response
   ) {
-    this.logger.debug(`[handleRevokeSessionsVerification] Processing for userId: ${userId}`)
+    this.logger.debug(`[handleRevokeSessionsVerification] User ${userId}, metadata: ${JSON.stringify(metadata)}`)
+    try {
+      const revokeResult = await this.sessionsService.revokeItems(
+        userId,
+        {
+          sessionIds: metadata.sessionIds,
+          deviceIds: metadata.deviceIds,
+          excludeCurrentSession: metadata.excludeCurrentSession ?? true
+        },
+        {
+          sessionId: metadata.currentSessionIdToExclude,
+          deviceId: metadata.currentDeviceIdToExclude
+        },
+        undefined,
+        undefined,
+        ip,
+        userAgent
+      )
 
-    if (!metadata || (!metadata.sessionIds && !metadata.deviceIds)) {
-      throw new Error('Không có thông tin sessions để thu hồi')
+      this.cookieService.clearSltCookie(res)
+      res.status(200).json({
+        message: await this.i18nService.translate(revokeResult.message as I18nPath),
+        data: {
+          revokedSessionsCount: revokeResult.revokedSessionsCount,
+          untrustedDevicesCount: revokeResult.untrustedDevicesCount,
+          revokedSessionIds: revokeResult.revokedSessionIds || [],
+          revokedDeviceIds: revokeResult.revokedDeviceIds || [],
+          requiresAdditionalVerification: false
+        }
+      })
+    } catch (error) {
+      this.logger.error(`[handleRevokeSessionsVerification] Error for user ${userId}: ${error.message}`, error.stack)
+      this.cookieService.clearSltCookie(res)
+      if (error instanceof HttpException) throw error
+      throw AuthError.InternalServerError(error.message)
     }
-
-    const options = {
-      sessionIds: metadata.sessionIds,
-      deviceIds: metadata.deviceIds,
-      excludeCurrentSession: metadata.excludeCurrentSession ?? true
-    }
-
-    // Tạo active user để truyền vào service
-    const activeUser = {
-      userId,
-      deviceId: metadata.deviceId || 0,
-      sessionId: metadata.currentSessionId || '',
-      email: metadata.email || '',
-      roleId: 0,
-      roleName: '',
-      isDeviceTrustedInSession: false,
-      exp: 0,
-      iat: 0,
-      jti: ''
-    } as AccessTokenPayload
-
-    const result = await this.sessionsService.revokeItems(
-      userId,
-      options,
-      activeUser,
-      undefined,
-      undefined,
-      ip,
-      userAgent
-    )
-
-    // Xóa SLT cookie
-    this.cookieService.clearSltCookie(res)
-
-    res.status(200).json({
-      message: result.message,
-      data: {
-        revokedSessionsCount: result.revokedSessionsCount,
-        untrustedDevicesCount: result.untrustedDevicesCount,
-        revokedSessionIds: result.revokedSessionIds || [],
-        revokedDeviceIds: result.revokedDeviceIds || [],
-        requiresAdditionalVerification: false
-      }
-    })
   }
 
   /**
@@ -289,54 +315,41 @@ export class TwoFactorController {
     userAgent: string,
     res: Response
   ) {
-    this.logger.debug(`[handleRevokeAllSessionsVerification] Processing for userId: ${userId}`)
+    this.logger.debug(`[handleRevokeAllSessionsVerification] User ${userId}, metadata: ${JSON.stringify(metadata)}`)
+    try {
+      const revokeResult = await this.sessionsService.revokeItems(
+        userId,
+        {
+          revokeAllUserSessions: true,
+          excludeCurrentSession: metadata.excludeCurrentSession ?? true
+        },
+        {
+          sessionId: metadata.currentSessionIdToExclude,
+          deviceId: metadata.currentDeviceIdToExclude
+        },
+        undefined,
+        undefined,
+        ip,
+        userAgent
+      )
 
-    if (!metadata) {
-      throw new Error('Không có thông tin để thu hồi')
+      this.cookieService.clearSltCookie(res)
+      res.status(200).json({
+        message: await this.i18nService.translate(revokeResult.message as I18nPath),
+        data: {
+          revokedSessionsCount: revokeResult.revokedSessionsCount,
+          untrustedDevicesCount: revokeResult.untrustedDevicesCount,
+          revokedSessionIds: revokeResult.revokedSessionIds || [],
+          revokedDeviceIds: revokeResult.revokedDeviceIds || [],
+          requiresAdditionalVerification: false
+        }
+      })
+    } catch (error) {
+      this.logger.error(`[handleRevokeAllSessionsVerification] Error for user ${userId}: ${error.message}`, error.stack)
+      this.cookieService.clearSltCookie(res)
+      if (error instanceof HttpException) throw error
+      throw AuthError.InternalServerError(error.message)
     }
-
-    const options = {
-      revokeAllUserSessions: true,
-      excludeCurrentSession: metadata.excludeCurrentSession ?? true
-    }
-
-    // Tạo active user để truyền vào service
-    const activeUser = {
-      userId,
-      deviceId: metadata.deviceId || 0,
-      sessionId: metadata.currentSessionId || '',
-      email: metadata.email || '',
-      roleId: 0,
-      roleName: '',
-      isDeviceTrustedInSession: false,
-      exp: 0,
-      iat: 0,
-      jti: ''
-    } as AccessTokenPayload
-
-    const result = await this.sessionsService.revokeItems(
-      userId,
-      options,
-      activeUser,
-      undefined,
-      undefined,
-      ip,
-      userAgent
-    )
-
-    // Xóa SLT cookie
-    this.cookieService.clearSltCookie(res)
-
-    res.status(200).json({
-      message: result.message,
-      data: {
-        revokedSessionsCount: result.revokedSessionsCount,
-        untrustedDevicesCount: result.untrustedDevicesCount,
-        revokedSessionIds: result.revokedSessionIds || [],
-        revokedDeviceIds: result.revokedDeviceIds || [],
-        requiresAdditionalVerification: false
-      }
-    })
   }
 
   /**
@@ -371,17 +384,18 @@ export class TwoFactorController {
         this.cookieService.clearSltCookie(res)
       }
 
-      this.logger.debug(`2FA disabled for user ${activeUser.userId} using method ${body.method || 'default'}`)
+      this.logger.debug(`2FA disabled for user ${activeUser.userId}`)
 
       res.status(200).json({
-        message: result.message
+        message: await this.i18nService.translate(result.message as I18nPath)
       })
     } catch (error) {
       this.logger.error(`Error in disableTwoFactor for user ${activeUser.userId}: ${error.message}`, error.stack)
+      this.cookieService.clearSltCookie(res)
       if (error instanceof HttpException) {
         throw error
       } else {
-        throw new InternalServerErrorException('An error occurred during 2FA disabling')
+        throw AuthError.InternalServerError('An error occurred while disabling 2FA')
       }
     }
   }
@@ -407,15 +421,16 @@ export class TwoFactorController {
       )
 
       res.status(200).json({
-        message: result.message,
+        message: await this.i18nService.translate(result.message as I18nPath),
         recoveryCodes: result.recoveryCodes
       })
     } catch (error) {
       this.logger.error(`Error in regenerateRecoveryCodes for user ${activeUser.userId}: ${error.message}`, error.stack)
+      this.cookieService.clearSltCookie(res)
       if (error instanceof HttpException) {
         throw error
       } else {
-        throw new InternalServerErrorException('An error occurred while regenerating recovery codes')
+        throw AuthError.InternalServerError('An error occurred while regenerating recovery codes')
       }
     }
   }

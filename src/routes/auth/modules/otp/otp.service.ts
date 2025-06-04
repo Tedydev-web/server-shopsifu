@@ -51,13 +51,6 @@ export class OtpService implements IOTPService {
   }
 
   /**
-   * Tạo key cho Redis SLT blacklist
-   */
-  private getSltBlacklistKey(jti: string): string {
-    return RedisKeyManager.sltBlacklistKey(jti)
-  }
-
-  /**
    * Tạo key cho cooldown của OTP
    */
   private getOtpLastSentKey(identifierForCooldown: string, purpose: TypeOfVerificationCodeType): string {
@@ -431,23 +424,5 @@ export class OtpService implements IOTPService {
 
     // Trả về context sau khi xác minh
     return sltContext
-  }
-
-  /**
-   * Đặt SLT token vào cookie
-   * @param res Response object
-   * @param sltToken JWT token
-   * @param purpose Mục đích của SLT
-   */
-  setSltCookie(res: any, sltToken: string, purpose: TypeOfVerificationCodeType): void {
-    // Gọi cookieService để đặt cookie
-    try {
-      const cookieService = new CookieService(this.configService)
-      cookieService.setSltCookie(res, sltToken, purpose)
-      this.logger.debug(`[setSltCookie] Đã đặt SLT cookie cho purpose: ${purpose}`)
-    } catch (error) {
-      this.logger.error(`[setSltCookie] Lỗi khi đặt SLT cookie: ${error.message}`, error.stack)
-      throw error
-    }
   }
 }

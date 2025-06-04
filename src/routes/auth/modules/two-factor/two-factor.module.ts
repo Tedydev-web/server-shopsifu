@@ -3,13 +3,13 @@ import { TwoFactorController } from './two-factor.controller'
 import { TwoFactorService } from './two-factor.service'
 import { SharedModule } from 'src/shared/shared.module'
 import { SessionsModule } from '../sessions/sessions.module'
-import { UserAuthRepository, RecoveryCodeRepository, DeviceRepository } from 'src/shared/repositories/auth'
 import { OtpModule } from '../otp/otp.module'
+import { CoreModule } from '../core/core.module'
 
 @Module({
-  imports: [SharedModule, forwardRef(() => SessionsModule), forwardRef(() => OtpModule)],
+  imports: [SharedModule, forwardRef(() => OtpModule), forwardRef(() => SessionsModule), CoreModule],
   controllers: [TwoFactorController],
-  providers: [TwoFactorService, UserAuthRepository, RecoveryCodeRepository, DeviceRepository],
+  providers: [TwoFactorService],
   exports: [TwoFactorService]
 })
 export class TwoFactorModule {}
