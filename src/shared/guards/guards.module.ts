@@ -7,7 +7,7 @@ import { JwtModule, JwtService } from '@nestjs/jwt'
 import { AuthenticationGuard } from './authentication.guard'
 import { APIKeyGuard } from './api-key.guard'
 import { RedisProviderModule } from '../providers/redis/redis.module'
-import { TokenService } from 'src/routes/auth/shared/token/token.service'
+import { TokenService } from 'src/shared/services/token.service'
 import { JwtAuthGuard } from 'src/routes/auth/guards/jwt-auth.guard'
 import { ApiKeyGuard } from 'src/routes/auth/guards/api-key.guard'
 import { BasicAuthGuard } from 'src/routes/auth/guards/basic-auth.guard'
@@ -55,7 +55,7 @@ import { PrismaService } from '../services/prisma.service'
       provide: APP_GUARD,
       useClass: AuthenticationGuard
     },
-    
+
     // Các guard và dependency của chúng
     TokenService,
     JwtService,
@@ -69,12 +69,6 @@ import { PrismaService } from '../services/prisma.service'
     PrismaService,
     APIKeyGuard
   ],
-  exports: [
-    JwtAuthGuard,
-    ApiKeyGuard,
-    BasicAuthGuard,
-    AccessTokenGuard,
-    RolesGuard
-  ]
+  exports: [JwtAuthGuard, ApiKeyGuard, BasicAuthGuard, AccessTokenGuard, RolesGuard]
 })
-export class GuardsModule {} 
+export class GuardsModule {}

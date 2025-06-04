@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
-import { TokenService } from 'src/routes/auth/shared/token/token.service'
+import { TokenService } from 'src/shared/services/token.service'
 import { I18nService } from 'nestjs-i18n'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ConfigService } from '@nestjs/config'

@@ -2,7 +2,7 @@ import { Injectable, CanActivate, ExecutionContext, Logger, Inject } from '@nest
 import { Reflector } from '@nestjs/core'
 import { Request } from 'express'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { TokenService } from '../shared/token/token.service'
+import { TokenService } from 'src/shared/services/token.service'
 import { REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { AuthError } from '../auth.error'
 

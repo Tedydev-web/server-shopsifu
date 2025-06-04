@@ -1,11 +1,9 @@
-import { Injectable, Logger, Inject } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { Response } from 'express'
 import { ConfigService } from '@nestjs/config'
 import { CookieNames } from 'src/shared/constants/auth.constant'
-import { CookieConfig } from 'src/routes/auth/auth.types'
+import { ICookieService, CookieConfig } from 'src/shared/types/auth.types'
 import { TypeOfVerificationCodeType } from 'src/routes/auth/constants/auth.constants'
-import { ICookieService } from 'src/shared/types/auth.types'
-import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
 
 @Injectable()
 export class CookieService implements ICookieService {
@@ -221,71 +219,47 @@ export class CookieService implements ICookieService {
   }
 
   private getSltCookieConfig(): CookieConfig {
-    this.logger.debug('[getSltCookieConfig] Getting SLT cookie configuration')
-    const cookieConfig = this.configService.get<CookieConfig>('cookie.sltToken')
+    const cookieConfig = this.configService.get<CookieConfig>('cookie.slt')
 
     if (!cookieConfig) {
-      this.logger.warn('[getSltCookieConfig] Không thể truy cập cấu hình cookie.sltToken, sử dụng giá trị mặc định')
-      // Log cấu hình theo từng thành phần
-      this.logger.debug(`[getSltCookieConfig] NODE_ENV: ${this.configService.get('NODE_ENV')}`)
-      this.logger.debug(`[getSltCookieConfig] cookieConfig.secure: ${this.configService.get('cookieConfig.secure')}`)
-      this.logger.debug(
-        `[getSltCookieConfig] cookieConfig.sameSite: ${this.configService.get('cookieConfig.sameSite')}`
-      )
+      this.logger.warn('[getSltCookieConfig] Không thể truy cập cấu hình cookie.slt, sử dụng giá trị mặc định')
     }
 
     const config = cookieConfig || {
       name: CookieNames.SLT_TOKEN,
       path: '/',
       domain: undefined,
-      maxAge: 10 * 60 * 1000, // 10 phút
+      maxAge: 5 * 60 * 1000, // 5 phút
       httpOnly: true,
       secure: false,
       sameSite: 'lax'
     }
 
-    this.logger.debug(`[getSltCookieConfig] Using SLT config: ${JSON.stringify(config)}`)
+    this.logger.debug(`[getSltCookieConfig] Using config: ${JSON.stringify(config)}`)
     return config
   }
 
-  /**
-   * Trả về cấu hình cookie cho OAuth nonce
-   */
   private getOAuthNonceCookieConfig(): CookieConfig {
     return {
       name: CookieNames.OAUTH_NONCE,
       path: '/',
-      domain: this.configService.get('cookieConfig.domain'),
-      maxAge: this.configService.get('cookieConfig.nonce.maxAge') || 5 * 60 * 1000, // 5 phút mặc định
+      domain: undefined,
+      maxAge: 15 * 60 * 1000, // 15 phút
       httpOnly: true,
-      secure: this.configService.get('NODE_ENV') === 'production',
-      sameSite: 'none' // SameSite=None để hỗ trợ OAuth redirect và dễ test với Postman
+      secure: this.configService.get('cookieConfig.secure', false),
+      sameSite: this.configService.get('cookieConfig.sameSite', 'lax')
     }
   }
 
-  /**
-   * Trả về cấu hình cookie cho OAuth pending link token
-   */
   private getOAuthPendingLinkTokenCookieConfig(): CookieConfig {
-    const cookieConfig = this.configService.get<CookieConfig>('cookie.oauthPendingLinkToken')
-
-    if (!cookieConfig) {
-      this.logger.warn(
-        '[getOAuthPendingLinkTokenCookieConfig] Không thể truy cập cấu hình cookie.oauthPendingLinkToken, sử dụng giá trị mặc định'
-      )
-    }
-
-    const config = cookieConfig || {
+    return {
       name: CookieNames.OAUTH_PENDING_LINK,
       path: '/',
-      domain: this.configService.get('cookieConfig.domain'),
-      maxAge: 300 * 1000, // 5 phút
+      domain: undefined,
+      maxAge: 15 * 60 * 1000, // 15 phút
       httpOnly: true,
-      secure: this.configService.get('NODE_ENV') === 'production',
-      sameSite: 'none' // Luôn dùng 'none' để dễ test với Postman
+      secure: this.configService.get('cookieConfig.secure', false),
+      sameSite: this.configService.get('cookieConfig.sameSite', 'lax')
     }
-
-    this.logger.debug(`[getOAuthPendingLinkTokenCookieConfig] Using config: ${JSON.stringify(config)}`)
-    return config
   }
 }

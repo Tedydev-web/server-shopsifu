@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { OtpService } from './otp.service'
-import { CookieService } from '../../shared/cookie/cookie.service'
+import { CookieService } from 'src/shared/services/cookie.service'
 import { I18nService } from 'nestjs-i18n'
 import { AuthError } from '../../auth.error'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
@@ -28,7 +28,7 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { SessionsService } from '../sessions/sessions.service'
 import { CookieNames } from 'src/shared/constants/auth.constant'
 import { IsPublic } from 'src/routes/auth/decorators/auth.decorator'
-import { TokenService } from '../../shared/token/token.service'
+import { TokenService } from 'src/shared/services/token.service'
 
 @Controller('auth/otp')
 export class OtpController {

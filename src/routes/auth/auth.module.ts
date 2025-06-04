@@ -1,21 +1,15 @@
 import { Module, DynamicModule, Global } from '@nestjs/common'
-import { JwtModule } from '@nestjs/jwt'
 import { PassportModule } from '@nestjs/passport'
-import { ConfigModule, ConfigService } from '@nestjs/config'
 import { CoreModule } from './modules/core/core.module'
 import { OtpModule } from './modules/otp/otp.module'
 import { TwoFactorModule } from './modules/two-factor/two-factor.module'
 import { SessionsModule } from './modules/sessions/sessions.module'
 import { SocialModule } from './modules/social/social.module'
-import { CookieService } from './shared/cookie/cookie.service'
-import { TokenService } from './shared/token/token.service'
 import { CoreService } from './modules/core/core.service'
 import { OtpService } from './modules/otp/otp.service'
 import { SessionsService } from './modules/sessions/sessions.service'
 import { SocialService } from './modules/social/social.service'
 import { TwoFactorService } from './modules/two-factor/two-factor.service'
-import { HashingService } from 'src/shared/services/hashing.service'
-import { EmailService } from 'src/shared/services/email.service'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 import { BasicAuthGuard } from './guards/basic-auth.guard'
 import { ApiKeyGuard } from './guards/api-key.guard'
@@ -24,19 +18,7 @@ import { UserAuthRepository } from './repositories/user-auth.repository'
 import { DeviceRepository } from './repositories/device.repository'
 import { RecoveryCodeRepository } from './repositories/recovery-code.repository'
 import { SessionRepository } from './repositories/session.repository'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import {
-  COOKIE_SERVICE,
-  TOKEN_SERVICE,
-  USER_AUTH_SERVICE,
-  OTP_SERVICE,
-  SESSION_SERVICE,
-  DEVICE_SERVICE,
-  HASHING_SERVICE,
-  REDIS_SERVICE,
-  REDIS_CLIENT,
-  EMAIL_SERVICE
-} from 'src/shared/constants/injection.tokens'
+import { USER_AUTH_SERVICE, OTP_SERVICE, SESSION_SERVICE, DEVICE_SERVICE } from 'src/shared/constants/injection.tokens'
 import { DeviceService } from './services/device.service'
 import { UserActivityService } from './services/user-activity.service'
 
@@ -44,16 +26,6 @@ import { UserActivityService } from './services/user-activity.service'
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get('ACCESS_TOKEN_SECRET'),
-        signOptions: {
-          expiresIn: configService.get('ACCESS_TOKEN_EXPIRES_IN', '15m')
-        }
-      })
-    }),
     CoreModule,
     OtpModule,
     TwoFactorModule,
@@ -61,14 +33,6 @@ import { UserActivityService } from './services/user-activity.service'
     SocialModule
   ],
   providers: [
-    {
-      provide: COOKIE_SERVICE,
-      useClass: CookieService
-    },
-    {
-      provide: TOKEN_SERVICE,
-      useClass: TokenService
-    },
     {
       provide: USER_AUTH_SERVICE,
       useClass: CoreService
@@ -85,22 +49,11 @@ import { UserActivityService } from './services/user-activity.service'
       provide: DEVICE_SERVICE,
       useClass: DeviceRepository
     },
-    {
-      provide: HASHING_SERVICE,
-      useClass: HashingService
-    },
-    {
-      provide: EMAIL_SERVICE,
-      useClass: EmailService
-    },
-    CookieService,
-    TokenService,
     CoreService,
     OtpService,
     SessionsService,
     SocialService,
     TwoFactorService,
-    EmailService,
     JwtAuthGuard,
     BasicAuthGuard,
     ApiKeyGuard,
@@ -109,29 +62,20 @@ import { UserActivityService } from './services/user-activity.service'
     DeviceRepository,
     RecoveryCodeRepository,
     SessionRepository,
-    HashingService,
     DeviceService,
     UserActivityService
   ],
   exports: [
     PassportModule,
-    JwtModule,
-    COOKIE_SERVICE,
-    TOKEN_SERVICE,
     USER_AUTH_SERVICE,
     OTP_SERVICE,
     SESSION_SERVICE,
     DEVICE_SERVICE,
-    HASHING_SERVICE,
-    EMAIL_SERVICE,
-    CookieService,
-    TokenService,
     CoreService,
     OtpService,
     SessionsService,
     SocialService,
     TwoFactorService,
-    EmailService,
     JwtAuthGuard,
     BasicAuthGuard,
     ApiKeyGuard,
@@ -140,7 +84,6 @@ import { UserActivityService } from './services/user-activity.service'
     DeviceRepository,
     RecoveryCodeRepository,
     SessionRepository,
-    HashingService,
     DeviceService,
     UserActivityService
   ]

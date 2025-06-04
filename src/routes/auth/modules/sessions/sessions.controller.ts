@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common'
 import { SessionsService } from './sessions.service'
 import { AccessTokenGuard } from 'src/routes/auth/guards/access-token.guard'
-import { ActiveUser } from 'src/routes/auth/decorators/active-user.decorator'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import {

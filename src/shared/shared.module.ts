@@ -15,6 +15,10 @@ import { TransformInterceptor } from './interceptor/transform.interceptor'
 import { CryptoService } from './services/crypto.service'
 import { RedisProviderModule } from './providers/redis/redis.module'
 import { RedisService } from './providers/redis/redis.service'
+import { CookieService } from './services/cookie.service'
+import { TokenService } from './services/token.service'
+import { JwtModule } from '@nestjs/jwt'
+import { COOKIE_SERVICE, TOKEN_SERVICE } from './constants/injection.tokens'
 
 const SHARED_PIPES = [
   {
@@ -31,12 +35,35 @@ const SHARED_INTERCEPTORS = [
 // Concrete guard classes that can be provided and exported
 const CONCRETE_GUARDS = [AccessTokenGuard, APIKeyGuard, AuthenticationGuard]
 
-const SHARED_SERVICES = [PrismaService, HashingService, EmailService, CryptoService, RedisService]
+const SHARED_SERVICES = [
+  PrismaService,
+  HashingService,
+  EmailService,
+  CryptoService,
+  RedisService,
+  GeolocationService,
+  {
+    provide: COOKIE_SERVICE,
+    useClass: CookieService
+  },
+  {
+    provide: TOKEN_SERVICE,
+    useClass: TokenService
+  }
+]
 
 @Global()
 @Module({
   imports: [
     RedisProviderModule,
+    JwtModule.registerAsync({
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: configService.get<string>('JWT_EXPIRES_IN', '15m') }
+      }),
+      inject: [ConfigService],
+      global: true
+    }),
     CacheModule.registerAsync({
       isGlobal: true,
       useFactory: (configService: ConfigService) => ({
@@ -58,17 +85,15 @@ const SHARED_SERVICES = [PrismaService, HashingService, EmailService, CryptoServ
       // Register AuthenticationGuard as a global APP_GUARD
       provide: APP_GUARD,
       useClass: AuthenticationGuard
-    },
-    GeolocationService,
-    CryptoService
+    }
   ],
   // Export concrete services and guards for other modules to inject if needed
   exports: [
     ...SHARED_SERVICES,
     ...CONCRETE_GUARDS,
     CacheModule,
+    JwtModule,
     APIKeyGuard,
-    GeolocationService,
     CryptoService,
     RedisProviderModule
   ]

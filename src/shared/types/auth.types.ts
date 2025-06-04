@@ -88,3 +88,13 @@ export interface ITokenService {
   markRefreshTokenJtiAsUsed(refreshTokenJti: string, sessionId: string, ttlSeconds?: number): Promise<boolean>
   isSessionInvalidated(sessionId: string): Promise<boolean>
 }
+
+export interface CookieConfig {
+  name: string
+  path: string
+  domain?: string
+  maxAge: number
+  httpOnly: boolean
+  secure: boolean
+  sameSite: 'lax' | 'strict' | 'none' | boolean
+}

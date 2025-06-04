@@ -28,13 +28,13 @@ import {
   RegistrationResponseDto
 } from './dto/auth.dto'
 import { OtpService } from '../otp/otp.service'
-import { CookieService } from 'src/routes/auth/shared/cookie/cookie.service'
-import { TokenService } from 'src/routes/auth/shared/token/token.service'
+import { CookieService } from 'src/shared/services/cookie.service'
+import { TokenService } from 'src/shared/services/token.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { AccessTokenGuard } from 'src/routes/auth/guards/access-token.guard'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { CookieNames } from 'src/shared/constants/auth.constant'
-import { ActiveUser } from 'src/routes/auth/decorators/active-user.decorator'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { IsPublic } from 'src/routes/auth/decorators/auth.decorator'
 

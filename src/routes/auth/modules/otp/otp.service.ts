@@ -14,7 +14,7 @@ import { I18nService } from 'nestjs-i18n'
 import { IOTPService } from 'src/shared/types/auth.types'
 import { REDIS_SERVICE, EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService } from 'src/shared/services/email.service'
-import { CookieService } from 'src/routes/auth/shared/cookie/cookie.service'
+import { CookieService } from 'src/shared/services/cookie.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 @Injectable()
