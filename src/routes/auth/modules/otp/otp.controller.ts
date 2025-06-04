@@ -190,10 +190,21 @@ export class OtpController {
         ? await this.i18nService.translate(loginResult.messageKey as I18nPath)
         : await this.i18nService.translate('Auth.Otp.Verified' as I18nPath)
 
+      // Prepare user response with potentially picked UserProfile fields
+      const userResponse = {
+        ...loginResult.user,
+        userProfile: loginResult.user.userProfile
+          ? {
+              username: loginResult.user.userProfile.username,
+              avatar: loginResult.user.userProfile.avatar
+            }
+          : null
+      }
+
       return {
         statusCode: HttpStatus.OK,
         message,
-        data: loginResult
+        data: { user: userResponse }
       }
     } catch (error) {
       this.logger.error(`[handleLoginVerification] Error: ${error.message}`, error.stack)

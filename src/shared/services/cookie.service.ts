@@ -222,7 +222,7 @@ export class CookieService implements ICookieService {
     const cookieConfig = this.configService.get<CookieConfig>('cookie.slt')
 
     if (!cookieConfig) {
-      this.logger.warn('[getSltCookieConfig] Không thể truy cập cấu hình cookie.slt, sử dụng giá trị mặc định')
+      this.logger.warn('[getSltCookieConfig] Cannot access cookie.slt configuration, using default values')
     }
 
     const config = cookieConfig || {

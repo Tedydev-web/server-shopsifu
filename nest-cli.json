@@ -4,6 +4,9 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "assets": [{ "include": "i18n/**/*", "watchAssets": true, "outDir": "dist" }]
+    "webpack": false,
+    "tsConfigPath": "tsconfig.build.json",
+    "assets": ["i18n/**/*.json", { "include": "../emails/**/*", "outDir": "dist/emails" }],
+    "watchAssets": true
   }
 }

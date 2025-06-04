@@ -159,7 +159,7 @@ export class TwoFactorController {
     @UserAgent() userAgent: string,
     @Req() req: Request,
     @Res({ passthrough: false }) res: Response
-  ): Promise<void> {
+  ): Promise<Response<any, Record<string, any>> | void> {
     try {
       // Lấy SLT token từ cookie
       const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
@@ -205,15 +205,39 @@ export class TwoFactorController {
             userAgent
           )
 
-          // CoreService.finalizeLoginAfterVerification đã set cookie và trả về auth tokens + user info
-          // Nên wrapper nó trong một cấu trúc response chuẩn nếu cần
-          res.status(HttpStatus.OK).json({
-            message: await this.i18nService.translate(result.message as I18nPath), // Hoặc một message cụ thể hơn từ i18n
-            accessToken: loginResult.accessToken,
-            refreshToken: loginResult.refreshToken,
-            user: loginResult.user
+          // Prepare user response with picked UserProfile fields
+          const userResponseFor2FA = {
+            ...loginResult.user,
+            userProfile: loginResult.user.userProfile
+              ? {
+                  username: loginResult.user.userProfile.username,
+                  avatar: loginResult.user.userProfile.avatar
+                }
+              : null
+          }
+
+          // Login is finalized, user object is present
+          const dataPayload: { user: any; askToTrustDevice?: boolean } = {
+            user: userResponseFor2FA // Use the modified userResponseFor2FA
+          }
+
+          // Include askToTrustDevice if it's relevant
+          if (typeof loginResult.askToTrustDevice === 'boolean') {
+            dataPayload.askToTrustDevice = loginResult.askToTrustDevice
+          }
+
+          this.cookieService.clearSltCookie(res) // Clear SLT cookie after successful 2FA login
+
+          this.logger.debug(
+            `[verifyTwoFactor] Login 2FA successful for user: ${loginResult.user?.email}. Data: ${JSON.stringify(dataPayload)}`
+          )
+
+          // Send the success response
+          return res.status(HttpStatus.OK).json({
+            statusCode: HttpStatus.OK,
+            message: await this.i18nService.translate(result.message as I18nPath),
+            data: dataPayload // Use the structured dataPayload
           })
-          return
         }
       }
 

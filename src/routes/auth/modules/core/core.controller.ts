@@ -172,28 +172,50 @@ export class CoreController {
   ) {
     const result = await this.coreService.login({ ...body, ip, userAgent }, res)
 
-    let message = result.message
-    if (
-      result.message &&
-      typeof result.message === 'string' &&
-      (result.message.startsWith('Auth.') || result.message.startsWith('error.'))
-    ) {
-      this.logger.debug(`[Login] Language from context for result.message: ${I18nContext.current()?.lang}`)
-      let translatedResultMessage = await this.i18nService.translate(result.message as I18nPath)
-      if (typeof translatedResultMessage !== 'string') {
+    let responseMessage: string
+
+    // Determine the primary message key or direct message from the service result
+    const messageKeyFromService =
+      result.messageKey ||
+      (result.message && (result.message.startsWith('Auth.') || result.message.startsWith('error.'))
+        ? result.message
+        : undefined)
+
+    if (messageKeyFromService) {
+      this.logger.debug(
+        `[Login] Translating service message key: ${messageKeyFromService}, lang: ${I18nContext.current()?.lang}`
+      )
+      try {
+        const translatedMsg = await this.i18nService.translate(messageKeyFromService as I18nPath)
+        if (typeof translatedMsg === 'string' && translatedMsg.trim() !== '') {
+          responseMessage = translatedMsg
+        } else {
+          this.logger.warn(
+            `[Login] Translation for '${messageKeyFromService}' did not return a valid string, falling back to key. Received: ${JSON.stringify(translatedMsg)}`
+          )
+          responseMessage = messageKeyFromService
+        }
+      } catch (e) {
         this.logger.warn(
-          `[Login] Translation for result.message '${result.message}' did not return a string, falling back to key. Received: ${JSON.stringify(translatedResultMessage)}`
+          `[Login] Failed to translate message key '${messageKeyFromService}', falling back to key. Error: ${e.message}`
         )
-        translatedResultMessage = result.message
+        responseMessage = messageKeyFromService
       }
-      message = translatedResultMessage
-      this.logger.debug(`[Login] Translated result.message: ${message}`)
+      this.logger.debug(`[Login] Resulting message for service key '${messageKeyFromService}': ${responseMessage}`)
+    } else if (result.message && typeof result.message === 'string') {
+      // If the service returned a direct message (not a key)
+      responseMessage = result.message
+      this.logger.debug(`[Login] Using direct message from service: ${responseMessage}`)
+    } else {
+      // Fallback if no message or messageKey, though service should provide one
+      this.logger.warn('[Login] No message or messageKey from service, using default success message.')
+      responseMessage = await this.i18nService.translate('Auth.Login.Success' as I18nPath)
     }
 
     if (result.requiresDeviceVerification) {
       return {
         statusCode: HttpStatus.OK,
-        message,
+        message: responseMessage, // Use the determined and possibly translated message
         data: {
           requiresDeviceVerification: true,
           verificationType: result.verificationType,
@@ -202,15 +224,18 @@ export class CoreController {
       }
     }
 
-    this.logger.debug(`[Login] Language from context for Auth.Login.Success: ${I18nContext.current()?.lang}`)
-    let translatedLoginSuccessMessage = await this.i18nService.translate('Auth.Login.Success' as I18nPath)
-    if (typeof translatedLoginSuccessMessage !== 'string') {
+    // If login is successful without device verification, use the standard login success message
+    // This part of the message logic can be simplified as responseMessage should already be Auth.Login.Success
+    // if result from service didn't specify requiresDeviceVerification and had a success message/messageKey.
+    // However, to be explicit for this path:
+    let loginSuccessMessage = await this.i18nService.translate('Auth.Login.Success' as I18nPath)
+    if (typeof loginSuccessMessage !== 'string' || loginSuccessMessage.trim() === '') {
       this.logger.warn(
-        `[Login] Translation for 'Auth.Login.Success' did not return a string, falling back to key. Received: ${JSON.stringify(translatedLoginSuccessMessage)}`
+        `[Login] Translation for 'Auth.Login.Success' did not return a valid string, falling back to key. Received: ${JSON.stringify(loginSuccessMessage)}`
       )
-      translatedLoginSuccessMessage = 'Auth.Login.Success'
+      loginSuccessMessage = 'Auth.Login.Success'
     }
-    this.logger.debug(`[Login] Translated Auth.Login.Success message: ${translatedLoginSuccessMessage}`)
+    this.logger.debug(`[Login] Translated Auth.Login.Success message for direct login: ${loginSuccessMessage}`)
 
     const responseData = {
       user: {
@@ -229,7 +254,7 @@ export class CoreController {
 
     return {
       statusCode: HttpStatus.OK,
-      message: translatedLoginSuccessMessage,
+      message: loginSuccessMessage, // Use the explicitly translated login success message
       data: responseData
     }
   }
