@@ -5,7 +5,7 @@ import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import envConfig from './shared/config'
 import { winstonLogger } from './shared/logger/winston.config'
-import { SecurityHeaders } from './shared/constants/auth.constant'
+import { SecurityHeaders } from './shared/constants/auth.constants'
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
 import { I18nService } from 'nestjs-i18n'
 

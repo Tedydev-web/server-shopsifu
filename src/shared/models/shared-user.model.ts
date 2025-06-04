@@ -1,8 +1,9 @@
-import { TwoFactorMethodType } from '../../routes/auth/constants/auth.constants'
-import { UserStatus as PrismaUserStatus } from '@prisma/client'
 import { z } from 'zod'
+import { TwoFactorMethodType } from '../constants/auth.constants'
+import { UserStatus as PrismaUserStatus } from '@prisma/client'
 import { UserProfileSchema } from './user-profile.model'
 import { RoleSchema } from 'src/shared/models/role.model'
+import { DeviceSchema } from './device.model'
 
 export const UserSchema = z.object({
   id: z.number().int(),
@@ -12,12 +13,16 @@ export const UserSchema = z.object({
   status: z.nativeEnum(PrismaUserStatus),
   roleId: z.number().int(),
   role: z.lazy(() => RoleSchema).optional(),
-  devices: z.array(z.any()).optional(),
+  devices: z.array(z.lazy(() => DeviceSchema)).optional(),
   twoFactorEnabled: z.boolean().nullable().optional(),
   twoFactorSecret: z.string().nullable().optional(),
   twoFactorMethod: z.nativeEnum(TwoFactorMethodType).nullable().optional(),
   twoFactorVerifiedAt: z.date().nullable().optional(),
-  userProfile: UserProfileSchema.nullable().optional(),
+  userProfile: z
+    .lazy(() => UserProfileSchema)
+    .nullable()
+    .optional(),
+  passwordChangedAt: z.date().nullable().optional(),
   createdAt: z.date(),
   updatedAt: z.date(),
   deletedAt: z.date().nullable().optional(),

@@ -2,7 +2,6 @@ import { Injectable, Logger, Inject } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { Request } from 'express'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { CookieNames } from 'src/shared/constants/auth.constant'
 import {
   AccessTokenPayload,
   AccessTokenPayloadCreate,
@@ -20,10 +19,8 @@ import { AuthError } from 'src/routes/auth/auth.error'
 import {
   DEVICE_REVOKE_HISTORY_TTL,
   DEVICE_REVERIFICATION_TTL,
-  DEVICE_REVERIFY_KEY_PREFIX,
-  SESSION_INVALIDATED_KEY_PREFIX,
-  REVOKE_HISTORY_KEY_PREFIX
-} from 'src/routes/auth/constants/auth.constants'
+  DEVICE_REVERIFY_KEY_PREFIX
+} from 'src/shared/constants/auth.constants'
 
 @Injectable()
 export class TokenService implements ITokenService {

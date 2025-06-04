@@ -1,21 +1,18 @@
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common'
+import { Injectable, Logger, InternalServerErrorException, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
 import { Response, Request } from 'express'
 import { AuthError } from '../../auth.error'
-import { CookieService } from 'src/shared/services/cookie.service'
-import { TokenService } from 'src/shared/services/token.service'
 import { HashingService } from 'src/shared/services/hashing.service'
-import { UserAuthRepository } from '../../repositories/user-auth.repository'
-import { DeviceRepository } from '../../repositories/device.repository'
-import { SessionRepository } from '../../repositories/session.repository'
-import { IUserAuthService } from 'src/shared/types/auth.types'
-import { TwoFactorMethodType, TypeOfVerificationCode } from '../../constants/auth.constants'
+import { IUserAuthService, ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { TwoFactorMethodType, TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
 import { User, Device, Role, UserProfile } from '@prisma/client'
 import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import { UserStatus } from '@prisma/client'
+import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/shared/repositories/auth'
 
 interface RegisterUserParams {
   email: string
@@ -43,8 +40,8 @@ export class CoreService implements IUserAuthService {
 
   constructor(
     private readonly hashingService: HashingService,
-    private readonly cookieService: CookieService,
-    private readonly tokenService: TokenService,
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly i18nService: I18nService,
     private readonly configService: ConfigService,
     private readonly userAuthRepository: UserAuthRepository,

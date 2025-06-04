@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { TypeOfVerificationCode, TwoFactorMethodType } from './constants/auth.constants'
+import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/shared/constants/auth.constants'
 import { RoleSchema } from 'src/shared/models/role.model'
 
 export { RoleSchema }

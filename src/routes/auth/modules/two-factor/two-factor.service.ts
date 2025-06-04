@@ -1,20 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { JwtService } from '@nestjs/jwt'
 import * as speakeasy from 'speakeasy'
 import * as QRCode from 'qrcode'
 import { Response } from 'express'
 import { I18nService } from 'nestjs-i18n'
 import { OtpService } from '../otp/otp.service'
 import { HashingService } from 'src/shared/services/hashing.service'
-import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/routes/auth/constants/auth.constants'
-import { CookieService } from 'src/shared/services/cookie.service'
-import { TokenService } from 'src/shared/services/token.service'
-import { UserAuthRepository } from '../../repositories/user-auth.repository'
-import { RecoveryCodeRepository } from '../../repositories/recovery-code.repository'
-import { DeviceRepository } from '../../repositories/device.repository'
+import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/shared/constants/auth.constants'
+import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { v4 as uuidv4 } from 'uuid'
+import { TwoFactorConfirmSetupDto } from './dto/two-factor.dto'
+import { UserAuthRepository, RecoveryCodeRepository, DeviceRepository } from 'src/shared/repositories/auth'
 
 @Injectable()
 export class TwoFactorService {
@@ -23,8 +21,8 @@ export class TwoFactorService {
   constructor(
     private readonly configService: ConfigService,
     private readonly i18nService: I18nService,
-    private readonly cookieService: CookieService,
-    private readonly tokenService: TokenService,
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly otpService: OtpService,
     private readonly hashingService: HashingService,
     private readonly userAuthRepository: UserAuthRepository,

@@ -6,15 +6,13 @@ import { OtpModule } from '../otp/otp.module'
 import { CookieService } from 'src/shared/services/cookie.service'
 import { EmailService } from 'src/shared/services/email.service'
 import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
-import { DeviceRepository } from '../../repositories/device.repository'
-import { SessionRepository } from '../../repositories/session.repository'
 import { TokenService } from 'src/shared/services/token.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { UserAuthRepository } from '../../repositories/user-auth.repository'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { JwtModule } from '@nestjs/jwt'
 import { RedisProviderModule } from 'src/shared/providers/redis/redis.module'
+import { DeviceRepository, SessionRepository, UserAuthRepository } from 'src/shared/repositories/auth'
 
 @Module({
   imports: [

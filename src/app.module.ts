@@ -19,7 +19,6 @@ import { LoggerMiddleware } from './shared/middleware/logger.middleware'
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
 import envConfig from './shared/config'
 import { dailyRotateFileTransport, consoleTransport } from './shared/logger/winston.config'
-import { InterceptorsModule } from './shared/interceptor/interceptors.module'
 import { MiddlewaresModule } from './shared/middleware/middlewares.module'
 import { GuardsModule } from './shared/guards/guards.module'
 
@@ -58,10 +57,9 @@ import { AuthModule } from './routes/auth/auth.module'
     SharedModule,
     MiddlewaresModule,
     GuardsModule,
-    InterceptorsModule,
 
     // 5. Cuối cùng phải là AuthModule
-    AuthModule.register({ isGlobal: true })
+    AuthModule
     // Tạm thời comment lại
     // ProfileModule
   ],

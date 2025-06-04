@@ -7,7 +7,6 @@ import {
   Req,
   Res,
   Ip,
-  UseGuards,
   Logger,
   InternalServerErrorException,
   HttpException,
@@ -15,33 +14,30 @@ import {
   forwardRef
 } from '@nestjs/common'
 import { Request, Response } from 'express'
-import { ZodSerializerDto } from 'nestjs-zod'
 import { I18nService } from 'nestjs-i18n'
+import { ZodSerializerDto } from 'nestjs-zod'
 
 import { TwoFactorService } from './two-factor.service'
-import { CookieService } from 'src/shared/services/cookie.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
-import { AccessTokenGuard } from 'src/routes/auth/guards/access-token.guard'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import {
-  TwoFactorSetupDto,
-  TwoFactorSetupResponseDto,
   TwoFactorConfirmSetupDto,
-  TwoFactorConfirmSetupResponseDto,
   TwoFactorVerifyDto,
-  TwoFactorVerifyResponseDto,
   DisableTwoFactorDto,
-  DisableTwoFactorResponseDto,
   RegenerateRecoveryCodesDto,
+  TwoFactorSetupResponseDto,
+  TwoFactorConfirmSetupResponseDto,
+  DisableTwoFactorResponseDto,
   RegenerateRecoveryCodesResponseDto
 } from './dto/two-factor.dto'
-import { CookieNames } from 'src/shared/constants/auth.constant'
+import { CookieNames } from 'src/shared/constants/auth.constants'
 import { AuthError } from 'src/routes/auth/auth.error'
-import { IsPublic } from 'src/routes/auth/decorators/auth.decorator'
-import { TypeOfVerificationCode } from 'src/routes/auth/constants/auth.constants'
-import { SltContextData } from 'src/routes/auth/auth.types'
+import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { SessionsService } from '../sessions/sessions.service'
+import { ICookieService } from 'src/shared/types/auth.types'
+import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
 
 @Controller('auth/2fa')
 export class TwoFactorController {
@@ -49,7 +45,7 @@ export class TwoFactorController {
 
   constructor(
     private readonly twoFactorService: TwoFactorService,
-    private readonly cookieService: CookieService,
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     private readonly i18nService: I18nService,
     @Inject(forwardRef(() => SessionsService))
     private readonly sessionsService: SessionsService
@@ -59,8 +55,8 @@ export class TwoFactorController {
    * Thiết lập 2FA
    */
   @Post('setup')
-  @UseGuards(AccessTokenGuard)
   @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(TwoFactorSetupResponseDto)
   async setupTwoFactor(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Ip() ip: string,
@@ -105,8 +101,8 @@ export class TwoFactorController {
    * Xác nhận thiết lập 2FA
    */
   @Post('confirm-setup')
-  @UseGuards(AccessTokenGuard)
   @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(TwoFactorConfirmSetupResponseDto)
   async confirmTwoFactorSetup(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: TwoFactorConfirmSetupDto,
@@ -183,12 +179,16 @@ export class TwoFactorController {
 
       // Xử lý các purpose đặc biệt
       if (result.purpose) {
-        if (result.purpose === TypeOfVerificationCode.REVOKE_SESSIONS && result.userId && result.metadata) {
+        if (result.purpose === (TypeOfVerificationCode.REVOKE_SESSIONS as string) && result.userId && result.metadata) {
           await this.handleRevokeSessionsVerification(result.userId, result.metadata, ip, userAgent, res)
           return
         }
 
-        if (result.purpose === TypeOfVerificationCode.REVOKE_ALL_SESSIONS && result.userId && result.metadata) {
+        if (
+          result.purpose === (TypeOfVerificationCode.REVOKE_ALL_SESSIONS as string) &&
+          result.userId &&
+          result.metadata
+        ) {
           await this.handleRevokeAllSessionsVerification(result.userId, result.metadata, ip, userAgent, res)
           return
         }
@@ -343,8 +343,8 @@ export class TwoFactorController {
    * Tắt 2FA
    */
   @Post('disable')
-  @UseGuards(AccessTokenGuard)
   @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(DisableTwoFactorResponseDto)
   async disableTwoFactor(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: DisableTwoFactorDto,
@@ -390,8 +390,8 @@ export class TwoFactorController {
    * Tạo lại mã khôi phục
    */
   @Post('regenerate-recovery-codes')
-  @UseGuards(AccessTokenGuard)
   @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(RegenerateRecoveryCodesResponseDto)
   async regenerateRecoveryCodes(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: RegenerateRecoveryCodesDto,

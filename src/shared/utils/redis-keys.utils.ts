@@ -15,6 +15,9 @@ export enum RedisPrefix {
   SESSION_INVALIDATED = 'session:invalidated:',
   SESSION_ARCHIVED = 'session:archived:',
   SESSION_REVOKE_HISTORY = 'session:revoke:history:',
+  SESSION_USER = 'sessions:user:',
+  SESSION_DEVICE = 'sessions:device:',
+  LOGIN_HISTORY = 'login_history:user:',
 
   // Các prefix cho thiết bị
   DEVICE = 'device:',
@@ -38,7 +41,15 @@ export enum RedisPrefix {
   INVALIDATED_USERS_SET = 'invalidated:users',
 
   // Các prefix cho cache
-  CACHE = 'cache:'
+  CACHE = 'cache:',
+
+  // Prefix cho user activity
+  USER_ACTIVITY = 'user_activity:',
+  LOGIN_FAILURES = 'login_failures:user:',
+  LAST_LOGIN = 'last_login:user:',
+  PASSWORD_CHANGES = 'password_changes:user:',
+  ACCOUNT_LOCK = 'account_lock:user:',
+  SUSPICIOUS_NOTIFICATION = 'suspicious_notification:user:'
 }
 
 /**
@@ -51,6 +62,30 @@ export class RedisKeyManager {
    */
   public static sessionKey(sessionId: string): string {
     return `${RedisPrefix.SESSION}${sessionId}`
+  }
+
+  /**
+   * Tạo key cho danh sách session của user
+   * @param userId ID của người dùng
+   */
+  public static userSessionsKey(userId: number): string {
+    return `${RedisPrefix.SESSION_USER}${userId}`
+  }
+
+  /**
+   * Tạo key cho danh sách session của thiết bị
+   * @param deviceId ID của thiết bị
+   */
+  public static deviceSessionsKey(deviceId: number): string {
+    return `${RedisPrefix.SESSION_DEVICE}${deviceId}`
+  }
+
+  /**
+   * Tạo key cho lịch sử đăng nhập của user
+   * @param userId ID của người dùng
+   */
+  public static userLoginHistoryKey(userId: number): string {
+    return `${RedisPrefix.LOGIN_HISTORY}${userId}`
   }
 
   /**
@@ -167,5 +202,33 @@ export class RedisKeyManager {
    */
   public static customKey(prefix: string, ...parts: (string | number)[]): string {
     return `${prefix}${parts.join(':')}`
+  }
+
+  /**
+   * Tạo key cho lịch sử hoạt động của người dùng
+   * @param userId ID của người dùng
+   */
+  public static userActivityKey(userId: number): string {
+    return `${RedisPrefix.USER_ACTIVITY}${userId}:activities`
+  }
+
+  public static loginFailuresKey(userId: number): string {
+    return `${RedisPrefix.LOGIN_FAILURES}${userId}`
+  }
+
+  public static lastLoginKey(userId: number): string {
+    return `${RedisPrefix.LAST_LOGIN}${userId}`
+  }
+
+  public static passwordChangesKey(userId: number): string {
+    return `${RedisPrefix.PASSWORD_CHANGES}${userId}`
+  }
+
+  public static accountLockKey(userId: number): string {
+    return `${RedisPrefix.ACCOUNT_LOCK}${userId}`
+  }
+
+  public static suspiciousActivityNotificationKey(userId: number, ruleType: string): string {
+    return `${RedisPrefix.SUSPICIOUS_NOTIFICATION}${userId}:${ruleType}`
   }
 }

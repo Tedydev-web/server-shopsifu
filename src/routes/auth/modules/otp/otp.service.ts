@@ -1,12 +1,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import {
-  TypeOfVerificationCodeType,
-  MAX_OTP_ATTEMPTS,
-  OTP_EXPIRATION_TIME,
-  OTP_LENGTH
-} from 'src/routes/auth/constants/auth.constants'
+import { TypeOfVerificationCodeType, OTP_LENGTH } from 'src/shared/constants/auth.constants'
 import { OtpData, SltContextData, SltJwtPayload } from 'src/routes/auth/auth.types'
 import { ConfigService } from '@nestjs/config'
 import { AuthError } from 'src/routes/auth/auth.error'

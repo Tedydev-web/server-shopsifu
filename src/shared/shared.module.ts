@@ -3,8 +3,8 @@ import { PrismaService } from './services/prisma.service'
 import { HashingService } from './services/hashing.service'
 import { EmailService } from './services/email.service'
 import { APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
-import { AccessTokenGuard } from 'src/routes/auth/guards/access-token.guard'
-import { APIKeyGuard } from './guards/api-key.guard'
+// import { AccessTokenGuard } from './guards/auth/access-token.guard'
+import { ApiKeyGuard } from './guards/auth/api-key.guard'
 import { AuthenticationGuard } from './guards/authentication.guard'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import CustomZodValidationPipe from './pipes/custom-zod-validation.pipe'
@@ -18,7 +18,15 @@ import { RedisService } from './providers/redis/redis.service'
 import { CookieService } from './services/cookie.service'
 import { TokenService } from './services/token.service'
 import { JwtModule } from '@nestjs/jwt'
-import { COOKIE_SERVICE, TOKEN_SERVICE } from './constants/injection.tokens'
+import { COOKIE_SERVICE, TOKEN_SERVICE, EMAIL_SERVICE } from './constants/injection.tokens'
+import { GuardsModule } from './guards/guards.module'
+import { TokenRefreshInterceptor } from './interceptor/auth/token-refresh.interceptor'
+import { UserAuthRepository } from './repositories/auth/user-auth.repository'
+import { SessionRepository } from './repositories/auth/session.repository'
+import { DeviceRepository } from './repositories/auth/device.repository'
+import { RecoveryCodeRepository } from './repositories/auth/recovery-code.repository'
+import { DeviceService } from './services/auth/device.service'
+import { UserActivityService } from './services/auth/user-activity.service'
 
 const SHARED_PIPES = [
   {
@@ -29,16 +37,20 @@ const SHARED_PIPES = [
 
 const SHARED_INTERCEPTORS = [
   { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
-  { provide: APP_INTERCEPTOR, useClass: TransformInterceptor }
+  { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
+  { provide: APP_INTERCEPTOR, useClass: TokenRefreshInterceptor }
 ]
 
 // Concrete guard classes that can be provided and exported
-const CONCRETE_GUARDS = [AccessTokenGuard, APIKeyGuard, AuthenticationGuard]
+const CONCRETE_GUARDS = [ApiKeyGuard, AuthenticationGuard]
 
 const SHARED_SERVICES = [
   PrismaService,
   HashingService,
-  EmailService,
+  {
+    provide: EMAIL_SERVICE,
+    useClass: EmailService
+  },
   CryptoService,
   RedisService,
   GeolocationService,
@@ -49,13 +61,20 @@ const SHARED_SERVICES = [
   {
     provide: TOKEN_SERVICE,
     useClass: TokenService
-  }
+  },
+  UserAuthRepository,
+  SessionRepository,
+  DeviceRepository,
+  RecoveryCodeRepository,
+  DeviceService,
+  UserActivityService
 ]
 
 @Global()
 @Module({
   imports: [
     RedisProviderModule,
+    GuardsModule,
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
@@ -78,7 +97,6 @@ const SHARED_SERVICES = [
   ],
   providers: [
     ...SHARED_SERVICES,
-    ...CONCRETE_GUARDS, // Provide concrete guards
     ...SHARED_PIPES,
     ...SHARED_INTERCEPTORS,
     {
@@ -88,14 +106,6 @@ const SHARED_SERVICES = [
     }
   ],
   // Export concrete services and guards for other modules to inject if needed
-  exports: [
-    ...SHARED_SERVICES,
-    ...CONCRETE_GUARDS,
-    CacheModule,
-    JwtModule,
-    APIKeyGuard,
-    CryptoService,
-    RedisProviderModule
-  ]
+  exports: [...SHARED_SERVICES, CacheModule, JwtModule, GuardsModule, CryptoService, RedisProviderModule]
 })
 export class SharedModule {}

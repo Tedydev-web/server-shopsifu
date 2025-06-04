@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Response } from 'express'
 import { ConfigService } from '@nestjs/config'
-import { CookieNames } from 'src/shared/constants/auth.constant'
+import { CookieNames } from '../constants/auth.constants'
 import { ICookieService, CookieConfig } from 'src/shared/types/auth.types'
-import { TypeOfVerificationCodeType } from 'src/routes/auth/constants/auth.constants'
+import { TypeOfVerificationCodeType } from 'src/shared/constants/auth.constants'
 
 @Injectable()
 export class CookieService implements ICookieService {

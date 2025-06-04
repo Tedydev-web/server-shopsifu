@@ -5,17 +5,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { JwtModule, JwtService } from '@nestjs/jwt'
 
 import { AuthenticationGuard } from './authentication.guard'
-import { APIKeyGuard } from './api-key.guard'
 import { RedisProviderModule } from '../providers/redis/redis.module'
-import { TokenService } from 'src/shared/services/token.service'
-import { JwtAuthGuard } from 'src/routes/auth/guards/jwt-auth.guard'
-import { ApiKeyGuard } from 'src/routes/auth/guards/api-key.guard'
-import { BasicAuthGuard } from 'src/routes/auth/guards/basic-auth.guard'
-import { AccessTokenGuard } from 'src/routes/auth/guards/access-token.guard'
-import { RolesGuard } from 'src/routes/auth/guards/roles.guard'
-import { UserAuthRepository } from 'src/routes/auth/repositories/user-auth.repository'
-import { HashingService } from '../services/hashing.service'
-import { PrismaService } from '../services/prisma.service'
+import { JwtAuthGuard } from './auth/jwt-auth.guard'
+import { ApiKeyGuard } from './auth/api-key.guard'
+import { BasicAuthGuard } from './auth/basic-auth.guard'
+import { RolesGuard } from './auth/roles.guard'
 
 /**
  * Module tập trung quản lý tất cả các guard trong ứng dụng
@@ -57,18 +51,12 @@ import { PrismaService } from '../services/prisma.service'
     },
 
     // Các guard và dependency của chúng
-    TokenService,
     JwtService,
     JwtAuthGuard,
     ApiKeyGuard,
     BasicAuthGuard,
-    AccessTokenGuard,
-    RolesGuard,
-    UserAuthRepository,
-    HashingService,
-    PrismaService,
-    APIKeyGuard
+    RolesGuard
   ],
-  exports: [JwtAuthGuard, ApiKeyGuard, BasicAuthGuard, AccessTokenGuard, RolesGuard]
+  exports: [JwtAuthGuard, ApiKeyGuard, BasicAuthGuard, RolesGuard]
 })
 export class GuardsModule {}

@@ -1,7 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Logger } from '@nestjs/common'
-import { UserAuthRepository } from 'src/routes/auth/repositories/user-auth.repository'
+import { UserAuthRepository } from 'src/shared/repositories/auth/user-auth.repository'
 import { HashingService } from 'src/shared/services/hashing.service'
-import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
+import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constants'
 
 @Injectable()
 export class BasicAuthGuard implements CanActivate {

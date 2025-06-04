@@ -199,39 +199,38 @@ export class DeviceRepository {
       where: { userId }
     })
 
-    if (userDevices.length === 0) {
-      this.logger.debug(`[findByUserIdAndUserAgent] Không tìm thấy thiết bị nào cho userId: ${userId}`)
+    if (!userDevices.length) {
+      this.logger.debug(`[findByUserIdAndUserAgent] Không tìm thấy thiết bị cho userId: ${userId}`)
       return null
     }
 
-    // Tìm thiết bị phù hợp nhất dựa trên:
-    // 1. Chính xác userAgent (trường hợp đăng nhập nhiều lần từ cùng một trình duyệt)
-    const exactMatch = userDevices.find((device) => device.userAgent === userAgent)
-    if (exactMatch) {
-      this.logger.debug(`[findByUserIdAndUserAgent] Tìm thấy thiết bị chính xác với ID: ${exactMatch.id}`)
-      return exactMatch
-    }
+    // Tạo "fingerprint" đơn giản từ thông tin trình duyệt và thiết bị
+    const deviceFingerprint = `${deviceType}-${browserInfo.browser}-${osInfo.os}`
+    this.logger.debug(`[findByUserIdAndUserAgent] Device fingerprint: ${deviceFingerprint}`)
 
-    // 2. Phù hợp về OS, deviceType và browser
+    // Tìm thiết bị phù hợp
+    // Ưu tiên 1: Thiết bị có cùng userAgent chính xác
+    // Ưu tiên 2: Thiết bị có cùng loại, trình duyệt và OS
     for (const device of userDevices) {
-      const deviceOsInfo = this.extractOSInfo(device.userAgent)
-      const deviceBrowserInfo = this.extractBrowserInfo(device.userAgent)
-      const deviceTypeMatch = this.determineDeviceType(device.userAgent)
+      // Ưu tiên 1: Kiểm tra userAgent chính xác
+      if (device.userAgent === userAgent) {
+        this.logger.debug(`[findByUserIdAndUserAgent] Tìm thấy thiết bị chính xác: ${device.id}`)
+        return device
+      }
 
-      const isSameOS = deviceOsInfo.os === osInfo.os
-      const isSameBrowser = deviceBrowserInfo.browser === browserInfo.browser
-      const isSameDeviceType = deviceTypeMatch === deviceType
+      // Ưu tiên 2: Kiểm tra thông tin trích xuất
+      const savedDeviceType = this.determineDeviceType(device.userAgent)
+      const savedBrowserInfo = this.extractBrowserInfo(device.userAgent)
+      const savedOSInfo = this.extractOSInfo(device.userAgent)
+      const savedFingerprint = `${savedDeviceType}-${savedBrowserInfo.browser}-${savedOSInfo.os}`
 
-      // Nếu cùng loại thiết bị, OS và trình duyệt, coi là cùng thiết bị
-      if (isSameOS && isSameBrowser && isSameDeviceType) {
-        this.logger.debug(
-          `[findByUserIdAndUserAgent] Tìm thấy thiết bị tương tự với ID: ${device.id}, ` +
-            `OS: ${isSameOS}, Browser: ${isSameBrowser}, DeviceType: ${isSameDeviceType}`
-        )
+      if (savedFingerprint === deviceFingerprint) {
+        this.logger.debug(`[findByUserIdAndUserAgent] Tìm thấy thiết bị tương tự: ${device.id}`)
         return device
       }
     }
 
+    // Không tìm thấy thiết bị phù hợp
     this.logger.debug(`[findByUserIdAndUserAgent] Không tìm thấy thiết bị phù hợp cho userId: ${userId}`)
     return null
   }
@@ -241,47 +240,46 @@ export class DeviceRepository {
    */
   private extractBrowserInfo(userAgent: string): { browser: string; version: string } {
     let browser = 'Unknown'
-    let version = 'Unknown'
+    let version = ''
 
-    // Chrome
-    const chromeMatch = userAgent.match(/Chrome\/([0-9.]+)/)
-    if (chromeMatch) {
-      browser = 'Chrome'
-      version = chromeMatch[1]
-    }
-
-    // Firefox
-    const firefoxMatch = userAgent.match(/Firefox\/([0-9.]+)/)
-    if (firefoxMatch) {
-      browser = 'Firefox'
-      version = firefoxMatch[1]
-    }
-
-    // Safari (phải kiểm tra sau Chrome vì Chrome trên iOS cũng có chứa Safari)
-    const safariMatch = userAgent.match(/Safari\/([0-9.]+)/)
-    if (safariMatch && !chromeMatch) {
-      browser = 'Safari'
-      version = safariMatch[1]
-
-      // Lấy phiên bản Safari chính xác hơn từ Version tag
-      const versionMatch = userAgent.match(/Version\/([0-9.]+)/)
-      if (versionMatch) {
-        version = versionMatch[1]
+    try {
+      if (!userAgent) {
+        return { browser, version }
       }
-    }
 
-    // Edge
-    const edgeMatch = userAgent.match(/Edg(e)?\/([0-9.]+)/)
-    if (edgeMatch) {
-      browser = 'Edge'
-      version = edgeMatch[2]
-    }
-
-    // Opera
-    const operaMatch = userAgent.match(/OPR\/([0-9.]+)/)
-    if (operaMatch) {
-      browser = 'Opera'
-      version = operaMatch[1]
+      if (userAgent.includes('Edge') || userAgent.includes('Edg/')) {
+        browser = 'Edge'
+        const match = userAgent.match(/(?:Edge|Edg)\/(\d+(\.\d+)*)/)
+        if (match) {
+          version = match[1]
+        }
+      } else if (userAgent.includes('Chrome')) {
+        browser = 'Chrome'
+        const match = userAgent.match(/Chrome\/(\d+(\.\d+)*)/)
+        if (match) {
+          version = match[1]
+        }
+      } else if (userAgent.includes('Firefox')) {
+        browser = 'Firefox'
+        const match = userAgent.match(/Firefox\/(\d+(\.\d+)*)/)
+        if (match) {
+          version = match[1]
+        }
+      } else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
+        browser = 'Safari'
+        const match = userAgent.match(/Version\/(\d+(\.\d+)*)/)
+        if (match) {
+          version = match[1]
+        }
+      } else if (userAgent.includes('Opera') || userAgent.includes('OPR')) {
+        browser = 'Opera'
+        const match = userAgent.match(/(?:Opera|OPR)\/(\d+(\.\d+)*)/)
+        if (match) {
+          version = match[1]
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error extracting browser info: ${error.message}`)
     }
 
     return { browser, version }
@@ -292,149 +290,130 @@ export class DeviceRepository {
    */
   private extractOSInfo(userAgent: string): { os: string; version: string } {
     let os = 'Unknown'
-    let version = 'Unknown'
+    let version = ''
 
-    // Windows
-    const windowsMatch = userAgent.match(/Windows NT ([0-9.]+)/)
-    if (windowsMatch) {
-      os = 'Windows'
-
-      // Chuyển đổi version number sang tên phiên bản
-      const versionMap: { [key: string]: string } = {
-        '10.0': '10',
-        '6.3': '8.1',
-        '6.2': '8',
-        '6.1': '7',
-        '6.0': 'Vista',
-        '5.2': 'XP',
-        '5.1': 'XP'
+    try {
+      if (!userAgent) {
+        return { os, version }
       }
 
-      version = versionMap[windowsMatch[1]] || windowsMatch[1]
-    }
-
-    // MacOS
-    const macOSMatch = userAgent.match(/Mac OS X ([0-9_\.]+)/)
-    if (macOSMatch) {
-      os = 'macOS'
-      version = macOSMatch[1].replace(/_/g, '.')
-
-      // Xử lý Mac OS X 11_15_7 cho đúng
-      const parts = version.split('.')
-      if (parts.length >= 2) {
-        const majorVersion = parseInt(parts[0], 10)
-        if (majorVersion >= 11) {
-          // Với macOS 11+, sử dụng tên phiên bản như Big Sur, Monterey, etc.
-          const versionNames: { [key: string]: string } = {
-            '11': 'Big Sur',
-            '12': 'Monterey',
-            '13': 'Ventura',
-            '14': 'Sonoma'
-          }
-          version = versionNames[parts[0]] || version
-        } else if (majorVersion === 10) {
-          // Với macOS 10.x, sử dụng tên phiên bản như Catalina, Mojave, etc.
-          const minorVersion = parseInt(parts[1], 10)
-          const versionNames: { [key: number]: string } = {
-            15: 'Catalina',
-            14: 'Mojave',
-            13: 'High Sierra',
-            12: 'Sierra',
-            11: 'El Capitan',
-            10: 'Yosemite',
-            9: 'Mavericks'
-          }
-          version = versionNames[minorVersion] ? `${version} (${versionNames[minorVersion]})` : version
+      // Windows
+      if (userAgent.includes('Windows')) {
+        os = 'Windows'
+        if (userAgent.includes('Windows NT 10.0')) {
+          version = '10'
+        } else if (userAgent.includes('Windows NT 6.3')) {
+          version = '8.1'
+        } else if (userAgent.includes('Windows NT 6.2')) {
+          version = '8'
+        } else if (userAgent.includes('Windows NT 6.1')) {
+          version = '7'
+        } else if (userAgent.includes('Windows NT 6.0')) {
+          version = 'Vista'
+        } else if (userAgent.includes('Windows NT 5.1')) {
+          version = 'XP'
         }
       }
-    }
-
-    // Linux
-    const linuxMatch = userAgent.match(/Linux/)
-    if (linuxMatch) {
-      os = 'Linux'
-
-      // Detect Ubuntu
-      if (userAgent.includes('Ubuntu')) {
-        os = 'Ubuntu'
-        const ubuntuMatch = userAgent.match(/Ubuntu[/\s]([0-9.]+)/)
-        if (ubuntuMatch) {
-          version = ubuntuMatch[1]
+      // Mac OS
+      else if (userAgent.includes('Mac OS X') || userAgent.includes('Macintosh')) {
+        os = 'Mac OS'
+        const match = userAgent.match(/Mac OS X ([0-9_]+)/)
+        if (match) {
+          version = match[1].replace(/_/g, '.')
         }
       }
-    }
-
-    // iOS
-    const iOSMatch = userAgent.match(/iPhone OS ([0-9_]+)/) || userAgent.match(/iPad.*OS ([0-9_]+)/)
-    if (iOSMatch) {
-      os = 'iOS'
-      version = iOSMatch[1].replace(/_/g, '.')
-    }
-
-    // Android
-    const androidMatch = userAgent.match(/Android ([0-9.]+)/)
-    if (androidMatch) {
-      os = 'Android'
-      version = androidMatch[1]
+      // iOS
+      else if (userAgent.includes('iPhone') || userAgent.includes('iPad') || userAgent.includes('iPod')) {
+        os = 'iOS'
+        const match = userAgent.match(/OS ([0-9_]+)/)
+        if (match) {
+          version = match[1].replace(/_/g, '.')
+        }
+      }
+      // Android
+      else if (userAgent.includes('Android')) {
+        os = 'Android'
+        const match = userAgent.match(/Android ([0-9\.]+)/)
+        if (match) {
+          version = match[1]
+        }
+      }
+      // Linux
+      else if (userAgent.includes('Linux')) {
+        os = 'Linux'
+        if (userAgent.includes('Ubuntu')) {
+          version = 'Ubuntu'
+        } else if (userAgent.includes('Fedora')) {
+          version = 'Fedora'
+        } else if (userAgent.includes('Debian')) {
+          version = 'Debian'
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error extracting OS info: ${error.message}`)
     }
 
     return { os, version }
   }
 
+  /**
+   * Tạo thiết bị mới
+   */
   async createDevice(data: DeviceCreateData): Promise<Device> {
-    const { userId, userAgent, ipAddress, name, isTrusted } = data
-
     return this.prismaService.device.create({
       data: {
-        userId,
-        userAgent: userAgent || 'unknown',
-        ip: ipAddress || 'unknown',
-        name: name || `Device ${new Date().toISOString()}`,
-        isTrusted: isTrusted || false,
-        lastActive: new Date()
+        userId: data.userId,
+        userAgent: data.userAgent,
+        ip: data.ipAddress,
+        name: data.name || `Device ${new Date().toISOString().substring(0, 10)}`,
+        isActive: true,
+        isTrusted: data.isTrusted ?? false,
+        trustExpiration: data.isTrusted ? this.getTrustExpirationDate() : null
       }
     })
   }
 
   /**
-   * Xác định loại thiết bị từ userAgent
-   * @param userAgent Chuỗi user agent
-   * @returns Loại thiết bị: Desktop, Mobile, Tablet, TV, hoặc Unknown
+   * Tính ngày hết hạn tin cậy
+   */
+  private getTrustExpirationDate(): Date {
+    const expiryDays = this.configService.get<number>('DEVICE_TRUST_EXPIRATION_DAYS', 30)
+    const expiryDate = new Date()
+    expiryDate.setDate(expiryDate.getDate() + expiryDays)
+    return expiryDate
+  }
+
+  /**
+   * Xác định loại thiết bị từ user agent
    */
   private determineDeviceType(userAgent: string): string {
-    // Kiểm tra Tablet
-    if (/(tablet|ipad|playbook|silk)|(android(?!.*mobile))/i.test(userAgent) || /iPad/.test(userAgent)) {
-      return 'Tablet'
+    if (!userAgent) {
+      return 'Unknown'
     }
 
-    // Kiểm tra Mobile
-    if (
-      /Mobile|Android|iP(hone|od)|IEMobile|BlackBerry|Kindle|Silk-Accelerated|(hpw|web)OS|Opera M(obi|ini)/.test(
-        userAgent
-      ) ||
-      // Nhận dạng iPhone/iPod
-      /iPhone|iPod/.test(userAgent)
-    ) {
-      return 'Mobile'
+    const lowerUA = userAgent.toLowerCase()
+
+    if (lowerUA.includes('iphone')) {
+      return 'iPhone'
+    } else if (lowerUA.includes('ipad')) {
+      return 'iPad'
+    } else if (lowerUA.includes('android') && lowerUA.includes('mobile')) {
+      return 'Android Phone'
+    } else if (lowerUA.includes('android')) {
+      return 'Android Tablet'
+    } else if (lowerUA.includes('windows phone')) {
+      return 'Windows Phone'
+    } else if (lowerUA.includes('windows') && lowerUA.includes('touch')) {
+      return 'Windows Tablet'
+    } else if (lowerUA.includes('windows')) {
+      return 'Windows Desktop'
+    } else if (lowerUA.includes('macintosh') || lowerUA.includes('mac os')) {
+      return 'Mac'
+    } else if (lowerUA.includes('linux') && !lowerUA.includes('android')) {
+      return 'Linux'
     }
 
-    // Kiểm tra Smart TV
-    if (/smart-tv|SmartTV|SMART-TV|Opera TV|AppleTV|GoogleTV|BRAVIA|Roku|WebOS|Android TV/i.test(userAgent)) {
-      return 'TV'
-    }
-
-    // Kiểm tra Wearable (smartwatch, etc.)
-    if (/Watch|SM-R|Fitbit|Galaxy Watch|Apple Watch/i.test(userAgent)) {
-      return 'Wearable'
-    }
-
-    // Kiểm tra Game Console
-    if (/Xbox|PlayStation|Nintendo/i.test(userAgent)) {
-      return 'Game Console'
-    }
-
-    // Mặc định là Desktop nếu không phải Mobile hoặc Tablet
-    return 'Desktop'
+    return 'Unknown'
   }
 
   /**
@@ -448,9 +427,14 @@ export class DeviceRepository {
       lastKnownCity?: string
     }
   ): Promise<Device> {
+    const now = new Date()
+
     return this.prismaService.device.update({
       where: { id: deviceId },
-      data: locationData
+      data: {
+        ...locationData,
+        lastActive: now
+      }
     })
   }
 }

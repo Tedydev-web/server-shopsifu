@@ -1,11 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Device } from '@prisma/client'
-import { DeviceRepository } from '../repositories/device.repository'
-import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
-import { UserAuthRepository } from '../repositories/user-auth.repository'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
+import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
+import { DeviceRepository, UserAuthRepository } from 'src/shared/repositories/auth'
 
 /**
  * Kết quả đánh giá rủi ro thiết bị
@@ -52,7 +52,7 @@ export class DeviceService {
   constructor(
     private readonly configService: ConfigService,
     private readonly deviceRepository: DeviceRepository,
-    private readonly emailService: EmailService,
+    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     private readonly geolocationService: GeolocationService,
     private readonly userAuthRepository: UserAuthRepository,
     private readonly redisService: RedisService
@@ -473,7 +473,7 @@ export class DeviceService {
     }
 
     // Xóa đánh dấu đáng ngờ
-    const suspiciousKey = `device:${deviceId}:suspicious`
+    const suspiciousKey = `device:${device.id}:suspicious`
     await this.redisService.del(suspiciousKey)
 
     this.logger.debug(`[markDeviceAsSafe] Đã đánh dấu thiết bị ${deviceId} là an toàn`)

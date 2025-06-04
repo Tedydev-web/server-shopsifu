@@ -1,26 +1,24 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
-import { TokenService } from 'src/shared/services/token.service'
 import { I18nService } from 'nestjs-i18n'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ConfigService } from '@nestjs/config'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { SessionRepository, Session } from '../../repositories/session.repository'
-import { DeviceRepository } from '../../repositories/device.repository'
-import { ISessionService } from 'src/shared/types/auth.types'
+import { ISessionService, ITokenService } from 'src/shared/types/auth.types'
 import * as crypto from 'crypto'
-import { EMAIL_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
+import { EMAIL_SERVICE, REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { DeviceSessionGroupDto, SessionItemDto, GetGroupedSessionsResponseDto } from './dto/session.dto'
+import { DeviceSessionGroupDto, SessionItemDto, GetGroupedSessionsResponseDto } from './session.dto'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { SessionRepository, Session, DeviceRepository } from 'src/shared/repositories/auth'
 
 @Injectable()
 export class SessionsService implements ISessionService {
   private readonly logger = new Logger(SessionsService.name)
 
   constructor(
-    private readonly tokenService: TokenService,
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly i18nService: I18nService,
     private readonly configService: ConfigService,
     private readonly sessionRepository: SessionRepository,

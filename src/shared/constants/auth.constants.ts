@@ -1,8 +1,62 @@
-import { AuthType, ConditionGuard, CookieNames } from 'src/shared/constants/auth.constant'
+/**
+ * Auth Constants
+ */
 import { RedisPrefix } from 'src/shared/utils/redis-keys.utils'
 
-export { AuthType, ConditionGuard, CookieNames }
+export enum AuthType {
+  JWT = 'JWT',
+  ApiKey = 'ApiKey',
+  Basic = 'Basic',
+  Bearer = 'Bearer',
+  None = 'None'
+}
 
+export type AuthTypeType = (typeof AuthType)[keyof typeof AuthType]
+
+export enum ConditionGuard {
+  PassThrough = 'PassThrough',
+  IsPublic = 'IsPublic',
+  RolesOnly = 'RolesOnly',
+  PermissionsOnly = 'PermissionsOnly',
+  RolesAndPermissions = 'RolesAndPermissions',
+  And = 'And'
+}
+
+export type ConditionGuardType = (typeof ConditionGuard)[keyof typeof ConditionGuard]
+
+export enum CookieNames {
+  ACCESS_TOKEN = 'access_token',
+  REFRESH_TOKEN = 'refresh_token',
+  SLT_TOKEN = 'slt_token',
+  XSRF_TOKEN = 'xsrf-token',
+  OAUTH_NONCE = 'oauth_nonce',
+  OAUTH_PENDING_LINK = 'oauth_pending_link',
+  NOTIFICATION_CONSENT = 'notification_consent'
+}
+
+export type CookieNamesType = (typeof CookieNames)[keyof typeof CookieNames]
+
+/**
+ * Security Headers
+ */
+export enum SecurityHeaders {
+  XSRF_TOKEN_HEADER = 'xsrf-token',
+  XSS_PROTECTION = 'X-XSS-Protection',
+  CONTENT_TYPE_OPTIONS = 'X-Content-Type-Options',
+  FRAME_OPTIONS = 'X-Frame-Options',
+  HSTS = 'Strict-Transport-Security',
+  CONTENT_SECURITY_POLICY = 'Content-Security-Policy',
+  CACHE_CONTROL = 'Cache-Control',
+  REFERRER_POLICY = 'Referrer-Policy',
+  PERMITTED_CROSS_DOMAIN_POLICIES = 'X-Permitted-Cross-Domain-Policies',
+  EXPECT_CT = 'Expect-CT'
+}
+
+export const REQUEST_USER_KEY = 'user'
+
+/**
+ * Verification types for OTP and short-lived tokens
+ */
 export enum TypeOfVerificationCode {
   REGISTER = 'REGISTER',
   RESET_PASSWORD = 'RESET_PASSWORD',
@@ -21,7 +75,8 @@ export enum TypeOfVerificationCode {
 export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof typeof TypeOfVerificationCode]
 
 /**
- * Enum phải giữ đồng bộ với schema.prisma
+ * Two-factor authentication methods
+ * Enum này phải giữ đồng bộ với schema.prisma:
  * enum TwoFactorMethodType {
  *   TOTP
  *   OTP
@@ -36,6 +91,9 @@ export enum TwoFactorMethodType {
 
 export type TwoFactorMethodTypeType = (typeof TwoFactorMethodType)[keyof typeof TwoFactorMethodType]
 
+/**
+ * Token types
+ */
 export enum TokenType {
   ACCESS = 'ACCESS',
   REFRESH = 'REFRESH',
@@ -44,12 +102,16 @@ export enum TokenType {
 
 export type TokenTypeType = (typeof TokenType)[keyof typeof TokenType]
 
-// Thời gian các token
+/**
+ * Thời gian các token
+ */
 export const OTP_EXPIRATION_TIME = 10 * 60 * 1000 // 10 phút
 export const MAX_OTP_ATTEMPTS = 5
 export const OTP_LENGTH = 6 // Độ dài mã OTP
 
-// Redis keys và prefixes
+/**
+ * Redis keys và prefixes
+ */
 export const SESSION_KEY_PREFIX = 'session:'
 export const SESSION_INVALIDATED_KEY_PREFIX = 'session:invalidated:'
 export const SESSION_ARCHIVED_KEY_PREFIX = 'session:archived:'

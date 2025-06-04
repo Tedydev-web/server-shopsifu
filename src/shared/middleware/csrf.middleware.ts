@@ -2,7 +2,7 @@ import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
 import csurf from 'csurf'
 import envConfig from '../config'
-import { SecurityHeaders } from '../constants/auth.constant'
+import { SecurityHeaders } from '../constants/auth.constants'
 
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {

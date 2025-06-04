@@ -1,28 +1,11 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  Patch,
-  Delete,
-  Query,
-  UseGuards,
-  HttpCode,
-  HttpStatus,
-  Logger,
-  Ip,
-  Res
-} from '@nestjs/common'
+import { Controller, Get, Post, Body, Param, Patch, Query, HttpCode, HttpStatus, Logger, Ip, Res } from '@nestjs/common'
 import { SessionsService } from './sessions.service'
-import { AccessTokenGuard } from 'src/routes/auth/guards/access-token.guard'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import {
   GetSessionsQueryDto,
   GetGroupedSessionsResponseDto,
-  RevokeSessionParamsDto,
   RevokeSessionsBodyDto,
   RevokeSessionsResponseDto,
   DeviceIdParamsDto,
@@ -31,14 +14,13 @@ import {
   TrustDeviceResponseDto,
   UntrustDeviceResponseDto,
   RevokeAllSessionsBodyDto
-} from './dto/session.dto'
+} from './session.dto'
 import { I18nService } from 'nestjs-i18n'
 import { DynamicZodSerializer } from 'src/shared/interceptor/dynamic-zod-serializer.interceptor'
-import { TypeOfVerificationCode } from 'src/routes/auth/constants/auth.constants'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { Response } from 'express'
 import { OtpService } from '../../modules/otp/otp.service'
 
-@UseGuards(AccessTokenGuard)
 @Controller('auth/sessions')
 export class SessionsController {
   private readonly logger = new Logger(SessionsController.name)

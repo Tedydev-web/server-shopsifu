@@ -1,22 +1,7 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Query,
-  Req,
-  Res,
-  UseGuards,
-  Ip,
-  HttpCode,
-  HttpStatus,
-  Logger
-} from '@nestjs/common'
+import { Controller, Get, Post, Body, Query, Req, Res, Ip, HttpCode, HttpStatus, Logger, Inject } from '@nestjs/common'
 import { Request, Response } from 'express'
-import { ZodSerializerDto } from 'nestjs-zod'
 import { SocialService } from './social.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
-import { AccessTokenGuard } from 'src/routes/auth/guards/access-token.guard'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import {
@@ -45,14 +30,14 @@ import {
   VerifyAuthenticationDto,
   VerifyAuthenticationResponseDto,
   VerifyAuthenticationResponseUnion
-} from './dto/social.dto'
+} from './social.dto'
 import { OtpService } from '../otp/otp.service'
-import { TypeOfVerificationCode } from 'src/routes/auth/constants/auth.constants'
-import { CookieService } from 'src/shared/services/cookie.service'
-import { TokenService } from 'src/shared/services/token.service'
-import { IsPublic } from 'src/routes/auth/decorators/auth.decorator'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
+import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import crypto from 'crypto'
-import { CookieNames } from 'src/shared/constants/auth.constant'
+import { CookieNames } from 'src/shared/constants/auth.constants'
+import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 
 @Controller('auth/social')
 export class SocialController {
@@ -61,8 +46,8 @@ export class SocialController {
   constructor(
     private readonly socialService: SocialService,
     private readonly otpService: OtpService,
-    private readonly cookieService: CookieService,
-    private readonly tokenService: TokenService
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService
   ) {}
 
   /**
@@ -308,7 +293,7 @@ export class SocialController {
     @Ip() ip: string,
     @ActiveUser() activeUser?: AccessTokenPayload
   ): Promise<VerifyAuthenticationResponseUnion> {
-    const { action, code, password, securityAnswer, rememberMe } = body
+    const { action, code, password, rememberMe } = body
     const sltToken = req.cookies?.slt_token
 
     this.logger.debug(`[verifyAuthentication] Xử lý action ${action}`)

@@ -76,8 +76,11 @@ export interface ICookieService {
 export interface ITokenService {
   signAccessToken(payload: any): string
   signRefreshToken(payload: any): string
+  signPendingLinkToken(payload: any): string
+  signShortLivedToken(payload: any): string
   verifyAccessToken(token: string): Promise<any>
   verifyRefreshToken(token: string): Promise<any>
+  verifyPendingLinkToken(token: string): Promise<any>
   invalidateSession(sessionId: string, reason?: string): Promise<void>
   extractTokenFromRequest(req: Request): string | null
   extractRefreshTokenFromRequest(req: Request): string | null
@@ -87,6 +90,10 @@ export interface ITokenService {
   isRefreshTokenJtiBlacklisted(refreshTokenJti: string): Promise<boolean>
   markRefreshTokenJtiAsUsed(refreshTokenJti: string, sessionId: string, ttlSeconds?: number): Promise<boolean>
   isSessionInvalidated(sessionId: string): Promise<boolean>
+  checkDeviceNeedsReverification(userId: number, deviceId: number): Promise<boolean>
+  clearDeviceReverification(userId: number, deviceId: number): Promise<void>
+  markDeviceForReverification(userId: number, deviceId: number, reason: string): Promise<void>
+  invalidateAllUserSessions(userId: number, reason?: string, sessionIdToExclude?: string): Promise<void>
 }
 
 export interface CookieConfig {

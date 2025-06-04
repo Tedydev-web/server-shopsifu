@@ -1,34 +1,19 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Delete,
-  Req,
-  Res,
-  HttpStatus,
-  HttpCode,
-  Logger,
-  UnauthorizedException,
-  BadRequestException,
-  Ip,
-  Inject,
-  forwardRef
-} from '@nestjs/common'
+import { Controller, Post, Body, Req, Res, HttpStatus, HttpCode, Logger, Ip, Inject, forwardRef } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { OtpService } from './otp.service'
-import { CookieService } from 'src/shared/services/cookie.service'
 import { I18nService } from 'nestjs-i18n'
 import { AuthError } from '../../auth.error'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
-import { SendOtpDto, VerifyOtpDto, SendOtpResponseDto, VerifyOtpResponseDto } from './dto/otp.dto'
+import { SendOtpDto, VerifyOtpDto, SendOtpResponseDto } from './otp.dto'
 import { CoreService } from '../core/core.service'
-import { TypeOfVerificationCode } from 'src/routes/auth/constants/auth.constants'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { SltContextData } from 'src/routes/auth/auth.types'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { SessionsService } from '../sessions/sessions.service'
-import { CookieNames } from 'src/shared/constants/auth.constant'
-import { IsPublic } from 'src/routes/auth/decorators/auth.decorator'
-import { TokenService } from 'src/shared/services/token.service'
+import { CookieNames } from 'src/shared/constants/auth.constants'
+import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 
 @Controller('auth/otp')
 export class OtpController {
@@ -36,12 +21,12 @@ export class OtpController {
 
   constructor(
     private readonly otpService: OtpService,
-    private readonly cookieService: CookieService,
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     private readonly i18nService: I18nService,
     private readonly coreService: CoreService,
     @Inject(forwardRef(() => SessionsService))
     private readonly sessionsService: SessionsService,
-    private readonly tokenService: TokenService
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService
   ) {}
 
   /**
@@ -65,11 +50,11 @@ export class OtpController {
       deviceId: 0, // Được cập nhật sau khi tìm device
       ipAddress: ip,
       userAgent,
-      purpose: type
+      purpose: type as TypeOfVerificationCode
     })
 
     // Set SLT cookie
-    this.cookieService.setSltCookie(res, sltJwt, type)
+    this.cookieService.setSltCookie(res, sltJwt, type as TypeOfVerificationCode)
 
     return {
       message: await this.i18nService.translate('Auth.Otp.SentSuccessfully')
@@ -100,7 +85,8 @@ export class OtpController {
       const sltContext = await this.otpService.verifySltOtpStage(sltCookieValue, body.code, ip, userAgent)
 
       // Xử lý dựa vào purpose trong SLT context
-      switch (sltContext.purpose) {
+      const purpose = sltContext.purpose as unknown as TypeOfVerificationCode
+      switch (purpose) {
         case TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP:
           return await this.handleLoginVerification(sltContext, body, res, ip, userAgent)
 
@@ -146,7 +132,10 @@ export class OtpController {
     const rememberMe = metadata.rememberMe || false
 
     // Xóa đánh dấu xác thực lại cho thiết bị nếu có
-    if (sltContext.purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP && sltContext.metadata?.deviceId) {
+    if (
+      String(sltContext.purpose) === String(TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) &&
+      sltContext.metadata?.deviceId
+    ) {
       try {
         await this.tokenService.clearDeviceReverification(sltContext.userId, sltContext.metadata.deviceId)
         this.logger.debug(`Cleared device reverification for device ${sltContext.metadata.deviceId}`)

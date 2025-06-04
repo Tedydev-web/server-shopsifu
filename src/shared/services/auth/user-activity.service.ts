@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
-import { UserAuthRepository } from '../repositories/user-auth.repository'
+import { EMAIL_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
+import { UserAuthRepository } from 'src/shared/repositories/auth'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 /**
  * Các loại hoạt động người dùng
@@ -68,7 +70,7 @@ export class UserActivityService {
   constructor(
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
-    private readonly emailService: EmailService,
+    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     private readonly userAuthRepository: UserAuthRepository
   ) {
     // Cấu hình quy tắc phát hiện
@@ -117,7 +119,7 @@ export class UserActivityService {
 
     try {
       // Lưu vào Redis danh sách hoạt động
-      const activityKey = `user:${activity.userId}:activities`
+      const activityKey = RedisKeyManager.userActivityKey(activity.userId)
       const activityJson = JSON.stringify({
         ...activity,
         timestamp: activity.timestamp || Date.now()
@@ -227,7 +229,7 @@ export class UserActivityService {
    * Kiểm tra một quy tắc cụ thể
    */
   private async checkRule(userId: number, rule: DetectionRule): Promise<boolean> {
-    const activityKey = `user:${userId}:activities`
+    const activityKey = RedisKeyManager.userActivityKey(userId)
     const activities = await this.redisService.lrange(activityKey, 0, 99)
 
     if (!activities || activities.length === 0) return false
@@ -253,7 +255,7 @@ export class UserActivityService {
       }
     }
 
-    // Kiểm tra số lượng
+    // Kiểm tra số lượng hoạt động có vượt ngưỡng không
     return relevantActivities.length >= rule.threshold
   }
 
@@ -261,22 +263,19 @@ export class UserActivityService {
    * Xử lý đăng nhập thất bại
    */
   private async handleLoginFailure(activity: UserActivity): Promise<void> {
-    const { userId, ipAddress } = activity
+    // Tăng số lần đăng nhập thất bại
+    const failureKey = RedisKeyManager.loginFailuresKey(activity.userId)
+    const currentFailures = await this.redisService.get(failureKey)
+    const failureCount = currentFailures ? parseInt(currentFailures, 10) + 1 : 1
 
-    // Tăng bộ đếm đăng nhập thất bại
-    const failureKey = `user:${userId}:login_failures`
-    const failureCount = await this.redisService.incr(failureKey)
+    // Lưu vào Redis với thời gian hết hạn
+    await this.redisService.set(failureKey, failureCount.toString(), 'EX', 60 * 30) // Hết hạn sau 30 phút
 
-    // Thiết lập TTL nếu là lượt thất bại đầu tiên
-    if (failureCount === 1) {
-      await this.redisService.expire(failureKey, 60 * 30) // Hết hạn sau 30 phút
-    }
+    this.logger.debug(`[handleLoginFailure] User ${activity.userId} has ${failureCount} failed login attempts`)
 
-    this.logger.debug(`[handleLoginFailure] User ${userId} has ${failureCount} login failures`)
-
-    // Kiểm tra có cần khóa tài khoản không
+    // Nếu đạt ngưỡng khóa tài khoản
     if (failureCount >= this.maxLoginAttemptsBeforeLock) {
-      await this.lockAccount(userId, activity)
+      this.logger.warn(`[handleLoginFailure] User ${activity.userId} reached max login attempts, locking account`)
     }
   }
 
@@ -284,43 +283,53 @@ export class UserActivityService {
    * Xử lý đăng nhập thành công
    */
   private async handleLoginSuccess(activity: UserActivity): Promise<void> {
-    const { userId } = activity
-
-    // Xóa bộ đếm đăng nhập thất bại
-    const failureKey = `user:${userId}:login_failures`
+    // Xóa số lần đăng nhập thất bại
+    const failureKey = RedisKeyManager.loginFailuresKey(activity.userId)
     await this.redisService.del(failureKey)
 
-    // Xóa trạng thái khóa tài khoản nếu có
-    const lockKey = `user:${userId}:account_locked`
-    await this.redisService.del(lockKey)
+    // Cập nhật thời gian đăng nhập cuối
+    const lastLoginKey = RedisKeyManager.lastLoginKey(activity.userId)
+    await this.redisService.set(
+      lastLoginKey,
+      JSON.stringify({
+        timestamp: activity.timestamp || Date.now(),
+        ipAddress: activity.ipAddress,
+        userAgent: activity.userAgent,
+        location: activity.location
+      })
+    )
   }
 
   /**
    * Xử lý thay đổi mật khẩu
    */
   private async handlePasswordChanged(activity: UserActivity): Promise<void> {
-    // Đo thời gian giữa các lần thay đổi mật khẩu
-    const { userId } = activity
-    const key = `user:${userId}:last_password_change`
-
     try {
-      const lastChange = await this.redisService.get(key)
+      const user = await this.userAuthRepository.findById(activity.userId)
+      if (!user) return
 
-      if (lastChange) {
-        const lastChangeTime = parseInt(lastChange, 10)
-        const timeSinceLastChange = Date.now() - lastChangeTime
-        const hoursSinceLastChange = timeSinceLastChange / (1000 * 60 * 60)
+      // Gửi thông báo cho người dùng
+      await this.emailService.sendSecurityAlertEmail(SecurityAlertType.PASSWORD_CHANGED, user.email, {
+        userName: user.userProfile?.firstName || user.email.split('@')[0],
+        timestamp: new Date(activity.timestamp || Date.now()).toISOString(),
+        ipAddress: activity.ipAddress || 'Unknown',
+        location: activity.location || 'Unknown location',
+        deviceInfo: activity.userAgent ? this.extractDeviceInfo(activity.userAgent) : 'Unknown device'
+      })
 
-        // Nếu thay đổi quá nhanh (dưới 24h), có thể đáng ngờ
-        if (hoursSinceLastChange < 24) {
-          this.logger.warn(
-            `[handlePasswordChanged] User ${userId} changed password again after only ${hoursSinceLastChange.toFixed(2)} hours`
-          )
-        }
-      }
+      this.logger.debug(`[handlePasswordChanged] Sent password change notification to user ${activity.userId}`)
 
-      // Cập nhật thời gian thay đổi mật khẩu
-      await this.redisService.set(key, Date.now().toString())
+      // Lưu lịch sử thay đổi mật khẩu
+      const passwordChangeKey = RedisKeyManager.passwordChangesKey(activity.userId)
+      await this.redisService.lpush(
+        passwordChangeKey,
+        JSON.stringify({
+          timestamp: activity.timestamp || Date.now(),
+          ipAddress: activity.ipAddress,
+          userAgent: activity.userAgent
+        })
+      )
+      await this.redisService.ltrim(passwordChangeKey, 0, 9) // Giữ 10 lần thay đổi gần nhất
     } catch (error) {
       this.logger.error(`[handlePasswordChanged] Error: ${error.message}`)
     }
@@ -330,55 +339,67 @@ export class UserActivityService {
    * Xử lý thay đổi email
    */
   private async handleEmailChanged(activity: UserActivity): Promise<void> {
-    // Tương tự như thay đổi mật khẩu
-    const { userId } = activity
-    const key = `user:${userId}:last_email_change`
-
     try {
-      const lastChange = await this.redisService.get(key)
+      const user = await this.userAuthRepository.findById(activity.userId)
+      if (!user) return
 
-      if (lastChange) {
-        const lastChangeTime = parseInt(lastChange, 10)
-        const timeSinceLastChange = Date.now() - lastChangeTime
-        const daysSinceLastChange = timeSinceLastChange / (1000 * 60 * 60 * 24)
+      // Thông tin email cũ và mới
+      const oldEmail = activity.details?.oldEmail
+      const newEmail = activity.details?.newEmail || user.email
 
-        // Nếu thay đổi quá nhanh (dưới 7 ngày), có thể đáng ngờ
-        if (daysSinceLastChange < 7) {
-          this.logger.warn(
-            `[handleEmailChanged] User ${userId} changed email again after only ${daysSinceLastChange.toFixed(2)} days`
-          )
-        }
+      // Gửi thông báo cho cả email cũ và mới
+      if (oldEmail) {
+        await this.emailService.sendSecurityAlertEmail(SecurityAlertType.EMAIL_CHANGED, oldEmail, {
+          userName: user.userProfile?.firstName || oldEmail.split('@')[0],
+          timestamp: new Date(activity.timestamp || Date.now()).toISOString(),
+          ipAddress: activity.ipAddress || 'Unknown',
+          location: activity.location || 'Unknown location',
+          deviceInfo: activity.userAgent ? this.extractDeviceInfo(activity.userAgent) : 'Unknown device',
+          oldEmail,
+          newEmail
+        })
       }
 
-      // Cập nhật thời gian thay đổi email
-      await this.redisService.set(key, Date.now().toString())
+      await this.emailService.sendSecurityAlertEmail(SecurityAlertType.EMAIL_CHANGED, newEmail, {
+        userName: user.userProfile?.firstName || newEmail.split('@')[0],
+        timestamp: new Date(activity.timestamp || Date.now()).toISOString(),
+        ipAddress: activity.ipAddress || 'Unknown',
+        location: activity.location || 'Unknown location',
+        deviceInfo: activity.userAgent ? this.extractDeviceInfo(activity.userAgent) : 'Unknown device',
+        oldEmail,
+        newEmail
+      })
+
+      this.logger.debug(`[handleEmailChanged] Sent email change notifications for user ${activity.userId}`)
     } catch (error) {
       this.logger.error(`[handleEmailChanged] Error: ${error.message}`)
     }
   }
 
   /**
-   * Xử lý thay đổi 2FA
+   * Xử lý thay đổi xác thực hai yếu tố
    */
   private async handleTwoFactorChange(activity: UserActivity): Promise<void> {
-    // Gửi thông báo cho người dùng về thay đổi bảo mật quan trọng
     try {
       const user = await this.userAuthRepository.findById(activity.userId)
       if (!user) return
 
-      const alertType =
-        activity.type === UserActivityType.TWO_FACTOR_ENABLED
-          ? SecurityAlertType.TWO_FACTOR_ENABLED
-          : SecurityAlertType.TWO_FACTOR_DISABLED
+      const isEnabled = activity.type === UserActivityType.TWO_FACTOR_ENABLED
+      const alertType = isEnabled ? SecurityAlertType.TWO_FACTOR_ENABLED : SecurityAlertType.TWO_FACTOR_DISABLED
 
       await this.emailService.sendSecurityAlertEmail(alertType, user.email, {
         userName: user.userProfile?.firstName || user.email.split('@')[0],
-        ipAddress: activity.ipAddress,
-        time: new Date().toISOString(),
-        location: activity.location || 'Unknown location'
+        timestamp: new Date(activity.timestamp || Date.now()).toISOString(),
+        ipAddress: activity.ipAddress || 'Unknown',
+        location: activity.location || 'Unknown location',
+        deviceInfo: activity.userAgent ? this.extractDeviceInfo(activity.userAgent) : 'Unknown device'
       })
+
+      this.logger.debug(
+        `[handleTwoFactorChange] Sent 2FA ${isEnabled ? 'enabled' : 'disabled'} notification to user ${activity.userId}`
+      )
     } catch (error) {
-      this.logger.error(`[handleTwoFactorChange] Error sending notification: ${error.message}`)
+      this.logger.error(`[handleTwoFactorChange] Error: ${error.message}`)
     }
   }
 
@@ -387,38 +408,49 @@ export class UserActivityService {
    */
   private async lockAccount(userId: number, activity: UserActivity): Promise<void> {
     try {
-      const user = await this.userAuthRepository.findById(userId)
-      if (!user) return
+      // Đặt khóa tài khoản trong Redis
+      const lockKey = RedisKeyManager.accountLockKey(userId)
+      await this.redisService.set(
+        lockKey,
+        JSON.stringify({
+          lockedAt: Date.now(),
+          reason: 'Too many failed login attempts',
+          ipAddress: activity.ipAddress,
+          userAgent: activity.userAgent
+        }),
+        'EX',
+        60 * this.loginLockoutMinutes
+      )
 
-      // Tạo khóa tài khoản
-      const lockKey = `user:${userId}:account_locked`
-      await this.redisService.set(lockKey, 'true', 'EX', 60 * this.loginLockoutMinutes)
-
-      // Ghi lại hoạt động khóa
+      // Ghi lại hoạt động khóa tài khoản
       await this.logActivity({
         userId,
         type: UserActivityType.ACCOUNT_LOCKED,
         timestamp: Date.now(),
         ipAddress: activity.ipAddress,
         userAgent: activity.userAgent,
-        deviceId: activity.deviceId,
         severity: ActivitySeverity.CRITICAL,
         details: {
-          lockoutMinutes: this.loginLockoutMinutes,
-          reason: 'Quá nhiều lần đăng nhập thất bại'
+          reason: 'Too many failed login attempts',
+          lockoutMinutes: this.loginLockoutMinutes
         }
       })
 
       // Thông báo cho người dùng
-      await this.emailService.sendSecurityAlertEmail(SecurityAlertType.ACCOUNT_LOCKED, user.email, {
-        userName: user.userProfile?.firstName || user.email.split('@')[0],
-        ipAddress: activity.ipAddress || 'Unknown',
-        location: activity.location || 'Unknown location',
-        time: new Date().toISOString(),
-        lockoutMinutes: this.loginLockoutMinutes
-      })
+      const user = await this.userAuthRepository.findById(userId)
+      if (user) {
+        await this.emailService.sendSecurityAlertEmail(SecurityAlertType.ACCOUNT_LOCKED, user.email, {
+          userName: user.userProfile?.firstName || user.email.split('@')[0],
+          timestamp: new Date().toISOString(),
+          ipAddress: activity.ipAddress || 'Unknown',
+          location: activity.location || 'Unknown location',
+          deviceInfo: activity.userAgent ? this.extractDeviceInfo(activity.userAgent) : 'Unknown device',
+          lockoutMinutes: this.loginLockoutMinutes,
+          reason: 'Too many failed login attempts'
+        })
+      }
 
-      this.logger.warn(`[lockAccount] Account locked for user ${userId} due to too many login failures`)
+      this.logger.warn(`[lockAccount] Account locked for user ${userId} due to failed login attempts`)
     } catch (error) {
       this.logger.error(`[lockAccount] Error: ${error.message}`)
     }
@@ -428,31 +460,37 @@ export class UserActivityService {
    * Kiểm tra xem tài khoản có bị khóa không
    */
   async isAccountLocked(userId: number): Promise<boolean> {
-    const lockKey = `user:${userId}:account_locked`
+    const lockKey = RedisKeyManager.accountLockKey(userId)
     return (await this.redisService.exists(lockKey)) > 0
   }
 
   /**
-   * Mở khóa tài khoản
+   * Mở khóa tài khoản người dùng
    */
   async unlockAccount(userId: number, adminId?: number): Promise<void> {
-    // Xóa trạng thái khóa
-    const lockKey = `user:${userId}:account_locked`
-    await this.redisService.del(lockKey)
+    try {
+      const lockKey = RedisKeyManager.accountLockKey(userId)
+      const lockData = await this.redisService.get(lockKey)
 
-    // Ghi lại hoạt động mở khóa
-    await this.logActivity({
-      userId,
-      type: UserActivityType.ACCOUNT_UNLOCKED,
-      timestamp: Date.now(),
-      severity: ActivitySeverity.INFO,
-      details: {
-        unlockedBy: adminId || 'system',
-        automaticUnlock: !adminId
-      }
-    })
+      // Xóa khóa tài khoản
+      await this.redisService.del(lockKey)
 
-    this.logger.debug(`[unlockAccount] Account unlocked for user ${userId}`)
+      // Ghi lại hoạt động mở khóa
+      await this.logActivity({
+        userId,
+        type: UserActivityType.ACCOUNT_UNLOCKED,
+        timestamp: Date.now(),
+        severity: ActivitySeverity.INFO,
+        details: {
+          unlockedBy: adminId ? `Admin (ID: ${adminId})` : 'System (automatic)',
+          previousLockData: lockData ? JSON.parse(lockData) : null
+        }
+      })
+
+      this.logger.log(`[unlockAccount] Account unlocked for user ${userId}`)
+    } catch (error) {
+      this.logger.error(`[unlockAccount] Error: ${error.message}`)
+    }
   }
 
   /**
@@ -467,31 +505,32 @@ export class UserActivityService {
       const user = await this.userAuthRepository.findById(userId)
       if (!user) return
 
-      // Kiểm tra xem đã thông báo gần đây chưa
-      const notificationKey = `user:${userId}:suspicious_notification:${rule.name}`
+      // Kiểm tra đã thông báo gần đây chưa để tránh spam
+      const notificationKey = RedisKeyManager.suspiciousActivityNotificationKey(userId, rule.type)
       const lastNotification = await this.redisService.get(notificationKey)
 
       if (lastNotification) {
-        // Đã thông báo trong vòng 24h gần đây, không gửi tiếp
+        // Đã thông báo trong vòng 1 giờ, không gửi lại
         return
       }
 
       // Gửi email thông báo
       await this.emailService.sendSecurityAlertEmail(SecurityAlertType.SUSPICIOUS_ACTIVITY, user.email, {
         userName: user.userProfile?.firstName || user.email.split('@')[0],
-        activityType: this.getUserFriendlyActivityName(activity.type),
+        timestamp: new Date(activity.timestamp || Date.now()).toISOString(),
         ipAddress: activity.ipAddress || 'Unknown',
         location: activity.location || 'Unknown location',
-        time: new Date().toISOString(),
-        ruleName: rule.name,
+        deviceInfo: activity.userAgent ? this.extractDeviceInfo(activity.userAgent) : 'Unknown device',
+        activityType: this.getUserFriendlyActivityName(activity.type),
+        suspiciousDetails: rule.name,
         severity: rule.severity
       })
 
-      // Đánh dấu đã thông báo (trong 24h)
-      await this.redisService.set(notificationKey, Date.now().toString(), 'EX', 60 * 60 * 24)
+      // Đánh dấu đã thông báo (1 giờ)
+      await this.redisService.set(notificationKey, Date.now().toString(), 'EX', 60 * 60)
 
       this.logger.debug(
-        `[notifyUserAboutSuspiciousActivity] Notification sent to user ${userId} about rule violation: ${rule.name}`
+        `[notifyUserAboutSuspiciousActivity] Sent suspicious activity notification to user ${userId} for rule "${rule.name}"`
       )
     } catch (error) {
       this.logger.error(`[notifyUserAboutSuspiciousActivity] Error: ${error.message}`)
@@ -499,16 +538,16 @@ export class UserActivityService {
   }
 
   /**
-   * Lấy tên người dùng thân thiện cho loại hoạt động
+   * Chuyển đổi loại hoạt động thành tên thân thiện với người dùng
    */
   private getUserFriendlyActivityName(activityType: UserActivityType): string {
     switch (activityType) {
       case UserActivityType.LOGIN_ATTEMPT:
-        return 'Cố gắng đăng nhập'
-      case UserActivityType.LOGIN_FAILURE:
-        return 'Đăng nhập thất bại'
+        return 'Đăng nhập'
       case UserActivityType.LOGIN_SUCCESS:
         return 'Đăng nhập thành công'
+      case UserActivityType.LOGIN_FAILURE:
+        return 'Đăng nhập thất bại'
       case UserActivityType.PASSWORD_CHANGED:
         return 'Thay đổi mật khẩu'
       case UserActivityType.EMAIL_CHANGED:
@@ -520,7 +559,7 @@ export class UserActivityService {
       case UserActivityType.TWO_FACTOR_DISABLED:
         return 'Tắt xác thực hai yếu tố'
       case UserActivityType.RECOVERY_ATTEMPT:
-        return 'Cố gắng khôi phục tài khoản'
+        return 'Khôi phục tài khoản'
       case UserActivityType.SUSPICIOUS_ACTIVITY:
         return 'Hoạt động đáng ngờ'
       case UserActivityType.ACCOUNT_LOCKED:
@@ -533,6 +572,48 @@ export class UserActivityService {
   }
 
   /**
+   * Trích xuất thông tin thiết bị từ user agent
+   */
+  private extractDeviceInfo(userAgent: string): string {
+    if (!userAgent) return 'Unknown device'
+
+    let deviceInfo = 'Unknown device'
+
+    // Trích xuất thông tin thiết bị
+    if (/iPhone/i.test(userAgent)) {
+      deviceInfo = 'iPhone'
+    } else if (/iPad/i.test(userAgent)) {
+      deviceInfo = 'iPad'
+    } else if (/Android/i.test(userAgent)) {
+      deviceInfo = 'Android device'
+    } else if (/Windows/i.test(userAgent)) {
+      deviceInfo = 'Windows device'
+    } else if (/Mac/i.test(userAgent)) {
+      deviceInfo = 'Mac'
+    } else if (/Linux/i.test(userAgent)) {
+      deviceInfo = 'Linux device'
+    }
+
+    // Trích xuất thông tin trình duyệt
+    let browserInfo = ''
+    if (/Chrome/i.test(userAgent) && !/Chromium|OPR|Edge/i.test(userAgent)) {
+      browserInfo = 'Chrome'
+    } else if (/Firefox/i.test(userAgent)) {
+      browserInfo = 'Firefox'
+    } else if (/Safari/i.test(userAgent) && !/Chrome|Chromium|Edge/i.test(userAgent)) {
+      browserInfo = 'Safari'
+    } else if (/Edge/i.test(userAgent)) {
+      browserInfo = 'Edge'
+    } else if (/Opera|OPR/i.test(userAgent)) {
+      browserInfo = 'Opera'
+    } else if (/MSIE|Trident/i.test(userAgent)) {
+      browserInfo = 'Internet Explorer'
+    }
+
+    return browserInfo ? `${deviceInfo} (${browserInfo})` : deviceInfo
+  }
+
+  /**
    * Lấy lịch sử hoạt động của người dùng
    */
   async getUserActivityHistory(
@@ -541,27 +622,33 @@ export class UserActivityService {
     activityTypes?: UserActivityType[]
   ): Promise<UserActivity[]> {
     try {
-      const activityKey = `user:${userId}:activities`
+      const activityKey = RedisKeyManager.userActivityKey(userId)
       const activities = await this.redisService.lrange(activityKey, 0, limit - 1)
 
-      if (!activities || activities.length === 0) return []
+      if (!activities || activities.length === 0) {
+        return []
+      }
 
-      const parsedActivities: UserActivity[] = []
+      const result: UserActivity[] = []
 
       for (const activityJson of activities) {
         try {
           const activity = JSON.parse(activityJson) as UserActivity
 
           // Lọc theo loại hoạt động nếu có
-          if (!activityTypes || activityTypes.includes(activity.type)) {
-            parsedActivities.push(activity)
+          if (activityTypes && activityTypes.length > 0) {
+            if (!activityTypes.includes(activity.type)) {
+              continue
+            }
           }
+
+          result.push(activity)
         } catch (error) {
           this.logger.error(`[getUserActivityHistory] Error parsing activity: ${error.message}`)
         }
       }
 
-      return parsedActivities
+      return result
     } catch (error) {
       this.logger.error(`[getUserActivityHistory] Error: ${error.message}`)
       return []

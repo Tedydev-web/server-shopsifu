@@ -8,15 +8,15 @@ import {
   Post,
   Req,
   Res,
-  UseGuards,
-  HttpException
+  HttpException,
+  Inject
 } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { I18nService, I18nContext } from 'nestjs-i18n'
 
 import { CoreService } from './core.service'
-import { TypeOfVerificationCode } from 'src/routes/auth/constants/auth.constants'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import {
   CompleteRegistrationDto,
   InitiateRegistrationDto,
@@ -26,17 +26,16 @@ import {
   RefreshTokenDto,
   RefreshTokenResponseDto,
   RegistrationResponseDto
-} from './dto/auth.dto'
+} from './auth.dto'
 import { OtpService } from '../otp/otp.service'
-import { CookieService } from 'src/shared/services/cookie.service'
-import { TokenService } from 'src/shared/services/token.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
-import { AccessTokenGuard } from 'src/routes/auth/guards/access-token.guard'
 import { AuthError } from 'src/routes/auth/auth.error'
-import { CookieNames } from 'src/shared/constants/auth.constant'
+import { CookieNames } from 'src/shared/constants/auth.constants'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { IsPublic } from 'src/routes/auth/decorators/auth.decorator'
+import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 
 @Controller('auth')
 export class CoreController {
@@ -45,8 +44,8 @@ export class CoreController {
   constructor(
     private readonly coreService: CoreService,
     private readonly otpService: OtpService,
-    private readonly cookieService: CookieService,
-    private readonly tokenService: TokenService,
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly i18nService: I18nService
   ) {}
 
@@ -267,7 +266,6 @@ export class CoreController {
    * Đăng xuất
    */
   @Post('logout')
-  @UseGuards(AccessTokenGuard)
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResponseDto)
   async logout(

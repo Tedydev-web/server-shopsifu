@@ -1,7 +1,5 @@
 import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { TokenService } from 'src/shared/services/token.service'
-import { CookieService } from 'src/shared/services/cookie.service'
 import { I18nService } from 'nestjs-i18n'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { Response, Request } from 'express'
@@ -9,12 +7,12 @@ import * as crypto from 'crypto'
 import { OAuth2Client, TokenPayload } from 'google-auth-library'
 import { v4 as uuidv4 } from 'uuid'
 import { AuthError } from 'src/routes/auth/auth.error'
-import { CookieNames } from 'src/shared/constants/auth.constant'
-import { UserAuthRepository } from '../../repositories/user-auth.repository'
-import { DeviceRepository } from '../../repositories/device.repository'
-import { SessionRepository } from '../../repositories/session.repository'
-import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
-import { TypeOfVerificationCode } from 'src/routes/auth/constants/auth.constants'
+import { CookieNames } from 'src/shared/constants/auth.constants'
+import { UserAuthRepository } from 'src/shared/repositories/auth/user-auth.repository'
+import { DeviceRepository } from 'src/shared/repositories/auth/device.repository'
+import { SessionRepository } from 'src/shared/repositories/auth/session.repository'
+import { SecurityAlertType } from 'src/shared/services/email.service'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
 import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
 import {
@@ -23,6 +21,8 @@ import {
   GoogleCallbackErrorResult,
   GoogleCallbackAccountExistsWithoutLinkResult
 } from '../../auth.types'
+import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 
 /**
  * Interface để lưu thông tin state khi tạo URL xác thực Google
@@ -42,14 +42,14 @@ export class SocialService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly tokenService: TokenService,
-    private readonly cookieService: CookieService,
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     private readonly i18nService: I18nService,
     private readonly hashingService: HashingService,
     private readonly userAuthRepository: UserAuthRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly sessionRepository: SessionRepository,
-    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
+    @Inject(EMAIL_SERVICE) private readonly emailService: any,
     private readonly otpService: OtpService
   ) {
     this.initOAuth2Client()

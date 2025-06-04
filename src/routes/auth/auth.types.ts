@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { TypeOfVerificationCodeType, TwoFactorMethodTypeType } from './constants/auth.constants'
+import { TypeOfVerificationCodeType, TwoFactorMethodTypeType } from 'src/shared/constants/auth.constants'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { User, Device, Role, UserProfile } from '@prisma/client'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'

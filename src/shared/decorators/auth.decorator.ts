@@ -1,5 +1,5 @@
 import { SetMetadata, applyDecorators } from '@nestjs/common'
-import { AuthType, ConditionGuard } from 'src/shared/constants/auth.constant'
+import { AuthType, ConditionGuard } from 'src/shared/constants/auth.constants'
 
 // Auth Type Decorator
 export const AUTH_TYPE_KEY = 'auth_type'
@@ -26,5 +26,7 @@ export const IsPublic = () => applyDecorators(SetMetadata('is_public', true))
 export const ROLES_KEY = 'roles'
 export const RolesAllowed = (...roles: string[]) => applyDecorators(SetMetadata('roles', roles))
 
+// Permissions decorator
+export const PERMISSIONS_KEY = 'permissions'
 export const PermissionsRequired = (...permissions: string[]) =>
-  applyDecorators(SetMetadata('permissions', permissions))
+  applyDecorators(SetMetadata(PERMISSIONS_KEY, permissions))

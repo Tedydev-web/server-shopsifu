@@ -657,4 +657,19 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       throw error
     }
   }
+
+  /**
+   * Thực thi một lệnh Redis tùy chỉnh
+   * @param command Tên lệnh Redis
+   * @param args Các tham số của lệnh
+   * @returns Kết quả của lệnh
+   */
+  async exec(command: string, args: any[] = []): Promise<any> {
+    try {
+      return await this.redisClient.call(command, ...args)
+    } catch (error) {
+      this.logger.error(`Redis ${command} error: ${error.message}`)
+      throw error
+    }
+  }
 }

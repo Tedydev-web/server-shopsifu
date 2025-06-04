@@ -3,13 +3,14 @@ import { OtpController } from './otp.controller'
 import { OtpService } from './otp.service'
 import { CoreModule } from '../core/core.module'
 import { SessionsModule } from '../sessions/sessions.module'
-import { TokenService } from 'src/shared/services/token.service'
 import { JwtModule } from '@nestjs/jwt'
 import { ConfigModule, ConfigService } from '@nestjs/config'
+import { TOKEN_SERVICE, COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
+import { CookieService } from 'src/shared/services/cookie.service'
 
 @Module({
   imports: [
-    CoreModule,
+    forwardRef(() => CoreModule),
     forwardRef(() => SessionsModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -23,7 +24,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
     })
   ],
   controllers: [OtpController],
-  providers: [OtpService, TokenService],
+  providers: [
+    OtpService,
+    {
+      provide: COOKIE_SERVICE,
+      useClass: CookieService
+    }
+  ],
   exports: [OtpService]
 })
 export class OtpModule {}
