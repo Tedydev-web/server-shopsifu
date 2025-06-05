@@ -1,6 +1,8 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common'
 import { Observable } from 'rxjs'
 import { map } from 'rxjs/operators'
+import { I18nTranslations, I18nPath } from '../../generated/i18n.generated'
+import { I18nService } from 'nestjs-i18n'
 
 export interface StandardSuccessResponse<T> {
   statusCode: number
@@ -12,6 +14,8 @@ export interface StandardSuccessResponse<T> {
 export class TransformInterceptor<T = any>
   implements NestInterceptor<T | { message: string; data?: T }, StandardSuccessResponse<T>>
 {
+  constructor(private readonly i18nService: I18nService<I18nTranslations>) {}
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<StandardSuccessResponse<T>> {
     return next.handle().pipe(
       map((responseData) => {
@@ -19,7 +23,7 @@ export class TransformInterceptor<T = any>
         const response = ctx.getResponse()
         const statusCode = response.statusCode
 
-        let messageKey = 'Global.Success'
+        let messageKey = this.i18nService.t('global.success.general.default')
         let dataPayload: T | undefined = undefined
 
         if (responseData && typeof responseData === 'object') {

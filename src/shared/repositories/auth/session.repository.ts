@@ -119,58 +119,77 @@ export class SessionRepository {
   async findSessionsByUserId(userId: number, options: SessionPaginationOptions): Promise<SessionPaginationResult> {
     const { page = 1, limit = 10 } = options
 
-    const allKeys = await this.redisService.keys(RedisKeyManager.sessionKey('*'))
-    const allSessions: Session[] = []
+    const userSessionIdsKey = RedisKeyManager.userSessionsKey(userId)
+    // Lấy danh sách các session ID từ SET của user
+    const sessionIds = await this.redisService.smembers(userSessionIdsKey)
 
-    // Sử dụng batch process để lấy nhiều session cùng một lúc
-    const batchSize = 10 // Số session xử lý trong một batch
-    const batches: string[][] = []
-
-    for (let i = 0; i < allKeys.length; i += batchSize) {
-      const batchKeys = allKeys.slice(i, i + batchSize)
-      batches.push(batchKeys)
-    }
-
-    for (const batch of batches) {
-      const operations: RedisOperation[] = batch.map((key) => ({
-        command: 'hgetall',
-        args: [key]
-      }))
-
-      const results = await this.redisService.batchProcess(operations)
-
-      // Xử lý kết quả của mỗi session trong batch
-      for (let i = 0; i < results.length; i++) {
-        const sessionData = results[i]
-        if (!sessionData) continue
-
-        const sessionId = batch[i].replace(RedisKeyManager.sessionKey('').replace('*', ''), '')
-
-        if (sessionData.userId === userId.toString()) {
-          const sessionObj = this.mapRedisDataToSession(sessionData, sessionId)
-          if (sessionObj) {
-            allSessions.push(sessionObj)
-          }
-        }
+    if (!sessionIds || sessionIds.length === 0) {
+      return {
+        data: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0
       }
     }
 
-    this.logger.debug(`[findSessionsByUserId] Found ${allSessions.length} sessions for user ${userId}`)
+    const allSessions: Session[] = []
+    const operations: RedisOperation[] = sessionIds.map((id) => ({
+      command: 'hgetall',
+      args: [RedisKeyManager.sessionKey(id)]
+    }))
+
+    // Sử dụng batchProcess để lấy dữ liệu của tất cả các session
+    const results = await this.redisService.batchProcess(operations)
+
+    for (let i = 0; i < results.length; i++) {
+      const sessionData = results[i]
+      const sessionId = sessionIds[i] // ID tương ứng với kết quả
+
+      if (sessionData && Object.keys(sessionData).length > 0 && sessionData.userId === userId.toString()) {
+        // Kiểm tra sessionData.userId vì smembers chỉ trả về ID, HGETALL mới có chi tiết
+        // và để đảm bảo an toàn hơn, mặc dù về lý thuyết userSessionsKey đã đúng user
+        const sessionObj = this.mapRedisDataToSession(sessionData, sessionId)
+        if (sessionObj) {
+          allSessions.push(sessionObj)
+        }
+      } else if (sessionData && Object.keys(sessionData).length > 0 && sessionData.userId !== userId.toString()) {
+        // Trường hợp hiếm: session ID có trong set của user này nhưng dữ liệu HASH lại của user khác?
+        // Hoặc session ID không hợp lệ. Cần ghi log và có thể xóa khỏi set của user.
+        this.logger.warn(
+          `[findSessionsByUserId] Session ID ${sessionId} from user set ${userSessionIdsKey} ` +
+            `has mismatched userId in its HASH data (${sessionData.userId} vs ${userId}). ` +
+            `Consider removing it from the set.`
+        )
+        // await this.redisService.srem(userSessionIdsKey, sessionId); // Cân nhắc tự động dọn dẹp
+      } else if (!sessionData || Object.keys(sessionData).length === 0) {
+        // Session ID có trong set nhưng không tìm thấy HASH data (có thể đã hết hạn hoặc bị xóa không đúng cách)
+        this.logger.warn(
+          `[findSessionsByUserId] Session ID ${sessionId} from user set ${userSessionIdsKey} ` +
+            `did not have corresponding HASH data. Consider removing it from the set.`
+        )
+        // await this.redisService.srem(userSessionIdsKey, sessionId); // Cân nhắc tự động dọn dẹp
+      }
+    }
+
+    this.logger.debug(
+      `[findSessionsByUserId] Found ${allSessions.length} sessions for user ${userId} after fetching details.`
+    )
 
     // Sắp xếp theo lastActive giảm dần (mới nhất trước)
     allSessions.sort((a, b) => b.lastActive.getTime() - a.lastActive.getTime())
 
     // Tính toán phân trang
+    const totalItems = allSessions.length
     const startIndex = (page - 1) * limit
-    const endIndex = startIndex + limit
-    const paginatedSessions = allSessions.slice(startIndex, endIndex)
+    const paginatedSessions = allSessions.slice(startIndex, startIndex + limit)
 
     return {
       data: paginatedSessions,
-      total: allSessions.length,
+      total: totalItems,
       page,
       limit,
-      totalPages: Math.ceil(allSessions.length / limit)
+      totalPages: Math.ceil(totalItems / limit)
     }
   }
 
@@ -345,74 +364,92 @@ export class SessionRepository {
    * Xóa một session
    */
   async deleteSession(sessionId: string): Promise<void> {
-    await this.archiveSession(sessionId) // Lưu trữ trước khi xóa
+    const session = await this.findById(sessionId) // Lấy thông tin session trước khi xóa
+    if (session) {
+      await this.archiveSession(sessionId) // Lưu trữ trước khi xóa
+      // Xóa session khỏi chỉ mục user và device
+      await this.redisService.srem(RedisKeyManager.userSessionsKey(session.userId), sessionId)
+      await this.redisService.srem(RedisKeyManager.deviceSessionsKey(session.deviceId), sessionId)
+    }
     const key = RedisKeyManager.sessionKey(sessionId)
     await this.redisService.del(key)
-    this.logger.debug(`Session ${sessionId} deleted`)
+    this.logger.debug(`Session ${sessionId} deleted and removed from indexes`)
   }
 
   /**
    * Xóa tất cả session của một user
    */
   async deleteAllUserSessions(userId: number, excludeSessionId?: string): Promise<{ count: number }> {
-    // Lấy tất cả session keys
-    const allKeys = await this.redisService.keys(RedisKeyManager.sessionKey('*'))
-    let deletedCount = 0
+    const userSessionIdsKey = RedisKeyManager.userSessionsKey(userId)
+    const sessionIdsToDelete = await this.redisService.smembers(userSessionIdsKey)
 
-    // Xử lý theo batch để tránh làm quá tải Redis
-    const batchSize = 10
-    const batches: string[][] = []
-
-    for (let i = 0; i < allKeys.length; i += batchSize) {
-      const batchKeys = allKeys.slice(i, i + batchSize)
-      batches.push(batchKeys)
+    if (!sessionIdsToDelete || sessionIdsToDelete.length === 0) {
+      this.logger.debug(`[deleteAllUserSessions] No sessions found for user ${userId} in index ${userSessionIdsKey}`)
+      return { count: 0 }
     }
 
-    for (const batch of batches) {
-      const operations: RedisOperation[] = batch.map((key) => ({
-        command: 'hgetall',
-        args: [key]
-      }))
+    let deletedCount = 0
+    const deleteOperations: RedisOperation[] = []
+    const deviceIndexCleanupMap = new Map<number, string[]>() // deviceId -> [sessionIds]
 
-      const results = await this.redisService.batchProcess(operations)
+    for (const sessionId of sessionIdsToDelete) {
+      if (sessionId === excludeSessionId) {
+        continue // Bỏ qua session hiện tại nếu được yêu cầu
+      }
 
-      const deleteOperations: RedisOperation[] = []
+      // Lấy thông tin deviceId từ session để dọn dẹp device index sau
+      // Điều này giả định rằng chúng ta cần đọc session trước khi xóa để lấy deviceId
+      // Nếu không muốn đọc lại, deviceId cần được lưu ở đâu đó hoặc logic dọn device index thay đổi
+      const sessionDetails = await this.findById(sessionId) // Tốn kém nếu nhiều session
+      // Giải pháp tối ưu hơn có thể là không xóa khỏi device index ở đây, mà để cơ chế khác dọn dẹp
+      // Hoặc khi tạo session, lưu {sessionId}:{deviceId} vào một set khác của user.
 
-      // Kiểm tra từng session xem có thuộc về user không
-      for (let i = 0; i < results.length; i++) {
-        const sessionData = results[i]
-        if (!sessionData) continue
+      await this.archiveSession(sessionId) // Lưu trữ session
+      deleteOperations.push({
+        command: 'del',
+        args: [RedisKeyManager.sessionKey(sessionId)]
+      })
+      deletedCount++
 
-        const sessionKey = batch[i]
-        const sessionId = sessionKey.replace(RedisKeyManager.sessionKey('').replace('*', ''), '')
+      if (sessionDetails) {
+        const deviceSessions = deviceIndexCleanupMap.get(sessionDetails.deviceId) || []
+        deviceSessions.push(sessionId)
+        deviceIndexCleanupMap.set(sessionDetails.deviceId, deviceSessions)
+      }
+    }
 
-        // Nếu session thuộc về user và không phải là session được loại trừ
-        if (sessionData.userId === userId.toString() && (!excludeSessionId || sessionId !== excludeSessionId)) {
-          // Lưu trữ session trước khi xóa
-          await this.archiveSession(sessionId)
+    if (deleteOperations.length > 0) {
+      await this.redisService.batchProcess(deleteOperations)
+      this.logger.debug(`[deleteAllUserSessions] Executed DEL for ${deletedCount} sessions of user ${userId}`)
 
-          // Thêm vào danh sách xóa
-          deleteOperations.push({
-            command: 'del',
-            args: [sessionKey]
-          })
-
-          deletedCount++
+      // Dọn dẹp user index
+      if (!excludeSessionId) {
+        // Nếu xóa tất cả, xóa luôn key index của user
+        await this.redisService.del(userSessionIdsKey)
+        this.logger.debug(`[deleteAllUserSessions] Deleted user session index ${userSessionIdsKey}`)
+      } else {
+        // Nếu chỉ loại trừ một session, xóa các session đã DEL khỏi set của user
+        const sremArgs = sessionIdsToDelete.filter((id) => id !== excludeSessionId)
+        if (sremArgs.length > 0) {
+          await this.redisService.srem(userSessionIdsKey, sremArgs)
+          this.logger.debug(
+            `[deleteAllUserSessions] Removed ${sremArgs.length} sessions from index ${userSessionIdsKey}`
+          )
         }
       }
 
-      // Xóa các session đã chọn trong batch
-      if (deleteOperations.length > 0) {
-        await this.redisService.batchProcess(deleteOperations)
+      // Dọn dẹp device indexes
+      for (const [deviceId, sIds] of deviceIndexCleanupMap) {
+        if (sIds.length > 0) {
+          await this.redisService.srem(RedisKeyManager.deviceSessionsKey(deviceId), sIds)
+          this.logger.debug(
+            `[deleteAllUserSessions] Removed ${sIds.length} sessions from device index ${RedisKeyManager.deviceSessionsKey(deviceId)}`
+          )
+        }
       }
     }
 
-    // Xóa indexes nếu không có session nào được giữ lại
-    if (!excludeSessionId) {
-      await this.redisService.del(RedisKeyManager.userSessionsKey(userId))
-    }
-
-    this.logger.debug(`Deleted ${deletedCount} sessions for user ${userId}`)
+    this.logger.debug(`[deleteAllUserSessions] Processed deletion for user ${userId}. Total deleted: ${deletedCount}`)
     return { count: deletedCount }
   }
 
@@ -477,19 +514,6 @@ export class SessionRepository {
       if (!session) {
         return
       }
-
-      // Lưu vào bảng session_history trong DB (sử dụng Prisma raw query vì không có model trực tiếp)
-      await this.prismaService.$executeRaw`
-        INSERT INTO session_history (
-          original_session_id, user_id, device_id, ip_address, user_agent, 
-          created_at, last_active, expires_at
-        ) VALUES (
-          ${sessionId}, ${session.userId}, ${session.deviceId}, ${session.ipAddress}, 
-          ${session.userAgent}, ${session.createdAt}, ${session.lastActive}, ${session.expiresAt}
-        )
-      `
-
-      this.logger.debug(`Session ${sessionId} archived to history`)
     } catch (error) {
       this.logger.error(`Error archiving session: ${error.message}`)
     }

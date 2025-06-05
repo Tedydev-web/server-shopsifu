@@ -84,7 +84,6 @@ export class SessionsService implements ISessionService {
     for (const device of devices) {
       // Kiểm tra thiết bị hiện tại
       const isCurrentDevice = device.id === currentDeviceId
-      this.logger.debug(`[getSessions] Processing device ${device.id}, isCurrentDevice: ${isCurrentDevice}`)
 
       // Lọc ra các session thuộc về device hiện tại
       const deviceSessions = sessionResult.data.filter((session) => session.deviceId === device.id)
@@ -92,7 +91,6 @@ export class SessionsService implements ISessionService {
       // Thêm session hiện tại nếu không có trong Redis nhưng đang được sử dụng
       if (isCurrentDevice && deviceSessions.length === 0 && currentSession) {
         deviceSessions.push(currentSession)
-        this.logger.debug(`[getSessions] Added current session ${currentSessionIdFromToken} to device ${device.id}`)
       }
 
       if (deviceSessions.length === 0) {
@@ -155,8 +153,8 @@ export class SessionsService implements ISessionService {
         lastActive,
         location,
         activeSessionsCount,
-        sessions: sessionItems,
-        isCurrentDevice
+        isCurrentDevice,
+        sessions: sessionItems
       })
     }
 

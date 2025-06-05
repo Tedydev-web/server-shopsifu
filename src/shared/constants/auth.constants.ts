@@ -70,7 +70,9 @@ export enum TypeOfVerificationCode {
   VERIFY_NEW_EMAIL = 'VERIFY_NEW_EMAIL',
   UNLINK_GOOGLE_ACCOUNT = 'UNLINK_GOOGLE_ACCOUNT',
   REVOKE_SESSIONS = 'REVOKE_SESSIONS',
-  REVOKE_ALL_SESSIONS = 'REVOKE_ALL_SESSIONS'
+  REVOKE_ALL_SESSIONS = 'REVOKE_ALL_SESSIONS',
+  REVOKE_SESSIONS_2FA = 'REVOKE_SESSIONS_2FA',
+  REVOKE_ALL_SESSIONS_2FA = 'REVOKE_ALL_SESSIONS_2FA'
 }
 
 export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof typeof TypeOfVerificationCode]
@@ -109,6 +111,9 @@ export type TokenTypeType = (typeof TokenType)[keyof typeof TokenType]
 export const OTP_EXPIRATION_TIME = 10 * 60 * 1000 // 10 phút
 export const MAX_OTP_ATTEMPTS = 5
 export const OTP_LENGTH = 6 // Độ dài mã OTP
+export const OTP_COOLDOWN_SECONDS = 60 // 1 minute
+export const SLT_EXPIRY_SECONDS = 300 // 5 minutes
+export const SLT_MAX_ATTEMPTS = 5
 
 /**
  * Redis keys và prefixes

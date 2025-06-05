@@ -9,7 +9,8 @@ import {
   Ip,
   HttpException,
   Inject,
-  forwardRef
+  forwardRef,
+  Logger
 } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { I18nService } from 'nestjs-i18n'
@@ -35,19 +36,25 @@ import { AuthError } from 'src/routes/auth/auth.error'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { SessionsService } from '../sessions/sessions.service'
-import { ICookieService } from 'src/shared/types/auth.types'
-import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
+import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { COOKIE_SERVICE, REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { CoreService } from '../core/core.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 @Controller('auth/2fa')
 export class TwoFactorController {
+  private readonly logger = new Logger(TwoFactorController.name)
+
   constructor(
     private readonly twoFactorService: TwoFactorService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(forwardRef(() => SessionsService))
     private readonly sessionsService: SessionsService,
-    private readonly coreService: CoreService
+    private readonly coreService: CoreService,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService
   ) {}
 
   /**
@@ -184,6 +191,22 @@ export class TwoFactorController {
             res, // Truyền res để CoreService có thể set cookie
             ip,
             userAgent
+          )
+
+          // Xóa cờ device:needs_reverify_after_revoke sau khi xác minh thành công
+          const reverifyFlagKey = RedisKeyManager.customKey(
+            'device:needs_reverify_after_revoke',
+            result.metadata.deviceId.toString()
+          )
+          await this.redisService.del(reverifyFlagKey)
+          this.logger.debug(
+            `[verifyTwoFactor] Cleared reverify_after_revoke flag for device ${result.metadata.deviceId}`
+          )
+
+          // ALSO CLEAR THE ADMIN REVERIFICATION FLAG
+          await this.tokenService.clearDeviceReverification(result.userId, result.metadata.deviceId)
+          this.logger.debug(
+            `[verifyTwoFactor] Cleared admin reverification flag for device ${result.metadata.deviceId}`
           )
 
           // Prepare user response with picked UserProfile fields

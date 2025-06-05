@@ -38,7 +38,10 @@ export type I18nTranslations = {
                     "AskToTrustDevice": string;
                 };
                 "Enabled": string;
-                "Disabled": string;
+                "Disable": {
+                    "Success": string;
+                    "Failed": string;
+                };
                 "RecoveryCodesRegenerated": string;
             };
             "Otp": {
@@ -288,36 +291,65 @@ export type I18nTranslations = {
             };
         };
     };
-    "error": {
-        "Error.Global.Unknown": string;
-        "Error.Global.ValidationFailed": string;
-        "Error.Global.SerializationFailed": string;
-        "Error.Global.InternalServerError": string;
-        "HttpStatus.Title.BadRequest": string;
-        "HttpStatus.Title.Unauthorized": string;
-        "HttpStatus.Title.Forbidden": string;
-        "HttpStatus.Title.NotFound": string;
-        "HttpStatus.Title.Conflict": string;
-        "HttpStatus.Title.UnprocessableEntity": string;
-        "HttpStatus.Title.PreconditionFailed": string;
-        "HttpStatus.Title.InternalServerError": string;
-        "HttpStatus.Title.ServiceUnavailable": string;
-        "HttpStatus.Title.HttpError": string;
-        "Error.Profile.Email.Unchanged": string;
-        "Error.Profile.Email.AlreadyExists": string;
-        "Error.Profile.PendingEmail.MatchesCurrent": string;
-        "Error.Profile.Email.NoPendingChange": string;
-        "Error.Profile.Email.InvalidVerificationToken": string;
-        "Error.Profile.Email.VerificationTokenExpired": string;
-        "Error.Profile.Email.AlreadyVerified": string;
-        "Error.Profile.UpdateFailed": string;
-        "Error.Profile.Username.Length": string;
-        "Error.Profile.Username.InvalidChars": string;
-        "Error.Profile.Username.Taken": string;
-        "Error.Profile.PhoneNumber.Taken": string;
-        "Success.Profile.Email.ChangeOtpSent": string;
-        "Success.Profile.Email.Verified": string;
-        "Error.Server.ConfigError.MissingOAuthCookie": string;
+    "global": {
+        "success": {
+            "general": {
+                "default": string;
+            };
+            "profile": {
+                "email": {
+                    "otpSent": string;
+                    "verified": string;
+                };
+            };
+        };
+        "error": {
+            "general": {
+                "unknown": string;
+                "validationFailed": string;
+                "serializationFailed": string;
+                "internalServerError": string;
+            };
+            "http": {
+                "badRequest": string;
+                "unauthorized": string;
+                "forbidden": string;
+                "notFound": string;
+                "conflict": string;
+                "unprocessableEntity": string;
+                "preconditionFailed": string;
+                "internalServerError": string;
+                "serviceUnavailable": string;
+                "httpError": string;
+            };
+            "profile": {
+                "email": {
+                    "unchanged": string;
+                    "alreadyExists": string;
+                    "pendingMatchesCurrent": string;
+                    "noPendingChange": string;
+                    "invalidVerificationToken": string;
+                    "expiredVerificationToken": string;
+                    "alreadyVerified": string;
+                };
+                "general": {
+                    "updateFailed": string;
+                };
+                "username": {
+                    "invalidLength": string;
+                    "invalidChars": string;
+                    "taken": string;
+                };
+                "phone": {
+                    "taken": string;
+                };
+            };
+            "server": {
+                "config": {
+                    "missingOAuthCookie": string;
+                };
+            };
+        };
     };
 };
 /* prettier-ignore */

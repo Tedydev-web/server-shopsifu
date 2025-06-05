@@ -16,7 +16,8 @@ import { ApiException, ErrorDetailMessage } from '../exceptions/api.exception' /
 import { ConfigService } from '@nestjs/config'
 import { I18nTranslations, I18nPath } from '../../generated/i18n.generated'
 import { v4 as uuidv4 } from 'uuid'
-import { LOGGER_SERVICE } from '../constants/injection.tokens'
+import { LOGGER_SERVICE, COOKIE_SERVICE } from '../constants/injection.tokens'
+import { ICookieService } from '../types/auth.types' // Added ICookieService
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -24,7 +25,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
     private readonly httpAdapterHost: HttpAdapterHost,
     private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(LOGGER_SERVICE) private readonly logger: LoggerService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService // Injected CookieService
   ) {}
 
   async catch(exception: unknown, host: ArgumentsHost): Promise<void> {
@@ -35,64 +37,75 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const lang = I18nContext.current()?.lang || this.configService.get('app.fallbackLanguage') || 'en'
 
     let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR
-    let messageKeyForMainError: string = this.i18nService.t('error.Error.Global.InternalServerError')
+    let messageKeyForMainError: string = 'global.error.http.internalServerError' // Default i18n key
     let errors: Array<{ field: string; message: string | Record<string, any> }> = []
-    let errorCode: string | undefined = 'UNKNOWN_ERROR'
+    let errorCode: string | undefined = 'INTERNAL_SERVER_ERROR' // Default errorCode for server errors
     const errorId = uuidv4()
 
-    if (exception instanceof HttpException) {
+    if (exception instanceof ApiException) {
+      httpStatus = exception.getStatus()
+      messageKeyForMainError = exception.message // This is an i18n key
+      errorCode = exception.errorCode // Specific error code like INVALID_ACCESS_TOKEN
+      if (exception.details && Array.isArray(exception.details)) {
+        errors = exception.details.map((detail: ErrorDetailMessage) => ({
+          field: detail.path || 'detail',
+          message: detail.code // This is an i18n key for the field error
+        }))
+      }
+    } else if (exception instanceof I18nValidationException) {
+      httpStatus = exception.getStatus()
+      messageKeyForMainError = 'global.error.general.validationFailed' // i18n key for main message
+      errorCode = 'VALIDATION_ERROR'
+      errors = exception.errors.map((err) => ({
+        // Messages here are usually raw
+        field: err.property,
+        message: err.constraints ? Object.values(err.constraints).join(', ') : 'Validation error'
+      }))
+    } else if (exception instanceof HttpException) {
       httpStatus = exception.getStatus()
       const responseData = exception.getResponse()
       if (typeof responseData === 'string') {
-        messageKeyForMainError = responseData
-        errorCode = exception.constructor.name
+        messageKeyForMainError = responseData // Can be an i18n key or raw message
+        errorCode = HttpStatus[httpStatus] || exception.constructor.name
       } else if (typeof responseData === 'object' && responseData !== null) {
         const errorObj = responseData as Record<string, any>
         messageKeyForMainError = errorObj.i18nKey || errorObj.message || messageKeyForMainError
-        errorCode = errorObj.errorCode || errorObj.error || exception.constructor.name
+        errorCode = errorObj.errorCode || errorObj.error || HttpStatus[httpStatus] || exception.constructor.name
+
         if (Array.isArray(errorObj.errors)) {
+          // Standard class-validator errors
           errors = errorObj.errors.map((err: any) => ({
-            field: err.field || 'unknown',
-            message: err.message || 'Validation error'
+            field: err.property || err.field || 'unknown',
+            message: err.constraints ? Object.values(err.constraints).join(', ') : err.message || 'Validation error'
           }))
-        } else if (errorObj.message && !Array.isArray(errorObj.message)) {
+        } else if (errorObj.message && typeof errorObj.message === 'object' && !Array.isArray(errorObj.message)) {
           if (Array.isArray(errorObj.message.issues)) {
             // Zod errors
             errors = errorObj.message.issues.map((issue: any) => ({
               field: issue.path.join('.'),
-              message: issue.message
+              message: issue.message // Raw Zod message
             }))
-            messageKeyForMainError = 'Error.Global.ValidationFailed'
+            messageKeyForMainError = errorObj.i18nKey || 'global.error.general.validationFailed'
           } else if (typeof errorObj.message === 'string') {
             errors = [{ field: 'general', message: errorObj.message }]
           }
+        } else if (typeof errorObj.message === 'string') {
+          errors = [{ field: 'general', message: errorObj.message }]
         }
       }
-    } else if (exception instanceof I18nValidationException) {
-      httpStatus = exception.getStatus()
-      messageKeyForMainError = 'Error.Global.ValidationFailed'
-      errorCode = 'VALIDATION_ERROR'
-      errors = exception.errors.map((err) => ({
-        field: err.property,
-        message: err.constraints ? Object.values(err.constraints).join(', ') : 'Validation error'
-      }))
-    } else if (exception instanceof ApiException) {
-      httpStatus = exception.getStatus()
-      messageKeyForMainError = exception.message
-      errorCode = exception.errorCode
-      if (exception.details && Array.isArray(exception.details)) {
-        errors = exception.details.map((detail: ErrorDetailMessage) => ({
-          field: detail.path || 'detail',
-          message: detail.code
-        }))
+    } else if (exception instanceof Error) {
+      // httpStatus and messageKeyForMainError remain default (INTERNAL_SERVER_ERROR)
+      errorCode = exception.name === 'Error' ? 'UNHANDLED_ERROR' : exception.name // e.g. TypeError, RangeError
+      errors = [{ field: 'server', message: exception.message }] // Raw error message
+      if (this.logger && typeof this.logger.error === 'function') {
+        this.logger.error('Unhandled Exception: ' + exception.message, exception.stack || '', 'AllExceptionsFilter')
       }
     } else {
-      if (exception instanceof Error) {
-        this.logger.error('Unhandled Exception: ' + exception.message, exception.stack || '', 'AllExceptionsFilter')
-        errors = [{ field: 'server', message: exception.message }]
-      } else {
+      // httpStatus and messageKeyForMainError remain default
+      errorCode = 'UNKNOWN_ERROR'
+      errors = [{ field: 'server', message: 'An unexpected error occurred' }]
+      if (this.logger && typeof this.logger.error === 'function') {
         this.logger.error('Unhandled exception of unknown type', exception as any, 'AllExceptionsFilter')
-        errors = [{ field: 'server', message: 'An unexpected error occurred' }]
       }
     }
 
@@ -109,7 +122,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const translatedErrors = await Promise.all(
       errors.map(async (err) => {
         if (typeof err.message === 'string') {
-          const isKeyLike = /^[a-zA-Z0-9_.-]+$/.test(err.message)
+          const isKeyLike = /^[a-zA-Z0-9_.-]+(\.[a-zA-Z0-9_.-]+)*$/.test(err.message)
           if (isKeyLike) {
             const errMessageTranslationResult = await Promise.resolve(
               this.i18nService.t(err.message as I18nPath, {
@@ -125,6 +138,27 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return err
       })
     )
+
+    // Xóa cookies nếu là lỗi liên quan đến session/token không thể phục hồi
+    if (
+      exception instanceof ApiException &&
+      (exception.getStatus() as HttpStatus) === HttpStatus.UNAUTHORIZED &&
+      (exception.errorCode === 'INVALID_ACCESS_TOKEN' || // AT giả mạo, chữ ký sai
+        exception.errorCode === 'MISSING_ACCESS_TOKEN' || // Không có AT
+        exception.errorCode === 'SESSION_REVOKED' || // Phiên bị thu hồi
+        exception.errorCode === 'MISSING_SESSION_ID_IN_TOKEN' || // Payload token lỗi
+        exception.errorCode === 'INVALID_REFRESH_TOKEN' || // RT không hợp lệ (từ endpoint refresh)
+        exception.errorCode === 'REFRESH_TOKEN_EXPIRED') // RT hết hạn (từ endpoint refresh, nếu có mã lỗi này)
+    ) {
+      if (this.logger && typeof this.logger.debug === 'function') {
+        this.logger.debug(
+          `[AllExceptionsFilter] Unauthorized API Exception (${exception.errorCode}) detected. Clearing auth cookies.`
+        )
+      }
+      this.cookieService.clearTokenCookies(response)
+      this.cookieService.clearSltCookie(response)
+      // Consider clearing other auth-related cookies if necessary
+    }
 
     const errorResponse = {
       success: false,
@@ -143,22 +177,24 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const fullErrorUrl = errorBaseUrl ? errorBaseUrl + requestUrl : requestUrl
     const logMessage = 'HTTP Error: ' + httpStatus + ' ' + translatedMainMessage + ' at ' + fullErrorUrl
 
-    this.logger.error(
-      {
-        message: logMessage,
-        errorId,
-        statusCode: httpStatus,
-        errorCode,
-        path: request.url,
-        method: request.method,
-        ip: request.ip,
-        userAgent: request.headers['user-agent'],
-        exceptionStack: exception instanceof Error ? exception.stack || '' : 'N/A',
-        errorDetails: translatedErrors
-      },
-      exception instanceof Error ? exception.stack || '' : '',
-      'AllExceptionsFilter'
-    )
+    if (this.logger && typeof this.logger.error === 'function') {
+      this.logger.error(
+        {
+          message: logMessage,
+          errorId,
+          statusCode: httpStatus,
+          errorCode,
+          path: request.url,
+          method: request.method,
+          ip: request.ip,
+          userAgent: request.headers['user-agent'],
+          exceptionStack: exception instanceof Error ? exception.stack || '' : 'N/A',
+          errorDetails: translatedErrors
+        },
+        exception instanceof Error ? exception.stack || '' : '',
+        'AllExceptionsFilter'
+      )
+    }
 
     httpAdapter.reply(response, errorResponse, httpStatus)
   }

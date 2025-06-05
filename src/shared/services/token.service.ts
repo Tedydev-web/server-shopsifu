@@ -21,6 +21,7 @@ import {
   DEVICE_REVERIFICATION_TTL,
   DEVICE_REVERIFY_KEY_PREFIX
 } from 'src/shared/constants/auth.constants'
+import { DeviceRepository, SessionRepository } from 'src/shared/repositories/auth' // Import DeviceRepository and SessionRepository
 
 @Injectable()
 export class TokenService implements ITokenService {
@@ -30,6 +31,8 @@ export class TokenService implements ITokenService {
     private readonly jwtService: JwtService,
     @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     private readonly configService: ConfigService,
+    private readonly deviceRepository: DeviceRepository,
+    private readonly sessionRepository: SessionRepository,
     private readonly cryptoService?: CryptoService
   ) {}
 
@@ -211,39 +214,97 @@ export class TokenService implements ITokenService {
    */
   async invalidateSession(sessionId: string, reason: string = 'UNKNOWN'): Promise<void> {
     try {
-      // Kiểm tra xem session đã vô hiệu hoá chưa
-      const isInvalidated = await this.isSessionInvalidated(sessionId)
-      if (isInvalidated) {
+      const isAlreadyInvalidated = await this.isSessionInvalidated(sessionId)
+      if (isAlreadyInvalidated) {
+        this.logger.debug(`[invalidateSession] Session ${sessionId} is already invalidated. Skipping.`)
         return
       }
 
-      // Đánh dấu session là đã vô hiệu hoá
-      const invalidatedKey = RedisKeyManager.sessionInvalidatedKey(sessionId)
-
-      // Lấy dữ liệu session hiện tại nếu có
       const sessionKey = RedisKeyManager.sessionKey(sessionId)
       const sessionData = await this.redisService.hgetall(sessionKey)
 
-      // Lưu lại thông tin session bị vô hiệu hoá
-      if (Object.keys(sessionData).length > 0) {
-        await this.archiveRevokedSession(sessionId, sessionData, reason)
+      if (!sessionData || Object.keys(sessionData).length === 0) {
+        this.logger.warn(
+          `[invalidateSession] No data found for session ${sessionId} in Redis. Cannot process full invalidation logic. Marking as invalidated.`
+        )
+        // Dù không có data, vẫn đánh dấu là invalidated để isSessionInvalidated() trả về true
+        const invalidatedKeyFallback = RedisKeyManager.sessionInvalidatedKey(sessionId)
+        await this.redisService.set(
+          invalidatedKeyFallback,
+          reason,
+          'EX',
+          this.configService.get<number>('auth.session.invalidatedTtl', 7 * 24 * 60 * 60)
+        )
+        return
       }
 
+      const userId = parseInt(sessionData.userId, 10)
+      const deviceId = parseInt(sessionData.deviceId, 10)
+
+      // Lưu lại thông tin session bị vô hiệu hoá
+      await this.archiveRevokedSession(sessionId, sessionData, reason)
+
       // Đánh dấu session là đã vô hiệu hoá
+      const invalidatedKey = RedisKeyManager.sessionInvalidatedKey(sessionId)
       await this.redisService.set(
         invalidatedKey,
         reason,
         'EX',
-        this.configService.get('auth.session.invalidatedTtl', 7 * 24 * 60 * 60)
+        this.configService.get<number>('auth.session.invalidatedTtl', 7 * 24 * 60 * 60)
       )
 
-      // Xoá session
+      // Xoá session data khỏi Redis
       await this.redisService.del(sessionKey)
+      this.logger.log(`Session ${sessionId} data deleted from Redis. Reason: ${reason}`)
 
-      this.logger.log(`Session ${sessionId} has been invalidated. Reason: ${reason}`)
+      // Xóa session khỏi các index
+      if (userId) {
+        await this.redisService.srem(RedisKeyManager.userSessionsKey(userId), sessionId)
+        this.logger.debug(`Session ${sessionId} removed from user index for user ${userId}.`)
+      }
+      if (deviceId) {
+        await this.redisService.srem(RedisKeyManager.deviceSessionsKey(deviceId), sessionId)
+        this.logger.debug(`Session ${sessionId} removed from device index for device ${deviceId}.`)
+      }
+
+      if (deviceId && userId && this.sessionRepository && this.deviceRepository) {
+        const deviceSessionsKey = RedisKeyManager.deviceSessionsKey(deviceId)
+        const activeSessionIdsOnDevice = await this.redisService.smembers(deviceSessionsKey)
+
+        let hasOtherActiveSessionsOnDevice = false
+        if (activeSessionIdsOnDevice && activeSessionIdsOnDevice.length > 0) {
+          for (const activeSessionId of activeSessionIdsOnDevice) {
+            if (activeSessionId === sessionId) continue // Bỏ qua session vừa bị revoke
+            const activeSessionData = await this.redisService.hgetall(RedisKeyManager.sessionKey(activeSessionId))
+            if (activeSessionData && activeSessionData.isActive === '1') {
+              hasOtherActiveSessionsOnDevice = true
+              break
+            }
+          }
+        }
+
+        if (!hasOtherActiveSessionsOnDevice) {
+          this.logger.log(`Session ${sessionId} was the last active session on device ${deviceId}. Untrusting device.`)
+          await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+        } else {
+          // Nếu không phải session cuối cùng, đặt cờ yêu cầu xác minh lại cho thiết bị
+          const reverifyKey = RedisKeyManager.customKey('device:needs_reverify_after_revoke', deviceId.toString())
+          await this.redisService.set(reverifyKey, 'true', 'EX', 300) // 5 phút TTL
+          this.logger.debug(
+            `Device ${deviceId} marked for reverification after session ${sessionId} revoke. Key: ${reverifyKey}`
+          )
+        }
+      } else {
+        this.logger.warn(
+          `[invalidateSession] SessionRepository or DeviceRepository not available. Skipping device untrust/re-verify logic for session ${sessionId}.`
+        )
+      }
+
+      this.logger.log(`Session ${sessionId} has been invalidated successfully. Reason: ${reason}`)
     } catch (error) {
       this.logger.error(`Error invalidating session ${sessionId}: ${error.message}`, error.stack)
-      throw error
+      // Không ném lỗi ra ngoài để tránh làm gián đoạn flow chính, chỉ log lỗi
+      // throw error; // Cân nhắc có nên ném lỗi hay không tùy theo yêu cầu nghiệp vụ
     }
   }
 

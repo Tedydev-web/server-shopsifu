@@ -25,8 +25,10 @@ import { SessionsService } from '../sessions/sessions.service'
 import { CookieNames } from 'src/shared/constants/auth.constants'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
-import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { COOKIE_SERVICE, REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 @Controller('auth/otp')
 export class OtpController {
@@ -39,7 +41,8 @@ export class OtpController {
     private readonly coreService: CoreService,
     @Inject(forwardRef(() => SessionsService))
     private readonly sessionsService: SessionsService,
-    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService
   ) {}
 
   /**
@@ -154,6 +157,15 @@ export class OtpController {
         sltContext.metadata?.deviceId
       ) {
         await this.tokenService.clearDeviceReverification(sltContext.userId, sltContext.metadata.deviceId)
+        // Xóa cờ device:needs_reverify_after_revoke sau khi xác minh thành công
+        const reverifyFlagKey = RedisKeyManager.customKey(
+          'device:needs_reverify_after_revoke',
+          sltContext.deviceId.toString()
+        )
+        await this.redisService.del(reverifyFlagKey)
+        this.logger.debug(
+          `[handleLoginVerification] Cleared reverify_after_revoke flag for device ${sltContext.deviceId}`
+        )
       }
 
       // Hoàn tất đăng nhập

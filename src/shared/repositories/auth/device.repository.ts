@@ -88,16 +88,20 @@ export class DeviceRepository {
   /**
    * Cập nhật trạng thái tin cậy của thiết bị
    */
-  async updateDeviceTrustStatus(deviceId: number, isTrusted: boolean): Promise<Device> {
-    const data: any = { isTrusted }
+  async updateDeviceTrustStatus(deviceId: number, isTrusted: boolean, trustExpirationDate?: Date): Promise<Device> {
+    const data: Prisma.DeviceUpdateInput = { isTrusted }
 
-    // Nếu thiết bị được đánh dấu tin cậy, thiết lập thời gian hết hạn
+    // Nếu thiết bị được đánh dấu tin cậy
     if (isTrusted) {
-      // Tính thời gian hết hạn từ cấu hình
-      const expiryDays = this.configService.get<number>('DEVICE_TRUST_EXPIRATION_DAYS', 30)
-      const expiryDate = new Date()
-      expiryDate.setDate(expiryDate.getDate() + expiryDays)
-      data.trustExpiration = expiryDate
+      if (trustExpirationDate) {
+        data.trustExpiration = trustExpirationDate
+      } else {
+        // Tính thời gian hết hạn từ cấu hình nếu không được cung cấp
+        const expiryDays = this.configService.get<number>('security.deviceTrustDurationDays', 30)
+        const expiryDate = new Date()
+        expiryDate.setDate(expiryDate.getDate() + expiryDays)
+        data.trustExpiration = expiryDate
+      }
     } else {
       // Nếu bỏ tin cậy, xóa thời gian hết hạn
       data.trustExpiration = null
@@ -288,7 +292,9 @@ export class DeviceRepository {
         name: data.name || `Device ${new Date().toISOString().substring(0, 10)}`,
         isActive: true,
         isTrusted: data.isTrusted ?? false,
-        trustExpiration: data.isTrusted ? this.getTrustExpirationDate() : null
+        trustExpiration: data.isTrusted
+          ? this.getTrustExpirationDate(this.configService.get<number>('security.deviceTrustDurationDays', 30))
+          : null
       }
     })
   }
@@ -296,8 +302,8 @@ export class DeviceRepository {
   /**
    * Tính ngày hết hạn tin cậy
    */
-  private getTrustExpirationDate(): Date {
-    const expiryDays = this.configService.get<number>('DEVICE_TRUST_EXPIRATION_DAYS', 30)
+  private getTrustExpirationDate(customExpiryDays?: number): Date {
+    const expiryDays = customExpiryDays ?? this.configService.get<number>('security.deviceTrustDurationDays', 30)
     const expiryDate = new Date()
     expiryDate.setDate(expiryDate.getDate() + expiryDays)
     return expiryDate

@@ -20,6 +20,7 @@ import { UserAuthRepository, RecoveryCodeRepository, DeviceRepository } from 'sr
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { PickedUserProfileResponseType } from 'src/shared/dtos/user.dto'
+import { JwtService } from '@nestjs/jwt'
 
 @Injectable()
 export class TwoFactorService {
@@ -35,7 +36,8 @@ export class TwoFactorService {
     private readonly userAuthRepository: UserAuthRepository,
     private readonly recoveryCodeRepository: RecoveryCodeRepository,
     private readonly deviceRepository: DeviceRepository,
-    @Inject(RedisService) private readonly redisService: RedisService
+    @Inject(RedisService) private readonly redisService: RedisService,
+    private readonly jwtService: JwtService
   ) {}
 
   /**
@@ -330,11 +332,27 @@ export class TwoFactorService {
     await this.otpService.finalizeSlt(sltContext.sltJti)
     this.logger.debug(`[verifyTwoFactor] SLT finalized for JTI: ${sltContext.sltJti}`)
 
-    // Xử lý rememberMe và tin cậy thiết bị nếu mục đích là đăng nhập
-    if (sltContext.purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA) {
-      if (rememberMe && sltContext.deviceId) {
-        await this.deviceRepository.updateDeviceTrustStatus(sltContext.deviceId, true)
-        this.logger.debug(`[verifyTwoFactor] Device ${sltContext.deviceId} trusted for user ${sltContext.userId}`)
+    // Sau khi xác minh thành công, nếu mục đích là LOGIN_UNTRUSTED_DEVICE_2FA và rememberMe là true, thì trust device
+    if (
+      sltContext.purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA &&
+      rememberMe === true &&
+      sltContext.deviceId
+    ) {
+      try {
+        this.logger.debug(
+          `[verifyTwoFactor] Trusting device ${sltContext.deviceId} for user ${sltContext.userId} due to rememberMe.`
+        )
+        await this.deviceRepository.updateDeviceTrustStatus(
+          sltContext.deviceId,
+          true,
+          this.getTrustExpirationDate() // Không cần await vì hàm này không còn là async
+        )
+      } catch (error) {
+        this.logger.error(
+          `[verifyTwoFactor] Error trusting device ${sltContext.deviceId}: ${error.message}`,
+          error.stack
+        )
+        // Không ném lỗi ở đây để user vẫn có thể đăng nhập, nhưng ghi log lại
       }
     }
 
@@ -477,7 +495,7 @@ export class TwoFactorService {
     await this.recoveryCodeRepository.deleteAllUserRecoveryCodes(userId)
 
     return {
-      message: await this.i18nService.t('auth.Auth.2FA.DisableSuccess')
+      message: await this.i18nService.t('auth.Auth.2FA.Disable.Success')
     }
   }
 
@@ -524,5 +542,62 @@ export class TwoFactorService {
       message: await this.i18nService.t('auth.Auth.2FA.RecoveryCodesRegenerated'),
       recoveryCodes
     }
+  }
+
+  private getTrustExpirationDate(): Date {
+    const trustDurationDays = this.configService.get<number>('security.deviceTrustDurationDays', 30)
+    const expirationDate = new Date()
+    expirationDate.setDate(expirationDate.getDate() + trustDurationDays)
+    return expirationDate
+  }
+
+  async initiateTwoFactorActionWithSltCookie(payload: {
+    userId: number
+    deviceId: number
+    ipAddress: string
+    userAgent: string
+    purpose: TypeOfVerificationCode
+    metadata?: Record<string, any>
+  }): Promise<string> {
+    const { userId, deviceId, ipAddress, userAgent, purpose, metadata } = payload
+    this.logger.debug(
+      `[TwoFactorService] Initiating 2FA action SLT for user ${userId}, device ${deviceId}, purpose ${purpose}`
+    )
+
+    const sltTokenId = `slt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
+    const sltTokenLifetime = this.configService.get<number>('jwt.sltTokenLifetime', 300) // 5 minutes in seconds
+
+    const sltJwtPayload = {
+      jti: sltTokenId,
+      sub: userId,
+      pur: purpose
+    }
+
+    const sltToken = this.jwtService.sign(sltJwtPayload, {
+      secret: this.configService.get<string>('jwt.sltSecret'),
+      expiresIn: sltTokenLifetime
+    })
+
+    const sltContextKey = RedisKeyManager.sltContextKey(sltTokenId)
+    const sltContextData = {
+      userId: userId.toString(),
+      deviceId: deviceId.toString(),
+      ipAddress,
+      userAgent,
+      purpose,
+      sltJwtExp: (Math.floor(Date.now() / 1000) + sltTokenLifetime).toString(),
+      sltJwtCreatedAt: Math.floor(Date.now() / 1000).toString(),
+      finalized: '0', // Not finalized yet
+      attempts: '0',
+      ...(metadata && { metadata: JSON.stringify(metadata) })
+    }
+
+    await this.redisService.hset(sltContextKey, sltContextData)
+    await this.redisService.expire(sltContextKey, sltTokenLifetime)
+
+    this.logger.debug(
+      `[TwoFactorService] SLT context for 2FA action saved to Redis with key ${sltContextKey} and TTL ${sltTokenLifetime}s`
+    )
+    return sltToken
   }
 }

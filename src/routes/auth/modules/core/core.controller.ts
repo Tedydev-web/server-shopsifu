@@ -145,11 +145,23 @@ export class CoreController {
     if (result.requiresDeviceVerification) {
       return {
         statusCode: HttpStatus.OK,
-        message: this.i18nService.t('auth.Auth.Login.Success'),
+        message: result.message,
         data: {
           requiresDeviceVerification: true,
           verificationType: result.verificationType,
-          verificationRedirectUrl: result.verificationRedirectUrl
+          verificationRedirectUrl: result.verificationRedirectUrl,
+          email: result.email
+        }
+      }
+    } else if (result.requires2FA) {
+      return {
+        statusCode: HttpStatus.OK,
+        message: result.message,
+        data: {
+          requires2FA: true,
+          twoFactorMethod: result.twoFactorMethod,
+          verificationRedirectUrl: result.verificationRedirectUrl,
+          email: result.email
         }
       }
     }
@@ -171,7 +183,7 @@ export class CoreController {
 
     return {
       statusCode: HttpStatus.OK,
-      message: this.i18nService.t('auth.Auth.Login.Success'),
+      message: result.message,
       data: responseData
     }
   }

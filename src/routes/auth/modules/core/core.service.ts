@@ -10,9 +10,12 @@ import { OtpService } from '../../modules/otp/otp.service'
 import { User, Device, Role, UserProfile } from '@prisma/client'
 import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import { UserStatus } from '@prisma/client'
-import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { COOKIE_SERVICE, REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/shared/repositories/auth'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
+import { HttpException } from '@nestjs/common'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 interface RegisterUserParams {
   email: string
@@ -46,7 +49,8 @@ export class CoreService implements IUserAuthService {
     private readonly userAuthRepository: UserAuthRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly otpService: OtpService,
-    private readonly sessionRepository: SessionRepository
+    private readonly sessionRepository: SessionRepository,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService
   ) {}
 
   /**
@@ -136,64 +140,89 @@ export class CoreService implements IUserAuthService {
    * Đăng nhập
    */
   async login(params: LoginParams, res: Response): Promise<any> {
-    // Xác thực người dùng qua email hoặc username và mật khẩu
     const user = await this.validateUser(params.emailOrUsername, params.password)
 
     if (!user) {
       throw AuthError.InvalidPassword()
     }
 
-    // Kiểm tra tài khoản có đang bị khóa không
     if (user.status === UserStatus.BLOCKED) {
       throw AuthError.AccountLocked()
     }
 
-    // Kiểm tra tài khoản có đang hoạt động không
     if (user.status !== UserStatus.ACTIVE) {
       throw AuthError.AccountNotActive()
     }
 
-    // Đặt giá trị mặc định cho rememberMe nếu không được cung cấp
     const rememberMe = params.rememberMe ?? false
 
-    // Lấy hoặc tạo thiết bị
     let device
     try {
-      // Kiểm tra xem người dùng đã có thiết bị với user-agent này chưa
       device = await this.deviceRepository.upsertDevice(
         user.id,
         params.userAgent || 'Unknown',
         params.ip || 'Unknown',
-        `Device ${new Date().toISOString().split('T')[0]}`
+        `Device from ${params.userAgent?.substring(0, 20) || 'Unknown UA'} at ${new Date().toLocaleDateString()}`
       )
     } catch (error) {
+      this.logger.error(`[Login] Error upserting device for user ${user.id}: ${error.message}`, error.stack)
       throw AuthError.DeviceProcessingFailed()
     }
 
-    // Kiểm tra xem thiết bị này có cần xác thực lại hay không
-    const needsReverification = await this.tokenService.checkDeviceNeedsReverification(user.id, device.id)
-    if (needsReverification) {
-      return this.initiateDeviceVerification(user, device, rememberMe, res)
+    const deviceIsCurrentlyTrusted = await this.deviceRepository.isDeviceTrustValid(device.id)
+    const reverifyFlagKey = RedisKeyManager.customKey('device:needs_reverify_after_revoke', device.id.toString())
+    const needsReverifyAfterRevokeFlag = await this.redisService.get(reverifyFlagKey)
+    const forceReverificationDueToRevoke = needsReverifyAfterRevokeFlag === 'true'
+
+    if (deviceIsCurrentlyTrusted && !forceReverificationDueToRevoke) {
+      this.logger.debug(
+        `[Login] Device ${device.id} for user ${user.id} is trusted and no pending revoke-reverification. Finalizing login.`
+      )
+      if (needsReverifyAfterRevokeFlag) {
+        // Clear flag if it existed but didn't force reverification (e.g. expired or already handled)
+        await this.redisService.del(reverifyFlagKey)
+      }
+      return this.finalizeLoginAndCreateTokens(
+        user,
+        device,
+        rememberMe,
+        res,
+        params.ip,
+        params.userAgent,
+        true /* explicitly trusted */
+      )
     }
 
-    // Kiểm tra 2 yếu tố và thiết bị không tin cậy
-    const twoFactorEnabled = user.twoFactorEnabled
-    const isTrusted = await this.deviceRepository.isDeviceTrustValid(device.id)
+    // At this point, device is either untrusted OR forceReverificationDueToRevoke is true.
+    // Log the reason for proceeding to verification.
+    if (forceReverificationDueToRevoke) {
+      this.logger.debug(
+        `[Login] Device ${device.id} (user ${user.id}) requires reverification due to recent session revoke (forceReverificationDueToRevoke=true).`
+      )
+      // Flag will be cleared by OtpController/TwoFactorController after successful verification.
+    } else if (!deviceIsCurrentlyTrusted) {
+      this.logger.debug(`[Login] Device ${device.id} (user ${user.id}) is NOT trusted. Proceeding with verifications.`)
+    }
+    // It's also possible 'deviceIsCurrentlyTrusted' is true, but 'forceReverificationDueToRevoke' is true.
+    // The above logs cover the main branches.
 
-    // Xác định xem có cần xác thực bổ sung hay không
-    const bypass2FA = false // Cờ này có thể được thiết lập khi có tình huống đặc biệt cho phép bỏ qua 2FA
-    const needsDeviceVerification = !isTrusted
-    const needs2FAVerification = twoFactorEnabled
+    // Now, determine the type of verification needed, prioritizing 2FA if enabled.
+    const needsAdminReverification = await this.tokenService.checkDeviceNeedsReverification(user.id, device.id)
+    if (needsAdminReverification) {
+      this.logger.debug(
+        `[Login] Device ${device.id} (user ${user.id}) is also marked for admin-initiated reverification.`
+      )
+    }
 
-    // Ưu tiên xác thực 2 yếu tố trước, sau đó đến thiết bị không tin cậy
-    if (needs2FAVerification && !bypass2FA) {
+    if (user.twoFactorEnabled) {
+      this.logger.debug(`[Login] User ${user.id} has 2FA enabled. Initiating 2FA verification for device ${device.id}.`)
       return this.initiate2FAVerification(user, device, rememberMe, res)
-    } else if (needsDeviceVerification) {
+    } else {
+      this.logger.debug(
+        `[Login] User ${user.id} does not have 2FA enabled. Initiating device OTP verification for device ${device.id}.`
+      )
       return this.initiateDeviceVerification(user, device, rememberMe, res)
     }
-
-    // Nếu không cần xác thực bổ sung, hoàn tất đăng nhập
-    return this.finalizeLoginAndCreateTokens(user, device, rememberMe, res, params.ip, params.userAgent)
   }
 
   /**
@@ -337,11 +366,12 @@ export class CoreService implements IUserAuthService {
         }),
         requiresDeviceVerification: true,
         verificationType: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
-        verificationRedirectUrl: '/auth/otp/verify'
+        verificationRedirectUrl: '/auth/otp/verify',
+        email: user.email
       }
     } catch (error) {
       this.logger.error(`[initiateDeviceVerification] Error: ${error.message}`, error.stack)
-      if (error instanceof AuthError) throw error
+      if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
   }
@@ -379,11 +409,12 @@ export class CoreService implements IUserAuthService {
         message: this.i18nService.t('Auth.Auth.Login.2FARequired' as I18nPath, { lang: I18nContext.current()?.lang }),
         requires2FA: true,
         twoFactorMethod: user.twoFactorMethod,
-        verificationRedirectUrl: '/auth/2fa/verify'
+        verificationRedirectUrl: '/auth/2fa/verify',
+        email: user.email
       }
     } catch (error) {
       this.logger.error(`[initiate2FAVerification] Error: ${error.message}`, error.stack)
-      if (error instanceof AuthError) throw error
+      if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
   }
@@ -411,15 +442,19 @@ export class CoreService implements IUserAuthService {
     rememberMe: boolean,
     res: Response,
     ipAddress?: string,
-    userAgent?: string
+    userAgent?: string,
+    isTrustedSession?: boolean // Tham số mới để xác định rõ trạng thái tin cậy
   ): Promise<any> {
     try {
+      const effectiveIsTrustedSession =
+        isTrustedSession === undefined ? await this.deviceRepository.isDeviceTrustValid(device.id) : isTrustedSession
+
       // Tạo thông tin người dùng để phản hồi
       const userResponse = {
         id: user.id,
         email: user.email,
         role: user.role.name,
-        isDeviceTrustedInSession: device.isTrusted,
+        isDeviceTrustedInSession: effectiveIsTrustedSession, // Sử dụng trạng thái tin cậy đã xác định
         userProfile: user.userProfile
       }
 
@@ -434,7 +469,7 @@ export class CoreService implements IUserAuthService {
         deviceId: device.id,
         sessionId,
         jti: `access_${Date.now()}_${this.generateRandomId()}`,
-        isDeviceTrustedInSession: device.isTrusted
+        isDeviceTrustedInSession: effectiveIsTrustedSession // Đặt cờ này chính xác
       }
 
       const accessToken = this.tokenService.signAccessToken(payload)
@@ -511,12 +546,18 @@ export class CoreService implements IUserAuthService {
         throw AuthError.DeviceNotFound()
       }
 
+      // Sau khi xác minh thành công và nếu rememberMe là true, thiết bị NÊN được trust.
+      // Trạng thái isTrusted của device có thể chưa được cập nhật ngay lập tức trong đối tượng device này
+      // nếu việc trust device xảy ra trong một tiến trình khác hoặc ngay trước khi gọi hàm này.
+      // Do đó, nếu rememberMe là true, ta có thể coi isDeviceTrustedInSession là true cho token mới.
+      const isDeviceTrustedNow = rememberMe || (await this.deviceRepository.isDeviceTrustValid(deviceId))
+
       // Tạo thông tin người dùng để phản hồi
       const userResponse = {
         id: user.id,
         email: user.email,
         role: user.role.name,
-        isDeviceTrustedInSession: device.isTrusted,
+        isDeviceTrustedInSession: isDeviceTrustedNow,
         userProfile: user.userProfile
       }
 
@@ -531,7 +572,7 @@ export class CoreService implements IUserAuthService {
         deviceId: device.id,
         sessionId,
         jti: `access_${Date.now()}_${this.generateRandomId()}`,
-        isDeviceTrustedInSession: device.isTrusted
+        isDeviceTrustedInSession: isDeviceTrustedNow // Đặt cờ này chính xác
       }
 
       const accessToken = this.tokenService.signAccessToken(payload)

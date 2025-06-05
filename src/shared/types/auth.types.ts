@@ -26,7 +26,7 @@ export interface IUserAuthService {
  */
 export interface IOTPService {
   generateOTP(length?: number): string
-  sendOTP(email: string, type: string, userId?: number): Promise<any>
+  sendOTP(email: string, type: string, userId?: number, metadata?: Record<string, any>): Promise<any>
   verifyOTP(
     email: string,
     code: string,

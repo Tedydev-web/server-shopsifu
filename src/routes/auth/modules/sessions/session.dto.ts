@@ -30,8 +30,8 @@ export const DeviceSessionGroupSchema = z.object({
   lastActive: z.date().nullable().optional(),
   location: z.string().nullable().optional(),
   activeSessionsCount: z.number().optional(),
-  sessions: z.array(SessionItemSchema),
-  isCurrentDevice: z.boolean().default(false) // Thêm trường đánh dấu thiết bị hiện tại
+  isCurrentDevice: z.boolean().default(false),
+  sessions: z.array(SessionItemSchema)
 })
 
 // Get Sessions DTOs

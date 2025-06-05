@@ -7,7 +7,7 @@ import { OtpModule } from '../otp/otp.module'
 import { CoreModule } from '../core/core.module'
 
 @Module({
-  imports: [SharedModule, forwardRef(() => OtpModule), forwardRef(() => SessionsModule), CoreModule],
+  imports: [SharedModule, forwardRef(() => OtpModule), forwardRef(() => SessionsModule), forwardRef(() => CoreModule)],
   controllers: [TwoFactorController],
   providers: [TwoFactorService],
   exports: [TwoFactorService]
