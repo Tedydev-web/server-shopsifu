@@ -21,7 +21,6 @@ import { SendOtpDto, VerifyOtpDto, SendOtpResponseDto } from './otp.dto'
 import { CoreService } from '../core/core.service'
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { SltContextData } from 'src/routes/auth/auth.types'
-import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { SessionsService } from '../sessions/sessions.service'
 import { CookieNames } from 'src/shared/constants/auth.constants'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
@@ -56,7 +55,6 @@ export class OtpController {
     @Res({ passthrough: true }) res: Response
   ): Promise<SendOtpResponseDto> {
     const { email, type } = body
-    this.logger.debug(`[sendOtp] Initiating OTP for email: ${email}, type: ${type}, IP: ${ip}`)
     try {
       // Khởi tạo OTP với SLT cookie
       const sltJwt = await this.otpService.initiateOtpWithSltCookie({
@@ -72,10 +70,9 @@ export class OtpController {
       this.cookieService.setSltCookie(res, sltJwt, type as TypeOfVerificationCode)
 
       return {
-        message: await this.i18nService.translate('Auth.Otp.SentSuccessfully' as I18nPath)
+        message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully')
       }
     } catch (error) {
-      this.logger.error(`[sendOtp] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
@@ -124,12 +121,11 @@ export class OtpController {
           // Trả về thông báo xác minh thành công cho các loại OTP khác
           return {
             statusCode: HttpStatus.OK,
-            message: await this.i18nService.translate('Auth.Otp.Verified' as I18nPath),
+            message: this.i18nService.t('auth.Auth.Otp.Verified'),
             data: { verified: true }
           }
       }
     } catch (error) {
-      this.logger.error(`[verifyOtp] Error processing OTP verification: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
@@ -145,7 +141,6 @@ export class OtpController {
     ip: string,
     userAgent: string
   ) {
-    this.logger.debug(`[handleLoginVerification] Finalizing login for user ID: ${sltContext.userId}`)
     try {
       // Cập nhật SLT context để đánh dấu là đã hoàn thành
       await this.otpService.finalizeSlt(sltContext.sltJti)
@@ -158,18 +153,8 @@ export class OtpController {
         String(sltContext.purpose) === String(TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) &&
         sltContext.metadata?.deviceId
       ) {
-        try {
-          await this.tokenService.clearDeviceReverification(sltContext.userId, sltContext.metadata.deviceId)
-          this.logger.debug(`Cleared device reverification for device ${sltContext.metadata.deviceId}`)
-        } catch (error) {
-          this.logger.error(`Failed to clear device reverification: ${error.message}`, error.stack)
-          // Không throw lỗi ở đây để không ảnh hưởng đến luồng xác thực
-        }
+        await this.tokenService.clearDeviceReverification(sltContext.userId, sltContext.metadata.deviceId)
       }
-
-      this.logger.debug(
-        `[handleLoginVerification] Using rememberMe=${rememberMe}, 2FA verification status: not verified`
-      )
 
       // Hoàn tất đăng nhập
       const loginResult = await this.coreService.finalizeLoginAfterVerification(
@@ -181,14 +166,8 @@ export class OtpController {
         userAgent
       )
 
-      this.logger.debug(`[handleLoginVerification] Login finalized successfully for user: ${sltContext.email}`)
-
       // Xóa SLT cookie
       this.cookieService.clearSltCookie(res)
-
-      const message = loginResult.messageKey
-        ? await this.i18nService.translate(loginResult.messageKey as I18nPath)
-        : await this.i18nService.translate('Auth.Otp.Verified' as I18nPath)
 
       // Prepare user response with potentially picked UserProfile fields
       const userResponse = {
@@ -203,11 +182,10 @@ export class OtpController {
 
       return {
         statusCode: HttpStatus.OK,
-        message,
+        message: this.i18nService.t('auth.Auth.Otp.Verified'),
         data: { user: userResponse }
       }
     } catch (error) {
-      this.logger.error(`[handleLoginVerification] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
@@ -223,7 +201,6 @@ export class OtpController {
     res: Response
   ) {
     const { userId, metadata } = sltContext
-    this.logger.debug(`[handleRevokeSessionsVerification] Processing for userId: ${userId}`)
     try {
       if (!metadata || (!metadata.sessionIds && !metadata.deviceIds)) {
         throw AuthError.InsufficientRevocationData()
@@ -252,13 +229,9 @@ export class OtpController {
 
       this.cookieService.clearSltCookie(res)
 
-      const translatedMessage = result.message
-        ? await this.i18nService.translate(result.message as I18nPath)
-        : 'Operation completed.' // Fallback message, should ideally not happen
-
       return {
         statusCode: HttpStatus.OK,
-        message: translatedMessage,
+        message: this.i18nService.t('auth.Auth.Otp.Verified'),
         data: {
           revokedSessionsCount: result.revokedSessionsCount,
           untrustedDevicesCount: result.untrustedDevicesCount,
@@ -268,7 +241,6 @@ export class OtpController {
         }
       }
     } catch (error) {
-      this.logger.error(`[handleRevokeSessionsVerification] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
@@ -284,7 +256,6 @@ export class OtpController {
     res: Response
   ) {
     const { userId, metadata } = sltContext
-    this.logger.debug(`[handleRevokeAllSessionsVerification] Processing for userId: ${userId}`)
     try {
       if (!metadata) {
         throw AuthError.InsufficientRevocationData()
@@ -312,13 +283,9 @@ export class OtpController {
 
       this.cookieService.clearSltCookie(res)
 
-      const translatedMessage = result.message
-        ? await this.i18nService.translate(result.message as I18nPath)
-        : 'Operation completed.' // Fallback message, should ideally not happen
-
       return {
         statusCode: HttpStatus.OK,
-        message: translatedMessage,
+        message: result.message || this.i18nService.t('auth.Auth.Otp.Verified'),
         data: {
           revokedSessionsCount: result.revokedSessionsCount,
           untrustedDevicesCount: result.untrustedDevicesCount,
@@ -328,7 +295,6 @@ export class OtpController {
         }
       }
     } catch (error) {
-      this.logger.error(`[handleRevokeAllSessionsVerification] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
@@ -346,11 +312,9 @@ export class OtpController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<SendOtpResponseDto> {
-    this.logger.debug(`[resendOtp] Resending OTP, IP: ${ip}`)
     try {
       const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
       if (!sltCookieValue) {
-        this.logger.warn('[resendOtp] SLT cookie missing for resend.')
         throw AuthError.SLTCookieMissing()
       }
 
@@ -358,7 +322,6 @@ export class OtpController {
       const sltContext = await this.otpService.validateSltFromCookieAndGetContext(sltCookieValue, ip, userAgent)
 
       if (!sltContext.email || !sltContext.purpose) {
-        this.logger.error('[resendOtp] Email or purpose missing in SLT context for resend.')
         throw AuthError.InternalServerError('Invalid SLT context for resend.')
       }
 
@@ -377,10 +340,9 @@ export class OtpController {
       this.cookieService.setSltCookie(res, newSltJwt, sltContext.purpose as TypeOfVerificationCode)
 
       return {
-        message: await this.i18nService.translate('Auth.Otp.SentSuccessfully' as I18nPath)
+        message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully')
       }
     } catch (error) {
-      this.logger.error(`[resendOtp] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }

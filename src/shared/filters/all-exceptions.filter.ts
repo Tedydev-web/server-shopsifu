@@ -35,7 +35,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const lang = I18nContext.current()?.lang || this.configService.get('app.fallbackLanguage') || 'en'
 
     let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR
-    let messageKeyForMainError: string = 'Error.Global.InternalServerError'
+    let messageKeyForMainError: string = this.i18nService.t('error.Error.Global.InternalServerError')
     let errors: Array<{ field: string; message: string | Record<string, any> }> = []
     let errorCode: string | undefined = 'UNKNOWN_ERROR'
     const errorId = uuidv4()
@@ -97,7 +97,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     const mainTranslationResult = await Promise.resolve(
-      this.i18nService.translate(messageKeyForMainError as I18nPath, {
+      this.i18nService.t(messageKeyForMainError as I18nPath, {
         lang,
         args: { errorId }
       })
@@ -112,7 +112,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
           const isKeyLike = /^[a-zA-Z0-9_.-]+$/.test(err.message)
           if (isKeyLike) {
             const errMessageTranslationResult = await Promise.resolve(
-              this.i18nService.translate(err.message as I18nPath, {
+              this.i18nService.t(err.message as I18nPath, {
                 lang
               })
             ).catch(() => err.message)

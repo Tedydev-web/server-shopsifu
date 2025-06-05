@@ -251,7 +251,7 @@ export class TwoFactorService {
     this.cookieService.clearSltCookie(res)
 
     return {
-      message: await this.i18nService.translate('Auth.2FA.SetupSuccess'),
+      message: await this.i18nService.t('auth.Auth.2FA.Setup.Success'),
       recoveryCodes
     }
   }
@@ -331,21 +331,21 @@ export class TwoFactorService {
     this.logger.debug(`[verifyTwoFactor] SLT finalized for JTI: ${sltContext.sltJti}`)
 
     // Xử lý rememberMe và tin cậy thiết bị nếu mục đích là đăng nhập
-    if (sltContext.purpose === TypeOfVerificationCode.LOGIN_2FA) {
+    if (sltContext.purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA) {
       if (rememberMe && sltContext.deviceId) {
         await this.deviceRepository.updateDeviceTrustStatus(sltContext.deviceId, true)
         this.logger.debug(`[verifyTwoFactor] Device ${sltContext.deviceId} trusted for user ${sltContext.userId}`)
       }
     }
 
-    // Chuẩn bị thông tin user để trả về nếu cần cho LOGIN_2FA
+    // Chuẩn bị thông tin user để trả về nếu cần cho LOGIN_UNTRUSTED_DEVICE_2FA
     // UserAuthRepository.findById đã bao gồm role và userProfile
     const userResponseForLogin = {
       id: user.id,
       email: user.email,
       roleName: user.role.name,
       isDeviceTrustedInSession:
-        sltContext.deviceId && rememberMe && sltContext.purpose === TypeOfVerificationCode.LOGIN_2FA
+        sltContext.deviceId && rememberMe && sltContext.purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA
           ? true
           : await this.deviceRepository.isDeviceTrustValid(sltContext.deviceId || 0),
       userProfile: user.userProfile
@@ -359,9 +359,9 @@ export class TwoFactorService {
     }
 
     // Nếu mục đích là đăng nhập 2FA, controller sẽ gọi finalizeLogin dựa trên thông tin này
-    if (sltContext.purpose === TypeOfVerificationCode.LOGIN_2FA) {
+    if (sltContext.purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA) {
       return {
-        message: await this.i18nService.translate('Auth.2FA.Verify.Success'),
+        message: await this.i18nService.t('auth.Auth.2FA.Verify.Success'),
         verifiedMethod: verifiedMethodUpper,
         user: userResponseForLogin,
         purpose: sltContext.purpose,
@@ -374,7 +374,7 @@ export class TwoFactorService {
     // Xử lý các mục đích khác (ví dụ: revoke session, disable 2fa)
     // Trả về thông tin cần thiết để controller tiếp tục xử lý
     return {
-      message: await this.i18nService.translate('Auth.2FA.Verify.Success'),
+      message: await this.i18nService.t('auth.Auth.2FA.Verify.Success'),
       verifiedMethod: verifiedMethodUpper,
       purpose: sltContext.purpose,
       userId: sltContext.userId,
@@ -477,7 +477,7 @@ export class TwoFactorService {
     await this.recoveryCodeRepository.deleteAllUserRecoveryCodes(userId)
 
     return {
-      message: await this.i18nService.translate('Auth.2FA.DisableSuccess')
+      message: await this.i18nService.t('auth.Auth.2FA.DisableSuccess')
     }
   }
 
@@ -521,7 +521,7 @@ export class TwoFactorService {
     await this.recoveryCodeRepository.createRecoveryCodes(userId, hashedRecoveryCodes)
 
     return {
-      message: await this.i18nService.translate('Auth.2FA.RecoveryCodesRegenerated'),
+      message: await this.i18nService.t('auth.Auth.2FA.RecoveryCodesRegenerated'),
       recoveryCodes
     }
   }

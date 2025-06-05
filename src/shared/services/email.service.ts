@@ -96,23 +96,23 @@ export class EmailService {
       const lang = I18nContext.current()?.lang || 'vi'
 
       // Dịch tiêu đề
-      const titleKey = `Email.OTPSubject.${otpType}`
-      const title: string = await this.i18nService.translate(titleKey, { lang })
+      const titleKey = this.i18nService.t(`email.Email.OTPSubject.${otpType}`)
+      const title: string = await this.i18nService.t(titleKey, { lang })
 
       // Dịch tiêu đề chính và nội dung
-      const headingText: string = await this.i18nService.translate(`Email.otp.${otpType.toLowerCase()}.headline`, {
+      const headingText: string = await this.i18nService.t(`email.Email.otp.${otpType.toLowerCase()}.headline`, {
         lang
       })
-      const contentText: string = await this.i18nService.translate(`Email.otp.${otpType.toLowerCase()}.content`, {
+      const contentText: string = await this.i18nService.t(`email.Email.otp.${otpType.toLowerCase()}.content`, {
         lang
       })
-      const codeLabel: string = await this.i18nService.translate('Email.otp.codeLabel', { lang })
-      const validityText: string = await this.i18nService.translate('Email.otp.validity', { lang })
+      const codeLabel: string = await this.i18nService.t('email.Email.otp.codeLabel', { lang })
+      const validityText: string = await this.i18nService.t('email.Email.otp.validity', { lang })
 
       // Dịch phần footer
-      const disclaimerText: string = await this.i18nService.translate('Email.disclaimer', { lang })
-      const contactUsText: string = await this.i18nService.translate('Email.common.contactUs', { lang })
-      const copyrightText: string = await this.i18nService.translate('Email.common.footer.copyright', {
+      const disclaimerText: string = await this.i18nService.t('email.Email.disclaimer', { lang })
+      const contactUsText: string = await this.i18nService.t('email.Email.common.contactUs', { lang })
+      const copyrightText: string = await this.i18nService.t('email.Email.common.footer.copyright', {
         lang,
         args: { year: new Date().getFullYear().toString() }
       })
@@ -213,76 +213,76 @@ export class EmailService {
     // Lấy các nội dung đã được dịch
     switch (alertType) {
       case SecurityAlertType.PASSWORD_CHANGED:
-        alertSubject = await this.i18nService.translate('Email.SecurityAlert.Subject.PasswordChanged', { lang })
-        alertTitle = await this.i18nService.translate('Email.SecurityAlert.Title.PasswordChanged', { lang })
-        mainMessage = await this.i18nService.translate('Email.SecurityAlert.MainMessage.PasswordChanged', { lang })
-        secondaryMessage = await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.Password.NotYou', {
+        alertSubject = await this.i18nService.t('email.Email.SecurityAlert.Subject.PasswordChanged', { lang })
+        alertTitle = await this.i18nService.t('email.Email.SecurityAlert.Title.PasswordChanged', { lang })
+        mainMessage = await this.i18nService.t('email.Email.SecurityAlert.MainMessage.PasswordChanged', { lang })
+        secondaryMessage = await this.i18nService.t('email.Email.SecurityAlert.SecondaryMessage.Password.NotYou', {
           lang
         })
-        actionButtonText = await this.i18nService.translate('Email.SecurityAlert.Button.ChangePassword', { lang })
+        actionButtonText = await this.i18nService.t('email.Email.SecurityAlert.Button.ChangePassword', { lang })
         actionButtonUrl = `${this.frontendUrl}/account/security/change-password`
         actionDetails = [
           {
-            label: await this.i18nService.translate('Email.Field.Time', { lang }),
+            label: await this.i18nService.t('email.Email.Field.Time', { lang }),
             value: new Date().toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US')
           },
           {
-            label: await this.i18nService.translate('Email.Field.IPAddress', { lang }),
+            label: await this.i18nService.t('email.Email.Field.IPAddress', { lang }),
             value: metadata?.ipAddress || 'Unknown'
           }
         ]
         break
 
       case SecurityAlertType.LOGIN_FROM_NEW_DEVICE:
-        alertSubject = await this.i18nService.translate('Email.SecurityAlert.Subject.NewDeviceLogin', { lang })
-        alertTitle = await this.i18nService.translate('Email.SecurityAlert.Title.NewDeviceLogin', { lang })
-        mainMessage = await this.i18nService.translate('Email.SecurityAlert.MainMessage.NewDeviceLogin', { lang })
-        secondaryMessage = await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.NotYou', { lang })
-        actionButtonText = await this.i18nService.translate('Email.SecurityAlert.Button.ReviewActivity', { lang })
+        alertSubject = await this.i18nService.t('email.Email.SecurityAlert.Subject.NewDeviceLogin', { lang })
+        alertTitle = await this.i18nService.t('email.Email.SecurityAlert.Title.NewDeviceLogin', { lang })
+        mainMessage = await this.i18nService.t('email.Email.SecurityAlert.MainMessage.NewDeviceLogin', { lang })
+        secondaryMessage = await this.i18nService.t('email.Email.SecurityAlert.SecondaryMessage.NotYou', { lang })
+        actionButtonText = await this.i18nService.t('email.Email.SecurityAlert.Button.ReviewActivity', { lang })
         actionButtonUrl = `${this.frontendUrl}/account/sessions`
         actionDetails = [
           {
-            label: await this.i18nService.translate('Email.Field.Time', { lang }),
+            label: await this.i18nService.t('email.Email.Field.Time', { lang }),
             value: new Date().toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US')
           },
           {
-            label: await this.i18nService.translate('Email.Field.IPAddress', { lang }),
+            label: await this.i18nService.t('email.Email.Field.IPAddress', { lang }),
             value: metadata?.ipAddress || 'Unknown'
           },
           {
-            label: await this.i18nService.translate('Email.Field.Device', { lang }),
+            label: await this.i18nService.t('email.Email.Field.Device', { lang }),
             value: metadata?.device || 'Unknown'
           },
           {
-            label: await this.i18nService.translate('Email.Field.Location', { lang }),
-            value: metadata?.location || (await this.i18nService.translate('Email.Field.LocationUnknown', { lang }))
+            label: await this.i18nService.t('email.Email.Field.Location', { lang }),
+            value: metadata?.location || (await this.i18nService.t('email.Email.Field.LocationUnknown', { lang }))
           }
         ]
         break
 
       default:
-        alertSubject = await this.i18nService.translate('Email.SecurityAlert.Subject.Default', { lang })
-        alertTitle = await this.i18nService.translate('Email.SecurityAlert.Title.NewDeviceLogin', { lang })
-        mainMessage = await this.i18nService.translate('Email.SecurityAlert.MainMessage.NewDeviceLogin', { lang })
-        secondaryMessage = await this.i18nService.translate('Email.SecurityAlert.SecondaryMessage.NotYou', { lang })
-        actionButtonText = await this.i18nService.translate('Email.SecurityAlert.Button.SecureAccount', { lang })
+        alertSubject = await this.i18nService.t('email.Email.SecurityAlert.Subject.Default', { lang })
+        alertTitle = await this.i18nService.t('email.Email.SecurityAlert.Title.NewDeviceLogin', { lang })
+        mainMessage = await this.i18nService.t('email.Email.SecurityAlert.MainMessage.NewDeviceLogin', { lang })
+        secondaryMessage = await this.i18nService.t('email.Email.SecurityAlert.SecondaryMessage.NotYou', { lang })
+        actionButtonText = await this.i18nService.t('email.Email.SecurityAlert.Button.SecureAccount', { lang })
         actionButtonUrl = `${this.frontendUrl}/account/security`
         actionDetails = [
           {
-            label: await this.i18nService.translate('Email.Field.Time', { lang }),
+            label: await this.i18nService.t('email.Email.Field.Time', { lang }),
             value: new Date().toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US')
           },
           {
-            label: await this.i18nService.translate('Email.Field.IPAddress', { lang }),
+            label: await this.i18nService.t('email.Email.Field.IPAddress', { lang }),
             value: metadata?.ipAddress || 'Unknown'
           },
           {
-            label: await this.i18nService.translate('Email.Field.Device', { lang }),
+            label: await this.i18nService.t('email.Email.Field.Device', { lang }),
             value: metadata?.device || 'Unknown'
           },
           {
-            label: await this.i18nService.translate('Email.Field.Location', { lang }),
-            value: metadata?.location || (await this.i18nService.translate('Email.Field.LocationUnknown', { lang }))
+            label: await this.i18nService.t('email.Email.Field.Location', { lang }),
+            value: metadata?.location || (await this.i18nService.t('email.Email.Field.LocationUnknown', { lang }))
           }
         ]
     }

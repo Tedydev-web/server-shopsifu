@@ -34,24 +34,14 @@ import appConfig from './shared/config'
       load: [appConfig],
       envFilePath: ['.env']
     }),
-    I18nModule.forRootAsync({
-      useFactory: (configService: ConfigService) => ({
-        fallbackLanguage: configService.get<string>('app.fallbackLanguage', 'en'),
-        loaderOptions: {
-          path: path.join(__dirname, '../i18n/'),
-          watch: true
-        },
-        typesOutputPath: path.join(__dirname, '../../src/generated/i18n.generated.ts')
-      }),
-      resolvers: [
-        AcceptLanguageResolver,
-        {
-          use: QueryResolver,
-          options: ['lang']
-        }
-      ],
-      imports: [ConfigModule],
-      inject: [ConfigService]
+    I18nModule.forRoot({
+      fallbackLanguage: 'vi',
+      loaderOptions: {
+        path: path.resolve('src/i18n/'),
+        watch: true
+      },
+      resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
+      typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
     }),
     ThrottlerModule.forRoot([
       {

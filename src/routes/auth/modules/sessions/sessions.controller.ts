@@ -61,27 +61,14 @@ export class SessionsController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Query() query: GetSessionsQueryDto
   ): Promise<GetGroupedSessionsResponseDto> {
-    this.logger.debug(
-      `[SessionsController.getSessions] User ${activeUser.userId} requesting sessions. Page: ${query.page}, Limit: ${query.limit}`
-    )
     try {
       return await this.sessionsService.getSessions(activeUser.userId, query.page, query.limit, activeUser.sessionId)
     } catch (error) {
-      this.logger.error(`[SessionsController.getSessions] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
   }
 
-  /**
-   * Thu hồi sessions và devices cụ thể
-   * Endpoint này xử lý việc thu hồi một hoặc nhiều session/device cụ thể:
-   * 1. Thu hồi một session cụ thể
-   * 2. Thu hồi nhiều session cụ thể
-   * 3. Thu hồi một hoặc nhiều device cụ thể (và các session liên quan)
-   *
-   * Nếu cần xác thực bổ sung, tạo SLT token và chuyển hướng đến 2FA/OTP
-   */
   @Post('revoke')
   @HttpCode(HttpStatus.OK)
   async revokeSessions(
@@ -95,11 +82,7 @@ export class SessionsController {
     message: string
     data: RevokeSessionsResponseDto
   }> {
-    this.logger.debug(
-      `[SessionsController.revokeSessions] User ${activeUser.userId} revoking sessions/devices with: ${JSON.stringify(body)}`
-    )
     try {
-      // Kiểm tra xem hành động này có yêu cầu xác thực bổ sung không
       const requiresVerification = await this.sessionsService.checkIfActionRequiresVerification(activeUser.userId, {
         sessionIds: body.sessionIds,
         deviceIds: body.deviceIds,
@@ -107,7 +90,6 @@ export class SessionsController {
       })
 
       if (requiresVerification) {
-        // Tạo SLT token với context data chứa thông tin thu hồi
         const sltToken = await this.otpService.initiateOtpWithSltCookie({
           email: activeUser.email || '',
           userId: activeUser.userId,
@@ -130,7 +112,7 @@ export class SessionsController {
 
         return {
           statusCode: HttpStatus.OK,
-          message: await this.i18nService.translate('Auth.Session.RequiresAdditionalVerification' as I18nPath),
+          message: this.i18nService.t('auth.Auth.Session.RequiresAdditionalVerification'),
           data: {
             revokedSessionsCount: 0,
             untrustedDevicesCount: 0,
@@ -142,7 +124,6 @@ export class SessionsController {
         }
       }
 
-      // Luôn gọi revokeItems.
       const result = await this.sessionsService.revokeItems(
         activeUser.userId,
         {
@@ -160,8 +141,8 @@ export class SessionsController {
       return {
         statusCode: HttpStatus.OK,
         message: result.message
-          ? await this.i18nService.translate(result.message as I18nPath)
-          : 'Error retrieving message for revokeItems',
+          ? this.i18nService.t(result.message as I18nPath)
+          : this.i18nService.t('auth.Auth.Otp.Verified'),
         data: {
           revokedSessionsCount: result.revokedSessionsCount,
           untrustedDevicesCount: result.untrustedDevicesCount,
@@ -224,7 +205,7 @@ export class SessionsController {
 
       return {
         statusCode: HttpStatus.OK,
-        message: await this.i18nService.translate('Auth.Session.RequiresAdditionalVerification' as I18nPath),
+        message: this.i18nService.t('auth.Auth.Session.RequiresAdditionalVerification'),
         data: {
           revokedSessionsCount: 0,
           untrustedDevicesCount: 0,
@@ -235,7 +216,6 @@ export class SessionsController {
         } as RevokeSessionsResponseDto
       }
     } catch (error) {
-      this.logger.error(`[SessionsController.revokeAllSessions] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
@@ -252,21 +232,17 @@ export class SessionsController {
     message: string
     data: UpdateDeviceNameResponseDto
   }> {
-    this.logger.debug(
-      `[SessionsController.updateDeviceName] User ${activeUser.userId} updating device ${params.deviceId} name to "${body.name}"`
-    )
     try {
       const result = await this.sessionsService.updateDeviceName(activeUser.userId, params.deviceId, body.name)
 
       return {
         statusCode: HttpStatus.OK,
         message: result.message
-          ? await this.i18nService.translate(result.message as I18nPath)
-          : 'Error retrieving message for updateDeviceName',
+          ? this.i18nService.t(result.message as I18nPath)
+          : this.i18nService.t('auth.Auth.Otp.Verified'),
         data: result
       }
     } catch (error) {
-      this.logger.error(`[SessionsController.updateDeviceName] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
@@ -283,9 +259,6 @@ export class SessionsController {
     message: string
     data: TrustDeviceResponseDto
   }> {
-    this.logger.debug(
-      `[SessionsController.trustCurrentDevice] User ${activeUser.userId} trusting current device ${activeUser.deviceId}`
-    )
     try {
       const result = await this.sessionsService.trustCurrentDevice(
         activeUser.userId,
@@ -297,12 +270,11 @@ export class SessionsController {
       return {
         statusCode: HttpStatus.OK,
         message: result.message
-          ? await this.i18nService.translate(result.message as I18nPath)
-          : 'Error retrieving message for trustCurrentDevice',
+          ? this.i18nService.t(result.message as I18nPath)
+          : this.i18nService.t('auth.Auth.Otp.Verified'),
         data: result
       }
     } catch (error) {
-      this.logger.error(`[SessionsController.trustCurrentDevice] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
@@ -318,21 +290,17 @@ export class SessionsController {
     message: string
     data: UntrustDeviceResponseDto
   }> {
-    this.logger.debug(
-      `[SessionsController.untrustDevice] User ${activeUser.userId} untrusting device ${params.deviceId}`
-    )
     try {
       const result = await this.sessionsService.untrustDevice(activeUser.userId, params.deviceId)
 
       return {
         statusCode: HttpStatus.OK,
         message: result.message
-          ? await this.i18nService.translate(result.message as I18nPath)
-          : 'Error retrieving message for untrustDevice',
+          ? this.i18nService.t(result.message as I18nPath)
+          : this.i18nService.t('auth.Auth.Otp.Verified'),
         data: result
       }
     } catch (error) {
-      this.logger.error(`[SessionsController.untrustDevice] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }

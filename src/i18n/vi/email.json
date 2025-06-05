@@ -3,8 +3,36 @@
     "OTPSubject": {
       "Register": "Mã xác minh đăng ký tài khoản Shopsifu",
       "ResetPassword": "Mã xác minh đặt lại mật khẩu Shopsifu",
-      "LoginUntrustedDevice": "Mã xác minh đăng nhập từ thiết bị mới",
+      "LOGIN_UNTRUSTED_DEVICE_OTP": "Mã xác minh đăng nhập từ thiết bị mới",
+      "LOGIN_UNTRUSTED_DEVICE_2FA": "Mã xác minh đăng nhập từ thiết bị mới",
       "Default": "Mã xác minh từ Shopsifu"
+    },
+    "SecurityAlert": {
+      "Title": {
+        "PasswordChanged": "Mã xác minh đặt lại mật khẩu Shopsifu",
+        "NewDeviceLogin": "Mã xác minh đăng nhập từ thiết bị mới",
+        "Default": "Mã xác minh từ Shopsifu"
+      },
+      "MainMessage": {
+        "PasswordChanged": "Mã xác minh đặt lại mật khẩu Shopsifu",
+        "NewDeviceLogin": "Một thiết bị mới đã đăng nhập vào tài khoản của bạn",
+        "Default": "Cảnh báo đăng nhập từ thiết bị mới"
+      },
+      "SecondaryMessage": {
+        "PasswordChanged": "Mã xác minh đặt lại mật khẩu Shopsifu",
+        "NewDeviceLogin": "Mã xác minh đăng nhập từ thiết bị mới",
+        "Default": "Mã xác minh từ Shopsifu"
+      },
+      "Button": {
+        "ChangePassword": "Đổi mật khẩu",
+        "ReviewActivity": "Xem hoạt động",
+        "SecureAccount": "Bảo mật tài khoản"
+      },
+      "Subject": {
+        "PasswordChanged": "Mã xác minh đặt lại mật khẩu Shopsifu",
+        "NewDeviceLogin": "Mã xác minh đăng nhập từ thiết bị mới",
+        "Default": "Mã xác minh từ Shopsifu"
+      }
     },
     "otp": {
       "register": {
@@ -19,7 +47,7 @@
         "headline": "Xác minh đăng nhập",
         "content": "Vui lòng sử dụng mã xác minh dưới đây để hoàn tất quá trình đăng nhập vào tài khoản Shopsifu của bạn."
       },
-      "login_2fa": {
+      "LOGIN_UNTRUSTED_DEVICE_2FA": {
         "headline": "Xác thực hai yếu tố",
         "content": "Vui lòng sử dụng mã xác minh dưới đây để hoàn tất quá trình xác thực hai yếu tố cho tài khoản Shopsifu của bạn."
       },
@@ -47,12 +75,13 @@
       "validity": "(Mã này có hiệu lực trong 5 phút)"
     },
     "disclaimer": "Shopsifu sẽ không bao giờ gửi email yêu cầu bạn tiết lộ hoặc xác minh mật khẩu, số thẻ tín dụng hoặc số tài khoản ngân hàng của bạn.",
-    "common": {
-      "contactUs": "Liên hệ với chúng tôi",
-      "time": "Thời gian",
-      "ipAddress": "Địa chỉ IP",
-      "device": "Thiết bị",
-      "location": "Vị trí",
+    "Field": {
+      "ContactUs": "Liên hệ với chúng tôi",
+      "Time": "Thời gian",
+      "IPAddress": "Địa chỉ IP",
+      "Device": "Thiết bị",
+      "Location": "Vị trí",
+      "LocationUnknown": "Không xác định",
       "footer": {
         "copyright": "© {year} Bản quyền thuộc về Shopsifu",
         "contactUs": "Liên hệ với chúng tôi"

@@ -10,7 +10,6 @@ export type I18nTranslations = {
             "Register": {
                 "Success": string;
                 "EmailSent": string;
-                "PhoneNumberTaken": string;
             };
             "Login": {
                 "Success": string;
@@ -28,19 +27,19 @@ export type I18nTranslations = {
                 "ChangeSuccess": string;
             };
             "2FA": {
-                "Enabled": string;
-                "Disabled": string;
-                "RecoveryCodesRegenerated": string;
-                "Verify": {
-                    "Success": string;
-                    "AskToTrustDevice": string;
-                };
                 "Setup": {
                     "Success": string;
                 };
                 "Confirm": {
                     "Success": string;
                 };
+                "Verify": {
+                    "Success": string;
+                    "AskToTrustDevice": string;
+                };
+                "Enabled": string;
+                "Disabled": string;
+                "RecoveryCodesRegenerated": string;
             };
             "Otp": {
                 "SentSuccessfully": string;
@@ -52,8 +51,11 @@ export type I18nTranslations = {
             };
             "Session": {
                 "Revoked": string;
+                "RevokedSuccessfully": string;
                 "AllRevoked": string;
                 "Expired": string;
+                "ReverifiedSuccessfully": string;
+                "SendReverificationOtpSuccess": string;
                 "RevokedSuccessfullyCount": string;
                 "NoSessionsToRevoke": string;
                 "RequiresAdditionalVerification": string;
@@ -61,39 +63,42 @@ export type I18nTranslations = {
                 "SltMissing": string;
                 "NotFound": string;
                 "MaxSessionsReached": string;
-                "InvalidLogin": string;
-                "AbsoluteLifetimeExceeded": string;
-                "CannotRevokeCurrent": string;
-                "MissingSessionIdInToken": string;
-                "InvalidRevokeOperation": string;
                 "InsufficientDataForRevocation": string;
-                "RevokedSuccessfully": string;
-                "ReverifiedSuccessfully": string;
-                "SendReverificationOtpSuccess": string;
             };
             "Device": {
                 "Trusted": string;
+                "AlreadyTrusted": string;
                 "Untrusted": string;
+                "AlreadyUntrusted": string;
                 "NameUpdated": string;
+                "NameUpdatedSuccessfully": string;
                 "NotFound": string;
                 "NotOwnedByUser": string;
-                "AlreadyTrusted": string;
-                "AlreadyUntrusted": string;
-                "NameUpdatedSuccessfully": string;
                 "LogoutSpecificSuccess": string;
+                "Invalid": string;
+                "Mismatch": string;
+                "SetupFailed": string;
+                "AssociationFailed": string;
+                "MissingSessionCreationTime": string;
+                "NotFoundForUser": string;
+                "MaxDevicesReached": string;
+                "ProcessingFailed": string;
             };
             "Google": {
                 "LoginSuccess": string;
+                "SuccessProceedToSecurityChecks": string;
                 "LinkSuccess": string;
                 "LinkCancelled": string;
                 "AccountNeedsLinking": string;
                 "AccountAlreadyLinked": string;
-                "SuccessProceedToSecurityChecks": string;
                 "ConfirmLinkDetailsMessage": string;
                 "Link": {
                     "CancelledSuccessfully": string;
                     "NoPendingStateToCancel": string;
                 };
+            };
+            "RememberMe": {
+                "Set": string;
             };
             "Error": {
                 "Email": {
@@ -117,6 +122,10 @@ export type I18nTranslations = {
                     "FailedToSend": string;
                     "TooManyAttempts": string;
                 };
+                "OtpToken": {
+                    "Invalid": string;
+                    "Expired": string;
+                };
                 "Token": {
                     "MissingAccessToken": string;
                     "InvalidAccessToken": string;
@@ -127,11 +136,15 @@ export type I18nTranslations = {
                     "RefreshTokenAlreadyUsed": string;
                     "RefreshFailed": string;
                 };
+                "Access": {
+                    "Unauthorized": string;
+                    "Denied": string;
+                };
                 "Session": {
+                    "InvalidLogin": string;
                     "SltMissing": string;
                     "NotFound": string;
                     "MaxSessionsReached": string;
-                    "InvalidLogin": string;
                     "AbsoluteLifetimeExceeded": string;
                     "CannotRevokeCurrent": string;
                     "MissingSessionIdInToken": string;
@@ -152,6 +165,16 @@ export type I18nTranslations = {
                     "InvalidRecoveryCode": string;
                     "InvalidCodeFormat": string;
                 };
+                "Device": {
+                    "Invalid": string;
+                    "Mismatch": string;
+                    "SetupFailed": string;
+                    "AssociationFailed": string;
+                    "MissingSessionCreationTime": string;
+                    "NotFoundForUser": string;
+                    "MaxDevicesReached": string;
+                    "ProcessingFailed": string;
+                };
                 "Social": {
                     "InvalidToken": string;
                 };
@@ -165,34 +188,12 @@ export type I18nTranslations = {
                     "AlreadyLinkedToOtherGoogle": string;
                     "GoogleIdConflict": string;
                     "LinkAccountFailed": string;
-                    "InvalidGrant": string;
-                    "TokensRetrievalFailed": string;
                     "Link": {
                         "NoPendingState": string;
                         "InvalidPendingState": string;
                         "CompleteFailed": string;
                     };
                 };
-                "OtpToken": {
-                    "Invalid": string;
-                    "Expired": string;
-                };
-                "Access": {
-                    "Unauthorized": string;
-                    "Denied": string;
-                };
-                "Device": {
-                    "Invalid": string;
-                    "Mismatch": string;
-                    "SetupFailed": string;
-                    "AssociationFailed": string;
-                    "MissingSessionCreationTime": string;
-                    "NotFoundForUser": string;
-                    "MaxDevicesReached": string;
-                };
-            };
-            "RememberMe": {
-                "Set": string;
             };
         };
     };
@@ -201,8 +202,36 @@ export type I18nTranslations = {
             "OTPSubject": {
                 "Register": string;
                 "ResetPassword": string;
-                "LoginUntrustedDevice": string;
+                "LOGIN_UNTRUSTED_DEVICE_OTP": string;
+                "LOGIN_UNTRUSTED_DEVICE_2FA": string;
                 "Default": string;
+            };
+            "SecurityAlert": {
+                "Title": {
+                    "PasswordChanged": string;
+                    "NewDeviceLogin": string;
+                    "Default": string;
+                };
+                "MainMessage": {
+                    "PasswordChanged": string;
+                    "NewDeviceLogin": string;
+                    "Default": string;
+                };
+                "SecondaryMessage": {
+                    "PasswordChanged": string;
+                    "NewDeviceLogin": string;
+                    "Default": string;
+                };
+                "Button": {
+                    "ChangePassword": string;
+                    "ReviewActivity": string;
+                    "SecureAccount": string;
+                };
+                "Subject": {
+                    "PasswordChanged": string;
+                    "NewDeviceLogin": string;
+                    "Default": string;
+                };
             };
             "otp": {
                 "register": {
@@ -217,7 +246,7 @@ export type I18nTranslations = {
                     "headline": string;
                     "content": string;
                 };
-                "login_2fa": {
+                "LOGIN_UNTRUSTED_DEVICE_2FA": {
                     "headline": string;
                     "content": string;
                 };
@@ -245,12 +274,13 @@ export type I18nTranslations = {
                 "validity": string;
             };
             "disclaimer": string;
-            "common": {
-                "contactUs": string;
-                "time": string;
-                "ipAddress": string;
-                "device": string;
-                "location": string;
+            "Field": {
+                "ContactUs": string;
+                "Time": string;
+                "IPAddress": string;
+                "Device": string;
+                "Location": string;
+                "LocationUnknown": string;
                 "footer": {
                     "copyright": string;
                     "contactUs": string;

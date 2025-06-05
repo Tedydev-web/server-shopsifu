@@ -130,6 +130,14 @@ export class AuthError {
     return new ApiException(HttpStatus.FORBIDDEN, 'DEVICE_NOT_OWNED', 'Auth.Device.NotOwnedByUser')
   }
 
+  static DeviceProcessingFailed(): ApiException {
+    return new ApiException(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+      'DEVICE_PROCESSING_FAILED',
+      'Auth.Error.Device.ProcessingFailed'
+    )
+  }
+
   // Permission Errors
   static InsufficientPermissions(): ApiException {
     return new ApiException(HttpStatus.FORBIDDEN, 'INSUFFICIENT_PERMISSIONS', 'Auth.Error.Access.Denied')

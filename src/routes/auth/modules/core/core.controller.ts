@@ -58,11 +58,9 @@ export class CoreController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<MessageResDTO> {
-    this.logger.debug(`[initiateRegistration] Start registration process for email: ${body.email}, IP: ${ip}`)
     try {
       const existingUser = await this.coreService.findUserByEmail(body.email)
       if (existingUser) {
-        this.logger.warn(`[initiateRegistration] Email ${body.email} already exists`)
         throw AuthError.EmailAlreadyExists()
       }
 
@@ -77,20 +75,8 @@ export class CoreController {
 
       this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.REGISTER)
 
-      this.logger.debug(
-        `[initiateRegistration] Language from context for Auth.Otp.SentSuccessfully: ${I18nContext.current()?.lang}`
-      )
-      let translatedMessage = await this.i18nService.translate('Auth.Otp.SentSuccessfully' as I18nPath)
-      if (typeof translatedMessage !== 'string') {
-        this.logger.warn(
-          `[initiateRegistration] Translation for 'Auth.Otp.SentSuccessfully' did not return a string, falling back to key. Received: ${JSON.stringify(translatedMessage)}`
-        )
-        translatedMessage = 'Auth.Otp.SentSuccessfully'
-      }
-      this.logger.debug(`[initiateRegistration] Translated Auth.Otp.SentSuccessfully message: ${translatedMessage}`)
-      return { message: translatedMessage }
+      return { message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully') }
     } catch (error) {
-      this.logger.error(`[initiateRegistration] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
@@ -107,11 +93,9 @@ export class CoreController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<MessageResDTO> {
-    this.logger.debug(`[completeRegistration] Processing registration completion, IP: ${ip}`)
     try {
       const sltCookieValue = req.cookies?.[CookieNames.SLT_TOKEN]
       if (!sltCookieValue) {
-        this.logger.warn(`[completeRegistration] SLT cookie missing`)
         throw AuthError.SLTCookieMissing()
       }
 
@@ -124,12 +108,10 @@ export class CoreController {
 
       const email = sltContext.email
       if (!email) {
-        this.logger.error(`[completeRegistration] Email missing in SLT context`)
         throw AuthError.EmailMissingInSltContext()
       }
 
       if (sltContext.finalized !== '1') {
-        this.logger.warn(`[completeRegistration] SLT not finalized for email: ${email}`)
         throw AuthError.InvalidOTP()
       }
 
@@ -142,20 +124,8 @@ export class CoreController {
 
       this.cookieService.clearSltCookie(res)
 
-      this.logger.debug(
-        `[completeRegistration] Language from context for Auth.Register.Success: ${I18nContext.current()?.lang}`
-      )
-      let translatedMessage = await this.i18nService.translate('Auth.Register.Success' as I18nPath)
-      if (typeof translatedMessage !== 'string') {
-        this.logger.warn(
-          `[completeRegistration] Translation for 'Auth.Register.Success' did not return a string, falling back to key. Received: ${JSON.stringify(translatedMessage)}`
-        )
-        translatedMessage = 'Auth.Register.Success'
-      }
-      this.logger.debug(`[completeRegistration] Translated Auth.Register.Success message: ${translatedMessage}`)
-      return { message: translatedMessage }
+      return { message: this.i18nService.t('auth.Auth.Register.Success') }
     } catch (error) {
-      this.logger.error(`[completeRegistration] Error: ${error.message}`, error.stack)
       if (error instanceof HttpException) throw error
       throw AuthError.InternalServerError(error.message)
     }
@@ -172,50 +142,10 @@ export class CoreController {
   ) {
     const result = await this.coreService.login({ ...body, ip, userAgent }, res)
 
-    let responseMessage: string
-
-    // Determine the primary message key or direct message from the service result
-    const messageKeyFromService =
-      result.messageKey ||
-      (result.message && (result.message.startsWith('Auth.') || result.message.startsWith('error.'))
-        ? result.message
-        : undefined)
-
-    if (messageKeyFromService) {
-      this.logger.debug(
-        `[Login] Translating service message key: ${messageKeyFromService}, lang: ${I18nContext.current()?.lang}`
-      )
-      try {
-        const translatedMsg = await this.i18nService.translate(messageKeyFromService as I18nPath)
-        if (typeof translatedMsg === 'string' && translatedMsg.trim() !== '') {
-          responseMessage = translatedMsg
-        } else {
-          this.logger.warn(
-            `[Login] Translation for '${messageKeyFromService}' did not return a valid string, falling back to key. Received: ${JSON.stringify(translatedMsg)}`
-          )
-          responseMessage = messageKeyFromService
-        }
-      } catch (e) {
-        this.logger.warn(
-          `[Login] Failed to translate message key '${messageKeyFromService}', falling back to key. Error: ${e.message}`
-        )
-        responseMessage = messageKeyFromService
-      }
-      this.logger.debug(`[Login] Resulting message for service key '${messageKeyFromService}': ${responseMessage}`)
-    } else if (result.message && typeof result.message === 'string') {
-      // If the service returned a direct message (not a key)
-      responseMessage = result.message
-      this.logger.debug(`[Login] Using direct message from service: ${responseMessage}`)
-    } else {
-      // Fallback if no message or messageKey, though service should provide one
-      this.logger.warn('[Login] No message or messageKey from service, using default success message.')
-      responseMessage = await this.i18nService.translate('Auth.Login.Success' as I18nPath)
-    }
-
     if (result.requiresDeviceVerification) {
       return {
         statusCode: HttpStatus.OK,
-        message: responseMessage, // Use the determined and possibly translated message
+        message: this.i18nService.t('auth.Auth.Login.Success'),
         data: {
           requiresDeviceVerification: true,
           verificationType: result.verificationType,
@@ -223,19 +153,6 @@ export class CoreController {
         }
       }
     }
-
-    // If login is successful without device verification, use the standard login success message
-    // This part of the message logic can be simplified as responseMessage should already be Auth.Login.Success
-    // if result from service didn't specify requiresDeviceVerification and had a success message/messageKey.
-    // However, to be explicit for this path:
-    let loginSuccessMessage = await this.i18nService.translate('Auth.Login.Success' as I18nPath)
-    if (typeof loginSuccessMessage !== 'string' || loginSuccessMessage.trim() === '') {
-      this.logger.warn(
-        `[Login] Translation for 'Auth.Login.Success' did not return a valid string, falling back to key. Received: ${JSON.stringify(loginSuccessMessage)}`
-      )
-      loginSuccessMessage = 'Auth.Login.Success'
-    }
-    this.logger.debug(`[Login] Translated Auth.Login.Success message for direct login: ${loginSuccessMessage}`)
 
     const responseData = {
       user: {
@@ -254,7 +171,7 @@ export class CoreController {
 
     return {
       statusCode: HttpStatus.OK,
-      message: loginSuccessMessage, // Use the explicitly translated login success message
+      message: this.i18nService.t('auth.Auth.Login.Success'),
       data: responseData
     }
   }
@@ -277,18 +194,8 @@ export class CoreController {
 
     const { accessToken } = await this.coreService.refreshToken(refreshTokenValue, { userAgent, ip }, res)
 
-    this.logger.debug(`[refreshToken] Language from context for Auth.Token.Refreshed: ${I18nContext.current()?.lang}`)
-    let translatedMessage = await this.i18nService.translate('Auth.Token.Refreshed' as I18nPath)
-    if (typeof translatedMessage !== 'string') {
-      this.logger.warn(
-        `[refreshToken] Translation for 'Auth.Token.Refreshed' did not return a string, falling back to key. Received: ${JSON.stringify(translatedMessage)}`
-      )
-      translatedMessage = 'Auth.Token.Refreshed'
-    }
-    this.logger.debug(`[refreshToken] Translated Auth.Token.Refreshed message: ${translatedMessage}`)
-
     return {
-      message: translatedMessage,
+      message: this.i18nService.t('auth.Auth.Token.Refreshed'),
       accessToken
     }
   }
@@ -302,18 +209,8 @@ export class CoreController {
     @Res({ passthrough: true }) res: Response
   ): Promise<MessageResDTO> {
     await this.coreService.logout(activeUser.userId, activeUser.sessionId, req, res)
-    this.logger.debug(`[Logout] Language from context for Auth.Logout.Success: ${I18nContext.current()?.lang}`)
-    let translatedLogoutSuccessMessage = await this.i18nService.translate('Auth.Logout.Success' as I18nPath)
-    if (typeof translatedLogoutSuccessMessage !== 'string') {
-      this.logger.warn(
-        `[Logout] Translation for 'Auth.Logout.Success' did not return a string, falling back to key. Received: ${JSON.stringify(translatedLogoutSuccessMessage)}`
-      )
-      translatedLogoutSuccessMessage = 'Auth.Logout.Success'
-    }
-    this.logger.debug(`[Logout] Translated Auth.Logout.Success message: ${translatedLogoutSuccessMessage}`)
-
     return {
-      message: translatedLogoutSuccessMessage
+      message: this.i18nService.t('auth.Auth.Logout.Success')
     }
   }
 }

@@ -352,11 +352,10 @@ export class SocialService {
   /**
    * Tạo đối tượng thông báo lỗi chuẩn
    */
-  private async createErrorResponse(errorCode: string, messageKey: string): Promise<GoogleCallbackErrorResult> {
-    const errorMessage = await this.i18nService.translate(messageKey)
+  private createErrorResponse(errorCode: string): GoogleCallbackErrorResult {
     return {
       errorCode,
-      errorMessage: String(errorMessage),
+      errorMessage: this.i18nService.t('auth.Auth.Google.Error'),
       redirectToError: true
     }
   }
@@ -380,7 +379,7 @@ export class SocialService {
       googleEmail,
       googleName: googleName || null,
       googleAvatar: googleAvatar || null,
-      message: await this.i18nService.translate('Auth.Google.AccountNeedsLinking')
+      message: await this.i18nService.t('auth.Auth.Google.AccountNeedsLinking')
     }
   }
 
@@ -408,7 +407,7 @@ export class SocialService {
       requiresUntrustedDeviceVerification,
       twoFactorMethod: user.twoFactorMethod,
       isLoginViaGoogle: true,
-      message: await this.i18nService.translate('Auth.Google.SuccessProceedToSecurityChecks')
+      message: await this.i18nService.t('auth.Auth.Google.SuccessProceedToSecurityChecks')
     }
   }
 
@@ -566,7 +565,7 @@ export class SocialService {
     })
 
     return {
-      message: await this.i18nService.translate('Auth.Google.LinkSuccess')
+      message: await this.i18nService.t('auth.Auth.Google.LinkSuccess')
     }
   }
 
@@ -673,7 +672,7 @@ export class SocialService {
       })
 
       return {
-        message: await this.i18nService.translate('Auth.Google.UnlinkSuccess'),
+        message: await this.i18nService.t('auth.Auth.Google.UnlinkSuccess'),
         success: true
       }
     }
@@ -828,7 +827,7 @@ export class SocialService {
       this.cookieService.clearOAuthPendingLinkTokenCookie(res)
 
       return {
-        message: await this.i18nService.translate('Auth.Google.Link.CancelledSuccessfully')
+        message: await this.i18nService.t('auth.Auth.Google.Link.CancelledSuccessfully')
       }
     } catch (err) {
       this.logger.error(`[cancelPendingLink] Lỗi: ${err instanceof Error ? err.message : 'Unknown error'}`)
@@ -859,11 +858,11 @@ export class SocialService {
     try {
       // 1. Xác thực state và nonce
       if (!state) {
-        return await this.createErrorResponse('MISSING_STATE', 'Auth.Error.Google.StateMissing')
+        return await this.createErrorResponse('MISSING_STATE')
       }
 
       if (!code) {
-        return await this.createErrorResponse('MISSING_CODE', 'Auth.Error.Google.MissingCode')
+        return await this.createErrorResponse('MISSING_CODE')
       }
 
       const decodedState = this.verifyAndDecodeState(state, originalNonceFromCookie)
@@ -888,7 +887,7 @@ export class SocialService {
       // 3. Kiểm tra email đã được xác minh chưa
       if (!emailVerified) {
         this.logger.warn(`[googleCallback] Email chưa được xác minh: ${googleEmail}`)
-        return await this.createErrorResponse('EMAIL_NOT_VERIFIED', 'Auth.Error.EmailNotVerified')
+        return await this.createErrorResponse('EMAIL_NOT_VERIFIED')
       }
 
       // 4. Tìm tài khoản người dùng
@@ -918,7 +917,7 @@ export class SocialService {
         // 5.2. Nếu đang đăng nhập hoặc liên kết, không tạo tài khoản mới
         if (action === 'login' || action === 'link') {
           this.logger.warn(`[googleCallback] Không tìm thấy tài khoản cho action ${action}`)
-          return await this.createErrorResponse('ACCOUNT_NOT_FOUND', 'Auth.Error.AccountNotFound')
+          return await this.createErrorResponse('ACCOUNT_NOT_FOUND')
         }
 
         // 5.3. Tạo user mới cho action đăng ký
@@ -928,13 +927,13 @@ export class SocialService {
           this.logger.log(`[googleCallback] Đã tạo tài khoản mới thành công cho email: ${googleEmail}`)
         } catch (error) {
           this.logger.error(`[googleCallback] Lỗi tạo tài khoản mới: ${error.message}`, error.stack)
-          return await this.createErrorResponse('USER_CREATION_FAILED', 'Auth.Error.UserCreationFailed')
+          return await this.createErrorResponse('USER_CREATION_FAILED')
         }
       }
 
       if (!user) {
         this.logger.warn(`[googleCallback] Không tìm thấy và không thể tạo tài khoản mới`)
-        return await this.createErrorResponse('ACCOUNT_NOT_FOUND', 'Auth.Error.AccountNotFound')
+        return await this.createErrorResponse('ACCOUNT_NOT_FOUND')
       }
 
       // 6. Xử lý thiết bị và bảo mật
@@ -942,7 +941,7 @@ export class SocialService {
       return await this.handleAuthSuccessWithSecurity(user, userAgent, ip)
     } catch (error) {
       this.logger.error(`[googleCallback] Lỗi không mong đợi trong Google callback: ${error.message}`, error.stack)
-      return await this.createErrorResponse('INTERNAL_ERROR', 'Auth.Error.InternalServerError')
+      return await this.createErrorResponse('INTERNAL_ERROR')
     }
   }
 
@@ -966,14 +965,14 @@ export class SocialService {
         sltToken,
         ip,
         userAgent,
-        TypeOfVerificationCode.LOGIN_2FA
+        TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA
       )
 
       // Xác minh mã 2FA thông qua OTP service
       const isValid = await this.otpService.verifyOTP(
         sltContext.email || '',
         code,
-        TypeOfVerificationCode.LOGIN_2FA,
+        TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA,
         sltContext.userId,
         ip,
         userAgent
@@ -1007,7 +1006,7 @@ export class SocialService {
       return {
         status: 'success',
         user: userData,
-        message: await this.i18nService.translate('Auth.2FA.Verify.Success')
+        message: await this.i18nService.t('auth.Auth.2FA.Verify.Success')
       }
     } catch (error) {
       this.logger.error(`[verifyTwoFactorAuth] Lỗi xác thực 2FA: ${error.message}`, error.stack)
@@ -1075,7 +1074,7 @@ export class SocialService {
       return {
         status: 'success',
         user: userData,
-        message: await this.i18nService.translate('Auth.Otp.Verified')
+        message: await this.i18nService.t('auth.Auth.Otp.Verified')
       }
     } catch (error) {
       this.logger.error(`[verifyUntrustedDevice] Lỗi xác thực thiết bị: ${error.message}`, error.stack)

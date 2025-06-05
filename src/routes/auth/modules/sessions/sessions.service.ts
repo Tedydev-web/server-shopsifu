@@ -2,13 +2,12 @@ import { Injectable, Logger, Inject } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ConfigService } from '@nestjs/config'
-import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { ISessionService, ITokenService } from 'src/shared/types/auth.types'
 import * as crypto from 'crypto'
 import { EMAIL_SERVICE, REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { DeviceSessionGroupDto, SessionItemDto, GetGroupedSessionsResponseDto } from './session.dto'
+import { DeviceSessionGroupDto, GetGroupedSessionsResponseDto } from './session.dto'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { SessionRepository, Session, DeviceRepository } from 'src/shared/repositories/auth'
@@ -451,8 +450,6 @@ export class SessionsService implements ISessionService {
     requiresAdditionalVerification?: boolean
     verificationRedirectUrl?: string
   }> {
-    this.logger.debug(`[revokeItems] Đang thu hồi items cho userId: ${userId}, options: ${JSON.stringify(options)}`)
-
     // Lấy thông tin về session và device hiện tại
     const currentSessionId = currentSessionDetails?.sessionId
     const currentDeviceId = currentSessionDetails?.deviceId
@@ -466,13 +463,11 @@ export class SessionsService implements ISessionService {
       if (isRevokingCurrentSession && options.sessionIds) {
         // Loại bỏ session hiện tại khỏi danh sách thu hồi
         options.sessionIds = options.sessionIds.filter((id) => id !== currentSessionId)
-        this.logger.debug(`[revokeItems] Loại bỏ session hiện tại ${currentSessionId} khỏi danh sách thu hồi`)
       }
 
       if (isRevokingCurrentDevice && options.deviceIds) {
         // Loại bỏ device hiện tại khỏi danh sách thu hồi
         options.deviceIds = options.deviceIds.filter((id) => id !== currentDeviceId)
-        this.logger.debug(`[revokeItems] Loại bỏ device hiện tại ${currentDeviceId} khỏi danh sách thu hồi`)
       }
     }
 
@@ -489,7 +484,6 @@ export class SessionsService implements ISessionService {
     if (requiresTwoFactorAuth && user?.twoFactorEnabled && !otpCode && !verificationToken) {
       // Tạo SLT token và gửi mã OTP
       // Đây là trường hợp bảo mật cao, cần xác thực OTP trước khi thực hiện hành động
-      this.logger.debug(`[revokeItems] Yêu cầu xác thực 2FA trước khi thu hồi nhiều thiết bị`)
 
       // Xác định loại hành động để hướng dẫn người dùng
       const action = options.revokeAllUserSessions ? 'revoke-all-sessions' : 'revoke-sessions'
@@ -518,112 +512,75 @@ export class SessionsService implements ISessionService {
     try {
       // 1. Thu hồi theo session IDs
       if (options.sessionIds && options.sessionIds.length > 0) {
-        this.logger.debug(`[revokeItems] Thu hồi ${options.sessionIds.length} sessions cụ thể`)
-
         for (const sessionId of options.sessionIds) {
           // Bỏ qua session hiện tại nếu được yêu cầu
           if (options.excludeCurrentSession && sessionId === currentSessionId) {
-            this.logger.debug(`[revokeItems] Bỏ qua session hiện tại: ${sessionId}`)
             continue
           }
 
-          try {
-            // Lấy thông tin session trước khi xóa/archive
-            const session = await this.sessionRepository.findById(sessionId)
+          // Lấy thông tin session trước khi xóa/archive
+          const session = await this.sessionRepository.findById(sessionId)
 
-            // Chỉ xử lý session thuộc về user
-            if (session && session.userId === userId) {
-              await this.sessionRepository.archiveSession(sessionId)
-              await this.tokenService.invalidateSession(sessionId, 'BULK_REVOKE_BY_USER')
-              revokedSessionsCount++
-              revokedSessionIds.push(sessionId)
+          // Chỉ xử lý session thuộc về user
+          if (session && session.userId === userId) {
+            await this.sessionRepository.archiveSession(sessionId)
+            await this.tokenService.invalidateSession(sessionId, 'BULK_REVOKE_BY_USER')
+            revokedSessionsCount++
+            revokedSessionIds.push(sessionId)
 
-              // Thêm logic đánh dấu thiết bị cần xác thực lại
-              if (session.deviceId) {
-                await this.tokenService.markDeviceForReverification(
-                  userId,
-                  session.deviceId,
-                  'SESSION_REVOKED_VIA_ITEMS'
-                )
-                this.logger.debug(
-                  `[revokeItems] Đã đánh dấu thiết bị ${session.deviceId} cần xác thực lại cho session ${sessionId}`
-                )
-              }
-
-              this.logger.debug(`[revokeItems] Đã thu hồi session: ${sessionId}`)
-            } else {
-              this.logger.warn(
-                `[revokeItems] Bỏ qua session ${sessionId} vì không tìm thấy hoặc không thuộc về userId: ${userId}`
-              )
+            // Thêm logic đánh dấu thiết bị cần xác thực lại
+            if (session.deviceId) {
+              await this.tokenService.markDeviceForReverification(userId, session.deviceId, 'SESSION_REVOKED_VIA_ITEMS')
             }
-          } catch (error) {
-            this.logger.error(`[revokeItems] Lỗi khi thu hồi session ${sessionId}: ${error.message}`)
-            // Tiếp tục xử lý các session khác
           }
         }
       }
 
       // 2. Thu hồi theo device IDs
       if (options.deviceIds && options.deviceIds.length > 0) {
-        this.logger.debug(`[revokeItems] Thu hồi sessions của ${options.deviceIds.length} thiết bị`)
-
         for (const deviceId of options.deviceIds) {
-          try {
-            // Bỏ qua device hiện tại nếu được yêu cầu
-            if (options.excludeCurrentSession && deviceId === currentDeviceId) {
-              this.logger.debug(`[revokeItems] Bỏ qua device hiện tại: ${deviceId}`)
+          // Bỏ qua device hiện tại nếu được yêu cầu
+          if (options.excludeCurrentSession && deviceId === currentDeviceId) {
+            continue
+          }
+
+          // Kiểm tra device có thuộc về user không
+          const device = await this.deviceRepository.findById(deviceId)
+          if (!device || device.userId !== userId) {
+            continue
+          }
+
+          // Lấy tất cả sessions của device
+          const sessions = await this.getDeviceSessions(userId, deviceId)
+
+          // Thu hồi từng session của device
+          for (const session of sessions) {
+            // Bỏ qua session hiện tại nếu được yêu cầu
+            if (options.excludeCurrentSession && session.id === currentSessionId) {
               continue
             }
 
-            // Kiểm tra device có thuộc về user không
-            const device = await this.deviceRepository.findById(deviceId)
-            if (!device || device.userId !== userId) {
-              this.logger.warn(
-                `[revokeItems] Bỏ qua device ${deviceId} vì không tìm thấy hoặc không thuộc về userId: ${userId}`
-              )
-              continue
-            }
+            await this.sessionRepository.deleteSession(session.id)
+            await this.tokenService.invalidateSession(session.id, 'DEVICE_REVOKE_BY_USER')
+            revokedSessionsCount++
+            revokedSessionIds.push(session.id)
+          }
 
-            // Lấy tất cả sessions của device
-            const sessions = await this.getDeviceSessions(userId, deviceId)
+          // Đánh dấu device không hoạt động
+          await this.deviceRepository.markDeviceAsInactive(deviceId)
+          revokedDevicesCount++
+          revokedDeviceIds.push(deviceId)
 
-            // Thu hồi từng session của device
-            for (const session of sessions) {
-              // Bỏ qua session hiện tại nếu được yêu cầu
-              if (options.excludeCurrentSession && session.id === currentSessionId) {
-                this.logger.debug(`[revokeItems] Bỏ qua session hiện tại: ${session.id}`)
-                continue
-              }
-
-              await this.sessionRepository.deleteSession(session.id)
-              await this.tokenService.invalidateSession(session.id, 'DEVICE_REVOKE_BY_USER')
-              revokedSessionsCount++
-              revokedSessionIds.push(session.id)
-            }
-
-            // Đánh dấu device không hoạt động
-            await this.deviceRepository.markDeviceAsInactive(deviceId)
-            revokedDevicesCount++
-            revokedDeviceIds.push(deviceId)
-
-            // Bỏ tin tưởng device nếu đang được tin tưởng
-            if (device.isTrusted) {
-              await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
-              untrustedDevicesCount++
-            }
-
-            this.logger.debug(`[revokeItems] Đã thu hồi device ${deviceId} và ${sessions.length} sessions liên quan`)
-          } catch (error) {
-            this.logger.error(`[revokeItems] Lỗi khi thu hồi device ${deviceId}: ${error.message}`)
-            // Tiếp tục xử lý các device khác
+          // Bỏ tin tưởng device nếu đang được tin tưởng
+          if (device.isTrusted) {
+            await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+            untrustedDevicesCount++
           }
         }
       }
 
       // 3. Thu hồi tất cả sessions của user
       if (options.revokeAllUserSessions) {
-        this.logger.debug(`[revokeItems] Thu hồi tất cả sessions của userId: ${userId}`)
-
         // Xác định session ID cần loại trừ (nếu có)
         const excludeSessionId = options.excludeCurrentSession ? currentSessionId : undefined
 
@@ -650,26 +607,20 @@ export class SessionsService implements ISessionService {
             untrustedDevicesCount++
           }
         }
-
-        this.logger.debug(`[revokeItems] Đã thu hồi tất cả sessions của userId: ${userId}, số lượng: ${result.count}`)
       }
 
       // Gửi email thông báo nếu hành động có rủi ro cao
       if (revokedDevicesCount > 0 || revokedSessionsCount >= 3) {
-        try {
-          const userEmail = user?.email
-          if (userEmail) {
-            await this.emailService.sendSecurityAlertEmail(SecurityAlertType.SESSIONS_REVOKED, userEmail, {
-              userName: user?.email || 'Người dùng',
-              sessionCount: revokedSessionsCount,
-              deviceCount: revokedDevicesCount,
-              ipAddress: ipAddress || 'Không xác định',
-              userAgent: userAgent || 'Không xác định',
-              location: await this.geolocationService.getLocationFromIP(ipAddress || '')
-            })
-          }
-        } catch (error) {
-          this.logger.error(`[revokeItems] Lỗi khi gửi email thông báo: ${error.message}`)
+        const userEmail = user?.email
+        if (userEmail) {
+          await this.emailService.sendSecurityAlertEmail(SecurityAlertType.SESSIONS_REVOKED, userEmail, {
+            userName: user?.email || 'Người dùng',
+            sessionCount: revokedSessionsCount,
+            deviceCount: revokedDevicesCount,
+            ipAddress: ipAddress || 'Không xác định',
+            userAgent: userAgent || 'Không xác định',
+            location: await this.geolocationService.getLocationFromIP(ipAddress || '')
+          })
         }
       }
 
@@ -712,20 +663,15 @@ export class SessionsService implements ISessionService {
    * Cập nhật tên thiết bị
    */
   async updateDeviceName(userId: number, deviceId: number, name: string): Promise<{ message: string }> {
-    this.logger.debug(
-      `[updateDeviceName] User ${userId} attempting to update name for device ${deviceId} to "${name}".`
-    )
     const device = await this.deviceRepository.findById(deviceId)
 
     if (!device || device.userId !== userId) {
-      this.logger.warn(`[updateDeviceName] Device ${deviceId} not found or does not belong to user ${userId}.`)
       throw AuthError.DeviceNotOwnedByUser()
     }
 
     await this.deviceRepository.updateDeviceName(deviceId, name)
-    this.logger.log(`[updateDeviceName] Device ${deviceId} name updated to "${name}" by user ${userId}.`)
     return {
-      message: await this.i18nService.translate('Auth.Device.NameUpdatedSuccessfully')
+      message: this.i18nService.t('auth.Auth.Device.NameUpdatedSuccessfully')
     }
   }
 
@@ -741,31 +687,24 @@ export class SessionsService implements ISessionService {
    * Đánh dấu thiết bị là đáng tin cậy
    */
   async trustDevice(userId: number, deviceId: number, ip?: string, userAgent?: string): Promise<{ message: string }> {
-    this.logger.debug(
-      `[trustDevice] User ${userId} attempting to trust device ${deviceId}. IP: ${ip}, UA: ${userAgent}`
-    )
     const device = await this.deviceRepository.findById(deviceId)
 
     if (!device || device.userId !== userId) {
-      this.logger.warn(`[trustDevice] Device ${deviceId} not found or does not belong to user ${userId}.`)
       throw AuthError.DeviceNotOwnedByUser()
     }
 
     if (device.isTrusted && device.trustExpiration && new Date() < device.trustExpiration) {
-      this.logger.log(`[trustDevice] Device ${deviceId} is already trusted and trust is valid.`)
       return {
-        message: await this.i18nService.translate('Auth.Device.AlreadyTrusted')
+        message: this.i18nService.t('auth.Auth.Device.AlreadyTrusted')
       }
     }
 
     if (userAgent && ip) {
       const fingerprint = this.generateFingerprint(userAgent, ip)
       await this.deviceRepository.updateDeviceFingerprint(deviceId, fingerprint)
-      this.logger.debug(`[trustDevice] Updated fingerprint for device ${deviceId}.`)
     }
 
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, true) // true for trusted, also sets new expiration
-    this.logger.log(`[trustDevice] Device ${deviceId} marked as trusted by user ${userId}.`)
 
     const user = await this.prismaService.user.findUnique({
       where: { id: userId },
@@ -773,22 +712,17 @@ export class SessionsService implements ISessionService {
     })
 
     if (user) {
-      try {
-        await this.emailService.sendSecurityAlertEmail(SecurityAlertType.DEVICE_TRUSTED, user.email, {
-          userName: user.userProfile?.firstName || user.email,
-          ipAddress: ip || device.ip,
-          device: userAgent || device.userAgent,
-          location: device.lastKnownCity ? `${device.lastKnownCity}, ${device.lastKnownCountry}` : 'Unknown',
-          deviceName: device.name || 'Unknown device'
-        })
-        this.logger.debug(`[trustDevice] Sent device trusted notification email to ${user.email}.`)
-      } catch (error) {
-        this.logger.error(`[trustDevice] Failed to send device trust notification email: ${error.message}`, error.stack)
-      }
+      await this.emailService.sendSecurityAlertEmail(SecurityAlertType.DEVICE_TRUSTED, user.email, {
+        userName: user.userProfile?.firstName || user.email,
+        ipAddress: ip || device.ip,
+        device: userAgent || device.userAgent,
+        location: device.lastKnownCity ? `${device.lastKnownCity}, ${device.lastKnownCountry}` : 'Unknown',
+        deviceName: device.name || 'Unknown device'
+      })
     }
 
     return {
-      message: await this.i18nService.translate('Auth.Device.Trusted')
+      message: this.i18nService.t('auth.Auth.Device.Trusted')
     }
   }
 
@@ -797,21 +731,17 @@ export class SessionsService implements ISessionService {
    * This method is primarily called internally by revokeItems or when a device is explicitly untrusted.
    */
   async untrustDevice(userId: number, deviceId: number): Promise<{ message: string }> {
-    this.logger.debug(`[untrustDevice] User ${userId} attempting to untrust device ${deviceId}.`)
     const device = await this.deviceRepository.findById(deviceId)
 
     if (!device || device.userId !== userId) {
-      this.logger.warn(`[untrustDevice] Device ${deviceId} not found or does not belong to user ${userId}.`)
       throw AuthError.DeviceNotOwnedByUser()
     }
 
     if (!device.isTrusted) {
-      this.logger.log(`[untrustDevice] Device ${deviceId} is already untrusted.`)
-      return { message: await this.i18nService.translate('Auth.Device.AlreadyUntrusted') }
+      return { message: this.i18nService.t('auth.Auth.Device.AlreadyUntrusted') }
     }
 
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, false) // false for untrusted
-    this.logger.log(`[untrustDevice] Device ${deviceId} marked as untrusted by user ${userId}.`)
 
     // Gửi email thông báo (tùy chọn)
     const user = await this.prismaService.user.findUnique({
@@ -819,22 +749,14 @@ export class SessionsService implements ISessionService {
       select: { email: true, userProfile: true }
     })
     if (user) {
-      try {
-        await this.emailService.sendSecurityAlertEmail(SecurityAlertType.DEVICE_UNTRUSTED, user.email, {
-          userName: user.userProfile?.firstName || user.email,
-          deviceName: device.name || 'Unknown device'
-        })
-        this.logger.debug(`[untrustDevice] Sent device untrusted notification email to ${user.email}.`)
-      } catch (error) {
-        this.logger.error(
-          `[untrustDevice] Failed to send device untrust notification email: ${error.message}`,
-          error.stack
-        )
-      }
+      await this.emailService.sendSecurityAlertEmail(SecurityAlertType.DEVICE_UNTRUSTED, user.email, {
+        userName: user.userProfile?.firstName || user.email,
+        deviceName: device.name || 'Unknown device'
+      })
     }
 
     return {
-      message: await this.i18nService.translate('Auth.Device.Untrusted')
+      message: this.i18nService.t('auth.Auth.Device.Untrusted')
     }
   }
 
@@ -847,7 +769,6 @@ export class SessionsService implements ISessionService {
     ip?: string,
     userAgent?: string
   ): Promise<{ message: string }> {
-    this.logger.debug(`[trustCurrentDevice] User ${userId} attempting to trust current device ${currentDeviceId}.`)
     return this.trustDevice(userId, currentDeviceId, ip, userAgent)
   }
 

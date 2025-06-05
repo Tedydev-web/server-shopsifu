@@ -1,16 +1,11 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
-import {
-  RegisterBodySchema,
-  LoginBodySchema,
-  UserAuthResponseSchema,
-  CompleteRegistrationSchema
-} from 'src/routes/auth/auth.model'
+import { LoginBodySchema, UserAuthResponseSchema, CompleteRegistrationSchema } from 'src/routes/auth/auth.model'
 import { MessageResSchema } from 'src/shared/models/response.model'
 
 // Register DTOs
 export const InitiateRegistrationSchema = z.object({
-  email: z.string().email({ message: 'Email không hợp lệ' })
+  email: z.string().email()
 })
 
 export const RegistrationResponseSchema = MessageResSchema

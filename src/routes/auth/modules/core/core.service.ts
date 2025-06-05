@@ -1,12 +1,11 @@
-import { Injectable, Logger, InternalServerErrorException, Inject } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
+import { Injectable, Logger, Inject } from '@nestjs/common'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
 import { Response, Request } from 'express'
 import { AuthError } from '../../auth.error'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { IUserAuthService, ICookieService, ITokenService } from 'src/shared/types/auth.types'
-import { TwoFactorMethodType, TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
 import { User, Device, Role, UserProfile } from '@prisma/client'
 import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
@@ -44,7 +43,6 @@ export class CoreService implements IUserAuthService {
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly i18nService: I18nService<I18nTranslations>,
-    private readonly configService: ConfigService,
     private readonly userAuthRepository: UserAuthRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly otpService: OtpService,
@@ -109,8 +107,6 @@ export class CoreService implements IUserAuthService {
       username: finalUsername,
       phoneNumber
     })
-
-    this.logger.log(`Đăng ký thành công cho user với email ${email}`)
   }
 
   /**
@@ -140,8 +136,6 @@ export class CoreService implements IUserAuthService {
    * Đăng nhập
    */
   async login(params: LoginParams, res: Response): Promise<any> {
-    this.logger.debug(`[login] Trying to login user with email/username: ${params.emailOrUsername}`)
-
     // Xác thực người dùng qua email hoặc username và mật khẩu
     const user = await this.validateUser(params.emailOrUsername, params.password)
 
@@ -172,18 +166,13 @@ export class CoreService implements IUserAuthService {
         params.ip || 'Unknown',
         `Device ${new Date().toISOString().split('T')[0]}`
       )
-      this.logger.debug(
-        `[login] User ${params.emailOrUsername}: found ${device ? 1 : 0} devices, isFirstTimeLogin=${!device}`
-      )
     } catch (error) {
-      this.logger.error(`[login] Error upsert device: ${error.message}`, error.stack)
-      throw AuthError.InternalServerError('Failed to process device information.')
+      throw AuthError.DeviceProcessingFailed()
     }
 
     // Kiểm tra xem thiết bị này có cần xác thực lại hay không
     const needsReverification = await this.tokenService.checkDeviceNeedsReverification(user.id, device.id)
     if (needsReverification) {
-      this.logger.debug(`[login] Device ${device.id} for user ${user.id} needs reverification`)
       return this.initiateDeviceVerification(user, device, rememberMe, res)
     }
 
@@ -191,29 +180,19 @@ export class CoreService implements IUserAuthService {
     const twoFactorEnabled = user.twoFactorEnabled
     const isTrusted = await this.deviceRepository.isDeviceTrustValid(device.id)
 
-    this.logger.debug(`[login] User ${params.emailOrUsername}: Device ID=${device.id}, isTrusted=${isTrusted}`)
-    this.logger.debug(`[login] User ${params.emailOrUsername}: 2FA enabled=${twoFactorEnabled}`)
-
     // Xác định xem có cần xác thực bổ sung hay không
     const bypass2FA = false // Cờ này có thể được thiết lập khi có tình huống đặc biệt cho phép bỏ qua 2FA
     const needsDeviceVerification = !isTrusted
     const needs2FAVerification = twoFactorEnabled
 
-    this.logger.debug(`[login] Final device trust status: ${isTrusted}`)
-    this.logger.debug(
-      `[login] Additional verification needed: 2FA=${needs2FAVerification}, untrusted device=${needsDeviceVerification}, bypass 2FA=${bypass2FA}`
-    )
-
     // Ưu tiên xác thực 2 yếu tố trước, sau đó đến thiết bị không tin cậy
     if (needs2FAVerification && !bypass2FA) {
       return this.initiate2FAVerification(user, device, rememberMe, res)
     } else if (needsDeviceVerification) {
-      this.logger.debug(`[login] Initiating device verification for user ${params.emailOrUsername}`)
       return this.initiateDeviceVerification(user, device, rememberMe, res)
     }
 
     // Nếu không cần xác thực bổ sung, hoàn tất đăng nhập
-    this.logger.debug(`[login] Completing login without additional verification for user ${params.emailOrUsername}`)
     return this.finalizeLoginAndCreateTokens(user, device, rememberMe, res, params.ip, params.userAgent)
   }
 
@@ -353,7 +332,9 @@ export class CoreService implements IUserAuthService {
 
       // Phản hồi về client
       return {
-        messageKey: 'Auth.Login.DeviceVerificationRequired',
+        message: this.i18nService.t('Auth.Auth.Login.DeviceVerificationRequired' as I18nPath, {
+          lang: I18nContext.current()?.lang
+        }),
         requiresDeviceVerification: true,
         verificationType: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
         verificationRedirectUrl: '/auth/otp/verify'
@@ -382,7 +363,7 @@ export class CoreService implements IUserAuthService {
         deviceId: device.id,
         ipAddress: device.ip,
         userAgent: device.userAgent,
-        purpose: TypeOfVerificationCode.LOGIN_2FA,
+        purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA,
         metadata: {
           deviceId: device.id,
           rememberMe: rememberMe,
@@ -391,11 +372,11 @@ export class CoreService implements IUserAuthService {
       })
 
       // Đặt cookie SLT
-      this.cookieService.setSltCookie(res, sltToken, TypeOfVerificationCode.LOGIN_2FA)
+      this.cookieService.setSltCookie(res, sltToken, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA)
 
       // Phản hồi về client
       return {
-        messageKey: 'Auth.Login.2FARequired',
+        message: this.i18nService.t('Auth.Auth.Login.2FARequired' as I18nPath, { lang: I18nContext.current()?.lang }),
         requires2FA: true,
         twoFactorMethod: user.twoFactorMethod,
         verificationRedirectUrl: '/auth/2fa/verify'
@@ -484,7 +465,8 @@ export class CoreService implements IUserAuthService {
       return {
         accessToken,
         refreshToken,
-        user: userResponse
+        user: userResponse,
+        message: this.i18nService.t('Auth.Auth.Login.Success' as I18nPath, { lang: I18nContext.current()?.lang })
       }
     } catch (error) {
       this.logger.error(`[finalizeLoginAndCreateTokens] Error: ${error.message}`, error.stack)
@@ -583,7 +565,7 @@ export class CoreService implements IUserAuthService {
         accessToken,
         refreshToken,
         user: userResponse,
-        messageKey: 'Auth.Login.Success'
+        message: this.i18nService.t('Auth.Auth.Login.Success' as I18nPath, { lang: I18nContext.current()?.lang })
       }
     } catch (error) {
       this.logger.error(`[finalizeLoginAfterVerification] Error: ${error.message}`, error.stack)

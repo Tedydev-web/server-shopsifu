@@ -209,12 +209,12 @@ export class SocialController {
           deviceId: device.id,
           ipAddress: ip,
           userAgent,
-          purpose: TypeOfVerificationCode.LOGIN_2FA,
+          purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA,
           metadata: { twoFactorMethod }
         })
 
         // Set SLT cookie
-        this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_2FA)
+        this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA)
 
         return {
           status: 'two_factor_required',

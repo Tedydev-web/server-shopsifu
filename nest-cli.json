@@ -6,7 +6,6 @@
     "deleteOutDir": true,
     "webpack": false,
     "tsConfigPath": "tsconfig.build.json",
-    "assets": ["i18n/**/*.json", { "include": "../emails/**/*", "outDir": "dist/emails" }],
-    "watchAssets": true
+    "assets": [{ "include": "i18n/**/*", "watchAssets": true, "outDir": "dist/src" }]
   }
 }

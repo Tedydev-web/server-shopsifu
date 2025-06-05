@@ -109,7 +109,7 @@ export class OtpService implements IOTPService {
     })
 
     return {
-      message: await this.i18nService.translate('Auth.Otp.SentSuccessfully'),
+      message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully'),
       otpCode
     }
   }
