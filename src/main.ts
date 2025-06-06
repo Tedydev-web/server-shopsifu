@@ -1,27 +1,20 @@
-import { NestFactory, HttpAdapterHost } from '@nestjs/core'
+import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
 import compression from 'compression'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import { SecurityHeaders } from './shared/constants/auth.constants'
-import { I18nService } from 'nestjs-i18n'
-import { ConfigService } from '@nestjs/config'
-import { VersioningType, ValidationPipe, Logger as NestLogger, LoggerService } from '@nestjs/common'
+import { VersioningType, Logger as NestLogger } from '@nestjs/common'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import { WinstonModule } from 'nest-winston'
 import { winstonLogger as winstonLoggerConfig, WinstonConfig } from './shared/logger/winston.config'
 import appConfig from './shared/config'
-import { I18nTranslations } from '../src/generated/i18n.generated'
 
 async function bootstrap() {
   const bootstrapLogger = new NestLogger('Bootstrap')
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: WinstonModule.createLogger(WinstonConfig)
   })
-
-  const configService = app.get(ConfigService)
-  const httpAdapterHost = app.get(HttpAdapterHost)
-  const i18nService = app.get<I18nService<I18nTranslations>>(I18nService)
 
   app.enableCors({
     origin: appConfig().FRONTEND_URL,

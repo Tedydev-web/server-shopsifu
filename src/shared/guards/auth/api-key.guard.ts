@@ -15,19 +15,16 @@ export class ApiKeyGuard implements CanActivate {
     const request = context.switchToHttp().getRequest()
 
     try {
-      // Lấy API key từ header X-API-KEY hoặc query param
       const apiKey = request.headers['x-api-key'] || request.query.apiKey
 
       if (!apiKey) {
         throw new UnauthorizedException('API key is missing')
       }
 
-      // Kiểm tra API key
       if (apiKey !== this.apiKey) {
         throw new UnauthorizedException('Invalid API key')
       }
 
-      // Thiết lập thông tin vào request
       request[REQUEST_USER_KEY] = {
         isApiKey: true,
         apiKeyType: 'system'

@@ -1,4 +1,4 @@
-import { HttpStatus } from '@nestjs/common'
+import { HttpStatus, HttpException } from '@nestjs/common'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 
 /**
@@ -70,6 +70,14 @@ export class AuthError {
     return new ApiException(HttpStatus.UNAUTHORIZED, 'ACCESS_TOKEN_EXPIRED', 'auth.Auth.Error.Token.ExpiredAccessToken')
   }
 
+  static RefreshTokenExpired(): ApiException {
+    return new ApiException(
+      HttpStatus.UNAUTHORIZED,
+      'REFRESH_TOKEN_EXPIRED',
+      'auth.Auth.Error.Token.ExpiredRefreshToken'
+    )
+  }
+
   // OTP Errors
   static InvalidOTP(): ApiException {
     return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_OTP', 'auth.Auth.Error.Otp.Invalid')
@@ -91,6 +99,16 @@ export class AuthError {
     return new ApiException(HttpStatus.TOO_MANY_REQUESTS, 'OTP_SENDING_LIMITED', 'auth.Auth.Otp.CooldownActive')
   }
 
+  static OTPMaxAttemptsExceeded(): HttpException {
+    return new HttpException(
+      {
+        message: 'Quá nhiều lần thử nhập mã OTP. Vui lòng yêu cầu mã mới.',
+        errorCode: 'OTP_MAX_ATTEMPTS_EXCEEDED'
+      },
+      HttpStatus.TOO_MANY_REQUESTS
+    )
+  }
+
   // SLT Errors
   static SLTCookieMissing(): ApiException {
     return new ApiException(HttpStatus.BAD_REQUEST, 'SLT_COOKIE_MISSING', 'auth.Auth.Error.SLT.CookieMissing')
@@ -98,6 +116,10 @@ export class AuthError {
 
   static SLTExpired(): ApiException {
     return new ApiException(HttpStatus.UNAUTHORIZED, 'SLT_EXPIRED', 'auth.Auth.Error.SLT.Expired')
+  }
+
+  static InvalidSLT(): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_SLT', 'auth.Auth.Error.SLT.Invalid')
   }
 
   static SLTInvalidPurpose(): ApiException {
@@ -109,6 +131,26 @@ export class AuthError {
       HttpStatus.BAD_REQUEST,
       'EMAIL_MISSING_IN_SLT_CONTEXT',
       'auth.Auth.Error.Slt.EmailMissingInContext'
+    )
+  }
+
+  static SLTAlreadyUsed(): HttpException {
+    return new HttpException(
+      {
+        message: 'Token xác thực ngắn hạn đã được sử dụng. Vui lòng yêu cầu một token mới.',
+        errorCode: 'SLT_ALREADY_USED'
+      },
+      HttpStatus.UNAUTHORIZED
+    )
+  }
+
+  static SLTMaxAttemptsExceeded(): HttpException {
+    return new HttpException(
+      {
+        message: 'Quá nhiều lần thử với token xác thực ngắn hạn. Vui lòng yêu cầu một token mới.',
+        errorCode: 'SLT_MAX_ATTEMPTS_EXCEEDED'
+      },
+      HttpStatus.TOO_MANY_REQUESTS
     )
   }
 
@@ -127,6 +169,16 @@ export class AuthError {
 
   static SessionRevoked(): ApiException {
     return new ApiException(HttpStatus.UNAUTHORIZED, 'SESSION_REVOKED', 'auth.Auth.Error.Session.RevokedRemotely')
+  }
+
+  static InvalidVerificationMethod(): HttpException {
+    return new HttpException(
+      {
+        message: 'Phương thức xác thực không hợp lệ hoặc không được hỗ trợ.',
+        errorCode: 'INVALID_VERIFICATION_METHOD'
+      },
+      HttpStatus.BAD_REQUEST
+    )
   }
 
   // Session Errors

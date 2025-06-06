@@ -37,7 +37,8 @@ import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import crypto from 'crypto'
 import { CookieNames } from 'src/shared/constants/auth.constants'
 import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
-import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { COOKIE_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { SLTService } from 'src/shared/services/auth/slt.service'
 
 @Controller('auth/social')
 export class SocialController {
@@ -47,7 +48,8 @@ export class SocialController {
     private readonly socialService: SocialService,
     private readonly otpService: OtpService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
-    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
+    @Inject(SLT_SERVICE) private readonly sltService: SLTService
   ) {}
 
   /**
@@ -203,7 +205,7 @@ export class SocialController {
         this.logger.debug(`[googleCallback] Yêu cầu xác thực 2FA cho user: ${user.id}`)
 
         // Khởi tạo OTP với SLT cookie
-        const sltJwt = await this.otpService.initiateOtpWithSltCookie({
+        const sltJwt = await this.sltService.initiateOtpWithSltCookie({
           email: user.email,
           userId: user.id,
           deviceId: device.id,
@@ -231,7 +233,7 @@ export class SocialController {
         this.logger.debug(`[googleCallback] Yêu cầu xác minh thiết bị không tin cậy cho user: ${user.id}`)
 
         // Khởi tạo OTP với SLT cookie
-        const sltJwt = await this.otpService.initiateOtpWithSltCookie({
+        const sltJwt = await this.sltService.initiateOtpWithSltCookie({
           email: user.email,
           userId: user.id,
           deviceId: device.id,

@@ -1,7 +1,7 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common'
 import { Observable } from 'rxjs'
 import { map } from 'rxjs/operators'
-import { I18nTranslations, I18nPath } from '../../generated/i18n.generated'
+import { I18nTranslations } from '../../generated/i18n.generated'
 import { I18nService } from 'nestjs-i18n'
 
 export interface StandardSuccessResponse<T> {

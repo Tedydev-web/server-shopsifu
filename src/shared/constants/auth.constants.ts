@@ -1,7 +1,6 @@
 /**
  * Auth Constants
  */
-import { RedisPrefix } from 'src/shared/utils/redis-keys.utils'
 
 export enum AuthType {
   JWT = 'JWT',
@@ -88,7 +87,6 @@ export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof t
  */
 export enum TwoFactorMethodType {
   TOTP = 'TOTP',
-  OTP = 'OTP',
   RECOVERY = 'RECOVERY'
 }
 

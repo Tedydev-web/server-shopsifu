@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
 import { PickedUserProfileResponseSchema } from 'src/shared/dtos/user.dto'
+import { TwoFactorMethodType } from 'src/shared/constants/auth.constants'
 
 // Setup 2FA DTOs
 export const TwoFactorSetupSchema = z.object({
@@ -8,23 +9,19 @@ export const TwoFactorSetupSchema = z.object({
 })
 
 export const TwoFactorSetupResponseSchema = z.object({
-  secret: z
-    .string()
-    .describe(
-      'Secret key dạng BASE32 dùng để thiết lập ứng dụng authenticator. Chỉ hiển thị khi người dùng yêu cầu nhập thủ công.'
-    ),
-  uri: z.string().describe('URI dạng data:image/png;base64 chứa QR code để quét bằng ứng dụng authenticator.')
+  success: z.boolean(),
+  message: z.string(),
+  secret: z.string(),
+  uri: z.string()
 })
 
 // Confirm 2FA Setup DTOs
 export const TwoFactorConfirmSetupSchema = z.object({
-  totpCode: z
-    .string()
-    .min(6, { message: 'Mã TOTP phải có ít nhất 6 ký tự' })
-    .max(6, { message: 'Mã TOTP tối đa 6 ký tự' })
+  code: z.string().min(6, { message: 'Mã xác thực TOTP phải có ít nhất 6 ký tự' })
 })
 
 export const TwoFactorConfirmSetupResponseSchema = z.object({
+  success: z.boolean(),
   message: z.string(),
   recoveryCodes: z.array(z.string())
 })
@@ -32,8 +29,8 @@ export const TwoFactorConfirmSetupResponseSchema = z.object({
 // Verify 2FA DTOs
 export const TwoFactorVerifySchema = z.object({
   code: z.string().min(6, { message: 'Mã xác thực phải có ít nhất 6 ký tự' }),
-  rememberMe: z.boolean().optional().default(false),
-  method: z.enum(['TOTP', 'RECOVERY_CODE']).optional().default('TOTP')
+  method: z.enum(['TOTP', 'RECOVERY']).optional(),
+  rememberMe: z.boolean().optional().default(false)
 })
 
 export const TwoFactorVerifyResponseSchema = z.object({
@@ -54,19 +51,21 @@ export const TwoFactorVerifyResponseSchema = z.object({
 // Disable 2FA DTOs
 export const DisableTwoFactorSchema = z.object({
   code: z.string().min(6, { message: 'Mã xác thực phải có ít nhất 6 ký tự' }),
-  method: z.enum(['TOTP', 'RECOVERY_CODE', 'PASSWORD']).optional()
+  method: z.enum(['TOTP', 'RECOVERY', 'PASSWORD']).optional()
 })
 
 export const DisableTwoFactorResponseSchema = z.object({
+  success: z.boolean(),
   message: z.string()
 })
 
 // Regenerate Recovery Codes DTOs
 export const RegenerateRecoveryCodesSchema = z.object({
-  code: z.string().min(6, { message: 'Mã TOTP phải có ít nhất 6 ký tự' }).max(6, { message: 'Mã TOTP tối đa 6 ký tự' })
+  code: z.string().min(6, { message: 'Mã xác thực phải có ít nhất 6 ký tự' })
 })
 
 export const RegenerateRecoveryCodesResponseSchema = z.object({
+  success: z.boolean(),
   message: z.string(),
   recoveryCodes: z.array(z.string())
 })

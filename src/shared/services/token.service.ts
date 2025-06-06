@@ -13,15 +13,16 @@ import { ITokenService } from 'src/shared/types/auth.types'
 import { REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { CryptoService } from 'src/shared/services/crypto.service'
-// Import AuthError from new location when moving to shared
 import { AuthError } from 'src/routes/auth/auth.error'
-// Import auth constants from auth module
 import {
   DEVICE_REVOKE_HISTORY_TTL,
   DEVICE_REVERIFICATION_TTL,
   DEVICE_REVERIFY_KEY_PREFIX
 } from 'src/shared/constants/auth.constants'
-import { DeviceRepository, SessionRepository } from 'src/shared/repositories/auth' // Import DeviceRepository and SessionRepository
+import { DeviceRepository, SessionRepository } from 'src/shared/repositories/auth'
+import { v4 as uuidv4 } from 'uuid'
+import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.service'
+import { DeviceService } from 'src/shared/services/auth/device.service'
 
 @Injectable()
 export class TokenService implements ITokenService {
@@ -33,8 +34,78 @@ export class TokenService implements ITokenService {
     private readonly configService: ConfigService,
     private readonly deviceRepository: DeviceRepository,
     private readonly sessionRepository: SessionRepository,
-    private readonly cryptoService?: CryptoService
+    private readonly cryptoService?: CryptoService,
+    private readonly sessionsService?: SessionsService,
+    private readonly deviceService?: DeviceService
   ) {}
+
+  /**
+   * Tạo access token
+   */
+  async generateAccessToken(userId: number, expiresIn?: string): Promise<string> {
+    const tokenJti = `access_${Date.now()}_${uuidv4().substring(0, 8)}`
+    const payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
+      userId,
+      jti: tokenJti,
+      type: 'ACCESS'
+    }
+    return Promise.resolve(this.signAccessToken(payload))
+  }
+
+  /**
+   * Tạo refresh token
+   */
+  async generateRefreshToken(userId: number, rememberMe?: boolean): Promise<string> {
+    const tokenJti = `refresh_${Date.now()}_${uuidv4().substring(0, 8)}`
+    const payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
+      userId,
+      jti: tokenJti,
+      type: 'REFRESH'
+    }
+
+    const expiresIn = rememberMe
+      ? this.configService.get('auth.refreshToken.extendedExpiresIn', '30d')
+      : this.configService.get('auth.refreshToken.expiresIn', '7d')
+
+    return Promise.resolve(
+      this.jwtService.sign(payload, {
+        secret: this.configService.get('REFRESH_JWT_SECRET', this.configService.get('JWT_SECRET')),
+        expiresIn
+      })
+    )
+  }
+
+  /**
+   * Xác minh access token
+   */
+  async validateAccessToken(token: string): Promise<any> {
+    try {
+      return await this.verifyAccessToken(token)
+    } catch (error) {
+      this.logger.error(`AccessToken validation error: ${error.message}`)
+      throw AuthError.InvalidAccessToken()
+    }
+  }
+
+  /**
+   * Xác minh refresh token
+   */
+  async validateRefreshToken(token: string): Promise<any> {
+    try {
+      const payload = await this.verifyRefreshToken(token)
+
+      // Kiểm tra token có trong blacklist không
+      const isBlacklisted = await this.isRefreshTokenJtiBlacklisted(payload.jti)
+      if (isBlacklisted) {
+        throw AuthError.InvalidRefreshToken()
+      }
+
+      return payload
+    } catch (error) {
+      this.logger.error(`RefreshToken validation error: ${error.message}`)
+      throw AuthError.InvalidRefreshToken()
+    }
+  }
 
   /**
    * Tạo access token
@@ -69,7 +140,9 @@ export class TokenService implements ITokenService {
    */
   async verifyAccessToken(token: string): Promise<AccessTokenPayload> {
     try {
-      const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token)
+      const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token, {
+        secret: this.configService.get('JWT_SECRET')
+      })
 
       // Kiểm tra token có trong blacklist không
       const isBlacklisted = await this.isAccessTokenJtiBlacklisted(payload.jti)
@@ -80,6 +153,7 @@ export class TokenService implements ITokenService {
       return payload
     } catch (error) {
       this.logger.error(`Token validation error: ${error.message}`)
+      if (error instanceof AuthError) throw error
       throw AuthError.InvalidAccessToken()
     }
   }
@@ -88,22 +162,31 @@ export class TokenService implements ITokenService {
    * Xác minh refresh token
    */
   async verifyRefreshToken(token: string): Promise<AccessTokenPayload> {
-    return this.verifyAccessToken(token)
+    try {
+      const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token, {
+        secret: this.configService.get('REFRESH_JWT_SECRET', this.configService.get('JWT_SECRET'))
+      })
+
+      return payload
+    } catch (error) {
+      this.logger.error(`Refresh token validation error: ${error.message}`)
+      if (error instanceof AuthError) throw error
+      if (error.name === 'TokenExpiredError') {
+        throw AuthError.RefreshTokenExpired()
+      } else if (error.name === 'JsonWebTokenError') {
+        throw AuthError.InvalidRefreshToken()
+      }
+      throw AuthError.InvalidRefreshToken()
+    }
   }
 
   /**
    * Tạo pending link token
    */
   signPendingLinkToken(payload: PendingLinkTokenPayloadCreate): string {
-    return this.jwtService.sign(
-      {
-        ...payload,
-        jti: `pending_link_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
-      },
-      {
-        expiresIn: this.configService.get('auth.oauth.pendingLinkExpiresIn', '15m')
-      }
-    )
+    return this.jwtService.sign(payload, {
+      expiresIn: this.configService.get('auth.pendingLinkToken.expiresIn', '15m')
+    })
   }
 
   /**
@@ -210,9 +293,18 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Vô hiệu hoá session
+   * Vô hiệu hóa một session cụ thể.
+   * @deprecated Sử dụng SessionsService.invalidateSession thay thế
    */
   async invalidateSession(sessionId: string, reason: string = 'UNKNOWN'): Promise<void> {
+    if (this.sessionsService) {
+      await this.sessionsService.invalidateSession(sessionId, reason)
+      return
+    }
+
+    // Fallback nếu SessionsService chưa được inject
+    this.logger.warn(`[invalidateSession] SessionsService not available. Using deprecated implementation.`)
+
     try {
       const isAlreadyInvalidated = await this.isSessionInvalidated(sessionId)
       if (isAlreadyInvalidated) {
@@ -257,7 +349,7 @@ export class TokenService implements ITokenService {
       await this.redisService.del(sessionKey)
       this.logger.log(`Session ${sessionId} data deleted from Redis. Reason: ${reason}`)
 
-      // Xóa session khỏi các index
+      // Xoá session khỏi các index
       if (userId) {
         await this.redisService.srem(RedisKeyManager.userSessionsKey(userId), sessionId)
         this.logger.debug(`Session ${sessionId} removed from user index for user ${userId}.`)
@@ -303,64 +395,19 @@ export class TokenService implements ITokenService {
       this.logger.log(`Session ${sessionId} has been invalidated successfully. Reason: ${reason}`)
     } catch (error) {
       this.logger.error(`Error invalidating session ${sessionId}: ${error.message}`, error.stack)
-      // Không ném lỗi ra ngoài để tránh làm gián đoạn flow chính, chỉ log lỗi
-      // throw error; // Cân nhắc có nên ném lỗi hay không tùy theo yêu cầu nghiệp vụ
     }
   }
 
   /**
-   * Đánh dấu thiết bị cần xác minh lại
+   * Lưu trữ thông tin session đã bị thu hồi vào một key riêng để audit hoặc xử lý sau.
+   * @deprecated Chức năng đã được chuyển sang SessionsService
    */
-  async markDeviceForReverification(userId: number, deviceId: number, reason: string): Promise<void> {
-    try {
-      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
-      const data = {
-        userId: userId.toString(),
-        deviceId: deviceId.toString(),
-        reason,
-        timestamp: Date.now().toString()
-      }
-
-      await this.redisService.hset(key, data)
-      await this.redisService.expire(key, DEVICE_REVERIFICATION_TTL)
-
-      this.logger.log(`Device ${deviceId} for user ${userId} marked for reverification. Reason: ${reason}`)
-    } catch (error) {
-      this.logger.error(`Error marking device ${deviceId} for reverification: ${error.message}`, error.stack)
-    }
-  }
-
-  /**
-   * Kiểm tra thiết bị có cần xác minh lại không
-   */
-  async checkDeviceNeedsReverification(userId: number, deviceId: number): Promise<boolean> {
-    try {
-      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
-      const exists = await this.redisService.exists(key)
-      return exists > 0
-    } catch (error) {
-      this.logger.error(`Error checking if device ${deviceId} needs reverification: ${error.message}`, error.stack)
-      return false
-    }
-  }
-
-  /**
-   * Xoá yêu cầu xác minh lại thiết bị
-   */
-  async clearDeviceReverification(userId: number, deviceId: number): Promise<void> {
-    try {
-      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
-      await this.redisService.del(key)
-      this.logger.log(`Cleared reverification flag for device ${deviceId} of user ${userId}`)
-    } catch (error) {
-      this.logger.error(`Error clearing reverification for device ${deviceId}: ${error.message}`, error.stack)
-    }
-  }
-
-  /**
-   * Lưu trữ session đã vô hiệu hoá
-   */
-  private async archiveRevokedSession(sessionId: string, sessionData: any, reason: string): Promise<void> {
+  private async archiveRevokedSession(
+    sessionId: string,
+    sessionData: Record<string, any>,
+    reason: string
+  ): Promise<void> {
+    // Phương thức này giờ là private và chỉ được gọi từ phương thức deprecated invalidateSession khi không có SessionsService
     try {
       const archivedKey = RedisKeyManager.sessionArchivedKey(sessionId)
       const historyKey = RedisKeyManager.sessionRevokeHistoryKey(sessionId)
@@ -409,9 +456,17 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Kiểm tra session có bị vô hiệu hoá không
+   * Kiểm tra xem một session có bị đánh dấu là đã vô hiệu hóa không.
+   * @deprecated Sử dụng SessionsService.isSessionInvalidated thay thế
    */
   async isSessionInvalidated(sessionId: string): Promise<boolean> {
+    if (this.sessionsService) {
+      return this.sessionsService.isSessionInvalidated(sessionId)
+    }
+
+    // Fallback nếu SessionsService chưa được inject
+    this.logger.warn(`[isSessionInvalidated] SessionsService not available. Using deprecated implementation.`)
+
     try {
       if (!sessionId) {
         return true
@@ -440,14 +495,22 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Vô hiệu hoá tất cả session của một user
+   * Vô hiệu hóa tất cả các session của một người dùng.
+   * @deprecated Sử dụng SessionsService.invalidateAllUserSessions thay thế
    */
   async invalidateAllUserSessions(
     userId: number,
     reason: string = 'UNKNOWN_BULK_INVALIDATION',
     sessionIdToExclude?: string
   ): Promise<void> {
-    // Implement this method in a transaction to ensure atomicity
+    if (this.sessionsService) {
+      await this.sessionsService.invalidateAllUserSessions(userId, reason, sessionIdToExclude)
+      return
+    }
+
+    // Fallback nếu SessionsService chưa được inject
+    this.logger.warn(`[invalidateAllUserSessions] SessionsService not available. Using deprecated implementation.`)
+
     try {
       interface RedisOperation {
         command: string
@@ -563,6 +626,86 @@ export class TokenService implements ITokenService {
     } catch (error) {
       this.logger.error(`Error invalidating all sessions for user ${userId}: ${error.message}`, error.stack)
       throw error
+    }
+  }
+
+  /**
+   * Đánh dấu một thiết bị cần xác minh lại
+   * @deprecated Sử dụng DeviceService.markDeviceForReverification thay thế
+   */
+  async markDeviceForReverification(userId: number, deviceId: number, reasonInput: string): Promise<void> {
+    if (this.deviceService) {
+      await this.deviceService.markDeviceForReverification(userId, deviceId, reasonInput)
+      return
+    }
+
+    // Fallback nếu DeviceService chưa được inject
+    this.logger.warn(`[markDeviceForReverification] DeviceService not available. Using deprecated implementation.`)
+
+    try {
+      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
+
+      const reason = /^[0-9]+$/.test(reasonInput)
+        ? `Marked for reverification by admin ID: ${reasonInput}`
+        : reasonInput
+
+      const data = {
+        userId: userId.toString(),
+        deviceId: deviceId.toString(),
+        reason,
+        timestamp: Date.now().toString()
+      }
+
+      await this.redisService.hset(key, data)
+      await this.redisService.expire(key, DEVICE_REVERIFICATION_TTL)
+
+      this.logger.log(`Device ${deviceId} for user ${userId} marked for reverification. Reason: ${reason}`)
+    } catch (error) {
+      this.logger.error(`Error marking device ${deviceId} for reverification: ${error.message}`, error.stack)
+    }
+  }
+
+  /**
+   * Kiểm tra xem một thiết bị có cần xác minh lại không
+   * @deprecated Sử dụng DeviceService.checkDeviceNeedsReverification thay thế
+   */
+  async checkDeviceNeedsReverification(userId: number, deviceId: number): Promise<boolean> {
+    if (this.deviceService) {
+      return this.deviceService.checkDeviceNeedsReverification(userId, deviceId)
+    }
+
+    // Fallback nếu DeviceService chưa được inject
+    this.logger.warn(`[checkDeviceNeedsReverification] DeviceService not available. Using deprecated implementation.`)
+
+    try {
+      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
+      const exists = await this.redisService.exists(key)
+      return exists > 0
+    } catch (error) {
+      this.logger.error(`Error checking if device ${deviceId} needs reverification: ${error.message}`, error.stack)
+      return false
+    }
+  }
+
+  /**
+   * Xóa cờ đánh dấu cần xác minh lại cho thiết bị
+   * @deprecated Sử dụng DeviceService.clearDeviceReverification thay thế
+   */
+  async clearDeviceReverification(userId: number, deviceId: number): Promise<void> {
+    if (this.deviceService) {
+      await this.deviceService.clearDeviceReverification(userId, deviceId)
+      return
+    }
+
+    // Fallback nếu DeviceService chưa được inject
+    this.logger.warn(`[clearDeviceReverification] DeviceService not available. Using deprecated implementation.`)
+
+    try {
+      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
+      await this.redisService.del(key)
+      this.logger.log(`Cleared reverification flag for device ${deviceId} of user ${userId}`)
+    } catch (error) {
+      this.logger.error(`Error clearing reverification for device ${deviceId}: ${error.message}`, error.stack)
     }
   }
 }

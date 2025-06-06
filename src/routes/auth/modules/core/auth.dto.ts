@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
-import { LoginBodySchema, UserAuthResponseSchema, CompleteRegistrationSchema } from 'src/routes/auth/auth.model'
+import { UserAuthResponseSchema } from 'src/routes/auth/auth.model'
+import { CompleteRegistrationSchema } from 'src/routes/auth/auth.model'
 import { MessageResSchema } from 'src/shared/models/response.model'
 
 // Register DTOs
@@ -11,20 +12,28 @@ export const InitiateRegistrationSchema = z.object({
 export const RegistrationResponseSchema = MessageResSchema
 
 // Login DTOs
-export const LoginSchema = LoginBodySchema
+export const LoginSchema = z.object({
+  emailOrUsername: z.string().min(1, 'Email or username is required'),
+  password: z.string().min(1, 'Password is required'),
+  rememberMe: z.boolean().optional().default(false)
+})
 
-export const LoginResponseSchema = UserAuthResponseSchema
+export const LoginResponseSchema = z.object({
+  requiresTwoFactorAuth: z.boolean(),
+  twoFactorMethod: z.string().nullable().optional(),
+  requiresDeviceVerification: z.boolean(),
+  message: z.string()
+})
 
 export const LoginResponseWithTokenSchema = LoginResponseSchema.extend({
-  accessToken: z.string(),
-  refreshToken: z.string()
+  user: UserAuthResponseSchema,
+  accessToken: z.string()
 })
 
 export const LoginWithOtpResponseSchema = z.object({
+  requiresOtp: z.boolean(),
   message: z.string(),
-  requiresOtp: z.literal(true),
-  requiresTwoFactor: z.boolean().optional(),
-  email: z.string().email()
+  otpSentToEmail: z.string().optional()
 })
 
 // Refresh Token DTOs
@@ -33,12 +42,13 @@ export const RefreshTokenSchema = z.object({
 })
 
 export const RefreshTokenResponseSchema = z.object({
-  message: z.string(),
-  accessToken: z.string().optional()
+  accessToken: z.string()
 })
 
 // Logout DTOs
-export const LogoutSchema = z.object({})
+export const LogoutSchema = z.object({
+  refreshToken: z.string().optional()
+})
 
 export const LogoutResponseSchema = MessageResSchema
 

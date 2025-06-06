@@ -6,6 +6,7 @@ import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
 import { DeviceRepository, UserAuthRepository } from 'src/shared/repositories/auth'
+import { DEVICE_REVERIFY_KEY_PREFIX, DEVICE_REVERIFICATION_TTL } from 'src/shared/constants/auth.constants'
 
 /**
  * Kết quả đánh giá rủi ro thiết bị
@@ -512,5 +513,59 @@ export class DeviceService {
     }
 
     return false
+  }
+
+  /**
+   * Đánh dấu một thiết bị cần xác minh lại
+   */
+  async markDeviceForReverification(userId: number, deviceId: number, reasonInput: string): Promise<void> {
+    try {
+      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
+
+      const reason = /^[0-9]+$/.test(reasonInput)
+        ? `Marked for reverification by admin ID: ${reasonInput}`
+        : reasonInput
+
+      const data = {
+        userId: userId.toString(),
+        deviceId: deviceId.toString(),
+        reason,
+        timestamp: Date.now().toString()
+      }
+
+      await this.redisService.hset(key, data)
+      await this.redisService.expire(key, DEVICE_REVERIFICATION_TTL)
+
+      this.logger.log(`Device ${deviceId} for user ${userId} marked for reverification. Reason: ${reason}`)
+    } catch (error) {
+      this.logger.error(`Error marking device ${deviceId} for reverification: ${error.message}`, error.stack)
+    }
+  }
+
+  /**
+   * Kiểm tra xem một thiết bị có cần xác minh lại không
+   */
+  async checkDeviceNeedsReverification(userId: number, deviceId: number): Promise<boolean> {
+    try {
+      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
+      const exists = await this.redisService.exists(key)
+      return exists > 0
+    } catch (error) {
+      this.logger.error(`Error checking if device ${deviceId} needs reverification: ${error.message}`, error.stack)
+      return false
+    }
+  }
+
+  /**
+   * Xóa cờ đánh dấu cần xác minh lại cho thiết bị
+   */
+  async clearDeviceReverification(userId: number, deviceId: number): Promise<void> {
+    try {
+      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
+      await this.redisService.del(key)
+      this.logger.log(`Cleared reverification flag for device ${deviceId} of user ${userId}`)
+    } catch (error) {
+      this.logger.error(`Error clearing reverification for device ${deviceId}: ${error.message}`, error.stack)
+    }
   }
 }

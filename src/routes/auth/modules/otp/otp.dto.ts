@@ -5,10 +5,10 @@ import { UserAuthResponseSchema } from 'src/routes/auth/auth.model'
 
 // Send OTP DTOs
 export const SendOtpSchema = z.object({
-  email: z.string().email('Invalid email format'),
-  type: z.nativeEnum(TypeOfVerificationCode, {
-    errorMap: () => ({ message: 'Loại mã xác thực không hợp lệ' })
-  })
+  email: z.string().email(),
+  purpose: z.nativeEnum(TypeOfVerificationCode),
+  deviceId: z.number().optional(),
+  metadata: z.record(z.any()).optional()
 })
 
 export const SendOtpResponseSchema = z.object({
@@ -16,15 +16,22 @@ export const SendOtpResponseSchema = z.object({
 })
 
 // Verify OTP DTOs
+/**
+ * Schema cho việc xác minh OTP
+ */
 export const VerifyOtpSchema = z.object({
-  code: z.string().min(6).max(6),
-  rememberMe: z.boolean().optional().default(false)
+  code: z.string().min(1, 'Code is required'),
+  purpose: z.string().optional()
 })
 
 export const VerifyOtpResponseSchema = z.object({
+  success: z.boolean(),
   message: z.string(),
   statusCode: z.number().optional(),
-  data: UserAuthResponseSchema.optional()
+  requiresDeviceVerification: z.boolean().optional(),
+  requiresAdditionalVerification: z.boolean().optional(),
+  redirectUrl: z.string().optional(),
+  user: UserAuthResponseSchema.optional()
 })
 
 export const VerifyOtpWithRedirectSchema = z.object({

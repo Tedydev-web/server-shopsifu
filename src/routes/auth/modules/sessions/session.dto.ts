@@ -137,7 +137,10 @@ export class DeviceIdParamsDto extends createZodDto(DeviceIdParamsSchema) {}
 export class UpdateDeviceNameBodyDto extends createZodDto(UpdateDeviceNameBodySchema) {}
 
 export const UpdateDeviceNameResponseSchema = z.object({
-  message: z.string()
+  deviceId: z.number(),
+  name: z.string(),
+  success: z.boolean().default(true),
+  message: z.string().optional()
 })
 export class UpdateDeviceNameResponseDto extends createZodDto(UpdateDeviceNameResponseSchema) {}
 
@@ -147,6 +150,8 @@ export const TrustDeviceResponseSchema = z.object({
 export class TrustDeviceResponseDto extends createZodDto(TrustDeviceResponseSchema) {}
 
 export const UntrustDeviceResponseSchema = z.object({
-  message: z.string()
+  deviceId: z.number(),
+  success: z.boolean().default(true),
+  message: z.string().optional()
 })
 export class UntrustDeviceResponseDto extends createZodDto(UntrustDeviceResponseSchema) {}

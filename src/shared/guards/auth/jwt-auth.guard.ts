@@ -1,15 +1,27 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Logger, Inject } from '@nestjs/common'
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  UnauthorizedException,
+  Logger,
+  Inject,
+  forwardRef
+} from '@nestjs/common'
 import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constants'
 import { TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { ITokenService } from 'src/shared/types/auth.types'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ApiException } from 'src/shared/exceptions/api.exception'
+import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.service'
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   private readonly logger = new Logger(JwtAuthGuard.name)
 
-  constructor(@Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService) {}
+  constructor(
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
+    @Inject(forwardRef(() => SessionsService)) private readonly sessionService: SessionsService
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest()
@@ -24,19 +36,16 @@ export class JwtAuthGuard implements CanActivate {
 
       const payload = await this.tokenService.verifyAccessToken(token)
 
-      // Kiểm tra sessionId tồn tại trong payload
       if (!payload || !payload.sessionId) {
         this.logger.warn('JWT Auth: Session ID missing in token payload')
         throw AuthError.MissingSessionIdInToken()
       }
 
-      // Kiểm tra xem session có bị vô hiệu hóa không
-      if (await this.tokenService.isSessionInvalidated(payload.sessionId)) {
+      if (await this.sessionService.isSessionInvalidated(payload.sessionId)) {
         this.logger.debug(`JWT Auth: Session ${payload.sessionId} has been invalidated. Access denied.`)
         throw AuthError.SessionRevoked()
       }
 
-      // Thiết lập thông tin user vào request
       request[REQUEST_USER_KEY] = payload
 
       return true

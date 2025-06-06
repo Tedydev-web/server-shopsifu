@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common'
+import { Module, forwardRef } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { ConfigModule, ConfigService } from '@nestjs/config'
@@ -10,6 +10,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard'
 import { ApiKeyGuard } from './auth/api-key.guard'
 import { BasicAuthGuard } from './auth/basic-auth.guard'
 import { RolesGuard } from './auth/roles.guard'
+import { SessionsModule } from 'src/routes/auth/modules/sessions/sessions.module'
 
 /**
  * Module tập trung quản lý tất cả các guard trong ứng dụng
@@ -18,6 +19,7 @@ import { RolesGuard } from './auth/roles.guard'
   imports: [
     ConfigModule,
     RedisProviderModule,
+    forwardRef(() => SessionsModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({

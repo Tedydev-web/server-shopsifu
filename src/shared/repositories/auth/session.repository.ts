@@ -520,6 +520,20 @@ export class SessionRepository {
   }
 
   /**
+   * Vô hiệu hóa session
+   */
+  async deactivateSession(sessionId: string): Promise<void> {
+    try {
+      const key = RedisKeyManager.sessionKey(sessionId)
+      await this.redisService.hset(key, 'isActive', '0')
+      this.logger.debug(`Session ${sessionId} has been deactivated`)
+    } catch (error) {
+      this.logger.error(`Error deactivating session: ${error.message}`, error.stack)
+      throw error
+    }
+  }
+
+  /**
    * Helper method để thêm item vào sorted set
    */
   private async addToSortedSet(key: string, score: number, value: string): Promise<number> {

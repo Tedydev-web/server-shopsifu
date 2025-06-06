@@ -1,6 +1,4 @@
-import { z } from 'zod'
 import { TypeOfVerificationCodeType, TwoFactorMethodTypeType } from 'src/shared/constants/auth.constants'
-import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { User, Device, Role, UserProfile } from '@prisma/client'
 import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 import {
@@ -35,12 +33,13 @@ export interface SltContextData {
   ipAddress: string
   userAgent: string
   purpose: TypeOfVerificationCodeType
-  sltJwtExp: number
-  sltJwtCreatedAt: number
-  finalized: '0' | '1'
+  sltJwtExp?: number
+  sltJwtCreatedAt?: number
+  finalized?: '0' | '1'
   attempts: number
   metadata?: Record<string, any> & { twoFactorMethod?: TwoFactorMethodTypeType }
   email?: string
+  createdAt?: Date
 }
 
 // Google Auth related

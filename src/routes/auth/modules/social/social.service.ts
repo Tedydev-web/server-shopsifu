@@ -14,7 +14,7 @@ import { SessionRepository } from 'src/shared/repositories/auth/session.reposito
 import { SecurityAlertType } from 'src/shared/services/email.service'
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
-import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
+import { EMAIL_SERVICE, OTP_SERVICE, SLT_SERVICE } from 'src/shared/constants/injection.tokens'
 import {
   GoogleCallbackReturnType,
   GoogleCallbackSuccessResult,
@@ -24,6 +24,7 @@ import {
 import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { ApiException } from 'src/shared/exceptions/api.exception'
+import { SLTService } from 'src/shared/services/auth/slt.service'
 
 /**
  * Interface để lưu thông tin state khi tạo URL xác thực Google
@@ -51,7 +52,8 @@ export class SocialService {
     private readonly deviceRepository: DeviceRepository,
     private readonly sessionRepository: SessionRepository,
     @Inject(EMAIL_SERVICE) private readonly emailService: any,
-    private readonly otpService: OtpService
+    @Inject(SLT_SERVICE) private readonly sltService: SLTService,
+    @Inject(OTP_SERVICE) private readonly otpService: OtpService
   ) {
     this.initOAuth2Client()
   }
@@ -611,7 +613,7 @@ export class SocialService {
 
     // Tạo SLT và gửi OTP nếu không có mật khẩu
     if (!hasPassword) {
-      const sltJwt = await this.otpService.initiateOtpWithSltCookie({
+      const sltJwt = await this.sltService.initiateOtpWithSltCookie({
         email: user.email,
         userId: user.id,
         deviceId: 0, // Không liên quan đến thiết bị cụ thể
@@ -703,9 +705,14 @@ export class SocialService {
       }
 
       try {
-        const sltContext = await this.otpService.verifySltOtpStage(sltToken, verificationCode, 'Unknown', 'Unknown')
+        const isValid = await this.otpService.verifyOTP(
+          sltToken,
+          verificationCode,
+          TypeOfVerificationCode.UNLINK_GOOGLE_ACCOUNT,
+          user.id
+        )
 
-        if (sltContext.userId !== user.id) {
+        if (!isValid) {
           throw AuthError.InvalidOTP()
         }
 
@@ -961,7 +968,7 @@ export class SocialService {
 
     try {
       // Xác minh SLT token và lấy context
-      const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
+      const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
         sltToken,
         ip,
         userAgent,
@@ -998,7 +1005,7 @@ export class SocialService {
       const userData = await this.finalizeSuccessfulAuth(user, device, rememberMe, res, ip, userAgent)
 
       // Đánh dấu SLT đã hoàn tất
-      await this.otpService.finalizeSlt(sltContext.sltJti)
+      await this.sltService.finalizeSlt(sltContext.sltJti)
 
       // Xóa SLT cookie
       this.cookieService.clearSltCookie(res)
@@ -1029,7 +1036,7 @@ export class SocialService {
 
     try {
       // Xác minh SLT token và lấy context
-      const sltContext = await this.otpService.validateSltFromCookieAndGetContext(
+      const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
         sltToken,
         ip,
         userAgent,
@@ -1066,7 +1073,7 @@ export class SocialService {
       const userData = await this.finalizeSuccessfulAuth(user, device, true, res, ip, userAgent)
 
       // Đánh dấu SLT đã hoàn tất
-      await this.otpService.finalizeSlt(sltContext.sltJti)
+      await this.sltService.finalizeSlt(sltContext.sltJti)
 
       // Xóa SLT cookie
       this.cookieService.clearSltCookie(res)

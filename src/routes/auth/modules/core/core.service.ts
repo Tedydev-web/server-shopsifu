@@ -10,12 +10,13 @@ import { OtpService } from '../../modules/otp/otp.service'
 import { User, Device, Role, UserProfile } from '@prisma/client'
 import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 import { UserStatus } from '@prisma/client'
-import { COOKIE_SERVICE, REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { COOKIE_SERVICE, REDIS_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/shared/repositories/auth'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 import { HttpException } from '@nestjs/common'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { SLTService } from 'src/shared/services/auth/slt.service'
 
 interface RegisterUserParams {
   email: string
@@ -50,7 +51,10 @@ export class CoreService implements IUserAuthService {
     private readonly deviceRepository: DeviceRepository,
     private readonly otpService: OtpService,
     private readonly sessionRepository: SessionRepository,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    @Inject(SLT_SERVICE) private readonly sltService: SLTService
+    // private readonly deviceService: IDeviceService,
+    // private readonly sessionService: ISessionService
   ) {}
 
   /**
@@ -207,7 +211,8 @@ export class CoreService implements IUserAuthService {
     // The above logs cover the main branches.
 
     // Now, determine the type of verification needed, prioritizing 2FA if enabled.
-    const needsAdminReverification = await this.tokenService.checkDeviceNeedsReverification(user.id, device.id)
+    // const needsAdminReverification = await this.deviceService.checkDeviceNeedsReverification(user.id, device.id)
+    const needsAdminReverification = false // Tạm thời hardcode vì chúng ta đã comment deviceService
     if (needsAdminReverification) {
       this.logger.debug(
         `[Login] Device ${device.id} (user ${user.id}) is also marked for admin-initiated reverification.`
@@ -302,7 +307,12 @@ export class CoreService implements IUserAuthService {
       }
 
       // Đánh dấu session là đã vô hiệu hóa
-      await this.tokenService.invalidateSession(sessionId, 'USER_LOGOUT')
+      // await this.sessionService.invalidateSession(sessionId, 'USER_LOGOUT')
+      // Tạm thời comment vì chúng ta đã comment sessionService
+      // await this.tokenService.invalidateSession(sessionId)
+
+      // Sử dụng SessionRepository trực tiếp thay vì qua service
+      await this.sessionRepository.deactivateSession(sessionId)
 
       // Đánh dấu token là đã vô hiệu hóa nếu có request
       if (req) {
@@ -341,7 +351,7 @@ export class CoreService implements IUserAuthService {
   ): Promise<any> {
     try {
       // Gửi OTP qua email và khởi tạo SLT cookie
-      const sltToken = await this.otpService.initiateOtpWithSltCookie({
+      const sltToken = await this.sltService.initiateOtpWithSltCookie({
         email: user.email,
         userId: user.id,
         deviceId: device.id,
@@ -387,7 +397,7 @@ export class CoreService implements IUserAuthService {
   ): Promise<any> {
     try {
       // Tạo và đặt SLT token cho xác thực 2FA
-      const sltToken = await this.otpService.initiateOtpWithSltCookie({
+      const sltToken = await this.sltService.initiateOtpWithSltCookie({
         email: user.email,
         userId: user.id,
         deviceId: device.id,
@@ -612,6 +622,54 @@ export class CoreService implements IUserAuthService {
       this.logger.error(`[finalizeLoginAfterVerification] Error: ${error.message}`, error.stack)
       if (error instanceof AuthError) throw error
       throw AuthError.InternalServerError(error.message)
+    }
+  }
+
+  /**
+   * Kiểm tra email chưa tồn tại
+   */
+  async checkEmailNotExists(email: string): Promise<void> {
+    const existingUser = await this.userAuthRepository.findByEmail(email)
+    if (existingUser) {
+      throw AuthError.EmailAlreadyExists()
+    }
+  }
+
+  /**
+   * Tạo user tạm thời trong quá trình đăng ký
+   */
+  async createTemporaryUser(email: string): Promise<User> {
+    try {
+      // Tạo một temporary user với trạng thái PENDING
+      const tempUser = await this.userAuthRepository.createUser({
+        email: email,
+        password: await this.hashingService.hash(`temp_${Date.now()}_${Math.random()}`)
+        // Các trường khác có thể để mặc định hoặc để trống
+      })
+
+      return tempUser
+    } catch (error) {
+      this.logger.error(`[createTemporaryUser] Error creating temporary user: ${error.message}`, error.stack)
+      throw AuthError.InternalServerError('Failed to create temporary user')
+    }
+  }
+
+  /**
+   * Tạo device tạm thời trong quá trình đăng ký
+   */
+  async createTemporaryDevice(userId: number, userAgent: string, ipAddress: string): Promise<Device> {
+    try {
+      // Tạo một temporary device
+      const tempDevice = await this.deviceRepository.createDevice({
+        userId: userId,
+        userAgent: userAgent,
+        ipAddress: ipAddress
+      })
+
+      return tempDevice
+    } catch (error) {
+      this.logger.error(`[createTemporaryDevice] Error creating temporary device: ${error.message}`, error.stack)
+      throw AuthError.InternalServerError('Failed to create temporary device')
     }
   }
 }

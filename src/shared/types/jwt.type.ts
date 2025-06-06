@@ -3,13 +3,14 @@
  */
 export interface AccessTokenPayloadCreate {
   userId: number
-  deviceId: number
-  roleId: number
-  roleName: string
-  sessionId: string
+  deviceId?: number
+  roleId?: number
+  roleName?: string
+  sessionId?: string
   jti: string
-  isDeviceTrustedInSession: boolean
+  isDeviceTrustedInSession?: boolean
   email?: string
+  type?: 'ACCESS' | 'REFRESH'
   exp?: number
   iat?: number
 }
@@ -17,7 +18,12 @@ export interface AccessTokenPayloadCreate {
 /**
  * Định nghĩa payload của Access Token khi đã được verify
  */
-export interface AccessTokenPayload extends AccessTokenPayloadCreate {
+export interface AccessTokenPayload extends Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> {
+  deviceId: number
+  roleId: number
+  roleName: string
+  sessionId: string
+  isDeviceTrustedInSession: boolean
   exp: number
   iat: number
 }

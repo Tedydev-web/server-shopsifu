@@ -3,7 +3,6 @@ import { z } from 'zod'
 export const DeviceSchema = z.object({
   id: z.number().int(),
   userId: z.number().int(),
-  // user: z.lazy(() => UserSchema) // Circular dependency, handle if needed for specific use cases
   name: z.string().nullable().optional(),
   fingerprint: z.string().nullable().optional(),
   userAgent: z.string(),

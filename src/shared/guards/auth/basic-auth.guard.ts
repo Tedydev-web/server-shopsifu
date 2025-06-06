@@ -22,7 +22,6 @@ export class BasicAuthGuard implements CanActivate {
         throw new UnauthorizedException('Basic authentication required')
       }
 
-      // Giải mã thông tin xác thực
       const base64Credentials = authHeader.split(' ')[1]
       const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8')
       const [email, password] = credentials.split(':')

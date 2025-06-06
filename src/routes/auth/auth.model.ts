@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/shared/constants/auth.constants'
 import { RoleSchema } from 'src/shared/models/role.model'
 import { PickedUserProfileResponseSchema } from 'src/shared/dtos/user.dto'
 
@@ -37,15 +36,16 @@ export const RegisterBodySchema = z
  */
 export const CompleteRegistrationSchema = z
   .object({
-    password: z.string().min(8, { message: 'Mật khẩu phải có ít nhất 8 ký tự' }),
-    confirmPassword: z.string().min(8, { message: 'Mật khẩu phải có ít nhất 8 ký tự' }),
-    firstName: z.string().min(1, { message: 'Tên không được để trống' }),
-    lastName: z.string().min(1, { message: 'Họ không được để trống' }),
+    email: z.string().email(),
+    password: z.string().min(8),
+    confirmPassword: z.string().min(8),
+    firstName: z.string().min(1),
+    lastName: z.string().min(1),
     username: z.string().optional(),
     phoneNumber: z.string().optional()
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: 'Mật khẩu không khớp',
+    message: "Passwords don't match",
     path: ['confirmPassword']
   })
 

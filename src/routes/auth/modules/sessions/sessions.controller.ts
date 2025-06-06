@@ -12,7 +12,8 @@ import {
   Ip,
   Res,
   Inject,
-  Req
+  Req,
+  HttpException
 } from '@nestjs/common'
 import { SessionsService } from './sessions.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -38,11 +39,35 @@ import { OtpService } from '../../modules/otp/otp.service'
 import { ICookieService } from 'src/shared/types/auth.types'
 import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
-import { HttpException } from '@nestjs/common'
 import { AuthError } from '../../auth.error'
 import { TwoFactorService } from '../two-factor/two-factor.service'
 import { User } from '@prisma/client'
 
+/**
+ * Metadata cho quá trình thu hồi phiên
+ */
+interface RevokeMetadata {
+  sessionIds?: string[]
+  deviceIds?: number[]
+  revokeAllUserSessions?: boolean
+  excludeCurrentSession?: boolean
+  currentSessionIdToExclude?: string
+  currentDeviceIdToExclude?: number
+  actionType: 'SINGLE' | 'MULTIPLE' | 'ALL'
+}
+
+/**
+ * Các thông tin hiện tại của người dùng
+ */
+interface CurrentUserContext {
+  userId: number
+  sessionId: string
+  deviceId: number
+}
+
+/**
+ * Controller quản lý phiên đăng nhập và thiết bị
+ */
 @Controller('auth/sessions')
 export class SessionsController {
   private readonly logger = new Logger(SessionsController.name)
@@ -55,6 +80,9 @@ export class SessionsController {
     private readonly twoFactorService: TwoFactorService
   ) {}
 
+  /**
+   * Lấy tất cả sessions của người dùng, nhóm theo thiết bị
+   */
   @Get()
   @HttpCode(HttpStatus.OK)
   @DynamicZodSerializer({
@@ -66,13 +94,16 @@ export class SessionsController {
     @Query() query: GetSessionsQueryDto
   ): Promise<GetGroupedSessionsResponseDto> {
     try {
+      this.logger.debug(`[getSessions] Lấy danh sách phiên đăng nhập cho userId ${activeUser.userId}`)
       return await this.sessionsService.getSessions(activeUser.userId, query.page, query.limit, activeUser.sessionId)
     } catch (error) {
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
+      this.handleError(error, 'getSessions')
     }
   }
 
+  /**
+   * Thu hồi một hoặc nhiều phiên đăng nhập hoặc thiết bị
+   */
   @Post('revoke')
   @HttpCode(HttpStatus.OK)
   async revokeSessions(
@@ -87,136 +118,50 @@ export class SessionsController {
     message: string
     data: RevokeSessionsResponseDto
   }> {
-    this.logger.debug(
-      `[Revoke Sessions] User ${activeUser.userId} attempting to revoke items. SessionIds: ${JSON.stringify(body.sessionIds ?? 'N/A')}, DeviceIds: ${JSON.stringify(body.deviceIds ?? 'N/A')}, ExcludeCurrent: ${body.excludeCurrentSession}`
-    )
     try {
-      const currentSessionId = activeUser.sessionId
-      const requiresVerification = await this.sessionsService.checkIfActionRequiresVerification(activeUser.userId, {
+      const userContext = this.getUserContext(activeUser)
+
+      this.logger.debug(
+        `[revokeSessions] User ${userContext.userId} yêu cầu thu hồi - ` +
+          `SessionIds: ${JSON.stringify(body.sessionIds ?? [])}, ` +
+          `DeviceIds: ${JSON.stringify(body.deviceIds ?? [])}, ` +
+          `ExcludeCurrent: ${body.excludeCurrentSession}`
+      )
+
+      const revocationOptions = {
         sessionIds: body.sessionIds,
         deviceIds: body.deviceIds,
         excludeCurrentSession: body.excludeCurrentSession
-      })
-
-      if (requiresVerification) {
-        this.logger.debug(`[Revoke Sessions] User ${activeUser.userId} requires additional verification.`)
-
-        let sltToken: string
-        let verificationPurpose: TypeOfVerificationCode
-        let responseVerificationType: 'OTP' | '2FA'
-
-        const user = (await this.sessionsService.getUserById(activeUser.userId)) as User & {
-          email: string
-          twoFactorMethod: string | null
-        }
-
-        if (!user) {
-          this.logger.error(`[Revoke Sessions] User not found: ${activeUser.userId}`)
-          throw AuthError.EmailNotFound()
-        }
-
-        if (user.twoFactorEnabled && user.twoFactorMethod) {
-          this.logger.debug(
-            `[Revoke Sessions] User ${activeUser.userId} has 2FA enabled (${user.twoFactorMethod}). Initiating 2FA.`
-          )
-          verificationPurpose = TypeOfVerificationCode.REVOKE_SESSIONS_2FA
-          responseVerificationType = '2FA'
-          sltToken = await this.twoFactorService.initiateTwoFactorActionWithSltCookie({
-            userId: activeUser.userId,
-            deviceId: activeUser.deviceId,
-            ipAddress: ip,
-            userAgent,
-            purpose: verificationPurpose,
-            metadata: {
-              sessionIds: body.sessionIds,
-              deviceIds: body.deviceIds,
-              revokeAllUserSessions: false,
-              excludeCurrentSession: body.excludeCurrentSession,
-              currentSessionIdToExclude: currentSessionId,
-              currentDeviceIdToExclude: activeUser.deviceId,
-              actionType: 'revoke_sessions'
-            }
-          })
-        } else {
-          this.logger.debug(`[Revoke Sessions] User ${activeUser.userId} does NOT have 2FA. Initiating OTP.`)
-          verificationPurpose = TypeOfVerificationCode.REVOKE_SESSIONS
-          responseVerificationType = 'OTP'
-          sltToken = await this.otpService.initiateOtpWithSltCookie({
-            email: user.email,
-            userId: activeUser.userId,
-            deviceId: activeUser.deviceId,
-            ipAddress: ip,
-            userAgent,
-            purpose: verificationPurpose,
-            metadata: {
-              sessionIds: body.sessionIds,
-              deviceIds: body.deviceIds,
-              revokeAllUserSessions: false,
-              excludeCurrentSession: body.excludeCurrentSession,
-              currentSessionIdToExclude: currentSessionId,
-              currentDeviceIdToExclude: activeUser.deviceId,
-              actionType: 'revoke_sessions'
-            }
-          })
-        }
-
-        this.cookieService.setSltCookie(res, sltToken, verificationPurpose)
-
-        return {
-          statusCode: HttpStatus.OK,
-          message: this.i18nService.t('auth.Auth.Session.RequiresAdditionalVerification', {
-            lang: (req as any).i18nLang
-          }),
-          data: {
-            requiresAdditionalVerification: true,
-            verificationType: responseVerificationType,
-            revokedSessionsCount: 0,
-            untrustedDevicesCount: 0,
-            revokedSessionIds: [],
-            revokedDeviceIds: []
-          } as RevokeSessionsResponseDto
-        }
       }
 
-      const result = await this.sessionsService.revokeItems(
-        activeUser.userId,
-        {
-          sessionIds: body.sessionIds,
-          deviceIds: body.deviceIds,
-          excludeCurrentSession: body.excludeCurrentSession
-        },
-        { sessionId: currentSessionId, deviceId: activeUser.deviceId },
-        undefined,
-        undefined,
-        ip,
-        userAgent
+      // Kiểm tra xem hành động này có yêu cầu xác thực bổ sung hay không
+      const requiresVerification = await this.sessionsService.checkIfActionRequiresVerification(
+        userContext.userId,
+        revocationOptions
       )
 
-      return {
-        statusCode: HttpStatus.OK,
-        message: result.message
-          ? this.i18nService.t(result.message as I18nPath, { lang: (req as any).i18nLang })
-          : this.i18nService.t('auth.Auth.Otp.Verified', { lang: (req as any).i18nLang }),
-        data: {
-          revokedSessionsCount: result.revokedSessionsCount,
-          untrustedDevicesCount: result.untrustedDevicesCount,
-          revokedSessionIds: result.revokedSessionIds || [],
-          revokedDeviceIds: result.revokedDeviceIds || [],
-          requiresAdditionalVerification: false
-        } as RevokeSessionsResponseDto
+      if (requiresVerification) {
+        // Xử lý flow xác minh trước khi thu hồi
+        return this.handleVerificationForRevoke(
+          userContext,
+          revocationOptions,
+          ip,
+          userAgent,
+          req,
+          res,
+          false // Không phải revoke tất cả
+        )
       }
+
+      // Nếu không cần xác minh, thực hiện thu hồi ngay lập tức
+      return this.executeRevocation(userContext, revocationOptions, ip, userAgent, req)
     } catch (error) {
-      this.logger.error(`[Revoke Sessions] Error for user ${activeUser.userId}: ${error.message}`, error.stack)
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
+      return this.handleError(error, 'revokeSessions')
     }
   }
 
   /**
    * Thu hồi tất cả phiên đăng nhập
-   * Endpoint riêng cho việc thu hồi tất cả phiên đăng nhập.
-   * Có thể loại trừ phiên đăng nhập hiện tại để tránh người dùng bị đăng xuất.
-   * Luôn yêu cầu xác thực bổ sung.
    */
   @Post('revoke-all')
   @HttpCode(HttpStatus.OK)
@@ -232,218 +177,370 @@ export class SessionsController {
     message: string
     data: RevokeSessionsResponseDto
   }> {
-    this.logger.debug(
-      `[Revoke All Sessions] User ${activeUser.userId} attempting to revoke all sessions. ExcludeCurrent: ${body.excludeCurrentSession}`
-    )
     try {
-      const currentSessionId = activeUser.sessionId
-      const requiresVerification = await this.sessionsService.checkIfActionRequiresVerification(activeUser.userId, {
-        revokeAllUserSessions: true,
-        excludeCurrentSession: body.excludeCurrentSession
+      const userContext = this.getUserContext(activeUser)
+
+      this.logger.debug(
+        `[revokeAllSessions] User ${userContext.userId} yêu cầu thu hồi tất cả phiên, ExcludeCurrent: ${body.excludeCurrentSession}`
+      )
+
+      // Thu hồi tất cả phiên luôn yêu cầu xác minh
+      return this.handleVerificationForRevoke(
+        userContext,
+        {
+          excludeCurrentSession: body.excludeCurrentSession,
+          revokeAllUserSessions: true
+        },
+        ip,
+        userAgent,
+        req,
+        res,
+        true // Là revoke tất cả
+      )
+    } catch (error) {
+      return this.handleError(error, 'revokeAllSessions')
+    }
+  }
+
+  /**
+   * Xử lý quy trình xác minh bổ sung cho việc thu hồi phiên
+   */
+  private async handleVerificationForRevoke(
+    userContext: CurrentUserContext,
+    revocationOptions: {
+      sessionIds?: string[]
+      deviceIds?: number[]
+      excludeCurrentSession?: boolean
+      revokeAllUserSessions?: boolean
+    },
+    ip: string,
+    userAgent: string,
+    req: Request,
+    res: Response,
+    isRevokeAll: boolean
+  ): Promise<{
+    statusCode: number
+    message: string
+    data: RevokeSessionsResponseDto
+  }> {
+    this.logger.debug(`[handleVerificationForRevoke] Yêu cầu xác minh bổ sung cho user ${userContext.userId}`)
+
+    const user = await this.getUserWithTwoFactorMethod(userContext.userId)
+
+    // Chuẩn bị metadata chung cho cả hai phương thức xác thực
+    const revokeMetadata: RevokeMetadata = {
+      sessionIds: revocationOptions.sessionIds,
+      deviceIds: revocationOptions.deviceIds,
+      revokeAllUserSessions: isRevokeAll || revocationOptions.revokeAllUserSessions,
+      excludeCurrentSession: revocationOptions.excludeCurrentSession,
+      currentSessionIdToExclude: userContext.sessionId,
+      currentDeviceIdToExclude: userContext.deviceId,
+      actionType:
+        isRevokeAll || revocationOptions.revokeAllUserSessions
+          ? 'ALL'
+          : (revocationOptions.sessionIds?.length || 0) + (revocationOptions.deviceIds?.length || 0) > 1
+            ? 'MULTIPLE'
+            : 'SINGLE'
+    }
+
+    const verificationContext = await this.initializeVerificationProcess(
+      user,
+      userContext,
+      revokeMetadata,
+      isRevokeAll,
+      ip,
+      userAgent,
+      res
+    )
+
+    // Tạo phản hồi cho client hiển thị màn hình xác minh thích hợp
+    const verificationMessage = isRevokeAll
+      ? await this.i18nService.t('auth.Auth.Info.Session.VerifyToRevokeAll' as I18nPath)
+      : await this.i18nService.t('auth.Auth.Info.Session.VerifyToRevoke' as I18nPath)
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: verificationMessage as string,
+      data: {
+        requiresAdditionalVerification: true,
+        verificationType: verificationContext.verificationType,
+        revokedSessionsCount: 0,
+        untrustedDevicesCount: 0,
+        revokedSessionIds: [],
+        revokedDeviceIds: []
+      } as RevokeSessionsResponseDto
+    }
+  }
+
+  /**
+   * Khởi tạo quy trình xác thực dựa trên người dùng có 2FA hay không
+   */
+  private async initializeVerificationProcess(
+    user: User & { email: string; twoFactorMethod: string | null },
+    userContext: CurrentUserContext,
+    revokeMetadata: RevokeMetadata,
+    isRevokeAll: boolean,
+    ip: string,
+    userAgent: string,
+    res: Response
+  ): Promise<{ verificationType: 'OTP' | '2FA'; sltToken?: string }> {
+    // Xác định purpose dựa trên hành động và phương thức xác thực
+    let verificationPurpose: TypeOfVerificationCode
+    let verificationType: 'OTP' | '2FA'
+    let sltToken: string | undefined
+
+    if (user.twoFactorMethod) {
+      this.logger.debug(
+        `[initializeVerificationProcess] User ${userContext.userId} sử dụng 2FA (${user.twoFactorMethod}), yêu cầu xác minh 2FA`
+      )
+
+      // Khởi tạo quy trình 2FA
+      verificationPurpose = isRevokeAll
+        ? TypeOfVerificationCode.REVOKE_ALL_SESSIONS_2FA
+        : TypeOfVerificationCode.REVOKE_SESSIONS_2FA
+
+      sltToken = await this.twoFactorService.initiateTwoFactorActionWithSltCookie({
+        userId: userContext.userId,
+        deviceId: userContext.deviceId,
+        ipAddress: ip,
+        userAgent,
+        purpose: verificationPurpose,
+        metadata: revokeMetadata
       })
 
-      if (requiresVerification) {
-        this.logger.debug(`[Revoke All Sessions] User ${activeUser.userId} requires additional verification.`)
-        let sltToken: string
-        let verificationPurpose: TypeOfVerificationCode
-        let responseVerificationType: 'OTP' | '2FA'
+      this.cookieService.setSltCookie(res, sltToken, verificationPurpose)
+      verificationType = '2FA'
+    } else {
+      this.logger.debug(
+        `[initializeVerificationProcess] User ${userContext.userId} không sử dụng 2FA, gửi OTP xác minh`
+      )
 
-        const user = (await this.sessionsService.getUserById(activeUser.userId)) as User & {
-          email: string
-          twoFactorMethod: string | null
-        }
+      // Sử dụng OTP cho người dùng không có 2FA
+      verificationPurpose = isRevokeAll
+        ? TypeOfVerificationCode.REVOKE_ALL_SESSIONS
+        : TypeOfVerificationCode.REVOKE_SESSIONS
 
-        if (!user) {
-          this.logger.error(`[Revoke All Sessions] User not found: ${activeUser.userId}`)
-          throw AuthError.EmailNotFound()
-        }
+      // Tạo và gửi OTP
+      await this.otpService.sendOTP(user.email, verificationPurpose, userContext.userId)
+      verificationType = 'OTP'
+    }
 
-        if (user.twoFactorEnabled && user.twoFactorMethod) {
-          this.logger.debug(
-            `[Revoke All Sessions] User ${activeUser.userId} has 2FA enabled (${user.twoFactorMethod}). Initiating 2FA.`
-          )
-          verificationPurpose = TypeOfVerificationCode.REVOKE_ALL_SESSIONS_2FA
-          responseVerificationType = '2FA'
-          sltToken = await this.twoFactorService.initiateTwoFactorActionWithSltCookie({
-            userId: activeUser.userId,
-            deviceId: activeUser.deviceId,
-            ipAddress: ip,
-            userAgent,
-            purpose: verificationPurpose,
-            metadata: {
-              revokeAllUserSessions: true,
-              excludeCurrentSession: body.excludeCurrentSession,
-              currentSessionIdToExclude: currentSessionId,
-              currentDeviceIdToExclude: activeUser.deviceId,
-              actionType: 'revoke_all_sessions'
-            }
-          })
-        } else {
-          this.logger.debug(`[Revoke All Sessions] User ${activeUser.userId} does NOT have 2FA. Initiating OTP.`)
-          verificationPurpose = TypeOfVerificationCode.REVOKE_ALL_SESSIONS
-          responseVerificationType = 'OTP'
-          sltToken = await this.otpService.initiateOtpWithSltCookie({
-            email: user.email,
-            userId: activeUser.userId,
-            deviceId: activeUser.deviceId,
-            ipAddress: ip,
-            userAgent,
-            purpose: verificationPurpose,
-            metadata: {
-              revokeAllUserSessions: true,
-              excludeCurrentSession: body.excludeCurrentSession,
-              currentSessionIdToExclude: currentSessionId,
-              currentDeviceIdToExclude: activeUser.deviceId,
-              actionType: 'revoke_all_sessions'
-            }
-          })
-        }
+    return { verificationType, sltToken }
+  }
 
-        this.cookieService.setSltCookie(res, sltToken, verificationPurpose)
+  /**
+   * Lấy thông tin người dùng bao gồm phương thức 2FA
+   */
+  private async getUserWithTwoFactorMethod(
+    userId: number
+  ): Promise<User & { email: string; twoFactorMethod: string | null }> {
+    const user = (await this.sessionsService.getUserById(userId)) as unknown as User & {
+      email: string
+      twoFactorMethod: string | null
+    }
 
-        return {
-          statusCode: HttpStatus.OK,
-          message: this.i18nService.t('auth.Auth.Session.RequiresAdditionalVerification', {
-            lang: (req as any).i18nLang
-          }),
-          data: {
-            requiresAdditionalVerification: true,
-            verificationType: responseVerificationType,
-            revokedSessionsCount: 0,
-            untrustedDevicesCount: 0,
-            revokedSessionIds: [],
-            revokedDeviceIds: []
-          } as RevokeSessionsResponseDto
-        }
-      }
+    if (!user) {
+      this.logger.error(`[getUserWithTwoFactorMethod] Không tìm thấy user: ${userId}`)
+      throw AuthError.EmailNotFound()
+    }
 
+    return user
+  }
+
+  /**
+   * Thực hiện thu hồi phiên sau khi đã xác minh hoặc không cần xác minh
+   */
+  private async executeRevocation(
+    userContext: CurrentUserContext,
+    options: {
+      sessionIds?: string[]
+      deviceIds?: number[]
+      revokeAllUserSessions?: boolean
+      excludeCurrentSession?: boolean
+    },
+    ip: string,
+    userAgent: string,
+    req: Request
+  ): Promise<{
+    statusCode: number
+    message: string
+    data: RevokeSessionsResponseDto
+  }> {
+    this.logger.debug(
+      `[executeRevocation] Thực hiện thu hồi phiên cho userId ${userContext.userId}, revokeAll: ${options.revokeAllUserSessions}`
+    )
+
+    try {
+      // Gọi service để thực hiện thu hồi
       const result = await this.sessionsService.revokeItems(
-        activeUser.userId,
+        userContext.userId,
         {
-          revokeAllUserSessions: true,
-          excludeCurrentSession: body.excludeCurrentSession
+          sessionIds: options.sessionIds,
+          deviceIds: options.deviceIds,
+          revokeAllUserSessions: options.revokeAllUserSessions,
+          excludeCurrentSession: options.excludeCurrentSession ?? true
         },
-        { sessionId: currentSessionId, deviceId: activeUser.deviceId },
+        {
+          sessionId: userContext.sessionId,
+          deviceId: userContext.deviceId
+        },
         undefined,
         undefined,
         ip,
         userAgent
       )
+
+      // Tạo thông báo phù hợp dựa trên loại thu hồi
+      const messageKey = this.getRevocationSuccessMessageKey(options)
+      const translatedMessage = await this.i18nService.t(messageKey as I18nPath)
+
       return {
         statusCode: HttpStatus.OK,
-        message: result.message
-          ? this.i18nService.t(result.message as I18nPath, { lang: (req as any).i18nLang })
-          : this.i18nService.t('auth.Auth.Session.AllRevoked', { lang: (req as any).i18nLang }),
+        message: translatedMessage as string,
         data: {
           revokedSessionsCount: result.revokedSessionsCount,
           untrustedDevicesCount: result.untrustedDevicesCount,
           revokedSessionIds: result.revokedSessionIds || [],
           revokedDeviceIds: result.revokedDeviceIds || [],
           requiresAdditionalVerification: false
-        } as RevokeSessionsResponseDto
+        }
       }
     } catch (error) {
-      this.logger.error(`[Revoke All Sessions] Error for user ${activeUser.userId}: ${error.message}`, error.stack)
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
+      return this.handleError(error, 'executeRevocation')
     }
   }
 
+  /**
+   * Lấy khóa thông báo thành công dựa trên loại thu hồi
+   */
+  private getRevocationSuccessMessageKey(options: {
+    revokeAllUserSessions?: boolean
+    excludeCurrentSession?: boolean
+  }): string {
+    if (options.revokeAllUserSessions) {
+      return options.excludeCurrentSession
+        ? 'auth.Auth.Success.Session.RevokedAllExceptCurrent'
+        : 'auth.Auth.Success.Session.RevokedAll'
+    }
+    return 'auth.Auth.Success.Session.RevokedMultiple'
+  }
+
+  /**
+   * Tạo đối tượng UserContext từ AccessTokenPayload
+   */
+  private getUserContext(activeUser: AccessTokenPayload): CurrentUserContext {
+    return {
+      userId: activeUser.userId,
+      sessionId: activeUser.sessionId,
+      deviceId: activeUser.deviceId
+    }
+  }
+
+  /**
+   * Cập nhật tên thiết bị
+   */
   @Patch('devices/:deviceId/name')
   @HttpCode(HttpStatus.OK)
   async updateDeviceName(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Param() params: DeviceIdParamsDto,
-    @Body() body: UpdateDeviceNameBodyDto,
-    @Req() req: Request
+    @Body() body: UpdateDeviceNameBodyDto
   ): Promise<{
     statusCode: number
     message: string
     data: UpdateDeviceNameResponseDto
   }> {
     try {
-      const result = await this.sessionsService.updateDeviceName(activeUser.userId, params.deviceId, body.name)
+      this.logger.debug(
+        `[updateDeviceName] User ${activeUser.userId} cập nhật tên thiết bị ${params.deviceId}: "${body.name}"`
+      )
+
+      await this.sessionsService.updateDeviceName(activeUser.userId, params.deviceId, body.name)
 
       return {
         statusCode: HttpStatus.OK,
-        message: result.message
-          ? this.i18nService.t(result.message as I18nPath, {
-              lang: (req as any).i18nLang
-            })
-          : this.i18nService.t('auth.Auth.Otp.Verified', {
-              lang: (req as any).i18nLang
-            }),
-        data: result
+        message: await this.i18nService.t('auth.Auth.Success.Device.NameUpdated' as I18nPath),
+        data: {
+          deviceId: params.deviceId,
+          name: body.name,
+          success: true
+        }
       }
     } catch (error) {
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
+      return this.handleError(error, 'updateDeviceName')
     }
   }
 
-  @Post('current-device/trust')
+  /**
+   * Đánh dấu thiết bị hiện tại là đáng tin cậy
+   */
+  @Patch('current-device/trust')
   @HttpCode(HttpStatus.OK)
   async trustCurrentDevice(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Ip() ip: string,
-    @UserAgent() userAgent: string,
-    @Req() req: Request
+    @UserAgent() userAgent: string
   ): Promise<{
     statusCode: number
     message: string
   }> {
     try {
-      const result = await this.sessionsService.trustCurrentDevice(
-        activeUser.userId,
-        activeUser.deviceId,
-        ip,
-        userAgent
+      this.logger.debug(
+        `[trustCurrentDevice] User ${activeUser.userId} đánh dấu tin cậy thiết bị hiện tại ${activeUser.deviceId}`
       )
+
+      await this.sessionsService.trustCurrentDevice(activeUser.userId, activeUser.deviceId, ip, userAgent)
 
       return {
         statusCode: HttpStatus.OK,
-        message: result.message
-          ? this.i18nService.t(result.message as I18nPath, {
-              lang: (req as any).i18nLang
-            })
-          : this.i18nService.t('auth.Auth.Otp.Verified', {
-              lang: (req as any).i18nLang
-            })
+        message: await this.i18nService.t('auth.Auth.Success.Device.Trusted' as I18nPath)
       }
     } catch (error) {
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
+      return this.handleError(error, 'trustCurrentDevice')
     }
   }
 
-  @Post('devices/:deviceId/untrust')
+  /**
+   * Hủy bỏ trạng thái đáng tin cậy của thiết bị
+   */
+  @Patch('devices/:deviceId/untrust')
   @HttpCode(HttpStatus.OK)
   async untrustDevice(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Param() params: DeviceIdParamsDto,
-    @Req() req: Request
+    @Param() params: DeviceIdParamsDto
   ): Promise<{
     statusCode: number
     message: string
     data: UntrustDeviceResponseDto
   }> {
     try {
-      const result = await this.sessionsService.untrustDevice(activeUser.userId, params.deviceId)
+      this.logger.debug(`[untrustDevice] User ${activeUser.userId} hủy bỏ tin cậy thiết bị ${params.deviceId}`)
+
+      await this.sessionsService.untrustDevice(activeUser.userId, params.deviceId)
 
       return {
         statusCode: HttpStatus.OK,
-        message: result.message
-          ? this.i18nService.t(result.message as I18nPath, {
-              lang: (req as any).i18nLang
-            })
-          : this.i18nService.t('auth.Auth.Otp.Verified', {
-              lang: (req as any).i18nLang
-            }),
-        data: result
+        message: await this.i18nService.t('auth.Auth.Success.Device.Untrusted' as I18nPath),
+        data: {
+          deviceId: params.deviceId,
+          success: true
+        }
       }
     } catch (error) {
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
+      return this.handleError(error, 'untrustDevice')
     }
+  }
+
+  /**
+   * Xử lý lỗi tập trung
+   */
+  private handleError(error: any, methodName: string): never {
+    this.logger.error(`[${methodName}] Lỗi: ${error.message}`, error.stack)
+
+    if (error instanceof HttpException) {
+      throw error
+    }
+
+    throw AuthError.InternalServerError(error.message)
   }
 }

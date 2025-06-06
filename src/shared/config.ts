@@ -126,14 +126,6 @@ const convertMs = (value: string, defaultValue: number): number => {
   }
 }
 
-/**
- * Cấu hình cookie dựa trên môi trường
- *
- * Đặc biệt quan trọng cho 2FA flow:
- * - SLT cookie phải được cấu hình đúng để lưu trữ trạng thái 2FA setup
- * - CSRF token cần được xử lý đặc biệt trong môi trường development
- * - Cookie security (httpOnly, secure, sameSite) ảnh hưởng trực tiếp đến bảo mật
- */
 const getCookieConfig = () => {
   return {
     ACCESS_TOKEN: {

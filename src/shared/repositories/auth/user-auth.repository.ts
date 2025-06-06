@@ -41,7 +41,23 @@ export class UserAuthRepository {
     })
   }
 
-  async findById(userId: number): Promise<UserWithProfileAndRole | null> {
+  /**
+   * Tìm người dùng theo ID
+   * @param userId ID người dùng
+   * @param select Tùy chọn chọn trường (tùy chọn)
+   */
+  async findById(userId: number, select?: Prisma.UserSelect): Promise<any> {
+    if (select) {
+      return this.prismaService.user.findUnique({
+        where: { id: userId },
+        select: {
+          ...select,
+          // Đảm bảo luôn chọn ID
+          id: true
+        }
+      })
+    }
+
     return this.prismaService.user.findUnique({
       where: { id: userId },
       include: {
@@ -114,6 +130,42 @@ export class UserAuthRepository {
       })
 
       return user
+    })
+  }
+
+  /**
+   * Bật xác thực hai yếu tố
+   * @param userId ID người dùng
+   * @param secret Khóa bí mật
+   * @param method Phương thức xác thực
+   */
+  async enableTwoFactor(userId: number, secret: string, method: TwoFactorMethodType): Promise<User> {
+    this.logger.debug(`Bật 2FA cho người dùng ${userId} với phương thức ${method}`)
+    return this.prismaService.user.update({
+      where: { id: userId },
+      data: {
+        twoFactorEnabled: true,
+        twoFactorSecret: secret,
+        twoFactorMethod: method,
+        twoFactorVerifiedAt: new Date()
+      }
+    })
+  }
+
+  /**
+   * Tắt xác thực hai yếu tố
+   * @param userId ID người dùng
+   */
+  async disableTwoFactor(userId: number): Promise<User> {
+    this.logger.debug(`Tắt 2FA cho người dùng ${userId}`)
+    return this.prismaService.user.update({
+      where: { id: userId },
+      data: {
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+        twoFactorMethod: null,
+        twoFactorVerifiedAt: null
+      }
     })
   }
 

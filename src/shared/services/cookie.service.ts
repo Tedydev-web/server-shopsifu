@@ -64,6 +64,64 @@ export class CookieService implements ICookieService {
   }
 
   /**
+   * Set access token cookie - triển khai từ interface
+   */
+  setAccessTokenCookie(res: Response, accessToken: string): void {
+    const accessTokenConfig = this.getAccessTokenCookieConfig()
+    this.setCookie(res, CookieNames.ACCESS_TOKEN, accessToken, accessTokenConfig)
+  }
+
+  /**
+   * Set refresh token cookie - triển khai từ interface
+   */
+  setRefreshTokenCookie(res: Response, refreshToken: string, rememberMe?: boolean): void {
+    const refreshTokenConfig = this.getRefreshTokenCookieConfig()
+
+    // Điều chỉnh maxAge nếu có rememberMe
+    let maxAge = refreshTokenConfig.maxAge
+    if (rememberMe === false) {
+      // Giảm thời gian khi không "remember me"
+      maxAge = 24 * 60 * 60 * 1000 // 1 ngày
+    } else if (rememberMe === true) {
+      // Tăng thời gian khi có "remember me"
+      maxAge = 30 * 24 * 60 * 60 * 1000 // 30 ngày
+    }
+
+    this.setCookie(res, CookieNames.REFRESH_TOKEN, refreshToken, refreshTokenConfig, maxAge)
+  }
+
+  /**
+   * Clear access token cookie - triển khai từ interface
+   */
+  clearAccessTokenCookie(res: Response): void {
+    const accessTokenConfig = this.getAccessTokenCookieConfig()
+    this.clearCookie(res, CookieNames.ACCESS_TOKEN, accessTokenConfig.path, accessTokenConfig.domain)
+  }
+
+  /**
+   * Clear refresh token cookie - triển khai từ interface
+   */
+  clearRefreshTokenCookie(res: Response): void {
+    const refreshTokenConfig = this.getRefreshTokenCookieConfig()
+    this.clearCookie(res, CookieNames.REFRESH_TOKEN, refreshTokenConfig.path, refreshTokenConfig.domain)
+  }
+
+  /**
+   * Set CSRF cookie - triển khai từ interface
+   */
+  setCsrfCookie(res: Response, csrfToken: string): void {
+    const csrfConfig = {
+      path: '/',
+      domain: undefined,
+      maxAge: 24 * 60 * 60 * 1000, // 24 giờ
+      httpOnly: false, // Truy cập được từ JS
+      secure: this.configService.get('cookieConfig.secure', false),
+      sameSite: this.configService.get('cookieConfig.sameSite', 'lax')
+    }
+    this.setCookie(res, CookieNames.XSRF_TOKEN, csrfToken, csrfConfig)
+  }
+
+  /**
    * Set token cookies
    */
   setTokenCookies(
@@ -73,13 +131,10 @@ export class CookieService implements ICookieService {
     maxAgeForRefreshTokenCookie?: number
   ): void {
     // Set access token cookie
-    const accessTokenConfig = this.getAccessTokenCookieConfig()
-    this.logger.debug(`Setting access token cookie with config: ${JSON.stringify(accessTokenConfig)}`)
-    this.setCookie(res, CookieNames.ACCESS_TOKEN, accessToken, accessTokenConfig)
+    this.setAccessTokenCookie(res, accessToken)
 
-    // Set refresh token cookie
+    // Set refresh token cookie với maxAge tùy chỉnh
     const refreshTokenConfig = this.getRefreshTokenCookieConfig()
-    this.logger.debug(`Setting refresh token cookie with config: ${JSON.stringify(refreshTokenConfig)}`)
     this.setCookie(res, CookieNames.REFRESH_TOKEN, refreshToken, refreshTokenConfig, maxAgeForRefreshTokenCookie)
   }
 
@@ -87,13 +142,8 @@ export class CookieService implements ICookieService {
    * Clear token cookies
    */
   clearTokenCookies(res: Response): void {
-    // Clear access token cookie
-    const accessTokenConfig = this.getAccessTokenCookieConfig()
-    this.clearCookie(res, CookieNames.ACCESS_TOKEN, accessTokenConfig.path, accessTokenConfig.domain)
-
-    // Clear refresh token cookie
-    const refreshTokenConfig = this.getRefreshTokenCookieConfig()
-    this.clearCookie(res, CookieNames.REFRESH_TOKEN, refreshTokenConfig.path, refreshTokenConfig.domain)
+    this.clearAccessTokenCookie(res)
+    this.clearRefreshTokenCookie(res)
   }
 
   /**

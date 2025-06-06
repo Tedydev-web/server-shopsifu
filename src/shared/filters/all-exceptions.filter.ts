@@ -1,23 +1,13 @@
-import {
-  ExceptionFilter,
-  Catch,
-  ArgumentsHost,
-  HttpException,
-  HttpStatus,
-  LoggerService,
-  Inject,
-  Logger
-} from '@nestjs/common'
+import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus, LoggerService, Inject } from '@nestjs/common'
 import { HttpAdapterHost } from '@nestjs/core'
 import { Request, Response } from 'express'
 import { I18nService, I18nValidationException, I18nContext } from 'nestjs-i18n'
-import { ApiException, ErrorDetailMessage } from '../exceptions/api.exception' // Import ErrorDetailMessage
-// import { CommonError } from '../exceptions/common.exceptions';
+import { ApiException, ErrorDetailMessage } from '../exceptions/api.exception'
 import { ConfigService } from '@nestjs/config'
 import { I18nTranslations, I18nPath } from '../../generated/i18n.generated'
 import { v4 as uuidv4 } from 'uuid'
 import { LOGGER_SERVICE, COOKIE_SERVICE } from '../constants/injection.tokens'
-import { ICookieService } from '../types/auth.types' // Added ICookieService
+import { ICookieService } from '../types/auth.types'
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -26,7 +16,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(LOGGER_SERVICE) private readonly logger: LoggerService,
     private readonly configService: ConfigService,
-    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService // Injected CookieService
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService
   ) {}
 
   async catch(exception: unknown, host: ArgumentsHost): Promise<void> {

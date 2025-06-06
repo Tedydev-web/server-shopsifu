@@ -10,7 +10,7 @@ import {
   Ip,
   Inject,
   forwardRef,
-  HttpException
+  BadRequestException
 } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { OtpService } from './otp.service'
@@ -19,30 +19,32 @@ import { AuthError } from '../../auth.error'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { SendOtpDto, VerifyOtpDto, SendOtpResponseDto } from './otp.dto'
 import { CoreService } from '../core/core.service'
-import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
-import { SltContextData } from 'src/routes/auth/auth.types'
 import { SessionsService } from '../sessions/sessions.service'
-import { CookieNames } from 'src/shared/constants/auth.constants'
-import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
 import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
-import { COOKIE_SERVICE, REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
+import { COOKIE_SERVICE, REDIS_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
+import { SLTService } from 'src/routes/auth/services/slt.service'
 
+@IsPublic()
+@Auth([])
 @Controller('auth/otp')
 export class OtpController {
   private readonly logger = new Logger(OtpController.name)
 
   constructor(
     private readonly otpService: OtpService,
+    private readonly authVerificationService: AuthVerificationService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     private readonly i18nService: I18nService<I18nTranslations>,
-    private readonly coreService: CoreService,
+    @Inject(forwardRef(() => CoreService)) private readonly coreService: CoreService,
     @Inject(forwardRef(() => SessionsService))
     private readonly sessionsService: SessionsService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    @Inject(SLT_SERVICE) private readonly sltService: SLTService
   ) {}
 
   /**
@@ -57,26 +59,37 @@ export class OtpController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<SendOtpResponseDto> {
-    const { email, type } = body
-    try {
-      // Khởi tạo OTP với SLT cookie
-      const sltJwt = await this.otpService.initiateOtpWithSltCookie({
-        email,
-        userId: 0, // Được cập nhật sau khi tìm user
-        deviceId: 0, // Được cập nhật sau khi tìm device
-        ipAddress: ip,
-        userAgent,
-        purpose: type as TypeOfVerificationCode
-      })
+    this.logger.log(`[sendOtp] Sending OTP to: ${body.email}, purpose: ${body.purpose}`)
 
-      // Set SLT cookie
-      this.cookieService.setSltCookie(res, sltJwt, type as TypeOfVerificationCode)
+    try {
+      // Kiểm tra user tồn tại
+      const user = await this.coreService.findUserByEmail(body.email)
+      if (!user) {
+        throw AuthError.EmailNotFound()
+      }
+
+      // Khởi tạo xác thực thông qua AuthVerificationService
+      const verificationResult = await this.authVerificationService.initiateVerification(
+        {
+          userId: user.id,
+          deviceId: body.deviceId || 0,
+          email: body.email,
+          ipAddress: ip,
+          userAgent,
+          purpose: body.purpose,
+          metadata: body.metadata
+        },
+        res
+      )
 
       return {
-        message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully')
+        message: verificationResult.message
       }
     } catch (error) {
-      if (error instanceof HttpException) throw error
+      this.logger.error(`[sendOtp] Error sending OTP: ${error.message}`, error.stack)
+      if (error instanceof AuthError) {
+        throw error
+      }
       throw AuthError.InternalServerError(error.message)
     }
   }
@@ -84,9 +97,7 @@ export class OtpController {
   /**
    * Xác minh OTP
    */
-  @IsPublic()
   @Post('verify')
-  @HttpCode(HttpStatus.OK)
   async verifyOtp(
     @Body() body: VerifyOtpDto,
     @Ip() ip: string,
@@ -94,226 +105,54 @@ export class OtpController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
+    this.logger.log(`[verifyOtp] Verifying OTP for purpose: ${body.purpose}`)
+
     try {
-      this.logger.debug(`[verifyOtp] Verifying OTP with code: ${body.code}, IP: ${ip}`)
-      // Lấy SLT cookie từ request
-      const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
+      // Get SLT cookie
+      const sltCookieValue = req.cookies?.slt_token
+
       if (!sltCookieValue) {
         throw AuthError.SLTCookieMissing()
       }
 
-      // Xác minh OTP và SLT
-      const sltContext = await this.otpService.verifySltOtpStage(sltCookieValue, body.code, ip, userAgent)
-
-      // Xử lý dựa vào purpose trong SLT context
-      const purpose = sltContext.purpose as unknown as TypeOfVerificationCode
-      switch (purpose) {
-        case TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP:
-          return await this.handleLoginVerification(sltContext, body, res, ip, userAgent)
-
-        case TypeOfVerificationCode.REVOKE_SESSIONS:
-          return await this.handleRevokeSessionsVerification(sltContext, ip, userAgent, res)
-
-        case TypeOfVerificationCode.REVOKE_ALL_SESSIONS:
-          return await this.handleRevokeAllSessionsVerification(sltContext, ip, userAgent, res)
-
-        default:
-          // Xóa SLT cookie vì đã hoàn tất quá trình xác minh
-          this.cookieService.clearSltCookie(res)
-
-          // Trả về thông báo xác minh thành công cho các loại OTP khác
-          return {
-            statusCode: HttpStatus.OK,
-            message: this.i18nService.t('auth.Auth.Otp.Verified'),
-            data: { verified: true }
-          }
-      }
-    } catch (error) {
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
-    }
-  }
-
-  /**
-   * Xử lý xác minh đăng nhập
-   */
-  private async handleLoginVerification(
-    sltContext: SltContextData & { sltJti: string },
-    body: VerifyOtpDto,
-    res: Response,
-    ip: string,
-    userAgent: string
-  ) {
-    try {
-      // Cập nhật SLT context để đánh dấu là đã hoàn thành
-      await this.otpService.finalizeSlt(sltContext.sltJti)
-
-      const metadata = sltContext.metadata || {}
-      const rememberMe = metadata.rememberMe || false
-
-      // Xóa đánh dấu xác thực lại cho thiết bị nếu có
-      if (
-        String(sltContext.purpose) === String(TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) &&
-        sltContext.metadata?.deviceId
-      ) {
-        await this.tokenService.clearDeviceReverification(sltContext.userId, sltContext.metadata.deviceId)
-        // Xóa cờ device:needs_reverify_after_revoke sau khi xác minh thành công
-        const reverifyFlagKey = RedisKeyManager.customKey(
-          'device:needs_reverify_after_revoke',
-          sltContext.deviceId.toString()
-        )
-        await this.redisService.del(reverifyFlagKey)
-        this.logger.debug(
-          `[handleLoginVerification] Cleared reverify_after_revoke flag for device ${sltContext.deviceId}`
-        )
-      }
-
-      // Hoàn tất đăng nhập
-      const loginResult = await this.coreService.finalizeLoginAfterVerification(
-        sltContext.userId,
-        sltContext.deviceId,
-        rememberMe,
-        res,
+      // Sử dụng AuthVerificationService để xác minh OTP
+      const verificationResult = await this.authVerificationService.verifyCode(
+        sltCookieValue,
+        body.code,
         ip,
-        userAgent
+        userAgent,
+        req,
+        res
       )
 
-      // Xóa SLT cookie
+      // Xóa cookie SLT sau khi xác minh
       this.cookieService.clearSltCookie(res)
 
-      // Prepare user response with potentially picked UserProfile fields
-      const userResponse = {
-        ...loginResult.user,
-        userProfile: loginResult.user.userProfile
-          ? {
-              username: loginResult.user.userProfile.username,
-              avatar: loginResult.user.userProfile.avatar
-            }
-          : null
-      }
-
+      // Trả về kết quả thích hợp dựa trên purpose
       return {
-        statusCode: HttpStatus.OK,
-        message: this.i18nService.t('auth.Auth.Otp.Verified'),
-        data: { user: userResponse }
+        success: verificationResult.success,
+        message: verificationResult.message,
+        requiresDeviceVerification: verificationResult.requiresDeviceVerification,
+        requiresAdditionalVerification: verificationResult.requiresAdditionalVerification,
+        redirectUrl: verificationResult.redirectUrl,
+        user: verificationResult.user
       }
     } catch (error) {
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
+      this.logger.error(`[verifyOtp] Error: ${error.message}`, error.stack)
+
+      // Clear SLT cookie in case of error
+      this.cookieService.clearSltCookie(res)
+
+      if (error instanceof AuthError) {
+        throw error
+      }
+
+      throw new BadRequestException(error.message)
     }
   }
 
   /**
-   * Xử lý xác minh thu hồi sessions cụ thể
-   */
-  private async handleRevokeSessionsVerification(
-    sltContext: SltContextData & { sltJti: string },
-    ip: string,
-    userAgent: string,
-    res: Response
-  ) {
-    const { userId, metadata } = sltContext
-    try {
-      if (!metadata || (!metadata.sessionIds && !metadata.deviceIds)) {
-        throw AuthError.InsufficientRevocationData()
-      }
-
-      const options = {
-        sessionIds: metadata.sessionIds,
-        deviceIds: metadata.deviceIds,
-        excludeCurrentSession: metadata.excludeCurrentSession ?? true
-      }
-
-      const currentSessionDetails = {
-        sessionId: metadata.currentSessionIdToExclude,
-        deviceId: metadata.currentDeviceIdToExclude
-      }
-
-      const result = await this.sessionsService.revokeItems(
-        userId,
-        options,
-        currentSessionDetails,
-        undefined,
-        undefined,
-        ip,
-        userAgent
-      )
-
-      this.cookieService.clearSltCookie(res)
-
-      return {
-        statusCode: HttpStatus.OK,
-        message: this.i18nService.t('auth.Auth.Otp.Verified'),
-        data: {
-          revokedSessionsCount: result.revokedSessionsCount,
-          untrustedDevicesCount: result.untrustedDevicesCount,
-          revokedSessionIds: result.revokedSessionIds || [],
-          revokedDeviceIds: result.revokedDeviceIds || [],
-          requiresAdditionalVerification: false
-        }
-      }
-    } catch (error) {
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
-    }
-  }
-
-  /**
-   * Xử lý xác minh thu hồi tất cả sessions
-   */
-  private async handleRevokeAllSessionsVerification(
-    sltContext: SltContextData & { sltJti: string },
-    ip: string,
-    userAgent: string,
-    res: Response
-  ) {
-    const { userId, metadata } = sltContext
-    try {
-      if (!metadata) {
-        throw AuthError.InsufficientRevocationData()
-      }
-
-      const options = {
-        revokeAllUserSessions: true,
-        excludeCurrentSession: metadata.excludeCurrentSession ?? true
-      }
-
-      const currentSessionDetails = {
-        sessionId: metadata.currentSessionIdToExclude,
-        deviceId: metadata.currentDeviceIdToExclude
-      }
-
-      const result = await this.sessionsService.revokeItems(
-        userId,
-        options,
-        currentSessionDetails,
-        undefined,
-        undefined,
-        ip,
-        userAgent
-      )
-
-      this.cookieService.clearSltCookie(res)
-
-      return {
-        statusCode: HttpStatus.OK,
-        message: result.message || this.i18nService.t('auth.Auth.Otp.Verified'),
-        data: {
-          revokedSessionsCount: result.revokedSessionsCount,
-          untrustedDevicesCount: result.untrustedDevicesCount,
-          revokedSessionIds: result.revokedSessionIds || [],
-          revokedDeviceIds: result.revokedDeviceIds || [],
-          requiresAdditionalVerification: false
-        }
-      }
-    } catch (error) {
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
-    }
-  }
-
-  /**
-   * Resend OTP
+   * Gửi lại OTP
    */
   @IsPublic()
   @Post('resend')
@@ -325,37 +164,46 @@ export class OtpController {
     @Res({ passthrough: true }) res: Response
   ): Promise<SendOtpResponseDto> {
     try {
-      const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
+      // Lấy SLT cookie từ request
+      const sltCookieValue = req.cookies?.slt_token
+
       if (!sltCookieValue) {
         throw AuthError.SLTCookieMissing()
       }
 
-      // Validate SLT and get context. We don't expect a specific purpose here, just that it's a valid SLT.
-      const sltContext = await this.otpService.validateSltFromCookieAndGetContext(sltCookieValue, ip, userAgent)
+      // Xác thực SLT và lấy context
+      const sltContext = await this.sltService.validateSltFromCookieAndGetContext(sltCookieValue, ip, userAgent)
 
-      if (!sltContext.email || !sltContext.purpose) {
-        throw AuthError.InternalServerError('Invalid SLT context for resend.')
+      // Lấy thông tin email từ context
+      const email = sltContext.email
+      if (!email) {
+        throw AuthError.EmailMissingInSltContext()
       }
 
-      // Re-initiate OTP with the same purpose and details from the SLT context
-      const newSltJwt = await this.otpService.initiateOtpWithSltCookie({
-        email: sltContext.email,
-        userId: sltContext.userId,
-        deviceId: sltContext.deviceId,
-        ipAddress: ip, // Use current IP
-        userAgent, // Use current userAgent
-        purpose: sltContext.purpose as TypeOfVerificationCode, // Cast to TypeOfVerificationCode
-        metadata: sltContext.metadata
-      })
-
-      // Set the new SLT cookie
-      this.cookieService.setSltCookie(res, newSltJwt, sltContext.purpose as TypeOfVerificationCode)
+      // Sử dụng AuthVerificationService để khởi tạo lại quá trình xác thực
+      const verificationResult = await this.authVerificationService.initiateVerification(
+        {
+          userId: sltContext.userId,
+          deviceId: sltContext.deviceId,
+          email,
+          ipAddress: ip,
+          userAgent,
+          purpose: sltContext.purpose,
+          metadata: {
+            ...sltContext.metadata,
+            resent: true
+          }
+        },
+        res
+      )
 
       return {
-        message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully')
+        message: verificationResult.message || this.i18nService.t('auth.Auth.Otp.SentSuccessfully')
       }
     } catch (error) {
-      if (error instanceof HttpException) throw error
+      if (error instanceof AuthError) {
+        throw error
+      }
       throw AuthError.InternalServerError(error.message)
     }
   }

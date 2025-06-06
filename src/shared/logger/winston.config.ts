@@ -3,7 +3,7 @@ import * as winston from 'winston'
 import DailyRotateFile from 'winston-daily-rotate-file'
 import appConfig from '../config'
 
-const { errors, combine, json, timestamp, ms, prettyPrint, printf, colorize, splat } = winston.format
+const { errors, combine, json, timestamp, ms, prettyPrint, splat } = winston.format
 
 export const dailyRotateFileTransport = (level: string, dirname?: string) => {
   return new DailyRotateFile({
@@ -69,17 +69,16 @@ export const winstonLogger = WinstonModule.createLogger({
 })
 
 // Custom log format
-const logFormat = printf(({ level, message, timestamp: ts, stack, ...metadata }) => {
-  return `${ts} ${level}: ${message}`
-})
+// const logFormat = printf(({ level, message, timestamp: ts, stack, ...metadata }) => {
+//   return `${ts} ${level}: ${message}`
+// })
 
 export const WinstonConfig: winston.LoggerOptions = {
   level: appConfig().NODE_ENV === 'production' ? 'info' : 'silly',
   format: combine(
     errors({ stack: appConfig().NODE_ENV === 'production' ? false : true }),
     timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    splat(),
-    logFormat
+    splat()
   ),
   transports: [
     consoleTransport(),

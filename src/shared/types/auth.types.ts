@@ -1,6 +1,8 @@
 import { Device } from '@prisma/client'
 import { Response, Request } from 'express'
 import { AccessTokenPayload } from './jwt.type'
+import { TypeOfVerificationCodeType } from '../constants/auth.constants'
+import { OtpData, SltContextData } from 'src/routes/auth/auth.types'
 
 /**
  * Auth Provider Interface - Định nghĩa các methods cho authentication provider
@@ -26,22 +28,61 @@ export interface IUserAuthService {
  */
 export interface IOTPService {
   generateOTP(length?: number): string
-  sendOTP(email: string, type: string, userId?: number, metadata?: Record<string, any>): Promise<any>
+  sendOTP(
+    targetEmail: string,
+    type: TypeOfVerificationCodeType,
+    userIdForCooldownAndOtpData?: number,
+    metadata?: Record<string, any>
+  ): Promise<{ message: string; otpCode: string }>
   verifyOTP(
-    email: string,
+    emailToVerifyAgainst: string,
     code: string,
-    type: string,
-    userId?: number,
+    type: TypeOfVerificationCodeType,
+    userIdForAudit?: number,
     ip?: string,
     userAgent?: string
   ): Promise<boolean>
 }
 
 /**
- * Session Service Interface
+ * Short-Lived Token (SLT) Service Interface
+ */
+export interface ISLTService {
+  createAndStoreSltToken(payload: {
+    userId: number
+    deviceId: number
+    ipAddress: string
+    userAgent: string
+    purpose: TypeOfVerificationCodeType
+    email?: string
+    metadata?: Record<string, any>
+  }): Promise<string>
+
+  validateSltFromCookieAndGetContext(
+    sltCookieValue: string,
+    currentIpAddress: string,
+    currentUserAgent: string,
+    expectedPurpose?: TypeOfVerificationCodeType
+  ): Promise<SltContextData & { sltJti: string }>
+
+  updateSltContext(jti: string, updateData: Partial<SltContextData>): Promise<void>
+
+  finalizeSlt(sltJti: string): Promise<void>
+
+  incrementSltAttempts(sltJti: string): Promise<number>
+}
+
+/**
+ * Interface cho Session Service
  */
 export interface ISessionService {
-  getSessions(userId: number, page?: number, limit?: number, currentSessionIdFromToken?: string): Promise<any>
+  getSessions(
+    userId: number,
+    currentPage?: number,
+    itemsPerPage?: number,
+    currentSessionIdFromToken?: string
+  ): Promise<any>
+
   revokeItems(
     userId: number,
     options: {
@@ -55,36 +96,47 @@ export interface ISessionService {
     otpCode?: string,
     ipAddress?: string,
     userAgent?: string
-  ): Promise<{
-    message: string
-    revokedSessionsCount: number
-    revokedDevicesCount: number
-    untrustedDevicesCount: number
-    revokedSessionIds?: string[]
-    revokedDeviceIds?: number[]
-    requiresAdditionalVerification?: boolean
-    verificationRedirectUrl?: string
-  }>
+  ): Promise<any>
+
+  invalidateSession(sessionId: string, reason?: string): Promise<void>
+
+  isSessionInvalidated(sessionId: string): Promise<boolean>
+
+  invalidateAllUserSessions(userId: number, reason?: string, sessionIdToExclude?: string): Promise<void>
 }
 
 /**
- * Device Service Interface
+ * Interface cho Device Service
  */
 export interface IDeviceService {
-  findById(deviceId: number): Promise<Device | null>
-  upsertDevice(userId: number, userAgent: string, ipAddress: string, name?: string): Promise<Device>
-  updateDeviceTrustStatus(deviceId: number, isTrusted: boolean): Promise<Device>
-  updateDeviceName(deviceId: number, name: string): Promise<Device>
+  findById(deviceId: number): Promise<any>
+
+  updateDeviceTrustStatus(deviceId: number, isTrusted: boolean): Promise<any>
+
+  isDeviceTrustValid(deviceId: number): Promise<boolean>
+
+  markDeviceForReverification(userId: number, deviceId: number, reasonInput: string): Promise<void>
+
+  checkDeviceNeedsReverification(userId: number, deviceId: number): Promise<boolean>
+
+  clearDeviceReverification(userId: number, deviceId: number): Promise<void>
 }
 
 /**
  * Cookie Service Interface
  */
 export interface ICookieService {
-  setTokenCookies(res: Response, accessToken: string, refreshToken: string, maxAge?: number): void
-  clearTokenCookies(res: Response): void
-  setSltCookie(res: Response, token: string, purpose: string): void
+  setAccessTokenCookie(res: Response, accessToken: string): void
+  setRefreshTokenCookie(res: Response, refreshToken: string, rememberMe?: boolean): void
+  clearAccessTokenCookie(res: Response): void
+  clearRefreshTokenCookie(res: Response): void
+  setCsrfCookie(res: Response, csrfToken: string): void
+  setSltCookie(res: Response, sltToken: string, purpose: TypeOfVerificationCodeType): void
   clearSltCookie(res: Response): void
+
+  // Các phương thức cần bổ sung
+  setTokenCookies(res: Response, accessToken: string, refreshToken: string, maxAgeForRefreshTokenCookie?: number): void
+  clearTokenCookies(res: Response): void
   setOAuthNonceCookie(res: Response, nonce: string): void
   clearOAuthNonceCookie(res: Response): void
   setOAuthPendingLinkTokenCookie(res: Response, token: string): void
@@ -95,6 +147,10 @@ export interface ICookieService {
  * Token Service Interface
  */
 export interface ITokenService {
+  generateAccessToken(userId: number, expiresIn?: string): Promise<string>
+  generateRefreshToken(userId: number, rememberMe?: boolean): Promise<string>
+  validateAccessToken(token: string): Promise<any>
+  validateRefreshToken(refreshToken: string): Promise<any>
   signAccessToken(payload: any): string
   signRefreshToken(payload: any): string
   signPendingLinkToken(payload: any): string
@@ -102,7 +158,6 @@ export interface ITokenService {
   verifyAccessToken(token: string): Promise<any>
   verifyRefreshToken(token: string): Promise<any>
   verifyPendingLinkToken(token: string): Promise<any>
-  invalidateSession(sessionId: string, reason?: string): Promise<void>
   extractTokenFromRequest(req: Request): string | null
   extractRefreshTokenFromRequest(req: Request): string | null
   invalidateAccessTokenJti(accessTokenJti: string, accessTokenExp: number): Promise<void>
@@ -110,11 +165,6 @@ export interface ITokenService {
   isAccessTokenJtiBlacklisted(accessTokenJti: string): Promise<boolean>
   isRefreshTokenJtiBlacklisted(refreshTokenJti: string): Promise<boolean>
   markRefreshTokenJtiAsUsed(refreshTokenJti: string, sessionId: string, ttlSeconds?: number): Promise<boolean>
-  isSessionInvalidated(sessionId: string): Promise<boolean>
-  checkDeviceNeedsReverification(userId: number, deviceId: number): Promise<boolean>
-  clearDeviceReverification(userId: number, deviceId: number): Promise<void>
-  markDeviceForReverification(userId: number, deviceId: number, reason: string): Promise<void>
-  invalidateAllUserSessions(userId: number, reason?: string, sessionIdToExclude?: string): Promise<void>
 }
 
 export interface CookieConfig {
@@ -125,4 +175,32 @@ export interface CookieConfig {
   httpOnly: boolean
   secure: boolean
   sameSite: 'lax' | 'strict' | 'none' | boolean
+}
+
+/**
+ * Interface cho các service xác thực
+ */
+export interface IVerificationService {
+  // Giai đoạn thiết lập và cấu hình
+  setupVerification(userId: number, options?: any): Promise<any>
+
+  // Xác minh mã đã nhập
+  verifyCode(code: string, context: any): Promise<boolean>
+
+  // Tạo mã xác thực mới (nếu áp dụng)
+  generateVerificationCode(options?: any): Promise<string>
+
+  // Vô hiệu hóa phương thức xác thực
+  disableVerification(userId: number): Promise<void>
+}
+
+/**
+ * Interface cho service xác thực hai yếu tố
+ */
+export interface IMultiFactorService extends IVerificationService {
+  // Tạo lại các mã khôi phục
+  regenerateRecoveryCodes(userId: number, verificationCode: string): Promise<string[]>
+
+  // Xác minh mã thông qua phương thức cụ thể
+  verifyByMethod(method: string, code: string, userId: number): Promise<{ success: boolean; method: string }>
 }
