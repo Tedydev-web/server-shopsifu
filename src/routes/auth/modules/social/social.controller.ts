@@ -21,28 +21,8 @@ import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decorator'
 import { AccessTokenPayload, ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import {
-  CancelLinkDto,
-  CancelLinkResponseDto,
-  CompleteLinkDto,
-  CompleteLinkResponseDto,
-  GoogleAuthResponseDto,
-  GoogleAuthSuccessResponseDto,
   GoogleAuthUrlQueryDto,
-  GoogleAuthUrlResponseDto,
   GoogleCallbackQueryDto,
-  TwoFactorRequiredResponseDto,
-  DeviceVerificationRequiredResponseDto,
-  AccountLinkingRequiredResponseDto,
-  GoogleAuthErrorResponseDto,
-  InitiateUnlinkDto,
-  InitiateUnlinkResponseDto,
-  LinkGoogleAccountDto,
-  LinkGoogleAccountResponseDto,
-  PendingLinkDetailsDto,
-  UnlinkGoogleAccountDto,
-  UnlinkGoogleAccountResponseDto,
-  VerifyUnlinkDto,
-  VerifyUnlinkResponseDto,
   VerifyAuthenticationDto,
   VerifyAuthenticationResponseUnion
 } from './social.dto'
@@ -298,7 +278,9 @@ export class SocialController {
         return {
           success: true,
           message: 'Account linked and logged in successfully.',
-          user: finalizedAuth.user
+          data: {
+            user: finalizedAuth.user
+          }
         }
       }
 

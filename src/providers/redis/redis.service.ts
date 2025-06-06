@@ -552,8 +552,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async hgetallDecrypted<T = Record<string, any>>(
     key: RedisKey,
     sensitiveFields?: string[]
+  ): Promise<T | Record<string, string> | null>
+  async hgetallDecrypted<T = Record<string, any>>(
+    key: RedisKey,
+    sensitiveFields: string[] | undefined,
+    prefetchedData: Record<string, string>
+  ): Promise<T | Record<string, string> | null>
+  async hgetallDecrypted<T = Record<string, any>>(
+    key: RedisKey,
+    sensitiveFields?: string[],
+    prefetchedData?: Record<string, string>
   ): Promise<T | Record<string, string> | null> {
-    const data = await this.hgetall(key)
+    const data = prefetchedData || (await this.hgetall(key))
     if (!data || Object.keys(data).length === 0) return null
 
     // Nếu CryptoService không khả dụng, trả về dữ liệu gốc

@@ -181,25 +181,6 @@ export function getRandomElement<T>(array: T[]): T | undefined {
   return array[randomIndex]
 }
 
-export function isValidEmail(email: string): boolean {
-  if (!isNonEmptyString(email)) {
-    return false
-  }
-
-  const emailRegex =
-    /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
-  return emailRegex.test(email)
-}
-
-export function isValidPhone(phone: string): boolean {
-  if (!isNonEmptyString(phone)) {
-    return false
-  }
-
-  const phoneRegex = /^\+?[1-9]\d{1,14}$/
-  return phoneRegex.test(phone.replace(/\s+/g, ''))
-}
-
 export function isValidEnum<T extends Record<string, string | number>>(value: any, enumObject: T): value is T[keyof T] {
   if (isNullOrUndefined(value)) {
     return false

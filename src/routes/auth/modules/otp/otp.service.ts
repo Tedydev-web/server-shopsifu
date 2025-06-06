@@ -44,14 +44,14 @@ export class OtpService implements IOTPService {
    * Tạo key cho Redis OTP
    */
   private getOtpKey(type: TypeOfVerificationCodeType, identifier: string): string {
-    return RedisKeyManager.otpKey(type, identifier)
+    return RedisKeyManager.getOtpDataKey(type, identifier)
   }
 
   /**
    * Tạo key cho cooldown của OTP
    */
-  private getOtpLastSentKey(identifierForCooldown: string, purpose: TypeOfVerificationCodeType): string {
-    return RedisKeyManager.otpLastSentKey(identifierForCooldown, purpose)
+  private getOtpCooldownKey(identifierForCooldown: string, purpose: TypeOfVerificationCodeType): string {
+    return RedisKeyManager.getOtpCooldownKey(identifierForCooldown, purpose)
   }
 
   /**
@@ -67,7 +67,7 @@ export class OtpService implements IOTPService {
       const identifierForCooldown = userIdForCooldownAndOtpData
         ? `user:${userIdForCooldownAndOtpData}`
         : `email:${targetEmail}`
-      const otpLastSentKey = this.getOtpLastSentKey(identifierForCooldown, type)
+      const otpLastSentKey = this.getOtpCooldownKey(identifierForCooldown, type)
 
       await this.checkOtpCooldown(otpLastSentKey)
 

@@ -1,12 +1,4 @@
-import {
-  Injectable,
-  UnauthorizedException,
-  Logger,
-  Inject,
-  InternalServerErrorException,
-  HttpException,
-  HttpStatus
-} from '@nestjs/common'
+import { Injectable, Logger, Inject } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { Request } from 'express'
@@ -19,10 +11,7 @@ import {
   PendingLinkTokenPayload,
   PendingLinkTokenPayloadCreate
 } from 'src/routes/auth/shared/auth.types'
-import { TokenType, CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
-import { DeviceRepository, SessionRepository } from 'src/routes/auth/shared/repositories'
 import { REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
-import { CryptoService } from './crypto.service'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
@@ -33,10 +22,7 @@ export class TokenService implements ITokenService {
   constructor(
     private readonly jwtService: JwtService,
     @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
-    private readonly configService: ConfigService,
-    private readonly deviceRepository: DeviceRepository,
-    private readonly sessionRepository: SessionRepository,
-    private readonly cryptoService?: CryptoService
+    private readonly configService: ConfigService
   ) {}
 
   /**
@@ -227,12 +213,16 @@ export class TokenService implements ITokenService {
    * Đánh dấu access token là đã vô hiệu hóa
    */
   async invalidateAccessTokenJti(accessTokenJti: string, accessTokenExp: number): Promise<void> {
-    const now = Math.floor(Date.now() / 1000)
-    const ttl = accessTokenExp - now
+    try {
+      const key = RedisKeyManager.getAccessTokenBlacklistKey(accessTokenJti)
+      const now = Math.floor(Date.now() / 1000)
+      const ttl = accessTokenExp - now
 
-    if (ttl > 0) {
-      const key = RedisKeyManager.accessTokenBlacklistKey(accessTokenJti)
-      await this.redisService.set(key, '1', 'EX', ttl)
+      if (ttl > 0) {
+        await this.redisService.set(key, '1', 'EX', ttl)
+      }
+    } catch (error) {
+      this.logger.error(`Lỗi khi đánh dấu access token là đã vô hiệu hóa: ${error.message}`, error.stack)
     }
   }
 
@@ -240,38 +230,35 @@ export class TokenService implements ITokenService {
    * Đánh dấu refresh token là đã vô hiệu hóa
    */
   async invalidateRefreshTokenJti(refreshTokenJti: string, sessionId: string): Promise<void> {
-    const key = RedisKeyManager.refreshTokenBlacklistKey(refreshTokenJti)
-    await this.redisService.set(
-      key,
-      sessionId,
-      'EX',
-      this.configService.get('auth.refreshToken.expiresInSeconds', 7 * 24 * 60 * 60)
-    )
+    const key = RedisKeyManager.getRefreshTokenBlacklistKey(refreshTokenJti)
+    const refreshTokenConfig = this.configService.get<any>('security.jwt.refresh')
+    const ttlSeconds = refreshTokenConfig.expiresIn
+    await this.redisService.set(key, sessionId, 'EX', ttlSeconds)
   }
 
   /**
    * Kiểm tra access token có trong blacklist không
    */
   async isAccessTokenJtiBlacklisted(accessTokenJti: string): Promise<boolean> {
-    const key = RedisKeyManager.accessTokenBlacklistKey(accessTokenJti)
+    const key = RedisKeyManager.getAccessTokenBlacklistKey(accessTokenJti)
     const result = await this.redisService.exists(key)
-    return result > 0
+    return result === 1
   }
 
   /**
    * Kiểm tra refresh token có trong blacklist không
    */
   async isRefreshTokenJtiBlacklisted(refreshTokenJti: string): Promise<boolean> {
-    const key = RedisKeyManager.refreshTokenBlacklistKey(refreshTokenJti)
+    const key = RedisKeyManager.getRefreshTokenBlacklistKey(refreshTokenJti)
     const result = await this.redisService.exists(key)
-    return result > 0
+    return result === 1
   }
 
   /**
    * Tìm session ID từ refresh token
    */
   async findSessionIdByRefreshTokenJti(refreshTokenJti: string): Promise<string | null> {
-    const key = RedisKeyManager.refreshTokenBlacklistKey(refreshTokenJti)
+    const key = RedisKeyManager.getRefreshTokenBlacklistKey(refreshTokenJti)
     return this.redisService.get(key)
   }
 
@@ -283,13 +270,8 @@ export class TokenService implements ITokenService {
     sessionId: string,
     ttlSeconds: number = 30 * 24 * 60 * 60
   ): Promise<boolean> {
-    const key = RedisKeyManager.refreshTokenUsedKey(refreshTokenJti)
-    try {
-      await this.redisService.set(key, sessionId, 'EX', ttlSeconds)
-      return true
-    } catch (error) {
-      this.logger.error(`Lỗi khi đánh dấu refresh token đã sử dụng: ${error.message}`, error.stack)
-      return false
-    }
+    const key = RedisKeyManager.getRefreshTokenUsedKey(refreshTokenJti)
+    const result = await this.redisService.set(key, sessionId, 'EX', ttlSeconds, 'NX')
+    return result === 'OK'
   }
 }

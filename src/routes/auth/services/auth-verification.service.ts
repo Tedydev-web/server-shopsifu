@@ -302,12 +302,10 @@ export class AuthVerificationService {
     )
     return {
       success: true,
-      message: loginResult.message || this.i18nService.t('auth.Auth.Login.Success' as I18nPath),
-      tokens: {
-        accessToken: loginResult.accessToken,
-        refreshToken: loginResult.refreshToken
-      },
-      user: loginResult.user
+      message: this.i18nService.t('auth.Auth.Login.Success' as I18nPath),
+      data: {
+        user: loginResult.user
+      }
     }
   }
 

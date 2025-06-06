@@ -1,24 +1,11 @@
-import {
-  Body,
-  Controller,
-  HttpCode,
-  HttpStatus,
-  Ip,
-  Logger,
-  Post,
-  Req,
-  Res,
-  HttpException,
-  Inject,
-  forwardRef
-} from '@nestjs/common'
+import { Body, Controller, HttpCode, HttpStatus, Ip, Logger, Post, Req, Res, Inject, forwardRef } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
-import { I18nService, I18nContext } from 'nestjs-i18n'
+import { I18nService } from 'nestjs-i18n'
 import { Throttle } from '@nestjs/throttler'
 
 import { CoreService } from './core.service'
-import { TypeOfVerificationCode, CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
+import { CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
 import {
   CompleteRegistrationDto,
   InitiateRegistrationDto,

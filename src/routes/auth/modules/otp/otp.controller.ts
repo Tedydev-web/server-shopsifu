@@ -10,8 +10,7 @@ import {
   Ip,
   Inject,
   forwardRef,
-  HttpException,
-  BadRequestException
+  HttpException
 } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler'
 import { Request, Response } from 'express'
@@ -21,19 +20,13 @@ import { AuthError } from '../../auth.error'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { SendOtpDto, VerifyOtpDto, SendOtpResponseDto } from './otp.dto'
 import { CoreService } from '../core/core.service'
-import {
-  TypeOfVerificationCode,
-  TypeOfVerificationCodeType,
-  CookieNames
-} from 'src/routes/auth/shared/constants/auth.constants'
-import { SltContextData } from 'src/routes/auth/shared/auth.types'
+import { CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
 import { SessionsService } from '../sessions/sessions.service'
 import { IsPublic, Auth } from 'src/routes/auth/shared/decorators/auth.decorator'
 import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import { COOKIE_SERVICE, REDIS_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 import { RedisService } from 'src/providers/redis/redis.service'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
 import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 

@@ -14,6 +14,7 @@ import { Logger } from '@nestjs/common'
 import { WinstonModule } from 'nest-winston'
 import { WinstonConfig } from 'src/shared/logger/winston.config'
 import { LOGGER_SERVICE } from 'src/shared/constants/injection.tokens'
+import { ConfigService } from '@nestjs/config'
 
 @Global()
 @Module({
@@ -44,6 +45,7 @@ import { LOGGER_SERVICE } from 'src/shared/constants/injection.tokens'
   providers: [
     PrismaService,
     Logger,
+    ConfigService,
     {
       provide: LOGGER_SERVICE,
       useExisting: Logger
@@ -65,6 +67,6 @@ import { LOGGER_SERVICE } from 'src/shared/constants/injection.tokens'
       useClass: TransformInterceptor
     }
   ],
-  exports: [ConfigModule, I18nModule, ThrottlerModule, ScheduleModule, PrismaService, LOGGER_SERVICE]
+  exports: [ConfigModule, I18nModule, ThrottlerModule, ScheduleModule, PrismaService, LOGGER_SERVICE, ConfigService]
 })
 export class CoreModule {}

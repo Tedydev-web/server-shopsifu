@@ -101,7 +101,7 @@ export interface ISessionService {
 
   isSessionInvalidated(sessionId: string): Promise<boolean>
 
-  invalidateAllUserSessions(userId: number, reason?: string, sessionIdToExclude?: string): Promise<void>
+  invalidateAllUserSessions(userId: number, reason?: string, sessionIdToExclude?: string): Promise<{ count: number }>
 }
 
 /**

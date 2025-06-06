@@ -6,14 +6,12 @@ import { REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tok
 import { ITokenService, ISLTService, SltContextData, SltJwtPayload } from 'src/routes/auth/shared/auth.types'
 import {
   TypeOfVerificationCodeType,
-  TypeOfVerificationCode,
   SLT_EXPIRY_SECONDS,
   SLT_MAX_ATTEMPTS
 } from 'src/routes/auth/shared/constants/auth.constants'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { v4 as uuidv4 } from 'uuid'
-import { I18nContext, I18nService } from 'nestjs-i18n'
 
 @Injectable()
 export class SLTService implements ISLTService {
@@ -287,15 +285,14 @@ export class SLTService implements ISLTService {
    */
   async incrementSltAttempts(sltJti: string): Promise<number> {
     const sltContextKey = this.getSltContextKey(sltJti)
-    const newAttempts = await this.redisService.hincrby(sltContextKey, 'attempts', 1)
-    return newAttempts
+    return this.redisService.hincrby(sltContextKey, 'attempts', 1)
   }
 
   /**
    * Tạo key cho Redis SLT context
    */
   private getSltContextKey(jti: string): string {
-    return RedisKeyManager.sltContextKey(jti)
+    return RedisKeyManager.getSltContextKey(jti)
   }
 
   /**

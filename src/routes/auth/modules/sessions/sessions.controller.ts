@@ -24,25 +24,18 @@ import {
   GetSessionsQueryDto,
   GetGroupedSessionsResponseDto,
   RevokeSessionsBodyDto,
-  RevokeSessionsResponseDto,
   DeviceIdParamsDto,
   UpdateDeviceNameBodyDto,
   UpdateDeviceNameResponseDto,
-  TrustDeviceResponseDto,
   UntrustDeviceResponseDto,
   RevokeAllSessionsBodyDto
 } from './session.dto'
 import { I18nService } from 'nestjs-i18n'
-import { DynamicZodSerializer } from 'src/shared/interceptor/dynamic-zod-serializer.interceptor'
 import { TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 import { Response, Request } from 'express'
-import { OtpService } from '../../modules/otp/otp.service'
 import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 import { AuthError } from '../../auth.error'
-import { TwoFactorService } from '../two-factor/two-factor.service'
-import { User } from '@prisma/client'
-import { ZodSerializerDto, ZodValidationPipe } from 'nestjs-zod'
 import { Auth } from 'src/routes/auth/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../../services/auth-verification.service'
 
@@ -89,10 +82,6 @@ export class SessionsController {
    */
   @Get()
   @HttpCode(HttpStatus.OK)
-  @DynamicZodSerializer({
-    schema: GetGroupedSessionsResponseDto.schema,
-    predicate: () => true
-  })
   async getSessions(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Query() query: GetSessionsQueryDto
@@ -160,7 +149,6 @@ export class SessionsController {
           res
         )
         return {
-          statusCode: HttpStatus.OK,
           message: verificationResult.message,
           data: {
             requiresAdditionalVerification: true,
@@ -173,13 +161,10 @@ export class SessionsController {
       const result = await this.sessionsService.revokeItems(userContext.userId, revocationOptions, userContext)
 
       return {
-        statusCode: HttpStatus.OK,
         message: result.message || this.i18nService.t('auth.Auth.Session.RevokedSuccessfully' as I18nPath),
         data: {
           revokedSessionsCount: result.revokedSessionsCount,
-          untrustedDevicesCount: result.untrustedDevicesCount,
-          revokedSessionIds: result.revokedSessionIds || [],
-          revokedDeviceIds: result.revokedDeviceIds || []
+          untrustedDevicesCount: result.untrustedDevicesCount
         }
       }
     } catch (error) {
@@ -228,7 +213,6 @@ export class SessionsController {
       )
 
       return {
-        statusCode: HttpStatus.OK,
         message: verificationResult.message,
         data: {
           requiresAdditionalVerification: true,
@@ -260,11 +244,7 @@ export class SessionsController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Param() params: DeviceIdParamsDto,
     @Body() body: UpdateDeviceNameBodyDto
-  ): Promise<{
-    statusCode: number
-    message: string
-    data: UpdateDeviceNameResponseDto
-  }> {
+  ): Promise<any> {
     try {
       this.logger.debug(
         `[updateDeviceName] User ${activeUser.userId} cập nhật tên thiết bị ${params.deviceId}: "${body.name}"`
@@ -273,8 +253,7 @@ export class SessionsController {
       await this.sessionsService.updateDeviceName(activeUser.userId, params.deviceId, body.name)
 
       return {
-        statusCode: HttpStatus.OK,
-        message: await this.i18nService.t('auth.Auth.Success.Device.NameUpdated' as I18nPath),
+        message: await this.i18nService.t('auth.Auth.Device.NameUpdated' as I18nPath),
         data: {
           deviceId: params.deviceId,
           name: body.name,
@@ -295,20 +274,16 @@ export class SessionsController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Ip() ip: string,
     @UserAgent() userAgent: string
-  ): Promise<{
-    statusCode: number
-    message: string
-  }> {
+  ): Promise<any> {
     try {
       this.logger.debug(
         `[trustCurrentDevice] User ${activeUser.userId} đánh dấu tin cậy thiết bị hiện tại ${activeUser.deviceId}`
       )
 
-      await this.sessionsService.trustCurrentDevice(activeUser.userId, activeUser.deviceId, ip, userAgent)
+      await this.sessionsService.trustCurrentDevice(activeUser.userId, activeUser.deviceId)
 
       return {
-        statusCode: HttpStatus.OK,
-        message: await this.i18nService.t('auth.Auth.Success.Device.Trusted' as I18nPath)
+        message: await this.i18nService.t('auth.Auth.Device.Trusted' as I18nPath)
       }
     } catch (error) {
       return this.handleError(error, 'trustCurrentDevice')
@@ -320,22 +295,14 @@ export class SessionsController {
    */
   @Patch('devices/:deviceId/untrust')
   @HttpCode(HttpStatus.OK)
-  async untrustDevice(
-    @ActiveUser() activeUser: AccessTokenPayload,
-    @Param() params: DeviceIdParamsDto
-  ): Promise<{
-    statusCode: number
-    message: string
-    data: UntrustDeviceResponseDto
-  }> {
+  async untrustDevice(@ActiveUser() activeUser: AccessTokenPayload, @Param() params: DeviceIdParamsDto): Promise<any> {
     try {
       this.logger.debug(`[untrustDevice] User ${activeUser.userId} hủy bỏ tin cậy thiết bị ${params.deviceId}`)
 
       await this.sessionsService.untrustDevice(activeUser.userId, params.deviceId)
 
       return {
-        statusCode: HttpStatus.OK,
-        message: await this.i18nService.t('auth.Auth.Success.Device.Untrusted' as I18nPath),
+        message: await this.i18nService.t('auth.Auth.Device.Untrusted' as I18nPath),
         data: {
           deviceId: params.deviceId,
           success: true

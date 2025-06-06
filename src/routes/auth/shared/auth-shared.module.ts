@@ -1,6 +1,5 @@
 import { Module, Global, forwardRef } from '@nestjs/common'
 import { JwtModule } from '@nestjs/jwt'
-import { ConfigModule, ConfigService } from '@nestjs/config'
 
 // Local Imports - Services
 import { HashingService } from './services/common/hashing.service'

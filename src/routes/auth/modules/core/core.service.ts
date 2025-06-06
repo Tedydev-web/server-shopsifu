@@ -1,15 +1,14 @@
-import { Injectable, Logger, Inject, HttpException, forwardRef } from '@nestjs/common'
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
 import { Response, Request } from 'express'
 import { AuthError } from '../../auth.error'
 import { HashingService } from 'src/routes/auth/shared/services/common/hashing.service'
-import { IUserAuthService, ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
+import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import { TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
 import { User, Device, Role, UserProfile } from '@prisma/client'
 import { AccessTokenPayloadCreate } from 'src/routes/auth/shared/auth.types'
-import { UserStatus } from '@prisma/client'
 import {
   COOKIE_SERVICE,
   DEVICE_SERVICE,
@@ -26,15 +25,12 @@ import {
 } from 'src/routes/auth/shared/repositories'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 import { RedisService } from 'src/providers/redis/redis.service'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { ConfigService } from '@nestjs/config'
-import { FinalizeAuthParams } from 'src/routes/auth/shared/auth.types'
-import { isNullOrUndefined } from 'src/shared/utils/type-guards.utils'
 import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 import { DeviceService } from 'src/routes/auth/shared/services/device.service'
 import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.service'
 import { AuthVerificationService } from '../../services/auth-verification.service'
 import { CompleteRegistrationDto, LoginDto } from './auth.dto'
+import { ConfigService } from '@nestjs/config'
 
 interface RegisterUserParams {
   userId: number
@@ -61,14 +57,15 @@ export class CoreService {
   private readonly logger = new Logger(CoreService.name)
 
   constructor(
-    @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
-    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
-    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
+    private readonly configService: ConfigService,
     private readonly i18nService: I18nService<I18nTranslations>,
     private readonly userAuthRepository: UserAuthRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly otpService: OtpService,
     private readonly sessionRepository: SessionRepository,
+    @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
+    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
     @Inject(DEVICE_SERVICE) private readonly deviceService?: DeviceService,
@@ -328,7 +325,7 @@ export class CoreService {
 
       // Đánh dấu session là đã vô hiệu hóa
       if (this.sessionsService) {
-        await this.sessionsService.invalidateSession(sessionId, 'USER_LOGOUT')
+        await this.sessionsService.invalidateSession(sessionId)
       } else {
         // Log warning khi không có SessionsService
         this.logger.warn(`[logout] SessionsService không khả dụng, không thể vô hiệu hóa session ${sessionId}`)
@@ -384,25 +381,28 @@ export class CoreService {
     res: Response,
     ipAddress?: string,
     userAgent?: string,
-    isTrustedSession?: boolean // Tham số mới để xác định rõ trạng thái tin cậy
+    isTrustedSession?: boolean
   ): Promise<any> {
+    const now = new Date()
+    const absoluteSessionLifetimeInSeconds =
+      this.configService.get<number>('ABSOLUTE_SESSION_LIFETIME_MS', 30 * 24 * 60 * 60 * 1000) / 1000
+
+    const expiresAtDate = new Date(now.getTime() + absoluteSessionLifetimeInSeconds * 1000)
+    const sessionId = uuidv4()
+
+    await this.sessionRepository.createSession({
+      id: sessionId,
+      userId: user.id,
+      deviceId: device.id,
+      createdAt: now.getTime(),
+      expiresAt: expiresAtDate.getTime(),
+      ipAddress: ipAddress ?? 'Unknown',
+      userAgent: userAgent ?? 'Unknown'
+    })
+
     try {
-      const effectiveIsTrustedSession =
-        isTrustedSession === undefined ? await this.deviceRepository.isDeviceTrustValid(device.id) : isTrustedSession
+      const effectiveIsTrustedSession = isTrustedSession ?? (await this.deviceRepository.isDeviceTrustValid(device.id))
 
-      // Tạo thông tin người dùng để phản hồi
-      const userResponse = {
-        id: user.id,
-        email: user.email,
-        role: user.role.name,
-        isDeviceTrustedInSession: effectiveIsTrustedSession, // Sử dụng trạng thái tin cậy đã xác định
-        userProfile: user.userProfile
-      }
-
-      // Tạo session ID duy nhất
-      const sessionId = uuidv4()
-
-      // Tạo token
       const payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
         userId: user.id,
         roleId: user.role.id,
@@ -410,7 +410,7 @@ export class CoreService {
         deviceId: device.id,
         sessionId,
         jti: `access_${Date.now()}_${this.generateRandomId()}`,
-        isDeviceTrustedInSession: effectiveIsTrustedSession // Đặt cờ này chính xác
+        isDeviceTrustedInSession: effectiveIsTrustedSession
       }
 
       const accessToken = this.tokenService.signAccessToken(payload)
@@ -419,30 +419,28 @@ export class CoreService {
         jti: `refresh_${Date.now()}_${this.generateRandomId()}`
       })
 
-      // Đặt cookie token
-      const refreshCookieMaxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+      const refreshCookieMaxAge = rememberMe
+        ? this.configService.get<number>('security.jwt.refresh.rememberMeExpiresInSeconds', 30 * 24 * 60 * 60) * 1000
+        : this.configService.get<number>('security.jwt.refresh.expiresInSeconds', 24 * 60 * 60) * 1000
       this.cookieService.setTokenCookies(res, accessToken, refreshToken, refreshCookieMaxAge)
 
-      // Tạo phiên trong Redis
-      // Tính thời gian hết hạn cho phiên
-      const refreshTokenExpiryDays = rememberMe ? 30 : 1
-      const expiresAt = new Date()
-      expiresAt.setDate(expiresAt.getDate() + refreshTokenExpiryDays)
-
-      await this.sessionRepository.createSession({
-        id: sessionId,
-        userId: user.id,
-        deviceId: device.id,
-        ipAddress: ipAddress || 'Unknown',
-        userAgent: userAgent || 'Unknown',
-        expiresAt
-      })
+      const userResponse = {
+        id: user.id,
+        email: user.email,
+        role: user.role.name,
+        isDeviceTrustedInSession: effectiveIsTrustedSession,
+        userProfile: user.userProfile
+          ? {
+              username: user.userProfile.username,
+              avatar: user.userProfile.avatar
+            }
+          : null
+      }
 
       return {
         accessToken,
         refreshToken,
-        user: userResponse,
-        message: this.i18nService.t('Auth.Auth.Login.Success' as I18nPath, { lang: I18nContext.current()?.lang })
+        user: userResponse
       }
     } catch (error) {
       this.logger.error(`[finalizeLoginAndCreateTokens] Error: ${error.message}`, error.stack)

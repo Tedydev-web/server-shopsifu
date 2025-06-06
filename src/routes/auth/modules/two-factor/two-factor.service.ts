@@ -1,19 +1,9 @@
-import {
-  Injectable,
-  Logger,
-  Inject,
-  UnauthorizedException,
-  BadRequestException,
-  HttpStatus,
-  forwardRef
-} from '@nestjs/common'
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { I18nService, I18nContext } from 'nestjs-i18n'
+import { I18nService } from 'nestjs-i18n'
 import { JwtService } from '@nestjs/jwt'
 import * as otplib from 'otplib'
 import { HashAlgorithms } from '@otplib/core'
-import * as crypto from 'crypto'
-import { Response } from 'express'
 import {
   COOKIE_SERVICE,
   EMAIL_SERVICE,
@@ -27,17 +17,12 @@ import { UserAuthRepository, RecoveryCodeRepository, DeviceRepository } from 'sr
 import { HashingService } from 'src/routes/auth/shared/services/common/hashing.service'
 import { RedisService } from 'src/providers/redis/redis.service'
 import { OtpService } from '../otp/otp.service'
-import { Device } from '@prisma/client'
-import { toDataURL } from 'qrcode'
 import { ICookieService, ITokenService, IMultiFactorService } from 'src/routes/auth/shared/auth.types'
-import { SltContextData } from '../../shared/auth.types'
 import { AuthError } from '../../auth.error'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { PickedUserProfileResponseType } from 'src/shared/dtos/user.dto'
 import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
 import { CoreService } from '../core/core.service'
-import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 /**
  * Cấu hình và hằng số

@@ -10,7 +10,6 @@ import { EmailService, SecurityAlertType } from 'src/routes/auth/shared/services
 import { DeviceRepository, UserAuthRepository } from 'src/routes/auth/shared/repositories'
 import { DEVICE_REVERIFY_KEY_PREFIX, DEVICE_REVERIFICATION_TTL } from '../../shared/constants/auth.constants'
 import { IDeviceService } from 'src/routes/auth/shared/auth.types'
-import { isNullOrUndefined } from 'src/shared/utils/type-guards.utils'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 /**
@@ -538,37 +537,26 @@ export class DeviceService implements IDeviceService {
    * Đánh dấu một thiết bị cần xác minh lại
    */
   async markDeviceForReverification(userId: number, deviceId: number, reasonInput: string): Promise<void> {
-    const reason = reasonInput || 'UNKNOWN'
-    this.logger.debug(
-      `[markDeviceForReverification] Marking device ${deviceId} of user ${userId} for reverification. Reason: ${reason}`
-    )
-    const reverificationKey = RedisKeyManager.customKey(DEVICE_REVERIFY_KEY_PREFIX, deviceId.toString())
-    await this.redisService.set(reverificationKey, 'true', 'EX', DEVICE_REVERIFICATION_TTL)
+    const reverificationKey = RedisKeyManager.getDeviceReverificationKey(deviceId)
+    await this.redisService.set(reverificationKey, reasonInput, 'EX', DEVICE_REVERIFICATION_TTL)
+    this.logger.log(`Device ${deviceId} for user ${userId} marked for reverification. Reason: ${reasonInput}`)
   }
 
   /**
    * Kiểm tra xem một thiết bị có cần xác minh lại không
    */
   async checkDeviceNeedsReverification(userId: number, deviceId: number): Promise<boolean> {
-    const reverificationKey = RedisKeyManager.customKey(DEVICE_REVERIFY_KEY_PREFIX, deviceId.toString())
-    const needsReverification = await this.redisService.get(reverificationKey)
-    if (needsReverification === 'true') {
-      this.logger.debug(
-        `[checkDeviceNeedsReverification] Device ${deviceId} of user ${userId} requires reverification.`
-      )
-      return true
-    }
-    return false
+    const reverificationKey = RedisKeyManager.getDeviceReverificationKey(deviceId)
+    const needsReverification = await this.redisService.exists(reverificationKey)
+    return needsReverification > 0
   }
 
   /**
    * Xóa cờ đánh dấu cần xác minh lại cho thiết bị
    */
   async clearDeviceReverification(userId: number, deviceId: number): Promise<void> {
-    this.logger.debug(
-      `[clearDeviceReverification] Clearing reverification flag for device ${deviceId} of user ${userId}.`
-    )
-    const reverificationKey = RedisKeyManager.customKey(DEVICE_REVERIFY_KEY_PREFIX, deviceId.toString())
+    const reverificationKey = RedisKeyManager.getDeviceReverificationKey(deviceId)
     await this.redisService.del(reverificationKey)
+    this.logger.log(`Cleared reverification flag for device ${deviceId} of user ${userId}.`)
   }
 }

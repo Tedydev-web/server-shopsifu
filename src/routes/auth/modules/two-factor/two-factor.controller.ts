@@ -23,8 +23,6 @@ import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decora
 import { AccessTokenPayload, ICookieService } from 'src/routes/auth/shared/auth.types'
 import {
   TwoFactorVerifyDto,
-  DisableTwoFactorDto,
-  RegenerateRecoveryCodesDto,
   TwoFactorSetupResponseDto,
   TwoFactorConfirmSetupResponseDto,
   DisableTwoFactorResponseDto,

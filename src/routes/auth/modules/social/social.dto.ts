@@ -26,8 +26,6 @@ export const GoogleCallbackQuerySchema = z.object({
 
 // User Profile Schema đã được pick từ shared model
 const PickedGoogleUserProfileSchema = SharedUserProfileSchema.pick({
-  firstName: true,
-  lastName: true,
   username: true,
   avatar: true
 })
@@ -36,7 +34,7 @@ const PickedGoogleUserProfileSchema = SharedUserProfileSchema.pick({
 export const GoogleAuthResponseSchema = z.object({
   id: z.number(),
   email: z.string().email(),
-  roleName: z.string(),
+  role: z.string(),
   isDeviceTrustedInSession: z.boolean(),
   userProfile: PickedGoogleUserProfileSchema.nullable()
 })
@@ -167,7 +165,11 @@ export const VerifyAuthenticationSchema = z.object({
 export const VerifyAuthenticationResponseSchema = z.object({
   success: z.boolean(),
   message: z.string(),
-  user: GoogleAuthResponseSchema.optional()
+  data: z
+    .object({
+      user: GoogleAuthResponseSchema
+    })
+    .optional()
 })
 
 // Create DTO classes

@@ -1,7 +1,6 @@
 /**
  * Auth Constants
  */
-import { RedisPrefix } from 'src/shared/utils/redis-keys.utils'
 
 export enum AuthType {
   JWT = 'JWT',
