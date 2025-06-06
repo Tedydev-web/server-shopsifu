@@ -42,7 +42,7 @@ import { COOKIE_SERVICE, REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constan
 import { CoreService } from '../core/core.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
+import { AuthVerificationService } from 'src/shared/services/auth/auth-verification.service'
 
 interface RevokeSessionsMetadata {
   sessionIds?: string[]

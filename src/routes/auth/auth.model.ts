@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/shared/constants/auth.constants'
 import { RoleSchema } from 'src/shared/models/role.model'
 import { PickedUserProfileResponseSchema } from 'src/shared/dtos/user.dto'
 

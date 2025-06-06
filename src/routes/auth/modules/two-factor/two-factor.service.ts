@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
 import { JwtService } from '@nestjs/jwt'
 import * as otplib from 'otplib'
+import { HashAlgorithms } from '@otplib/core/utils'
 import * as crypto from 'crypto'
 import { Response } from 'express'
 import { COOKIE_SERVICE, REDIS_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
@@ -64,7 +65,7 @@ export class TwoFactorService implements IMultiFactorService {
       window: TOTP_WINDOW,
       step: 30, // 30 giây cho mỗi mã
       digits: 6,
-      algorithm: 'SHA1'
+      algorithm: HashAlgorithms.SHA1
     }
   }
 

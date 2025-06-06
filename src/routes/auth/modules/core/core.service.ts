@@ -16,6 +16,9 @@ import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 import { HttpException } from '@nestjs/common'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { ConfigService } from '@nestjs/config'
+import { FinalizeAuthParams } from 'src/routes/auth/auth.types'
+import { isNullOrUndefined } from 'src/shared/utils/type-guards.utils'
 import { SLTService } from 'src/shared/services/auth/slt.service'
 
 interface RegisterUserParams {
@@ -53,8 +56,6 @@ export class CoreService implements IUserAuthService {
     private readonly sessionRepository: SessionRepository,
     @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService
-    // private readonly deviceService: IDeviceService,
-    // private readonly sessionService: ISessionService
   ) {}
 
   /**
@@ -211,8 +212,7 @@ export class CoreService implements IUserAuthService {
     // The above logs cover the main branches.
 
     // Now, determine the type of verification needed, prioritizing 2FA if enabled.
-    // const needsAdminReverification = await this.deviceService.checkDeviceNeedsReverification(user.id, device.id)
-    const needsAdminReverification = false // Tạm thời hardcode vì chúng ta đã comment deviceService
+    const needsAdminReverification = await this.tokenService.checkDeviceNeedsReverification(user.id, device.id)
     if (needsAdminReverification) {
       this.logger.debug(
         `[Login] Device ${device.id} (user ${user.id}) is also marked for admin-initiated reverification.`
@@ -307,12 +307,7 @@ export class CoreService implements IUserAuthService {
       }
 
       // Đánh dấu session là đã vô hiệu hóa
-      // await this.sessionService.invalidateSession(sessionId, 'USER_LOGOUT')
-      // Tạm thời comment vì chúng ta đã comment sessionService
-      // await this.tokenService.invalidateSession(sessionId)
-
-      // Sử dụng SessionRepository trực tiếp thay vì qua service
-      await this.sessionRepository.deactivateSession(sessionId)
+      await this.tokenService.invalidateSession(sessionId, 'USER_LOGOUT')
 
       // Đánh dấu token là đã vô hiệu hóa nếu có request
       if (req) {

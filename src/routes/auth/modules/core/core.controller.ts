@@ -35,8 +35,8 @@ import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
 import { COOKIE_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
-import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
-import { SLTService } from '../../../../shared/services/auth/slt.service'
+import { AuthVerificationService } from 'src/shared/services/auth/auth-verification.service'
+import { SLTService } from 'src/shared/services/auth/slt.service'
 
 @Controller('auth')
 export class CoreController {

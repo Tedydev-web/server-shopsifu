@@ -321,7 +321,7 @@ export class SessionsController {
         : TypeOfVerificationCode.REVOKE_SESSIONS
 
       // Tạo và gửi OTP
-      await this.otpService.sendOTP(user.email, verificationPurpose, userContext.userId)
+      await this.otpService.sendOTP(user.email, verificationPurpose, userContext.userId, revokeMetadata)
       verificationType = 'OTP'
     }
 
@@ -334,7 +334,7 @@ export class SessionsController {
   private async getUserWithTwoFactorMethod(
     userId: number
   ): Promise<User & { email: string; twoFactorMethod: string | null }> {
-    const user = (await this.sessionsService.getUserById(userId)) as unknown as User & {
+    const user = (await this.sessionsService.getUserById(userId)) as User & {
       email: string
       twoFactorMethod: string | null
     }

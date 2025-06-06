@@ -10,6 +10,7 @@ import {
   Ip,
   Inject,
   forwardRef,
+  HttpException,
   BadRequestException
 } from '@nestjs/common'
 import { Request, Response } from 'express'
@@ -19,14 +20,18 @@ import { AuthError } from '../../auth.error'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { SendOtpDto, VerifyOtpDto, SendOtpResponseDto } from './otp.dto'
 import { CoreService } from '../core/core.service'
+import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constants'
+import { SltContextData } from 'src/routes/auth/auth.types'
 import { SessionsService } from '../sessions/sessions.service'
+import { CookieNames } from 'src/shared/constants/auth.constants'
 import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
 import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
 import { COOKIE_SERVICE, REDIS_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
-import { SLTService } from 'src/routes/auth/services/slt.service'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { AuthVerificationService } from 'src/shared/services/auth/auth-verification.service'
+import { SLTService } from 'src/shared/services/auth/slt.service'
 
 @IsPublic()
 @Auth([])
@@ -39,7 +44,7 @@ export class OtpController {
     private readonly authVerificationService: AuthVerificationService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     private readonly i18nService: I18nService<I18nTranslations>,
-    @Inject(forwardRef(() => CoreService)) private readonly coreService: CoreService,
+    private readonly coreService: CoreService,
     @Inject(forwardRef(() => SessionsService))
     private readonly sessionsService: SessionsService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
