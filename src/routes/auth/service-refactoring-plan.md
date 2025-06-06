@@ -121,3 +121,4 @@ Trách nhiệm chính: Điều phối các luồng xác thực khác nhau
 3. Loại bỏ logic hiện có và thay thế bằng ủy thác cho service mới
 4. Cập nhật các module phụ thuộc để sử dụng service đích
 5. Kiểm thử kỹ lưỡng sau mỗi bước chuyển đổi
+ 
