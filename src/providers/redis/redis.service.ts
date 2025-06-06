@@ -1,7 +1,7 @@
 import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit, HttpStatus } from '@nestjs/common'
 import Redis, { RedisKey, RedisValue } from 'ioredis'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { REDIS_CLIENT, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
+import { REDIS_CLIENT } from 'src/shared/constants/injection.tokens'
 import { CryptoService } from 'src/routes/auth/shared/services/common/crypto.service'
 
 @Injectable()

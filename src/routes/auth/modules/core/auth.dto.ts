@@ -1,6 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
-import { LoginBodySchema, UserAuthResponseSchema, CompleteRegistrationSchema } from 'src/routes/auth/shared/schemas'
+import { UserAuthResponseSchema, CompleteRegistrationSchema } from 'src/routes/auth/shared/schemas'
 import { MessageResSchema } from 'src/shared/dtos/response.dto'
 
 // Register DTOs

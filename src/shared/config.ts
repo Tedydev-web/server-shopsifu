@@ -4,8 +4,6 @@ import path from 'path'
 import { config } from 'dotenv'
 import ms from 'ms'
 import { CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
-import { registerAs } from '@nestjs/config'
-import { CookieOptions } from 'express'
 
 // Load và kiểm tra file .env
 config({ path: '.env' })

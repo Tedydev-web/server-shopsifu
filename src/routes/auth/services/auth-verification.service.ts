@@ -19,6 +19,7 @@ import { CoreService } from 'src/routes/auth/modules/core/core.service'
 import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.service'
 import { SocialService } from 'src/routes/auth/modules/social/social.service'
 import { OtpService } from 'src/routes/auth/modules/otp/otp.service'
+import { User } from '@prisma/client'
 
 export interface VerificationContext {
   userId: number
@@ -85,6 +86,13 @@ export class AuthVerificationService {
     const user = await this.userAuthRepository.findById(userId)
     if (!user) throw AuthError.EmailNotFound()
 
+    // NEW: Check for forced re-verification flag from login flow
+    if (metadata?.forceVerification) {
+      this.logger.debug(`[initiateVerification] Forced verification for UserID: ${userId} due to re-verify flag.`)
+      // Directly proceed to OTP/2FA flow, bypassing other checks
+      return this.initiateOtpOr2faFlow(context, res, user)
+    }
+
     // Đối với mục đích REGISTER, không cần kiểm tra thiết bị tin cậy hay hành động nhạy cảm
     if (purpose === TypeOfVerificationCode.REGISTER) {
       this.logger.debug(`[initiateVerification] Registration flow for UserID: ${userId}. Proceeding with OTP.`)
@@ -105,8 +113,17 @@ export class AuthVerificationService {
     this.logger.debug(
       `[initiateVerification] Needs verification for UserID: ${userId}. Sensitive: ${isSensitiveAction}`
     )
+    return this.initiateOtpOr2faFlow(context, res, user)
+  }
 
+  private async initiateOtpOr2faFlow(
+    context: VerificationContext,
+    res: Response,
+    user: User
+  ): Promise<VerificationResult> {
+    const { userId, email, purpose, rememberMe, metadata } = context
     const use2FA = user.twoFactorEnabled
+
     const sltMetadata = { ...metadata, rememberMe, ...(use2FA && { twoFactorMethod: TwoFactorMethodType.TOTP }) }
     const sltToken = await this.sltService.createAndStoreSltToken({ ...context, metadata: sltMetadata })
     this.cookieService.setSltCookie(res, sltToken, purpose)

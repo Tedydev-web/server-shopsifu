@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
-import { I18nContext, I18nService } from 'nestjs-i18n'
+import { I18nService } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
 import { Response, Request } from 'express'
 import { AuthError } from '../../auth.error'
@@ -31,6 +31,7 @@ import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.servi
 import { AuthVerificationService } from '../../services/auth-verification.service'
 import { CompleteRegistrationDto, LoginDto } from './auth.dto'
 import { ConfigService } from '@nestjs/config'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 interface RegisterUserParams {
   userId: number
@@ -405,6 +406,7 @@ export class CoreService {
 
       const payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
         userId: user.id,
+        email: user.email,
         roleId: user.role.id,
         roleName: user.role.name,
         deviceId: device.id,
@@ -517,7 +519,17 @@ export class CoreService {
       throw AuthError.InvalidPassword()
     }
 
+    // Check if the user is flagged for re-verification
+    const reverifyKey = RedisKeyManager.getUserReverifyNextLoginKey(user.id)
+    const needsReverification = await this.redisService.get(reverifyKey)
+
     const device = await this.getOrCreateDevice(user.id, ip, userAgent)
+
+    if (needsReverification) {
+      this.logger.log(`[Login] User ${user.id} is flagged for re-verification. Forcing verification flow.`)
+      // Delete the flag immediately after reading it
+      await this.redisService.del(reverifyKey)
+    }
 
     if (!this.authVerificationService) {
       throw AuthError.InternalServerError('AuthVerificationService is not available.')
@@ -532,7 +544,7 @@ export class CoreService {
         userAgent: userAgent,
         purpose: TypeOfVerificationCode.LOGIN,
         rememberMe: loginDto.rememberMe,
-        metadata: { from: 'login' }
+        metadata: { from: 'login', forceVerification: !!needsReverification }
       },
       res
     )

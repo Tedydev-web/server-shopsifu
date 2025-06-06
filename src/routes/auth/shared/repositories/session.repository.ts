@@ -1,6 +1,5 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { LOGIN_HISTORY_TTL } from 'src/routes/auth/shared/constants/auth.constants'
 import { RedisService } from 'src/providers/redis/redis.service'
 import { REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
@@ -195,14 +194,72 @@ export class SessionRepository {
 
   /**
    * Deletes all sessions for a user, with an option to exclude one.
+   * Also returns a list of trusted device IDs that became session-less.
    */
-  async deleteAllUserSessions(userId: number, excludeSessionId?: string): Promise<{ count: number }> {
+  async deleteAllUserSessions(
+    userId: number,
+    excludeSessionId?: string
+  ): Promise<{ count: number; untrustedDeviceIds: number[] }> {
     const userSessionIdsKey = RedisKeyManager.getUserSessionsKey(userId)
     let sessionIds = await this.redisService.smembers(userSessionIdsKey)
 
     if (!sessionIds || sessionIds.length === 0) {
-      return { count: 0 }
+      return { count: 0, untrustedDeviceIds: [] }
     }
+
+    if (excludeSessionId) {
+      sessionIds = sessionIds.filter((id) => id !== excludeSessionId)
+    }
+
+    if (sessionIds.length === 0) {
+      return { count: 0, untrustedDeviceIds: [] }
+    }
+
+    const sessions = (await Promise.all(sessionIds.map((id) => this.findById(id)))).filter(
+      (s): s is Session => s !== null
+    )
+
+    const deviceIdsWithDeletedSessions = new Set<number>()
+    sessions.forEach((s) => deviceIdsWithDeletedSessions.add(s.deviceId))
+
+    const pipeline = this.redisService.client.pipeline()
+    sessions.forEach((s) => {
+      pipeline.del(RedisKeyManager.getSessionKey(s.id))
+      pipeline.srem(RedisKeyManager.getDeviceSessionsKey(s.deviceId), s.id)
+    })
+
+    // Remove the revoked sessions from the user's session index
+    if (excludeSessionId) {
+      pipeline.srem(userSessionIdsKey, ...sessionIds)
+    } else {
+      pipeline.del(userSessionIdsKey)
+    }
+    await pipeline.exec()
+
+    // Find which of the affected devices are now session-less and were trusted
+    const untrustedDeviceIds: number[] = []
+    for (const deviceId of Array.from(deviceIdsWithDeletedSessions)) {
+      const remainingCount = await this.countSessionsByDeviceId(deviceId)
+      if (remainingCount === 0) {
+        // This logic can be simplified if we fetch device trust status here
+        // For now, we return the ID and let the service handle untrusting
+        untrustedDeviceIds.push(deviceId)
+      }
+    }
+
+    this.logger.debug(`Deleted ${sessions.length} sessions for user ${userId}.`)
+    return { count: sessions.length, untrustedDeviceIds }
+  }
+
+  /**
+   * Deletes all sessions associated with a specific device.
+   * @param deviceId The ID of the device.
+   * @param excludeSessionId An optional session ID to exclude from deletion.
+   * @returns The number of sessions deleted.
+   */
+  async deleteSessionsByDeviceId(deviceId: number, excludeSessionId?: string): Promise<{ count: number }> {
+    const deviceSessionsKey = RedisKeyManager.getDeviceSessionsKey(deviceId)
+    let sessionIds = await this.redisService.smembers(deviceSessionsKey)
 
     if (excludeSessionId) {
       sessionIds = sessionIds.filter((id) => id !== excludeSessionId)
@@ -219,19 +276,22 @@ export class SessionRepository {
     const pipeline = this.redisService.client.pipeline()
     sessions.forEach((s) => {
       pipeline.del(RedisKeyManager.getSessionKey(s.id))
-      pipeline.srem(RedisKeyManager.getDeviceSessionsKey(s.deviceId), s.id)
+      pipeline.srem(RedisKeyManager.getUserSessionsKey(s.userId), s.id)
     })
-
-    if (excludeSessionId) {
-      pipeline.srem(userSessionIdsKey, ...sessionIds)
-    } else {
-      pipeline.del(userSessionIdsKey)
-    }
-
+    pipeline.del(deviceSessionsKey) // Delete the whole set for the device
     await pipeline.exec()
 
-    this.logger.debug(`Deleted ${sessions.length} sessions for user ${userId}.`)
-    return { count: sessions.length }
+    return { count: sessionIds.length }
+  }
+
+  /**
+   * Counts the number of active sessions for a specific device.
+   * @param deviceId The ID of the device.
+   * @returns The number of sessions.
+   */
+  async countSessionsByDeviceId(deviceId: number): Promise<number> {
+    const deviceSessionsKey = RedisKeyManager.getDeviceSessionsKey(deviceId)
+    return this.redisService.scard(deviceSessionsKey)
   }
 
   /**

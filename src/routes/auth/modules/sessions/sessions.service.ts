@@ -3,13 +3,20 @@ import { I18nService } from 'nestjs-i18n'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ConfigService } from '@nestjs/config'
 import { IDeviceService, ISessionService } from 'src/routes/auth/shared/auth.types'
-import { EMAIL_SERVICE, GEOLOCATION_SERVICE, DEVICE_SERVICE } from 'src/shared/constants/injection.tokens'
+import {
+  DEVICE_SERVICE,
+  EMAIL_SERVICE,
+  GEOLOCATION_SERVICE,
+  REDIS_SERVICE
+} from 'src/shared/constants/injection.tokens'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { DeviceSessionGroupDto, GetGroupedSessionsResponseDto } from './session.dto'
 import { GeolocationService } from 'src/routes/auth/shared/services/common/geolocation.service'
 import { SessionRepository, DeviceRepository } from 'src/routes/auth/shared/repositories'
 import { Device } from '@prisma/client'
 import { I18nPath } from 'src/generated/i18n.generated'
+import { RedisService } from 'src/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 @Injectable()
 export class SessionsService implements ISessionService {
@@ -23,7 +30,8 @@ export class SessionsService implements ISessionService {
     @Inject(EMAIL_SERVICE) private readonly emailService: GeolocationService,
     private readonly prismaService: PrismaService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
-    @Inject(DEVICE_SERVICE) private readonly deviceService: IDeviceService
+    @Inject(DEVICE_SERVICE) private readonly deviceService: IDeviceService,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService
   ) {}
 
   /**
@@ -210,11 +218,19 @@ export class SessionsService implements ISessionService {
     if (options.revokeAllUserSessions) {
       const result = await this.invalidateAllUserSessions(userId, undefined, excludeSessionId)
       revokedSessionsCount = result.count
+      if (result.untrustedDeviceIds.length > 0) {
+        untrustedDevicesCount = result.untrustedDeviceIds.length
+      }
     } else {
+      const untrustedDeviceIds = new Set<number>()
+
       if (options.sessionIds?.length) {
         for (const sessionId of options.sessionIds) {
           if (sessionId === excludeSessionId) continue
-          await this.revokeSingleSession(sessionId, userId)
+          const untrustedDeviceId = await this.revokeSingleSession(sessionId, userId)
+          if (untrustedDeviceId) {
+            untrustedDeviceIds.add(untrustedDeviceId)
+          }
           revokedSessionsCount++
         }
       }
@@ -223,9 +239,17 @@ export class SessionsService implements ISessionService {
           if (deviceId === currentSessionContext.deviceId && options.excludeCurrentSession) continue
           const result = await this.revokeDevice(deviceId, userId, excludeSessionId)
           revokedSessionsCount += result.revokedSessionsCount
-          if (result.untrusted) untrustedDevicesCount++
+          if (result.untrusted) {
+            untrustedDeviceIds.add(deviceId)
+          }
         }
       }
+      untrustedDevicesCount = untrustedDeviceIds.size
+    }
+
+    // After any revocation, set the re-verification flag for the user
+    if (revokedSessionsCount > 0) {
+      await this.setReverifyFlagForUser(userId)
     }
 
     const message: string =
@@ -238,10 +262,31 @@ export class SessionsService implements ISessionService {
     return { message, revokedSessionsCount, untrustedDevicesCount }
   }
 
-  private async revokeSingleSession(sessionId: string, userId: number): Promise<void> {
+  private async setReverifyFlagForUser(userId: number): Promise<void> {
+    const key = RedisKeyManager.getUserReverifyNextLoginKey(userId)
+    const ttl = 24 * 60 * 60 // 24 hours
+    await this.redisService.set(key, 'true', 'EX', ttl)
+    this.logger.log(`[setReverifyFlagForUser] Set re-verification flag for user ${userId} with TTL ${ttl}s.`)
+  }
+
+  private async revokeSingleSession(sessionId: string, userId: number): Promise<number | null> {
     const session = await this.sessionRepository.findById(sessionId)
-    if (session?.userId !== userId) throw AuthError.InsufficientPermissions()
+    if (!session || session.userId !== userId) {
+      throw AuthError.InsufficientPermissions()
+    }
+
+    const { deviceId } = session
     await this.sessionRepository.deleteSession(sessionId)
+
+    // Check if it was the last session on the device
+    const remainingSessions = await this.sessionRepository.countSessionsByDeviceId(deviceId)
+    if (remainingSessions === 0) {
+      this.logger.log(`[revokeSingleSession] Last session for device ${deviceId} revoked. Untrusting device.`)
+      await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+      return deviceId
+    }
+
+    return null
   }
 
   private async revokeDevice(
@@ -250,23 +295,20 @@ export class SessionsService implements ISessionService {
     excludeSessionId?: string
   ): Promise<{ revokedSessionsCount: number; untrusted: boolean }> {
     const device = await this.deviceRepository.findById(deviceId)
-    if (device?.userId !== userId) throw AuthError.DeviceNotOwnedByUser()
-
-    const { data: sessions } = await this.sessionRepository.findSessionsByUserId(userId, { page: 1, limit: 1000 })
-    const sessionsOnDevice = sessions.filter((s) => s.deviceId === deviceId)
-
-    let revokedCount = 0
-    for (const session of sessionsOnDevice) {
-      if (session.id === excludeSessionId) continue
-      await this.sessionRepository.deleteSession(session.id)
-      revokedCount++
+    if (!device || device.userId !== userId) {
+      throw AuthError.DeviceNotOwnedByUser()
     }
 
+    const { count: revokedCount } = await this.sessionRepository.deleteSessionsByDeviceId(deviceId, excludeSessionId)
+
+    // Always untrust the device when it's explicitly revoked
     let wasUntrusted = false
     if (device.isTrusted) {
       await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
       wasUntrusted = true
     }
+
+    this.logger.log(`[revokeDevice] Revoked ${revokedCount} sessions for device ${deviceId} and untrusted it.`)
 
     return { revokedSessionsCount: revokedCount, untrusted: wasUntrusted }
   }
@@ -286,9 +328,10 @@ export class SessionsService implements ISessionService {
 
   async untrustDevice(userId: number, deviceId: number): Promise<void> {
     const device = await this.deviceRepository.findById(deviceId)
-    if (device?.userId !== userId) throw AuthError.DeviceNotOwnedByUser()
+    if (!device || device.userId !== userId) throw AuthError.DeviceNotOwnedByUser()
     if (!device.isTrusted) return
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+    await this.setReverifyFlagForUser(userId) // Also set flag when manually untrusting
   }
 
   async isSessionInvalidated(sessionId: string): Promise<boolean> {
@@ -297,16 +340,24 @@ export class SessionsService implements ISessionService {
   }
 
   async invalidateSession(sessionId: string): Promise<void> {
-    this.logger.debug(`[invalidateSession] Deleting session ${sessionId} via repository.`)
-    await this.sessionRepository.deleteSession(sessionId)
+    const session = await this.sessionRepository.findById(sessionId)
+    if (session) {
+      this.logger.debug(`[invalidateSession] Invalidating session ${sessionId} for user ${session.userId}.`)
+      await this.revokeSingleSession(sessionId, session.userId)
+      await this.setReverifyFlagForUser(session.userId)
+    }
   }
 
   async invalidateAllUserSessions(
     userId: number,
     _reason?: string,
     sessionIdToExclude?: string
-  ): Promise<{ count: number }> {
+  ): Promise<{ count: number; untrustedDeviceIds: number[] }> {
     this.logger.warn(`Invalidating all sessions for user ${userId}, excluding ${sessionIdToExclude}`)
-    return this.sessionRepository.deleteAllUserSessions(userId, sessionIdToExclude)
+    const { count, untrustedDeviceIds } = await this.sessionRepository.deleteAllUserSessions(userId, sessionIdToExclude)
+    for (const deviceId of untrustedDeviceIds) {
+      await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+    }
+    return { count, untrustedDeviceIds }
   }
 }
