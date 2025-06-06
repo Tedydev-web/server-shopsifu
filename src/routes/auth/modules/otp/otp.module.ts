@@ -3,7 +3,7 @@ import { OtpController } from './otp.controller'
 import { OtpService } from './otp.service'
 import { CoreModule } from '../core/core.module'
 import { SessionsModule } from '../sessions/sessions.module'
-import { OTP_SERVICE_TOKEN } from 'src/shared/constants/injection.tokens'
+import { OTP_SERVICE } from 'src/shared/constants/injection.tokens'
 
 @Module({
   imports: [forwardRef(() => CoreModule), forwardRef(() => SessionsModule)],
@@ -11,10 +11,10 @@ import { OTP_SERVICE_TOKEN } from 'src/shared/constants/injection.tokens'
   providers: [
     OtpService,
     {
-      provide: OTP_SERVICE_TOKEN,
+      provide: OTP_SERVICE,
       useExisting: OtpService
     }
   ],
-  exports: [OtpService, OTP_SERVICE_TOKEN]
+  exports: [OtpService, OTP_SERVICE]
 })
 export class OtpModule {}

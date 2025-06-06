@@ -1,4 +1,4 @@
-import { Global, Module, Logger } from '@nestjs/common'
+import { Global, Module, Logger, forwardRef } from '@nestjs/common'
 import { PrismaService } from './services/prisma.service'
 import { HashingService } from './services/hashing.service'
 import { EmailService } from './services/email.service'
@@ -20,7 +20,6 @@ import { TokenService } from './services/token.service'
 import { JwtModule } from '@nestjs/jwt'
 import { COOKIE_SERVICE, TOKEN_SERVICE, EMAIL_SERVICE, LOGGER_SERVICE, SLT_SERVICE } from './constants/injection.tokens'
 import { GuardsModule } from './guards/guards.module'
-import { TokenRefreshInterceptor } from './interceptor/auth/token-refresh.interceptor'
 import { UserAuthRepository } from './repositories/auth/user-auth.repository'
 import { SessionRepository } from './repositories/auth/session.repository'
 import { DeviceRepository } from './repositories/auth/device.repository'
@@ -32,6 +31,8 @@ import { WinstonConfig } from './logger/winston.config'
 import { AuthVerificationService } from './services/auth/auth-verification.service'
 import { AllExceptionsFilter } from './filters/all-exceptions.filter'
 import { SLTService } from './services/auth/slt.service'
+import { SessionsModule } from 'src/routes/auth/modules/sessions/sessions.module'
+import config from './config'
 
 const SHARED_PIPES = [
   {
@@ -42,8 +43,7 @@ const SHARED_PIPES = [
 
 const SHARED_INTERCEPTORS = [
   { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
-  { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
-  { provide: APP_INTERCEPTOR, useClass: TokenRefreshInterceptor }
+  { provide: APP_INTERCEPTOR, useClass: TransformInterceptor }
 ]
 
 const SHARED_SERVICES = [
@@ -80,33 +80,27 @@ const SHARED_SERVICES = [
 @Global()
 @Module({
   imports: [
-    ConfigModule,
-    RedisProviderModule,
-    GuardsModule,
-    WinstonModule.forRootAsync({
-      useFactory: () => {
-        return WinstonConfig
-      }
+    WinstonModule.forRoot(WinstonConfig),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env'],
+      load: [config]
     }),
     JwtModule.registerAsync({
+      imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('ACCESS_TOKEN_SECRET'),
-        signOptions: { expiresIn: configService.get<string>('ACCESS_TOKEN_EXPIRES_IN', '15m') }
-      }),
-      inject: [ConfigService],
-      global: true
-    }),
-    CacheModule.registerAsync({
-      isGlobal: true,
-      useFactory: (configService: ConfigService) => ({
-        store: 'redis',
-        host: configService.get<string>('REDIS_HOST'),
-        port: configService.get<number>('REDIS_PORT'),
-        password: configService.get<string>('REDIS_PASSWORD'),
-        ttl: configService.get<number>('CACHE_TTL', 60)
+        secret: configService.get<string>('jwt.accessTokenSecret'),
+        signOptions: {
+          expiresIn: configService.get<string>('jwt.accessTokenExpirationTime', '15m')
+        }
       }),
       inject: [ConfigService]
-    })
+    }),
+    CacheModule.register({
+      isGlobal: true
+    }),
+    forwardRef(() => SessionsModule),
+    GuardsModule
   ],
   providers: [
     ...SHARED_SERVICES,

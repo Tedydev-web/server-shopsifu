@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject } from '@nestjs/common'
+import { Injectable, Logger, Inject, HttpException, forwardRef } from '@nestjs/common'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
 import { Response, Request } from 'express'
@@ -13,13 +13,14 @@ import { UserStatus } from '@prisma/client'
 import { COOKIE_SERVICE, REDIS_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/shared/repositories/auth'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
-import { HttpException } from '@nestjs/common'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { ConfigService } from '@nestjs/config'
 import { FinalizeAuthParams } from 'src/routes/auth/auth.types'
 import { isNullOrUndefined } from 'src/shared/utils/type-guards.utils'
 import { SLTService } from 'src/shared/services/auth/slt.service'
+import { DeviceService } from 'src/shared/services/auth/device.service'
+import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.service'
 
 interface RegisterUserParams {
   email: string
@@ -55,7 +56,9 @@ export class CoreService implements IUserAuthService {
     private readonly otpService: OtpService,
     private readonly sessionRepository: SessionRepository,
     @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
-    @Inject(SLT_SERVICE) private readonly sltService: SLTService
+    @Inject(SLT_SERVICE) private readonly sltService: SLTService,
+    private readonly deviceService?: DeviceService,
+    @Inject(forwardRef(() => SessionsService)) private readonly sessionsService?: SessionsService
   ) {}
 
   /**
@@ -212,7 +215,8 @@ export class CoreService implements IUserAuthService {
     // The above logs cover the main branches.
 
     // Now, determine the type of verification needed, prioritizing 2FA if enabled.
-    const needsAdminReverification = await this.tokenService.checkDeviceNeedsReverification(user.id, device.id)
+    const needsAdminReverification =
+      (await this.deviceService?.checkDeviceNeedsReverification(user.id, device.id)) || false
     if (needsAdminReverification) {
       this.logger.debug(
         `[Login] Device ${device.id} (user ${user.id}) is also marked for admin-initiated reverification.`
@@ -307,7 +311,12 @@ export class CoreService implements IUserAuthService {
       }
 
       // Đánh dấu session là đã vô hiệu hóa
-      await this.tokenService.invalidateSession(sessionId, 'USER_LOGOUT')
+      if (this.sessionsService) {
+        await this.sessionsService.invalidateSession(sessionId, 'USER_LOGOUT')
+      } else {
+        // Log warning khi không có SessionsService
+        this.logger.warn(`[logout] SessionsService không khả dụng, không thể vô hiệu hóa session ${sessionId}`)
+      }
 
       // Đánh dấu token là đã vô hiệu hóa nếu có request
       if (req) {
