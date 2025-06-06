@@ -3,7 +3,7 @@ import { Request, Response } from 'express'
 import { SocialService } from './social.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { AccessTokenPayload } from 'src/routes/auth/shared/jwt.type'
 import {
   CancelLinkDto,
   CancelLinkResponseDto,
@@ -33,13 +33,14 @@ import {
 } from './social.dto'
 import { OtpService } from '../otp/otp.service'
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
-import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
 import crypto from 'crypto'
 import { CookieNames } from 'src/shared/constants/auth.constants'
-import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import { COOKIE_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { SLTService } from 'src/shared/services/auth/slt.service'
+import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 
+@Auth()
 @Controller('auth/social')
 export class SocialController {
   private readonly logger = new Logger(SocialController.name)

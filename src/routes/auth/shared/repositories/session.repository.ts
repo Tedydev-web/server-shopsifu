@@ -1,10 +1,12 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { LOGIN_HISTORY_TTL } from 'src/shared/constants/auth.constants'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisService } from 'src/providers/redis/redis.service'
 import { REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { CryptoService } from 'src/shared/services/crypto.service'
+import { CryptoService } from 'src/routes/auth/shared/services/common/crypto.service'
+import { IPrisma, PrismaTransactionClient } from 'src/shared/types/prisma.type'
+import { Prisma } from '@prisma/client'
 
 export interface Session {
   id: string

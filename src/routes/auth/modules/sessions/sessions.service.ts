@@ -1,19 +1,26 @@
-import { Injectable, Logger, Inject } from '@nestjs/common'
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ConfigService } from '@nestjs/config'
-import { IDeviceService, ISessionService, ITokenService } from 'src/shared/types/auth.types'
+import { IDeviceService, ISessionService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import * as crypto from 'crypto'
-import { EMAIL_SERVICE, REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
+import {
+  EMAIL_SERVICE,
+  REDIS_SERVICE,
+  TOKEN_SERVICE,
+  DEVICE_SERVICE,
+  GEOLOCATION_SERVICE
+} from 'src/shared/constants/injection.tokens'
+import { EmailService, SecurityAlertType } from 'src/routes/auth/shared/services/common/email.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { DeviceSessionGroupDto, GetGroupedSessionsResponseDto } from './session.dto'
-import { GeolocationService } from 'src/shared/services/geolocation.service'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { SessionRepository, Session, DeviceRepository } from 'src/shared/repositories/auth'
+import { GeolocationService } from 'src/routes/auth/shared/services/common/geolocation.service'
+import { RedisService } from 'src/providers/redis/redis.service'
+import { SessionRepository, Session, DeviceRepository } from 'src/routes/auth/shared/repositories'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { DEVICE_REVOKE_HISTORY_TTL } from 'src/shared/constants/auth.constants'
 import { Device } from '@prisma/client'
+import { DeviceService } from 'src/routes/auth/shared/services/device.service'
 
 @Injectable()
 export class SessionsService implements ISessionService {
@@ -27,10 +34,9 @@ export class SessionsService implements ISessionService {
     private readonly deviceRepository: DeviceRepository,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     private readonly prismaService: PrismaService,
-    private readonly geolocationService: GeolocationService,
+    @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
     @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
-    private readonly sessionService: ISessionService,
-    private readonly deviceService: IDeviceService
+    @Inject(DEVICE_SERVICE) private readonly deviceService: IDeviceService
   ) {}
 
   /**
@@ -434,7 +440,7 @@ export class SessionsService implements ISessionService {
     const session = await this.sessionRepository.findById(sessionId)
     if (session && session.userId === userId) {
       await this.sessionRepository.archiveSession(sessionId)
-      await this.sessionService.invalidateSession(sessionId, reason)
+      await this.invalidateSession(sessionId, reason)
       if (session.deviceId) {
         await this.deviceService.markDeviceForReverification(userId, session.deviceId, reason)
       }

@@ -1,30 +1,28 @@
 import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
-import { HashingService } from 'src/shared/services/hashing.service'
+import { HashingService } from 'src/routes/auth/shared/services/common/hashing.service'
 import { Response, Request } from 'express'
 import * as crypto from 'crypto'
 import { OAuth2Client, TokenPayload } from 'google-auth-library'
 import { v4 as uuidv4 } from 'uuid'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { CookieNames } from 'src/shared/constants/auth.constants'
-import { UserAuthRepository } from 'src/shared/repositories/auth/user-auth.repository'
-import { DeviceRepository } from 'src/shared/repositories/auth/device.repository'
-import { SessionRepository } from 'src/shared/repositories/auth/session.repository'
-import { SecurityAlertType } from 'src/shared/services/email.service'
+import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/routes/auth/shared/repositories'
+import { SecurityAlertType } from 'src/routes/auth/shared/services/common/email.service'
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
-import { EMAIL_SERVICE, OTP_SERVICE, SLT_SERVICE } from 'src/shared/constants/injection.tokens'
+import { EMAIL_SERVICE, HASHING_SERVICE, OTP_SERVICE, SLT_SERVICE } from 'src/shared/constants/injection.tokens'
 import {
   GoogleCallbackReturnType,
   GoogleCallbackSuccessResult,
   GoogleCallbackErrorResult,
   GoogleCallbackAccountExistsWithoutLinkResult
 } from '../../auth.types'
-import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { SLTService } from 'src/shared/services/auth/slt.service'
+import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 
 /**
  * Interface để lưu thông tin state khi tạo URL xác thực Google
@@ -47,7 +45,7 @@ export class SocialService {
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     private readonly i18nService: I18nService,
-    private readonly hashingService: HashingService,
+    @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
     private readonly userAuthRepository: UserAuthRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly sessionRepository: SessionRepository,

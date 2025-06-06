@@ -25,13 +25,13 @@ import { SltContextData } from 'src/routes/auth/auth.types'
 import { SessionsService } from '../sessions/sessions.service'
 import { CookieNames } from 'src/shared/constants/auth.constants'
 import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
-import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import { COOKIE_SERVICE, REDIS_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisService } from 'src/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { AuthVerificationService } from 'src/shared/services/auth/auth-verification.service'
-import { SLTService } from 'src/shared/services/auth/slt.service'
+import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
+import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 
 @IsPublic()
 @Auth([])
@@ -41,6 +41,7 @@ export class OtpController {
 
   constructor(
     private readonly otpService: OtpService,
+    @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     private readonly i18nService: I18nService<I18nTranslations>,

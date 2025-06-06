@@ -1,12 +1,17 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
+import { I18nService } from 'nestjs-i18n'
 import { ConfigService } from '@nestjs/config'
 import { Device } from '@prisma/client'
-import { GeolocationService } from 'src/shared/services/geolocation.service'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
-import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
-import { DeviceRepository, UserAuthRepository } from 'src/shared/repositories/auth'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { GeolocationService } from 'src/routes/auth/shared/services/common/geolocation.service'
+import { RedisService } from 'src/providers/redis/redis.service'
+import { EMAIL_SERVICE, GEOLOCATION_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
+import { EmailService, SecurityAlertType } from 'src/routes/auth/shared/services/common/email.service'
+import { DeviceRepository, UserAuthRepository } from 'src/routes/auth/shared/repositories'
 import { DEVICE_REVERIFY_KEY_PREFIX, DEVICE_REVERIFICATION_TTL } from 'src/shared/constants/auth.constants'
+import { IDeviceService } from 'src/routes/auth/shared/auth.types'
+import { isNullOrUndefined } from 'src/shared/utils/type-guards.utils'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 /**
  * Kết quả đánh giá rủi ro thiết bị
@@ -42,7 +47,7 @@ export interface DeviceAnomalyData {
 }
 
 @Injectable()
-export class DeviceService {
+export class DeviceService implements IDeviceService {
   private readonly logger = new Logger(DeviceService.name)
   private readonly maxAllowedDevices: number
   private readonly deviceTrustExpirationDays: number
@@ -51,18 +56,32 @@ export class DeviceService {
   private readonly deviceDataExpirationDays: number
 
   constructor(
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly i18nService: I18nService,
     private readonly configService: ConfigService,
     private readonly deviceRepository: DeviceRepository,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
-    private readonly geolocationService: GeolocationService,
+    @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
     private readonly userAuthRepository: UserAuthRepository,
-    private readonly redisService: RedisService
+    private readonly prisma: PrismaService
   ) {
     this.maxAllowedDevices = this.configService.get<number>('MAX_DEVICES_PER_USER', 10)
     this.deviceTrustExpirationDays = this.configService.get<number>('DEVICE_TRUST_EXPIRATION_DAYS', 30)
     this.suspiciousLoginThreshold = this.configService.get<number>('SUSPICIOUS_LOGIN_THRESHOLD', 5)
     this.locationChangeThresholdKm = this.configService.get<number>('LOCATION_CHANGE_THRESHOLD_KM', 500)
     this.deviceDataExpirationDays = this.configService.get<number>('DEVICE_DATA_EXPIRATION_DAYS', 90)
+  }
+
+  async findById(deviceId: number): Promise<Device | null> {
+    return this.deviceRepository.findById(deviceId)
+  }
+
+  async updateDeviceTrustStatus(deviceId: number, isTrusted: boolean): Promise<any> {
+    return this.deviceRepository.updateDeviceTrustStatus(deviceId, isTrusted)
+  }
+
+  async isDeviceTrustValid(deviceId: number): Promise<boolean> {
+    return this.deviceRepository.isDeviceTrustValid(deviceId)
   }
 
   /**
@@ -519,53 +538,37 @@ export class DeviceService {
    * Đánh dấu một thiết bị cần xác minh lại
    */
   async markDeviceForReverification(userId: number, deviceId: number, reasonInput: string): Promise<void> {
-    try {
-      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
-
-      const reason = /^[0-9]+$/.test(reasonInput)
-        ? `Marked for reverification by admin ID: ${reasonInput}`
-        : reasonInput
-
-      const data = {
-        userId: userId.toString(),
-        deviceId: deviceId.toString(),
-        reason,
-        timestamp: Date.now().toString()
-      }
-
-      await this.redisService.hset(key, data)
-      await this.redisService.expire(key, DEVICE_REVERIFICATION_TTL)
-
-      this.logger.log(`Device ${deviceId} for user ${userId} marked for reverification. Reason: ${reason}`)
-    } catch (error) {
-      this.logger.error(`Error marking device ${deviceId} for reverification: ${error.message}`, error.stack)
-    }
+    const reason = reasonInput || 'UNKNOWN'
+    this.logger.debug(
+      `[markDeviceForReverification] Marking device ${deviceId} of user ${userId} for reverification. Reason: ${reason}`
+    )
+    const reverificationKey = RedisKeyManager.customKey(DEVICE_REVERIFY_KEY_PREFIX, deviceId.toString())
+    await this.redisService.set(reverificationKey, 'true', 'EX', DEVICE_REVERIFICATION_TTL)
   }
 
   /**
    * Kiểm tra xem một thiết bị có cần xác minh lại không
    */
   async checkDeviceNeedsReverification(userId: number, deviceId: number): Promise<boolean> {
-    try {
-      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
-      const exists = await this.redisService.exists(key)
-      return exists > 0
-    } catch (error) {
-      this.logger.error(`Error checking if device ${deviceId} needs reverification: ${error.message}`, error.stack)
-      return false
+    const reverificationKey = RedisKeyManager.customKey(DEVICE_REVERIFY_KEY_PREFIX, deviceId.toString())
+    const needsReverification = await this.redisService.get(reverificationKey)
+    if (needsReverification === 'true') {
+      this.logger.debug(
+        `[checkDeviceNeedsReverification] Device ${deviceId} of user ${userId} requires reverification.`
+      )
+      return true
     }
+    return false
   }
 
   /**
    * Xóa cờ đánh dấu cần xác minh lại cho thiết bị
    */
   async clearDeviceReverification(userId: number, deviceId: number): Promise<void> {
-    try {
-      const key = `${DEVICE_REVERIFY_KEY_PREFIX}${userId}:${deviceId}`
-      await this.redisService.del(key)
-      this.logger.log(`Cleared reverification flag for device ${deviceId} of user ${userId}`)
-    } catch (error) {
-      this.logger.error(`Error clearing reverification for device ${deviceId}: ${error.message}`, error.stack)
-    }
+    this.logger.debug(
+      `[clearDeviceReverification] Clearing reverification flag for device ${deviceId} of user ${userId}.`
+    )
+    const reverificationKey = RedisKeyManager.customKey(DEVICE_REVERIFY_KEY_PREFIX, deviceId.toString())
+    await this.redisService.del(reverificationKey)
   }
 }

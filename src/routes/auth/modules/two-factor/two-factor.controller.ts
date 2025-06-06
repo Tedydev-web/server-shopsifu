@@ -21,7 +21,7 @@ import { ZodSerializerDto } from 'nestjs-zod'
 import { TwoFactorService } from './two-factor.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { AccessTokenPayload } from 'src/routes/auth/shared/jwt.type'
 import {
   TwoFactorConfirmSetupDto,
   TwoFactorVerifyDto,
@@ -33,16 +33,17 @@ import {
   RegenerateRecoveryCodesResponseDto
 } from './two-factor.dto'
 import { CookieNames } from 'src/shared/constants/auth.constants'
-import { AuthError } from 'src/routes/auth/auth.error'
+import { AuthError } from '../../auth.error'
 import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { SessionsService } from '../sessions/sessions.service'
-import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import { COOKIE_SERVICE, REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { CoreService } from '../core/core.service'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisService } from 'src/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { AuthVerificationService } from 'src/shared/services/auth/auth-verification.service'
+import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
+import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 
 interface RevokeSessionsMetadata {
   sessionIds?: string[]
@@ -74,6 +75,7 @@ export class TwoFactorController {
 
   constructor(
     private readonly twoFactorService: TwoFactorService,
+    @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     private readonly i18nService: I18nService<I18nTranslations>,

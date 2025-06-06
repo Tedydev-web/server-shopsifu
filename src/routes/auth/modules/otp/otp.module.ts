@@ -4,9 +4,10 @@ import { OtpService } from './otp.service'
 import { CoreModule } from '../core/core.module'
 import { SessionsModule } from '../sessions/sessions.module'
 import { OTP_SERVICE } from 'src/shared/constants/injection.tokens'
+import { AuthVerificationModule } from '../../services/auth-verification.module'
 
 @Module({
-  imports: [forwardRef(() => CoreModule), forwardRef(() => SessionsModule)],
+  imports: [forwardRef(() => CoreModule), SessionsModule, forwardRef(() => AuthVerificationModule)],
   controllers: [OtpController],
   providers: [
     OtpService,

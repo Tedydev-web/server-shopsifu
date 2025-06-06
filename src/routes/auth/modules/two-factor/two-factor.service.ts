@@ -1,4 +1,12 @@
-import { Injectable, Logger, Inject, UnauthorizedException, BadRequestException, HttpStatus } from '@nestjs/common'
+import {
+  Injectable,
+  Logger,
+  Inject,
+  UnauthorizedException,
+  BadRequestException,
+  HttpStatus,
+  forwardRef
+} from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
 import { JwtService } from '@nestjs/jwt'
@@ -6,20 +14,29 @@ import * as otplib from 'otplib'
 import { HashAlgorithms } from '@otplib/core'
 import * as crypto from 'crypto'
 import { Response } from 'express'
-import { COOKIE_SERVICE, REDIS_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import {
+  COOKIE_SERVICE,
+  EMAIL_SERVICE,
+  HASHING_SERVICE,
+  REDIS_SERVICE,
+  SLT_SERVICE,
+  TOKEN_SERVICE
+} from 'src/shared/constants/injection.tokens'
 import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/shared/constants/auth.constants'
-import { UserAuthRepository } from 'src/shared/repositories/auth/user-auth.repository'
-import { HashingService } from 'src/shared/services/hashing.service'
-import { RecoveryCodeRepository } from 'src/shared/repositories/auth/recovery-code.repository'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { UserAuthRepository, RecoveryCodeRepository, DeviceRepository } from 'src/routes/auth/shared/repositories'
+import { HashingService } from 'src/routes/auth/shared/services/common/hashing.service'
+import { RedisService } from 'src/providers/redis/redis.service'
 import { OtpService } from '../otp/otp.service'
-import { DeviceRepository } from 'src/shared/repositories/auth/device.repository'
-import { ICookieService, ITokenService, IMultiFactorService } from 'src/shared/types/auth.types'
+import { Device } from '@prisma/client'
+import { toDataURL } from 'qrcode'
+import { ICookieService, ITokenService, IMultiFactorService } from 'src/routes/auth/shared/auth.types'
 import { SltContextData } from '../../auth.types'
 import { AuthError } from '../../auth.error'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { PickedUserProfileResponseType } from 'src/shared/dtos/user.dto'
-import { SLTService } from 'src/shared/services/auth/slt.service'
+import { SLTService } from 'src/routes/auth/shared/services/slt.service'
+import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
+import { CoreService } from '../core/core.service'
 
 /**
  * Cấu hình và hằng số
@@ -51,13 +68,15 @@ export class TwoFactorService implements IMultiFactorService {
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly otpService: OtpService,
-    private readonly hashingService: HashingService,
+    @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
     private readonly userAuthRepository: UserAuthRepository,
     private readonly recoveryCodeRepository: RecoveryCodeRepository,
     private readonly deviceRepository: DeviceRepository,
     @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     private readonly jwtService: JwtService,
-    @Inject(SLT_SERVICE) private readonly sltService: SLTService
+    @Inject(SLT_SERVICE) private readonly sltService: SLTService,
+    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
+    private readonly coreService: CoreService
   ) {
     // Cấu hình authenticator
     this.authenticator = otplib.authenticator

@@ -2,12 +2,14 @@
   "compilerOptions": {
     "jsx": "react",
     "module": "commonjs",
+    "moduleResolution": "node",
     "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
+    "allowJs": true,
     "target": "ES2021",
     "outDir": "./dist",
     "baseUrl": "./",
@@ -20,6 +22,15 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
   },
+  "include": [
+    "src",
+    "emails"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "eslint.config.mjs"
+  ],
   "ts-node": {
     "require": [
       "tsconfig-paths/register"

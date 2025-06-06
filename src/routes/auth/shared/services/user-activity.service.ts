@@ -1,9 +1,9 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { EmailService, SecurityAlertType } from 'src/shared/services/email.service'
-import { EMAIL_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
-import { UserAuthRepository } from 'src/shared/repositories/auth'
+import { RedisService } from 'src/providers/redis/redis.service'
+import { EmailService, SecurityAlertType } from 'src/routes/auth/shared/services/common/email.service'
+import { REDIS_SERVICE, EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
+import { UserAuthRepository } from 'src/routes/auth/shared/repositories'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 /**
@@ -69,7 +69,7 @@ export class UserActivityService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly redisService: RedisService,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     private readonly userAuthRepository: UserAuthRepository
   ) {

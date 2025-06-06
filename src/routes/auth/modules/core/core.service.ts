@@ -3,23 +3,30 @@ import { I18nContext, I18nService } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
 import { Response, Request } from 'express'
 import { AuthError } from '../../auth.error'
-import { HashingService } from 'src/shared/services/hashing.service'
-import { IUserAuthService, ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { HashingService } from 'src/routes/auth/shared/services/common/hashing.service'
+import { IUserAuthService, ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
 import { User, Device, Role, UserProfile } from '@prisma/client'
-import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
+import { AccessTokenPayloadCreate } from 'src/routes/auth/shared/jwt.type'
 import { UserStatus } from '@prisma/client'
-import { COOKIE_SERVICE, REDIS_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/shared/repositories/auth'
+import {
+  COOKIE_SERVICE,
+  DEVICE_SERVICE,
+  HASHING_SERVICE,
+  REDIS_SERVICE,
+  SLT_SERVICE,
+  TOKEN_SERVICE
+} from 'src/shared/constants/injection.tokens'
+import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/routes/auth/shared/repositories'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisService } from 'src/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { ConfigService } from '@nestjs/config'
 import { FinalizeAuthParams } from 'src/routes/auth/auth.types'
 import { isNullOrUndefined } from 'src/shared/utils/type-guards.utils'
-import { SLTService } from 'src/shared/services/auth/slt.service'
-import { DeviceService } from 'src/shared/services/auth/device.service'
+import { SLTService } from 'src/routes/auth/shared/services/slt.service'
+import { DeviceService } from 'src/routes/auth/shared/services/device.service'
 import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.service'
 
 interface RegisterUserParams {
@@ -47,7 +54,7 @@ export class CoreService implements IUserAuthService {
   private readonly logger = new Logger(CoreService.name)
 
   constructor(
-    private readonly hashingService: HashingService,
+    @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly i18nService: I18nService<I18nTranslations>,
@@ -57,7 +64,7 @@ export class CoreService implements IUserAuthService {
     private readonly sessionRepository: SessionRepository,
     @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
-    private readonly deviceService?: DeviceService,
+    @Inject(DEVICE_SERVICE) private readonly deviceService?: DeviceService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionsService?: SessionsService
   ) {}
 

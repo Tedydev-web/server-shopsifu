@@ -17,7 +17,7 @@ import {
 } from '@nestjs/common'
 import { SessionsService } from './sessions.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { AccessTokenPayload } from 'src/routes/auth/shared/jwt.type'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import {
   GetSessionsQueryDto,
@@ -36,12 +36,14 @@ import { DynamicZodSerializer } from 'src/shared/interceptor/dynamic-zod-seriali
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { Response, Request } from 'express'
 import { OtpService } from '../../modules/otp/otp.service'
-import { ICookieService } from 'src/shared/types/auth.types'
+import { ICookieService } from 'src/routes/auth/shared/auth.types'
 import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 import { AuthError } from '../../auth.error'
 import { TwoFactorService } from '../two-factor/two-factor.service'
 import { User } from '@prisma/client'
+import { ZodSerializerDto, ZodValidationPipe } from 'nestjs-zod'
+import { Auth } from 'src/shared/decorators/auth.decorator'
 
 /**
  * Metadata cho quá trình thu hồi phiên
@@ -68,6 +70,7 @@ interface CurrentUserContext {
 /**
  * Controller quản lý phiên đăng nhập và thiết bị
  */
+@Auth()
 @Controller('auth/sessions')
 export class SessionsController {
   private readonly logger = new Logger(SessionsController.name)

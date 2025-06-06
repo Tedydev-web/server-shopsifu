@@ -11,6 +11,7 @@ export interface AccessTokenPayloadCreate {
   isDeviceTrustedInSession?: boolean
   email?: string
   type?: 'ACCESS' | 'REFRESH'
+  rememberMe?: boolean
   exp?: number
   iat?: number
 }

@@ -1,12 +1,15 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common'
+import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { Observable } from 'rxjs'
 import { ROLES_KEY } from 'src/shared/decorators/auth.decorator'
 import { Request } from 'express'
-import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { AccessTokenPayload } from 'src/routes/auth/shared/jwt.type'
+import { RoleType } from 'src/shared/models/role.model'
 
 @Injectable()
 export class RolesGuard implements CanActivate {
+  private readonly logger = new Logger(RolesGuard.name)
+
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
@@ -20,18 +23,18 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request>()
-    const user = request['user'] as AccessTokenPayload
+    const { roleName } = request.user as AccessTokenPayload
 
-    if (!user) {
+    if (!roleName) {
       return false
     }
 
     // Kiểm tra nếu có role "admin" thì luôn được phép
-    if (user.roleName === 'admin') {
+    if (roleName === 'admin') {
       return true
     }
 
     // Ngược lại, kiểm tra xem role của user có trong các role được yêu cầu không
-    return requiredRoles.some((role) => user.roleName === role)
+    return requiredRoles.some((role) => roleName === role)
   }
 }

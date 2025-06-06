@@ -1,6 +1,7 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Logger } from '@nestjs/common'
-import { UserAuthRepository } from 'src/shared/repositories/auth/user-auth.repository'
-import { HashingService } from 'src/shared/services/hashing.service'
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Logger, Inject } from '@nestjs/common'
+import { UserAuthRepository } from 'src/routes/auth/shared/repositories'
+import { HashingService } from 'src/routes/auth/shared/services/common/hashing.service'
+import { HASHING_SERVICE } from 'src/shared/constants/injection.tokens'
 import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constants'
 
 @Injectable()
@@ -9,7 +10,7 @@ export class BasicAuthGuard implements CanActivate {
 
   constructor(
     private readonly userAuthRepository: UserAuthRepository,
-    private readonly hashingService: HashingService
+    @Inject(HASHING_SERVICE) private readonly hashingService: HashingService
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

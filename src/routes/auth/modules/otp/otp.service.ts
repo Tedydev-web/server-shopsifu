@@ -1,16 +1,16 @@
 import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisService } from 'src/providers/redis/redis.service'
 import { TypeOfVerificationCodeType, OTP_LENGTH, OTP_COOLDOWN_SECONDS } from 'src/shared/constants/auth.constants'
 import { OtpData } from 'src/routes/auth/auth.types'
 import { ConfigService } from '@nestjs/config'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { I18nService } from 'nestjs-i18n'
-import { IOTPService } from 'src/shared/types/auth.types'
+import { IOTPService } from 'src/routes/auth/shared/auth.types'
 import { REDIS_SERVICE, EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
-import { EmailService } from 'src/shared/services/email.service'
+import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { DeviceRepository } from 'src/shared/repositories/auth'
+import { DeviceRepository } from 'src/routes/auth/shared/repositories'
 
 @Injectable()
 export class OtpService implements IOTPService {

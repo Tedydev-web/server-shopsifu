@@ -1,7 +1,7 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
 import { REQUEST_USER_KEY } from '../constants/auth.constants'
-import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { AccessTokenPayload } from 'src/routes/auth/shared/jwt.type'
 
 @Injectable()
 export class LoggerMiddleware implements NestMiddleware {

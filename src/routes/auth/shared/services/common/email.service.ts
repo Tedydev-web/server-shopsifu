@@ -7,8 +7,8 @@ import { render } from '@react-email/render'
 import { I18nContext } from 'nestjs-i18n'
 
 // Import các template email
-import OTPEmail from '../../../emails/otp'
-import SecurityAlertEmail from '../../../emails/security-alert'
+import OTPEmail from 'emails/otp'
+import SecurityAlertEmail from 'emails/security-alert'
 
 // Các loại cảnh báo bảo mật
 export enum SecurityAlertType {

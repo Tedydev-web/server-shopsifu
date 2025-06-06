@@ -1,7 +1,7 @@
 import { Device } from '@prisma/client'
 import { Response, Request } from 'express'
 import { AccessTokenPayload } from './jwt.type'
-import { TypeOfVerificationCodeType } from '../constants/auth.constants'
+import { TypeOfVerificationCodeType } from 'src/shared/constants/auth.constants'
 import { OtpData, SltContextData } from 'src/routes/auth/auth.types'
 
 /**

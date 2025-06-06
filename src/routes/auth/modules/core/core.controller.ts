@@ -9,7 +9,8 @@ import {
   Req,
   Res,
   HttpException,
-  Inject
+  Inject,
+  forwardRef
 } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
@@ -30,13 +31,13 @@ import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { CookieNames } from 'src/shared/constants/auth.constants'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { AccessTokenPayload } from 'src/routes/auth/shared/jwt.type'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
-import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import { COOKIE_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
-import { AuthVerificationService } from 'src/shared/services/auth/auth-verification.service'
-import { SLTService } from 'src/shared/services/auth/slt.service'
+import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
+import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 
 @Controller('auth')
 export class CoreController {
@@ -45,6 +46,7 @@ export class CoreController {
   constructor(
     private readonly coreService: CoreService,
     private readonly otpService: OtpService,
+    @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,

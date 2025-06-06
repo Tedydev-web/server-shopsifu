@@ -1,24 +1,25 @@
-import { Injectable, Logger, Inject } from '@nestjs/common'
+import { Injectable, Logger, Inject, forwardRef, HttpException, HttpStatus } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { REDIS_SERVICE, EMAIL_SERVICE, TOKEN_SERVICE, COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
-import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { RedisService } from 'src/providers/redis/redis.service'
+import { REDIS_SERVICE, TOKEN_SERVICE, COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
+import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import {
   TypeOfVerificationCodeType,
   TypeOfVerificationCode,
   TwoFactorMethodType
 } from 'src/shared/constants/auth.constants'
-import { OtpService } from 'src/routes/auth/modules/otp/otp.service'
 import { TwoFactorService } from 'src/routes/auth/modules/two-factor/two-factor.service'
-import { UserAuthRepository } from 'src/shared/repositories/auth/user-auth.repository'
+import { UserAuthRepository } from 'src/routes/auth/shared/repositories'
 import { Request, Response } from 'express'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { SltContextData } from 'src/routes/auth/auth.types'
 import { I18nService } from 'nestjs-i18n'
-import { SLTService } from './slt.service'
+import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 import { CoreService } from 'src/routes/auth/modules/core/core.service'
 import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.service'
 import { SocialService } from 'src/routes/auth/modules/social/social.service'
+import { OtpService } from 'src/routes/auth/modules/otp/otp.service'
+import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 
 export interface VerificationContext {
   userId: number

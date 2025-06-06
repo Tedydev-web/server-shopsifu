@@ -6,8 +6,7 @@ import { ApiException, ErrorDetailMessage } from '../exceptions/api.exception'
 import { ConfigService } from '@nestjs/config'
 import { I18nTranslations, I18nPath } from '../../generated/i18n.generated'
 import { v4 as uuidv4 } from 'uuid'
-import { LOGGER_SERVICE, COOKIE_SERVICE } from '../constants/injection.tokens'
-import { ICookieService } from '../types/auth.types'
+import { LOGGER_SERVICE } from '../constants/injection.tokens'
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -15,8 +14,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     private readonly httpAdapterHost: HttpAdapterHost,
     private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(LOGGER_SERVICE) private readonly logger: LoggerService,
-    private readonly configService: ConfigService,
-    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService
+    private readonly configService: ConfigService
   ) {}
 
   async catch(exception: unknown, host: ArgumentsHost): Promise<void> {
@@ -128,27 +126,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return err
       })
     )
-
-    // Xóa cookies nếu là lỗi liên quan đến session/token không thể phục hồi
-    if (
-      exception instanceof ApiException &&
-      (exception.getStatus() as HttpStatus) === HttpStatus.UNAUTHORIZED &&
-      (exception.errorCode === 'INVALID_ACCESS_TOKEN' || // AT giả mạo, chữ ký sai
-        exception.errorCode === 'MISSING_ACCESS_TOKEN' || // Không có AT
-        exception.errorCode === 'SESSION_REVOKED' || // Phiên bị thu hồi
-        exception.errorCode === 'MISSING_SESSION_ID_IN_TOKEN' || // Payload token lỗi
-        exception.errorCode === 'INVALID_REFRESH_TOKEN' || // RT không hợp lệ (từ endpoint refresh)
-        exception.errorCode === 'REFRESH_TOKEN_EXPIRED') // RT hết hạn (từ endpoint refresh, nếu có mã lỗi này)
-    ) {
-      if (this.logger && typeof this.logger.debug === 'function') {
-        this.logger.debug(
-          `[AllExceptionsFilter] Unauthorized API Exception (${exception.errorCode}) detected. Clearing auth cookies.`
-        )
-      }
-      this.cookieService.clearTokenCookies(response)
-      this.cookieService.clearSltCookie(response)
-      // Consider clearing other auth-related cookies if necessary
-    }
 
     const errorResponse = {
       success: false,
