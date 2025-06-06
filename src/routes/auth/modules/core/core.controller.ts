@@ -15,9 +15,10 @@ import {
 import { Request, Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { I18nService, I18nContext } from 'nestjs-i18n'
+import { Throttle } from '@nestjs/throttler'
 
 import { CoreService } from './core.service'
-import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
+import { TypeOfVerificationCode, CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
 import {
   CompleteRegistrationDto,
   InitiateRegistrationDto,
@@ -26,14 +27,12 @@ import {
   RefreshTokenResponseDto
 } from './auth.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
-import { OtpService } from '../otp/otp.service'
+import { OtpService } from 'src/routes/auth/modules/otp/otp.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { AuthError } from 'src/routes/auth/auth.error'
-import { CookieNames } from 'src/shared/constants/auth.constants'
-import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from 'src/routes/auth/shared/jwt.type'
-import { IsPublic } from 'src/shared/decorators/auth.decorator'
-import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
+import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decorator'
+import { AccessTokenPayload, ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
+import { IsPublic } from 'src/routes/auth/shared/decorators/auth.decorator'
 import { COOKIE_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
@@ -54,6 +53,7 @@ export class CoreController {
     @Inject(SLT_SERVICE) private readonly sltService: SLTService
   ) {}
 
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @IsPublic()
   @Post('initiate-registration')
   @HttpCode(HttpStatus.OK)
@@ -64,108 +64,51 @@ export class CoreController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<MessageResDTO> {
-    this.logger.log(`[initiateRegistration] Khởi tạo đăng ký cho email: ${body.email}`)
+    this.logger.log(`[Registration] Attempt from IP: ${ip}, User-Agent: ${userAgent}`)
 
-    // Kiểm tra email đã tồn tại chưa
-    await this.coreService.checkEmailNotExists(body.email)
-
-    // Tạo và lưu một user tạm thời
-    const tempUser = await this.coreService.createTemporaryUser(body.email)
-
-    // Tạo device tạm thời
-    const tempDevice = await this.coreService.createTemporaryDevice(tempUser.id, userAgent, ip)
-
-    // Sử dụng AuthVerificationService để khởi tạo quá trình xác thực
-    const verificationResult = await this.authVerificationService.initiateVerification(
-      {
-        userId: tempUser.id,
-        deviceId: tempDevice.id,
-        email: body.email,
-        ipAddress: ip,
-        userAgent,
-        purpose: TypeOfVerificationCode.REGISTER,
-        metadata: {
-          email: body.email,
-          registrationStep: 'initiate'
-        }
-      },
-      res
-    )
+    const verificationResult = await this.coreService.initiateRegistration(body.email, ip, userAgent, res)
 
     return {
-      message: verificationResult.message || this.i18nService.t('auth.Auth.Register.EmailSent')
+      message: verificationResult.message || this.i18nService.t('auth.Auth.Register.EmailSent' as I18nPath)
     }
   }
 
   /**
    * Hoàn thành đăng ký
    */
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @IsPublic()
   @Post('complete-registration')
   async completeRegistration(
     @Body() body: CompleteRegistrationDto,
-    @Ip() ip: string,
-    @UserAgent() userAgent: string,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<MessageResDTO> {
-    this.logger.log(`[completeRegistration] Hoàn tất đăng ký cho email: ${body.email}`)
+    this.logger.log(`[completeRegistration] Attempting to complete registration for email associated with SLT.`)
 
-    // Lấy SLT cookie từ request
-    const sltCookieValue = req.cookies?.slt_token
-
-    if (!sltCookieValue) {
+    const sltCookie = req.cookies[CookieNames.SLT_TOKEN]
+    if (!sltCookie) {
       throw AuthError.SLTCookieMissing()
     }
 
-    try {
-      // Xác thực SLT và lấy context
-      const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
-        sltCookieValue,
-        ip,
-        userAgent,
-        TypeOfVerificationCode.REGISTER
-      )
-
-      // Tạo mật khẩu cho user
-      if (body.password !== body.confirmPassword) {
-        throw AuthError.InvalidPassword()
-      }
-
-      // Hoàn tất đăng ký user
-      await this.coreService.completeRegistration({
-        email: body.email,
-        password: body.password,
-        confirmPassword: body.confirmPassword,
-        firstName: body.firstName,
-        lastName: body.lastName,
-        username: body.username,
-        phoneNumber: body.phoneNumber,
-        ip,
-        userAgent
-      })
-
-      // Đánh dấu SLT đã được xử lý
-      await this.sltService.finalizeSlt(sltContext.sltJti)
-
-      // Xóa SLT cookie
-      this.cookieService.clearSltCookie(res)
-
-      return { message: this.i18nService.t('auth.Auth.Register.Success') }
-    } catch (error) {
-      this.logger.error(`[completeRegistration] Error: ${error.message}`, error.stack)
-
-      // Xóa SLT cookie trong trường hợp lỗi
-      this.cookieService.clearSltCookie(res)
-
-      if (error instanceof AuthError) {
-        throw error
-      }
-
-      throw AuthError.InternalServerError(error.message)
+    if (body.password !== body.confirmPassword) {
+      throw AuthError.InvalidPassword()
     }
+
+    const result = await this.coreService.completeRegistrationWithSlt(
+      sltCookie,
+      body,
+      req.ip,
+      req.headers['user-agent']
+    )
+
+    // Xóa cookie sau khi hoàn tất
+    this.cookieService.clearSltCookie(res)
+
+    return { message: result.message }
   }
 
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @IsPublic()
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -175,57 +118,14 @@ export class CoreController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ) {
-    const result = await this.coreService.login({ ...body, ip, userAgent }, res)
-
-    if (result.requiresDeviceVerification) {
-      return {
-        statusCode: HttpStatus.OK,
-        message: result.message,
-        data: {
-          requiresDeviceVerification: true,
-          verificationType: result.verificationType,
-          verificationRedirectUrl: result.verificationRedirectUrl,
-          email: result.email
-        }
-      }
-    } else if (result.requires2FA) {
-      return {
-        statusCode: HttpStatus.OK,
-        message: result.message,
-        data: {
-          requires2FA: true,
-          twoFactorMethod: result.twoFactorMethod,
-          verificationRedirectUrl: result.verificationRedirectUrl,
-          email: result.email
-        }
-      }
-    }
-
-    const responseData = {
-      user: {
-        id: result.user.id,
-        email: result.user.email,
-        role: result.user.role,
-        isDeviceTrustedInSession: result.user.isDeviceTrustedInSession,
-        userProfile: result.user.userProfile
-          ? {
-              username: result.user.userProfile.username,
-              avatar: result.user.userProfile.avatar
-            }
-          : null
-      }
-    }
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: result.message,
-      data: responseData
-    }
+    this.logger.log(`[Login] Attempt for user ${body.emailOrUsername} from IP: ${ip}, User-Agent: ${userAgent}`)
+    return this.coreService.initiateLogin(body, ip, userAgent, res)
   }
 
   /**
    * Làm mới token
    */
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @IsPublic()
   @Post('refresh-token')
   async refreshToken(

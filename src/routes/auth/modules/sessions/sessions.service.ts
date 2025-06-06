@@ -18,7 +18,7 @@ import { GeolocationService } from 'src/routes/auth/shared/services/common/geolo
 import { RedisService } from 'src/providers/redis/redis.service'
 import { SessionRepository, Session, DeviceRepository } from 'src/routes/auth/shared/repositories'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { DEVICE_REVOKE_HISTORY_TTL } from 'src/shared/constants/auth.constants'
+import { DEVICE_REVOKE_HISTORY_TTL } from 'src/routes/auth/shared/constants/auth.constants'
 import { Device } from '@prisma/client'
 import { DeviceService } from 'src/routes/auth/shared/services/device.service'
 
@@ -321,6 +321,42 @@ export class SessionsService implements ISessionService {
   }
 
   /**
+   * Kiểm tra xem một hành động thu hồi có yêu cầu xác minh bổ sung hay không.
+   */
+  async checkIfActionRequiresVerification(
+    userId: number,
+    options: {
+      sessionIds?: string[]
+      deviceIds?: number[]
+    }
+  ): Promise<boolean> {
+    // Logic: Yêu cầu xác minh nếu thu hồi thiết bị hoặc thu hồi nhiều hơn 1 phiên
+    if (options.deviceIds && options.deviceIds.length > 0) {
+      return true
+    }
+    if (options.sessionIds && options.sessionIds.length > 1) {
+      return true
+    }
+
+    // Đối với việc thu hồi một phiên duy nhất, kiểm tra thêm.
+    if (options.sessionIds && options.sessionIds.length === 1) {
+      const sessionToRevoke = await this.sessionRepository.findById(options.sessionIds[0])
+      if (!sessionToRevoke) {
+        return false // Session không tồn tại, không cần xác minh
+      }
+      // Nếu session thuộc về một thiết bị không đáng tin cậy, có thể không cần xác minh thêm
+      const device = await this.deviceRepository.findById(sessionToRevoke.deviceId)
+      if (device && !device.isTrusted) {
+        return false
+      }
+    }
+
+    // Các trường hợp khác mặc định là không cần, nhưng có thể mở rộng logic ở đây
+    // ví dụ: kiểm tra IP, thiết bị có đáng ngờ không, v.v.
+    return false
+  }
+
+  /**
    * Thu hồi nhiều sessions hoặc devices
    */
   async revokeItems(
@@ -331,11 +367,7 @@ export class SessionsService implements ISessionService {
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
     },
-    currentSessionDetails?: { sessionId?: string; deviceId?: number },
-    verificationToken?: string,
-    otpCode?: string,
-    ipAddress?: string,
-    userAgent?: string
+    currentSessionDetails: { sessionId?: string; deviceId?: number }
   ): Promise<{
     message: string
     revokedSessionsCount: number
@@ -343,8 +375,6 @@ export class SessionsService implements ISessionService {
     untrustedDevicesCount: number
     revokedSessionIds?: string[]
     revokedDeviceIds?: number[]
-    requiresAdditionalVerification?: boolean
-    verificationRedirectUrl?: string
   }> {
     const currentSessionId = currentSessionDetails?.sessionId
     const currentDeviceId = currentSessionDetails?.deviceId
@@ -353,21 +383,6 @@ export class SessionsService implements ISessionService {
     let untrustedDevicesCount = 0
     const revokedSessionIds: string[] = []
     const revokedDeviceIds: number[] = []
-
-    const requiresTwoFactorAuth = await this.checkIfActionRequiresVerification(userId, options)
-    const user = await this.getUserInfo(userId, { twoFactorEnabled: true, email: true })
-
-    if (requiresTwoFactorAuth && user?.twoFactorEnabled && !otpCode && !verificationToken) {
-      const action = options.revokeAllUserSessions ? 'revoke-all-sessions' : 'revoke-sessions'
-      return {
-        message: this.i18nService.t('auth.Auth.Session.RequiresAdditionalVerification'),
-        revokedSessionsCount: 0,
-        revokedDevicesCount: 0,
-        untrustedDevicesCount: 0,
-        requiresAdditionalVerification: true,
-        verificationRedirectUrl: `/auth/verify-action?action=${action}`
-      }
-    }
 
     if (options.sessionIds?.length) {
       for (const sessionId of options.sessionIds) {
@@ -414,9 +429,7 @@ export class SessionsService implements ISessionService {
     if (revokedDevicesCount > 0 || revokedSessionsCount >= 3) {
       await this.sendSecurityAlert(userId, SecurityAlertType.SESSIONS_REVOKED, {
         sessionCount: revokedSessionsCount,
-        deviceCount: revokedDevicesCount,
-        ipAddress,
-        userAgent
+        deviceCount: revokedDevicesCount
       })
     }
 
@@ -560,29 +573,9 @@ export class SessionsService implements ISessionService {
   }
 
   /**
-   * Kiểm tra xem hành động có yêu cầu xác thực bổ sung không
-   */
-  async checkIfActionRequiresVerification(
-    userId: number,
-    options: {
-      sessionIds?: string[]
-      deviceIds?: number[]
-      revokeAllUserSessions?: boolean
-      excludeCurrentSession?: boolean
-    }
-  ): Promise<boolean> {
-    const user = await this.getUserInfo(userId, { twoFactorEnabled: true })
-    if (user.twoFactorEnabled) return true
-    if (options.revokeAllUserSessions) return true
-    if (options.deviceIds && options.deviceIds.length > 0) return true
-    if (options.sessionIds && options.sessionIds.length > 1) return true
-    return false
-  }
-
-  /**
    * Lấy thông tin người dùng
    */
-  private async getUserInfo(
+  private async _getUserInfo(
     userId: number,
     select: { email?: boolean; twoFactorEnabled?: boolean; userProfile?: boolean } = {}
   ) {
@@ -614,7 +607,7 @@ export class SessionsService implements ISessionService {
       location?: string
     }
   ): Promise<void> {
-    const user = await this.getUserInfo(userId, { email: true, userProfile: true })
+    const user = await this._getUserInfo(userId, { email: true, userProfile: true })
     if (!user.email) return
 
     const location =

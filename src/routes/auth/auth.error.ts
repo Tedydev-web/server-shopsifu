@@ -78,6 +78,10 @@ export class AuthError {
     )
   }
 
+  static InvalidToken(): ApiException {
+    return new ApiException(HttpStatus.UNAUTHORIZED, 'INVALID_TOKEN', 'auth.Auth.Error.Token.Invalid')
+  }
+
   // OTP Errors
   static InvalidOTP(): ApiException {
     return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_OTP', 'auth.Auth.Error.Otp.Invalid')

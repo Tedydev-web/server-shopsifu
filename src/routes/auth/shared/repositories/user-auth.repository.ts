@@ -183,6 +183,36 @@ export class UserAuthRepository {
     })
   }
 
+  async updateUser(userId: number, data: Partial<CreateUserData & { status?: string }>): Promise<User> {
+    const { password, firstName, lastName, username, phoneNumber, status } = data
+
+    return this.prismaService.$transaction(async (tx) => {
+      const userUpdateData: Prisma.UserUpdateInput = {}
+      if (password) userUpdateData.password = password
+      if (status) userUpdateData.status = status as any
+
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: userUpdateData
+      })
+
+      const userProfileUpdateData: Prisma.UserProfileUpdateInput = {}
+      if (firstName) userProfileUpdateData.firstName = firstName
+      if (lastName) userProfileUpdateData.lastName = lastName
+      if (username) userProfileUpdateData.username = username
+      if (phoneNumber) userProfileUpdateData.phoneNumber = phoneNumber
+
+      if (Object.keys(userProfileUpdateData).length > 0) {
+        await tx.userProfile.update({
+          where: { userId },
+          data: userProfileUpdateData
+        })
+      }
+
+      return user
+    })
+  }
+
   async doesUsernameExist(username: string): Promise<boolean> {
     const count = await this.prismaService.userProfile.count({
       where: { username }

@@ -3,9 +3,16 @@ import { SocialController } from './social.controller'
 import { SocialService } from './social.service'
 import { AuthSharedModule } from '../../shared/auth-shared.module'
 import { OtpModule } from '../otp/otp.module'
+import { AuthVerificationModule } from '../../services/auth-verification.module'
+import { CoreModule } from '../core/core.module'
 
 @Module({
-  imports: [AuthSharedModule, forwardRef(() => OtpModule)],
+  imports: [
+    AuthSharedModule,
+    forwardRef(() => OtpModule),
+    forwardRef(() => AuthVerificationModule),
+    forwardRef(() => CoreModule)
+  ],
   controllers: [SocialController],
   providers: [SocialService],
   exports: [SocialService]

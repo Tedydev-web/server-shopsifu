@@ -4,9 +4,15 @@ import { SessionsService } from './sessions.service'
 import { AuthSharedModule } from '../../shared/auth-shared.module'
 import { OtpModule } from '../otp/otp.module'
 import { TwoFactorModule } from '../two-factor/two-factor.module'
+import { AuthVerificationModule } from '../../services/auth-verification.module'
 
 @Module({
-  imports: [forwardRef(() => AuthSharedModule), forwardRef(() => OtpModule), TwoFactorModule],
+  imports: [
+    forwardRef(() => AuthSharedModule),
+    forwardRef(() => OtpModule),
+    TwoFactorModule,
+    forwardRef(() => AuthVerificationModule)
+  ],
   controllers: [SessionsController],
   providers: [SessionsService],
   exports: [SessionsService]

@@ -57,7 +57,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
         errorCode = HttpStatus[httpStatus] || exception.constructor.name
       } else if (typeof responseData === 'object' && responseData !== null) {
         const errorObj = responseData as Record<string, any>
-        messageKeyForMainError = errorObj.i18nKey || errorObj.message || messageKeyForMainError
+        if (typeof errorObj.i18nKey === 'string') {
+          messageKeyForMainError = errorObj.i18nKey
+        } else if (typeof errorObj.message === 'string') {
+          messageKeyForMainError = errorObj.message
+        }
         errorCode = errorObj.errorCode || errorObj.error || HttpStatus[httpStatus] || exception.constructor.name
 
         if (Array.isArray(errorObj.errors)) {

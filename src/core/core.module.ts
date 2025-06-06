@@ -48,10 +48,10 @@ import { LOGGER_SERVICE } from 'src/shared/constants/injection.tokens'
       provide: LOGGER_SERVICE,
       useExisting: Logger
     },
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard
-    },
+    // {
+    //   provide: APP_GUARD,
+    //   useClass: ThrottlerGuard
+    // },
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter

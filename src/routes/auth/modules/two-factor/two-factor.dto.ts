@@ -1,7 +1,7 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
 import { PickedUserProfileResponseSchema } from 'src/shared/dtos/user.dto'
-import { TwoFactorMethodType } from 'src/shared/constants/auth.constants'
+import { TwoFactorMethodType } from 'src/routes/auth/shared/constants/auth.constants'
 
 // Setup 2FA DTOs
 export const TwoFactorSetupSchema = z.object({

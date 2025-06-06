@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
+import { Injectable, Logger, Inject, HttpException, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
 import { HashingService } from 'src/routes/auth/shared/services/common/hashing.service'
@@ -7,10 +7,9 @@ import * as crypto from 'crypto'
 import { OAuth2Client, TokenPayload } from 'google-auth-library'
 import { v4 as uuidv4 } from 'uuid'
 import { AuthError } from 'src/routes/auth/auth.error'
-import { CookieNames } from 'src/shared/constants/auth.constants'
+import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/routes/auth/shared/repositories'
 import { SecurityAlertType } from 'src/routes/auth/shared/services/common/email.service'
-import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
 import { EMAIL_SERVICE, HASHING_SERVICE, OTP_SERVICE, SLT_SERVICE } from 'src/shared/constants/injection.tokens'
 import {
@@ -18,7 +17,7 @@ import {
   GoogleCallbackSuccessResult,
   GoogleCallbackErrorResult,
   GoogleCallbackAccountExistsWithoutLinkResult
-} from '../../auth.types'
+} from '../../shared/auth.types'
 import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { ApiException } from 'src/shared/exceptions/api.exception'
@@ -384,34 +383,6 @@ export class SocialService {
   }
 
   /**
-   * Xử lý bảo mật sau khi xác thực thành công
-   */
-  private async handleAuthSuccessWithSecurity(
-    user: any,
-    userAgent: string,
-    ip: string
-  ): Promise<GoogleCallbackSuccessResult> {
-    // Tạo hoặc tìm device
-    const device = await this.deviceRepository.upsertDevice(user.id, userAgent || 'unknown', ip || 'unknown')
-
-    // Kiểm tra 2FA
-    const requiresTwoFactorAuth = !!user.twoFactorEnabled && !!user.twoFactorSecret
-
-    // Kiểm tra thiết bị đã được tin tưởng chưa
-    const requiresUntrustedDeviceVerification = !device.isTrusted
-
-    return {
-      user,
-      device,
-      requiresTwoFactorAuth,
-      requiresUntrustedDeviceVerification,
-      twoFactorMethod: user.twoFactorMethod,
-      isLoginViaGoogle: true,
-      message: await this.i18nService.t('auth.Auth.Google.SuccessProceedToSecurityChecks')
-    }
-  }
-
-  /**
    * Tạo user từ thông tin Google
    */
   private async createUserFromGoogle(googleId: string, email: string, name?: string | null, avatar?: string | null) {
@@ -431,96 +402,143 @@ export class SocialService {
   }
 
   /**
-   * Hoàn tất đăng nhập thành công và trả về thông tin người dùng
+   * Gửi email thông báo liên quan đến bảo mật
    */
-  async finalizeSuccessfulAuth(
-    user: any,
-    device: any,
-    rememberMe: boolean,
-    res: Response,
-    ipAddress?: string,
-    userAgent?: string
-  ) {
-    // Tạo session ID
-    const sessionId = uuidv4()
-
-    // Tạo payload cho access token
-    const payload = {
-      userId: user.id,
-      email: user.email,
-      roleId: user.roleId,
-      roleName: user.role?.name || 'USER',
-      deviceId: device.id,
-      sessionId: device.sessionId || sessionId,
-      jti: `access_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
-      isDeviceTrustedInSession: !!device.isTrusted
-    }
-
-    // Tạo tokens
-    const accessToken = this.tokenService.signAccessToken(payload)
-    const refreshToken = this.tokenService.signRefreshToken({
-      ...payload,
-      jti: `refresh_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
-    })
-
-    // Set cookie
-    this.cookieService.setTokenCookies(
-      res,
-      accessToken,
-      refreshToken,
-      rememberMe ? 30 * 24 * 60 * 60 * 1000 : undefined
-    )
-
-    // Tạo session trong Redis
-    await this.createSession(user.id, device.id, sessionId, ipAddress, userAgent, rememberMe)
-
-    // Trả về thông tin user
-    return {
-      id: user.id,
-      email: user.email,
-      roleName: user.role?.name || 'USER',
-      isDeviceTrustedInSession: !!device.isTrusted,
-      userProfile: user.userProfile || {
-        firstName: null,
-        lastName: null,
-        username: null,
-        avatar: null
-      }
+  private async sendSecurityAlert(
+    alertType: SecurityAlertType,
+    email: string,
+    metadata?: Record<string, any>
+  ): Promise<void> {
+    try {
+      await this.emailService.sendSecurityAlertEmail(alertType, email, metadata)
+    } catch (error) {
+      this.logger.error(`[sendSecurityAlert] Failed to send email alert: ${error.message}`)
+      // Không ảnh hưởng đến kết quả chính
     }
   }
 
   /**
-   * Tạo session mới trong Redis
+   * Xử lý callback từ Google OAuth
    */
-  private async createSession(
-    userId: number,
-    deviceId: number,
-    sessionId: string,
-    ipAddress?: string,
-    userAgent?: string,
-    rememberMe?: boolean
-  ): Promise<void> {
-    const sessionExpiresInMs = rememberMe
-      ? this.configService.get<number>('SESSION_REMEMBER_ME_DURATION_MS')
-      : this.configService.get<number>('SESSION_DEFAULT_DURATION_MS')
-
-    const expiresAt = new Date(Date.now() + (sessionExpiresInMs || 0))
+  async googleCallback({
+    code,
+    state,
+    originalNonceFromCookie,
+    userAgent = 'Unknown',
+    ip = 'Unknown'
+  }: {
+    code: string
+    state: string
+    originalNonceFromCookie?: string
+    userAgent?: string
+    ip?: string
+  }): Promise<GoogleCallbackReturnType> {
+    this.logger.debug(
+      `[googleCallback] Bắt đầu xử lý callback với code ${code ? 'có giá trị' : 'trống'} và state ${
+        state ? 'có giá trị' : 'trống'
+      }`
+    )
 
     try {
-      await this.sessionRepository.createSession({
-        id: sessionId,
-        userId,
-        deviceId,
-        ipAddress: ipAddress || 'Unknown',
-        userAgent: userAgent || 'Unknown',
-        expiresAt
-      })
-      this.logger.debug(`[createSession] Session ${sessionId} created for user ${userId}`)
+      // 1. Xác thực state và nonce
+      if (!state) {
+        return this.createErrorResponse('MISSING_STATE')
+      }
+
+      if (!code) {
+        return this.createErrorResponse('MISSING_CODE')
+      }
+
+      const decodedState = this.verifyAndDecodeState(state, originalNonceFromCookie)
+      if ('errorCode' in decodedState) {
+        this.logger.warn(`[googleCallback] Lỗi xác minh state: ${decodedState.errorCode}`)
+        return decodedState
+      }
+
+      const { action } = decodedState
+
+      // 2. Lấy và xác thực token
+      this.logger.debug(`[googleCallback] Lấy thông tin người dùng từ Google với action: ${action}`)
+      const googleUserInfo = await this.getAndVerifyGoogleUserInfo(code)
+
+      if ('errorCode' in googleUserInfo) {
+        this.logger.warn(`[googleCallback] Lỗi xác minh Google user info: ${googleUserInfo.errorCode}`)
+        return googleUserInfo
+      }
+
+      const { googleId, googleEmail, googleName, googleAvatar, emailVerified } = googleUserInfo
+
+      // 3. Kiểm tra email đã được xác minh chưa
+      if (!emailVerified) {
+        this.logger.warn(`[googleCallback] Email chưa được xác minh: ${googleEmail}`)
+        return this.createErrorResponse('EMAIL_NOT_VERIFIED')
+      }
+
+      // 4. Tìm tài khoản người dùng
+      this.logger.debug(`[googleCallback] Tìm kiếm người dùng với googleId: ${googleId}`)
+      let user = await this.userAuthRepository.findByGoogleId(googleId)
+
+      // 5. Xử lý khi không tìm thấy user theo googleId
+      if (!user && googleEmail) {
+        this.logger.debug(`[googleCallback] Không tìm thấy user với googleId, tìm kiếm theo email: ${googleEmail}`)
+
+        // Tìm theo email
+        const existingUserByEmail = await this.userAuthRepository.findByEmail(googleEmail)
+
+        // 5.1. Nếu có user với email này nhưng chưa liên kết với Google
+        if (existingUserByEmail) {
+          this.logger.debug(`[googleCallback] Tìm thấy user với email ${googleEmail}, cần liên kết tài khoản`)
+          return await this.createAccountLinkingResponse(
+            existingUserByEmail.id,
+            existingUserByEmail.email,
+            googleId,
+            googleEmail,
+            googleName,
+            googleAvatar
+          )
+        }
+
+        // 5.2. Nếu đang đăng nhập hoặc liên kết, không tạo tài khoản mới
+        if (action === 'login' || action === 'link') {
+          this.logger.warn(`[googleCallback] Không tìm thấy tài khoản cho action ${action}`)
+          return this.createErrorResponse('ACCOUNT_NOT_FOUND')
+        }
+
+        // 5.3. Tạo user mới cho action đăng ký
+        this.logger.debug(`[googleCallback] Tạo tài khoản mới cho email: ${googleEmail}`)
+        try {
+          user = await this.createUserFromGoogle(googleId, googleEmail, googleName, googleAvatar)
+          this.logger.log(`[googleCallback] Đã tạo tài khoản mới thành công cho email: ${googleEmail}`)
+        } catch (error) {
+          this.logger.error(`[googleCallback] Lỗi tạo tài khoản mới: ${error.message}`, error.stack)
+          return this.createErrorResponse('USER_CREATION_FAILED')
+        }
+      }
+
+      if (!user) {
+        this.logger.warn(`[googleCallback] Không tìm thấy và không thể tạo tài khoản mới`)
+        return this.createErrorResponse('ACCOUNT_NOT_FOUND')
+      }
+
+      // 6. Xử lý thiết bị và bảo mật - Logic được chuyển vào từ handleAuthSuccessWithSecurity
+      this.logger.debug(`[googleCallback] Xử lý thiết bị và bảo mật cho user: ${user.id}`)
+      const device = await this.deviceRepository.upsertDevice(user.id, userAgent || 'unknown', ip || 'unknown')
+      const requiresTwoFactorAuth = !!user.twoFactorEnabled
+      const isDeviceTrusted = await this.deviceRepository.isDeviceTrustValid(device.id)
+      const requiresUntrustedDeviceVerification = !isDeviceTrusted
+
+      return {
+        user,
+        device,
+        requiresTwoFactorAuth,
+        requiresUntrustedDeviceVerification,
+        twoFactorMethod: user.twoFactorMethod as any,
+        isLoginViaGoogle: true,
+        message: await this.i18nService.t('auth.Auth.Google.SuccessProceedToSecurityChecks')
+      }
     } catch (error) {
-      this.logger.error(
-        `[createSession] Failed to create session ${sessionId} for user ${userId}: ${error.message}`,
-        error.stack
-      )
+      this.logger.error(`[googleCallback] Lỗi không mong đợi trong Google callback: ${error.message}`, error.stack)
+      return this.createErrorResponse('INTERNAL_ERROR')
     }
   }
 
@@ -570,31 +588,10 @@ export class SocialService {
   }
 
   /**
-   * Gửi email thông báo liên quan đến bảo mật
+   * Hoàn tất hủy liên kết tài khoản Google sau khi đã xác thực.
+   * Hàm này không tự xác thực mà giả định việc xác thực đã được thực hiện bởi một service khác (VD: AuthVerificationService).
    */
-  private async sendSecurityAlert(
-    alertType: SecurityAlertType,
-    email: string,
-    metadata?: Record<string, any>
-  ): Promise<void> {
-    try {
-      await this.emailService.sendSecurityAlertEmail(alertType, email, metadata)
-    } catch (error) {
-      this.logger.error(`[sendSecurityAlert] Failed to send email alert: ${error.message}`)
-      // Không ảnh hưởng đến kết quả chính
-    }
-  }
-
-  /**
-   * Khởi tạo quá trình hủy liên kết tài khoản Google
-   * @description Tạo SLT và gửi OTP để xác minh trước khi hủy liên kết
-   */
-  async initiateUnlinkGoogleAccount(
-    userId: number,
-    ipAddress: string,
-    userAgent: string,
-    res: Response
-  ): Promise<{ message: string }> {
+  async unlinkGoogleAccount(userId: number): Promise<{ message: string; success: boolean }> {
     // Lấy thông tin user
     const user = await this.userAuthRepository.findById(userId)
     if (!user) {
@@ -603,139 +600,29 @@ export class SocialService {
 
     // Kiểm tra user có liên kết với Google không
     if (!user.googleId) {
-      throw new Error('Tài khoản này chưa được liên kết với Google')
-    }
-
-    // Kiểm tra nếu user đăng nhập chỉ bằng Google (không có mật khẩu)
-    const hasPassword = !!user.password && user.password.length > 0
-
-    // Tạo SLT và gửi OTP nếu không có mật khẩu
-    if (!hasPassword) {
-      const sltJwt = await this.sltService.initiateOtpWithSltCookie({
-        email: user.email,
-        userId: user.id,
-        deviceId: 0, // Không liên quan đến thiết bị cụ thể
-        ipAddress,
-        userAgent,
-        purpose: TypeOfVerificationCode.UNLINK_GOOGLE_ACCOUNT
-      })
-
-      // Set SLT cookie
-      this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.UNLINK_GOOGLE_ACCOUNT)
-
+      // Có thể không cần throw lỗi ở đây, mà trả về thông báo nhẹ nhàng hơn
+      this.logger.warn(`[unlinkGoogleAccount] User ${userId} requested unlink but has no Google ID.`)
       return {
-        message: 'Vui lòng xác minh qua OTP để hủy liên kết tài khoản Google'
+        message: 'Tài khoản này chưa được liên kết với Google.',
+        success: false
       }
     }
 
-    // Nếu có mật khẩu, không cần OTP
-    return {
-      message: 'Vui lòng nhập mật khẩu để xác nhận hủy liên kết tài khoản Google'
-    }
-  }
+    const googleIdBeforeUnlink = user.googleId
 
-  /**
-   * Xác minh và hoàn tất hủy liên kết tài khoản Google
-   */
-  async verifyAndUnlinkGoogleAccount(
-    userId: number,
-    sltToken: string | undefined,
-    verificationCode?: string,
-    password?: string,
-    res?: Response
-  ): Promise<{ message: string; success: boolean }> {
-    // Lấy thông tin user
-    const user = await this.userAuthRepository.findById(userId)
-    if (!user) {
-      throw AuthError.EmailNotFound()
-    }
+    // Cập nhật user, xóa googleId
+    await this.userAuthRepository.updateGoogleId(userId, null)
+    this.logger.log(`[unlinkGoogleAccount] Successfully unlinked Google account for user ${userId}.`)
 
-    // Kiểm tra user có liên kết với Google không
-    if (!user.googleId) {
-      throw new Error('Tài khoản này chưa được liên kết với Google')
-    }
-
-    // Kiểm tra phương thức xác thực và thực hiện xác minh
-    const isVerified = await this.verifyUnlinkAuthentication(user, sltToken, verificationCode, password, res)
-
-    // Nếu đã xác minh thành công, tiến hành hủy liên kết
-    if (isVerified) {
-      const googleIdBeforeUnlink = user.googleId // Lưu lại để gửi email thông báo
-
-      // Cập nhật user, xóa googleId
-      await this.userAuthRepository.updateGoogleId(userId, null) // Thay đổi '' thành null
-
-      // Gửi email thông báo
-      await this.sendSecurityAlert(SecurityAlertType.ACCOUNT_UNLINKED, user.email, {
-        googleId: googleIdBeforeUnlink, // Sử dụng giá trị đã lưu
-        unlinkedAt: new Date().toISOString()
-      })
-
-      return {
-        message: await this.i18nService.t('auth.Auth.Google.UnlinkSuccess'),
-        success: true
-      }
-    }
+    // Gửi email thông báo
+    await this.sendSecurityAlert(SecurityAlertType.ACCOUNT_UNLINKED, user.email, {
+      googleId: googleIdBeforeUnlink,
+      unlinkedAt: new Date().toISOString()
+    })
 
     return {
-      message: 'Xác minh không thành công',
-      success: false
-    }
-  }
-
-  /**
-   * Xác minh thông tin xác thực cho việc hủy liên kết
-   */
-  private async verifyUnlinkAuthentication(
-    user: any,
-    sltToken?: string,
-    verificationCode?: string,
-    password?: string,
-    res?: Response
-  ): Promise<boolean> {
-    const hasPassword = !!user.password && user.password.length > 0
-
-    // Xử lý theo từng phương thức xác thực
-    if (!hasPassword) {
-      // Xác thực bằng OTP
-      if (!sltToken || !verificationCode) {
-        throw AuthError.InvalidOTP()
-      }
-
-      try {
-        const isValid = await this.otpService.verifyOTP(
-          sltToken,
-          verificationCode,
-          TypeOfVerificationCode.UNLINK_GOOGLE_ACCOUNT,
-          user.id
-        )
-
-        if (!isValid) {
-          throw AuthError.InvalidOTP()
-        }
-
-        // Xóa SLT cookie nếu có res
-        if (res) {
-          this.cookieService.clearSltCookie(res)
-        }
-
-        return true
-      } catch (error) {
-        if (error instanceof ApiException) throw error
-        throw AuthError.InvalidOTP()
-      }
-    } else {
-      // Xác thực bằng mật khẩu
-      if (!password) {
-        throw AuthError.InvalidPassword()
-      }
-
-      const isPasswordValid = await this.hashingService.compare(password, user.password)
-      if (!isPasswordValid) {
-        throw AuthError.InvalidPassword()
-      }
-
-      return true
+      message: 'Hủy liên kết tài khoản Google thành công.', // Sử dụng i18n key ở đây sẽ tốt hơn
+      success: true
     }
   }
 
@@ -775,7 +662,7 @@ export class SocialService {
     userAgent: string,
     ip: string,
     password: string
-  ): Promise<any> {
+  ): Promise<{ user: any; device: any }> {
     const pendingLinkToken = req.cookies?.[CookieNames.OAUTH_PENDING_LINK]
 
     if (!pendingLinkToken) {
@@ -815,8 +702,7 @@ export class SocialService {
       // Xóa cookie liên kết
       this.cookieService.clearOAuthPendingLinkTokenCookie(res)
 
-      // Hoàn tất đăng nhập
-      return this.finalizeSuccessfulAuth(user, device, true, res, ip, userAgent)
+      return { user, device }
     } catch (err) {
       this.logger.error(`[completeLinkAndLogin] Lỗi: ${err instanceof Error ? err.message : 'Unknown error'}`)
       throw err
@@ -837,253 +723,6 @@ export class SocialService {
     } catch (err) {
       this.logger.error(`[cancelPendingLink] Lỗi: ${err instanceof Error ? err.message : 'Unknown error'}`)
       throw err
-    }
-  }
-
-  /**
-   * Xử lý callback từ Google OAuth
-   */
-  async googleCallback({
-    code,
-    state,
-    originalNonceFromCookie,
-    userAgent = 'Unknown',
-    ip = 'Unknown'
-  }: {
-    code: string
-    state: string
-    originalNonceFromCookie?: string
-    userAgent?: string
-    ip?: string
-  }): Promise<GoogleCallbackReturnType> {
-    this.logger.debug(
-      `[googleCallback] Bắt đầu xử lý callback với code ${code ? 'có giá trị' : 'trống'} và state ${state ? 'có giá trị' : 'trống'}`
-    )
-
-    try {
-      // 1. Xác thực state và nonce
-      if (!state) {
-        return await this.createErrorResponse('MISSING_STATE')
-      }
-
-      if (!code) {
-        return await this.createErrorResponse('MISSING_CODE')
-      }
-
-      const decodedState = this.verifyAndDecodeState(state, originalNonceFromCookie)
-      if ('errorCode' in decodedState) {
-        this.logger.warn(`[googleCallback] Lỗi xác minh state: ${decodedState.errorCode}`)
-        return decodedState
-      }
-
-      const { action } = decodedState
-
-      // 2. Lấy và xác thực token
-      this.logger.debug(`[googleCallback] Lấy thông tin người dùng từ Google với action: ${action}`)
-      const googleUserInfo = await this.getAndVerifyGoogleUserInfo(code)
-
-      if ('errorCode' in googleUserInfo) {
-        this.logger.warn(`[googleCallback] Lỗi xác minh Google user info: ${googleUserInfo.errorCode}`)
-        return googleUserInfo
-      }
-
-      const { googleId, googleEmail, googleName, googleAvatar, emailVerified } = googleUserInfo
-
-      // 3. Kiểm tra email đã được xác minh chưa
-      if (!emailVerified) {
-        this.logger.warn(`[googleCallback] Email chưa được xác minh: ${googleEmail}`)
-        return await this.createErrorResponse('EMAIL_NOT_VERIFIED')
-      }
-
-      // 4. Tìm tài khoản người dùng
-      this.logger.debug(`[googleCallback] Tìm kiếm người dùng với googleId: ${googleId}`)
-      let user = await this.userAuthRepository.findByGoogleId(googleId)
-
-      // 5. Xử lý khi không tìm thấy user theo googleId
-      if (!user && googleEmail) {
-        this.logger.debug(`[googleCallback] Không tìm thấy user với googleId, tìm kiếm theo email: ${googleEmail}`)
-
-        // Tìm theo email
-        const existingUserByEmail = await this.userAuthRepository.findByEmail(googleEmail)
-
-        // 5.1. Nếu có user với email này nhưng chưa liên kết với Google
-        if (existingUserByEmail) {
-          this.logger.debug(`[googleCallback] Tìm thấy user với email ${googleEmail}, cần liên kết tài khoản`)
-          return await this.createAccountLinkingResponse(
-            existingUserByEmail.id,
-            existingUserByEmail.email,
-            googleId,
-            googleEmail,
-            googleName,
-            googleAvatar
-          )
-        }
-
-        // 5.2. Nếu đang đăng nhập hoặc liên kết, không tạo tài khoản mới
-        if (action === 'login' || action === 'link') {
-          this.logger.warn(`[googleCallback] Không tìm thấy tài khoản cho action ${action}`)
-          return await this.createErrorResponse('ACCOUNT_NOT_FOUND')
-        }
-
-        // 5.3. Tạo user mới cho action đăng ký
-        this.logger.debug(`[googleCallback] Tạo tài khoản mới cho email: ${googleEmail}`)
-        try {
-          user = await this.createUserFromGoogle(googleId, googleEmail, googleName, googleAvatar)
-          this.logger.log(`[googleCallback] Đã tạo tài khoản mới thành công cho email: ${googleEmail}`)
-        } catch (error) {
-          this.logger.error(`[googleCallback] Lỗi tạo tài khoản mới: ${error.message}`, error.stack)
-          return await this.createErrorResponse('USER_CREATION_FAILED')
-        }
-      }
-
-      if (!user) {
-        this.logger.warn(`[googleCallback] Không tìm thấy và không thể tạo tài khoản mới`)
-        return await this.createErrorResponse('ACCOUNT_NOT_FOUND')
-      }
-
-      // 6. Xử lý thiết bị và bảo mật
-      this.logger.debug(`[googleCallback] Xử lý thiết bị và bảo mật cho user: ${user.id}`)
-      return await this.handleAuthSuccessWithSecurity(user, userAgent, ip)
-    } catch (error) {
-      this.logger.error(`[googleCallback] Lỗi không mong đợi trong Google callback: ${error.message}`, error.stack)
-      return await this.createErrorResponse('INTERNAL_ERROR')
-    }
-  }
-
-  /**
-   * Xác thực 2FA
-   * @description Xử lý xác minh mã 2FA trong cookie SLT
-   */
-  async verifyTwoFactorAuth(
-    sltToken: string,
-    code: string,
-    rememberMe: boolean,
-    userAgent: string,
-    ip: string,
-    res: Response
-  ): Promise<any> {
-    this.logger.debug(`[verifyTwoFactorAuth] Xác thực 2FA với mã OTP/TOTP`)
-
-    try {
-      // Xác minh SLT token và lấy context
-      const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
-        sltToken,
-        ip,
-        userAgent,
-        TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA
-      )
-
-      // Xác minh mã 2FA thông qua OTP service
-      const isValid = await this.otpService.verifyOTP(
-        sltContext.email || '',
-        code,
-        TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA,
-        sltContext.userId,
-        ip,
-        userAgent
-      )
-
-      if (!isValid) {
-        throw new Error('Mã xác thực không hợp lệ')
-      }
-
-      // Lấy thông tin user
-      const user = await this.userAuthRepository.findById(sltContext.userId)
-      if (!user) {
-        throw new Error('Không tìm thấy thông tin người dùng')
-      }
-
-      // Lấy thông tin thiết bị
-      const device = await this.deviceRepository.findById(sltContext.deviceId)
-      if (!device) {
-        throw new Error('Không tìm thấy thông tin thiết bị')
-      }
-
-      // Hoàn tất quá trình đăng nhập
-      const userData = await this.finalizeSuccessfulAuth(user, device, rememberMe, res, ip, userAgent)
-
-      // Đánh dấu SLT đã hoàn tất
-      await this.sltService.finalizeSlt(sltContext.sltJti)
-
-      // Xóa SLT cookie
-      this.cookieService.clearSltCookie(res)
-
-      return {
-        status: 'success',
-        user: userData,
-        message: await this.i18nService.t('auth.Auth.2FA.Verify.Success')
-      }
-    } catch (error) {
-      this.logger.error(`[verifyTwoFactorAuth] Lỗi xác thực 2FA: ${error.message}`, error.stack)
-      throw error
-    }
-  }
-
-  /**
-   * Xác thực thiết bị không tin cậy
-   * @description Xử lý xác minh OTP cho thiết bị không tin cậy
-   */
-  async verifyUntrustedDevice(
-    sltToken: string,
-    code: string,
-    userAgent: string,
-    ip: string,
-    res: Response
-  ): Promise<any> {
-    this.logger.debug(`[verifyUntrustedDevice] Xác thực thiết bị không tin cậy với mã OTP`)
-
-    try {
-      // Xác minh SLT token và lấy context
-      const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
-        sltToken,
-        ip,
-        userAgent,
-        TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP
-      )
-
-      // Xác minh mã OTP
-      const isValid = await this.otpService.verifyOTP(
-        sltContext.email || '',
-        code,
-        TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
-        sltContext.userId,
-        ip,
-        userAgent
-      )
-
-      if (!isValid) {
-        throw new Error('Mã OTP không hợp lệ')
-      }
-
-      // Lấy thông tin user
-      const user = await this.userAuthRepository.findById(sltContext.userId)
-      if (!user) {
-        throw new Error('Không tìm thấy thông tin người dùng')
-      }
-
-      // Lấy thông tin thiết bị
-      const device = await this.deviceRepository.findById(sltContext.deviceId)
-      if (!device) {
-        throw new Error('Không tìm thấy thông tin thiết bị')
-      }
-
-      // Hoàn tất quá trình đăng nhập
-      const userData = await this.finalizeSuccessfulAuth(user, device, true, res, ip, userAgent)
-
-      // Đánh dấu SLT đã hoàn tất
-      await this.sltService.finalizeSlt(sltContext.sltJti)
-
-      // Xóa SLT cookie
-      this.cookieService.clearSltCookie(res)
-
-      return {
-        status: 'success',
-        user: userData,
-        message: await this.i18nService.t('auth.Auth.Otp.Verified')
-      }
-    } catch (error) {
-      this.logger.error(`[verifyUntrustedDevice] Lỗi xác thực thiết bị: ${error.message}`, error.stack)
-      throw error
     }
   }
 }

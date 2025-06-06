@@ -10,8 +10,7 @@ import {
   HttpException,
   Inject,
   forwardRef,
-  Logger,
-  BadRequestException
+  Logger
 } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { I18nService } from 'nestjs-i18n'
@@ -20,10 +19,9 @@ import { ZodSerializerDto } from 'nestjs-zod'
 
 import { TwoFactorService } from './two-factor.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
-import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from 'src/routes/auth/shared/jwt.type'
+import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decorator'
+import { AccessTokenPayload, ICookieService } from 'src/routes/auth/shared/auth.types'
 import {
-  TwoFactorConfirmSetupDto,
   TwoFactorVerifyDto,
   DisableTwoFactorDto,
   RegenerateRecoveryCodesDto,
@@ -32,21 +30,13 @@ import {
   DisableTwoFactorResponseDto,
   RegenerateRecoveryCodesResponseDto
 } from './two-factor.dto'
-import { CookieNames } from 'src/shared/constants/auth.constants'
+import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 import { AuthError } from '../../auth.error'
-import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
-import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
-import { SessionsService } from '../sessions/sessions.service'
-import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
-import { COOKIE_SERVICE, REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { CoreService } from '../core/core.service'
-import { RedisService } from 'src/providers/redis/redis.service'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
-import { SLTService } from 'src/routes/auth/shared/services/slt.service'
+import { IsPublic, Auth } from 'src/routes/auth/shared/decorators/auth.decorator'
+import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
+import { AuthVerificationService } from '../../services/auth-verification.service'
 
-@Auth([])
-@IsPublic()
+@Auth() // Requires authentication by default
 @Controller('auth/2fa')
 export class TwoFactorController {
   private readonly logger = new Logger(TwoFactorController.name)
@@ -56,16 +46,13 @@ export class TwoFactorController {
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
-    private readonly i18nService: I18nService<I18nTranslations>,
-    @Inject(forwardRef(() => SessionsService))
-    private readonly sessionsService: SessionsService,
-    private readonly coreService: CoreService,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
-    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService
+    private readonly i18nService: I18nService<I18nTranslations>
   ) {}
 
   /**
-   * Thiết lập 2FA
+   * Bắt đầu quá trình thiết lập 2FA.
+   * Trả về secret và QR code URI để người dùng quét.
+   * Khởi tạo một SLT để theo dõi quá trình xác nhận.
    */
   @Post('setup')
   @HttpCode(HttpStatus.OK)
@@ -76,92 +63,79 @@ export class TwoFactorController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[setupTwoFactor] Setting up 2FA for user: ${activeUser.userId}`)
+    this.logger.log(`[setupTwoFactor] Initiating 2FA setup for user: ${activeUser.userId}`)
+
+    if (!activeUser.email) {
+      throw AuthError.InternalServerError('Email not found in access token payload.')
+    }
 
     try {
-      // Thiết lập 2FA
-      const setupData = await this.twoFactorService.setupVerification(activeUser.userId, {
-        deviceId: activeUser.deviceId,
-        ip,
-        userAgent,
-        res
-      })
+      // 1. Lấy secret và uri từ service (không có side effect)
+      const { secret, uri } = await this.twoFactorService.generateSetupDetails(activeUser.userId)
 
+      // 2. Dùng AuthVerificationService để khởi tạo luồng xác thực và tạo SLT
+      await this.authVerificationService.initiateVerification(
+        {
+          userId: activeUser.userId,
+          deviceId: activeUser.deviceId,
+          email: activeUser.email,
+          ipAddress: ip,
+          userAgent: userAgent,
+          purpose: TypeOfVerificationCode.SETUP_2FA,
+          metadata: { secret } // Truyền secret vào metadata để lưu trong SLT context
+        },
+        res
+      )
+
+      // 3. Trả về secret và uri cho client
       return {
         success: true,
-        message: this.i18nService.t('auth.Auth.2FA.Setup.Initiated' as I18nPath),
-        secret: setupData.secret,
-        uri: setupData.uri
+        message: this.i18nService.t('auth.Auth.2FA.Setup.Success' as I18nPath),
+        secret,
+        uri
       }
     } catch (error) {
-      this.logger.error(`[setupTwoFactor] Error: ${error.message}`, error.stack)
-      if (error instanceof AuthError) {
-        throw error
-      }
-      throw AuthError.InternalServerError(error.message)
+      this.handleError(error, 'setupTwoFactor')
     }
   }
 
   /**
-   * Xác nhận thiết lập 2FA
+   * Xác nhận thiết lập 2FA bằng cách gửi mã TOTP.
+   * Endpoint này sử dụng `verifyCode` của service trung tâm.
    */
   @Post('confirm-setup')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(TwoFactorConfirmSetupResponseDto)
   async confirmTwoFactorSetup(
-    @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: TwoFactorVerifyDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[confirmTwoFactorSetup] Confirming 2FA setup for user: ${activeUser.userId}`)
+    this.logger.log(`[confirmTwoFactorSetup] Confirming 2FA setup.`)
+
+    const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
+    if (!sltCookieValue) {
+      throw AuthError.SLTCookieMissing()
+    }
 
     try {
-      // Get SLT cookie
-      const sltCookieValue = req.cookies?.slt_token
-
-      if (!sltCookieValue) {
-        throw AuthError.SLTCookieMissing()
-      }
-
-      // Xác nhận thiết lập 2FA
-      const result = await this.twoFactorService.confirmTwoFactorSetup(
-        activeUser.userId,
-        sltCookieValue,
-        body.code,
-        ip,
-        userAgent,
-        res
-      )
-
-      // Xóa SLT cookie
-      this.cookieService.clearSltCookie(res)
-
-      return {
-        success: true,
-        message: result.message,
-        recoveryCodes: result.recoveryCodes
-      }
+      // verifyCode sẽ xử lý tất cả: xác thực mã, sau đó gọi handlePostVerificationActions
+      // trong đó có case SETUP_2FA sẽ gọi twoFactorService.confirmTwoFactorSetup
+      const result = await this.authVerificationService.verifyCode(sltCookieValue, body.code, ip, userAgent, res)
+      return result
     } catch (error) {
-      this.logger.error(`[confirmTwoFactorSetup] Error: ${error.message}`, error.stack)
-
-      // Clear SLT cookie in case of error
-      this.cookieService.clearSltCookie(res)
-
-      if (error instanceof AuthError) {
-        throw error
-      }
-
-      throw AuthError.InternalServerError(error.message)
+      this.handleError(error, 'confirmTwoFactorSetup', res)
     }
   }
 
   /**
-   * Xác minh 2FA
+   * Xác minh mã 2FA cho các hành động khác (đăng nhập, thu hồi session, etc.).
+   * Đây là một endpoint chung sử dụng SLT.
    */
   @Post('verify')
+  @IsPublic() // Endpoint này có thể được gọi bởi người dùng chưa đăng nhập (luồng login)
   async verifyTwoFactor(
     @Body() body: TwoFactorVerifyDto,
     @Ip() ip: string,
@@ -169,131 +143,127 @@ export class TwoFactorController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[verifyTwoFactor] Verifying 2FA for method: ${body.method}`)
+    this.logger.debug(`[verifyTwoFactor] Verifying 2FA code`)
+    const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
+    if (!sltCookieValue) {
+      throw AuthError.SLTCookieMissing()
+    }
 
     try {
-      // Get SLT cookie
-      const sltCookieValue = req.cookies?.slt_token
-
-      if (!sltCookieValue) {
-        throw AuthError.SLTCookieMissing()
-      }
-
-      // Sử dụng AuthVerificationService để xác minh 2FA
       const verificationResult = await this.authVerificationService.verifyCode(
         sltCookieValue,
         body.code,
         ip,
         userAgent,
-        req,
-        res
+        res,
+        { rememberMe: body.rememberMe } // Truyền rememberMe vào metadata
       )
 
-      // Xóa cookie SLT sau khi xác minh
-      this.cookieService.clearSltCookie(res)
-
-      // Trả về kết quả thích hợp
-      return {
-        success: verificationResult.success,
-        message: verificationResult.message,
-        requiresDeviceVerification: verificationResult.requiresDeviceVerification,
-        requiresAdditionalVerification: verificationResult.requiresAdditionalVerification,
-        redirectUrl: verificationResult.redirectUrl,
-        user: verificationResult.user
-      }
+      return verificationResult
     } catch (error) {
-      this.logger.error(`[verifyTwoFactor] Error: ${error.message}`, error.stack)
-
-      // Clear SLT cookie in case of error
-      this.cookieService.clearSltCookie(res)
-
-      if (error instanceof AuthError) {
-        throw error
-      }
-
-      throw AuthError.InternalServerError(error.message)
+      this.handleError(error, 'verifyTwoFactor', res)
     }
   }
 
   /**
-   * Vô hiệu hóa 2FA
+   * Bắt đầu quá trình vô hiệu hóa 2FA.
+   * Cần xác thực bổ sung.
    */
   @Post('disable')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(DisableTwoFactorResponseDto)
   async disableTwoFactor(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Body() body: DisableTwoFactorDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string,
-    @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[disableTwoFactor] Disabling 2FA for user: ${activeUser.userId}`)
+    this.logger.log(`[disableTwoFactor] Initiating 2FA disable for user: ${activeUser.userId}`)
+
+    if (!activeUser.email) {
+      throw AuthError.InternalServerError('Email not found in access token payload.')
+    }
 
     try {
-      // Khởi tạo luồng xác thực để vô hiệu hóa 2FA
+      // Khởi tạo luồng xác thực để vô hiệu hóa 2FA.
+      // Service sẽ quyết định gửi OTP hay yêu cầu mã 2FA hiện tại.
       const verificationResult = await this.authVerificationService.initiateVerification(
         {
           userId: activeUser.userId,
           deviceId: activeUser.deviceId,
-          email: activeUser.email || '',
+          email: activeUser.email,
           ipAddress: ip,
-          userAgent,
-          purpose: TypeOfVerificationCode.DISABLE_2FA,
-          metadata: {
-            method: body.method
-          }
+          userAgent: userAgent,
+          purpose: TypeOfVerificationCode.DISABLE_2FA
         },
         res
       )
 
       return {
         success: true,
-        message: verificationResult.message
+        message: verificationResult.message,
+        verificationType: verificationResult.verificationType
       }
     } catch (error) {
-      this.logger.error(`[disableTwoFactor] Error: ${error.message}`, error.stack)
-      if (error instanceof AuthError) {
-        throw error
-      }
-      throw AuthError.InternalServerError(error.message)
+      this.handleError(error, 'disableTwoFactor')
     }
   }
 
   /**
-   * Tạo lại mã khôi phục
+   * Bắt đầu quá trình tạo lại mã khôi phục.
+   * Cần xác thực bổ sung.
    */
   @Post('regenerate-recovery-codes')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(RegenerateRecoveryCodesResponseDto)
   async regenerateRecoveryCodes(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Body() body: RegenerateRecoveryCodesDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[regenerateRecoveryCodes] Regenerating recovery codes for user: ${activeUser.userId}`)
+    this.logger.log(`[regenerateRecoveryCodes] Initiating recovery code regeneration for user: ${activeUser.userId}`)
+
+    if (!activeUser.email) {
+      throw AuthError.InternalServerError('Email not found in access token payload.')
+    }
 
     try {
-      // Tạo lại mã khôi phục
-      const recoveryCodes = await this.twoFactorService.regenerateRecoveryCodes(activeUser.userId, body.code, {
-        ip,
-        userAgent
-      })
+      // Đây là hành động nhạy cảm, cần xác thực.
+      const result = await this.authVerificationService.initiateVerification(
+        {
+          userId: activeUser.userId,
+          deviceId: activeUser.deviceId,
+          email: activeUser.email,
+          ipAddress: ip,
+          userAgent: userAgent,
+          purpose: TypeOfVerificationCode.REGENERATE_2FA_CODES
+        },
+        res
+      )
 
       return {
         success: true,
-        message: this.i18nService.t('auth.Auth.2FA.RegenerateRecoveryCodes.Success' as I18nPath),
-        recoveryCodes
+        message: result.message,
+        verificationType: result.verificationType
       }
     } catch (error) {
-      this.logger.error(`[regenerateRecoveryCodes] Error: ${error.message}`, error.stack)
-      if (error instanceof AuthError) {
-        throw error
-      }
-      throw AuthError.InternalServerError(error.message)
+      this.handleError(error, 'regenerateRecoveryCodes')
     }
+  }
+
+  private handleError(error: Error, method: string, res?: Response) {
+    this.logger.error(`[${method}] Error: ${error.message}`, error.stack)
+
+    // Clear SLT cookie in case of error, if response object is available
+    if (res) {
+      this.cookieService.clearSltCookie(res)
+    }
+
+    if (error instanceof HttpException) {
+      throw error
+    }
+
+    throw AuthError.InternalServerError(error.message)
   }
 }

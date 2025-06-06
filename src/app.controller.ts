@@ -1,11 +1,13 @@
 import { Controller, Get } from '@nestjs/common'
-import { IsPublic } from './shared/decorators/auth.decorator'
+import { SkipThrottle } from '@nestjs/throttler'
+import { IsPublic } from '../src/routes/auth/shared/decorators/auth.decorator'
 import { AppService } from './app.service'
 
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
+  @SkipThrottle()
   @IsPublic()
   @Get('get-cookies')
   getHello(): string {

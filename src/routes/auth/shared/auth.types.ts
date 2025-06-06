@@ -1,8 +1,7 @@
-import { Device } from '@prisma/client'
+import { Device, Role, User, UserProfile } from '@prisma/client'
 import { Response, Request } from 'express'
-import { AccessTokenPayload } from './jwt.type'
-import { TypeOfVerificationCodeType } from 'src/shared/constants/auth.constants'
-import { OtpData, SltContextData } from 'src/routes/auth/auth.types'
+import { TypeOfVerificationCodeType, TwoFactorMethodTypeType } from 'src/routes/auth/shared/constants/auth.constants'
+import { PrismaTransactionClient } from 'src/shared/types/prisma.type'
 
 /**
  * Auth Provider Interface - Định nghĩa các methods cho authentication provider
@@ -67,7 +66,7 @@ export interface ISLTService {
 
   updateSltContext(jti: string, updateData: Partial<SltContextData>): Promise<void>
 
-  finalizeSlt(sltJti: string): Promise<void>
+  finalizeSlt(jti: string): Promise<void>
 
   incrementSltAttempts(sltJti: string): Promise<number>
 }
@@ -167,22 +166,12 @@ export interface ITokenService {
   markRefreshTokenJtiAsUsed(refreshTokenJti: string, sessionId: string, ttlSeconds?: number): Promise<boolean>
 }
 
-export interface CookieConfig {
-  name: string
-  path: string
-  domain?: string
-  maxAge: number
-  httpOnly: boolean
-  secure: boolean
-  sameSite: 'lax' | 'strict' | 'none' | boolean
-}
-
 /**
  * Interface cho các service xác thực
  */
 export interface IVerificationService {
   // Giai đoạn thiết lập và cấu hình
-  setupVerification(userId: number, options?: any): Promise<any>
+  generateSetupDetails?(userId: number, options?: any): Promise<any>
 
   // Xác minh mã đã nhập
   verifyCode(code: string, context: any): Promise<boolean>
@@ -203,4 +192,162 @@ export interface IMultiFactorService extends IVerificationService {
 
   // Xác minh mã thông qua phương thức cụ thể
   verifyByMethod(method: string, code: string, userId: number): Promise<{ success: boolean; method: string }>
+}
+
+// OTP related
+export interface OtpData {
+  code: string
+  attempts: number
+  createdAt: number
+  userId?: number
+  deviceId?: number
+  metadata?: Record<string, any>
+}
+
+// SLT Token related
+export interface SltJwtPayload {
+  jti: string
+  sub: number
+  pur: TypeOfVerificationCodeType
+  exp?: number
+}
+
+export interface SltContextData {
+  userId: number
+  deviceId: number
+  ipAddress: string
+  userAgent: string
+  purpose: TypeOfVerificationCodeType
+  sltJwtExp?: number
+  sltJwtCreatedAt?: number
+  finalized?: '0' | '1'
+  attempts: number
+  metadata?: Record<string, any> & { twoFactorMethod?: TwoFactorMethodTypeType }
+  email?: string
+  createdAt?: Date
+}
+
+// Google Auth related
+export interface GoogleCallbackSuccessResult {
+  user: User & { role: Role; userProfile: UserProfile | null }
+  device: Device
+  requiresTwoFactorAuth: boolean
+  requiresUntrustedDeviceVerification: boolean
+  twoFactorMethod?: TwoFactorMethodTypeType | null
+  isLoginViaGoogle: true
+  message: string
+}
+
+export interface GoogleCallbackErrorResult {
+  errorCode: string
+  errorMessage: string
+  redirectToError: true
+}
+
+export interface GoogleCallbackAccountExistsWithoutLinkResult {
+  needsLinking: true
+  existingUserId: number
+  existingUserEmail: string
+  googleId: string
+  googleEmail: string
+  googleName?: string | null
+  googleAvatar?: string | null
+  message: string
+}
+
+export type GoogleCallbackReturnType =
+  | GoogleCallbackSuccessResult
+  | GoogleCallbackErrorResult
+  | GoogleCallbackAccountExistsWithoutLinkResult
+
+// Authentication related
+export interface AuthResult {
+  accessToken: string
+  refreshToken: string
+  user: {
+    id: number
+    email: string
+    role: string
+    isDeviceTrustedInSession: boolean
+    userProfile: UserProfile | null
+  }
+}
+
+// Session finalization
+export interface FinalizeAuthParams {
+  user: User & { role: { id: number; name: string }; userProfile: UserProfile | null }
+  device: Device
+  rememberMe: boolean
+  ipAddress: string
+  userAgent: string
+  source: string
+  res: Response
+  sltToFinalize?: {
+    jti: string
+    purpose?: TypeOfVerificationCodeType
+  }
+  tx?: PrismaTransactionClient
+  existingSessionId?: string
+}
+
+// Export các types từ model
+
+export interface CookieConfig {
+  name: string
+  path: string
+  domain?: string
+  maxAge: number
+  httpOnly: boolean
+  secure: boolean
+  sameSite: 'lax' | 'strict' | 'none' | boolean
+}
+
+// --- From jwt.type.ts ---
+
+/**
+ * Định nghĩa payload của Access Token khi tạo mới
+ */
+export interface AccessTokenPayloadCreate {
+  userId: number
+  deviceId?: number
+  roleId?: number
+  roleName?: string
+  sessionId?: string
+  jti: string
+  isDeviceTrustedInSession?: boolean
+  email?: string
+  type?: 'ACCESS' | 'REFRESH'
+  rememberMe?: boolean
+  exp?: number
+  iat?: number
+}
+
+/**
+ * Định nghĩa payload của Access Token khi đã được verify
+ */
+export interface AccessTokenPayload extends Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> {
+  deviceId: number
+  roleId: number
+  roleName: string
+  sessionId: string
+  isDeviceTrustedInSession: boolean
+  exp: number
+  iat: number
+}
+
+/**
+ * Định nghĩa cho Pending Link Token
+ */
+export interface PendingLinkTokenPayloadCreate {
+  existingUserId: number
+  googleId: string
+  googleEmail: string
+  googleName?: string | null
+  googleAvatar?: string | null
+}
+
+export interface PendingLinkTokenPayload extends PendingLinkTokenPayloadCreate {
+  jti: string
+  exp: number
+  iat: number
 }

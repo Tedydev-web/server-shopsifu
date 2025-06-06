@@ -1,7 +1,7 @@
 import { createZodDto } from 'nestjs-zod'
-import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constants'
+import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/routes/auth/shared/constants/auth.constants'
 import { z } from 'zod'
-import { UserAuthResponseSchema } from 'src/routes/auth/auth.model'
+import { UserAuthResponseSchema } from 'src/routes/auth/shared/schemas'
 
 // Send OTP DTOs
 export const SendOtpSchema = z.object({
@@ -42,8 +42,16 @@ export const VerifyOtpWithRedirectSchema = z.object({
 // Schema khi xác minh OTP thành công và hoàn tất đăng nhập
 // Sử dụng UserAuthResponseSchema để đảm bảo đồng bộ với login response
 export const VerifyOtpSuccessResponseSchema = z.object({
+  success: z.literal(true),
   message: z.string(),
-  user: UserAuthResponseSchema
+  tokens: z
+    .object({
+      accessToken: z.string(),
+      refreshToken: z.string()
+    })
+    .optional(),
+  user: z.any().optional(),
+  data: z.record(z.any()).optional()
 })
 
 // DTO classes

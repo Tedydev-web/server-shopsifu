@@ -1,9 +1,25 @@
-import { Controller, Get, Post, Body, Query, Req, Res, Ip, HttpCode, HttpStatus, Logger, Inject } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Query,
+  Req,
+  Res,
+  Ip,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  Inject,
+  forwardRef,
+  BadRequestException,
+  HttpException
+} from '@nestjs/common'
 import { Request, Response } from 'express'
 import { SocialService } from './social.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
-import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from 'src/routes/auth/shared/jwt.type'
+import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decorator'
+import { AccessTokenPayload, ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import {
   CancelLinkDto,
   CancelLinkResponseDto,
@@ -28,17 +44,17 @@ import {
   VerifyUnlinkDto,
   VerifyUnlinkResponseDto,
   VerifyAuthenticationDto,
-  VerifyAuthenticationResponseDto,
   VerifyAuthenticationResponseUnion
 } from './social.dto'
-import { OtpService } from '../otp/otp.service'
-import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
-import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
+import { TypeOfVerificationCode, CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
+import { Auth, IsPublic } from 'src/routes/auth/shared/decorators/auth.decorator'
 import crypto from 'crypto'
-import { CookieNames } from 'src/shared/constants/auth.constants'
-import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
-import { COOKIE_SERVICE, SLT_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { SLTService } from 'src/routes/auth/shared/services/slt.service'
+import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { UseZodGuard } from 'nestjs-zod'
+import { Throttle } from '@nestjs/throttler'
+import { AuthVerificationService } from '../../services/auth-verification.service'
+import { AuthError } from 'src/routes/auth/auth.error'
+import { CoreService } from 'src/routes/auth/modules/core/core.service'
 
 @Auth()
 @Controller('auth/social')
@@ -47,10 +63,11 @@ export class SocialController {
 
   constructor(
     private readonly socialService: SocialService,
-    private readonly otpService: OtpService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
-    @Inject(SLT_SERVICE) private readonly sltService: SLTService
+    @Inject(forwardRef(() => AuthVerificationService))
+    private readonly authVerificationService: AuthVerificationService,
+    private readonly coreService: CoreService
   ) {}
 
   /**
@@ -59,6 +76,7 @@ export class SocialController {
    * @public Endpoint này công khai, không yêu cầu xác thực
    */
   @IsPublic()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Get('google')
   @HttpCode(HttpStatus.OK)
   getGoogleAuthUrl(
@@ -117,18 +135,14 @@ export class SocialController {
     @Req() req: Request,
     @UserAgent() userAgent: string,
     @Ip() ip: string
-  ): Promise<
-    | GoogleAuthSuccessResponseDto
-    | TwoFactorRequiredResponseDto
-    | DeviceVerificationRequiredResponseDto
-    | AccountLinkingRequiredResponseDto
-    | GoogleAuthErrorResponseDto
-  > {
+  ): Promise<any> {
     const { code, state, error } = query
     const originalNonce = req.cookies?.[CookieNames.OAUTH_NONCE]
 
     this.logger.debug(
-      `[googleCallback] Nhận callback từ Google với code: ${code ? 'có giá trị' : 'không có'}, state: ${state ? 'có giá trị' : 'không có'}`
+      `[googleCallback] Nhận callback từ Google với code: ${
+        code ? 'có giá trị' : 'không có'
+      }, state: ${state ? 'có giá trị' : 'không có'}`
     )
 
     // Kiểm tra lỗi từ Google
@@ -141,7 +155,7 @@ export class SocialController {
           errorMessage: error,
           redirectToError: true
         }
-      } as GoogleAuthErrorResponseDto
+      }
     }
 
     // Xóa nonce cookie vì đã hoàn tất callback
@@ -164,7 +178,7 @@ export class SocialController {
         return {
           status: 'error',
           error: result
-        } as GoogleAuthErrorResponseDto
+        }
       }
 
       if ('needsLinking' in result) {
@@ -195,76 +209,32 @@ export class SocialController {
             googleAvatar: result.googleAvatar || null,
             message: result.message
           }
-        } as AccountLinkingRequiredResponseDto
+        }
       }
 
-      // Xử lý các trường hợp xác thực bổ sung
-      const { user, device, requiresTwoFactorAuth, requiresUntrustedDeviceVerification, twoFactorMethod } = result
+      const { user, device } = result
 
-      if (requiresTwoFactorAuth) {
-        // Trường hợp yêu cầu xác thực 2FA
-        this.logger.debug(`[googleCallback] Yêu cầu xác thực 2FA cho user: ${user.id}`)
-
-        // Khởi tạo OTP với SLT cookie
-        const sltJwt = await this.sltService.initiateOtpWithSltCookie({
-          email: user.email,
+      const verificationResult = await this.authVerificationService.initiateVerification(
+        {
           userId: user.id,
           deviceId: device.id,
-          ipAddress: ip,
-          userAgent,
-          purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA,
-          metadata: { twoFactorMethod }
-        })
-
-        // Set SLT cookie
-        this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA)
-
-        return {
-          status: 'two_factor_required',
-          data: {
-            requiresTwoFactorAuth: true,
-            twoFactorMethod: twoFactorMethod || undefined,
-            message: result.message
-          }
-        } as TwoFactorRequiredResponseDto
-      }
-
-      if (requiresUntrustedDeviceVerification) {
-        // Trường hợp thiết bị chưa được tin cậy
-        this.logger.debug(`[googleCallback] Yêu cầu xác minh thiết bị không tin cậy cho user: ${user.id}`)
-
-        // Khởi tạo OTP với SLT cookie
-        const sltJwt = await this.sltService.initiateOtpWithSltCookie({
           email: user.email,
-          userId: user.id,
-          deviceId: device.id,
           ipAddress: ip,
-          userAgent,
-          purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP
-        })
-
-        // Set SLT cookie
-        this.cookieService.setSltCookie(res, sltJwt, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
-
-        return {
-          status: 'device_verification_required',
-          data: {
-            requiresDeviceVerification: true,
-            message: result.message
-          }
-        } as DeviceVerificationRequiredResponseDto
-      }
-
-      // Trường hợp đăng nhập thành công
-      this.logger.debug(`[googleCallback] Đăng nhập thành công cho user: ${user.id}`)
-
-      // Hoàn tất quá trình đăng nhập, tạo cookies và session
-      const userData = await this.socialService.finalizeSuccessfulAuth(user, device, true, res, ip, userAgent)
+          userAgent: userAgent,
+          purpose: TypeOfVerificationCode.LOGIN,
+          rememberMe: true, // Google login is treated as rememberMe=true
+          metadata: { from: 'google-login' }
+        },
+        res
+      )
 
       return {
-        status: 'success',
-        user: userData
-      } as GoogleAuthSuccessResponseDto
+        statusCode: HttpStatus.OK,
+        message: verificationResult.message,
+        data: {
+          ...verificationResult
+        }
+      }
     } catch (error) {
       this.logger.error(`[googleCallback] Lỗi xử lý callback: ${error.message}`, error.stack)
 
@@ -276,7 +246,7 @@ export class SocialController {
           errorMessage: 'Đã xảy ra lỗi trong quá trình xử lý đăng nhập Google. Vui lòng thử lại sau.',
           redirectToError: true
         }
-      } as GoogleAuthErrorResponseDto
+      }
     }
   }
 
@@ -286,7 +256,9 @@ export class SocialController {
    * @public Endpoint này công khai, không yêu cầu xác thực AccessToken (trừ một số action)
    */
   @IsPublic()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('verify')
+  @UseZodGuard('body', VerifyAuthenticationDto)
   @HttpCode(HttpStatus.OK)
   async verifyAuthentication(
     @Body() body: VerifyAuthenticationDto,
@@ -296,77 +268,80 @@ export class SocialController {
     @Ip() ip: string,
     @ActiveUser() activeUser?: AccessTokenPayload
   ): Promise<VerifyAuthenticationResponseUnion> {
-    const { action, code, password, rememberMe } = body
-    const sltToken = req.cookies?.slt_token
-
-    this.logger.debug(`[verifyAuthentication] Xử lý action ${action}`)
+    const { purpose, sltToken, code, password } = body
+    const userId = activeUser?.userId
 
     try {
-      // Khai báo biến kết quả để tránh lỗi lexical declaration
-      let result2FA, resultDevice, linkResult, unlinkResult, pendingDetails, cancelResult
+      if (purpose === 'UNLINK_GOOGLE_ACCOUNT') {
+        if (!userId) throw AuthError.InsufficientPermissions()
 
-      // Xử lý theo loại hành động
-      switch (action) {
-        case '2fa':
-          // Xác thực 2FA
-          if (!code) throw new Error('Yêu cầu mã 2FA để xác minh')
-          result2FA = await this.socialService.verifyTwoFactorAuth(sltToken || '', code, rememberMe, userAgent, ip, res)
-          return result2FA
+        const result = await this.authVerificationService.verifyCode(sltToken || '', code || '', ip, userAgent, res)
 
-        case 'device':
-          // Xác thực thiết bị không tin cậy
-          if (!code) throw new Error('Yêu cầu mã OTP để xác minh')
-          resultDevice = await this.socialService.verifyUntrustedDevice(sltToken || '', code, userAgent, ip, res)
-          return resultDevice
-
-        case 'link':
-          // Xác minh và hoàn tất liên kết
-          if (!password) throw new Error('Yêu cầu mật khẩu để xác minh')
-          linkResult = await this.socialService.completeLinkAndLogin(req, res, userAgent, ip, password)
-          return {
-            status: 'success',
-            message: 'Liên kết tài khoản thành công',
-            user: linkResult
-          }
-
-        case 'unlink':
-          // Xác minh và hủy liên kết
-          if (!activeUser) throw new Error('Cần đăng nhập để hủy liên kết')
-          unlinkResult = await this.socialService.verifyAndUnlinkGoogleAccount(
-            activeUser.userId,
-            sltToken,
-            code,
-            password,
-            res
-          )
-          return {
-            status: unlinkResult.success ? 'success' : 'error',
-            message: unlinkResult.message
-          }
-
-        case 'pending-link-details':
-          // Lấy thông tin liên kết đang chờ xử lý
-          pendingDetails = await this.socialService.getPendingLinkDetails(req)
-          return pendingDetails
-
-        case 'cancel-link':
-          // Hủy liên kết đang chờ xử lý
-          cancelResult = await this.socialService.cancelPendingLink(req, res)
-          return {
-            status: 'success',
-            message: cancelResult.message
-          }
-
-        default:
-          throw new Error('Hành động không hợp lệ')
+        if (!result.success) {
+          throw new HttpException(result.message, HttpStatus.BAD_REQUEST)
+        }
+        // This response shape matches VerifyAuthenticationResponseDto
+        return { success: true, message: result.message }
       }
+
+      if (purpose === 'LINK_ACCOUNT') {
+        const { user, device } = await this.socialService.completeLinkAndLogin(req, res, userAgent, ip, password || '')
+        const finalizedAuth = await this.coreService.finalizeLoginAndCreateTokens(
+          user,
+          device,
+          true,
+          res,
+          ip,
+          userAgent
+        )
+        // This response shape matches VerifyAuthenticationResponseDto
+        return {
+          success: true,
+          message: 'Account linked and logged in successfully.',
+          user: finalizedAuth.user
+        }
+      }
+
+      throw new BadRequestException('Invalid purpose for social verification')
     } catch (error) {
-      this.logger.error(`[verifyAuthentication] Lỗi xác thực: ${error.message}`, error.stack)
+      this.logger.error(`[verifyAuthentication] Error: ${error.message}`, error.stack)
+      if (error instanceof HttpException) throw error
+      throw AuthError.InternalServerError(error.message)
+    }
+  }
 
-      return {
-        status: 'error',
-        message: error.message || 'Xác thực thất bại'
-      }
+  @Post('unlink')
+  @HttpCode(HttpStatus.OK)
+  async initiateUnlinkGoogleAccount(
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<any> {
+    this.logger.debug(`[initiateUnlinkGoogleAccount] User ${activeUser.userId} is initiating Google account unlinking.`)
+
+    if (!activeUser.email) {
+      throw AuthError.InternalServerError('Active user email is missing in the token.')
+    }
+
+    const verificationResult = await this.authVerificationService.initiateVerification(
+      {
+        userId: activeUser.userId,
+        deviceId: activeUser.deviceId,
+        email: activeUser.email,
+        ipAddress: ip,
+        userAgent,
+        purpose: TypeOfVerificationCode.UNLINK_GOOGLE_ACCOUNT,
+        metadata: {}
+      },
+      res
+    )
+
+    return {
+      success: true,
+      message: verificationResult.message,
+      verificationType: verificationResult.verificationType,
+      sltToken: verificationResult.sltToken
     }
   }
 }

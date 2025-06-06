@@ -1,6 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
-import { UserProfileSchema as SharedUserProfileSchema } from 'src/shared/models/user-profile.model'
+import { UserProfileSchema as SharedUserProfileSchema } from 'src/shared/dtos/user.dto'
 
 // Google Auth URL Query DTOs
 export const GoogleAuthUrlQuerySchema = z.object({
@@ -158,15 +158,14 @@ export const CancelLinkResponseSchema = z.object({
 
 // Verify Authentication Schemas
 export const VerifyAuthenticationSchema = z.object({
-  action: z.enum(['2fa', 'device', 'link', 'unlink', 'pending-link-details', 'cancel-link']),
+  purpose: z.enum(['LINK_ACCOUNT', 'UNLINK_GOOGLE_ACCOUNT']),
+  sltToken: z.string().optional(),
   code: z.string().optional(),
-  password: z.string().optional(),
-  securityAnswer: z.string().optional(),
-  rememberMe: z.boolean().default(true)
+  password: z.string().optional()
 })
 
 export const VerifyAuthenticationResponseSchema = z.object({
-  status: z.enum(['success', 'error']),
+  success: z.boolean(),
   message: z.string(),
   user: GoogleAuthResponseSchema.optional()
 })

@@ -3,17 +3,17 @@ import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { RedisService } from 'src/providers/redis/redis.service'
 import { REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { ITokenService, ISLTService } from 'src/routes/auth/shared/auth.types'
+import { ITokenService, ISLTService, SltContextData, SltJwtPayload } from 'src/routes/auth/shared/auth.types'
 import {
-  TypeOfVerificationCode,
   TypeOfVerificationCodeType,
+  TypeOfVerificationCode,
   SLT_EXPIRY_SECONDS,
   SLT_MAX_ATTEMPTS
-} from 'src/shared/constants/auth.constants'
-import { SltJwtPayload, SltContextData } from 'src/routes/auth/auth.types'
+} from 'src/routes/auth/shared/constants/auth.constants'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { v4 as uuidv4 } from 'uuid'
+import { I18nContext, I18nService } from 'nestjs-i18n'
 
 @Injectable()
 export class SLTService implements ISLTService {

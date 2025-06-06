@@ -5,10 +5,10 @@ import { Response, Request } from 'express'
 import { AuthError } from '../../auth.error'
 import { HashingService } from 'src/routes/auth/shared/services/common/hashing.service'
 import { IUserAuthService, ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
-import { TypeOfVerificationCode } from 'src/shared/constants/auth.constants'
+import { TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
 import { User, Device, Role, UserProfile } from '@prisma/client'
-import { AccessTokenPayloadCreate } from 'src/routes/auth/shared/jwt.type'
+import { AccessTokenPayloadCreate } from 'src/routes/auth/shared/auth.types'
 import { UserStatus } from '@prisma/client'
 import {
   COOKIE_SERVICE,
@@ -28,19 +28,20 @@ import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 import { RedisService } from 'src/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { ConfigService } from '@nestjs/config'
-import { FinalizeAuthParams } from 'src/routes/auth/auth.types'
+import { FinalizeAuthParams } from 'src/routes/auth/shared/auth.types'
 import { isNullOrUndefined } from 'src/shared/utils/type-guards.utils'
 import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 import { DeviceService } from 'src/routes/auth/shared/services/device.service'
 import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.service'
 import { AuthVerificationService } from '../../services/auth-verification.service'
+import { CompleteRegistrationDto, LoginDto } from './auth.dto'
 
 interface RegisterUserParams {
-  email: string
-  password: string
-  confirmPassword: string
-  firstName: string
-  lastName: string
+  userId: number
+  password?: string
+  confirmPassword?: string
+  firstName?: string
+  lastName?: string
   username?: string
   phoneNumber?: string
   ip?: string
@@ -56,7 +57,7 @@ interface LoginParams {
 }
 
 @Injectable()
-export class CoreService implements IUserAuthService {
+export class CoreService {
   private readonly logger = new Logger(CoreService.name)
 
   constructor(
@@ -99,16 +100,88 @@ export class CoreService implements IUserAuthService {
   }
 
   /**
+   * Khởi tạo đăng ký
+   */
+  async initiateRegistration(
+    email: string,
+    ipAddress: string,
+    userAgent: string,
+    res: Response
+  ): Promise<{ message: string }> {
+    await this.checkEmailNotExists(email)
+
+    const tempUser = await this.createTemporaryUser(email)
+    const tempDevice = await this.createTemporaryDevice(tempUser.id, userAgent, ipAddress)
+
+    if (!this.authVerificationService) {
+      throw AuthError.InternalServerError('AuthVerificationService is not available.')
+    }
+
+    const verificationResult = await this.authVerificationService.initiateVerification(
+      {
+        userId: tempUser.id,
+        deviceId: tempDevice.id,
+        email: tempUser.email,
+        ipAddress: ipAddress,
+        userAgent: userAgent,
+        purpose: TypeOfVerificationCode.REGISTER,
+        metadata: { from: 'initiate-registration' }
+      },
+      res
+    )
+
+    return {
+      message: verificationResult.message
+    }
+  }
+
+  /**
+   * Hoàn tất đăng ký bằng SLT
+   */
+  async completeRegistrationWithSlt(
+    sltCookie: string,
+    params: CompleteRegistrationDto,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<{ message: string }> {
+    if (!this.sltService) throw AuthError.InternalServerError('SLTService not available')
+
+    const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
+      sltCookie,
+      ipAddress || 'unknown',
+      userAgent || 'unknown',
+      TypeOfVerificationCode.REGISTER
+    )
+
+    if (sltContext.metadata?.otpVerified !== 'true') {
+      throw AuthError.InsufficientPermissions() // Hoặc một lỗi cụ thể hơn
+    }
+
+    // Hoàn tất đăng ký
+    await this.completeRegistration({ ...params, userId: sltContext.userId })
+
+    // Finalize SLT
+    await this.sltService.finalizeSlt(sltContext.sltJti)
+
+    return {
+      message: this.i18nService.t('auth.Auth.Register.Success' as I18nPath)
+    }
+  }
+
+  /**
    * Hoàn tất đăng ký
    */
   async completeRegistration(params: RegisterUserParams): Promise<void> {
-    const { email, password, firstName, lastName, username, phoneNumber, ip, userAgent } = params
+    const { userId, password, firstName, lastName, username, phoneNumber } = params
 
-    // Kiểm tra email đã tồn tại chưa
-    const existingUser = await this.userAuthRepository.findByEmail(email)
+    // Tìm user tạm thời bằng ID
+    const userToUpdate = await this.userAuthRepository.findById(userId)
+    if (!userToUpdate) {
+      throw AuthError.EmailNotFound()
+    }
 
-    if (existingUser) {
-      throw AuthError.EmailAlreadyExists()
+    if (!password) {
+      throw AuthError.InvalidPassword()
     }
 
     // Kiểm tra số điện thoại nếu có
@@ -123,16 +196,16 @@ export class CoreService implements IUserAuthService {
     const hashedPassword = await this.hashingService.hash(password)
 
     // Tạo username nếu không được cung cấp
-    const finalUsername = username || (await this.generateUniqueUsername(email.split('@')[0]))
+    const finalUsername = username || (await this.generateUniqueUsername(userToUpdate.email))
 
-    // Tạo user mới
-    await this.userAuthRepository.createUser({
-      email,
+    // Cập nhật user hiện có
+    await this.userAuthRepository.updateUser(userId, {
       password: hashedPassword,
       firstName,
       lastName,
       username: finalUsername,
-      phoneNumber
+      phoneNumber,
+      status: 'ACTIVE' // Kích hoạt tài khoản
     })
   }
 
@@ -162,63 +235,7 @@ export class CoreService implements IUserAuthService {
     return result
   }
 
-  /**
-   * Đăng nhập
-   */
-  async login(params: LoginParams, res: Response): Promise<any> {
-    const user = await this._validateAndCheckUserStatus(params.emailOrUsername, params.password)
-    const device = await this._getOrCreateDevice(user.id, params.ip, params.userAgent)
-    const rememberMe = params.rememberMe ?? false
-
-    const needsVerification = await this._needsVerification(device)
-
-    if (needsVerification) {
-      this.logger.debug(`[Login] Device ${device.id} for user ${user.id} requires verification.`)
-      return this._initiateLoginVerification(user, device, params, res)
-    }
-
-    this.logger.debug(`[Login] Device ${device.id} for user ${user.id} is trusted. Finalizing login.`)
-    return this.finalizeLoginAndCreateTokens(
-      user,
-      device,
-      rememberMe,
-      res,
-      params.ip,
-      params.userAgent,
-      true /* explicitly trusted */
-    )
-  }
-
-  /**
-   * Xác thực thông tin đăng nhập và kiểm tra trạng thái người dùng
-   * @private
-   */
-  private async _validateAndCheckUserStatus(
-    emailOrUsername: string,
-    password: string
-  ): Promise<Omit<UserWithProfileAndRole, 'password'>> {
-    const user = await this.validateUser(emailOrUsername, password)
-
-    if (!user) {
-      throw AuthError.InvalidPassword()
-    }
-
-    if (user.status === UserStatus.BLOCKED) {
-      throw AuthError.AccountLocked()
-    }
-
-    if (user.status !== UserStatus.ACTIVE) {
-      throw AuthError.AccountNotActive()
-    }
-
-    return user
-  }
-
-  /**
-   * Lấy hoặc tạo mới thiết bị
-   * @private
-   */
-  private async _getOrCreateDevice(userId: number, ip?: string, userAgent?: string): Promise<Device> {
+  async getOrCreateDevice(userId: number, ip?: string, userAgent?: string): Promise<Device> {
     try {
       const device = await this.deviceRepository.upsertDevice(
         userId,
@@ -494,6 +511,42 @@ export class CoreService implements IUserAuthService {
     }
   }
 
+  async initiateLogin(loginDto: LoginDto, ip: string, userAgent: string, res: Response) {
+    this.logger.log(`[Login] Initiating login for user ${loginDto.emailOrUsername}`)
+
+    const user = await this.validateUser(loginDto.emailOrUsername, loginDto.password)
+    if (!user) {
+      throw AuthError.InvalidPassword()
+    }
+
+    const device = await this.getOrCreateDevice(user.id, ip, userAgent)
+
+    if (!this.authVerificationService) {
+      throw AuthError.InternalServerError('AuthVerificationService is not available.')
+    }
+
+    const verificationResult = await this.authVerificationService.initiateVerification(
+      {
+        userId: user.id,
+        deviceId: device.id,
+        email: user.email,
+        ipAddress: ip,
+        userAgent: userAgent,
+        purpose: TypeOfVerificationCode.LOGIN,
+        rememberMe: loginDto.rememberMe,
+        metadata: { from: 'login' }
+      },
+      res
+    )
+
+    return {
+      message: verificationResult.message,
+      data: {
+        ...verificationResult
+      }
+    }
+  }
+
   /**
    * Hoàn tất đăng nhập sau khi xác minh
    */
@@ -536,72 +589,6 @@ export class CoreService implements IUserAuthService {
       this.logger.error(`[finalizeLoginAfterVerification] Error: ${error.message}`, error.stack)
       if (error instanceof AuthError) throw error
       throw AuthError.InternalServerError(error.message)
-    }
-  }
-
-  private async _needsVerification(device: Device): Promise<boolean> {
-    const isTrusted = await this.deviceRepository.isDeviceTrustValid(device.id)
-    const reverifyFlagKey = RedisKeyManager.customKey('device:needs_reverify_after_revoke', device.id.toString())
-    const needsReverifyAfterRevoke = await this.redisService.get(reverifyFlagKey)
-
-    if (needsReverifyAfterRevoke === 'true') {
-      return true
-    }
-
-    if (isTrusted) {
-      // Clear flag if it existed but didn't force reverification
-      if (needsReverifyAfterRevoke) {
-        await this.redisService.del(reverifyFlagKey)
-      }
-      return false
-    }
-
-    return true
-  }
-
-  private async _initiateLoginVerification(
-    user: Omit<UserWithProfileAndRole, 'password'>,
-    device: Device,
-    params: LoginParams,
-    res: Response
-  ) {
-    if (!this.authVerificationService) {
-      this.logger.error('AuthVerificationService is not available.')
-      throw AuthError.InternalServerError('Verification service is not configured.')
-    }
-
-    const purpose = user.twoFactorEnabled
-      ? TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA
-      : TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP
-
-    await this.authVerificationService.initiateVerification(
-      {
-        userId: user.id,
-        deviceId: device.id,
-        email: user.email,
-        ipAddress: params.ip || 'Unknown',
-        userAgent: params.userAgent || 'Unknown',
-        purpose: purpose,
-        rememberMe: params.rememberMe,
-        metadata: { rememberMe: params.rememberMe }
-      },
-      res
-    )
-
-    if (purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
-      return {
-        message: this.i18nService.t('auth.Auth.Login.DeviceVerificationOtpRequired'),
-        requiresDeviceVerification: true,
-        verificationType: 'OTP',
-        email: user.email
-      }
-    } else {
-      return {
-        message: this.i18nService.t('auth.Auth.Login.2FARequired'),
-        requires2FA: true,
-        twoFactorMethod: user.twoFactorMethod,
-        email: user.email
-      }
     }
   }
 }

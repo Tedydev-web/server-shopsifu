@@ -1,7 +1,8 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
 import { ConfigService } from '@nestjs/config'
-import { SecurityHeaders } from 'src/shared/constants/auth.constants'
+import { SecurityHeaders } from 'src/routes/auth/shared/constants/auth.constants'
+import helmet from 'helmet'
 
 @Injectable()
 export class SecurityHeadersMiddleware implements NestMiddleware {

@@ -51,6 +51,7 @@ export type I18nTranslations = {
             };
             "Token": {
                 "Refreshed": string;
+                "Invalid": string;
             };
             "Session": {
                 "Revoked": string;
@@ -144,6 +145,7 @@ export type I18nTranslations = {
                     "Expired": string;
                 };
                 "Token": {
+                    "Invalid": string;
                     "MissingAccessToken": string;
                     "InvalidAccessToken": string;
                     "ExpiredAccessToken": string;

@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config'
 import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
 import { ICookieService, CookieConfig } from 'src/routes/auth/shared/auth.types'
 import { v4 as uuidv4 } from 'uuid'
-import { SecurityHeaders } from '../constants/auth.constants'
+import { SecurityHeaders } from '../../routes/auth/shared/constants/auth.constants'
 
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {

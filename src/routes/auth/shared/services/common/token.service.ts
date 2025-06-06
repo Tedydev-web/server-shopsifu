@@ -1,26 +1,30 @@
-import { Injectable, Logger, Inject } from '@nestjs/common'
+import {
+  Injectable,
+  UnauthorizedException,
+  Logger,
+  Inject,
+  InternalServerErrorException,
+  HttpException,
+  HttpStatus
+} from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
+import { ConfigService } from '@nestjs/config'
 import { Request } from 'express'
+import { v4 as uuidv4 } from 'uuid'
 import { RedisService } from 'src/providers/redis/redis.service'
 import {
+  ITokenService,
   AccessTokenPayload,
   AccessTokenPayloadCreate,
   PendingLinkTokenPayload,
   PendingLinkTokenPayloadCreate
-} from 'src/routes/auth/shared/jwt.type'
-import { ConfigService } from '@nestjs/config'
-import { ITokenService } from 'src/routes/auth/shared/auth.types'
+} from 'src/routes/auth/shared/auth.types'
+import { TokenType, CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
+import { DeviceRepository, SessionRepository } from 'src/routes/auth/shared/repositories'
 import { REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { CryptoService } from './crypto.service'
 import { AuthError } from 'src/routes/auth/auth.error'
-import {
-  DEVICE_REVOKE_HISTORY_TTL,
-  DEVICE_REVERIFICATION_TTL,
-  DEVICE_REVERIFY_KEY_PREFIX
-} from 'src/shared/constants/auth.constants'
-import { DeviceRepository, SessionRepository } from 'src/routes/auth/shared/repositories'
-import { v4 as uuidv4 } from 'uuid'
+import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
 @Injectable()
 export class TokenService implements ITokenService {

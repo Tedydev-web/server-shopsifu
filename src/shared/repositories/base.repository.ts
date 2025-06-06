@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { PrismaService } from '../services/prisma.service'
-import { PaginationOptions, PaginatedResponseType, createPaginatedResponse } from '../models/pagination.model'
+import { PaginationOptions, PaginatedResponseType, createPaginatedResponse } from '../dtos/pagination.dto'
 import { Prisma } from '@prisma/client'
 
 export type PrismaTransactionClient = Omit<

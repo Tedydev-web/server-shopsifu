@@ -24,7 +24,8 @@
   },
   "include": [
     "src",
-    "emails"
+    "emails",
+    "test"
   ],
   "exclude": [
     "node_modules",
