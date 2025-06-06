@@ -94,8 +94,7 @@ export class OtpService implements IOTPService {
         await this.emailService.sendOtpEmail({
           email: targetEmail,
           otpCode,
-          otpType: type,
-          ...(metadata?.emailTitle && { title: metadata.emailTitle })
+          otpType: type
         })
         this.logger.log(`[sendOTP] Email OTP cho mục đích ${type} đã được gửi đến ${targetEmail}`)
       } catch (error) {

@@ -6,7 +6,7 @@ import { Response, Request } from 'express'
 import * as crypto from 'crypto'
 import { OAuth2Client, TokenPayload } from 'google-auth-library'
 import { AuthError } from 'src/routes/auth/auth.error'
-import { CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
+import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/routes/auth/shared/repositories'
 import { SecurityAlertType } from 'src/routes/auth/shared/services/common/email.service'
 import { OtpService } from '../../modules/otp/otp.service'
@@ -474,6 +474,7 @@ export class SocialService {
       // 4. Tìm tài khoản người dùng
       this.logger.debug(`[googleCallback] Tìm kiếm người dùng với googleId: ${googleId}`)
       let user = await this.userAuthRepository.findByGoogleId(googleId)
+      let isNewUser = false
 
       // 5. Xử lý khi không tìm thấy user theo googleId
       if (!user && googleEmail) {
@@ -505,6 +506,7 @@ export class SocialService {
         this.logger.debug(`[googleCallback] Tạo tài khoản mới cho email: ${googleEmail}`)
         try {
           user = await this.createUserFromGoogle(googleId, googleEmail, googleName, googleAvatar)
+          isNewUser = true
           this.logger.log(`[googleCallback] Đã tạo tài khoản mới thành công cho email: ${googleEmail}`)
         } catch (error) {
           this.logger.error(`[googleCallback] Lỗi tạo tài khoản mới: ${error.message}`, error.stack)
@@ -531,7 +533,9 @@ export class SocialService {
         requiresUntrustedDeviceVerification,
         twoFactorMethod: user.twoFactorMethod as any,
         isLoginViaGoogle: true,
-        message: await this.i18nService.t('auth.Auth.Google.SuccessProceedToSecurityChecks')
+        message: await this.i18nService.t('auth.Auth.Google.SuccessProceedToSecurityChecks'),
+        isNewUser,
+        purpose: isNewUser ? TypeOfVerificationCode.REGISTER : TypeOfVerificationCode.LOGIN
       }
     } catch (error) {
       this.logger.error(`[googleCallback] Lỗi không mong đợi trong Google callback: ${error.message}`, error.stack)
@@ -654,16 +658,13 @@ export class SocialService {
    * Hoàn tất liên kết và đăng nhập
    */
   async completeLinkAndLogin(
-    req: Request,
-    res: Response,
+    pendingLinkToken: string,
+    password: string,
     userAgent: string,
-    ip: string,
-    password: string
+    ip: string
   ): Promise<{ user: any; device: any }> {
-    const pendingLinkToken = req.cookies?.[CookieNames.OAUTH_PENDING_LINK]
-
     if (!pendingLinkToken) {
-      throw AuthError.MissingAccessToken()
+      throw AuthError.PendingSocialLinkTokenMissing()
     }
 
     try {
@@ -677,11 +678,12 @@ export class SocialService {
         throw AuthError.EmailNotFound()
       }
 
-      // Kiểm tra mật khẩu
-      const isPasswordValid = await this.hashingService.compare(password, user.password)
-
-      if (!isPasswordValid) {
-        throw AuthError.InvalidPassword()
+      // Kiểm tra mật khẩu nếu user đã có mật khẩu
+      if (user.password) {
+        const isPasswordValid = await this.hashingService.compare(password, user.password)
+        if (!isPasswordValid) {
+          throw AuthError.InvalidPassword()
+        }
       }
 
       // Cập nhật user với thông tin Google
@@ -696,13 +698,11 @@ export class SocialService {
       // Tạo hoặc tìm device
       const device = await this.deviceRepository.upsertDevice(user.id, userAgent || 'unknown', ip || 'unknown')
 
-      // Xóa cookie liên kết
-      this.cookieService.clearOAuthPendingLinkTokenCookie(res)
-
       return { user, device }
     } catch (err) {
       this.logger.error(`[completeLinkAndLogin] Lỗi: ${err instanceof Error ? err.message : 'Unknown error'}`)
-      throw err
+      if (err instanceof AuthError) throw err
+      throw AuthError.GoogleLinkFailed()
     }
   }
 

@@ -12,9 +12,25 @@ import { ApiKeyGuard } from './routes/auth/shared/guards/auth/api-key.guard'
 import { BasicAuthGuard } from './routes/auth/shared/guards/auth/basic-auth.guard'
 import { SessionsModule } from './routes/auth/modules/sessions/sessions.module'
 import { SessionsService } from './routes/auth/modules/sessions/sessions.service'
+import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
+import path from 'path'
 
 @Module({
-  imports: [CoreModule, AuthModule, GuardsModule, SessionsModule],
+  imports: [
+    I18nModule.forRoot({
+      fallbackLanguage: 'vi',
+      loaderOptions: {
+        path: path.resolve('src/i18n/'),
+        watch: true
+      },
+      resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
+      typesOutputPath: path.resolve('../src/generated/i18n.generated.ts')
+    }),
+    CoreModule,
+    AuthModule,
+    GuardsModule,
+    SessionsModule
+  ],
   controllers: [AppController],
   providers: [
     AppService,

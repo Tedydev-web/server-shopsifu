@@ -105,7 +105,7 @@ export class CoreService {
     ipAddress: string,
     userAgent: string,
     res: Response
-  ): Promise<{ message: string }> {
+  ): Promise<{ message: I18nPath; data: any }> {
     await this.checkEmailNotExists(email)
 
     const tempUser = await this.createTemporaryUser(email)
@@ -129,7 +129,8 @@ export class CoreService {
     )
 
     return {
-      message: verificationResult.message
+      message: verificationResult.message as I18nPath,
+      data: verificationResult.data
     }
   }
 
@@ -141,7 +142,7 @@ export class CoreService {
     params: CompleteRegistrationDto,
     ipAddress?: string,
     userAgent?: string
-  ): Promise<{ message: string }> {
+  ): Promise<{ message: I18nPath }> {
     if (!this.sltService) throw AuthError.InternalServerError('SLTService not available')
 
     const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
@@ -162,7 +163,7 @@ export class CoreService {
     await this.sltService.finalizeSlt(sltContext.sltJti)
 
     return {
-      message: this.i18nService.t('auth.Auth.Register.Success' as I18nPath)
+      message: 'auth.Auth.Register.Success'
     }
   }
 
@@ -251,7 +252,11 @@ export class CoreService {
   /**
    * Làm mới token
    */
-  async refreshToken(refreshToken: string, deviceInfo: any, res: Response): Promise<{ accessToken: string }> {
+  async refreshToken(
+    refreshToken: string,
+    deviceInfo: any,
+    res: Response
+  ): Promise<{ message: I18nPath; data: { accessToken: string } }> {
     try {
       const { userAgent, ip } = deviceInfo
 
@@ -289,7 +294,10 @@ export class CoreService {
       this.cookieService.setTokenCookies(res, newAccessToken, newRefreshToken)
 
       return {
-        accessToken: newAccessToken
+        message: 'auth.Auth.Token.Refreshed',
+        data: {
+          accessToken: newAccessToken
+        }
       }
     } catch (error) {
       this.logger.error(`Lỗi làm mới token: ${error.message}`, error.stack)
@@ -302,7 +310,7 @@ export class CoreService {
   /**
    * Đăng xuất
    */
-  async logout(userId: number, sessionId: string, req?: Request, res?: Response): Promise<void> {
+  async logout(userId: number, sessionId: string, req?: Request, res?: Response): Promise<{ message: I18nPath }> {
     try {
       // Xóa cookie nếu có response
       if (res) {
@@ -344,6 +352,8 @@ export class CoreService {
           }
         }
       }
+
+      return { message: 'auth.Auth.Logout.Success' }
     } catch (error) {
       this.logger.error(`Lỗi đăng xuất: ${error.message}`, error.stack)
       if (error instanceof AuthError) throw error
@@ -440,9 +450,12 @@ export class CoreService {
       }
 
       return {
-        accessToken,
-        refreshToken,
-        user: userResponse
+        message: 'auth.Auth.Login.Success',
+        data: {
+          accessToken,
+          refreshToken,
+          user: userResponse
+        }
       }
     } catch (error) {
       this.logger.error(`[finalizeLoginAndCreateTokens] Error: ${error.message}`, error.stack)
@@ -549,11 +562,21 @@ export class CoreService {
       res
     )
 
+    // The interceptor will wrap this into the standard response format.
+    // The `data` part contains any information the client might need, like a verification token (SLT).
+    if (verificationResult.success && verificationResult.tokens) {
+      return {
+        message: verificationResult.message,
+        data: {
+          user: verificationResult.user,
+          accessToken: verificationResult.tokens.accessToken
+        }
+      }
+    }
+
     return {
       message: verificationResult.message,
-      data: {
-        ...verificationResult
-      }
+      data: verificationResult.data
     }
   }
 

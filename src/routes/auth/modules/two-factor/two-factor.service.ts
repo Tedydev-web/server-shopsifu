@@ -321,7 +321,7 @@ export class TwoFactorService implements IMultiFactorService {
       this.logger.debug(`[confirmTwoFactorSetup] 2FA đã được kích hoạt thành công cho userId ${userId}`)
 
       return {
-        message: this.i18nService.t('auth.Auth.2FA.Confirm.Success'),
+        message: this.i18nService.t('auth.Auth.Error.2FA.Confirm.Success'),
         recoveryCodes: plainRecoveryCodes
       }
     } catch (error) {

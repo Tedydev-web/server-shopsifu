@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import { ApiException, ErrorDetailMessage } from '../exceptions/api.exception'
+import { ApiException } from '../exceptions/api.exception'
 
 export function isUniqueConstraintPrismaError(error: any): error is Prisma.PrismaClientKnownRequestError {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
@@ -54,7 +54,7 @@ export function normalizeErrorMessage(
   error: any,
   defaultCode: string = 'Error.Global.InternalServerError',
   defaultMessage: string = 'An unexpected error occurred'
-): { message: string; details?: ErrorDetailMessage[] } {
+): { message: string; details?: any } {
   if (isApiException(error)) {
     return {
       message: error.message || defaultMessage,

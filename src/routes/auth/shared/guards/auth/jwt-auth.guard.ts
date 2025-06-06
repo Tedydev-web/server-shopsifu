@@ -54,9 +54,9 @@ export class JwtAuthGuard implements CanActivate {
 
       if (
         error instanceof ApiException &&
-        (error.errorCode === 'SESSION_REVOKED' ||
-          error.errorCode === 'MISSING_SESSION_ID_IN_TOKEN' ||
-          error.errorCode === 'MISSING_ACCESS_TOKEN')
+        (error.code === 'SESSION_REVOKED' ||
+          error.code === 'MISSING_SESSION_ID_IN_TOKEN' ||
+          error.code === 'MISSING_ACCESS_TOKEN')
       ) {
         throw error
       }

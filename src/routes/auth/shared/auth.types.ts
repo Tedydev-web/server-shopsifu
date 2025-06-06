@@ -236,6 +236,8 @@ export interface GoogleCallbackSuccessResult {
   twoFactorMethod?: TwoFactorMethodTypeType | null
   isLoginViaGoogle: true
   message: string
+  isNewUser: boolean
+  purpose: TypeOfVerificationCodeType
 }
 
 export interface GoogleCallbackErrorResult {

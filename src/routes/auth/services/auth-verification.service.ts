@@ -86,7 +86,7 @@ export class AuthVerificationService {
     const user = await this.userAuthRepository.findById(userId)
     if (!user) throw AuthError.EmailNotFound()
 
-    // NEW: Check for forced re-verification flag from login flow
+    // Kiểm tra cờ xác minh lại bắt buộc từ quy trình đăng nhập
     if (metadata?.forceVerification) {
       this.logger.debug(`[initiateVerification] Forced verification for UserID: ${userId} due to re-verify flag.`)
       // Directly proceed to OTP/2FA flow, bypassing other checks
@@ -109,10 +109,30 @@ export class AuthVerificationService {
       return this.handleLoginVerification(userId, deviceId, rememberMe ?? false, ipAddress, userAgent, res)
     }
 
-    // Nếu cần xác thực, tiến hành theo luồng OTP/2FA
-    this.logger.debug(
-      `[initiateVerification] Needs verification for UserID: ${userId}. Sensitive: ${isSensitiveAction}`
-    )
+    // Nếu thiết bị được trust, bỏ qua 2FA và chỉ gửi OTP nếu mục đích nhạy cảm
+    if (isDeviceTrusted) {
+      if (this.SENSITIVE_PURPOSES.includes(context.purpose)) {
+        this.logger.debug(`[initiateVerification] Device is trusted, but purpose is sensitive. Forcing OTP.`)
+        return this.initiateOtpFlow(context, res)
+      } else {
+        // Hoàn thành hành động ngay lập tức
+        this.logger.debug(
+          `[initiateVerification] Device is trusted and purpose is not sensitive. Completing action directly.`
+        )
+        // Set slt cookie để hoàn tất đăng ký ngay
+        const sltContext = await this.sltService.createAndStoreSltToken(context)
+        this.cookieService.setSltCookie(res, sltContext, context.purpose)
+
+        return {
+          success: true,
+          message: 'global.success.general.default'
+        }
+      }
+    }
+
+    // Nếu không, kiểm tra 2FA
+    if (!user) throw AuthError.EmailNotFound()
+
     return this.initiateOtpOr2faFlow(context, res, user)
   }
 
@@ -122,24 +142,29 @@ export class AuthVerificationService {
     user: User
   ): Promise<VerificationResult> {
     const { userId, email, purpose, rememberMe, metadata } = context
+    // Assuming the correct property is 'twoFactorEnabled' based on previous linter errors
     const use2FA = user.twoFactorEnabled
 
-    const sltMetadata = { ...metadata, rememberMe, ...(use2FA && { twoFactorMethod: TwoFactorMethodType.TOTP }) }
+    const sltMetadata = { ...metadata, rememberMe, ...(use2FA && { twoFactorMethod: 'TOTP' }) }
     const sltToken = await this.sltService.createAndStoreSltToken({ ...context, metadata: sltMetadata })
     this.cookieService.setSltCookie(res, sltToken, purpose)
 
-    let messageKey: I18nPath = 'auth.Auth.Otp.SentSuccessfully'
+    let messageKey: I18nPath = 'auth.Auth.Otp.SentSuccessfully' as any
     if (use2FA) {
-      messageKey = 'auth.Auth.2FA.Verify.AskToTrustDevice'
+      // Use a more generic message for starting the 2FA flow
+      messageKey = 'auth.Auth.Login.2FARequired' as any
     } else {
+      // Only send OTP if not using 2FA
       await this.otpService.sendOTP(email, purpose, userId, metadata)
     }
 
     return {
-      success: true,
-      message: this.i18nService.t(messageKey),
-      sltToken,
-      verificationType: use2FA ? '2FA' : 'OTP'
+      success: false,
+      message: messageKey, // Pass the i18n key directly
+      data: {
+        sltToken,
+        verificationType: use2FA ? '2FA' : 'OTP'
+      }
     }
   }
 
@@ -147,7 +172,12 @@ export class AuthVerificationService {
    * Khởi tạo lại luồng xác thực từ một SLT cookie đã có.
    * Dùng cho chức năng "Gửi lại OTP/mã".
    */
-  async reInitiateVerification(sltCookieValue: string, ipAddress: string, userAgent: string, res: Response) {
+  async reInitiateVerification(
+    sltCookieValue: string,
+    ipAddress: string,
+    userAgent: string,
+    res: Response
+  ): Promise<VerificationResult> {
     this.logger.debug(`[reInitiateVerification] Re-initiating verification from SLT.`)
     const sltContext = await this.sltService.validateSltFromCookieAndGetContext(sltCookieValue, ipAddress, userAgent)
 
@@ -155,19 +185,23 @@ export class AuthVerificationService {
       throw AuthError.EmailMissingInSltContext()
     }
 
-    // Gọi lại initiateVerification với context đã có, thêm cờ 'resent'
-    return this.initiateVerification(
-      {
-        userId: sltContext.userId,
-        deviceId: sltContext.deviceId,
-        email: sltContext.email,
-        ipAddress,
-        userAgent,
-        purpose: sltContext.purpose,
-        metadata: { ...sltContext.metadata, resent: true }
-      },
-      res
-    )
+    // Bug fix: Resend the OTP
+    await this.otpService.sendOTP(sltContext.email, sltContext.purpose, sltContext.userId, sltContext.metadata)
+
+    // Re-create SLT token to invalidate the old one
+    const sltToken = await this.sltService.createAndStoreSltToken(sltContext)
+    this.cookieService.setSltCookie(res, sltToken, sltContext.purpose)
+
+    const use2FA = !!sltContext.metadata?.twoFactorMethod
+
+    return {
+      success: false, // Not final success, requires OTP verification
+      message: 'auth.Auth.Otp.SentSuccessfully',
+      data: {
+        sltToken,
+        verificationType: use2FA ? '2FA' : 'OTP'
+      }
+    }
   }
 
   // ===================================================================================
@@ -447,10 +481,12 @@ export class AuthVerificationService {
     await this.otpService.sendOTP(email, purpose, userId, metadata)
 
     return {
-      success: true,
+      success: false, // It's an intermediate step, not final success
       message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully'),
-      sltToken,
-      verificationType: 'OTP'
+      data: {
+        sltToken,
+        verificationType: 'OTP'
+      }
     }
   }
 }

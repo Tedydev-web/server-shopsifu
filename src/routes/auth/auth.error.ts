@@ -1,14 +1,14 @@
-import { HttpStatus, HttpException } from '@nestjs/common'
+import { HttpStatus } from '@nestjs/common'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 
 /**
- * Lớp tiện ích để tạo các lỗi liên quan đến xác thực
- * Thay thế cho các exceptions trong src/routes/auth/shared/exceptions/auth.exceptions.ts
+ * Một factory class để tạo các `ApiException` cụ thể cho module xác thực.
+ * Giúp mã nguồn sạch sẽ và nhất quán hơn.
  */
 export class AuthError {
-  // Account Errors
+  // Lỗi liên quan đến User/Email/Password
   static EmailNotFound(): ApiException {
-    return new ApiException(HttpStatus.NOT_FOUND, 'EMAIL_NOT_FOUND', 'Auth.Error.Email.NotFound')
+    return new ApiException(HttpStatus.NOT_FOUND, 'EMAIL_NOT_FOUND', 'auth.Auth.Error.Email.NotFound')
   }
 
   static EmailAlreadyExists(): ApiException {
@@ -16,17 +16,17 @@ export class AuthError {
   }
 
   static PhoneNumberAlreadyExists(): ApiException {
-    return new ApiException(HttpStatus.CONFLICT, 'PHONE_NUMBER_TAKEN', 'auth.Auth.Error.Register.PhoneNumberTaken')
+    return new ApiException(
+      HttpStatus.CONFLICT,
+      'PHONE_NUMBER_ALREADY_EXISTS',
+      'auth.Auth.Error.Register.PhoneNumberTaken'
+    )
   }
 
   static UsernameAlreadyExists(username: string): ApiException {
-    return new ApiException(HttpStatus.CONFLICT, 'USERNAME_ALREADY_EXISTS', 'auth.Auth.Error.Username.AlreadyExists', [
-      { code: 'username', value: username }
-    ])
-  }
-
-  static EmailAlreadyVerified(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'EMAIL_ALREADY_VERIFIED', 'auth.Auth.Error.Email.AlreadyVerified')
+    return new ApiException(HttpStatus.CONFLICT, 'USERNAME_ALREADY_EXISTS', 'auth.Auth.Error.Username.AlreadyExists', {
+      username
+    })
   }
 
   static InvalidPassword(): ApiException {
@@ -34,14 +34,14 @@ export class AuthError {
   }
 
   static AccountLocked(): ApiException {
-    return new ApiException(HttpStatus.FORBIDDEN, 'ACCOUNT_LOCKED', 'auth.Auth.Error.Account.Locked')
+    return new ApiException(HttpStatus.FORBIDDEN, 'ACCOUNT_LOCKED', 'auth.Auth.Error.Access.Denied')
   }
 
   static AccountNotActive(): ApiException {
-    return new ApiException(HttpStatus.FORBIDDEN, 'ACCOUNT_NOT_ACTIVE', 'auth.Auth.Error.Account.NotActive')
+    return new ApiException(HttpStatus.FORBIDDEN, 'ACCOUNT_NOT_ACTIVE', 'auth.Auth.Error.Access.Denied')
   }
 
-  // Token Errors
+  // Lỗi liên quan đến Token (Access, Refresh)
   static InvalidAccessToken(): ApiException {
     return new ApiException(HttpStatus.UNAUTHORIZED, 'INVALID_ACCESS_TOKEN', 'auth.Auth.Error.Token.InvalidAccessToken')
   }
@@ -56,7 +56,7 @@ export class AuthError {
 
   static MissingRefreshToken(): ApiException {
     return new ApiException(
-      HttpStatus.BAD_REQUEST,
+      HttpStatus.UNAUTHORIZED,
       'MISSING_REFRESH_TOKEN',
       'auth.Auth.Error.Token.MissingRefreshToken'
     )
@@ -78,11 +78,15 @@ export class AuthError {
     )
   }
 
-  static InvalidToken(): ApiException {
-    return new ApiException(HttpStatus.UNAUTHORIZED, 'INVALID_TOKEN', 'auth.Auth.Error.Token.Invalid')
+  static RefreshTokenUsed(): ApiException {
+    return new ApiException(
+      HttpStatus.UNAUTHORIZED,
+      'REFRESH_TOKEN_ALREADY_USED',
+      'auth.Auth.Error.Token.RefreshTokenAlreadyUsed'
+    )
   }
 
-  // OTP Errors
+  // Lỗi liên quan đến OTP
   static InvalidOTP(): ApiException {
     return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_OTP', 'auth.Auth.Error.Otp.Invalid')
   }
@@ -107,27 +111,17 @@ export class AuthError {
     return new ApiException(HttpStatus.TOO_MANY_REQUESTS, 'OTP_SENDING_LIMITED', 'auth.Auth.Otp.CooldownActive')
   }
 
-  static OTPMaxAttemptsExceeded(): HttpException {
-    return new HttpException(
-      {
-        message: 'Quá nhiều lần thử nhập mã OTP. Vui lòng yêu cầu mã mới.',
-        errorCode: 'OTP_MAX_ATTEMPTS_EXCEEDED'
-      },
-      HttpStatus.TOO_MANY_REQUESTS
-    )
-  }
-
-  // SLT Errors
+  // Lỗi liên quan đến SLT (Short-Lived Token)
   static SLTCookieMissing(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'SLT_COOKIE_MISSING', 'auth.Auth.Error.SLT.CookieMissing')
+    return new ApiException(HttpStatus.BAD_REQUEST, 'SLT_COOKIE_MISSING', 'auth.Auth.Error.SltCookieMissing')
   }
 
   static SLTExpired(): ApiException {
-    return new ApiException(HttpStatus.UNAUTHORIZED, 'SLT_EXPIRED', 'auth.Auth.Error.SLT.Expired')
+    return new ApiException(HttpStatus.BAD_REQUEST, 'SLT_EXPIRED', 'auth.Auth.Error.SLT.Expired')
   }
 
   static InvalidSLT(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_SLT', 'auth.Auth.Error.SLT.Invalid')
+    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_SLT', 'auth.Auth.Error.Token.Invalid')
   }
 
   static SLTInvalidPurpose(): ApiException {
@@ -136,60 +130,50 @@ export class AuthError {
 
   static EmailMissingInSltContext(): ApiException {
     return new ApiException(
-      HttpStatus.BAD_REQUEST,
+      HttpStatus.INTERNAL_SERVER_ERROR,
       'EMAIL_MISSING_IN_SLT_CONTEXT',
-      'auth.Auth.Error.Slt.EmailMissingInContext'
+      'auth.Auth.Error.SLT.EmailMissingInContext'
     )
   }
 
-  static SLTAlreadyUsed(): HttpException {
-    return new HttpException(
-      {
-        message: 'Token xác thực ngắn hạn đã được sử dụng. Vui lòng yêu cầu một token mới.',
-        errorCode: 'SLT_ALREADY_USED'
-      },
-      HttpStatus.UNAUTHORIZED
-    )
+  static SLTMaxAttemptsExceeded(): ApiException {
+    return new ApiException(HttpStatus.FORBIDDEN, 'SLT_MAX_ATTEMPTS_EXCEEDED', 'auth.Auth.Error.Otp.TooManyAttempts')
   }
 
-  static SLTMaxAttemptsExceeded(): HttpException {
-    return new HttpException(
-      {
-        message: 'Quá nhiều lần thử với token xác thực ngắn hạn. Vui lòng yêu cầu một token mới.',
-        errorCode: 'SLT_MAX_ATTEMPTS_EXCEEDED'
-      },
-      HttpStatus.TOO_MANY_REQUESTS
-    )
+  static SLTAlreadyUsed(): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'SLT_ALREADY_USED', 'auth.Auth.Error.SLT.AlreadyUsed')
   }
 
-  // 2FA Errors
+  // Lỗi 2FA
   static TOTPAlreadyEnabled(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'TOTP_ALREADY_ENABLED', 'auth.Auth.Error.2FA.AlreadyEnabled')
+    return new ApiException(HttpStatus.CONFLICT, '2FA_ALREADY_ENABLED', 'auth.Auth.Error.2FA.AlreadyEnabled')
   }
 
   static TOTPNotEnabled(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'TOTP_NOT_ENABLED', 'auth.Auth.Error.2FA.NotEnabled')
+    return new ApiException(HttpStatus.BAD_REQUEST, '2FA_NOT_ENABLED', 'auth.Auth.Error.2FA.NotEnabled')
   }
 
   static InvalidTOTP(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_TOTP', 'auth.Auth.Error.2FA.InvalidTOTP')
+    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_2FA_CODE', 'auth.Auth.Error.2FA.InvalidTOTP')
   }
 
+  static InvalidRecoveryCode(): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_RECOVERY_CODE', 'auth.Auth.Error.2FA.InvalidRecoveryCode')
+  }
+
+  static InvalidVerificationMethod(): ApiException {
+    return new ApiException(
+      HttpStatus.BAD_REQUEST,
+      'INVALID_VERIFICATION_METHOD',
+      'auth.Auth.Error.2FA.InvalidVerificationMethod'
+    )
+  }
+
+  // Lỗi Session
   static SessionRevoked(): ApiException {
     return new ApiException(HttpStatus.UNAUTHORIZED, 'SESSION_REVOKED', 'auth.Auth.Error.Session.RevokedRemotely')
   }
 
-  static InvalidVerificationMethod(): HttpException {
-    return new HttpException(
-      {
-        message: 'Phương thức xác thực không hợp lệ hoặc không được hỗ trợ.',
-        errorCode: 'INVALID_VERIFICATION_METHOD'
-      },
-      HttpStatus.BAD_REQUEST
-    )
-  }
-
-  // Session Errors
   static SessionNotFound(): ApiException {
     return new ApiException(HttpStatus.NOT_FOUND, 'SESSION_NOT_FOUND', 'auth.Auth.Error.Session.NotFound')
   }
@@ -197,119 +181,47 @@ export class AuthError {
   static CannotRevokeCurrent(): ApiException {
     return new ApiException(
       HttpStatus.BAD_REQUEST,
-      'SESSION_REVOKE_CURRENT',
+      'CANNOT_REVOKE_CURRENT_SESSION',
       'auth.Auth.Error.Session.CannotRevokeCurrent'
     )
   }
 
   static MissingSessionIdInToken(): ApiException {
     return new ApiException(
-      HttpStatus.UNAUTHORIZED,
-      'SESSION_ID_MISSING',
+      HttpStatus.INTERNAL_SERVER_ERROR,
+      'MISSING_SESSION_ID_IN_TOKEN',
       'auth.Auth.Error.Session.MissingSessionIdInToken'
     )
   }
 
+  // Lỗi Device
   static DeviceNotFound(): ApiException {
-    return new ApiException(HttpStatus.NOT_FOUND, 'DEVICE_NOT_FOUND', 'auth.Auth.Error.Device.NotFound')
+    return new ApiException(HttpStatus.NOT_FOUND, 'DEVICE_NOT_FOUND', 'auth.Auth.Device.NotFound')
   }
 
   static DeviceNotOwnedByUser(): ApiException {
-    return new ApiException(HttpStatus.FORBIDDEN, 'DEVICE_NOT_OWNED', 'auth.Auth.Error.Device.NotOwnedByUser')
+    return new ApiException(HttpStatus.FORBIDDEN, 'DEVICE_NOT_OWNED_BY_USER', 'auth.Auth.Device.NotOwnedByUser')
   }
 
   static DeviceProcessingFailed(): ApiException {
     return new ApiException(
       HttpStatus.INTERNAL_SERVER_ERROR,
       'DEVICE_PROCESSING_FAILED',
-      'auth.Auth.Error.Device.ProcessingFailed'
+      'auth.Auth.Device.ProcessingFailed'
     )
   }
 
   static MissingDeviceInformation(): ApiException {
     return new ApiException(
-      HttpStatus.BAD_REQUEST,
+      HttpStatus.INTERNAL_SERVER_ERROR,
       'MISSING_DEVICE_INFORMATION',
-      'auth.Auth.Error.Device.MissingInformation'
+      'auth.Auth.Device.MissingInformation'
     )
   }
 
-  // Permission Errors
+  // Lỗi phân quyền và chung
   static InsufficientPermissions(): ApiException {
-    return new ApiException(HttpStatus.FORBIDDEN, 'INSUFFICIENT_PERMISSIONS', 'auth.Auth.Error.Access.Denied')
-  }
-
-  static RoleNotFound(): ApiException {
-    return new ApiException(HttpStatus.NOT_FOUND, 'ROLE_NOT_FOUND', 'auth.Auth.Error.Role.NotFound')
-  }
-
-  // Social Auth Errors
-  static SocialAuthFailed(): ApiException {
-    return new ApiException(HttpStatus.UNAUTHORIZED, 'SOCIAL_AUTH_FAILED', 'auth.Auth.Error.Social.GenericAuthFailed')
-  }
-
-  static SocialEmailMismatch(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'SOCIAL_EMAIL_MISMATCH', 'auth.Auth.Error.Social.EmailMismatch')
-  }
-
-  static SocialAccountAlreadyLinked(): ApiException {
-    return new ApiException(
-      HttpStatus.CONFLICT,
-      'SOCIAL_ACCOUNT_ALREADY_LINKED',
-      'auth.Auth.Error.Social.AccountAlreadyLinked'
-    )
-  }
-
-  static InvalidSocialToken(): ApiException {
-    return new ApiException(
-      HttpStatus.UNPROCESSABLE_ENTITY,
-      'INVALID_SOCIAL_TOKEN',
-      'auth.Auth.Error.Social.InvalidToken'
-    )
-  }
-
-  static GoogleAccountAlreadyLinked(): ApiException {
-    return new ApiException(
-      HttpStatus.CONFLICT,
-      'GOOGLE_ACCOUNT_ALREADY_LINKED',
-      'auth.Auth.Error.Google.AccountAlreadyLinked'
-    )
-  }
-
-  static GoogleUserInfoFailed(): ApiException {
-    return new ApiException(
-      HttpStatus.UNPROCESSABLE_ENTITY,
-      'GOOGLE_USER_INFO_FAILED',
-      'auth.Auth.Error.Google.UserInfoFailed'
-    )
-  }
-
-  static GoogleInvalidGrant(): ApiException {
-    return new ApiException(
-      HttpStatus.UNPROCESSABLE_ENTITY,
-      'GOOGLE_INVALID_GRANT',
-      'auth.Auth.Error.Google.InvalidGrant'
-    )
-  }
-
-  static GoogleMissingCode(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'GOOGLE_MISSING_CODE', 'auth.Auth.Error.Google.MissingCode')
-  }
-
-  static GoogleStateMismatch(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'GOOGLE_STATE_MISMATCH', 'auth.Auth.Error.Google.StateMismatch')
-  }
-
-  static GoogleInvalidPayload(): ApiException {
-    return new ApiException(
-      HttpStatus.UNPROCESSABLE_ENTITY,
-      'GOOGLE_INVALID_PAYLOAD',
-      'auth.Auth.Error.Google.InvalidPayload'
-    )
-  }
-
-  static GoogleAccountConflict(): ApiException {
-    return new ApiException(HttpStatus.CONFLICT, 'GOOGLE_ACCOUNT_CONFLICT', 'auth.Auth.Error.Google.AccountConflict')
+    return new ApiException(HttpStatus.FORBIDDEN, 'INSUFFICIENT_PERMISSIONS', 'global.error.http.forbidden')
   }
 
   static InsufficientRevocationData(): ApiException {
@@ -320,21 +232,89 @@ export class AuthError {
     )
   }
 
-  static InvalidRecoveryCode(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_RECOVERY_CODE', 'auth.Auth.Error.2FA.InvalidRecoveryCode')
+  // Lỗi Social Login
+  static GoogleUserInfoFailed(): ApiException {
+    return new ApiException(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+      'GOOGLE_USER_INFO_FAILED',
+      'auth.Auth.Error.Google.UserInfoFailed'
+    )
   }
 
-  static InvalidTwoFactorMethod(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_2FA_METHOD', 'auth.Auth.Error.2FA.InvalidMethod')
+  static GoogleCallbackError(details: string): ApiException {
+    return new ApiException(
+      HttpStatus.BAD_REQUEST,
+      'GOOGLE_CALLBACK_ERROR',
+      'auth.Auth.Error.Google.CallbackErrorGeneric',
+      {
+        details
+      }
+    )
   }
 
-  // Global/Fallback Error
-  static InternalServerError(details?: string): ApiException {
+  static GoogleMissingCode(): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'GOOGLE_MISSING_CODE', 'auth.Auth.Error.Google.MissingCode')
+  }
+
+  static InvalidSocialToken(): ApiException {
+    return new ApiException(HttpStatus.UNAUTHORIZED, 'INVALID_SOCIAL_TOKEN', 'auth.Auth.Error.Social.InvalidToken')
+  }
+
+  static GoogleInvalidPayload(): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'GOOGLE_INVALID_PAYLOAD', 'auth.Auth.Error.Google.InvalidPayload')
+  }
+
+  static GoogleAccountConflict(): ApiException {
+    return new ApiException(HttpStatus.CONFLICT, 'GOOGLE_ACCOUNT_CONFLICT', 'auth.Auth.Error.Google.AccountConflict')
+  }
+
+  static GoogleAccountAlreadyLinked(): ApiException {
+    return new ApiException(
+      HttpStatus.CONFLICT,
+      'GOOGLE_ACCOUNT_ALREADY_LINKED',
+      'auth.Auth.Error.Google.AlreadyLinkedToOtherGoogle'
+    )
+  }
+
+  static GoogleLinkFailed(): ApiException {
+    return new ApiException(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+      'GOOGLE_LINK_FAILED',
+      'auth.Auth.Error.Google.LinkAccountFailed'
+    )
+  }
+
+  static PendingSocialLinkTokenMissing(): ApiException {
+    return new ApiException(
+      HttpStatus.BAD_REQUEST,
+      'PENDING_SOCIAL_LINK_TOKEN_MISSING',
+      'auth.Auth.Error.Google.Link.NoPendingState'
+    )
+  }
+
+  // Lỗi chung
+  static InternalServerError(message?: string): ApiException {
     return new ApiException(
       HttpStatus.INTERNAL_SERVER_ERROR,
       'INTERNAL_SERVER_ERROR',
-      'auth.Auth.Error.Global.InternalServerError',
-      details ? [{ code: 'internal_error_detail', value: details }] : undefined
+      message ?? 'global.error.general.internalServerError'
+    )
+  }
+
+  static BadRequest(message?: string): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'BAD_REQUEST', message ?? 'global.error.http.badRequest')
+  }
+
+  static Unauthorized(message?: string): ApiException {
+    return new ApiException(HttpStatus.UNAUTHORIZED, 'UNAUTHORIZED', message ?? 'global.error.http.unauthorized')
+  }
+
+  static VerificationFailed(details?: any): ApiException {
+    return new ApiException(
+      HttpStatus.BAD_REQUEST,
+      'VERIFICATION_FAILED',
+      'auth.Auth.Error.Verification.Failed',
+      details
     )
   }
 }

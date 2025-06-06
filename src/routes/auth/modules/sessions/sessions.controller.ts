@@ -13,12 +13,11 @@ import {
   Res,
   Inject,
   Req,
-  HttpException,
   forwardRef
 } from '@nestjs/common'
 import { SessionsService } from './sessions.service'
 import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decorator'
-import { AccessTokenPayload, ICookieService } from 'src/routes/auth/shared/auth.types'
+import { AccessTokenPayload } from 'src/routes/auth/shared/auth.types'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import {
   GetSessionsQueryDto,
@@ -26,18 +25,19 @@ import {
   RevokeSessionsBodyDto,
   DeviceIdParamsDto,
   UpdateDeviceNameBodyDto,
+  RevokeAllSessionsBodyDto,
   UpdateDeviceNameResponseDto,
-  UntrustDeviceResponseDto,
-  RevokeAllSessionsBodyDto
+  RevokeSessionsResponseDto,
+  VerificationNeededResponseDto
 } from './session.dto'
 import { I18nService } from 'nestjs-i18n'
 import { TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 import { Response, Request } from 'express'
-import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
-import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 import { AuthError } from '../../auth.error'
 import { Auth } from 'src/routes/auth/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../../services/auth-verification.service'
+import { SuccessMessage } from 'src/shared/decorators/success-message.decorator'
 
 /**
  * Metadata cho quá trình thu hồi phiên
@@ -59,6 +59,7 @@ interface CurrentUserContext {
   userId: number
   sessionId: string
   deviceId: number
+  email?: string
 }
 
 /**
@@ -73,8 +74,7 @@ export class SessionsController {
     private readonly sessionsService: SessionsService,
     private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(forwardRef(() => AuthVerificationService))
-    private readonly authVerificationService: AuthVerificationService,
-    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService
+    private readonly authVerificationService: AuthVerificationService
   ) {}
 
   /**
@@ -82,16 +82,13 @@ export class SessionsController {
    */
   @Get()
   @HttpCode(HttpStatus.OK)
+  @SuccessMessage('auth.Auth.Session.FetchSuccess')
   async getSessions(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Query() query: GetSessionsQueryDto
   ): Promise<GetGroupedSessionsResponseDto> {
-    try {
-      this.logger.debug(`[getSessions] Lấy danh sách phiên đăng nhập cho userId ${activeUser.userId}`)
-      return await this.sessionsService.getSessions(activeUser.userId, query.page, query.limit, activeUser.sessionId)
-    } catch (error) {
-      this.handleError(error, 'getSessions')
-    }
+    this.logger.debug(`[getSessions] Getting session list for userId ${activeUser.userId}`)
+    return this.sessionsService.getSessions(activeUser.userId, query.page, query.limit, activeUser.sessionId)
   }
 
   /**
@@ -104,71 +101,57 @@ export class SessionsController {
     @Body() body: RevokeSessionsBodyDto,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
-    @Res({ passthrough: true }) res: Response,
-    @Req() req: Request
-  ): Promise<any> {
-    try {
-      const userContext = this.getUserContext(activeUser)
-      const { sessionIds, deviceIds, excludeCurrentSession } = body
+    @Res({ passthrough: true }) res: Response
+  ): Promise<{ message: string; data: RevokeSessionsResponseDto | VerificationNeededResponseDto }> {
+    const userContext = this.getUserContext(activeUser)
+    const { sessionIds, deviceIds, excludeCurrentSession } = body
 
-      this.logger.debug(
-        `[revokeSessions] User ${userContext.userId} requests revocation - ` +
-          `SessionIds: ${JSON.stringify(sessionIds ?? [])}, ` +
-          `DeviceIds: ${JSON.stringify(deviceIds ?? [])}, ` +
-          `ExcludeCurrent: ${excludeCurrentSession}`
-      )
+    this.logger.debug(`[revokeSessions] User ${userContext.userId} requests revocation.`)
 
-      const revocationOptions = { sessionIds, deviceIds, excludeCurrentSession }
+    const revocationOptions = { sessionIds, deviceIds, excludeCurrentSession }
+    const requiresVerification = await this.sessionsService.checkIfActionRequiresVerification(
+      userContext.userId,
+      revocationOptions
+    )
 
-      const requiresVerification = await this.sessionsService.checkIfActionRequiresVerification(
-        userContext.userId,
-        revocationOptions
-      )
+    if (requiresVerification) {
+      this.logger.debug(`[revokeSessions] Additional verification required for user ${userContext.userId}`)
+      if (!userContext.email) {
+        throw AuthError.InternalServerError('Active user email missing in token.')
+      }
 
-      if (requiresVerification) {
-        this.logger.debug(`[revokeSessions] Additional verification required for user ${userContext.userId}`)
-
-        if (!activeUser.email) {
-          throw AuthError.InternalServerError('Active user email missing in token for session revocation.')
-        }
-
-        const verificationResult = await this.authVerificationService.initiateVerification(
-          {
-            userId: userContext.userId,
-            deviceId: userContext.deviceId,
-            email: activeUser.email,
-            ipAddress: ip,
-            userAgent,
-            purpose: TypeOfVerificationCode.REVOKE_SESSIONS,
-            metadata: {
-              ...revocationOptions,
-              currentSessionId: userContext.sessionId,
-              currentDeviceId: userContext.deviceId
-            }
-          },
-          res
-        )
-        return {
-          message: verificationResult.message,
-          data: {
-            requiresAdditionalVerification: true,
-            verificationType: verificationResult.verificationType
+      const verificationResult = await this.authVerificationService.initiateVerification(
+        {
+          userId: userContext.userId,
+          deviceId: userContext.deviceId,
+          email: userContext.email,
+          ipAddress: ip,
+          userAgent,
+          purpose: TypeOfVerificationCode.REVOKE_SESSIONS,
+          metadata: {
+            ...revocationOptions,
+            currentSessionId: userContext.sessionId,
+            currentDeviceId: userContext.deviceId
           }
-        }
-      }
-
-      // If no verification is needed, proceed with revocation.
-      const result = await this.sessionsService.revokeItems(userContext.userId, revocationOptions, userContext)
-
+        },
+        res
+      )
       return {
-        message: result.message || this.i18nService.t('auth.Auth.Session.RevokedSuccessfully' as I18nPath),
+        message: verificationResult.message,
         data: {
-          revokedSessionsCount: result.revokedSessionsCount,
-          untrustedDevicesCount: result.untrustedDevicesCount
+          requiresAdditionalVerification: true,
+          verificationType: verificationResult.verificationType
         }
       }
-    } catch (error) {
-      this.handleError(error, 'revokeSessions')
+    }
+
+    const result = await this.sessionsService.revokeItems(userContext.userId, revocationOptions, userContext)
+    return {
+      message: result.message,
+      data: {
+        revokedSessionsCount: result.revokedSessionsCount,
+        untrustedDevicesCount: result.untrustedDevicesCount
+      }
     }
   }
 
@@ -182,45 +165,38 @@ export class SessionsController {
     @Body() body: RevokeAllSessionsBodyDto,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
-    @Res({ passthrough: true }) res: Response,
-    @Req() req: Request
-  ): Promise<any> {
-    try {
-      const userContext = this.getUserContext(activeUser)
-      this.logger.debug(
-        `[revokeAllSessions] User ${userContext.userId} requests to revoke all sessions. ExcludeCurrent: ${body.excludeCurrentSession}`
-      )
+    @Res({ passthrough: true }) res: Response
+  ): Promise<{ message: string; data: VerificationNeededResponseDto }> {
+    const userContext = this.getUserContext(activeUser)
+    this.logger.debug(`[revokeAllSessions] User ${userContext.userId} requests to revoke all sessions.`)
 
-      if (!activeUser.email) {
-        throw AuthError.InternalServerError('Active user email missing in token for session revocation.')
-      }
+    if (!userContext.email) {
+      throw AuthError.InternalServerError('Active user email missing in token.')
+    }
 
-      const verificationResult = await this.authVerificationService.initiateVerification(
-        {
-          userId: userContext.userId,
-          deviceId: userContext.deviceId,
-          email: activeUser.email,
-          ipAddress: ip,
-          userAgent,
-          purpose: TypeOfVerificationCode.REVOKE_ALL_SESSIONS,
-          metadata: {
-            excludeCurrentSession: body.excludeCurrentSession,
-            currentSessionId: userContext.sessionId,
-            currentDeviceId: userContext.deviceId
-          }
-        },
-        res
-      )
-
-      return {
-        message: verificationResult.message,
-        data: {
-          requiresAdditionalVerification: true,
-          verificationType: verificationResult.verificationType
+    const verificationResult = await this.authVerificationService.initiateVerification(
+      {
+        userId: userContext.userId,
+        deviceId: userContext.deviceId,
+        email: userContext.email,
+        ipAddress: ip,
+        userAgent,
+        purpose: TypeOfVerificationCode.REVOKE_ALL_SESSIONS,
+        metadata: {
+          excludeCurrentSession: body.excludeCurrentSession,
+          currentSessionId: userContext.sessionId,
+          currentDeviceId: userContext.deviceId
         }
+      },
+      res
+    )
+
+    return {
+      message: verificationResult.message,
+      data: {
+        requiresAdditionalVerification: true,
+        verificationType: verificationResult.verificationType
       }
-    } catch (error) {
-      this.handleError(error, 'revokeAllSessions')
     }
   }
 
@@ -231,7 +207,8 @@ export class SessionsController {
     return {
       userId: activeUser.userId,
       sessionId: activeUser.sessionId,
-      deviceId: activeUser.deviceId
+      deviceId: activeUser.deviceId,
+      email: activeUser.email
     }
   }
 
@@ -244,24 +221,17 @@ export class SessionsController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Param() params: DeviceIdParamsDto,
     @Body() body: UpdateDeviceNameBodyDto
-  ): Promise<any> {
-    try {
-      this.logger.debug(
-        `[updateDeviceName] User ${activeUser.userId} cập nhật tên thiết bị ${params.deviceId}: "${body.name}"`
-      )
-
-      await this.sessionsService.updateDeviceName(activeUser.userId, params.deviceId, body.name)
-
-      return {
-        message: await this.i18nService.t('auth.Auth.Device.NameUpdated' as I18nPath),
-        data: {
-          deviceId: params.deviceId,
-          name: body.name,
-          success: true
-        }
+  ): Promise<{ message: string; data: UpdateDeviceNameResponseDto }> {
+    this.logger.debug(
+      `[updateDeviceName] User ${activeUser.userId} updating device name ${params.deviceId} to "${body.name}"`
+    )
+    await this.sessionsService.updateDeviceName(activeUser.userId, params.deviceId, body.name)
+    return {
+      message: 'auth.Auth.Device.NameUpdated',
+      data: {
+        deviceId: params.deviceId,
+        name: body.name
       }
-    } catch (error) {
-      return this.handleError(error, 'updateDeviceName')
     }
   }
 
@@ -270,23 +240,11 @@ export class SessionsController {
    */
   @Patch('current-device/trust')
   @HttpCode(HttpStatus.OK)
-  async trustCurrentDevice(
-    @ActiveUser() activeUser: AccessTokenPayload,
-    @Ip() ip: string,
-    @UserAgent() userAgent: string
-  ): Promise<any> {
-    try {
-      this.logger.debug(
-        `[trustCurrentDevice] User ${activeUser.userId} đánh dấu tin cậy thiết bị hiện tại ${activeUser.deviceId}`
-      )
-
-      await this.sessionsService.trustCurrentDevice(activeUser.userId, activeUser.deviceId)
-
-      return {
-        message: await this.i18nService.t('auth.Auth.Device.Trusted' as I18nPath)
-      }
-    } catch (error) {
-      return this.handleError(error, 'trustCurrentDevice')
+  async trustCurrentDevice(@ActiveUser() activeUser: AccessTokenPayload): Promise<{ message: string }> {
+    this.logger.debug(`[trustCurrentDevice] User ${activeUser.userId} trusting device ${activeUser.deviceId}`)
+    await this.sessionsService.trustCurrentDevice(activeUser.userId, activeUser.deviceId)
+    return {
+      message: 'auth.Auth.Device.Trusted'
     }
   }
 
@@ -295,34 +253,17 @@ export class SessionsController {
    */
   @Patch('devices/:deviceId/untrust')
   @HttpCode(HttpStatus.OK)
-  async untrustDevice(@ActiveUser() activeUser: AccessTokenPayload, @Param() params: DeviceIdParamsDto): Promise<any> {
-    try {
-      this.logger.debug(`[untrustDevice] User ${activeUser.userId} hủy bỏ tin cậy thiết bị ${params.deviceId}`)
-
-      await this.sessionsService.untrustDevice(activeUser.userId, params.deviceId)
-
-      return {
-        message: await this.i18nService.t('auth.Auth.Device.Untrusted' as I18nPath),
-        data: {
-          deviceId: params.deviceId,
-          success: true
-        }
+  async untrustDevice(
+    @ActiveUser() activeUser: AccessTokenPayload,
+    @Param() params: DeviceIdParamsDto
+  ): Promise<{ message: string; data: { deviceId: number } }> {
+    this.logger.debug(`[untrustDevice] User ${activeUser.userId} untrusting device ${params.deviceId}`)
+    await this.sessionsService.untrustDevice(activeUser.userId, params.deviceId)
+    return {
+      message: 'auth.Auth.Device.Untrusted',
+      data: {
+        deviceId: params.deviceId
       }
-    } catch (error) {
-      return this.handleError(error, 'untrustDevice')
     }
-  }
-
-  /**
-   * Xử lý lỗi tập trung
-   */
-  private handleError(error: any, methodName: string): never {
-    this.logger.error(`[${methodName}] Lỗi: ${error.message}`, error.stack)
-
-    if (error instanceof HttpException) {
-      throw error
-    }
-
-    throw AuthError.InternalServerError(error.message)
   }
 }

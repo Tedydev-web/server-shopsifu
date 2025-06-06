@@ -26,284 +26,239 @@ export type I18nTranslations = {
                 "ResetSuccess": string;
                 "ChangeSuccess": string;
             };
-            "2FA": {
-                "Setup": {
-                    "Success": string;
-                };
-                "Confirm": {
-                    "Success": string;
-                };
-                "Verify": {
-                    "Success": string;
-                    "AskToTrustDevice": string;
-                };
-                "Enabled": string;
-                "Disable": {
-                    "Success": string;
-                    "Failed": string;
-                };
-                "RecoveryCodesRegenerated": string;
-            };
-            "Otp": {
-                "SentSuccessfully": string;
-                "Verified": string;
-                "CooldownActive": string;
-            };
             "Token": {
                 "Refreshed": string;
-                "Invalid": string;
             };
-            "Session": {
-                "Revoked": string;
-                "RevokedSuccessfully": string;
-                "AllRevoked": string;
-                "Expired": string;
-                "ReverifiedSuccessfully": string;
-                "SendReverificationOtpSuccess": string;
-                "RevokedSuccessfullyCount": string;
-                "NoSessionsToRevoke": string;
-                "RequiresAdditionalVerification": string;
-                "VerificationRequired": string;
-                "SltMissing": string;
-                "NotFound": string;
-                "MaxSessionsReached": string;
-                "InsufficientDataForRevocation": string;
-            };
-            "Device": {
-                "Trusted": string;
-                "AlreadyTrusted": string;
-                "Untrusted": string;
-                "AlreadyUntrusted": string;
-                "NameUpdated": string;
-                "NameUpdatedSuccessfully": string;
-                "NotFound": string;
-                "NotOwnedByUser": string;
-                "LogoutSpecificSuccess": string;
-                "Invalid": string;
-                "Mismatch": string;
-                "SetupFailed": string;
-                "AssociationFailed": string;
-                "MissingSessionCreationTime": string;
-                "NotFoundForUser": string;
-                "MaxDevicesReached": string;
-                "ProcessingFailed": string;
+            "RememberMe": {
+                "Set": string;
             };
             "Google": {
+                "UrlGeneratedSuccess": string;
                 "LoginSuccess": string;
                 "SuccessProceedToSecurityChecks": string;
                 "LinkSuccess": string;
                 "LinkCancelled": string;
                 "AccountNeedsLinking": string;
-                "AccountAlreadyLinked": string;
                 "ConfirmLinkDetailsMessage": string;
                 "Link": {
                     "CancelledSuccessfully": string;
                     "NoPendingStateToCancel": string;
                 };
-                "Device": {
-                    "Invalid": string;
-                    "Mismatch": string;
-                    "SetupFailed": string;
-                    "AssociationFailed": string;
-                    "MissingSessionCreationTime": string;
-                    "NotFoundForUser": string;
-                    "MaxDevicesReached": string;
-                    "ProcessingFailed": string;
-                    "MissingInformation": string;
-                };
-                "Social": {
-                    "InvalidToken": string;
-                };
             };
-            "RememberMe": {
-                "Set": string;
+            "Session": {
+                "FetchSuccess": string;
+            };
+            "Otp": {
+                "SentSuccessfully": string;
+            };
+            "2FA": {
+                "Verify": {
+                    "AskToTrustDevice": string;
+                };
             };
             "Error": {
-                "Email": {
-                    "AlreadyExists": string;
-                    "NotFound": string;
+                "User": {
+                    "EmailNotFound": string;
+                    "EmailAlreadyExists": string;
+                    "PhoneNumberAlreadyExists": string;
+                    "UsernameAlreadyExists": string;
+                    "InvalidPassword": string;
+                    "AccountLocked": string;
+                    "AccountNotActive": string;
                 };
-                "Password": {
-                    "Invalid": string;
-                    "Mismatch": string;
-                };
-                "Username": {
-                    "AlreadyExists": string;
-                };
-                "Register": {
-                    "UsernameTaken": string;
-                    "PhoneNumberTaken": string;
+                "Token": {
+                    "InvalidAccessToken": string;
+                    "InvalidRefreshToken": string;
+                    "MissingRefreshToken": string;
+                    "MissingAccessToken": string;
+                    "AccessTokenExpired": string;
+                    "RefreshTokenExpired": string;
+                    "RefreshTokenAlreadyUsed": string;
                 };
                 "Otp": {
                     "Invalid": string;
                     "Expired": string;
-                    "FailedToSend": string;
                     "TooManyAttempts": string;
-                };
-                "OtpToken": {
-                    "Invalid": string;
-                    "Expired": string;
-                };
-                "Token": {
-                    "Invalid": string;
-                    "MissingAccessToken": string;
-                    "InvalidAccessToken": string;
-                    "ExpiredAccessToken": string;
-                    "MissingRefreshToken": string;
-                    "InvalidRefreshToken": string;
-                    "ExpiredRefreshToken": string;
-                    "RefreshTokenAlreadyUsed": string;
-                    "RefreshFailed": string;
-                };
-                "Access": {
-                    "Unauthorized": string;
-                    "Denied": string;
-                };
-                "Session": {
-                    "InvalidLogin": string;
-                    "SltMissing": string;
-                    "NotFound": string;
-                    "MaxSessionsReached": string;
-                    "AbsoluteLifetimeExceeded": string;
-                    "CannotRevokeCurrent": string;
-                    "MissingSessionIdInToken": string;
-                    "InvalidRevokeOperation": string;
-                    "RevokedRemotely": string;
-                    "InsufficientDataForRevocation": string;
+                    "FailedToSend": string;
+                    "CooldownActive": string;
                 };
                 "SLT": {
                     "CookieMissing": string;
-                    "InvalidPurpose": string;
                     "Expired": string;
+                    "Invalid": string;
+                    "InvalidPurpose": string;
                     "EmailMissingInContext": string;
+                    "AlreadyUsed": string;
                 };
                 "2FA": {
-                    "InvalidTOTP": string;
                     "AlreadyEnabled": string;
                     "NotEnabled": string;
+                    "InvalidTOTP": string;
                     "InvalidRecoveryCode": string;
-                    "InvalidCodeFormat": string;
+                    "InvalidVerificationMethod": string;
+                    "Disable": {
+                        "Success": string;
+                        "Failed": string;
+                    };
+                    "Confirm": {
+                        "Success": string;
+                    };
+                    "Verify": {
+                        "Success": string;
+                    };
+                    "Setup": {
+                        "Success": string;
+                    };
+                    "RecoveryCodesRegenerated": string;
+                };
+                "Session": {
+                    "RevokedRemotely": string;
+                    "NotFound": string;
+                    "CannotRevokeCurrent": string;
+                    "MissingSessionIdInToken": string;
+                    "InsufficientDataForRevocation": string;
                 };
                 "Device": {
-                    "Invalid": string;
-                    "Mismatch": string;
-                    "SetupFailed": string;
-                    "AssociationFailed": string;
-                    "MissingSessionCreationTime": string;
-                    "NotFoundForUser": string;
-                    "MaxDevicesReached": string;
+                    "NotFound": string;
+                    "NotOwnedByUser": string;
                     "ProcessingFailed": string;
                     "MissingInformation": string;
                 };
-                "Social": {
-                    "InvalidToken": string;
+                "Permissions": {
+                    "Insufficient": string;
                 };
                 "Google": {
                     "UserInfoFailed": string;
                     "CallbackErrorGeneric": string;
                     "MissingCode": string;
-                    "StateMismatch": string;
+                    "InvalidToken": string;
                     "InvalidPayload": string;
                     "AccountConflict": string;
                     "AlreadyLinkedToOtherGoogle": string;
-                    "GoogleIdConflict": string;
                     "LinkAccountFailed": string;
                     "Link": {
                         "NoPendingState": string;
-                        "InvalidPendingState": string;
-                        "CompleteFailed": string;
                     };
+                };
+                "Verification": {
+                    "Failed": string;
                 };
             };
         };
     };
     "email": {
         "Email": {
-            "OTPSubject": {
-                "Register": string;
-                "ResetPassword": string;
-                "LOGIN_UNTRUSTED_DEVICE_OTP": string;
-                "LOGIN_UNTRUSTED_DEVICE_2FA": string;
-                "Default": string;
-            };
-            "SecurityAlert": {
-                "Title": {
-                    "PasswordChanged": string;
-                    "NewDeviceLogin": string;
-                    "Default": string;
-                };
-                "MainMessage": {
-                    "PasswordChanged": string;
-                    "NewDeviceLogin": string;
-                    "Default": string;
-                };
-                "SecondaryMessage": {
-                    "PasswordChanged": string;
-                    "NewDeviceLogin": string;
-                    "Default": string;
-                };
-                "Button": {
-                    "ChangePassword": string;
-                    "ReviewActivity": string;
-                    "SecureAccount": string;
-                };
-                "Subject": {
-                    "PasswordChanged": string;
-                    "NewDeviceLogin": string;
-                    "Default": string;
-                };
-            };
             "otp": {
-                "register": {
+                "default": {
+                    "subject": string;
                     "headline": string;
                     "content": string;
                 };
-                "resetPassword": {
+                "REGISTER": {
+                    "subject": string;
                     "headline": string;
                     "content": string;
                 };
-                "login": {
+                "RESET_PASSWORD": {
+                    "subject": string;
                     "headline": string;
                     "content": string;
                 };
-                "LOGIN_UNTRUSTED_DEVICE_2FA": {
+                "LOGIN": {
+                    "subject": string;
                     "headline": string;
                     "content": string;
                 };
-                "disable_2fa": {
+                "DISABLE_2FA": {
+                    "subject": string;
                     "headline": string;
                     "content": string;
                 };
-                "setup_2fa": {
+                "SETUP_2FA": {
+                    "subject": string;
                     "headline": string;
                     "content": string;
                 };
-                "login_untrusted_device_otp": {
+                "REGENERATE_2FA_CODES": {
+                    "subject": string;
                     "headline": string;
                     "content": string;
                 };
-                "reverify_session_otp": {
+                "VERIFY_NEW_EMAIL": {
+                    "subject": string;
                     "headline": string;
                     "content": string;
                 };
-                "verify_new_email": {
+                "UNLINK_GOOGLE_ACCOUNT": {
+                    "subject": string;
                     "headline": string;
                     "content": string;
                 };
-                "codeLabel": string;
-                "validity": string;
+                "REVOKE_SESSIONS": {
+                    "subject": string;
+                    "headline": string;
+                    "content": string;
+                };
+                "REVOKE_ALL_SESSIONS": {
+                    "subject": string;
+                    "headline": string;
+                    "content": string;
+                };
+                "common": {
+                    "codeLabel": string;
+                    "validity": string;
+                    "disclaimer": string;
+                };
             };
-            "disclaimer": string;
-            "Field": {
-                "ContactUs": string;
-                "Time": string;
-                "IPAddress": string;
-                "Device": string;
-                "Location": string;
-                "LocationUnknown": string;
-                "footer": {
-                    "copyright": string;
-                    "contactUs": string;
+            "securityAlert": {
+                "default": {
+                    "subject": string;
+                };
+                "PASSWORD_CHANGED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
+                "NEW_DEVICE_LOGIN": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
+                "TWO_FACTOR_ENABLED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
+            };
+            "welcome": {
+                "subject": string;
+                "headline": string;
+                "content": string;
+                "buttonText": string;
+            };
+            "recoveryCodes": {
+                "subject": string;
+                "headline": string;
+                "content": string;
+                "codesLabel": string;
+                "warning": string;
+            };
+            "common": {
+                "hello": string;
+                "contactUs": string;
+                "copyright": string;
+                "locationUnknown": string;
+                "details": {
+                    "time": string;
+                    "ipAddress": string;
+                    "device": string;
+                    "location": string;
                 };
             };
         };

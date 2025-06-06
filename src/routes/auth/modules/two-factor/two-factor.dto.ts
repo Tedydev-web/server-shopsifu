@@ -2,81 +2,50 @@ import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
 import { PickedUserProfileResponseSchema } from 'src/shared/dtos/user.dto'
 
-// Setup 2FA DTOs
-export const TwoFactorSetupSchema = z.object({
-  // Không yêu cầu body input cho API này
+// ===================================================================================
+// Schemas for Request Bodies
+// ===================================================================================
+
+export const TwoFactorVerifySchema = z.object({
+  code: z.string().min(6, { message: 'Mã xác thực phải có ít nhất 6 ký tự' }),
+  rememberMe: z.boolean().optional().default(false)
 })
 
-export const TwoFactorSetupResponseSchema = z.object({
-  success: z.boolean(),
-  message: z.string(),
+// ===================================================================================
+// Schemas for Response Data (to be wrapped by TransformInterceptor)
+// ===================================================================================
+
+/**
+ * Dữ liệu trả về khi bắt đầu thiết lập 2FA.
+ */
+export const TwoFactorSetupDataSchema = z.object({
   secret: z.string(),
   uri: z.string()
 })
 
-// Confirm 2FA Setup DTOs
-export const TwoFactorConfirmSetupSchema = z.object({
-  code: z.string().min(6, { message: 'Mã xác thực TOTP phải có ít nhất 6 ký tự' })
-})
-
-export const TwoFactorConfirmSetupResponseSchema = z.object({
-  success: z.boolean(),
-  message: z.string(),
+/**
+ * Dữ liệu trả về sau khi xác nhận 2FA thành công hoặc tạo lại mã.
+ */
+export const TwoFactorRecoveryCodesDataSchema = z.object({
   recoveryCodes: z.array(z.string())
 })
 
-// Verify 2FA DTOs
-export const TwoFactorVerifySchema = z.object({
-  code: z.string().min(6, { message: 'Mã xác thực phải có ít nhất 6 ký tự' }),
-  method: z.enum(['TOTP', 'RECOVERY']).optional(),
-  rememberMe: z.boolean().optional().default(false)
+/**
+ * Dữ liệu trả về khi cần xác minh (response từ /setup, /disable, etc.).
+ */
+export const VerificationNeededResponseSchema = z.object({
+  requiresAdditionalVerification: z.literal(true).default(true),
+  verificationType: z.enum(['2FA', 'OTP']).optional()
 })
 
-export const TwoFactorVerifyResponseSchema = z.object({
-  message: z.string(),
-  requiresDeviceVerification: z.boolean().optional(),
-  verifiedMethod: z.enum(['TOTP', 'RECOVERY_CODE', 'OTP']).optional(),
-  user: z
-    .object({
-      id: z.number(),
-      email: z.string(),
-      roleName: z.string(),
-      isDeviceTrustedInSession: z.boolean(),
-      userProfile: PickedUserProfileResponseSchema.nullable().optional()
-    })
-    .optional()
-})
+// ===================================================================================
+// DTO Classes
+// ===================================================================================
 
-// Disable 2FA DTOs
-export const DisableTwoFactorSchema = z.object({
-  code: z.string().min(6, { message: 'Mã xác thực phải có ít nhất 6 ký tự' }),
-  method: z.enum(['TOTP', 'RECOVERY', 'PASSWORD']).optional()
-})
-
-export const DisableTwoFactorResponseSchema = z.object({
-  success: z.boolean(),
-  message: z.string()
-})
-
-// Regenerate Recovery Codes DTOs
-export const RegenerateRecoveryCodesSchema = z.object({
-  code: z.string().min(6, { message: 'Mã xác thực phải có ít nhất 6 ký tự' })
-})
-
-export const RegenerateRecoveryCodesResponseSchema = z.object({
-  success: z.boolean(),
-  message: z.string(),
-  recoveryCodes: z.array(z.string())
-})
-
-// Create DTO classes
-export class TwoFactorSetupDto extends createZodDto(TwoFactorSetupSchema) {}
-export class TwoFactorSetupResponseDto extends createZodDto(TwoFactorSetupResponseSchema) {}
-export class TwoFactorConfirmSetupDto extends createZodDto(TwoFactorConfirmSetupSchema) {}
-export class TwoFactorConfirmSetupResponseDto extends createZodDto(TwoFactorConfirmSetupResponseSchema) {}
+// --- Request DTOs ---
 export class TwoFactorVerifyDto extends createZodDto(TwoFactorVerifySchema) {}
-export class TwoFactorVerifyResponseDto extends createZodDto(TwoFactorVerifyResponseSchema) {}
-export class DisableTwoFactorDto extends createZodDto(DisableTwoFactorSchema) {}
-export class DisableTwoFactorResponseDto extends createZodDto(DisableTwoFactorResponseSchema) {}
-export class RegenerateRecoveryCodesDto extends createZodDto(RegenerateRecoveryCodesSchema) {}
-export class RegenerateRecoveryCodesResponseDto extends createZodDto(RegenerateRecoveryCodesResponseSchema) {}
+
+// --- Response DTOs ---
+export class TwoFactorSetupDataDto extends createZodDto(TwoFactorSetupDataSchema) {}
+export class TwoFactorRecoveryCodesDataDto extends createZodDto(TwoFactorRecoveryCodesDataSchema) {}
+export class VerificationNeededResponseDto extends createZodDto(VerificationNeededResponseSchema) {}

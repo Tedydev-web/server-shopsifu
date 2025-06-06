@@ -5,10 +5,13 @@ import { Resend } from 'resend'
 import * as React from 'react'
 import { render } from '@react-email/render'
 import { I18nContext } from 'nestjs-i18n'
+import { TypeOfVerificationCodeType } from 'src/routes/auth/shared/constants/auth.constants'
+import I18nEmail from 'src/i18n/vi/email.json'
+import { I18nPath } from 'src/generated/i18n.generated'
 
 // Import các template email
-import OTPEmail from 'emails/otp'
-import SecurityAlertEmail from 'emails/security-alert'
+import OtpEmail from 'emails/otp-email'
+import SecurityAlertEmail from 'emails/security-alert-email'
 
 // Các loại cảnh báo bảo mật
 export enum SecurityAlertType {
@@ -38,14 +41,15 @@ export interface SecurityAlertEmailPayload {
   actionButtonText?: string
   actionButtonUrl?: string
   secondaryMessage?: string
+  lang?: 'vi' | 'en'
 }
 
 // Payload cho email OTP
 export interface OtpEmailPayload {
   email: string
   otpCode: string
-  otpType: string
-  title?: string
+  otpType: TypeOfVerificationCodeType
+  lang?: 'vi' | 'en'
 }
 
 /**
@@ -91,48 +95,24 @@ export class EmailService {
    * Gửi email OTP
    */
   async sendOtpEmail(payload: OtpEmailPayload): Promise<void> {
+    const { email, otpCode, otpType } = payload
+    this.logger.debug(`Preparing OTP email for ${email}, type: ${otpType}`)
+
     try {
-      const { email, otpCode, otpType } = payload
-      const lang = I18nContext.current()?.lang || 'vi'
+      // Xác định ngôn ngữ, mặc định là 'vi'
+      const lang = I18nContext.current()?.lang === 'en' ? 'en' : 'vi'
 
-      // Dịch tiêu đề
-      const titleKey = this.i18nService.t(`email.Email.OTPSubject.${otpType}`)
-      const title: string = await this.i18nService.t(titleKey, { lang })
+      // Render a component react thành HTML
+      const emailHtml = await render(React.createElement(OtpEmail, { otpCode, otpType, lang }))
 
-      // Dịch tiêu đề chính và nội dung
-      const headingText: string = await this.i18nService.t(`email.Email.otp.${otpType.toLowerCase()}.headline`, {
-        lang
-      })
-      const contentText: string = await this.i18nService.t(`email.Email.otp.${otpType.toLowerCase()}.content`, {
-        lang
-      })
-      const codeLabel: string = await this.i18nService.t('email.Email.otp.codeLabel', { lang })
-      const validityText: string = await this.i18nService.t('email.Email.otp.validity', { lang })
+      // Lấy chủ đề email từ cấu trúc i18n
+      const subject = (I18nEmail.Email.otp[otpType] as any)?.subject || I18nEmail.Email.otp.default.subject
 
-      // Dịch phần footer
-      const disclaimerText: string = await this.i18nService.t('email.Email.disclaimer', { lang })
-      const contactUsText: string = await this.i18nService.t('email.Email.common.contactUs', { lang })
-      const copyrightText: string = await this.i18nService.t('email.Email.common.footer.copyright', {
-        lang,
-        args: { year: new Date().getFullYear().toString() }
-      })
-
-      // Gửi email với nội dung đã được dịch
       await this.resend.emails.send({
         from: this.notificationEmailFrom,
         to: email,
-        subject: title,
-        react: OTPEmail({
-          otpCode,
-          title,
-          headingText,
-          contentText,
-          codeLabel,
-          validityText,
-          disclaimerText,
-          contactUsText,
-          copyrightText
-        })
+        subject: subject,
+        html: emailHtml
       })
 
       this.logger.log(`Email OTP ${otpCode} đã được gửi đến ${email} cho mục đích ${otpType}`)
@@ -152,7 +132,7 @@ export class EmailService {
   ): Promise<void> {
     try {
       // Chuẩn bị nội dung email dựa trên loại cảnh báo
-      const alertContent = await this.prepareSecurityAlertContent(alertType, email, metadata)
+      const alertContent = this.prepareSecurityAlertContent(alertType, email, metadata)
 
       // Render email với React
       let emailHtml: string
@@ -194,13 +174,16 @@ export class EmailService {
   /**
    * Chuẩn bị nội dung email cảnh báo bảo mật
    */
-  private async prepareSecurityAlertContent(
+  private prepareSecurityAlertContent(
     alertType: SecurityAlertType,
     email: string,
     metadata?: Record<string, any>
-  ): Promise<SecurityAlertEmailPayload> {
-    const lang = I18nContext.current()?.lang || 'vi'
+  ): SecurityAlertEmailPayload {
+    const currentLang = I18nContext.current()?.lang
+    const lang = currentLang === 'en' ? 'en' : 'vi'
     const userName = metadata?.userName
+
+    const t = (key: string, options?: any) => this.i18nService.t(key as I18nPath, { lang, ...options }) as string
 
     let alertSubject: string
     let alertTitle: string
@@ -213,78 +196,60 @@ export class EmailService {
     // Lấy các nội dung đã được dịch
     switch (alertType) {
       case SecurityAlertType.PASSWORD_CHANGED:
-        alertSubject = await this.i18nService.t('email.Email.SecurityAlert.Subject.PasswordChanged', { lang })
-        alertTitle = await this.i18nService.t('email.Email.SecurityAlert.Title.PasswordChanged', { lang })
-        mainMessage = await this.i18nService.t('email.Email.SecurityAlert.MainMessage.PasswordChanged', { lang })
-        secondaryMessage = await this.i18nService.t('email.Email.SecurityAlert.SecondaryMessage.Password.NotYou', {
-          lang
-        })
-        actionButtonText = await this.i18nService.t('email.Email.SecurityAlert.Button.ChangePassword', { lang })
+        alertSubject = t('email.Email.securityAlert.PASSWORD_CHANGED.subject')
+        alertTitle = t('email.Email.securityAlert.PASSWORD_CHANGED.title')
+        mainMessage = t('email.Email.securityAlert.PASSWORD_CHANGED.mainMessage')
+        secondaryMessage = t('email.Email.securityAlert.PASSWORD_CHANGED.secondaryMessage')
+        actionButtonText = t('email.Email.securityAlert.PASSWORD_CHANGED.buttonText')
         actionButtonUrl = `${this.frontendUrl}/account/security/change-password`
         actionDetails = [
           {
-            label: await this.i18nService.t('email.Email.Field.Time', { lang }),
+            label: t('email.Email.common.details.time'),
             value: new Date().toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US')
           },
           {
-            label: await this.i18nService.t('email.Email.Field.IPAddress', { lang }),
-            value: metadata?.ipAddress || 'Unknown'
+            label: t('email.Email.common.details.ipAddress'),
+            value: metadata?.ipAddress || t('email.Email.common.locationUnknown')
           }
         ]
         break
 
       case SecurityAlertType.LOGIN_FROM_NEW_DEVICE:
-        alertSubject = await this.i18nService.t('email.Email.SecurityAlert.Subject.NewDeviceLogin', { lang })
-        alertTitle = await this.i18nService.t('email.Email.SecurityAlert.Title.NewDeviceLogin', { lang })
-        mainMessage = await this.i18nService.t('email.Email.SecurityAlert.MainMessage.NewDeviceLogin', { lang })
-        secondaryMessage = await this.i18nService.t('email.Email.SecurityAlert.SecondaryMessage.NotYou', { lang })
-        actionButtonText = await this.i18nService.t('email.Email.SecurityAlert.Button.ReviewActivity', { lang })
+        alertSubject = t('email.Email.securityAlert.NEW_DEVICE_LOGIN.subject')
+        alertTitle = t('email.Email.securityAlert.NEW_DEVICE_LOGIN.title')
+        mainMessage = t('email.Email.securityAlert.NEW_DEVICE_LOGIN.mainMessage')
+        secondaryMessage = t('email.Email.securityAlert.NEW_DEVICE_LOGIN.secondaryMessage')
+        actionButtonText = t('email.Email.securityAlert.NEW_DEVICE_LOGIN.buttonText')
         actionButtonUrl = `${this.frontendUrl}/account/sessions`
         actionDetails = [
           {
-            label: await this.i18nService.t('email.Email.Field.Time', { lang }),
+            label: t('email.Email.common.details.time'),
             value: new Date().toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US')
           },
           {
-            label: await this.i18nService.t('email.Email.Field.IPAddress', { lang }),
-            value: metadata?.ipAddress || 'Unknown'
+            label: t('email.Email.common.details.ipAddress'),
+            value: metadata?.ipAddress || t('email.Email.common.locationUnknown')
           },
           {
-            label: await this.i18nService.t('email.Email.Field.Device', { lang }),
+            label: t('email.Email.common.details.device'),
             value: metadata?.device || 'Unknown'
           },
           {
-            label: await this.i18nService.t('email.Email.Field.Location', { lang }),
-            value: metadata?.location || (await this.i18nService.t('email.Email.Field.LocationUnknown', { lang }))
+            label: t('email.Email.common.details.location'),
+            value: metadata?.location || t('email.Email.common.locationUnknown')
           }
         ]
         break
 
       default:
-        alertSubject = await this.i18nService.t('email.Email.SecurityAlert.Subject.Default', { lang })
-        alertTitle = await this.i18nService.t('email.Email.SecurityAlert.Title.NewDeviceLogin', { lang })
-        mainMessage = await this.i18nService.t('email.Email.SecurityAlert.MainMessage.NewDeviceLogin', { lang })
-        secondaryMessage = await this.i18nService.t('email.Email.SecurityAlert.SecondaryMessage.NotYou', { lang })
-        actionButtonText = await this.i18nService.t('email.Email.SecurityAlert.Button.SecureAccount', { lang })
-        actionButtonUrl = `${this.frontendUrl}/account/security`
-        actionDetails = [
-          {
-            label: await this.i18nService.t('email.Email.Field.Time', { lang }),
-            value: new Date().toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US')
-          },
-          {
-            label: await this.i18nService.t('email.Email.Field.IPAddress', { lang }),
-            value: metadata?.ipAddress || 'Unknown'
-          },
-          {
-            label: await this.i18nService.t('email.Email.Field.Device', { lang }),
-            value: metadata?.device || 'Unknown'
-          },
-          {
-            label: await this.i18nService.t('email.Email.Field.Location', { lang }),
-            value: metadata?.location || (await this.i18nService.t('email.Email.Field.LocationUnknown', { lang }))
-          }
-        ]
+        alertSubject = t('email.Email.securityAlert.default.subject')
+        alertTitle = t('email.Email.securityAlert.default.subject') // Fallback to subject
+        mainMessage = '' // No default message for unknown alerts
+        secondaryMessage = undefined
+        actionButtonText = undefined
+        actionButtonUrl = undefined
+        actionDetails = undefined
+        break
     }
 
     return {
@@ -296,7 +261,8 @@ export class EmailService {
       actionDetails,
       actionButtonText,
       actionButtonUrl,
-      secondaryMessage
+      secondaryMessage,
+      lang
     }
   }
 }

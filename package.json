@@ -95,6 +95,7 @@
     "@types/jest": "^29.5.14",
     "@types/node": "^22.15.17",
     "@types/passport-local": "^1.0.38",
+    "@types/qrcode": "^1.5.5",
     "@types/supertest": "^6.0.3",
     "@types/ua-parser-js": "^0.7.39",
     "eslint": "^9.26.0",

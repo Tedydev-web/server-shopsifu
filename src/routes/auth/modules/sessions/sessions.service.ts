@@ -10,13 +10,17 @@ import {
   REDIS_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { DeviceSessionGroupDto, GetGroupedSessionsResponseDto } from './session.dto'
+import { GetGroupedSessionsResponseDto, GetGroupedSessionsResponseSchema } from './session.dto'
 import { GeolocationService } from 'src/routes/auth/shared/services/common/geolocation.service'
 import { SessionRepository, DeviceRepository } from 'src/routes/auth/shared/repositories'
 import { Device } from '@prisma/client'
 import { I18nPath } from 'src/generated/i18n.generated'
 import { RedisService } from 'src/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { z } from 'zod'
+
+// Infer the type for a single device session group from the Zod schema
+type DeviceSessionGroup = z.infer<typeof GetGroupedSessionsResponseSchema.shape.data.element>
 
 @Injectable()
 export class SessionsService implements ISessionService {
@@ -51,7 +55,7 @@ export class SessionsService implements ISessionService {
     let devices = await this.deviceRepository.findDevicesByUserId(userId)
     devices = await this.ensureCurrentDeviceIncluded(currentSessionIdFromToken, devices)
 
-    const deviceGroups: DeviceSessionGroupDto[] = []
+    const deviceGroups: DeviceSessionGroup[] = []
 
     for (const device of devices) {
       const currentSessionDetails = await this.sessionRepository.findById(currentSessionIdFromToken)
@@ -118,7 +122,7 @@ export class SessionsService implements ISessionService {
     const paginatedDeviceGroups = deviceGroups.slice(startIndex, startIndex + itemsPerPage)
 
     return {
-      devices: paginatedDeviceGroups,
+      data: paginatedDeviceGroups,
       meta: { currentPage, itemsPerPage, totalItems, totalPages }
     }
   }

@@ -1,9 +1,11 @@
 import { createZodDto } from 'nestjs-zod'
 import { TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 import { z } from 'zod'
-import { UserAuthResponseSchema } from 'src/routes/auth/shared/schemas'
 
-// Send OTP DTOs
+// ===================================================================================
+// Schemas for Request Bodies
+// ===================================================================================
+
 export const SendOtpSchema = z.object({
   email: z.string().email(),
   purpose: z.nativeEnum(TypeOfVerificationCode),
@@ -11,53 +13,37 @@ export const SendOtpSchema = z.object({
   metadata: z.record(z.any()).optional()
 })
 
-export const SendOtpResponseSchema = z.object({
-  message: z.string()
-})
-
-// Verify OTP DTOs
-/**
- * Schema cho việc xác minh OTP
- */
 export const VerifyOtpSchema = z.object({
-  code: z.string().min(1, 'Code is required'),
-  purpose: z.string().optional()
+  code: z.string().min(1, 'Code is required')
 })
 
-export const VerifyOtpResponseSchema = z.object({
-  success: z.boolean(),
-  message: z.string(),
-  statusCode: z.number().optional(),
-  requiresDeviceVerification: z.boolean().optional(),
-  requiresAdditionalVerification: z.boolean().optional(),
-  redirectUrl: z.string().optional(),
-  user: UserAuthResponseSchema.optional()
-})
+// ===================================================================================
+// Schemas for Response Data (to be wrapped by TransformInterceptor)
+// ===================================================================================
 
-export const VerifyOtpWithRedirectSchema = z.object({
-  message: z.string(),
-  redirectUrl: z.string().optional()
-})
-
-// Schema khi xác minh OTP thành công và hoàn tất đăng nhập
-// Sử dụng UserAuthResponseSchema để đảm bảo đồng bộ với login response
-export const VerifyOtpSuccessResponseSchema = z.object({
-  success: z.literal(true),
-  message: z.string(),
+// For a successful verification that results in login/session creation
+export const OtpVerificationSuccessResponseSchema = z.object({
+  user: z.any(),
   tokens: z
     .object({
       accessToken: z.string(),
       refreshToken: z.string()
     })
-    .optional(),
-  user: z.any().optional(),
-  data: z.record(z.any()).optional()
+    .optional()
 })
 
-// DTO classes
+// For a successful verification that enables the next step (e.g., registration completion)
+export const OtpVerificationStepSuccessResponseSchema = z.object({
+  slt: z.string().optional()
+  // Add other relevant fields if necessary
+})
+
+// ===================================================================================
+// DTO Classes
+// ===================================================================================
+
 export class SendOtpDto extends createZodDto(SendOtpSchema) {}
-export class SendOtpResponseDto extends createZodDto(SendOtpResponseSchema) {}
 export class VerifyOtpDto extends createZodDto(VerifyOtpSchema) {}
-export class VerifyOtpResponseDto extends createZodDto(VerifyOtpResponseSchema) {}
-export class VerifyOtpWithRedirectDto extends createZodDto(VerifyOtpWithRedirectSchema) {}
-export class VerifyOtpSuccessResponseDto extends createZodDto(VerifyOtpSuccessResponseSchema) {}
+
+export class OtpVerificationSuccessResponseDto extends createZodDto(OtpVerificationSuccessResponseSchema) {}
+export class OtpVerificationStepSuccessResponseDto extends createZodDto(OtpVerificationStepSuccessResponseSchema) {}
