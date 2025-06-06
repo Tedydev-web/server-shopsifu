@@ -841,122 +841,57 @@ export class SessionsService implements ISessionService {
     reason: string = 'UNKNOWN_BULK_INVALIDATION',
     sessionIdToExclude?: string
   ): Promise<void> {
-    try {
-      interface RedisOperation {
-        command: string
-        args: any[]
-      }
+    this.logger.warn(
+      `[invalidateAllUserSessions] Bắt đầu vô hiệu hóa TẤT CẢ các session cho người dùng ${userId}, trừ session ${sessionIdToExclude}`
+    )
+    const startTime = Date.now()
 
-      // Get all sessions for this user
-      const sessionPattern = `session:*:${userId}:*`
-      const sessions = await this.redisService.keys(sessionPattern)
+    // TODO: Cân nhắc sử dụng một cơ chế tốt hơn để theo dõi các session của người dùng,
+    // ví dụ như dùng Redis Set, để tránh phải quét toàn bộ keyspace.
+    // Lệnh KEYS có thể gây block Redis trên production. Sử dụng SCAN để an toàn hơn.
+    let cursor = '0'
+    const sessionKeysToDelete: string[] = []
 
-      if (sessions.length === 0) {
-        return
-      }
+    do {
+      const [newCursor, keys] = await this.redisService.scan(
+        cursor,
+        'MATCH',
+        RedisKeyManager.sessionKey(`*:${userId}:*`),
+        'COUNT',
+        100
+      )
 
-      const operations: RedisOperation[] = []
-
-      for (const sessionKey of sessions) {
-        // Extract session ID from key
-        const sessionId = sessionKey.split(':')[1]
-
-        if (sessionIdToExclude && sessionId === sessionIdToExclude) {
-          continue
-        }
-
-        // Check if session data exists
-        const sessionData = await this.redisService.hgetall(sessionKey)
-
-        if (Object.keys(sessionData).length > 0) {
-          // Archive the session
-          const archivedKey = RedisKeyManager.sessionArchivedKey(sessionId)
-
-          if (this.geolocationService['cryptoService']) {
-            const cryptoService = this.geolocationService['cryptoService']
-            operations.push({
-              command: 'set',
-              args: [
-                archivedKey,
-                cryptoService.encrypt({
-                  ...sessionData,
-                  revokedAt: Date.now(),
-                  reason
-                }),
-                'EX',
-                this.configService.get('auth.session.archiveTtl', 30 * 24 * 60 * 60)
-              ]
-            })
-          } else {
-            const archiveDataEntries = Object.entries({
-              ...sessionData,
-              revokedAt: Date.now().toString(),
-              reason
-            }).flat()
-
-            operations.push({
-              command: 'hset',
-              args: [archivedKey, ...archiveDataEntries]
-            })
-
-            operations.push({
-              command: 'expire',
-              args: [archivedKey, this.configService.get('auth.session.archiveTtl', 30 * 24 * 60 * 60)]
-            })
-          }
-
-          // Mark session as invalidated
-          const invalidatedKey = RedisKeyManager.sessionInvalidatedKey(sessionId)
-          operations.push({
-            command: 'set',
-            args: [
-              invalidatedKey,
-              reason,
-              'EX',
-              this.configService.get('auth.session.invalidatedTtl', 7 * 24 * 60 * 60)
-            ]
-          })
-
-          // Delete session
-          operations.push({
-            command: 'del',
-            args: [sessionKey]
-          })
-
-          // Add to history
-          const historyKey = RedisKeyManager.sessionRevokeHistoryKey(sessionId)
-          operations.push({
-            command: 'lpush',
-            args: [
-              historyKey,
-              JSON.stringify({
-                timestamp: Date.now(),
-                reason
-              })
-            ]
-          })
-
-          operations.push({
-            command: 'ltrim',
-            args: [historyKey, 0, 9]
-          })
-
-          operations.push({
-            command: 'expire',
-            args: [historyKey, DEVICE_REVOKE_HISTORY_TTL]
-          })
+      for (const key of keys) {
+        const sessionId = key.split(':')[1]
+        if (sessionId !== sessionIdToExclude) {
+          sessionKeysToDelete.push(key)
         }
       }
+      cursor = newCursor
+    } while (cursor !== '0')
 
-      // Execute all operations
-      if (operations.length > 0) {
-        await this.redisService.batchProcess(operations)
+    if (sessionKeysToDelete.length > 0) {
+      this.logger.log(`[invalidateAllUserSessions] Chuẩn bị xóa ${sessionKeysToDelete.length} sessions.`)
+      try {
+        const pipeline = this.redisService.client.pipeline()
+        for (const key of sessionKeysToDelete) {
+          pipeline.del(key)
+        }
+        await pipeline.exec()
+
+        const duration = Date.now() - startTime
+        this.logger.log(
+          `[invalidateAllUserSessions] Đã vô hiệu hóa thành công ${sessionKeysToDelete.length} sessions cho user ${userId} trong ${duration}ms.`
+        )
+      } catch (error) {
+        this.logger.error(
+          `[invalidateAllUserSessions] Lỗi khi thực hiện pipeline xóa session: ${error.message}`,
+          error.stack
+        )
+        throw AuthError.InternalServerError('Failed to invalidate user sessions.')
       }
-
-      this.logger.log(`All sessions for user ${userId} have been invalidated. Reason: ${reason}`)
-    } catch (error) {
-      this.logger.error(`Error invalidating all sessions for user ${userId}: ${error.message}`, error.stack)
-      throw error
+    } else {
+      this.logger.log(`[invalidateAllUserSessions] Không tìm thấy session nào để xóa cho user ${userId}.`)
     }
   }
 
@@ -964,6 +899,14 @@ export class SessionsService implements ISessionService {
    * Lấy thông tin người dùng theo ID
    */
   async getUserById(userId: number) {
-    return this.getUserInfo(userId, { email: true, twoFactorEnabled: true })
+    return this.prismaService.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        twoFactorEnabled: true,
+        userProfile: true
+      }
+    })
   }
 }

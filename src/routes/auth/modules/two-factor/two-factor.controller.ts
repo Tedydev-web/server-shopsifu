@@ -45,28 +45,6 @@ import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
 import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 
-interface RevokeSessionsMetadata {
-  sessionIds?: string[]
-  deviceIds?: number[]
-  revokeAllUserSessions?: boolean
-  excludeCurrentSession?: boolean
-  currentSessionIdToExclude?: string
-  currentDeviceIdToExclude?: number
-}
-
-interface VerificationResult {
-  message: string
-  verifiedMethod: string
-  requiresDeviceVerification?: boolean
-  purpose?: TypeOfVerificationCode
-  userId?: number
-  metadata?: any
-}
-
-interface DeviceVerificationMetadata {
-  deviceId: number
-}
-
 @Auth([])
 @IsPublic()
 @Controller('auth/2fa')
@@ -111,7 +89,7 @@ export class TwoFactorController {
 
       return {
         success: true,
-        message: this.i18nService.t('auth.Auth.2FA.Setup.Success'),
+        message: this.i18nService.t('auth.Auth.2FA.Setup.Initiated' as I18nPath),
         secret: setupData.secret,
         uri: setupData.uri
       }
@@ -120,7 +98,7 @@ export class TwoFactorController {
       if (error instanceof AuthError) {
         throw error
       }
-      throw new BadRequestException(error.message)
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
@@ -176,7 +154,7 @@ export class TwoFactorController {
         throw error
       }
 
-      throw new BadRequestException(error.message)
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
@@ -233,7 +211,7 @@ export class TwoFactorController {
         throw error
       }
 
-      throw new BadRequestException(error.message)
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
@@ -279,7 +257,7 @@ export class TwoFactorController {
       if (error instanceof AuthError) {
         throw error
       }
-      throw new BadRequestException(error.message)
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
@@ -307,7 +285,7 @@ export class TwoFactorController {
 
       return {
         success: true,
-        message: this.i18nService.t('auth.Auth.2FA.RecoveryCodesRegenerated'),
+        message: this.i18nService.t('auth.Auth.2FA.RegenerateRecoveryCodes.Success' as I18nPath),
         recoveryCodes
       }
     } catch (error) {
@@ -315,7 +293,7 @@ export class TwoFactorController {
       if (error instanceof AuthError) {
         throw error
       }
-      throw new BadRequestException(error.message)
+      throw AuthError.InternalServerError(error.message)
     }
   }
 }

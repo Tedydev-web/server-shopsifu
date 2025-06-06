@@ -18,7 +18,12 @@ import {
   SLT_SERVICE,
   TOKEN_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/routes/auth/shared/repositories'
+import {
+  UserAuthRepository,
+  DeviceRepository,
+  SessionRepository,
+  UserWithProfileAndRole
+} from 'src/routes/auth/shared/repositories'
 import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 import { RedisService } from 'src/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
@@ -28,6 +33,7 @@ import { isNullOrUndefined } from 'src/shared/utils/type-guards.utils'
 import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 import { DeviceService } from 'src/routes/auth/shared/services/device.service'
 import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.service'
+import { AuthVerificationService } from '../../services/auth-verification.service'
 
 interface RegisterUserParams {
   email: string
@@ -65,7 +71,9 @@ export class CoreService implements IUserAuthService {
     @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
     @Inject(DEVICE_SERVICE) private readonly deviceService?: DeviceService,
-    @Inject(forwardRef(() => SessionsService)) private readonly sessionsService?: SessionsService
+    @Inject(forwardRef(() => SessionsService)) private readonly sessionsService?: SessionsService,
+    @Inject(forwardRef(() => AuthVerificationService))
+    private readonly authVerificationService?: AuthVerificationService
   ) {}
 
   /**
@@ -131,7 +139,10 @@ export class CoreService implements IUserAuthService {
   /**
    * Validate user credentials
    */
-  async validateUser(emailOrUsername: string, password: string): Promise<any> {
+  async validateUser(
+    emailOrUsername: string,
+    password: string
+  ): Promise<Omit<UserWithProfileAndRole, 'password'> | null> {
     // Tìm user theo email hoặc username
     const user = await this.userAuthRepository.findByEmailOrUsername(emailOrUsername)
 
@@ -155,7 +166,38 @@ export class CoreService implements IUserAuthService {
    * Đăng nhập
    */
   async login(params: LoginParams, res: Response): Promise<any> {
-    const user = await this.validateUser(params.emailOrUsername, params.password)
+    const user = await this._validateAndCheckUserStatus(params.emailOrUsername, params.password)
+    const device = await this._getOrCreateDevice(user.id, params.ip, params.userAgent)
+    const rememberMe = params.rememberMe ?? false
+
+    const needsVerification = await this._needsVerification(device)
+
+    if (needsVerification) {
+      this.logger.debug(`[Login] Device ${device.id} for user ${user.id} requires verification.`)
+      return this._initiateLoginVerification(user, device, params, res)
+    }
+
+    this.logger.debug(`[Login] Device ${device.id} for user ${user.id} is trusted. Finalizing login.`)
+    return this.finalizeLoginAndCreateTokens(
+      user,
+      device,
+      rememberMe,
+      res,
+      params.ip,
+      params.userAgent,
+      true /* explicitly trusted */
+    )
+  }
+
+  /**
+   * Xác thực thông tin đăng nhập và kiểm tra trạng thái người dùng
+   * @private
+   */
+  private async _validateAndCheckUserStatus(
+    emailOrUsername: string,
+    password: string
+  ): Promise<Omit<UserWithProfileAndRole, 'password'>> {
+    const user = await this.validateUser(emailOrUsername, password)
 
     if (!user) {
       throw AuthError.InvalidPassword()
@@ -169,75 +211,25 @@ export class CoreService implements IUserAuthService {
       throw AuthError.AccountNotActive()
     }
 
-    const rememberMe = params.rememberMe ?? false
+    return user
+  }
 
-    let device
+  /**
+   * Lấy hoặc tạo mới thiết bị
+   * @private
+   */
+  private async _getOrCreateDevice(userId: number, ip?: string, userAgent?: string): Promise<Device> {
     try {
-      device = await this.deviceRepository.upsertDevice(
-        user.id,
-        params.userAgent || 'Unknown',
-        params.ip || 'Unknown',
-        `Device from ${params.userAgent?.substring(0, 20) || 'Unknown UA'} at ${new Date().toLocaleDateString()}`
+      const device = await this.deviceRepository.upsertDevice(
+        userId,
+        userAgent || 'Unknown',
+        ip || 'Unknown',
+        `Device from ${userAgent?.substring(0, 20) || 'Unknown UA'} at ${new Date().toLocaleDateString()}`
       )
+      return device
     } catch (error) {
-      this.logger.error(`[Login] Error upserting device for user ${user.id}: ${error.message}`, error.stack)
+      this.logger.error(`[Login] Error upserting device for user ${userId}: ${error.message}`, error.stack)
       throw AuthError.DeviceProcessingFailed()
-    }
-
-    const deviceIsCurrentlyTrusted = await this.deviceRepository.isDeviceTrustValid(device.id)
-    const reverifyFlagKey = RedisKeyManager.customKey('device:needs_reverify_after_revoke', device.id.toString())
-    const needsReverifyAfterRevokeFlag = await this.redisService.get(reverifyFlagKey)
-    const forceReverificationDueToRevoke = needsReverifyAfterRevokeFlag === 'true'
-
-    if (deviceIsCurrentlyTrusted && !forceReverificationDueToRevoke) {
-      this.logger.debug(
-        `[Login] Device ${device.id} for user ${user.id} is trusted and no pending revoke-reverification. Finalizing login.`
-      )
-      if (needsReverifyAfterRevokeFlag) {
-        // Clear flag if it existed but didn't force reverification (e.g. expired or already handled)
-        await this.redisService.del(reverifyFlagKey)
-      }
-      return this.finalizeLoginAndCreateTokens(
-        user,
-        device,
-        rememberMe,
-        res,
-        params.ip,
-        params.userAgent,
-        true /* explicitly trusted */
-      )
-    }
-
-    // At this point, device is either untrusted OR forceReverificationDueToRevoke is true.
-    // Log the reason for proceeding to verification.
-    if (forceReverificationDueToRevoke) {
-      this.logger.debug(
-        `[Login] Device ${device.id} (user ${user.id}) requires reverification due to recent session revoke (forceReverificationDueToRevoke=true).`
-      )
-      // Flag will be cleared by OtpController/TwoFactorController after successful verification.
-    } else if (!deviceIsCurrentlyTrusted) {
-      this.logger.debug(`[Login] Device ${device.id} (user ${user.id}) is NOT trusted. Proceeding with verifications.`)
-    }
-    // It's also possible 'deviceIsCurrentlyTrusted' is true, but 'forceReverificationDueToRevoke' is true.
-    // The above logs cover the main branches.
-
-    // Now, determine the type of verification needed, prioritizing 2FA if enabled.
-    const needsAdminReverification =
-      (await this.deviceService?.checkDeviceNeedsReverification(user.id, device.id)) || false
-    if (needsAdminReverification) {
-      this.logger.debug(
-        `[Login] Device ${device.id} (user ${user.id}) is also marked for admin-initiated reverification.`
-      )
-    }
-
-    if (user.twoFactorEnabled) {
-      this.logger.debug(`[Login] User ${user.id} has 2FA enabled. Initiating 2FA verification for device ${device.id}.`)
-      return this.initiate2FAVerification(user, device, rememberMe, res)
-    } else {
-      this.logger.debug(
-        `[Login] User ${user.id} does not have 2FA enabled. Initiating device OTP verification for device ${device.id}.`
-      )
-      return this.initiateDeviceVerification(user, device, rememberMe, res)
     }
   }
 
@@ -352,95 +344,6 @@ export class CoreService implements IUserAuthService {
   }
 
   /**
-   * Bắt đầu quá trình xác thực thiết bị thông qua OTP
-   */
-  private async initiateDeviceVerification(
-    user: User & { role: Role; userProfile: UserProfile | null },
-    device: Device,
-    rememberMe: boolean,
-    res: Response
-  ): Promise<any> {
-    try {
-      // Gửi OTP qua email và khởi tạo SLT cookie
-      const sltToken = await this.sltService.initiateOtpWithSltCookie({
-        email: user.email,
-        userId: user.id,
-        deviceId: device.id,
-        ipAddress: device.ip,
-        userAgent: device.userAgent,
-        purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
-        metadata: {
-          deviceId: device.id,
-          rememberMe: rememberMe
-        }
-      })
-
-      // Đặt cookie SLT
-      this.cookieService.setSltCookie(res, sltToken, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP)
-
-      this.logger.debug(`[login] Device verification required, SLT cookie set for ${user.email}`)
-
-      // Phản hồi về client
-      return {
-        message: this.i18nService.t('Auth.Auth.Login.DeviceVerificationRequired' as I18nPath, {
-          lang: I18nContext.current()?.lang
-        }),
-        requiresDeviceVerification: true,
-        verificationType: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP,
-        verificationRedirectUrl: '/auth/otp/verify',
-        email: user.email
-      }
-    } catch (error) {
-      this.logger.error(`[initiateDeviceVerification] Error: ${error.message}`, error.stack)
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
-    }
-  }
-
-  /**
-   * Bắt đầu quá trình xác thực hai yếu tố
-   */
-  private async initiate2FAVerification(
-    user: User & { role: Role; userProfile: UserProfile | null },
-    device: Device,
-    rememberMe: boolean,
-    res: Response
-  ): Promise<any> {
-    try {
-      // Tạo và đặt SLT token cho xác thực 2FA
-      const sltToken = await this.sltService.initiateOtpWithSltCookie({
-        email: user.email,
-        userId: user.id,
-        deviceId: device.id,
-        ipAddress: device.ip,
-        userAgent: device.userAgent,
-        purpose: TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA,
-        metadata: {
-          deviceId: device.id,
-          rememberMe: rememberMe,
-          twoFactorMethod: user.twoFactorMethod
-        }
-      })
-
-      // Đặt cookie SLT
-      this.cookieService.setSltCookie(res, sltToken, TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA)
-
-      // Phản hồi về client
-      return {
-        message: this.i18nService.t('Auth.Auth.Login.2FARequired' as I18nPath, { lang: I18nContext.current()?.lang }),
-        requires2FA: true,
-        twoFactorMethod: user.twoFactorMethod,
-        verificationRedirectUrl: '/auth/2fa/verify',
-        email: user.email
-      }
-    } catch (error) {
-      this.logger.error(`[initiate2FAVerification] Error: ${error.message}`, error.stack)
-      if (error instanceof HttpException) throw error
-      throw AuthError.InternalServerError(error.message)
-    }
-  }
-
-  /**
    * Lấy thiết bị dựa trên ID
    */
   async getDeviceById(deviceId: number): Promise<Device | null> {
@@ -458,7 +361,7 @@ export class CoreService implements IUserAuthService {
    * Hoàn tất đăng nhập khi không cần xác thực bổ sung
    */
   async finalizeLoginAndCreateTokens(
-    user: User & { role: Role; userProfile: UserProfile | null },
+    user: Omit<User & { role: Role; userProfile: UserProfile | null }, 'password'>,
     device: Device,
     rememberMe: boolean,
     res: Response,
@@ -544,99 +447,6 @@ export class CoreService implements IUserAuthService {
   }
 
   /**
-   * Hoàn tất đăng nhập sau khi xác minh
-   */
-  async finalizeLoginAfterVerification(
-    userId: number,
-    deviceId: number,
-    rememberMe: boolean,
-    res: Response,
-    ipAddress?: string,
-    userAgent?: string
-  ): Promise<any> {
-    try {
-      // Tìm user
-      const user = await this.userAuthRepository.findById(userId)
-      if (!user) {
-        throw AuthError.EmailNotFound()
-      }
-
-      // Tìm thiết bị
-      const device = await this.deviceRepository.findById(deviceId)
-      if (!device) {
-        throw AuthError.DeviceNotFound()
-      }
-
-      // Sau khi xác minh thành công và nếu rememberMe là true, thiết bị NÊN được trust.
-      // Trạng thái isTrusted của device có thể chưa được cập nhật ngay lập tức trong đối tượng device này
-      // nếu việc trust device xảy ra trong một tiến trình khác hoặc ngay trước khi gọi hàm này.
-      // Do đó, nếu rememberMe là true, ta có thể coi isDeviceTrustedInSession là true cho token mới.
-      const isDeviceTrustedNow = rememberMe || (await this.deviceRepository.isDeviceTrustValid(deviceId))
-
-      // Tạo thông tin người dùng để phản hồi
-      const userResponse = {
-        id: user.id,
-        email: user.email,
-        role: user.role.name,
-        isDeviceTrustedInSession: isDeviceTrustedNow,
-        userProfile: user.userProfile
-      }
-
-      // Tạo session ID duy nhất
-      const sessionId = uuidv4()
-
-      // Tạo token
-      const payload = {
-        userId: user.id,
-        roleId: user.role.id,
-        roleName: user.role.name,
-        deviceId: device.id,
-        sessionId,
-        jti: `access_${Date.now()}_${this.generateRandomId()}`,
-        isDeviceTrustedInSession: isDeviceTrustedNow // Đặt cờ này chính xác
-      }
-
-      const accessToken = this.tokenService.signAccessToken(payload)
-      const refreshToken = this.tokenService.signRefreshToken({
-        ...payload,
-        jti: `refresh_${Date.now()}_${this.generateRandomId()}`
-      })
-
-      // Đặt cookie token
-      const refreshCookieMaxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
-      this.cookieService.setTokenCookies(res, accessToken, refreshToken, refreshCookieMaxAge)
-
-      // Tạo phiên trong Redis
-      // Tính thời gian hết hạn cho phiên
-      const refreshTokenExpiryDays = rememberMe ? 30 : 1
-      const expiresAt = new Date()
-      expiresAt.setDate(expiresAt.getDate() + refreshTokenExpiryDays)
-
-      await this.sessionRepository.createSession({
-        id: sessionId,
-        userId: user.id,
-        deviceId: device.id,
-        ipAddress: ipAddress || 'Unknown',
-        userAgent: userAgent || 'Unknown',
-        expiresAt
-      })
-
-      this.logger.debug(`[finalizeLoginAfterVerification] Session ${sessionId} created in Redis for user ${userId}`)
-
-      return {
-        accessToken,
-        refreshToken,
-        user: userResponse,
-        message: this.i18nService.t('Auth.Auth.Login.Success' as I18nPath, { lang: I18nContext.current()?.lang })
-      }
-    } catch (error) {
-      this.logger.error(`[finalizeLoginAfterVerification] Error: ${error.message}`, error.stack)
-      if (error instanceof AuthError) throw error
-      throw AuthError.InternalServerError(error.message)
-    }
-  }
-
-  /**
    * Kiểm tra email chưa tồn tại
    */
   async checkEmailNotExists(email: string): Promise<void> {
@@ -681,6 +491,117 @@ export class CoreService implements IUserAuthService {
     } catch (error) {
       this.logger.error(`[createTemporaryDevice] Error creating temporary device: ${error.message}`, error.stack)
       throw AuthError.InternalServerError('Failed to create temporary device')
+    }
+  }
+
+  /**
+   * Hoàn tất đăng nhập sau khi xác minh
+   */
+  async finalizeLoginAfterVerification(
+    userId: number,
+    deviceId: number,
+    rememberMe: boolean,
+    res: Response,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<any> {
+    try {
+      // Tìm user
+      const userWithPassword = await this.userAuthRepository.findById(userId)
+      if (!userWithPassword) {
+        throw AuthError.EmailNotFound()
+      }
+
+      // Loại bỏ mật khẩu để đảm bảo an toàn
+      const { password: _, ...user } = userWithPassword
+
+      // Tìm thiết bị
+      const device = await this.deviceRepository.findById(deviceId)
+      if (!device) {
+        throw AuthError.DeviceNotFound()
+      }
+
+      // Sau khi xác minh thành công và nếu rememberMe là true, thiết bị NÊN được trust.
+      // Trạng thái isTrusted của device có thể chưa được cập nhật ngay lập tức trong đối tượng device này
+      // nếu việc trust device xảy ra trong một tiến trình khác hoặc ngay trước khi gọi hàm này.
+      // Do đó, nếu rememberMe là true, ta có thể coi isDeviceTrustedInSession là true cho token mới.
+      const isDeviceTrustedNow = rememberMe || (await this.deviceRepository.isDeviceTrustValid(deviceId))
+
+      this.logger.debug(
+        `[finalizeLoginAfterVerification] Calling finalizeLoginAndCreateTokens for user ${userId}, device ${deviceId}`
+      )
+
+      return this.finalizeLoginAndCreateTokens(user, device, rememberMe, res, ipAddress, userAgent, isDeviceTrustedNow)
+    } catch (error) {
+      this.logger.error(`[finalizeLoginAfterVerification] Error: ${error.message}`, error.stack)
+      if (error instanceof AuthError) throw error
+      throw AuthError.InternalServerError(error.message)
+    }
+  }
+
+  private async _needsVerification(device: Device): Promise<boolean> {
+    const isTrusted = await this.deviceRepository.isDeviceTrustValid(device.id)
+    const reverifyFlagKey = RedisKeyManager.customKey('device:needs_reverify_after_revoke', device.id.toString())
+    const needsReverifyAfterRevoke = await this.redisService.get(reverifyFlagKey)
+
+    if (needsReverifyAfterRevoke === 'true') {
+      return true
+    }
+
+    if (isTrusted) {
+      // Clear flag if it existed but didn't force reverification
+      if (needsReverifyAfterRevoke) {
+        await this.redisService.del(reverifyFlagKey)
+      }
+      return false
+    }
+
+    return true
+  }
+
+  private async _initiateLoginVerification(
+    user: Omit<UserWithProfileAndRole, 'password'>,
+    device: Device,
+    params: LoginParams,
+    res: Response
+  ) {
+    if (!this.authVerificationService) {
+      this.logger.error('AuthVerificationService is not available.')
+      throw AuthError.InternalServerError('Verification service is not configured.')
+    }
+
+    const purpose = user.twoFactorEnabled
+      ? TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA
+      : TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP
+
+    await this.authVerificationService.initiateVerification(
+      {
+        userId: user.id,
+        deviceId: device.id,
+        email: user.email,
+        ipAddress: params.ip || 'Unknown',
+        userAgent: params.userAgent || 'Unknown',
+        purpose: purpose,
+        rememberMe: params.rememberMe,
+        metadata: { rememberMe: params.rememberMe }
+      },
+      res
+    )
+
+    if (purpose === TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_OTP) {
+      return {
+        message: this.i18nService.t('auth.Auth.Login.DeviceVerificationOtpRequired'),
+        requiresDeviceVerification: true,
+        verificationType: 'OTP',
+        email: user.email
+      }
+    } else {
+      return {
+        message: this.i18nService.t('auth.Auth.Login.2FARequired'),
+        requires2FA: true,
+        twoFactorMethod: user.twoFactorMethod,
+        email: user.email
+      }
     }
   }
 }

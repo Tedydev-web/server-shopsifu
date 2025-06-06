@@ -60,7 +60,7 @@ export class AuthVerificationService {
     @Inject(forwardRef(() => OtpService)) private readonly otpService: OtpService,
     @Inject(forwardRef(() => TwoFactorService)) private readonly twoFactorService: TwoFactorService,
     private readonly userAuthRepository: UserAuthRepository,
-    private readonly i18nService: I18nService,
+    private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
     @Inject(forwardRef(() => CoreService)) private readonly coreService: CoreService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionsService: SessionsService,
@@ -87,9 +87,7 @@ export class AuthVerificationService {
         return this.initiate2FAVerification(context, res)
       } else {
         // Khởi tạo xác thực OTP
-        // Tạm thời comment lại vì chúng ta đã comment otpService
-        throw new Error('OTP service is not available')
-        // return this.initiateOTPVerification(context, res)
+        return this.initiateOTPVerification(context, res)
       }
     } catch (error) {
       this.logger.error(`[initiateVerification] Error: ${error.message}`, error.stack)
@@ -132,15 +130,15 @@ export class AuthVerificationService {
         metadata: { ...metadata, rememberMe }
       })
 
-      // Gửi OTP nếu cần - tạm thời comment vì chúng ta đã comment otpService
-      // await this.otpService.sendOTP(email, purpose, userId, metadata)
+      // Gửi OTP nếu cần
+      await this.otpService.sendOTP(email, purpose, userId, metadata)
 
       // Đặt SLT token vào cookie
       this.cookieService.setSltCookie(res, sltToken, purpose)
 
       return {
         success: true,
-        message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully'),
+        message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully' as I18nPath),
         sltToken
       }
     } catch (error) {
@@ -177,7 +175,7 @@ export class AuthVerificationService {
 
       return {
         success: true,
-        message: this.i18nService.t('auth.Auth.2FA.Verify.AskToTrustDevice'),
+        message: this.i18nService.t('auth.Auth.2FA.Verify.AskToTrustDevice' as I18nPath),
         sltToken
       }
     } catch (error) {
@@ -259,7 +257,6 @@ export class AuthVerificationService {
         throw AuthError.EmailMissingInSltContext()
       }
 
-      // Xác thực OTP - tạm thời comment vì chúng ta đã comment otpService
       const isValid = await this.otpService.verifyOTP(
         email,
         otpCode,
@@ -270,10 +267,9 @@ export class AuthVerificationService {
       )
 
       if (!isValid) {
+        await this.sltService.incrementSltAttempts(sltContext.sltJti)
         throw AuthError.InvalidOTP()
       }
-
-      throw new Error('OTP service is not available')
 
       // Finalize SLT
       await this.sltService.finalizeSlt(sltContext.sltJti)
@@ -380,7 +376,7 @@ export class AuthVerificationService {
         if (sltContext.finalized !== '1') await this.sltService.finalizeSlt(sltContext.sltJti)
         return {
           success: true,
-          message: 'Xác thực thành công cho mục đích không xác định.',
+          message: this.i18nService.t('global.success.general.default' as I18nPath),
           sltContext
         }
     }
@@ -415,7 +411,7 @@ export class AuthVerificationService {
 
       return {
         success: true,
-        message: loginResult.message || this.i18nService.t('auth.Auth.Login.Success'),
+        message: loginResult.message || this.i18nService.t('auth.Auth.Login.Success' as I18nPath),
         tokens: {
           accessToken: loginResult.accessToken,
           refreshToken: loginResult.refreshToken
@@ -475,7 +471,7 @@ export class AuthVerificationService {
 
       return {
         success: true,
-        message: revokeResult.message || this.i18nService.t('auth.Auth.Session.RevokedSuccessfully')
+        message: revokeResult.message || this.i18nService.t('auth.Auth.Session.RevokedSuccessfully' as I18nPath)
       }
     } catch (error) {
       this.logger.error(`[handleRevokeSessionsVerification] Error: ${error.message}`, error.stack)
@@ -519,7 +515,7 @@ export class AuthVerificationService {
 
       return {
         success: true,
-        message: revokeResult.message || this.i18nService.t('auth.Auth.Session.AllRevoked')
+        message: revokeResult.message || this.i18nService.t('auth.Auth.Session.AllRevoked' as I18nPath)
       }
     } catch (error) {
       this.logger.error(`[handleRevokeAllSessionsVerification] Error: ${error.message}`, error.stack)
@@ -549,7 +545,7 @@ export class AuthVerificationService {
 
       return {
         success: true,
-        message: result.message || 'Đã hủy liên kết tài khoản Google thành công'
+        message: result.message || this.i18nService.t('global.success.general.default' as I18nPath)
       }
     } catch (error) {
       this.logger.error(`[handleUnlinkGoogleAccountVerification] Error: ${error.message}`, error.stack)
@@ -579,7 +575,7 @@ export class AuthVerificationService {
 
       return {
         success: true,
-        message: this.i18nService.t('auth.Auth.2FA.Disable.Success')
+        message: this.i18nService.t('auth.Auth.2FA.Disable.Success' as I18nPath)
       }
     } catch (error) {
       this.logger.error(`[handleDisable2FAVerification] Error: ${error.message}`, error.stack)
@@ -606,7 +602,7 @@ export class AuthVerificationService {
 
       return {
         success: true,
-        message: this.i18nService.t('auth.Auth.Register.EmailSent'),
+        message: this.i18nService.t('auth.Auth.Register.EmailSent' as I18nPath),
         sltContext
       }
     } catch (error) {

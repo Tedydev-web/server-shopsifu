@@ -108,7 +108,7 @@ export class OtpService implements IOTPService {
       if (error instanceof AuthError) {
         throw error
       }
-      throw AuthError.InternalServerError('Lỗi khi gửi OTP')
+      throw AuthError.InternalServerError('Failed to send OTP')
     }
   }
 
@@ -147,10 +147,9 @@ export class OtpService implements IOTPService {
       const otpKey = this.getOtpKey(type, emailToVerifyAgainst)
       const otpData = await this.getOtpData(otpKey)
 
-      await this.checkOtpMaxAttempts(otpKey, otpData.attempts)
-
+      // Chỉ kiểm tra và tăng số lần thử khi mã OTP không chính xác
       if (otpData.code !== code) {
-        await this.handleInvalidOtp(otpKey)
+        await this.checkOtpMaxAttempts(otpKey) // Tăng và kiểm tra số lần thử
         throw AuthError.InvalidOTP()
       }
 
@@ -165,7 +164,7 @@ export class OtpService implements IOTPService {
       if (error instanceof AuthError) {
         throw error
       }
-      throw AuthError.InternalServerError('Lỗi khi xác thực OTP')
+      throw AuthError.InternalServerError('Failed to verify OTP')
     }
   }
 
@@ -209,25 +208,18 @@ export class OtpService implements IOTPService {
   /**
    * Kiểm tra số lần thử tối đa
    */
-  private async checkOtpMaxAttempts(otpKey: string, currentAttempts: number): Promise<void> {
+  private async checkOtpMaxAttempts(otpKey: string): Promise<void> {
     const maxAttempts = this.configService.get('security.otpMaxAttempts', 5)
 
     // Tăng số lần thử một cách an toàn bằng HINCRBY
     const newAttempts = await this.redisService.hincrby(otpKey, 'attempts', 1)
 
-    if (newAttempts > maxAttempts) {
+    if (newAttempts >= maxAttempts) {
       this.logger.warn(`[checkOtpMaxAttempts] OTP max attempts exceeded for key: ${otpKey}, attempts: ${newAttempts}`)
       // Xóa OTP để ngăn chặn brute force
       await this.redisService.del(otpKey)
-      throw AuthError.OTPMaxAttemptsExceeded()
+      throw AuthError.TooManyOTPAttempts()
     }
-  }
-
-  /**
-   * Xử lý OTP không hợp lệ
-   */
-  private async handleInvalidOtp(otpKey: string): Promise<void> {
-    await this.redisService.hincrby(otpKey, 'attempts', 1)
   }
 
   /**

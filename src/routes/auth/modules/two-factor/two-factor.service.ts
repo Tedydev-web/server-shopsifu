@@ -8,7 +8,7 @@ import {
   forwardRef
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { I18nService } from 'nestjs-i18n'
+import { I18nService, I18nContext } from 'nestjs-i18n'
 import { JwtService } from '@nestjs/jwt'
 import * as otplib from 'otplib'
 import { HashAlgorithms } from '@otplib/core'
@@ -37,6 +37,7 @@ import { PickedUserProfileResponseType } from 'src/shared/dtos/user.dto'
 import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
 import { CoreService } from '../core/core.service'
+import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 
 /**
  * Cấu hình và hằng số
@@ -64,7 +65,7 @@ export class TwoFactorService implements IMultiFactorService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly i18nService: I18nService,
+    private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly otpService: OtpService,
@@ -76,6 +77,7 @@ export class TwoFactorService implements IMultiFactorService {
     private readonly jwtService: JwtService,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
+    @Inject(forwardRef(() => CoreService))
     private readonly coreService: CoreService
   ) {
     // Cấu hình authenticator
@@ -108,7 +110,7 @@ export class TwoFactorService implements IMultiFactorService {
     this.logger.debug(`[setupVerification] Bắt đầu thiết lập 2FA cho userId ${userId}`)
 
     if (!options) {
-      throw new BadRequestException('Thiếu thông tin thiết bị')
+      throw AuthError.DeviceProcessingFailed()
     }
 
     const { deviceId, ip, userAgent, res } = options
@@ -157,7 +159,7 @@ export class TwoFactorService implements IMultiFactorService {
    */
   async generateVerificationCode(options?: { secret: string }): Promise<string> {
     if (!options || !options.secret) {
-      throw new BadRequestException('Secret không được cung cấp')
+      throw AuthError.InvalidTOTP()
     }
 
     return Promise.resolve(this.authenticator.generate(options.secret))
@@ -363,7 +365,7 @@ export class TwoFactorService implements IMultiFactorService {
     const secret = sltContext.metadata?.secret
     if (!secret) {
       this.logger.error('[confirmTwoFactorSetup] Không tìm thấy secret trong metadata của SLT')
-      throw new BadRequestException('Secret không được tìm thấy trong quá trình thiết lập')
+      throw AuthError.SLTInvalidPurpose()
     }
 
     // Xác thực TOTP code
@@ -390,7 +392,7 @@ export class TwoFactorService implements IMultiFactorService {
       this.logger.debug(`[confirmTwoFactorSetup] 2FA đã được kích hoạt thành công cho userId ${userId}`)
 
       return {
-        message: this.i18nService.t('Auth.Auth.TwoFactor.EnableSuccess'),
+        message: this.i18nService.t('auth.Auth.2FA.Confirm.Success'),
         recoveryCodes: plainRecoveryCodes
       }
     } catch (error) {
@@ -564,7 +566,7 @@ export class TwoFactorService implements IMultiFactorService {
       case TypeOfVerificationCode.LOGIN_UNTRUSTED_DEVICE_2FA:
         // Đăng nhập trên thiết bị chưa tin cậy
         return {
-          message: this.i18nService.t('Auth.Auth.TwoFactor.VerificationSuccess'),
+          message: this.i18nService.t('auth.Auth.2FA.Verify.Success'),
           verifiedMethod,
           user: {
             id: user.id,
@@ -585,21 +587,21 @@ export class TwoFactorService implements IMultiFactorService {
         // Vô hiệu hóa 2FA
         await this.disableVerification(user.id)
         return {
-          message: this.i18nService.t('Auth.Auth.TwoFactor.DisableSuccess'),
+          message: this.i18nService.t('auth.Auth.2FA.Disable.Success'),
           verifiedMethod
         }
       case TypeOfVerificationCode.REVOKE_SESSIONS_2FA:
       case TypeOfVerificationCode.REVOKE_ALL_SESSIONS_2FA:
         // Thu hồi phiên
         return {
-          message: this.i18nService.t('Auth.Auth.TwoFactor.VerificationSuccess'),
+          message: this.i18nService.t('auth.Auth.2FA.Verify.Success'),
           verifiedMethod,
           metadata: sltContext.metadata
         }
       default:
         // Trường hợp mặc định
         return {
-          message: this.i18nService.t('Auth.Auth.TwoFactor.VerificationSuccess'),
+          message: this.i18nService.t('auth.Auth.2FA.Verify.Success'),
           verifiedMethod
         }
     }
@@ -639,7 +641,7 @@ export class TwoFactorService implements IMultiFactorService {
 
     if (!user.twoFactorEnabled) {
       this.logger.warn(`[disableTwoFactorWithVerification] 2FA đã bị vô hiệu hóa cho userId ${userId}`)
-      return { message: this.i18nService.t('Auth.Auth.TwoFactor.AlreadyDisabled') }
+      return { message: this.i18nService.t('auth.Auth.Error.2FA.AlreadyEnabled') }
     }
 
     // Nếu có SLT cookie, xác thực nó
@@ -657,7 +659,7 @@ export class TwoFactorService implements IMultiFactorService {
     // Vô hiệu hóa 2FA
     await this.disableVerification(userId)
 
-    return { message: this.i18nService.t('Auth.Auth.TwoFactor.DisableSuccess') }
+    return { message: this.i18nService.t('auth.Auth.2FA.Disable.Success') }
   }
 
   /**

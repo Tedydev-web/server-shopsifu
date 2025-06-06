@@ -95,6 +95,10 @@ export class AuthError {
     )
   }
 
+  static OTPSendingFailed(): ApiException {
+    return new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'OTP_SENDING_FAILED', 'auth.Auth.Error.Otp.FailedToSend')
+  }
+
   static OTPSendingLimited(): ApiException {
     return new ApiException(HttpStatus.TOO_MANY_REQUESTS, 'OTP_SENDING_LIMITED', 'auth.Auth.Otp.CooldownActive')
   }
@@ -215,6 +219,14 @@ export class AuthError {
       HttpStatus.INTERNAL_SERVER_ERROR,
       'DEVICE_PROCESSING_FAILED',
       'auth.Auth.Error.Device.ProcessingFailed'
+    )
+  }
+
+  static MissingDeviceInformation(): ApiException {
+    return new ApiException(
+      HttpStatus.BAD_REQUEST,
+      'MISSING_DEVICE_INFORMATION',
+      'auth.Auth.Error.Device.MissingInformation'
     )
   }
 

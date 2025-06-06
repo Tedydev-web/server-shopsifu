@@ -96,7 +96,7 @@ export class SocialService {
       this.initOAuth2Client()
 
       if (!this.oauth2Client) {
-        throw new Error('Không thể khởi tạo OAuth2Client. Vui lòng kiểm tra cấu hình.')
+        throw AuthError.GoogleUserInfoFailed()
       }
     }
 
@@ -106,7 +106,7 @@ export class SocialService {
 
     if (!clientId || !redirectUri) {
       this.logger.error(`[getGoogleAuthUrl] Thiếu cấu hình OAuth: clientId=${!!clientId}, redirectUri=${!!redirectUri}`)
-      throw new Error('Thiếu cấu hình Google OAuth')
+      throw AuthError.GoogleUserInfoFailed()
     }
 
     // Tạo state để lưu thông tin với format chuẩn và mã hóa an toàn hơn
@@ -131,7 +131,7 @@ export class SocialService {
       })
 
       if (!url) {
-        throw new Error('Không thể tạo URL xác thực Google')
+        throw AuthError.GoogleUserInfoFailed()
       }
 
       this.logger.debug(`[getGoogleAuthUrl] URL xác thực Google đã được tạo thành công`)

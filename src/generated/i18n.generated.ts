@@ -99,6 +99,20 @@ export type I18nTranslations = {
                     "CancelledSuccessfully": string;
                     "NoPendingStateToCancel": string;
                 };
+                "Device": {
+                    "Invalid": string;
+                    "Mismatch": string;
+                    "SetupFailed": string;
+                    "AssociationFailed": string;
+                    "MissingSessionCreationTime": string;
+                    "NotFoundForUser": string;
+                    "MaxDevicesReached": string;
+                    "ProcessingFailed": string;
+                    "MissingInformation": string;
+                };
+                "Social": {
+                    "InvalidToken": string;
+                };
             };
             "RememberMe": {
                 "Set": string;
@@ -177,6 +191,7 @@ export type I18nTranslations = {
                     "NotFoundForUser": string;
                     "MaxDevicesReached": string;
                     "ProcessingFailed": string;
+                    "MissingInformation": string;
                 };
                 "Social": {
                     "InvalidToken": string;

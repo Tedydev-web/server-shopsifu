@@ -153,7 +153,7 @@ export class OtpController {
         throw error
       }
 
-      throw new BadRequestException(error.message)
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
@@ -204,9 +204,10 @@ export class OtpController {
       )
 
       return {
-        message: verificationResult.message || this.i18nService.t('auth.Auth.Otp.SentSuccessfully')
+        message: verificationResult.message || this.i18nService.t('auth.Auth.Otp.SentSuccessfully' as I18nPath)
       }
     } catch (error) {
+      this.logger.error(`[resendOtp] Error resending OTP: ${error.message}`, error.stack)
       if (error instanceof AuthError) {
         throw error
       }
