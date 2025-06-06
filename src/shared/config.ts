@@ -30,13 +30,7 @@ const configSchema = z.object({
   // Cookie & Security
   COOKIE_SECRET: z.string(),
   CSRF_SECRET: z.string(),
-  COOKIE_ROOT_DOMAIN: z.string().optional(),
-  COOKIE_PATH_ACCESS_TOKEN: z.string().default('/'),
-  COOKIE_PATH_REFRESH_TOKEN: z.string().default('/'),
-  COOKIE_PATH_CSRF: z.string().default('/'),
   COOKIE_DOMAIN: z.string().optional(),
-  COOKIE_HTTP_ONLY: z.boolean().default(false),
-  COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
 
   // Access & Refresh Token
   ACCESS_TOKEN_SECRET: z.string(),
@@ -45,13 +39,9 @@ const configSchema = z.object({
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('1d'),
   REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN: z.string().default('14d'),
   ABSOLUTE_SESSION_LIFETIME: z.string().default('30d'),
-  LOGIN_SESSION_TOKEN_EXPIRES_IN: z.string().default('15m'),
 
   // OTP & Verification
-  OTP_TOKEN_EXPIRES_IN: z.string().default('15m'),
   OTP_EXPIRES_IN: z.string().default('5m'),
-  VERIFICATION_JWT_SECRET: z.string(),
-  VERIFICATION_JWT_EXPIRES_IN: z.string().default('15m'),
 
   // SLT (State-Linking Token)
   SLT_JWT_SECRET: z.string(),
@@ -61,7 +51,6 @@ const configSchema = z.object({
   PENDING_LINK_TOKEN_SECRET: z.string(),
   PENDING_LINK_TOKEN_EXPIRES_IN: z.string().default('15m'),
   NONCE_COOKIE_MAX_AGE: z.string().optional(),
-  EMAIL_VERIFICATION_TOKEN_EXPIRES_IN: z.string().default('15m'),
 
   // OAuth
   GOOGLE_CLIENT_ID: z.string(),
@@ -107,7 +96,7 @@ if (!configServer.success) {
 }
 
 const parsedConfig = configServer.data
-const nodeEnv = parsedConfig.NODE_ENV
+const isProduction = parsedConfig.NODE_ENV === 'production'
 
 /**
  * Chuyển đổi chuỗi thời gian sang milliseconds
@@ -126,100 +115,89 @@ const convertMs = (value: string, defaultValue: number): number => {
   }
 }
 
-const getCookieConfig = () => {
+/**
+ * Cung cấp các tùy chọn cookie cơ bản dựa trên môi trường.
+ * @param httpOnly - Cookie có thể được truy cập bởi server-side không?
+ */
+const getCookieOptions = (httpOnly: boolean) => {
   return {
-    ACCESS_TOKEN: {
-      path: '/',
-      domain: parsedConfig.COOKIE_DOMAIN,
-      maxAge: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('10m')),
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none'
-    },
-    REFRESH_TOKEN: {
-      path: '/',
-      domain: parsedConfig.COOKIE_DOMAIN,
-      maxAge: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d')),
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none'
-    },
-    SLT_TOKEN: {
-      path: '/',
-      domain: parsedConfig.COOKIE_DOMAIN,
-      maxAge: convertMs(parsedConfig.SLT_JWT_EXPIRES_IN, ms('5m')),
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none'
-    },
-    OAUTH_NONCE: {
-      path: '/',
-      domain: parsedConfig.COOKIE_DOMAIN,
-      maxAge: convertMs(parsedConfig.NONCE_COOKIE_MAX_AGE || '5m', ms('5m')),
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none' // Luôn đặt là 'none' để dễ test với Postman
-    },
-    OAUTH_PENDING_LINK: {
-      path: '/',
-      domain: parsedConfig.COOKIE_DOMAIN,
-      maxAge: convertMs(parsedConfig.PENDING_LINK_TOKEN_EXPIRES_IN, ms('15m')),
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none'
-    }
+    httpOnly,
+    secure: true, // Luôn là true cho cả dev và prod
+    domain: parsedConfig.COOKIE_DOMAIN,
+    sameSite: isProduction ? 'strict' : 'none' // 'none' cho dev để dễ test, 'strict' cho prod để bảo mật
   }
 }
 
-// Cấu hình chung cho cookie
-const { ACCESS_TOKEN, REFRESH_TOKEN, SLT_TOKEN, OAUTH_NONCE, OAUTH_PENDING_LINK } = getCookieConfig()
-
 /**
- * Thiết lập cấu hình cookie
+ * Định nghĩa cấu hình chi tiết cho từng loại cookie.
  */
-const cookieConfig = {
-  accessToken: ACCESS_TOKEN,
-  refreshToken: REFRESH_TOKEN,
-  sltToken: SLT_TOKEN,
-  nonce: OAUTH_NONCE,
+const cookieDefinitions = {
+  accessToken: {
+    name: CookieNames.ACCESS_TOKEN,
+    options: {
+      ...getCookieOptions(true), // httpOnly: true
+      maxAge: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('10m'))
+    }
+  },
+  refreshToken: {
+    name: CookieNames.REFRESH_TOKEN,
+    options: {
+      ...getCookieOptions(true), // httpOnly: true
+      maxAge: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d'))
+    }
+  },
+  slt: {
+    name: CookieNames.SLT_TOKEN,
+    options: {
+      ...getCookieOptions(true), // httpOnly: true
+      maxAge: convertMs(parsedConfig.SLT_JWT_EXPIRES_IN, ms('5m'))
+    }
+  },
+  oauthNonce: {
+    name: CookieNames.OAUTH_NONCE,
+    options: {
+      ...getCookieOptions(true), // httpOnly: true
+      maxAge: convertMs(parsedConfig.NONCE_COOKIE_MAX_AGE || '5m', ms('5m'))
+    }
+  },
+  oauthPendingLink: {
+    name: CookieNames.OAUTH_PENDING_LINK,
+    options: {
+      ...getCookieOptions(true), // httpOnly: true
+      maxAge: convertMs(parsedConfig.PENDING_LINK_TOKEN_EXPIRES_IN, ms('15m'))
+    }
+  },
   csrfToken: {
     name: CookieNames.XSRF_TOKEN,
-    path: parsedConfig.COOKIE_PATH_CSRF,
-    domain: parsedConfig.COOKIE_DOMAIN,
-    httpOnly: false, // JavaScript cần đọc được
-    secure: true, // Trong development vẫn cần secure=true
-    sameSite: 'none' // Trong development cần sameSite=none
+    options: {
+      ...getCookieOptions(true) // httpOnly: true
+    }
   },
   csrfSecret: {
     name: '_csrf',
-    path: parsedConfig.COOKIE_PATH_CSRF,
-    domain: parsedConfig.COOKIE_DOMAIN,
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    signed: true
-  },
-  oauthPendingLinkToken: OAUTH_PENDING_LINK
+    options: {
+      ...getCookieOptions(true) // httpOnly: true
+    }
+  }
 }
 
 // Cấu hình chung đã chuyển đổi và tổng hợp
 const envConfig = {
   ...parsedConfig,
-  // Thời gian đã chuyển đổi sang milliseconds
-  ACCESS_TOKEN_COOKIE_MAX_AGE: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('10m')),
-  REFRESH_TOKEN_COOKIE_MAX_AGE: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d')),
-  REMEMBER_ME_REFRESH_TOKEN_COOKIE_MAX_AGE: convertMs(parsedConfig.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN, ms('14d')),
-  ABSOLUTE_SESSION_LIFETIME_MS: convertMs(parsedConfig.ABSOLUTE_SESSION_LIFETIME, ms('30d')),
+  isProduction,
 
-  // Cấu hình chung cho cookie
-  cookieConfig: {
-    secure: nodeEnv === 'production',
-    sameSite: nodeEnv === 'production' ? 'none' : 'lax',
-    domain: parsedConfig.COOKIE_DOMAIN
+  // Thời gian đã chuyển đổi sang milliseconds
+  timeInMs: {
+    accessToken: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('10m')),
+    refreshToken: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d')),
+    rememberMeRefreshToken: convertMs(parsedConfig.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN, ms('14d')),
+    absoluteSession: convertMs(parsedConfig.ABSOLUTE_SESSION_LIFETIME, ms('30d')),
+    slt: convertMs(parsedConfig.SLT_JWT_EXPIRES_IN, ms('5m')),
+    otp: convertMs(parsedConfig.OTP_EXPIRES_IN, ms('5m'))
   },
 
   // Cấu hình chi tiết cho từng loại cookie
-  cookie: cookieConfig
+  cookie: cookieDefinitions
 }
 
 export default () => envConfig

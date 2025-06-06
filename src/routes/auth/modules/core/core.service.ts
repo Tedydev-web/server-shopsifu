@@ -171,7 +171,7 @@ export class CoreService {
     await this.checkEmailNotExists(email)
 
     // Hoàn tất đăng ký với thông tin từ params
-    await this.completeRegistration({
+    await this.createUserAndProfile({
       email,
       password: params.password,
       firstName: params.firstName,
@@ -192,9 +192,10 @@ export class CoreService {
   }
 
   /**
-   * Hoàn tất đăng ký
+   * Tạo người dùng và hồ sơ trong cơ sở dữ liệu.
+   * Được gọi sau khi tất cả các bước xác minh đã hoàn tất.
    */
-  async completeRegistration(params: Omit<RegisterUserParams, 'userId'> & { email: string }): Promise<void> {
+  async createUserAndProfile(params: Omit<RegisterUserParams, 'userId'> & { email: string }): Promise<void> {
     const { email, password, firstName, lastName, username, phoneNumber } = params
 
     if (!password) {
@@ -227,7 +228,7 @@ export class CoreService {
         // User sẽ được tạo với trạng thái "ACTIVE" theo mặc định
       })
     } catch (error) {
-      this.logger.error(`[completeRegistration] Error creating new user: ${error.message}`, error.stack)
+      this.logger.error(`[createUserAndProfile] Error creating new user: ${error.message}`, error.stack)
       throw AuthError.InternalServerError('Failed to create user during registration')
     }
   }
@@ -418,47 +419,18 @@ export class CoreService {
     userAgent?: string,
     isTrustedSession?: boolean
   ): Promise<any> {
-    const now = new Date()
-    const absoluteSessionLifetimeInSeconds =
-      this.configService.get<number>('ABSOLUTE_SESSION_LIFETIME_MS', 30 * 24 * 60 * 60 * 1000) / 1000
-
-    const expiresAtDate = new Date(now.getTime() + absoluteSessionLifetimeInSeconds * 1000)
-    const sessionId = uuidv4()
-
-    await this.sessionRepository.createSession({
-      id: sessionId,
-      userId: user.id,
-      deviceId: device.id,
-      createdAt: now.getTime(),
-      expiresAt: expiresAtDate.getTime(),
-      ipAddress: ipAddress ?? 'Unknown',
-      userAgent: userAgent ?? 'Unknown'
-    })
-
     try {
+      const sessionId = await this.createSessionForLogin(user.id, device.id, ipAddress, userAgent)
       const effectiveIsTrustedSession = isTrustedSession ?? (await this.deviceRepository.isDeviceTrustValid(device.id))
 
-      const payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
-        userId: user.id,
-        email: user.email,
-        roleId: user.role.id,
-        roleName: user.role.name,
-        deviceId: device.id,
+      const { accessToken, refreshToken } = this.generateAndSetAuthTokens(
+        user,
+        device.id,
         sessionId,
-        jti: `access_${Date.now()}_${this.generateRandomId()}`,
-        isDeviceTrustedInSession: effectiveIsTrustedSession
-      }
-
-      const accessToken = this.tokenService.signAccessToken(payload)
-      const refreshToken = this.tokenService.signRefreshToken({
-        ...payload,
-        jti: `refresh_${Date.now()}_${this.generateRandomId()}`
-      })
-
-      const refreshCookieMaxAge = rememberMe
-        ? this.configService.get<number>('security.jwt.refresh.rememberMeExpiresInSeconds', 30 * 24 * 60 * 60) * 1000
-        : this.configService.get<number>('security.jwt.refresh.expiresInSeconds', 24 * 60 * 60) * 1000
-      this.cookieService.setTokenCookies(res, accessToken, refreshToken, refreshCookieMaxAge)
+        effectiveIsTrustedSession,
+        rememberMe,
+        res
+      )
 
       const userResponse = {
         id: user.id,
@@ -478,6 +450,68 @@ export class CoreService {
       if (error instanceof AuthError) throw error
       throw AuthError.InternalServerError(error.message)
     }
+  }
+
+  /**
+   * Tạo một session mới cho người dùng khi đăng nhập.
+   */
+  private async createSessionForLogin(
+    userId: number,
+    deviceId: number,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<string> {
+    const now = new Date()
+    const absoluteSessionLifetimeInSeconds =
+      this.configService.get<number>('ABSOLUTE_SESSION_LIFETIME_MS', 30 * 24 * 60 * 60 * 1000) / 1000
+    const expiresAtDate = new Date(now.getTime() + absoluteSessionLifetimeInSeconds * 1000)
+    const sessionId = uuidv4()
+
+    await this.sessionRepository.createSession({
+      id: sessionId,
+      userId: userId,
+      deviceId: deviceId,
+      createdAt: now.getTime(),
+      expiresAt: expiresAtDate.getTime(),
+      ipAddress: ipAddress ?? 'Unknown',
+      userAgent: userAgent ?? 'Unknown'
+    })
+
+    this.logger.log(`[createSessionForLogin] Session ${sessionId} created for user ${userId}`)
+    return sessionId
+  }
+
+  /**
+   * Tạo và thiết lập access/refresh tokens cho người dùng.
+   */
+  private generateAndSetAuthTokens(
+    user: Omit<UserWithProfileAndRole, 'password'>,
+    deviceId: number,
+    sessionId: string,
+    isTrustedSession: boolean,
+    rememberMe: boolean,
+    res: Response
+  ): { accessToken: string; refreshToken: string } {
+    const payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
+      userId: user.id,
+      email: user.email,
+      roleId: user.role.id,
+      roleName: user.role.name,
+      deviceId: deviceId,
+      sessionId,
+      jti: `access_${Date.now()}_${this.generateRandomId()}`,
+      isDeviceTrustedInSession: isTrustedSession
+    }
+
+    const accessToken = this.tokenService.signAccessToken(payload)
+    const refreshToken = this.tokenService.signRefreshToken({
+      ...payload,
+      jti: `refresh_${Date.now()}_${this.generateRandomId()}`
+    })
+
+    this.cookieService.setTokenCookies(res, accessToken, refreshToken, rememberMe)
+
+    return { accessToken, refreshToken }
   }
 
   /**

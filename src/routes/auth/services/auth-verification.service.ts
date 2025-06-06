@@ -81,55 +81,83 @@ export class AuthVerificationService {
   // ===================================================================================
 
   async initiateVerification(context: VerificationContext, res: Response): Promise<VerificationResult> {
-    const { userId, deviceId, purpose, metadata, ipAddress, userAgent, rememberMe } = context
+    const { userId, purpose } = context
     this.logger.debug(`[initiateVerification] UserID: ${userId}, Purpose: ${purpose}`)
 
-    // Luồng đăng ký luôn cần OTP và không cần kiểm tra user tồn tại
     if (purpose === TypeOfVerificationCode.REGISTER) {
-      this.logger.debug(`[initiateVerification] Khởi tạo luồng đăng ký với email ${context.email}`)
-      return this.initiateOtpFlow(context, res)
+      return this.handleRegistrationInitiation(context, res)
     }
 
-    // Với các trường hợp khác ngoài đăng ký, kiểm tra user
+    // Với các trường hợp khác, yêu cầu user phải tồn tại.
     const user = await this.userAuthRepository.findById(userId)
     if (!user) {
       throw AuthError.EmailNotFound()
     }
 
-    // Các hành động nhạy cảm hoặc đăng nhập sẽ được kiểm tra sâu hơn
     if (this.SENSITIVE_PURPOSES.includes(purpose) || purpose === TypeOfVerificationCode.LOGIN) {
-      const isDeviceTrusted = await this.deviceRepository.isDeviceTrustValid(deviceId)
-      const forceVerification = metadata?.forceVerification === true
-
-      // Buộc xác thực nếu có cờ, hoặc nếu là đăng nhập trên thiết bị không tin cậy
-      if (forceVerification || (purpose === TypeOfVerificationCode.LOGIN && !isDeviceTrusted)) {
-        if (forceVerification) {
-          this.logger.log(`[initiateVerification] Buộc xác thực cho UserID: ${userId} do cờ 'forceVerification'.`)
-        } else {
-          this.logger.log(`[initiateVerification] UserID: ${userId} đăng nhập trên thiết bị không tin cậy.`)
-        }
-        return this.initiateOtpOr2faFlow(context, res, user)
-      }
-
-      // Nếu đăng nhập trên thiết bị đã tin cậy và không bị buộc, đăng nhập thẳng
-      if (purpose === TypeOfVerificationCode.LOGIN && isDeviceTrusted && !forceVerification) {
-        this.logger.debug(
-          `[initiateVerification] Đăng nhập trên thiết bị tin cậy cho UserID: ${userId}. Bỏ qua xác thực.`
-        )
-        return this.handleLoginVerification(userId, deviceId, rememberMe ?? false, ipAddress, userAgent, res)
-      }
+      return this.handleLoginOrSensitiveActionInitiation(context, res, user)
     }
 
-    // Các trường hợp khác (hành động nhạy cảm trên thiết bị tin cậy) sẽ kích hoạt OTP
+    // Mặc định cho các trường hợp không xác định (ví dụ: các mục đích mới chưa được xử lý)
+    this.logger.warn(`[initiateVerification] Không có hành động nào được xác định cho mục đích: ${purpose}.`)
+    return {
+      success: true,
+      message: this.i18nService.t('global.success.general.default' as I18nPath)
+    }
+  }
+
+  /**
+   * Xử lý khởi tạo cho luồng đăng ký.
+   */
+  private handleRegistrationInitiation(context: VerificationContext, res: Response): Promise<VerificationResult> {
+    this.logger.debug(`[handleRegistrationInitiation] Khởi tạo luồng đăng ký với email ${context.email}`)
+    return this.initiateOtpFlow(context, res)
+  }
+
+  /**
+   * Xử lý khởi tạo cho luồng đăng nhập hoặc các hành động nhạy cảm.
+   */
+  private async handleLoginOrSensitiveActionInitiation(
+    context: VerificationContext,
+    res: Response,
+    user: User
+  ): Promise<VerificationResult> {
+    const { userId, deviceId, purpose, metadata, ipAddress, userAgent, rememberMe } = context
+
+    // Đối với các hành động nhạy cảm, luôn yêu cầu xác thực.
     if (this.SENSITIVE_PURPOSES.includes(purpose)) {
       this.logger.debug(
-        `[initiateVerification] Hành động nhạy cảm trên thiết bị tin cậy cho UserID: ${userId}. Yêu cầu OTP.`
+        `[handleLoginOrSensitiveAction] Hành động nhạy cảm (${purpose}) yêu cầu xác thực cho UserID: ${userId}.`
       )
       return this.initiateOtpOr2faFlow(context, res, user)
     }
 
-    // Mặc định cho các trường hợp không xác định
-    this.logger.warn(`[initiateVerification] Không có hành động nào được xác định cho mục đích: ${purpose}.`)
+    // Đối với hành động đăng nhập
+    if (purpose === TypeOfVerificationCode.LOGIN) {
+      const isDeviceTrusted = await this.deviceRepository.isDeviceTrustValid(deviceId)
+      const forceVerification = metadata?.forceVerification === true
+
+      // Yêu cầu xác thực nếu bị buộc hoặc đăng nhập trên thiết bị không tin cậy.
+      if (forceVerification || !isDeviceTrusted) {
+        if (forceVerification) {
+          this.logger.log(
+            `[handleLoginOrSensitiveAction] Buộc xác thực cho UserID: ${userId} do cờ 'forceVerification'.`
+          )
+        } else {
+          this.logger.log(`[handleLoginOrSensitiveAction] UserID: ${userId} đăng nhập trên thiết bị không tin cậy.`)
+        }
+        return this.initiateOtpOr2faFlow(context, res, user)
+      }
+
+      // Nếu không, đăng nhập trực tiếp trên thiết bị tin cậy.
+      this.logger.debug(
+        `[handleLoginOrSensitiveAction] Đăng nhập trên thiết bị tin cậy cho UserID: ${userId}. Bỏ qua xác thực.`
+      )
+      return this.handleLoginVerification(userId, deviceId, rememberMe ?? false, ipAddress, userAgent, res)
+    }
+
+    // Trường hợp dự phòng cho các mục đích khác chưa được xử lý trong luồng này.
+    this.logger.warn(`[handleLoginOrSensitiveAction] Không có hành động nào được xác định cho mục đích: ${purpose}.`)
     return {
       success: true,
       message: this.i18nService.t('global.success.general.default' as I18nPath)
@@ -245,50 +273,33 @@ export class AuthVerificationService {
     this.logger.debug(`[verifyAuthCode] Verifying code for UserID: ${userId}, Purpose: ${purpose}`)
 
     try {
-      // Xử lý riêng cho quá trình đăng ký
-      if (purpose === TypeOfVerificationCode.REGISTER) {
-        if (!email) throw AuthError.EmailMissingInSltContext()
-
-        const isValid = await this.otpService.verifyOTP(
-          email,
-          code,
-          purpose,
-          userId,
-          sltContext.ipAddress,
-          sltContext.userAgent
-        )
-        if (!isValid) throw AuthError.InvalidOTP()
-        return
-      }
-
-      // Xử lý riêng cho quá trình thiết lập 2FA
+      let isValid = false
+      // Trường hợp đặc biệt: Thiết lập 2FA, luôn dùng 2FA service để xác minh secret tạm thời.
       if (purpose === TypeOfVerificationCode.SETUP_2FA) {
         const secret = metadata?.secret
-        if (!secret) {
-          this.logger.error('[verifyAuthCode] Secret is missing in SLT context for 2FA setup.')
-          throw AuthError.InternalServerError('Secret missing for 2FA setup verification.')
-        }
-        const isValid = await this.twoFactorService.verifyCode(code, {
-          userId,
-          secret,
-          method: TwoFactorMethodType.TOTP
-        })
-        if (!isValid) {
-          throw AuthError.InvalidTOTP()
-        }
+        if (!secret) throw AuthError.InternalServerError('Secret missing for 2FA setup verification.')
+        isValid = await this.twoFactorService.verifyCode(code, { userId, secret, method: TwoFactorMethodType.TOTP })
+        if (!isValid) throw AuthError.InvalidTOTP()
         return
       }
 
-      // Xử lý cho các trường hợp khác, yêu cầu người dùng tồn tại
-      const user = await this.userAuthRepository.findById(userId)
-      if (!user) throw AuthError.EmailNotFound()
+      // Đối với các trường hợp khác, kiểm tra xem người dùng có tồn tại không (trừ khi đang đăng ký).
+      const user = purpose === TypeOfVerificationCode.REGISTER ? null : await this.userAuthRepository.findById(userId)
 
-      if (user.twoFactorEnabled) {
-        const isValid = await this.twoFactorService.verifyCode(code, { userId })
+      if (purpose !== TypeOfVerificationCode.REGISTER && !user) {
+        throw AuthError.EmailNotFound()
+      }
+
+      // Xác định phương thức xác thực: 2FA hay OTP.
+      const use2FA = user?.twoFactorEnabled ?? false
+
+      if (use2FA) {
+        isValid = await this.twoFactorService.verifyCode(code, { userId })
         if (!isValid) throw AuthError.InvalidTOTP()
       } else {
+        // Mặc định sử dụng OTP nếu 2FA không được bật hoặc cho các mục đích không yêu cầu user (như đăng ký)
         if (!email) throw AuthError.EmailMissingInSltContext()
-        const isValid = await this.otpService.verifyOTP(
+        isValid = await this.otpService.verifyOTP(
           email,
           code,
           purpose,
@@ -300,7 +311,7 @@ export class AuthVerificationService {
       }
     } catch (error) {
       await this.sltService.incrementSltAttempts(sltContext.sltJti)
-      throw error
+      throw error // Ném lại lỗi gốc sau khi xử lý
     }
   }
 

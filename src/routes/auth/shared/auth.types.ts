@@ -134,7 +134,7 @@ export interface ICookieService {
   clearSltCookie(res: Response): void
 
   // Các phương thức cần bổ sung
-  setTokenCookies(res: Response, accessToken: string, refreshToken: string, maxAgeForRefreshTokenCookie?: number): void
+  setTokenCookies(res: Response, accessToken: string, refreshToken: string, rememberMe?: boolean): void
   clearTokenCookies(res: Response): void
   setOAuthNonceCookie(res: Response, nonce: string): void
   clearOAuthNonceCookie(res: Response): void
