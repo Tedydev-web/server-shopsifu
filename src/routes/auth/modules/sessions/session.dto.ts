@@ -2,7 +2,7 @@ import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
 
 // ===================================================================================
-// Schemas for API Payloads (Request Bodies & URL Params)
+// Lược đồ cho nội dung yêu cầu
 // ===================================================================================
 
 // --- Get Sessions ---
@@ -36,7 +36,7 @@ export const UpdateDeviceNameBodySchema = z.object({
 })
 
 // ===================================================================================
-// Schemas for Response Data (to be wrapped by TransformInterceptor)
+// Lược đồ cho dữ liệu phản hồi (sẽ được bao bọc bởi TransformInterceptor)
 // ===================================================================================
 
 // --- Get Sessions ---

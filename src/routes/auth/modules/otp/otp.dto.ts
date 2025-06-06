@@ -3,7 +3,7 @@ import { TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.co
 import { z } from 'zod'
 
 // ===================================================================================
-// Schemas for Request Bodies
+// Lược đồ cho nội dung yêu cầu
 // ===================================================================================
 
 export const SendOtpSchema = z.object({
@@ -18,10 +18,10 @@ export const VerifyOtpSchema = z.object({
 })
 
 // ===================================================================================
-// Schemas for Response Data (to be wrapped by TransformInterceptor)
+// Lược đồ cho dữ liệu phản hồi (sẽ được bao bọc bởi TransformInterceptor)
 // ===================================================================================
 
-// For a successful verification that results in login/session creation
+// Lược đồ cho phần dữ liệu của phản hồi khi xác minh thành công
 export const OtpVerificationSuccessResponseSchema = z.object({
   user: z.any(),
   tokens: z
@@ -32,10 +32,9 @@ export const OtpVerificationSuccessResponseSchema = z.object({
     .optional()
 })
 
-// For a successful verification that enables the next step (e.g., registration completion)
+// Lược đồ cho phần dữ liệu của phản hồi khi xác minh thành công
 export const OtpVerificationStepSuccessResponseSchema = z.object({
   slt: z.string().optional()
-  // Add other relevant fields if necessary
 })
 
 // ===================================================================================

@@ -6,7 +6,7 @@ import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { SendOtpDto, VerifyOtpDto } from './otp.dto'
 import { CoreService } from '../core/core.service'
 import { CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
-import { IsPublic, Auth } from 'src/routes/auth/shared/decorators/auth.decorator'
+import { IsPublic } from 'src/routes/auth/shared/decorators/auth.decorator'
 import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
 
 @Controller('auth/otp')
@@ -49,8 +49,6 @@ export class OtpController {
       res
     )
 
-    // The interceptor will wrap this into the standard response format.
-    // The `data` part contains any information the client might need, like a verification token (SLT).
     return {
       message: verificationResult.message,
       data: verificationResult.data

@@ -1,14 +1,12 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
-import { PickedUserProfileResponseSchema } from 'src/shared/dtos/user.dto'
 
 // ===================================================================================
 // Schemas for Request Bodies
 // ===================================================================================
 
 export const TwoFactorVerifySchema = z.object({
-  code: z.string().min(6, { message: 'Mã xác thực phải có ít nhất 6 ký tự' }),
-  rememberMe: z.boolean().optional().default(false)
+  code: z.string().min(6).max(6)
 })
 
 // ===================================================================================

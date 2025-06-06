@@ -1,9 +1,9 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
-import { UserAuthResponseSchema, CompleteRegistrationSchema } from 'src/routes/auth/shared/schemas'
+import { CompleteRegistrationSchema } from 'src/routes/auth/shared/schemas'
 
 // ===================================================================================
-// Schemas for Request Bodies
+// Lược đồ cho nội dung yêu cầu
 // ===================================================================================
 
 // --- Registration ---
@@ -29,18 +29,18 @@ export const LogoutSchema = z.object({
 })
 
 // ===================================================================================
-// Schemas for Response Data (to be wrapped by TransformInterceptor)
+// Lược đồ cho dữ liệu phản hồi (sẽ được bao bọc bởi TransformInterceptor)
 // ===================================================================================
 
 // --- Login ---
-// Schema for the data part of the response when further verification is needed.
+// Lược đồ cho phần dữ liệu của phản hồi khi cần xác minh thêm.
 export const LoginVerificationNeededResponseSchema = z.object({
   sltToken: z.string().optional(),
   verificationType: z.enum(['OTP', '2FA']).optional()
 })
 
 // --- Refresh Token ---
-// Schema for the data part of the response when a token is refreshed.
+// Lược đồ cho phần dữ liệu của phản hồi khi mã thông báo được làm mới.
 export const RefreshTokenResponseSchema = z.object({
   accessToken: z.string()
 })
@@ -57,6 +57,6 @@ export class RefreshTokenDto extends createZodDto(RefreshTokenSchema) {}
 export class LogoutDto extends createZodDto(LogoutSchema) {}
 
 // --- Response DTOs ---
-// Note: These DTOs now represent the `data` field in the final API response.
+// Lưu ý: Các DTO này hiện đại diện cho trường "dữ liệu" trong phản hồi API cuối cùng.
 export class LoginVerificationNeededResponseDto extends createZodDto(LoginVerificationNeededResponseSchema) {}
 export class RefreshTokenResponseDto extends createZodDto(RefreshTokenResponseSchema) {}

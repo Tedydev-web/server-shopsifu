@@ -2,7 +2,7 @@ import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
 
 // ===================================================================================
-// Schemas for API Payloads (Request Bodies & URL Params)
+// Schemas cho API Payloads (Request Bodies & URL Params)
 // ===================================================================================
 
 // --- Get Google URL ---
@@ -20,11 +20,11 @@ export const GoogleCallbackQuerySchema = z.object({
 
 // --- Verify/Complete Actions ---
 export const VerifyAuthenticationSchema = z.object({
-  password: z.string().optional() // For completing link for users with existing password
+  password: z.string().optional() // Để hoàn thành liên kết cho người dùng có mật khẩu hiện có
 })
 
 // ===================================================================================
-// Schemas for Response Data (to be wrapped by TransformInterceptor)
+// Schemas cho Dữ liệu phản hồi (được bao bọc bởi TransformInterceptor)
 // ===================================================================================
 
 // --- Get Google URL ---

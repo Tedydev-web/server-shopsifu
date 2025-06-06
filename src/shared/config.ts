@@ -133,31 +133,31 @@ const getCookieConfig = () => {
       domain: parsedConfig.COOKIE_DOMAIN,
       maxAge: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('10m')),
       httpOnly: true,
-      secure: nodeEnv === 'production',
-      sameSite: nodeEnv === 'production' ? 'none' : 'lax'
+      secure: true,
+      sameSite: 'none'
     },
     REFRESH_TOKEN: {
       path: '/',
       domain: parsedConfig.COOKIE_DOMAIN,
       maxAge: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d')),
       httpOnly: true,
-      secure: nodeEnv === 'production',
-      sameSite: nodeEnv === 'production' ? 'none' : 'lax'
+      secure: true,
+      sameSite: 'none'
     },
     SLT_TOKEN: {
       path: '/',
       domain: parsedConfig.COOKIE_DOMAIN,
       maxAge: convertMs(parsedConfig.SLT_JWT_EXPIRES_IN, ms('5m')),
       httpOnly: true,
-      secure: nodeEnv === 'production',
-      sameSite: nodeEnv === 'production' ? 'none' : 'lax'
+      secure: true,
+      sameSite: 'none'
     },
     OAUTH_NONCE: {
       path: '/',
       domain: parsedConfig.COOKIE_DOMAIN,
       maxAge: convertMs(parsedConfig.NONCE_COOKIE_MAX_AGE || '5m', ms('5m')),
       httpOnly: true,
-      secure: nodeEnv === 'production',
+      secure: true,
       sameSite: 'none' // Luôn đặt là 'none' để dễ test với Postman
     },
     OAUTH_PENDING_LINK: {
@@ -165,8 +165,8 @@ const getCookieConfig = () => {
       domain: parsedConfig.COOKIE_DOMAIN,
       maxAge: convertMs(parsedConfig.PENDING_LINK_TOKEN_EXPIRES_IN, ms('15m')),
       httpOnly: true,
-      secure: nodeEnv === 'production',
-      sameSite: nodeEnv === 'production' ? 'none' : 'lax'
+      secure: true,
+      sameSite: 'none'
     }
   }
 }
@@ -187,8 +187,8 @@ const cookieConfig = {
     path: parsedConfig.COOKIE_PATH_CSRF,
     domain: parsedConfig.COOKIE_DOMAIN,
     httpOnly: false, // JavaScript cần đọc được
-    secure: nodeEnv === 'development' ? true : nodeEnv === 'production', // Trong development vẫn cần secure=true
-    sameSite: nodeEnv === 'development' ? 'none' : nodeEnv === 'production' ? 'none' : 'lax' // Trong development cần sameSite=none
+    secure: true, // Trong development vẫn cần secure=true
+    sameSite: 'none' // Trong development cần sameSite=none
   },
   csrfSecret: {
     name: '_csrf',

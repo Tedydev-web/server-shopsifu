@@ -21,11 +21,6 @@ export class TwoFactorController {
     private readonly authVerificationService: AuthVerificationService
   ) {}
 
-  /**
-   * Bắt đầu quá trình thiết lập 2FA.
-   * Trả về secret và QR code URI để người dùng quét.
-   * Khởi tạo một SLT để theo dõi quá trình xác nhận.
-   */
   @Post('setup')
   @HttpCode(HttpStatus.OK)
   async setupTwoFactor(
@@ -39,7 +34,7 @@ export class TwoFactorController {
       throw AuthError.InternalServerError('Email not found in access token payload.')
     }
 
-    const { secret, uri } = await this.twoFactorService.generateSetupDetails(activeUser.userId)
+    const { secret, qrCode } = await this.twoFactorService.generateSetupDetails(activeUser.userId)
 
     const verificationResult = await this.authVerificationService.initiateVerification(
       {
@@ -56,7 +51,7 @@ export class TwoFactorController {
 
     return {
       message: verificationResult.message,
-      data: { secret, uri }
+      data: { secret, qrCode }
     }
   }
 
@@ -100,9 +95,7 @@ export class TwoFactorController {
     if (!sltCookieValue) {
       throw AuthError.SLTCookieMissing()
     }
-    return this.authVerificationService.verifyCode(sltCookieValue, body.code, ip, userAgent, res, {
-      rememberMe: body.rememberMe
-    })
+    return this.authVerificationService.verifyCode(sltCookieValue, body.code, ip, userAgent, res)
   }
 
   /**
@@ -113,66 +106,54 @@ export class TwoFactorController {
   @HttpCode(HttpStatus.OK)
   async disableTwoFactor(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Ip() ip: string,
-    @UserAgent() userAgent: string,
-    @Res({ passthrough: true }) res: Response
-  ): Promise<{ message: string; data: VerificationNeededResponseDto }> {
-    this.logger.log(`[disableTwoFactor] Initiating 2FA disable for user: ${activeUser.userId}`)
-    if (!activeUser.email) {
-      throw AuthError.InternalServerError('Email not found in access token payload.')
+    @Body() body: TwoFactorVerifyDto
+  ): Promise<{ message: string }> {
+    this.logger.log(`[disableTwoFactor] Attempting to disable 2FA for user: ${activeUser.userId}`)
+
+    const isValid = await this.twoFactorService.verifyCode(body.code, {
+      userId: activeUser.userId
+    })
+
+    if (!isValid) {
+      throw AuthError.InvalidTOTP() // Hoặc một lỗi chung hơn cho mã không hợp lệ
     }
-    const verificationResult = await this.authVerificationService.initiateVerification(
-      {
-        userId: activeUser.userId,
-        deviceId: activeUser.deviceId,
-        email: activeUser.email,
-        ipAddress: ip,
-        userAgent: userAgent,
-        purpose: TypeOfVerificationCode.DISABLE_2FA
-      },
-      res
-    )
+
+    await this.twoFactorService.disableVerification(activeUser.userId)
+
     return {
-      message: verificationResult.message,
-      data: {
-        requiresAdditionalVerification: true,
-        verificationType: verificationResult.verificationType
-      }
+      message: 'auth.Auth.Error.2FA.Disable.Success'
     }
   }
 
   /**
-   * Bắt đầu quá trình tạo lại mã khôi phục.
-   * Cần xác thực bổ sung.
+   * Tạo lại mã khôi phục.
+   * Yêu cầu xác thực bằng TOTP hoặc một mã khôi phục cũ.
    */
   @Post('regenerate-recovery-codes')
   @HttpCode(HttpStatus.OK)
   async regenerateRecoveryCodes(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Ip() ip: string,
-    @UserAgent() userAgent: string,
-    @Res({ passthrough: true }) res: Response
-  ): Promise<{ message: string; data: VerificationNeededResponseDto }> {
-    this.logger.log(`[regenerateRecoveryCodes] Initiating recovery code regeneration for user: ${activeUser.userId}`)
-    if (!activeUser.email) {
-      throw AuthError.InternalServerError('Email not found in access token payload.')
+    @Body() body: TwoFactorVerifyDto
+  ): Promise<{ message: string; data: { recoveryCodes: string[] } }> {
+    this.logger.log(`[regenerateRecoveryCodes] User ${activeUser.userId} is attempting to regenerate recovery codes.`)
+
+    // Xác thực người dùng bằng mã TOTP hoặc recovery code hiện tại
+    const isValid = await this.twoFactorService.verifyCode(body.code, {
+      userId: activeUser.userId
+    })
+
+    if (!isValid) {
+      this.logger.warn(`[regenerateRecoveryCodes] Invalid 2FA code provided by user ${activeUser.userId}.`)
+      throw AuthError.InvalidTOTP()
     }
-    const result = await this.authVerificationService.initiateVerification(
-      {
-        userId: activeUser.userId,
-        deviceId: activeUser.deviceId,
-        email: activeUser.email,
-        ipAddress: ip,
-        userAgent: userAgent,
-        purpose: TypeOfVerificationCode.REGENERATE_2FA_CODES
-      },
-      res
-    )
+
+    // Nếu mã hợp lệ, tạo mã khôi phục mới
+    const recoveryCodes = await this.twoFactorService.regenerateRecoveryCodes(activeUser.userId)
+
     return {
-      message: result.message,
+      message: 'auth.Auth.Error.2FA.RecoveryCodesRegenerated',
       data: {
-        requiresAdditionalVerification: true,
-        verificationType: result.verificationType
+        recoveryCodes
       }
     }
   }

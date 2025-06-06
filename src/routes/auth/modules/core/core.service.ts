@@ -106,31 +106,36 @@ export class CoreService {
     userAgent: string,
     res: Response
   ): Promise<{ message: I18nPath; data: any }> {
-    await this.checkEmailNotExists(email)
+    try {
+      // Kiểm tra email đã tồn tại chưa
+      await this.checkEmailNotExists(email)
 
-    const tempUser = await this.createTemporaryUser(email)
-    const tempDevice = await this.createTemporaryDevice(tempUser.id, userAgent, ipAddress)
+      if (!this.authVerificationService) {
+        throw AuthError.InternalServerError('AuthVerificationService is not available.')
+      }
 
-    if (!this.authVerificationService) {
-      throw AuthError.InternalServerError('AuthVerificationService is not available.')
-    }
+      // Không tạo user tạm thời, chỉ khởi tạo quá trình xác thực với email và metadata
+      const verificationResult = await this.authVerificationService.initiateVerification(
+        {
+          userId: 0, // Giá trị tạm thời sẽ được tạo bởi SLT service
+          deviceId: 0, // Giá trị tạm thời sẽ được tạo bởi SLT service
+          email: email,
+          ipAddress: ipAddress,
+          userAgent: userAgent,
+          purpose: TypeOfVerificationCode.REGISTER,
+          metadata: { pendingEmail: email, from: 'initiate-registration' }
+        },
+        res
+      )
 
-    const verificationResult = await this.authVerificationService.initiateVerification(
-      {
-        userId: tempUser.id,
-        deviceId: tempDevice.id,
-        email: tempUser.email,
-        ipAddress: ipAddress,
-        userAgent: userAgent,
-        purpose: TypeOfVerificationCode.REGISTER,
-        metadata: { from: 'initiate-registration' }
-      },
-      res
-    )
-
-    return {
-      message: verificationResult.message as I18nPath,
-      data: verificationResult.data
+      return {
+        message: verificationResult.message as I18nPath,
+        data: verificationResult.data
+      }
+    } catch (error) {
+      this.logger.error(`[initiateRegistration] Error: ${error.message}`, error.stack)
+      if (error instanceof AuthError) throw error
+      throw AuthError.InternalServerError(error.message)
     }
   }
 
@@ -156,11 +161,30 @@ export class CoreService {
       throw AuthError.InsufficientPermissions() // Hoặc một lỗi cụ thể hơn
     }
 
-    // Hoàn tất đăng ký
-    await this.completeRegistration({ ...params, userId: sltContext.userId })
+    // Lấy email từ metadata hoặc trực tiếp từ context
+    const email = sltContext.metadata?.pendingEmail || sltContext.email
+    if (!email) {
+      throw AuthError.InternalServerError('Email is missing in SLT context')
+    }
+
+    // Kiểm tra email không tồn tại trong cơ sở dữ liệu
+    await this.checkEmailNotExists(email)
+
+    // Hoàn tất đăng ký với thông tin từ params
+    await this.completeRegistration({
+      email,
+      password: params.password,
+      firstName: params.firstName,
+      lastName: params.lastName,
+      username: params.username,
+      phoneNumber: params.phoneNumber,
+      ip: ipAddress,
+      userAgent: userAgent
+    })
 
     // Finalize SLT
     await this.sltService.finalizeSlt(sltContext.sltJti)
+    this.logger.log(`[completeRegistrationWithSlt] Registration completed and SLT finalized for email: ${email}`)
 
     return {
       message: 'auth.Auth.Register.Success'
@@ -170,14 +194,8 @@ export class CoreService {
   /**
    * Hoàn tất đăng ký
    */
-  async completeRegistration(params: RegisterUserParams): Promise<void> {
-    const { userId, password, firstName, lastName, username, phoneNumber } = params
-
-    // Tìm user tạm thời bằng ID
-    const userToUpdate = await this.userAuthRepository.findById(userId)
-    if (!userToUpdate) {
-      throw AuthError.EmailNotFound()
-    }
+  async completeRegistration(params: Omit<RegisterUserParams, 'userId'> & { email: string }): Promise<void> {
+    const { email, password, firstName, lastName, username, phoneNumber } = params
 
     if (!password) {
       throw AuthError.InvalidPassword()
@@ -195,17 +213,23 @@ export class CoreService {
     const hashedPassword = await this.hashingService.hash(password)
 
     // Tạo username nếu không được cung cấp
-    const finalUsername = username || (await this.generateUniqueUsername(userToUpdate.email))
+    const finalUsername = username || (await this.generateUniqueUsername(email))
 
-    // Cập nhật user hiện có
-    await this.userAuthRepository.updateUser(userId, {
-      password: hashedPassword,
-      firstName,
-      lastName,
-      username: finalUsername,
-      phoneNumber,
-      status: 'ACTIVE' // Kích hoạt tài khoản
-    })
+    // Tạo user mới thay vì cập nhật
+    try {
+      await this.userAuthRepository.createUser({
+        email,
+        password: hashedPassword,
+        firstName,
+        lastName,
+        username: finalUsername,
+        phoneNumber
+        // User sẽ được tạo với trạng thái "ACTIVE" theo mặc định
+      })
+    } catch (error) {
+      this.logger.error(`[completeRegistration] Error creating new user: ${error.message}`, error.stack)
+      throw AuthError.InternalServerError('Failed to create user during registration')
+    }
   }
 
   /**
@@ -252,11 +276,7 @@ export class CoreService {
   /**
    * Làm mới token
    */
-  async refreshToken(
-    refreshToken: string,
-    deviceInfo: any,
-    res: Response
-  ): Promise<{ message: I18nPath; data: { accessToken: string } }> {
+  async refreshToken(refreshToken: string, deviceInfo: any, res: Response): Promise<{ message: I18nPath }> {
     try {
       const { userAgent, ip } = deviceInfo
 
@@ -269,17 +289,24 @@ export class CoreService {
         throw AuthError.InvalidRefreshToken()
       }
 
+      // Lấy thông tin user mới nhất
+      const user = await this.userAuthRepository.findById(payload.userId)
+      if (!user) {
+        throw AuthError.EmailNotFound()
+      }
+
       // Đánh dấu refresh token cũ là đã sử dụng
       await this.tokenService.markRefreshTokenJtiAsUsed(payload.jti, payload.sessionId)
 
-      // Tạo payload mới
-      const newPayload = {
-        userId: payload.userId,
+      // Tạo payload mới với thông tin đầy đủ
+      const newPayload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
+        userId: user.id,
+        email: user.email,
+        roleId: user.role.id,
+        roleName: user.role.name,
         deviceId: payload.deviceId,
-        roleId: payload.roleId,
-        roleName: payload.roleName,
         sessionId: payload.sessionId,
-        jti: `access_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
+        jti: `access_${Date.now()}_${this.generateRandomId()}`,
         isDeviceTrustedInSession: payload.isDeviceTrustedInSession
       }
 
@@ -287,17 +314,14 @@ export class CoreService {
       const newAccessToken = this.tokenService.signAccessToken(newPayload)
       const newRefreshToken = this.tokenService.signRefreshToken({
         ...newPayload,
-        jti: `refresh_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
+        jti: `refresh_${Date.now()}_${this.generateRandomId()}`
       })
 
       // Set cookie mới
       this.cookieService.setTokenCookies(res, newAccessToken, newRefreshToken)
 
       return {
-        message: 'auth.Auth.Token.Refreshed',
-        data: {
-          accessToken: newAccessToken
-        }
+        message: 'auth.Auth.Token.Refreshed'
       }
     } catch (error) {
       this.logger.error(`Lỗi làm mới token: ${error.message}`, error.stack)
@@ -334,7 +358,7 @@ export class CoreService {
 
       // Đánh dấu session là đã vô hiệu hóa
       if (this.sessionsService) {
-        await this.sessionsService.invalidateSession(sessionId)
+        await this.sessionsService.invalidateSession(sessionId, 'logout')
       } else {
         // Log warning khi không có SessionsService
         this.logger.warn(`[logout] SessionsService không khả dụng, không thể vô hiệu hóa session ${sessionId}`)
@@ -438,22 +462,14 @@ export class CoreService {
 
       const userResponse = {
         id: user.id,
-        email: user.email,
-        role: user.role.name,
-        isDeviceTrustedInSession: effectiveIsTrustedSession,
-        userProfile: user.userProfile
-          ? {
-              username: user.userProfile.username,
-              avatar: user.userProfile.avatar
-            }
-          : null
+        username: user.userProfile?.username,
+        avatar: user.userProfile?.avatar,
+        isDeviceTrustedInSession: effectiveIsTrustedSession
       }
 
       return {
         message: 'auth.Auth.Login.Success',
         data: {
-          accessToken,
-          refreshToken,
           user: userResponse
         }
       }
@@ -525,22 +541,22 @@ export class CoreService {
   }
 
   async initiateLogin(loginDto: LoginDto, ip: string, userAgent: string, res: Response) {
-    this.logger.log(`[Login] Initiating login for user ${loginDto.emailOrUsername}`)
+    this.logger.log(`[Login] Bắt đầu đăng nhập cho người dùng ${loginDto.emailOrUsername}`)
 
     const user = await this.validateUser(loginDto.emailOrUsername, loginDto.password)
     if (!user) {
       throw AuthError.InvalidPassword()
     }
 
-    // Check if the user is flagged for re-verification
+    // Kiểm tra xem người dùng có bị gắn cờ yêu cầu xác minh lại không
     const reverifyKey = RedisKeyManager.getUserReverifyNextLoginKey(user.id)
     const needsReverification = await this.redisService.get(reverifyKey)
 
     const device = await this.getOrCreateDevice(user.id, ip, userAgent)
 
     if (needsReverification) {
-      this.logger.log(`[Login] User ${user.id} is flagged for re-verification. Forcing verification flow.`)
-      // Delete the flag immediately after reading it
+      this.logger.log(`[Login] Người dùng ${user.id} bị gắn cờ xác minh lại. Buộc phải qua luồng xác thực.`)
+      // Xóa cờ ngay sau khi đọc để nó chỉ có hiệu lực một lần
       await this.redisService.del(reverifyKey)
     }
 
@@ -568,8 +584,7 @@ export class CoreService {
       return {
         message: verificationResult.message,
         data: {
-          user: verificationResult.user,
-          accessToken: verificationResult.tokens.accessToken
+          user: verificationResult.user
         }
       }
     }

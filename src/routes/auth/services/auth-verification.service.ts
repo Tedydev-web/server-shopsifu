@@ -6,7 +6,8 @@ import { ICookieService, ITokenService, SltContextData } from 'src/routes/auth/s
 import {
   TypeOfVerificationCode,
   TypeOfVerificationCodeType,
-  TwoFactorMethodType
+  TwoFactorMethodType,
+  TwoFactorMethodTypeType
 } from 'src/routes/auth/shared/constants/auth.constants'
 import { TwoFactorService } from 'src/routes/auth/modules/two-factor/two-factor.service'
 import { UserAuthRepository, DeviceRepository } from 'src/routes/auth/shared/repositories'
@@ -80,60 +81,59 @@ export class AuthVerificationService {
   // ===================================================================================
 
   async initiateVerification(context: VerificationContext, res: Response): Promise<VerificationResult> {
-    const { userId, deviceId, email, ipAddress, userAgent, purpose, rememberMe, metadata } = context
+    const { userId, deviceId, purpose, metadata, ipAddress, userAgent, rememberMe } = context
     this.logger.debug(`[initiateVerification] UserID: ${userId}, Purpose: ${purpose}`)
 
-    const user = await this.userAuthRepository.findById(userId)
-    if (!user) throw AuthError.EmailNotFound()
-
-    // Kiểm tra cờ xác minh lại bắt buộc từ quy trình đăng nhập
-    if (metadata?.forceVerification) {
-      this.logger.debug(`[initiateVerification] Forced verification for UserID: ${userId} due to re-verify flag.`)
-      // Directly proceed to OTP/2FA flow, bypassing other checks
-      return this.initiateOtpOr2faFlow(context, res, user)
-    }
-
-    // Đối với mục đích REGISTER, không cần kiểm tra thiết bị tin cậy hay hành động nhạy cảm
+    // Luồng đăng ký luôn cần OTP và không cần kiểm tra user tồn tại
     if (purpose === TypeOfVerificationCode.REGISTER) {
-      this.logger.debug(`[initiateVerification] Registration flow for UserID: ${userId}. Proceeding with OTP.`)
+      this.logger.debug(`[initiateVerification] Khởi tạo luồng đăng ký với email ${context.email}`)
       return this.initiateOtpFlow(context, res)
     }
 
-    // Kiểm tra xem có cần xác thực không
-    const isSensitiveAction = this.SENSITIVE_PURPOSES.includes(purpose)
-    const isDeviceTrusted = await this.deviceRepository.isDeviceTrustValid(deviceId)
-    const needsVerification = isSensitiveAction || (purpose === TypeOfVerificationCode.LOGIN && !isDeviceTrusted)
-
-    if (!needsVerification && purpose === TypeOfVerificationCode.LOGIN) {
-      this.logger.debug(`[initiateVerification] Trusted device login for UserID: ${userId}. Skipping verification.`)
-      return this.handleLoginVerification(userId, deviceId, rememberMe ?? false, ipAddress, userAgent, res)
+    // Với các trường hợp khác ngoài đăng ký, kiểm tra user
+    const user = await this.userAuthRepository.findById(userId)
+    if (!user) {
+      throw AuthError.EmailNotFound()
     }
 
-    // Nếu thiết bị được trust, bỏ qua 2FA và chỉ gửi OTP nếu mục đích nhạy cảm
-    if (isDeviceTrusted) {
-      if (this.SENSITIVE_PURPOSES.includes(context.purpose)) {
-        this.logger.debug(`[initiateVerification] Device is trusted, but purpose is sensitive. Forcing OTP.`)
-        return this.initiateOtpFlow(context, res)
-      } else {
-        // Hoàn thành hành động ngay lập tức
-        this.logger.debug(
-          `[initiateVerification] Device is trusted and purpose is not sensitive. Completing action directly.`
-        )
-        // Set slt cookie để hoàn tất đăng ký ngay
-        const sltContext = await this.sltService.createAndStoreSltToken(context)
-        this.cookieService.setSltCookie(res, sltContext, context.purpose)
+    // Các hành động nhạy cảm hoặc đăng nhập sẽ được kiểm tra sâu hơn
+    if (this.SENSITIVE_PURPOSES.includes(purpose) || purpose === TypeOfVerificationCode.LOGIN) {
+      const isDeviceTrusted = await this.deviceRepository.isDeviceTrustValid(deviceId)
+      const forceVerification = metadata?.forceVerification === true
 
-        return {
-          success: true,
-          message: 'global.success.general.default'
+      // Buộc xác thực nếu có cờ, hoặc nếu là đăng nhập trên thiết bị không tin cậy
+      if (forceVerification || (purpose === TypeOfVerificationCode.LOGIN && !isDeviceTrusted)) {
+        if (forceVerification) {
+          this.logger.log(`[initiateVerification] Buộc xác thực cho UserID: ${userId} do cờ 'forceVerification'.`)
+        } else {
+          this.logger.log(`[initiateVerification] UserID: ${userId} đăng nhập trên thiết bị không tin cậy.`)
         }
+        return this.initiateOtpOr2faFlow(context, res, user)
+      }
+
+      // Nếu đăng nhập trên thiết bị đã tin cậy và không bị buộc, đăng nhập thẳng
+      if (purpose === TypeOfVerificationCode.LOGIN && isDeviceTrusted && !forceVerification) {
+        this.logger.debug(
+          `[initiateVerification] Đăng nhập trên thiết bị tin cậy cho UserID: ${userId}. Bỏ qua xác thực.`
+        )
+        return this.handleLoginVerification(userId, deviceId, rememberMe ?? false, ipAddress, userAgent, res)
       }
     }
 
-    // Nếu không, kiểm tra 2FA
-    if (!user) throw AuthError.EmailNotFound()
+    // Các trường hợp khác (hành động nhạy cảm trên thiết bị tin cậy) sẽ kích hoạt OTP
+    if (this.SENSITIVE_PURPOSES.includes(purpose)) {
+      this.logger.debug(
+        `[initiateVerification] Hành động nhạy cảm trên thiết bị tin cậy cho UserID: ${userId}. Yêu cầu OTP.`
+      )
+      return this.initiateOtpOr2faFlow(context, res, user)
+    }
 
-    return this.initiateOtpOr2faFlow(context, res, user)
+    // Mặc định cho các trường hợp không xác định
+    this.logger.warn(`[initiateVerification] Không có hành động nào được xác định cho mục đích: ${purpose}.`)
+    return {
+      success: true,
+      message: this.i18nService.t('global.success.general.default' as I18nPath)
+    }
   }
 
   private async initiateOtpOr2faFlow(
@@ -141,31 +141,28 @@ export class AuthVerificationService {
     res: Response,
     user: User
   ): Promise<VerificationResult> {
-    const { userId, email, purpose, rememberMe, metadata } = context
-    // Assuming the correct property is 'twoFactorEnabled' based on previous linter errors
-    const use2FA = user.twoFactorEnabled
+    const { purpose } = context
+    const { id: userId } = user
 
-    const sltMetadata = { ...metadata, rememberMe, ...(use2FA && { twoFactorMethod: 'TOTP' }) }
-    const sltToken = await this.sltService.createAndStoreSltToken({ ...context, metadata: sltMetadata })
-    this.cookieService.setSltCookie(res, sltToken, purpose)
+    // Logic cốt lõi: Ưu tiên 2FA nếu được bật
+    if (user.twoFactorEnabled) {
+      this.logger.debug(`[initiateOtpOr2faFlow] 2FA is enabled for user ${userId}. Initiating 2FA flow.`)
 
-    let messageKey: I18nPath = 'auth.Auth.Otp.SentSuccessfully' as any
-    if (use2FA) {
-      // Use a more generic message for starting the 2FA flow
-      messageKey = 'auth.Auth.Login.2FARequired' as any
-    } else {
-      // Only send OTP if not using 2FA
-      await this.otpService.sendOTP(email, purpose, userId, metadata)
-    }
+      const sltToken = await this.sltService.createAndStoreSltToken({ ...context })
+      this.cookieService.setSltCookie(res, sltToken, purpose)
 
-    return {
-      success: false,
-      message: messageKey, // Pass the i18n key directly
-      data: {
-        sltToken,
-        verificationType: use2FA ? '2FA' : 'OTP'
+      return {
+        success: false,
+        message: this.i18nService.t('auth.Auth.Login.2FARequired' as I18nPath),
+        data: {
+          verificationType: '2FA'
+        }
       }
     }
+
+    // Nếu 2FA không được bật, quay lại luồng OTP qua email
+    this.logger.debug(`[initiateOtpOr2faFlow] 2FA is not enabled for user ${userId}. Initiating OTP flow.`)
+    return this.initiateOtpFlow(context, res)
   }
 
   /**
@@ -198,7 +195,6 @@ export class AuthVerificationService {
       success: false, // Not final success, requires OTP verification
       message: 'auth.Auth.Otp.SentSuccessfully',
       data: {
-        sltToken,
         verificationType: use2FA ? '2FA' : 'OTP'
       }
     }
@@ -227,37 +223,70 @@ export class AuthVerificationService {
 
       await this.verifyAuthenticationCode(sltContext, code)
       const result = await this.handlePostVerificationActions(sltContext, code, res, sltCookieValue)
+
+      // Không xóa SLT cookie khi đã xác minh OTP thành công cho quy trình đăng ký
+      // vì cookie này vẫn cần thiết cho bước complete-registration
+      if (sltContext.purpose !== TypeOfVerificationCode.REGISTER) {
+        this.cookieService.clearSltCookie(res)
+      }
+
       return result
     } catch (error) {
       this.logger.error(`[verifyCode] Error: ${error.message}`, error.stack)
-      // Dù thành công hay thất bại, SLT cũng nên được xóa để tránh dùng lại
+      // Khi có lỗi, luôn xóa cookie để tránh sử dụng lại
       this.cookieService.clearSltCookie(res)
       if (error instanceof AuthError) throw error
       throw AuthError.InternalServerError()
-    } finally {
-      // Đảm bảo cookie luôn được xóa
-      this.cookieService.clearSltCookie(res)
     }
   }
 
   private async verifyAuthenticationCode(sltContext: SltContextData & { sltJti: string }, code: string): Promise<void> {
-    const { userId, purpose, email } = sltContext
+    const { userId, purpose, email, metadata } = sltContext
     this.logger.debug(`[verifyAuthCode] Verifying code for UserID: ${userId}, Purpose: ${purpose}`)
 
-    const user = await this.userAuthRepository.findById(userId)
-    if (!user) throw AuthError.EmailNotFound()
-
     try {
-      if (user.twoFactorEnabled) {
-        // Xác thực 2FA
-        const { twoFactorMethod = TwoFactorMethodType.TOTP } = sltContext.metadata || {}
-        await this.twoFactorService.verifyCode(code, {
+      // Xử lý riêng cho quá trình đăng ký
+      if (purpose === TypeOfVerificationCode.REGISTER) {
+        if (!email) throw AuthError.EmailMissingInSltContext()
+
+        const isValid = await this.otpService.verifyOTP(
+          email,
+          code,
+          purpose,
           userId,
-          method: twoFactorMethod,
-          secret: user.twoFactorSecret ?? undefined
+          sltContext.ipAddress,
+          sltContext.userAgent
+        )
+        if (!isValid) throw AuthError.InvalidOTP()
+        return
+      }
+
+      // Xử lý riêng cho quá trình thiết lập 2FA
+      if (purpose === TypeOfVerificationCode.SETUP_2FA) {
+        const secret = metadata?.secret
+        if (!secret) {
+          this.logger.error('[verifyAuthCode] Secret is missing in SLT context for 2FA setup.')
+          throw AuthError.InternalServerError('Secret missing for 2FA setup verification.')
+        }
+        const isValid = await this.twoFactorService.verifyCode(code, {
+          userId,
+          secret,
+          method: TwoFactorMethodType.TOTP
         })
+        if (!isValid) {
+          throw AuthError.InvalidTOTP()
+        }
+        return
+      }
+
+      // Xử lý cho các trường hợp khác, yêu cầu người dùng tồn tại
+      const user = await this.userAuthRepository.findById(userId)
+      if (!user) throw AuthError.EmailNotFound()
+
+      if (user.twoFactorEnabled) {
+        const isValid = await this.twoFactorService.verifyCode(code, { userId })
+        if (!isValid) throw AuthError.InvalidTOTP()
       } else {
-        // Xác thực OTP
         if (!email) throw AuthError.EmailMissingInSltContext()
         const isValid = await this.otpService.verifyOTP(
           email,
@@ -271,7 +300,7 @@ export class AuthVerificationService {
       }
     } catch (error) {
       await this.sltService.incrementSltAttempts(sltContext.sltJti)
-      throw error // Ném lại lỗi gốc (InvalidOTP, InvalidTOTP...)
+      throw error
     }
   }
 
@@ -289,7 +318,10 @@ export class AuthVerificationService {
     this.logger.debug(`[handlePostActions] Executing post-verification action for Purpose: ${purpose}`)
 
     // Đảm bảo SLT được finalize trước khi thực hiện hành động
-    await this.sltService.finalizeSlt(sltContext.sltJti)
+    // Trừ trường hợp REGISTER, vì quá trình REGISTER cần 2 bước
+    if (purpose !== TypeOfVerificationCode.REGISTER) {
+      await this.sltService.finalizeSlt(sltContext.sltJti)
+    }
 
     switch (purpose) {
       case TypeOfVerificationCode.LOGIN: {
@@ -313,14 +345,8 @@ export class AuthVerificationService {
         if (!secret) throw AuthError.InternalServerError('Missing 2FA secret for setup.')
         return this.handleSetup2FAVerification(userId, code, secret)
       }
-      case TypeOfVerificationCode.REGENERATE_2FA_CODES:
-        return this.handleRegenerate2FACodesVerification(userId, code)
-
       case TypeOfVerificationCode.REGISTER:
         return this.handleRegistrationOtpVerified(sltContext.sltJti)
-
-      // Các case khác như REGISTER, RESET_PASSWORD có thể xử lý ở đây nếu cần
-      // ...
 
       default:
         this.logger.warn(`[handlePostActions] Unhandled purpose: ${purpose}.`)
@@ -343,6 +369,9 @@ export class AuthVerificationService {
     userAgent: string,
     res: Response
   ): Promise<VerificationResult> {
+    if (!this.coreService) {
+      throw AuthError.InternalServerError('CoreService is not available')
+    }
     const loginResult = await this.coreService.finalizeLoginAfterVerification(
       userId,
       deviceId,
@@ -351,12 +380,16 @@ export class AuthVerificationService {
       ipAddress,
       userAgent
     )
+
+    // Nếu người dùng chọn "rememberMe", chúng ta tin cậy thiết bị này
+    if (rememberMe) {
+      await this.deviceRepository.updateDeviceTrustStatus(deviceId, true)
+    }
+
     return {
       success: true,
-      message: this.i18nService.t('auth.Auth.Login.Success' as I18nPath),
-      data: {
-        user: loginResult.user
-      }
+      message: loginResult.message,
+      data: loginResult.data
     }
   }
 
@@ -428,15 +461,6 @@ export class AuthVerificationService {
     }
   }
 
-  private async handleRegenerate2FACodesVerification(userId: number, code: string): Promise<VerificationResult> {
-    const recoveryCodes = await this.twoFactorService.regenerateRecoveryCodes(userId, code)
-    return {
-      success: true,
-      message: this.i18nService.t('auth.Auth.2FA.RecoveryCodesRegenerated' as I18nPath),
-      data: { recoveryCodes }
-    }
-  }
-
   private async handleRegistrationOtpVerified(sltJti: string): Promise<VerificationResult> {
     await this.sltService.updateSltContext(sltJti, {
       metadata: { otpVerified: 'true' }
@@ -444,30 +468,6 @@ export class AuthVerificationService {
     return {
       success: true,
       message: this.i18nService.t('auth.Auth.Otp.Verified' as I18nPath)
-    }
-  }
-
-  private async handleRegistrationCompletion(
-    userId: number,
-    metadata?: Record<string, any>
-  ): Promise<VerificationResult> {
-    if (!metadata || !metadata.password) {
-      throw AuthError.InternalServerError('Password missing in registration metadata.')
-    }
-
-    await this.coreService.completeRegistration({
-      userId,
-      password: metadata.password,
-      confirmPassword: metadata.confirmPassword,
-      firstName: metadata.firstName,
-      lastName: metadata.lastName,
-      username: metadata.username,
-      phoneNumber: metadata.phoneNumber
-    })
-
-    return {
-      success: true,
-      message: this.i18nService.t('auth.Auth.Register.Success' as I18nPath)
     }
   }
 
@@ -484,7 +484,6 @@ export class AuthVerificationService {
       success: false, // It's an intermediate step, not final success
       message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully'),
       data: {
-        sltToken,
         verificationType: 'OTP'
       }
     }

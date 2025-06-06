@@ -12,6 +12,7 @@ import {
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { v4 as uuidv4 } from 'uuid'
+import { TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 
 @Injectable()
 export class SLTService implements ISLTService {
@@ -36,7 +37,24 @@ export class SLTService implements ISLTService {
     email?: string
     metadata?: Record<string, any>
   }): Promise<string> {
-    const { userId, deviceId, ipAddress, userAgent, purpose, metadata, email } = payload
+    let { userId, deviceId } = payload
+    const { ipAddress, userAgent, purpose, email } = payload
+    let { metadata } = payload
+
+    // Tạo userId và deviceId tạm thời cho luồng đăng ký nếu giá trị bằng 0
+    const isRegistrationFlow = purpose === TypeOfVerificationCode.REGISTER && userId === 0 && deviceId === 0
+    if (isRegistrationFlow) {
+      // Tạo một userId tạm thời dạng âm để không xung đột với userId thật
+      userId = -Math.floor(Math.random() * 1000000) - 1
+      deviceId = -Math.floor(Math.random() * 1000000) - 1
+
+      this.logger.debug(`[createAndStoreSltToken] Tạo userId tạm (${userId}) và deviceId tạm (${deviceId}) cho đăng ký`)
+
+      // Đảm bảo email được lưu trong metadata cho quá trình đăng ký
+      if (email && (!metadata || !metadata.pendingEmail)) {
+        metadata = { ...metadata, pendingEmail: email }
+      }
+    }
 
     const jti = uuidv4()
     const sltPayload: SltJwtPayload = {
@@ -78,7 +96,7 @@ export class SLTService implements ISLTService {
     await this.storeSltContext(jti, sltContextData)
 
     this.logger.log(
-      `[createAndStoreSltToken] Tạo SLT token cho user ID ${userId}, device ID ${deviceId}, purpose ${purpose}`
+      `[createAndStoreSltToken] Tạo SLT token cho ${isRegistrationFlow ? 'đăng ký với email ' + email : 'user ID ' + userId}, device ID ${deviceId}, purpose ${purpose}`
     )
 
     return sltToken
@@ -153,12 +171,21 @@ export class SLTService implements ISLTService {
         throw AuthError.SLTExpired()
       }
 
-      if (redisContext.finalized === '1') {
-        this.logger.warn(`[validateSltFromCookieAndGetContext] SLT already used for jti: ${jti}`)
-        throw AuthError.SLTAlreadyUsed()
-      }
-
+      // Xử lý đặc biệt cho quy trình đăng ký
+      // Nếu SLT đã finalized nhưng là quy trình đăng ký và đã xác minh OTP
+      // thì vẫn cho phép sử dụng để hoàn tất quá trình đăng ký
       const sltContext = this.parseSltContextFromRedis(redisContext)
+
+      if (redisContext.finalized === '1') {
+        if (purpose === TypeOfVerificationCode.REGISTER && sltContext.metadata?.otpVerified === 'true') {
+          this.logger.log(
+            `[validateSltFromCookieAndGetContext] Allowing reuse of finalized SLT for registration completion: ${jti}`
+          )
+        } else {
+          this.logger.warn(`[validateSltFromCookieAndGetContext] SLT already used for jti: ${jti}`)
+          throw AuthError.SLTAlreadyUsed()
+        }
+      }
 
       const currentAttempts = await this.incrementSltAttempts(jti)
       const maxAttempts = this.configService.get('security.sltMaxAttempts', SLT_MAX_ATTEMPTS)

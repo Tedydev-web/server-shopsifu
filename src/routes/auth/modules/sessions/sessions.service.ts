@@ -251,29 +251,33 @@ export class SessionsService implements ISessionService {
       untrustedDevicesCount = untrustedDeviceIds.size
     }
 
-    // After any revocation, set the re-verification flag for the user
+    // Sau khi thu hồi, đặt cờ yêu cầu xác minh lại cho người dùng
     if (revokedSessionsCount > 0) {
       await this.setReverifyFlagForUser(userId)
     }
 
-    const message: string =
-      revokedSessionsCount > 0
-        ? this.i18nService.t('auth.Auth.Session.RevokedSuccessfullyCount' as I18nPath, {
-            args: { count: revokedSessionsCount }
-          })
-        : this.i18nService.t('auth.Auth.Session.NoSessionsToRevoke' as I18nPath)
+    const messageKey =
+      revokedSessionsCount > 0 ? 'auth.Auth.Session.RevokedSuccessfullyCount' : 'auth.Auth.Session.NoSessionsToRevoke'
+    const i18nMessage = this.i18nService.t(messageKey as I18nPath, {
+      args: { count: revokedSessionsCount }
+    })
+    const message = typeof i18nMessage === 'string' ? i18nMessage : 'Sessions have been revoked.'
 
     return { message, revokedSessionsCount, untrustedDevicesCount }
   }
 
   private async setReverifyFlagForUser(userId: number): Promise<void> {
     const key = RedisKeyManager.getUserReverifyNextLoginKey(userId)
-    const ttl = 24 * 60 * 60 // 24 hours
-    await this.redisService.set(key, 'true', 'EX', ttl)
-    this.logger.log(`[setReverifyFlagForUser] Set re-verification flag for user ${userId} with TTL ${ttl}s.`)
+    const ttl = 24 * 60 * 60 // 24 giờ
+    await this.redisService.set(key, '1', 'EX', ttl)
+    this.logger.log(`[setReverifyFlagForUser] Đã đặt cờ xác minh lại cho người dùng ${userId} với TTL ${ttl}s.`)
   }
 
-  private async revokeSingleSession(sessionId: string, userId: number): Promise<number | null> {
+  private async revokeSingleSession(
+    sessionId: string,
+    userId: number,
+    isLogout: boolean = false
+  ): Promise<number | null> {
     const session = await this.sessionRepository.findById(sessionId)
     if (!session || session.userId !== userId) {
       throw AuthError.InsufficientPermissions()
@@ -282,10 +286,12 @@ export class SessionsService implements ISessionService {
     const { deviceId } = session
     await this.sessionRepository.deleteSession(sessionId)
 
-    // Check if it was the last session on the device
+    // Kiểm tra xem đó có phải là phiên cuối cùng trên thiết bị không
     const remainingSessions = await this.sessionRepository.countSessionsByDeviceId(deviceId)
-    if (remainingSessions === 0) {
-      this.logger.log(`[revokeSingleSession] Last session for device ${deviceId} revoked. Untrusting device.`)
+    if (remainingSessions === 0 && !isLogout) {
+      this.logger.log(
+        `[revokeSingleSession] Phiên cuối cùng của thiết bị ${deviceId} đã bị thu hồi. Bỏ tin cậy thiết bị.`
+      )
       await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
       return deviceId
     }
@@ -305,22 +311,24 @@ export class SessionsService implements ISessionService {
 
     const { count: revokedCount } = await this.sessionRepository.deleteSessionsByDeviceId(deviceId, excludeSessionId)
 
-    // Always untrust the device when it's explicitly revoked
+    // Luôn bỏ tin cậy thiết bị khi nó bị thu hồi một cách rõ ràng
     let wasUntrusted = false
     if (device.isTrusted) {
       await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
       wasUntrusted = true
     }
 
-    this.logger.log(`[revokeDevice] Revoked ${revokedCount} sessions for device ${deviceId} and untrusted it.`)
+    this.logger.log(`[revokeDevice] Đã thu hồi ${revokedCount} phiên cho thiết bị ${deviceId} và bỏ tin cậy nó.`)
 
     return { revokedSessionsCount: revokedCount, untrusted: wasUntrusted }
   }
 
   async updateDeviceName(userId: number, deviceId: number, name: string): Promise<void> {
     const device = await this.deviceRepository.findById(deviceId)
-    if (device?.userId !== userId) throw AuthError.DeviceNotOwnedByUser()
-    await this.deviceRepository.updateDeviceName(deviceId, name)
+    if (!device || device.userId !== userId) throw AuthError.DeviceNotOwnedByUser()
+    if (!device.isTrusted) return
+    await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+    await this.setReverifyFlagForUser(userId) // Cũng đặt cờ khi bỏ tin cậy thủ công
   }
 
   async trustCurrentDevice(userId: number, deviceId: number): Promise<void> {
@@ -343,12 +351,18 @@ export class SessionsService implements ISessionService {
     return !session
   }
 
-  async invalidateSession(sessionId: string): Promise<void> {
+  async invalidateSession(sessionId: string, reason?: string): Promise<void> {
     const session = await this.sessionRepository.findById(sessionId)
     if (session) {
-      this.logger.debug(`[invalidateSession] Invalidating session ${sessionId} for user ${session.userId}.`)
-      await this.revokeSingleSession(sessionId, session.userId)
-      await this.setReverifyFlagForUser(session.userId)
+      this.logger.debug(`[invalidateSession] Vô hiệu hóa phiên ${sessionId} cho người dùng ${session.userId}.`)
+      // Xác định nếu đây là thao tác logout
+      const isLogout = reason === 'logout'
+      await this.revokeSingleSession(sessionId, session.userId, isLogout)
+
+      // Chỉ đặt cờ yêu cầu xác minh lại nếu đây không phải là một thao tác đăng xuất thông thường
+      if (!isLogout) {
+        await this.setReverifyFlagForUser(session.userId)
+      }
     }
   }
 
@@ -357,10 +371,13 @@ export class SessionsService implements ISessionService {
     _reason?: string,
     sessionIdToExclude?: string
   ): Promise<{ count: number; untrustedDeviceIds: number[] }> {
-    this.logger.warn(`Invalidating all sessions for user ${userId}, excluding ${sessionIdToExclude}`)
+    this.logger.warn(`Vô hiệu hóa tất cả các phiên cho người dùng ${userId}, ngoại trừ ${sessionIdToExclude}`)
     const { count, untrustedDeviceIds } = await this.sessionRepository.deleteAllUserSessions(userId, sessionIdToExclude)
-    for (const deviceId of untrustedDeviceIds) {
-      await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+    if (untrustedDeviceIds.length > 0) {
+      for (const deviceId of untrustedDeviceIds) {
+        await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+      }
+      this.logger.log(`[invalidateAllUserSessions] Đã bỏ tin cậy ${untrustedDeviceIds.length} thiết bị.`)
     }
     return { count, untrustedDeviceIds }
   }

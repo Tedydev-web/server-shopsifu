@@ -83,7 +83,7 @@ export class TwoFactorService implements IMultiFactorService {
    * Tạo thông tin cần thiết (secret, uri) để thiết lập TOTP.
    * Phương thức này không lưu bất cứ gì vào DB, chỉ tạo dữ liệu.
    */
-  async generateSetupDetails(userId: number): Promise<TotpSetupResult> {
+  async generateSetupDetails(userId: number): Promise<{ secret: string; qrCode: string }> {
     this.logger.debug(`[generateSetupDetails] Generating 2FA setup details for userId ${userId}`)
 
     const user = await this.userAuthRepository.findById(userId, {
@@ -101,7 +101,13 @@ export class TwoFactorService implements IMultiFactorService {
       throw AuthError.TOTPAlreadyEnabled()
     }
 
-    return this.createTOTP(user.email)
+    const { secret, uri } = this.createTOTP(user.email)
+    const qrCode = await this.generateQRCode(uri)
+
+    return {
+      secret,
+      qrCode
+    }
   }
 
   /**
@@ -183,48 +189,31 @@ export class TwoFactorService implements IMultiFactorService {
   }
 
   /**
-   * Tạo mới các mã khôi phục
+   * Tạo mới các mã khôi phục.
+   * Yêu cầu xác thực (đã thực hiện trước đó) để gọi hàm này.
    * @implements IMultiFactorService.regenerateRecoveryCodes
    */
-  async regenerateRecoveryCodes(
-    userId: number,
-    verificationCode: string,
-    options?: { ip?: string; userAgent?: string }
-  ): Promise<string[]> {
+  async regenerateRecoveryCodes(userId: number): Promise<string[]> {
     this.logger.debug(`[regenerateRecoveryCodes] Bắt đầu tạo lại mã khôi phục cho userId ${userId}`)
 
-    // Lấy thông tin người dùng
-    const user = await this.userAuthRepository.findById(userId, {
-      twoFactorEnabled: true,
-      twoFactorSecret: true,
-      twoFactorMethod: true,
-      email: true
-    })
-
-    if (!user) {
-      this.logger.error(`[regenerateRecoveryCodes] Không tìm thấy người dùng với ID ${userId}`)
-      throw AuthError.EmailNotFound()
-    }
-
-    if (!user.twoFactorEnabled || !user.twoFactorSecret) {
-      this.logger.warn(`[regenerateRecoveryCodes] 2FA chưa được kích hoạt cho người dùng ${userId}`)
+    // Kiểm tra xem người dùng có bật 2FA không
+    const user = await this.userAuthRepository.findById(userId, { twoFactorEnabled: true })
+    if (!user || !user.twoFactorEnabled) {
+      this.logger.warn(`[regenerateRecoveryCodes] 2FA is not enabled for user ${userId}. Cannot regenerate codes.`)
       throw AuthError.TOTPNotEnabled()
-    }
-
-    // Xác thực mã TOTP trước
-    const isValid = this.verifyTOTP(user.twoFactorSecret, verificationCode)
-    if (!isValid) {
-      this.logger.warn(`[regenerateRecoveryCodes] Mã TOTP không hợp lệ cho userId ${userId}`)
-      throw AuthError.InvalidTOTP()
     }
 
     // Tạo mã khôi phục mới
     const plainRecoveryCodes = this.generateRecoveryCodes()
     const hashedRecoveryCodes = await Promise.all(plainRecoveryCodes.map((code) => this.hashingService.hash(code)))
 
-    // Xóa mã cũ và lưu mã mới
-    await this.recoveryCodeRepository.deleteRecoveryCodes(userId)
-    await this.recoveryCodeRepository.createRecoveryCodes(userId, hashedRecoveryCodes)
+    // Xóa mã cũ và lưu mã mới trong một transaction
+    await this.recoveryCodeRepository.tx(async (tx) => {
+      await this.recoveryCodeRepository.deleteRecoveryCodes(userId, tx)
+      await this.recoveryCodeRepository.createRecoveryCodes(userId, hashedRecoveryCodes, tx)
+    })
+
+    this.logger.log(`[regenerateRecoveryCodes] Successfully regenerated recovery codes for user ${userId}.`)
 
     return plainRecoveryCodes
   }
@@ -277,17 +266,14 @@ export class TwoFactorService implements IMultiFactorService {
    * Tạo TOTP instance với secret cho người dùng
    */
   private createTOTP(email: string, secret?: string): TotpSetupResult {
-    this.logger.debug(`[createTOTP] Đang tạo TOTP cho: ${email}`)
+    // Tạo secret nếu chưa được cung cấp
+    const finalSecret = secret || this.authenticator.generateSecret()
 
-    // Tạo hoặc sử dụng secret đã có
-    const secretKey = secret || this.authenticator.generateSecret()
-
-    // Tạo URI cho QR code
-    const appName = this.configService.get<string>('APP_NAME') || 'Shopsifu'
-    const uri = this.authenticator.keyuri(email, appName, secretKey)
+    // Tạo URI cho TOTP
+    const uri = this.authenticator.keyuri(email, 'Shopsifu', finalSecret)
 
     return {
-      secret: secretKey,
+      secret: finalSecret,
       uri
     }
   }
@@ -438,5 +424,10 @@ export class TwoFactorService implements IMultiFactorService {
     const expirationDate = new Date()
     expirationDate.setDate(expirationDate.getDate() + trustDurationDays)
     return expirationDate
+  }
+
+  private async generateQRCode(uri: string): Promise<string> {
+    const QRCode = await import('qrcode')
+    return QRCode.toDataURL(uri)
   }
 }
