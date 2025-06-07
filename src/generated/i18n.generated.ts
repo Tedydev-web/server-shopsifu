@@ -151,59 +151,49 @@ export type I18nTranslations = {
                 "default": {
                     "subject": string;
                     "headline": string;
-                    "content": string;
                 };
                 "REGISTER": {
                     "subject": string;
                     "headline": string;
-                    "content": string;
                 };
                 "RESET_PASSWORD": {
                     "subject": string;
                     "headline": string;
-                    "content": string;
                 };
                 "LOGIN": {
                     "subject": string;
                     "headline": string;
-                    "content": string;
                 };
                 "DISABLE_2FA": {
                     "subject": string;
                     "headline": string;
-                    "content": string;
                 };
                 "SETUP_2FA": {
                     "subject": string;
                     "headline": string;
-                    "content": string;
                 };
                 "REGENERATE_2FA_CODES": {
                     "subject": string;
                     "headline": string;
-                    "content": string;
                 };
                 "VERIFY_NEW_EMAIL": {
                     "subject": string;
                     "headline": string;
-                    "content": string;
                 };
                 "UNLINK_GOOGLE_ACCOUNT": {
                     "subject": string;
                     "headline": string;
-                    "content": string;
                 };
                 "REVOKE_SESSIONS": {
                     "subject": string;
                     "headline": string;
-                    "content": string;
                 };
                 "REVOKE_ALL_SESSIONS": {
                     "subject": string;
                     "headline": string;
-                    "content": string;
                 };
                 "common": {
+                    "content": string;
                     "codeLabel": string;
                     "validity": string;
                     "disclaimer": string;
@@ -212,6 +202,9 @@ export type I18nTranslations = {
             "securityAlert": {
                 "default": {
                     "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "buttonText": string;
                 };
                 "PASSWORD_CHANGED": {
                     "subject": string;
@@ -227,7 +220,77 @@ export type I18nTranslations = {
                     "secondaryMessage": string;
                     "buttonText": string;
                 };
+                "DEVICE_TRUSTED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
+                "DEVICE_UNTRUSTED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
                 "TWO_FACTOR_ENABLED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
+                "TWO_FACTOR_DISABLED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
+                "SESSIONS_REVOKED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
+                "ACCOUNT_LOCKED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                    "details": {
+                        "lockoutDuration": string;
+                    };
+                };
+                "SUSPICIOUS_ACTIVITY": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                    "details": {
+                        "activityDetected": string;
+                        "reason": string;
+                    };
+                };
+                "ACCOUNT_LINKED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
+                "ACCOUNT_UNLINKED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
+                "DEVICE_LIMIT_WARNING": {
                     "subject": string;
                     "title": string;
                     "mainMessage": string;
@@ -247,9 +310,10 @@ export type I18nTranslations = {
                 "content": string;
                 "codesLabel": string;
                 "warning": string;
+                "buttonText": string;
             };
             "common": {
-                "hello": string;
+                "greeting": string;
                 "contactUs": string;
                 "copyright": string;
                 "locationUnknown": string;
@@ -257,7 +321,10 @@ export type I18nTranslations = {
                     "time": string;
                     "ipAddress": string;
                     "device": string;
+                    "browser": string;
+                    "os": string;
                     "location": string;
+                    "status": string;
                 };
             };
         };

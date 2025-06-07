@@ -10,7 +10,8 @@ import {
   TWO_FACTOR_SERVICE,
   CORE_SERVICE,
   SESSIONS_SERVICE,
-  SOCIAL_SERVICE
+  SOCIAL_SERVICE,
+  EMAIL_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import { ICookieService, SltContextData, IOTPService } from 'src/routes/auth/shared/auth.types'
 import {
@@ -28,6 +29,7 @@ import { CoreService } from 'src/routes/auth/modules/core/core.service'
 import { SessionsService } from 'src/routes/auth/modules/sessions/session.service'
 import { SocialService } from 'src/routes/auth/modules/social/social.service'
 import { User } from '@prisma/client'
+import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
 
 export interface VerificationContext {
   userId: number
@@ -114,7 +116,8 @@ export class AuthVerificationService {
     private readonly i18nService: I18nService,
     @Inject(forwardRef(() => CoreService)) private readonly coreService: CoreService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionsService: SessionsService,
-    @Inject(forwardRef(() => SocialService)) private readonly socialService: SocialService
+    @Inject(forwardRef(() => SocialService)) private readonly socialService: SocialService,
+    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService
   ) {
     this.VERIFICATION_ACTION_HANDLERS = {
       [TypeOfVerificationCode.LOGIN]: (context, _code, res) => {
@@ -146,6 +149,18 @@ export class AuthVerificationService {
 
     if (purpose === TypeOfVerificationCode.REGISTER) {
       return this.handleRegistrationInitiation(context, res)
+    }
+
+    if (purpose === TypeOfVerificationCode.SETUP_2FA) {
+      this.logger.debug(`[initiateVerification] Bắt đầu luồng thiết lập 2FA. Đang tạo SLT.`)
+      const sltToken = await this.sltService.createAndStoreSltToken(context)
+      this.cookieService.setSltCookie(res, sltToken, purpose)
+      // Phía controller sẽ trả về phản hồi thực tế với mã QR.
+      // Phản hồi này chỉ để xác nhận việc tạo SLT.
+      return {
+        success: true,
+        message: 'SLT for 2FA setup created successfully.'
+      }
     }
 
     const user = await this.userAuthRepository.findById(userId)
@@ -258,7 +273,7 @@ export class AuthVerificationService {
       throw AuthError.EmailMissingInSltContext()
     }
 
-    await this.otpService.sendOTP(sltContext.email, sltContext.purpose, sltContext.metadata)
+    await this.otpService.sendOTP(sltContext.email, sltContext.purpose, sltContext)
     const newSltToken = await this.sltService.createAndStoreSltToken(sltContext) // Re-create to invalidate old
     this.cookieService.setSltCookie(res, newSltToken, sltContext.purpose)
 
@@ -431,7 +446,7 @@ export class AuthVerificationService {
   }
 
   private async handleRevokeSessionsVerification(context: SltContextData): Promise<VerificationResult> {
-    const { userId, metadata } = context
+    const { userId, metadata, ipAddress, userAgent, email } = context
     const { sessionIds, deviceIds, excludeCurrentSession, currentSessionId, currentDeviceId } = metadata || {}
     if (!sessionIds && !deviceIds) throw AuthError.InsufficientRevocationData()
 
@@ -440,6 +455,16 @@ export class AuthVerificationService {
       { sessionIds, deviceIds, excludeCurrentSession },
       { sessionId: currentSessionId, deviceId: currentDeviceId }
     )
+
+    const user = await this.userAuthRepository.findById(userId, { userProfile: true })
+    await this.emailService.sendSessionRevokeEmail(email, {
+      userName: user?.userProfile?.firstName ?? email.split('@')[0],
+      details: [
+        { label: this.i18nService.t('email.Email.common.details.ipAddress'), value: ipAddress ?? 'N/A' },
+        { label: this.i18nService.t('email.Email.common.details.device'), value: userAgent ?? 'N/A' }
+      ]
+    })
+
     return {
       success: true,
       message: revokeResult.message || this.i18nService.t('auth.Auth.Session.RevokedSuccessfully')
@@ -447,13 +472,23 @@ export class AuthVerificationService {
   }
 
   private async handleRevokeAllSessionsVerification(context: SltContextData): Promise<VerificationResult> {
-    const { userId, metadata } = context
+    const { userId, metadata, ipAddress, userAgent, email } = context
     const { excludeCurrentSession, currentSessionId, currentDeviceId } = metadata || {}
     const revokeResult = await this.sessionsService.revokeItems(
       userId,
       { revokeAllUserSessions: true, excludeCurrentSession },
       { sessionId: currentSessionId, deviceId: currentDeviceId }
     )
+
+    const user = await this.userAuthRepository.findById(userId, { userProfile: true })
+    await this.emailService.sendSessionRevokeEmail(email, {
+      userName: user?.userProfile?.firstName ?? email.split('@')[0],
+      details: [
+        { label: this.i18nService.t('email.Email.common.details.ipAddress'), value: ipAddress ?? 'N/A' },
+        { label: this.i18nService.t('email.Email.common.details.device'), value: userAgent ?? 'N/A' }
+      ]
+    })
+
     return {
       success: true,
       message: revokeResult.message || this.i18nService.t('auth.Auth.Session.AllRevoked')
@@ -477,10 +512,10 @@ export class AuthVerificationService {
   }
 
   private async handleSetup2FAVerification(context: SltContextData, code: string): Promise<VerificationResult> {
-    const { userId, metadata } = context
+    const { userId, metadata, ipAddress, userAgent } = context
     const secret = metadata?.secret
     if (!secret) throw AuthError.InternalServerError('Missing 2FA secret for setup.')
-    const result = await this.twoFactorService.confirmTwoFactorSetup(userId, code, secret)
+    const result = await this.twoFactorService.confirmTwoFactorSetup(userId, code, secret, ipAddress, userAgent)
     return {
       success: true,
       message: result.message,
@@ -501,11 +536,12 @@ export class AuthVerificationService {
   }
 
   private async initiateOtpFlow(context: VerificationContext, res: Response): Promise<VerificationResult> {
-    const { email, purpose, metadata } = context
+    const { email, purpose, metadata, ipAddress, userAgent } = context
     const sltToken = await this.sltService.createAndStoreSltToken(context)
 
     this.cookieService.setSltCookie(res, sltToken, purpose)
-    await this.otpService.sendOTP(email, purpose, metadata)
+
+    await this.otpService.sendOTP(email, purpose, { ...metadata, ipAddress, userAgent })
 
     return {
       success: false,

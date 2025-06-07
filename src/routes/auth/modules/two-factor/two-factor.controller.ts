@@ -134,7 +134,9 @@ export class TwoFactorController {
   @HttpCode(HttpStatus.OK)
   async regenerateRecoveryCodes(
     @ActiveUser() activeUser: AccessTokenPayload,
-    @Body() body: TwoFactorVerifyDto
+    @Body() body: TwoFactorVerifyDto,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string
   ): Promise<{ message: string; data: { recoveryCodes: string[] } }> {
     this.logger.log(`[regenerateRecoveryCodes] User ${activeUser.userId} is attempting to regenerate recovery codes.`)
 
@@ -149,7 +151,7 @@ export class TwoFactorController {
     }
 
     // Nếu mã hợp lệ, tạo mã khôi phục mới
-    const recoveryCodes = await this.twoFactorService.regenerateRecoveryCodes(activeUser.userId)
+    const recoveryCodes = await this.twoFactorService.regenerateRecoveryCodes(activeUser.userId, ip, userAgent)
 
     return {
       message: 'auth.Auth.Error.2FA.RecoveryCodesRegenerated',

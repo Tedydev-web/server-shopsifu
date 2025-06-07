@@ -11,6 +11,7 @@ import { TokenService } from './services/common/token.service'
 import { SLTService } from './services/slt.service'
 import { DeviceService } from './services/device.service'
 import { UserActivityService } from './services/user-activity.service'
+import { UserAgentService } from './services/common/user-agent.service'
 
 // Local Imports - Repositories
 import { UserAuthRepository } from './repositories/user-auth.repository'
@@ -24,12 +25,15 @@ import { GuardsModule } from './guards/guards.module'
 // Injection Tokens
 import {
   COOKIE_SERVICE,
+  CRYPTO_SERVICE,
   DEVICE_SERVICE,
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
   HASHING_SERVICE,
   SLT_SERVICE,
-  TOKEN_SERVICE
+  TOKEN_SERVICE,
+  USER_ACTIVITY_SERVICE,
+  USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import { RedisProviderModule } from 'src/providers/redis/redis.module'
 
@@ -38,7 +42,7 @@ import { RedisProviderModule } from 'src/providers/redis/redis.module'
   imports: [RedisProviderModule, JwtModule.register({}), forwardRef(() => GuardsModule)],
   providers: [
     // Services
-    CryptoService,
+    { provide: CRYPTO_SERVICE, useClass: CryptoService },
     UserActivityService,
     { provide: HASHING_SERVICE, useClass: HashingService },
     { provide: EMAIL_SERVICE, useClass: EmailService },
@@ -47,6 +51,8 @@ import { RedisProviderModule } from 'src/providers/redis/redis.module'
     { provide: TOKEN_SERVICE, useClass: TokenService },
     { provide: SLT_SERVICE, useClass: SLTService },
     { provide: DEVICE_SERVICE, useClass: DeviceService },
+    { provide: USER_ACTIVITY_SERVICE, useClass: UserActivityService },
+    { provide: USER_AGENT_SERVICE, useClass: UserAgentService },
     // Repositories
     UserAuthRepository,
     SessionRepository,
@@ -55,7 +61,7 @@ import { RedisProviderModule } from 'src/providers/redis/redis.module'
   ],
   exports: [
     // Services
-    CryptoService,
+    CRYPTO_SERVICE,
     UserActivityService,
     HASHING_SERVICE,
     EMAIL_SERVICE,
@@ -64,6 +70,8 @@ import { RedisProviderModule } from 'src/providers/redis/redis.module'
     TOKEN_SERVICE,
     SLT_SERVICE,
     DEVICE_SERVICE,
+    USER_ACTIVITY_SERVICE,
+    USER_AGENT_SERVICE,
     // Repositories
     UserAuthRepository,
     SessionRepository,

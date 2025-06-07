@@ -15,7 +15,8 @@ import {
   HASHING_SERVICE,
   REDIS_SERVICE,
   SLT_SERVICE,
-  TOKEN_SERVICE
+  TOKEN_SERVICE,
+  EMAIL_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import {
   UserAuthRepository,
@@ -31,6 +32,7 @@ import { AuthVerificationService } from '../../../../shared/services/auth-verifi
 import { CompleteRegistrationDto, LoginDto } from './core.dto'
 import { ConfigService } from '@nestjs/config'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
 
 interface RegisterUserParams {
   userId: number
@@ -71,7 +73,8 @@ export class CoreService {
     @Inject(DEVICE_SERVICE) private readonly deviceService?: DeviceService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionsService?: SessionsService,
     @Inject(forwardRef(() => AuthVerificationService))
-    private readonly authVerificationService?: AuthVerificationService
+    private readonly authVerificationService?: AuthVerificationService,
+    @Inject(EMAIL_SERVICE) private readonly emailService?: EmailService
   ) {}
 
   /**
@@ -180,6 +183,13 @@ export class CoreService {
       ip: ipAddress,
       userAgent: userAgent
     })
+
+    // Gửi email chào mừng
+    if (this.emailService) {
+      await this.emailService.sendWelcomeEmail(email, {
+        userName: sltContext.metadata.registrationDetails.firstName || email.split('@')[0]
+      })
+    }
 
     // Finalize SLT
     await this.sltService.finalizeSlt(sltContext.sltJti)
@@ -655,17 +665,34 @@ export class CoreService {
         throw AuthError.DeviceNotFound()
       }
 
+      // Check if the device was trusted *before* this successful login.
+      const wasDeviceTrusted = await this.deviceRepository.isDeviceTrustValid(deviceId)
+
       // Sau khi xác minh thành công và nếu rememberMe là true, thiết bị NÊN được trust.
-      // Trạng thái isTrusted của device có thể chưa được cập nhật ngay lập tức trong đối tượng device này
-      // nếu việc trust device xảy ra trong một tiến trình khác hoặc ngay trước khi gọi hàm này.
-      // Do đó, nếu rememberMe là true, ta có thể coi isDeviceTrustedInSession là true cho token mới.
-      const isDeviceTrustedNow = rememberMe || (await this.deviceRepository.isDeviceTrustValid(deviceId))
+      const isDeviceTrustedNow = rememberMe || wasDeviceTrusted
 
       this.logger.debug(
         `[finalizeLoginAfterVerification] Calling finalizeLoginAndCreateTokens for user ${userId}, device ${deviceId}`
       )
 
-      return this.finalizeLoginAndCreateTokens(user, device, rememberMe, res, ipAddress, userAgent, isDeviceTrustedNow)
+      const loginResult = await this.finalizeLoginAndCreateTokens(
+        user,
+        device,
+        rememberMe,
+        res,
+        ipAddress,
+        userAgent,
+        isDeviceTrustedNow
+      )
+
+      // Nếu đăng nhập trên một thiết bị chưa được tin cậy trước đó, hãy gửi thông báo.
+      if (!wasDeviceTrusted && this.deviceService) {
+        this.logger.log(`[finalizeLoginAfterVerification] Device ${deviceId} was untrusted, sending notification.`)
+        // Chạy bất đồng bộ để không chặn phản hồi của người dùng
+        this.deviceService.notifyLoginOnUntrustedDevice(userId, deviceId, ipAddress, userAgent)
+      }
+
+      return loginResult
     } catch (error) {
       this.logger.error(`[finalizeLoginAfterVerification] Error: ${error.message}`, error.stack)
       if (error instanceof AuthError) throw error

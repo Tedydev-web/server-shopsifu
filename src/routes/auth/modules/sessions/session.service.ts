@@ -7,7 +7,8 @@ import {
   DEVICE_SERVICE,
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
-  REDIS_SERVICE
+  REDIS_SERVICE,
+  USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { GetGroupedSessionsResponseDto, GetGroupedSessionsResponseSchema } from './session.dto'
@@ -17,6 +18,9 @@ import { Device } from '@prisma/client'
 import { RedisService } from 'src/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { z } from 'zod'
+import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
+import { GeoLocationResult } from 'src/routes/auth/shared/services/common/geolocation.service'
+import { UserAgentService } from '../../shared/services/common/user-agent.service'
 
 // Infer the type for a single device session group from the Zod schema
 type DeviceSessionGroup = z.infer<typeof GetGroupedSessionsResponseSchema.shape.data.element>
@@ -30,11 +34,12 @@ export class SessionsService implements ISessionService {
     private readonly configService: ConfigService,
     private readonly sessionRepository: SessionRepository,
     private readonly deviceRepository: DeviceRepository,
-    @Inject(EMAIL_SERVICE) private readonly emailService: GeolocationService,
+    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     private readonly prismaService: PrismaService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
     @Inject(DEVICE_SERVICE) private readonly deviceService: IDeviceService,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
   ) {}
 
   /**
@@ -64,19 +69,19 @@ export class SessionsService implements ISessionService {
 
       if (deviceSessions.length === 0) continue
 
-      const deviceInfo = this.parseUserAgentAndApp(deviceSessions[0]?.userAgent ?? '')
       const latestSession = deviceSessions[0]
+      const deviceInfo = this.userAgentService.parse(latestSession?.userAgent)
       const activeSessionsCount = deviceSessions.filter((s) => s.isActive).length
       const lastActive = new Date(latestSession.lastActive)
-      const location = await this.getLocationFromIP(latestSession.ipAddress)
+      const locationResult = await this.getLocationFromIP(latestSession.ipAddress)
 
       const sessionItems = await Promise.all(
         deviceSessions.map(async (session) => {
-          const sessionInfo = this.parseUserAgentAndApp(session.userAgent ?? '')
+          const sessionInfo = this.userAgentService.parse(session.userAgent)
           const inactiveDuration = session.isActive
             ? null
             : this.calculateInactiveDuration(new Date(session.lastActive))
-          const sessionLocation = await this.getLocationFromIP(session.ipAddress)
+          const sessionLocationResult = await this.getLocationFromIP(session.ipAddress)
           const isCurrentSession = session.id === currentSessionIdFromToken
 
           return {
@@ -84,7 +89,7 @@ export class SessionsService implements ISessionService {
             createdAt: new Date(session.createdAt),
             lastActive: new Date(session.lastActive),
             ipAddress: session.ipAddress,
-            location: sessionLocation,
+            location: sessionLocationResult.display,
             browser: sessionInfo.browser,
             browserVersion: sessionInfo.browserVersion,
             app: sessionInfo.app,
@@ -106,7 +111,7 @@ export class SessionsService implements ISessionService {
         isDeviceTrusted: device.isTrusted,
         deviceTrustExpiration: device.trustExpiration,
         lastActive,
-        location,
+        location: locationResult.display,
         activeSessionsCount,
         isCurrentDevice,
         sessions: sessionItems
@@ -142,37 +147,8 @@ export class SessionsService implements ISessionService {
     return devices
   }
 
-  private parseUserAgentAndApp(userAgent: string): {
-    deviceType: string
-    os: string
-    osVersion: string
-    browser: string
-    browserVersion: string
-    app: string
-  } {
-    if (!userAgent) {
-      return {
-        deviceType: 'Unknown',
-        os: 'Unknown',
-        osVersion: '',
-        browser: 'Unknown',
-        browserVersion: '',
-        app: 'Unknown'
-      }
-    }
-    // TODO: Replace with a robust user-agent parsing library like 'ua-parser-js'
-    return {
-      deviceType: 'Desktop',
-      os: 'Windows',
-      osVersion: '10',
-      browser: 'Chrome',
-      browserVersion: '108',
-      app: 'WebApp'
-    }
-  }
-
-  private async getLocationFromIP(ip: string): Promise<string> {
-    if (!ip) return 'Unknown'
+  private async getLocationFromIP(ip: string): Promise<GeoLocationResult> {
+    if (!ip) return { display: 'Unknown' }
     return this.geolocationService.getLocationFromIP(ip)
   }
 
@@ -187,6 +163,44 @@ export class SessionsService implements ISessionService {
     const diffDays = Math.floor(diffHours / 24)
     if (diffDays < 7) return `${diffDays} ngày`
     return `${Math.floor(diffDays / 7)} tuần`
+  }
+
+  private async notifyDeviceTrustChange(
+    userId: number,
+    deviceId: number,
+    action: 'trusted' | 'untrusted'
+  ): Promise<void> {
+    const user = await this.prismaService.user.findUnique({
+      where: { id: userId },
+      include: { userProfile: true }
+    })
+    const device = await this.deviceRepository.findById(deviceId)
+
+    if (user && device) {
+      const deviceInfo = this.userAgentService.parse(device.userAgent)
+      const details = [
+        {
+          label: this.i18nService.t('email.Email.common.details.device'),
+          value: `${deviceInfo.browser} on ${deviceInfo.os}`
+        },
+        {
+          label: this.i18nService.t('email.Email.common.details.ipAddress'),
+          value: device.lastKnownIp ?? 'N/A'
+        },
+        {
+          label: this.i18nService.t('email.Email.common.details.location'),
+          value: (await this.getLocationFromIP(device.lastKnownIp ?? '')).display
+        }
+      ]
+
+      await this.emailService.sendDeviceTrustChangeEmail(user.email, {
+        userName: user.userProfile?.firstName ?? user.email,
+        action,
+        details
+      })
+    } else {
+      this.logger.warn(`Could not send ${action} device trust email. User or device not found.`)
+    }
   }
 
   async checkIfActionRequiresVerification(
@@ -324,25 +338,20 @@ export class SessionsService implements ISessionService {
 
   async updateDeviceName(userId: number, deviceId: number, name: string): Promise<void> {
     const device = await this.deviceRepository.findById(deviceId)
-    if (!device || device.userId !== userId) throw AuthError.DeviceNotOwnedByUser()
-    if (!device.isTrusted) return
-    await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
-    await this.setReverifyFlagForUser(userId) // Cũng đặt cờ khi bỏ tin cậy thủ công
+    if (!device || device.userId !== userId) {
+      throw AuthError.DeviceNotFound()
+    }
+    await this.deviceRepository.updateDeviceName(deviceId, name)
   }
 
   async trustCurrentDevice(userId: number, deviceId: number): Promise<void> {
-    const device = await this.deviceRepository.findById(deviceId)
-    if (device?.userId !== userId) throw AuthError.DeviceNotOwnedByUser()
-    if (device.isTrusted && device.trustExpiration && new Date() < device.trustExpiration) return
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, true)
+    await this.notifyDeviceTrustChange(userId, deviceId, 'trusted')
   }
 
   async untrustDevice(userId: number, deviceId: number): Promise<void> {
-    const device = await this.deviceRepository.findById(deviceId)
-    if (!device || device.userId !== userId) throw AuthError.DeviceNotOwnedByUser()
-    if (!device.isTrusted) return
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
-    await this.setReverifyFlagForUser(userId) // Also set flag when manually untrusting
+    await this.notifyDeviceTrustChange(userId, deviceId, 'untrusted')
   }
 
   async isSessionInvalidated(sessionId: string): Promise<boolean> {

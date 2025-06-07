@@ -5,11 +5,18 @@ import { TypeOfVerificationCodeType, OTP_LENGTH } from 'src/routes/auth/shared/c
 import { OtpData, IOTPService } from 'src/routes/auth/shared/auth.types'
 import { ConfigService } from '@nestjs/config'
 import { AuthError } from 'src/routes/auth/auth.error'
-import { I18nService } from 'nestjs-i18n'
-import { REDIS_SERVICE, EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
+import { I18nService, I18nContext } from 'nestjs-i18n'
+import {
+  REDIS_SERVICE,
+  EMAIL_SERVICE,
+  GEOLOCATION_SERVICE,
+  USER_AGENT_SERVICE
+} from 'src/shared/constants/injection.tokens'
 import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { DeviceRepository } from 'src/routes/auth/shared/repositories'
+import { GeolocationService } from 'src/routes/auth/shared/services/common/geolocation.service'
+import { UserAgentService } from 'src/routes/auth/shared/services/common/user-agent.service'
 
 @Injectable()
 export class OtpService implements IOTPService {
@@ -21,7 +28,9 @@ export class OtpService implements IOTPService {
     private readonly jwtService: JwtService,
     private readonly i18nService: I18nService,
     private readonly configService: ConfigService,
-    private readonly deviceRepository: DeviceRepository
+    private readonly deviceRepository: DeviceRepository,
+    @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
+    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
   ) {}
 
   /**
@@ -70,19 +79,52 @@ export class OtpService implements IOTPService {
       await this.redisService.hset(otpKey, otpDataForRedis)
       await this.redisService.expire(otpKey, otpExpirySeconds)
 
+      // Gửi email chứa mã OTP
       try {
-        await this.emailService.sendOtpEmail({
-          email: targetEmail,
-          otpCode,
-          otpType: type
-        })
-        this.logger.log(`[sendOTP] Email OTP cho mục đích ${type} đã được gửi đến ${targetEmail}`)
+        if (this.emailService) {
+          const lang = I18nContext.current()?.lang ?? metadata?.lang ?? 'vi'
+          const details = []
+          if (metadata?.ipAddress && metadata?.userAgent) {
+            const locationResult = await this.geolocationService.getLocationFromIP(metadata.ipAddress)
+            const uaInfo = this.userAgentService.parse(metadata.userAgent)
+            const localeForDate = lang === 'vi' ? 'vi-VN' : 'en-US'
+
+            details.push({
+              label: this.i18nService.t('email.Email.common.details.time', { lang }),
+              value: new Date().toLocaleString(localeForDate, {
+                timeZone: locationResult.timezone || 'Asia/Ho_Chi_Minh',
+                dateStyle: 'full',
+                timeStyle: 'long'
+              })
+            })
+            details.push({
+              label: this.i18nService.t('email.Email.common.details.ipAddress', { lang }),
+              value: metadata.ipAddress
+            })
+            details.push({
+              label: this.i18nService.t('email.Email.common.details.device', { lang }),
+              value: `${uaInfo.browser} on ${uaInfo.os}`
+            })
+          }
+
+          await this.emailService.sendOtpEmail(targetEmail, type, {
+            userName: metadata?.userName || targetEmail.split('@')[0],
+            code: otpCode,
+            lang,
+            details
+          })
+          this.logger.log(`[sendOTP] Email OTP cho mục đích ${type} đã được gửi đến ${targetEmail}`)
+        } else {
+          this.logger.warn('EmailService không được inject, không thể gửi email OTP.')
+        }
       } catch (error) {
         this.logger.error(`[sendOTP] Lỗi gửi email OTP đến ${targetEmail}: ${error.message}`, error.stack)
-        throw AuthError.InternalServerError('Failed to send OTP email.')
+        throw AuthError.OTPSendingFailed()
       }
 
-      return { message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully'), otpCode }
+      const message = this.i18nService.t('auth.Auth.Otp.SentSuccessfully')
+
+      return { message, otpCode }
     } catch (error) {
       this.logger.error(`[sendOTP] Lỗi: ${error.message}`, error.stack)
       if (error instanceof HttpException) {

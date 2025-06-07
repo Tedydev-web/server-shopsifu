@@ -13,11 +13,14 @@ export const HASHING_SERVICE = 'HASHING_SERVICE'
 export const EMAIL_SERVICE = 'EMAIL_SERVICE'
 export const GEOLOCATION_SERVICE = 'GEOLOCATION_SERVICE'
 export const SLT_SERVICE = 'SLT_SERVICE'
+export const CRYPTO_SERVICE = 'CRYPTO_SERVICE'
 
 // Module-specific services (that are shared)
 export const OTP_SERVICE = 'OTP_SERVICE'
 export const SESSION_SERVICE = 'SESSION_SERVICE'
 export const DEVICE_SERVICE = 'DEVICE_SERVICE'
+export const USER_ACTIVITY_SERVICE = 'USER_ACTIVITY_SERVICE'
+export const USER_AGENT_SERVICE = 'USER_AGENT_SERVICE'
 
 // Global services
 export const LOGGER_SERVICE = 'LOGGER_SERVICE'

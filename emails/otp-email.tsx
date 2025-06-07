@@ -1,78 +1,124 @@
-import { Heading, Hr, Preview, Section, Text } from '@react-email/components'
-import React from 'react'
-import EmailLayout from './email-layout'
-import I18nEmail from 'src/i18n/vi/email.json' // Import the new i18n file
+import {
+  Body,
+  Button,
+  Column,
+  Container,
+  Head,
+  Heading,
+  Html,
+  Img,
+  Preview,
+  Row,
+  Section,
+  Text,
+  Hr
+} from '@react-email/components'
+import * as React from 'react'
 import { TypeOfVerificationCodeType } from 'src/routes/auth/shared/constants/auth.constants'
+import EmailLayout from './components/email-layout'
+import { buttonContainer, button } from './components/style'
 
-type OtpType = TypeOfVerificationCodeType
-
-interface OtpEmailProps {
-  otpCode: string
-  otpType: OtpType
+export interface OtpEmailProps {
+  userName: string
+  code: string
+  headline: string
+  content: string
+  codeLabel: string
+  validity: string
+  disclaimer: string
+  greeting: string
   lang?: 'vi' | 'en'
+  details?: { label: string; value: string }[]
 }
 
-// Map OTP types to the i18n keys
-const i18nMap = I18nEmail.Email.otp
+const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : ''
 
-export default function OtpEmail({ otpCode, otpType, lang = 'vi' }: OtpEmailProps) {
-  // Get the content for the specific OTP type, or fallback to default
-  const content = i18nMap[otpType] || i18nMap.default
-  const common = i18nMap.common
-
+export const OtpEmail = ({
+  userName,
+  code,
+  headline,
+  content,
+  codeLabel,
+  validity,
+  disclaimer,
+  greeting,
+  details
+}: OtpEmailProps) => {
   return (
-    <EmailLayout title={content.subject} preview={content.subject} lang={lang}>
-      <Section style={upperSection}>
-        <Heading style={h1}>{content.headline}</Heading>
-        <Text style={mainText}>{content.content}</Text>
+    <EmailLayout previewText={headline}>
+      <Heading as='h2' style={{ fontSize: '24px', fontWeight: '600', textAlign: 'center' }}>
+        {headline}
+      </Heading>
+
+      <Text style={{ fontSize: '16px', color: '#334155' }}>{greeting}</Text>
+      <Text style={{ fontSize: '16px', color: '#334155' }}>{content}</Text>
+
+      <Section style={codeContainer}>
+        <Text style={{ marginBottom: '16px', fontSize: '16px', color: '#334155' }}>{codeLabel}:</Text>
+        <Text style={codeStyle}>{code}</Text>
+        <Text style={{ marginTop: '16px', fontSize: '14px', color: '#64748b' }}>{validity}</Text>
       </Section>
-      <Section style={verificationSection}>
-        <Text style={verifyText}>{common.codeLabel}</Text>
-        <Text style={codeText}>{otpCode}</Text>
-        <Text style={validityText}>{common.validity}</Text>
-      </Section>
-      <Section style={lowerSection}>
-        <Text style={cautionText}>{common.disclaimer}</Text>
-        <Hr style={hr} />
-      </Section>
+
+      {details && details.length > 0 && (
+        <>
+          <Text style={{ fontSize: '16px', color: '#334155', fontWeight: 'bold' }}>Chi tiết yêu cầu:</Text>
+          <Section style={detailsTableContainer}>
+            {details.map((detail) => (
+              <Row key={detail.label} style={tableRow}>
+                <Column style={tableCellLabel}>{detail.label}:</Column>
+                <Column style={tableCellValue}>{detail.value}</Column>
+              </Row>
+            ))}
+          </Section>
+        </>
+      )}
+
+      <Hr style={{ borderColor: '#e2e8f0', margin: '26px 0' }} />
+
+      <Text style={{ fontSize: '14px', color: '#64748b' }}>{disclaimer}</Text>
     </EmailLayout>
   )
 }
 
-// --- Styles ---
-const upperSection = { padding: '25px 35px' }
-const lowerSection = { padding: '25px 35px' }
-const verificationSection = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '25px 35px',
-  backgroundColor: '#f2f2f2',
+export default OtpEmail
+
+const codeContainer = {
+  background: '#f1f5f9',
   borderRadius: '8px',
-  margin: '0 35px'
-}
-
-const h1 = {
-  color: '#333',
-  fontFamily:
-    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
-  fontSize: '20px',
-  fontWeight: 'bold',
-  marginBottom: '15px',
-  textAlign: 'center' as const
-}
-
-const text = {
-  color: '#333',
-  fontFamily:
-    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
-  fontSize: '14px',
+  border: '1px solid #cbd5e1',
+  padding: '24px',
+  textAlign: 'center' as const,
   margin: '24px 0'
 }
 
-const mainText = { ...text, marginBottom: '14px', textAlign: 'center' as const }
-const verifyText = { ...text, margin: 0, fontWeight: 'bold', textAlign: 'center' as const }
-const codeText = { ...text, fontWeight: 'bold', fontSize: '36px', margin: '10px 0', textAlign: 'center' as const }
-const validityText = { ...text, margin: '0px', fontSize: '12px', textAlign: 'center' as const }
-const cautionText = { ...text, margin: '0px', fontSize: '12px' }
-const hr = { borderColor: '#e8eaed', margin: '20px 0' }
+const codeStyle = {
+  color: '#0f172a',
+  fontSize: '36px',
+  fontWeight: 'bold' as const,
+  letterSpacing: '0.25em',
+  margin: 0
+}
+
+const detailsTableContainer = {
+  border: '1px solid #e2e8f0',
+  borderRadius: '8px',
+  padding: '16px',
+  margin: '16px 0',
+  backgroundColor: '#f8fafc'
+}
+
+const tableRow = {
+  padding: '8px 0'
+}
+
+const tableCellLabel = {
+  fontWeight: 'bold' as const,
+  color: '#475569',
+  width: '120px',
+  fontSize: '14px'
+}
+
+const tableCellValue = {
+  color: '#1e293b',
+  fontSize: '14px'
+}

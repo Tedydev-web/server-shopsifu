@@ -1,16 +1,18 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { I18nService } from 'nestjs-i18n'
+import { I18nService, I18nContext } from 'nestjs-i18n'
 import { JwtService } from '@nestjs/jwt'
 import * as otplib from 'otplib'
 import { HashAlgorithms } from '@otplib/core'
 import {
   COOKIE_SERVICE,
   EMAIL_SERVICE,
+  GEOLOCATION_SERVICE,
   HASHING_SERVICE,
   REDIS_SERVICE,
   SLT_SERVICE,
-  TOKEN_SERVICE
+  TOKEN_SERVICE,
+  USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/routes/auth/shared/constants/auth.constants'
 import { UserAuthRepository, RecoveryCodeRepository, DeviceRepository } from 'src/routes/auth/shared/repositories'
@@ -22,6 +24,8 @@ import { AuthError } from '../../auth.error'
 import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
 import { CoreService } from '../core/core.service'
+import { GeolocationService } from 'src/routes/auth/shared/services/common/geolocation.service'
+import { UserAgentService } from 'src/routes/auth/shared/services/common/user-agent.service'
 
 /**
  * Cấu hình và hằng số
@@ -62,7 +66,9 @@ export class TwoFactorService implements IMultiFactorService {
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(forwardRef(() => CoreService))
-    private readonly coreService: CoreService
+    private readonly coreService: CoreService,
+    @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
+    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
   ) {
     // Cấu hình authenticator
     this.authenticator = otplib.authenticator
@@ -182,9 +188,17 @@ export class TwoFactorService implements IMultiFactorService {
   async disableVerification(userId: number): Promise<void> {
     this.logger.debug(`[disableVerification] Vô hiệu hóa 2FA cho userId ${userId}`)
 
-    // Vô hiệu hóa 2FA và xóa mã khôi phục (không yêu cầu xác minh)
+    const user = await this.userAuthRepository.findById(userId, { email: true, userProfile: true })
+    if (!user) throw AuthError.EmailNotFound()
+
     await this.userAuthRepository.disableTwoFactor(userId)
     await this.recoveryCodeRepository.deleteRecoveryCodes(userId)
+
+    await this.emailService.sendTwoFactorStatusChangedEmail(user.email, {
+      userName: user.userProfile?.firstName ?? user.email,
+      action: 'disabled',
+      details: []
+    })
   }
 
   /**
@@ -192,24 +206,60 @@ export class TwoFactorService implements IMultiFactorService {
    * Yêu cầu xác thực (đã thực hiện trước đó) để gọi hàm này.
    * @implements IMultiFactorService.regenerateRecoveryCodes
    */
-  async regenerateRecoveryCodes(userId: number): Promise<string[]> {
+  async regenerateRecoveryCodes(userId: number, ipAddress?: string, userAgent?: string): Promise<string[]> {
     this.logger.debug(`[regenerateRecoveryCodes] Bắt đầu tạo lại mã khôi phục cho userId ${userId}`)
 
-    // Kiểm tra xem người dùng có bật 2FA không
-    const user = await this.userAuthRepository.findById(userId, { twoFactorEnabled: true })
+    const user = await this.userAuthRepository.findById(userId, {
+      email: true,
+      userProfile: true,
+      twoFactorEnabled: true
+    })
     if (!user || !user.twoFactorEnabled) {
       this.logger.warn(`[regenerateRecoveryCodes] 2FA is not enabled for user ${userId}. Cannot regenerate codes.`)
       throw AuthError.TOTPNotEnabled()
     }
 
-    // Tạo mã khôi phục mới
     const plainRecoveryCodes = this.generateRecoveryCodes()
     const hashedRecoveryCodes = await Promise.all(plainRecoveryCodes.map((code) => this.hashingService.hash(code)))
 
-    // Xóa mã cũ và lưu mã mới trong một transaction
     await this.recoveryCodeRepository.tx(async (tx) => {
       await this.recoveryCodeRepository.deleteRecoveryCodes(userId, tx)
       await this.recoveryCodeRepository.createRecoveryCodes(userId, hashedRecoveryCodes, tx)
+    })
+
+    const i18nLang = I18nContext.current()?.lang
+    const lang = i18nLang === 'en' ? 'en' : 'vi'
+    const details = []
+    if (ipAddress && userAgent) {
+      const locationResult = await this.geolocationService.getLocationFromIP(ipAddress)
+      const uaInfo = this.userAgentService.parse(userAgent)
+      const localeForDate = lang === 'vi' ? 'vi-VN' : 'en-US'
+
+      details.push(
+        {
+          label: this.i18nService.t('email.Email.common.details.time', { lang }),
+          value: new Date().toLocaleString(localeForDate, {
+            timeZone: locationResult.timezone || 'Asia/Ho_Chi_Minh',
+            dateStyle: 'full',
+            timeStyle: 'long'
+          })
+        },
+        {
+          label: this.i18nService.t('email.Email.common.details.ipAddress', { lang }),
+          value: ipAddress
+        },
+        {
+          label: this.i18nService.t('email.Email.common.details.device', { lang }),
+          value: `${uaInfo.browser} on ${uaInfo.os}`
+        }
+      )
+    }
+
+    await this.emailService.sendRecoveryCodesEmail(user.email, {
+      userName: user.userProfile?.firstName ?? user.email,
+      recoveryCodes: plainRecoveryCodes,
+      details,
+      lang
     })
 
     this.logger.log(`[regenerateRecoveryCodes] Successfully regenerated recovery codes for user ${userId}.`)
@@ -283,38 +333,31 @@ export class TwoFactorService implements IMultiFactorService {
   async confirmTwoFactorSetup(
     userId: number,
     totpCode: string,
-    secret: string
+    secret: string,
+    ipAddress?: string,
+    userAgent?: string
   ): Promise<{ message: string; recoveryCodes: string[] }> {
     this.logger.debug(`[confirmTwoFactorSetup] Bắt đầu xác nhận thiết lập 2FA cho userId ${userId}`)
 
-    // Xác thực TOTP code
-    const isValid = await this.verifyCode(totpCode, { userId, secret })
-    if (!isValid) {
-      this.logger.warn(`[confirmTwoFactorSetup] Mã xác thực không đúng cho userId ${userId}`)
-      throw AuthError.InvalidTOTP()
-    }
+    const user = await this.userAuthRepository.findById(userId, { email: true, userProfile: true })
+    if (!user) throw AuthError.EmailNotFound()
 
-    // Tạo mã khôi phục
-    const plainRecoveryCodes = this.generateRecoveryCodes()
-    const hashedRecoveryCodes = await Promise.all(plainRecoveryCodes.map((code) => this.hashingService.hash(code)))
+    if (!this.verifyTOTP(secret, totpCode)) throw AuthError.InvalidTOTP()
 
-    // Cập nhật thông tin người dùng và lưu mã khôi phục trong transaction
-    try {
-      await this.userAuthRepository.enableTwoFactor(userId, secret, TwoFactorMethodType.TOTP)
-      await this.recoveryCodeRepository.createRecoveryCodes(userId, hashedRecoveryCodes)
+    await this.userAuthRepository.enableTwoFactor(userId, secret, TwoFactorMethodType.TOTP)
 
-      this.logger.debug(`[confirmTwoFactorSetup] 2FA đã được kích hoạt thành công cho userId ${userId}`)
+    // This call now also sends an email with the codes
+    const recoveryCodes = await this.regenerateRecoveryCodes(userId, ipAddress, userAgent)
 
-      return {
-        message: this.i18nService.t('auth.Auth.Error.2FA.Confirm.Success'),
-        recoveryCodes: plainRecoveryCodes
-      }
-    } catch (error) {
-      this.logger.error(
-        `[confirmTwoFactorSetup] Lỗi khi thiết lập 2FA cho userId ${userId}: ${error.message}`,
-        error.stack
-      )
-      throw AuthError.InternalServerError(error.message)
+    await this.emailService.sendTwoFactorStatusChangedEmail(user.email, {
+      userName: user.userProfile?.firstName ?? user.email,
+      action: 'enabled',
+      details: []
+    })
+
+    return {
+      message: this.i18nService.t('auth.Auth.Error.2FA.Confirm.Success'),
+      recoveryCodes
     }
   }
 
@@ -367,30 +410,18 @@ export class TwoFactorService implements IMultiFactorService {
    * Xác minh mã khôi phục
    */
   private async verifyRecoveryCode(userId: number, code: string): Promise<boolean> {
-    try {
-      // Lấy tất cả các mã khôi phục chưa sử dụng của người dùng
-      const recoveryCodes = await this.recoveryCodeRepository.findUnusedRecoveryCodesByUserId(userId)
-      if (!recoveryCodes || recoveryCodes.length === 0) {
-        this.logger.warn(`[verifyRecoveryCode] Không tìm thấy mã khôi phục cho userId ${userId}`)
-        return false
-      }
+    const recoveryCodes = await this.recoveryCodeRepository.findByUserId(userId)
+    if (!recoveryCodes.length) return false
 
-      // Kiểm tra từng mã khôi phục
-      for (const recoveryCode of recoveryCodes) {
-        const isMatch = await this.hashingService.compare(code, recoveryCode.code)
-        if (isMatch) {
-          // Đánh dấu mã khôi phục đã sử dụng
-          await this.recoveryCodeRepository.markRecoveryCodeAsUsed(recoveryCode.id)
-          return true
-        }
+    for (const storedCode of recoveryCodes) {
+      if (storedCode.used) continue
+      const codeMatches = await this.hashingService.compare(code, storedCode.code)
+      if (codeMatches) {
+        await this.recoveryCodeRepository.markRecoveryCodeAsUsed(storedCode.id)
+        return true
       }
-
-      this.logger.warn(`[verifyRecoveryCode] Mã khôi phục không hợp lệ cho userId ${userId}`)
-      return false
-    } catch (error) {
-      this.logger.error(`[verifyRecoveryCode] Lỗi khi xác minh mã khôi phục: ${error.message}`, error.stack)
-      return false
     }
+    return false
   }
 
   /**

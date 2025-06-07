@@ -8,7 +8,6 @@ import { OAuth2Client, TokenPayload } from 'google-auth-library'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/routes/auth/shared/repositories'
-import { SecurityAlertType } from 'src/routes/auth/shared/services/common/email.service'
 import { OtpService } from '../../modules/otp/otp.service'
 import { EMAIL_SERVICE, HASHING_SERVICE, OTP_SERVICE, SLT_SERVICE } from 'src/shared/constants/injection.tokens'
 import {
@@ -19,6 +18,7 @@ import {
 import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { SLTService } from 'src/routes/auth/shared/services/slt.service'
+import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
 
 /**
  * Interface để lưu thông tin state khi tạo URL xác thực Google
@@ -45,7 +45,7 @@ export class SocialService {
     private readonly userAuthRepository: UserAuthRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly sessionRepository: SessionRepository,
-    @Inject(EMAIL_SERVICE) private readonly emailService: any,
+    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
     @Inject(OTP_SERVICE) private readonly otpService: OtpService
   ) {
@@ -399,22 +399,6 @@ export class SocialService {
   }
 
   /**
-   * Gửi email thông báo liên quan đến bảo mật
-   */
-  private async sendSecurityAlert(
-    alertType: SecurityAlertType,
-    email: string,
-    metadata?: Record<string, any>
-  ): Promise<void> {
-    try {
-      await this.emailService.sendSecurityAlertEmail(alertType, email, metadata)
-    } catch (error) {
-      this.logger.error(`[sendSecurityAlert] Failed to send email alert: ${error.message}`)
-      // Không ảnh hưởng đến kết quả chính
-    }
-  }
-
-  /**
    * Xử lý callback từ Google OAuth
    */
   async googleCallback({
@@ -578,9 +562,10 @@ export class SocialService {
     await this.userAuthRepository.updateGoogleId(userId, googleId || '')
 
     // Gửi email thông báo
-    await this.sendSecurityAlert(SecurityAlertType.ACCOUNT_LINKED, currentUser.email, {
-      googleEmail,
-      linkedAt: new Date().toISOString()
+    await this.emailService.sendAccountLinkStatusChangeEmail(currentUser.email, {
+      userName: currentUser.userProfile?.username ?? currentUser.email,
+      action: 'linked',
+      provider: 'Google'
     })
 
     return {
@@ -616,9 +601,10 @@ export class SocialService {
     this.logger.log(`[unlinkGoogleAccount] Successfully unlinked Google account for user ${userId}.`)
 
     // Gửi email thông báo
-    await this.sendSecurityAlert(SecurityAlertType.ACCOUNT_UNLINKED, user.email, {
-      googleId: googleIdBeforeUnlink,
-      unlinkedAt: new Date().toISOString()
+    await this.emailService.sendAccountLinkStatusChangeEmail(user.email, {
+      userName: user.userProfile?.username ?? user.email,
+      action: 'unlinked',
+      provider: 'Google'
     })
 
     return {
@@ -690,9 +676,10 @@ export class SocialService {
       await this.userAuthRepository.updateGoogleId(user.id, payload.googleId)
 
       // Gửi email thông báo
-      await this.sendSecurityAlert(SecurityAlertType.ACCOUNT_LINKED, user.email, {
-        googleEmail: payload.googleEmail,
-        linkedAt: new Date().toISOString()
+      await this.emailService.sendAccountLinkStatusChangeEmail(user.email, {
+        userName: user.userProfile?.username ?? user.email,
+        action: 'linked',
+        provider: 'Google'
       })
 
       // Tạo hoặc tìm device

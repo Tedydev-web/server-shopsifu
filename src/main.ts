@@ -16,6 +16,8 @@ async function bootstrap() {
     logger: WinstonModule.createLogger(WinstonConfig)
   })
 
+  app.set('trust proxy', 1)
+
   app.enableCors({
     origin: appConfig().FRONTEND_URL,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
