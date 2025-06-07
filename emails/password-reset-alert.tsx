@@ -1,6 +1,15 @@
 import { Button, Heading, Section, Text, Row, Column, Hr, Link } from '@react-email/components'
 import * as React from 'react'
 import EmailLayout from './components/email-layout'
+import {
+  detailsTableContainer,
+  tableRow,
+  tableCellLabel,
+  tableCellValue,
+  hr,
+  heading,
+  paragraph
+} from './components/style'
 
 export interface PasswordResetAlertProps {
   userName: string
@@ -26,12 +35,12 @@ export const PasswordResetAlert = ({
 }: PasswordResetAlertProps) => {
   return (
     <EmailLayout previewText={title}>
-      <Heading as='h2' style={{ fontSize: '24px', fontWeight: '600', textAlign: 'center' }}>
+      <Heading as='h2' style={heading}>
         {title}
       </Heading>
-      <Text style={text}>{greeting}</Text>
-      <Text style={text}>{mainMessage}</Text>
-
+      <Text style={{ ...paragraph, fontWeight: 'bold' }}>{greeting}</Text>
+      <Text style={paragraph}>{mainMessage}</Text>
+      <Hr style={hr} />
       {details && details.length > 0 && (
         <Section style={detailsTableContainer}>
           {details.map((detail) => (
@@ -43,7 +52,7 @@ export const PasswordResetAlert = ({
         </Section>
       )}
 
-      <Text style={text}>{secondaryMessage}</Text>
+      <Text style={paragraph}>{secondaryMessage}</Text>
       <Section style={{ textAlign: 'center', marginTop: '26px' }}>
         <Button style={button} href={buttonUrl}>
           {buttonText}
@@ -69,28 +78,4 @@ const button: React.CSSProperties = {
   textDecoration: 'none',
   padding: '12px 24px',
   fontWeight: '600'
-}
-
-const detailsTableContainer = {
-  border: '1px solid #e2e8f0',
-  borderRadius: '8px',
-  padding: '16px',
-  margin: '16px 0',
-  backgroundColor: '#f8fafc'
-}
-
-const tableRow = {
-  padding: '8px 0'
-}
-
-const tableCellLabel = {
-  fontWeight: 'bold' as const,
-  color: '#475569',
-  width: '120px',
-  fontSize: '14px'
-}
-
-const tableCellValue = {
-  color: '#1e293b',
-  fontSize: '14px'
 }

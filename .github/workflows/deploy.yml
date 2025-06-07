@@ -59,8 +59,8 @@ jobs:
             cd ${{ secrets.STAGING_PATH_PROJECT }}
             git fetch origin master && git reset --hard origin/master
             rm -rf dist node_modules
-            npm ci && npm run build
-            pm2 describe server-shopsifu &>/dev/null && pm2 restart server-shopsifu || pm2 start dist/main.js --name server-shopsifu
+            npm install && npm run build
+            pm2 describe server-shopsifu &>/dev/null && pm2 restart server-shopsifu
             # Thêm độ trễ để ứng dụng ghi log và PM2 cập nhật trạng thái
             sleep 12
             # Lấy trạng thái PM2 dưới dạng JSON
@@ -219,7 +219,7 @@ jobs:
             git fetch origin master
             git reset --hard HEAD~1
             rm -rf dist node_modules
-            npm ci && npm run build
+            npm install && npm run build
             pm2 restart server-shopsifu
           EOF
 
@@ -244,7 +244,7 @@ jobs:
             cd ${{ secrets.STAGING_PATH_PROJECT }}
             git reset --hard HEAD
             rm -rf dist node_modules
-            npm ci && npm run build
+            npm install && npm run build
             pm2 restart server-shopsifu
           EOF
 

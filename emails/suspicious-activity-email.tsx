@@ -1,6 +1,7 @@
 import { Button, Heading, Text, Section, Row, Column, Hr, Link } from '@react-email/components'
 import * as React from 'react'
 import { EmailLayout } from 'emails/components/email-layout'
+import { tableRow, tableCellLabel, tableCellValue, hr, heading, paragraph } from './components/style'
 
 export interface SuspiciousActivityEmailProps {
   userName: string
@@ -22,22 +23,6 @@ const tableContainer = {
   backgroundColor: '#fff1f2' // red-50
 }
 
-const tableRow = {
-  padding: '8px 0'
-}
-
-const tableCellLabel = {
-  fontWeight: 'bold' as const,
-  color: '#b91c1c', // red-700
-  width: '120px',
-  fontSize: '14px'
-}
-
-const tableCellValue = {
-  color: '#1e293b',
-  fontSize: '14px'
-}
-
 export const SuspiciousActivityEmail = ({
   title,
   greeting,
@@ -49,15 +34,12 @@ export const SuspiciousActivityEmail = ({
 }: SuspiciousActivityEmailProps) => {
   return (
     <EmailLayout previewText={title}>
-      <Heading
-        as='h2'
-        style={{ fontSize: '24px', fontWeight: 'bold', textAlign: 'center', color: '#dc2626' }} // red-600
-      >
+      <Heading as='h2' style={heading}>
         {title}
       </Heading>
 
-      <Text style={{ fontSize: '16px', color: '#334155' }}>{greeting}</Text>
-      <Text style={{ fontSize: '16px', color: '#334155' }}>{mainMessage}</Text>
+      <Text style={{ ...paragraph, fontWeight: 'bold' }}>{greeting}</Text>
+      <Text style={paragraph}>{mainMessage}</Text>
 
       <Section style={tableContainer}>
         {details.map((detail) => (
@@ -87,11 +69,11 @@ export const SuspiciousActivityEmail = ({
         </Button>
       </Section>
 
-      <Hr style={{ borderColor: '#e2e8f0', margin: '26px 0' }} />
+      <Hr style={hr} />
 
-      <Text style={{ fontSize: '14px', color: '#64748b' }}>
+      <Text style={{ fontSize: '14px', color: '#64748b', textAlign: 'center' as const }}>
         Nếu bạn có bất kỳ câu hỏi nào, xin vui lòng{' '}
-        <Link href='#' style={{ color: '#0ea5e9', textDecoration: 'underline' }}>
+        <Link href='#' style={{ color: '#d0201c', textDecoration: 'underline' }}>
           liên hệ với bộ phận hỗ trợ
         </Link>
         .

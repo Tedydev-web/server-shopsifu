@@ -176,6 +176,16 @@ export class SLTService implements ISLTService {
       // thì vẫn cho phép sử dụng để hoàn tất quá trình đăng ký
       const sltContext = this.parseSltContextFromRedis(redisContext)
 
+      // Kiểm tra số lần thử trước khi làm bất cứ điều gì khác
+      const currentAttempts = sltContext.attempts || 0
+      const maxAttempts = this.configService.get('security.sltMaxAttempts', SLT_MAX_ATTEMPTS)
+      if (currentAttempts >= maxAttempts) {
+        this.logger.warn(`[validateSltFromCookieAndGetContext] SLT max attempts exceeded for jti: ${jti}`)
+        // Xóa context để ngăn các lần thử tiếp theo
+        await this.redisService.del(sltContextKey)
+        throw AuthError.SLTMaxAttemptsExceeded()
+      }
+
       if (redisContext.finalized === '1') {
         if (purpose === TypeOfVerificationCode.REGISTER && sltContext.metadata?.otpVerified === 'true') {
           this.logger.log(
@@ -185,14 +195,6 @@ export class SLTService implements ISLTService {
           this.logger.warn(`[validateSltFromCookieAndGetContext] SLT already used for jti: ${jti}`)
           throw AuthError.SLTAlreadyUsed()
         }
-      }
-
-      const currentAttempts = await this.incrementSltAttempts(jti)
-      const maxAttempts = this.configService.get('security.sltMaxAttempts', SLT_MAX_ATTEMPTS)
-      if (currentAttempts > maxAttempts) {
-        this.logger.warn(`[validateSltFromCookieAndGetContext] SLT max attempts exceeded for jti: ${jti}`)
-        await this.redisService.del(sltContextKey)
-        throw AuthError.SLTMaxAttemptsExceeded()
       }
 
       if (sltContext.ipAddress !== currentIpAddress || sltContext.userAgent !== currentUserAgent) {

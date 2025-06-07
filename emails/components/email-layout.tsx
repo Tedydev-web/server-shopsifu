@@ -28,7 +28,7 @@ export const EmailLayout = ({ previewText, children }: EmailLayoutProps) => {
                 style={image}
                 width={620}
                 src={`https://react-email-demo-4nuiv9xxi-resend.vercel.app/static/yelp-header.png`}
-                alt='OTP verification header'
+                alt='header'
               />
             </Row>
             {children}
@@ -44,7 +44,7 @@ export const EmailLayout = ({ previewText, children }: EmailLayoutProps) => {
               style={{
                 textAlign: 'center',
                 fontSize: 12,
-                color: 'rgb(0,0,0, 0.7)',
+                color: '#d0201c',
                 textDecoration: 'underline'
               }}
             >
@@ -69,18 +69,14 @@ const container = {
   backgroundColor: '#ffffff',
   margin: '0 auto',
   borderRadius: '5px',
-  overflow: 'hidden'
+  overflow: 'hidden',
+  padding: '20px'
 }
 
 const logo = {
   margin: '0 auto',
   textAlign: 'center' as const,
   padding: '20px'
-}
-
-const hr = {
-  borderColor: '#e6ebf1',
-  margin: '20px 0'
 }
 
 const footer = {
@@ -92,7 +88,6 @@ const image = {
 }
 
 const content = {
-  border: '1px solid rgb(0,0,0, 0.1)',
   borderRadius: '3px',
   overflow: 'hidden'
 }

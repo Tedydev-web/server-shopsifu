@@ -195,7 +195,7 @@ export class TwoFactorService implements IMultiFactorService {
     await this.recoveryCodeRepository.deleteRecoveryCodes(userId)
 
     await this.emailService.sendTwoFactorStatusChangedEmail(user.email, {
-      userName: user.userProfile?.firstName ?? user.email,
+      userName: user.userProfile?.username ?? user.email,
       action: 'disabled',
       details: []
     })
@@ -204,7 +204,6 @@ export class TwoFactorService implements IMultiFactorService {
   /**
    * Tạo mới các mã khôi phục.
    * Yêu cầu xác thực (đã thực hiện trước đó) để gọi hàm này.
-   * @implements IMultiFactorService.regenerateRecoveryCodes
    */
   async regenerateRecoveryCodes(userId: number, ipAddress?: string, userAgent?: string): Promise<string[]> {
     this.logger.debug(`[regenerateRecoveryCodes] Bắt đầu tạo lại mã khôi phục cho userId ${userId}`)
@@ -256,7 +255,7 @@ export class TwoFactorService implements IMultiFactorService {
     }
 
     await this.emailService.sendRecoveryCodesEmail(user.email, {
-      userName: user.userProfile?.firstName ?? user.email,
+      userName: user.userProfile?.username ?? user.email,
       recoveryCodes: plainRecoveryCodes,
       details,
       lang
@@ -350,7 +349,7 @@ export class TwoFactorService implements IMultiFactorService {
     const recoveryCodes = await this.regenerateRecoveryCodes(userId, ipAddress, userAgent)
 
     await this.emailService.sendTwoFactorStatusChangedEmail(user.email, {
-      userName: user.userProfile?.firstName ?? user.email,
+      userName: user.userProfile?.username ?? user.email,
       action: 'enabled',
       details: []
     })

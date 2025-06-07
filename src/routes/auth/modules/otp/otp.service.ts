@@ -1,7 +1,11 @@
 import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { RedisService } from 'src/providers/redis/redis.service'
-import { TypeOfVerificationCodeType, OTP_LENGTH } from 'src/routes/auth/shared/constants/auth.constants'
+import {
+  TypeOfVerificationCodeType,
+  OTP_LENGTH,
+  TypeOfVerificationCode
+} from 'src/routes/auth/shared/constants/auth.constants'
 import { OtpData, IOTPService } from 'src/routes/auth/shared/auth.types'
 import { ConfigService } from '@nestjs/config'
 import { AuthError } from 'src/routes/auth/auth.error'
@@ -14,7 +18,7 @@ import {
 } from 'src/shared/constants/injection.tokens'
 import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { DeviceRepository } from 'src/routes/auth/shared/repositories'
+import { DeviceRepository, UserAuthRepository } from 'src/routes/auth/shared/repositories'
 import { GeolocationService } from 'src/routes/auth/shared/services/common/geolocation.service'
 import { UserAgentService } from 'src/routes/auth/shared/services/common/user-agent.service'
 
@@ -30,7 +34,8 @@ export class OtpService implements IOTPService {
     private readonly configService: ConfigService,
     private readonly deviceRepository: DeviceRepository,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
-    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
+    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
+    private readonly userAuthRepository: UserAuthRepository
   ) {}
 
   /**
@@ -83,6 +88,15 @@ export class OtpService implements IOTPService {
       try {
         if (this.emailService) {
           const lang = I18nContext.current()?.lang ?? metadata?.lang ?? 'vi'
+
+          let userName = metadata?.userName
+          if (!userName && type !== TypeOfVerificationCode.REGISTER) {
+            const user = await this.userAuthRepository.findByEmail(targetEmail)
+            if (user) {
+              userName = user.userProfile?.username
+            }
+          }
+
           const details = []
           if (metadata?.ipAddress && metadata?.userAgent) {
             const locationResult = await this.geolocationService.getLocationFromIP(metadata.ipAddress)
@@ -108,7 +122,7 @@ export class OtpService implements IOTPService {
           }
 
           await this.emailService.sendOtpEmail(targetEmail, type, {
-            userName: metadata?.userName || targetEmail.split('@')[0],
+            userName: userName || targetEmail.split('@')[0],
             code: otpCode,
             lang,
             details

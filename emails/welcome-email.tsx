@@ -18,7 +18,7 @@ export const WelcomeEmail = ({ userName, headline, content, buttonText, buttonUr
     <EmailLayout previewText={headline}>
       <Section style={main}>
         <Heading style={heading}>{headline}</Heading>
-        <Text style={paragraph}>{greeting}</Text>
+        <Text style={{ ...paragraph, fontWeight: 'bold' }}>{greeting}</Text>
         <Text style={paragraph}>{content}</Text>
         <Section style={buttonContainer}>
           <Button style={button} href={buttonUrl}>

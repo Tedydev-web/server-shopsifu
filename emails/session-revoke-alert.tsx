@@ -1,7 +1,7 @@
 import { Button, Heading, Section, Text } from '@react-email/components'
 import * as React from 'react'
 import EmailLayout from './components/email-layout'
-import { buttonContainer, button } from './components/style'
+import { buttonContainer, button, heading } from './components/style'
 
 export interface SessionRevokeAlertProps {
   userName: string
@@ -28,10 +28,10 @@ export const SessionRevokeAlert = ({
   return (
     <EmailLayout previewText={title}>
       <Section style={content}>
-        <Heading as='h2' style={titleStyle}>
+        <Heading as='h2' style={heading}>
           {title}
         </Heading>
-        <Text style={paragraph}>{greeting}</Text>
+        <Text style={{ ...paragraph, fontWeight: 'bold' }}>{greeting}</Text>
         <Text style={paragraph}>{mainMessage}</Text>
 
         {details && details.length > 0 && (
@@ -59,13 +59,6 @@ export default SessionRevokeAlert
 
 const content = {
   padding: '0 20px'
-}
-
-const titleStyle = {
-  fontSize: '24px',
-  fontWeight: 'bold',
-  textAlign: 'center' as const,
-  margin: '30px 0'
 }
 
 const paragraph = {

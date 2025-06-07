@@ -173,7 +173,7 @@ export class CoreService {
     await this.checkEmailNotExists(email)
 
     // Hoàn tất đăng ký với thông tin từ params
-    await this.createUserAndProfile({
+    const newUser = await this.createUserAndProfile({
       email,
       password: params.password,
       firstName: params.firstName,
@@ -187,7 +187,7 @@ export class CoreService {
     // Gửi email chào mừng
     if (this.emailService) {
       await this.emailService.sendWelcomeEmail(email, {
-        userName: sltContext.metadata.registrationDetails.firstName || email.split('@')[0]
+        userName: newUser.userProfile?.username || email.split('@')[0]
       })
     }
 
@@ -204,7 +204,9 @@ export class CoreService {
    * Tạo người dùng và hồ sơ trong cơ sở dữ liệu.
    * Được gọi sau khi tất cả các bước xác minh đã hoàn tất.
    */
-  async createUserAndProfile(params: Omit<RegisterUserParams, 'userId'> & { email: string }): Promise<void> {
+  async createUserAndProfile(
+    params: Omit<RegisterUserParams, 'userId'> & { email: string }
+  ): Promise<UserWithProfileAndRole> {
     const { email, password, firstName, lastName, username, phoneNumber } = params
 
     if (!password) {
@@ -227,7 +229,7 @@ export class CoreService {
 
     // Tạo user mới thay vì cập nhật
     try {
-      await this.userAuthRepository.createUser({
+      const newUser = await this.userAuthRepository.createUser({
         email,
         password: hashedPassword,
         firstName,
@@ -236,6 +238,7 @@ export class CoreService {
         phoneNumber
         // User sẽ được tạo với trạng thái "ACTIVE" theo mặc định
       })
+      return newUser
     } catch (error) {
       this.logger.error(`[createUserAndProfile] Error creating new user: ${error.message}`, error.stack)
       throw AuthError.InternalServerError('Failed to create user during registration')

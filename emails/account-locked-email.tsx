@@ -1,7 +1,7 @@
 import { Button, Heading, Section, Text } from '@react-email/components'
 import * as React from 'react'
 import EmailLayout from './components/email-layout'
-import { buttonContainer, button } from './components/style'
+import { buttonContainer, button, heading } from './components/style'
 
 export interface AccountLockedEmailProps {
   userName: string
@@ -31,20 +31,11 @@ export const AccountLockedEmail = ({
 
   return (
     <EmailLayout previewText={previewText}>
-      <Heading
-        as='h2'
-        style={{
-          fontSize: '24px',
-          fontWeight: 'bold',
-          textAlign: 'center',
-          margin: '30px 0',
-          color: '#e00707'
-        }}
-      >
+      <Heading as='h2' style={heading}>
         {title}
       </Heading>
-      <Text style={{ fontSize: '16px', lineHeight: '26px', color: '#3c4043' }}>{greeting}</Text>
-      <Text style={{ fontSize: '16px', lineHeight: '26px', color: '#3c4043' }}>{mainMessage}</Text>
+      <Text style={{ ...paragraph, fontWeight: 'bold' }}>{greeting}</Text>
+      <Text style={paragraph}>{mainMessage}</Text>
       <Section style={detailsBox}>
         {details.map((item, index) => (
           <Text key={index} style={detailItem}>
@@ -76,18 +67,6 @@ export const AccountLockedEmail = ({
 }
 
 export default AccountLockedEmail
-
-const content = {
-  padding: '0 20px'
-}
-
-const titleStyle = {
-  fontSize: '24px',
-  fontWeight: 'bold',
-  textAlign: 'center' as const,
-  margin: '30px 0',
-  color: '#c0392b'
-}
 
 const paragraph = {
   fontSize: '16px',

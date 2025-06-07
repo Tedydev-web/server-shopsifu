@@ -360,7 +360,7 @@ export class UserActivityService {
     const uaInfo = this.userAgentService.parse(activity.userAgent)
 
     await this.emailService.sendPasswordChangedEmail(user.email, {
-      userName: user.userProfile?.firstName ?? user.email,
+      userName: user.userProfile?.username ?? user.email,
       details: [
         {
           label: this.i18nService.t('email.Email.common.details.ipAddress'),
@@ -418,7 +418,7 @@ export class UserActivityService {
     const user = await this.userAuthRepository.findById(userId, { email: true, userProfile: true })
     if (user) {
       await this.emailService.sendAccountLockedEmail(user.email, {
-        userName: user.userProfile?.firstName ?? user.email,
+        userName: user.userProfile?.username ?? user.email,
         lockoutMinutes: this.loginLockoutMinutes,
         details: [
           {
@@ -527,7 +527,7 @@ export class UserActivityService {
     const locationResult = await this.geolocationService.getLocationFromIP(activity.ipAddress ?? '')
 
     await this.emailService.sendSuspiciousActivityEmail(user.email, {
-      userName: user.userProfile?.firstName ?? user.email,
+      userName: user.userProfile?.username ?? user.email,
       details: [
         {
           label: this.i18nService.t('email.Email.securityAlert.SUSPICIOUS_ACTIVITY.details.activityDetected', {

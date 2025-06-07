@@ -30,6 +30,7 @@ import { SessionsService } from 'src/routes/auth/modules/sessions/session.servic
 import { SocialService } from 'src/routes/auth/modules/social/social.service'
 import { User } from '@prisma/client'
 import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
+import { ApiException } from 'src/shared/exceptions/api.exception'
 
 export interface VerificationContext {
   userId: number
@@ -309,8 +310,26 @@ export class AuthVerificationService {
       return await this._verificationFlow(sltCookieValue, code, ipAddress, userAgent, res, additionalMetadata)
     } catch (error) {
       this.logger.error(`[verifyCode] Flow failed: ${error.message}`, error.stack)
-      this.cookieService.clearSltCookie(res) // Always clear cookie on failure
-      if (error instanceof AuthError) throw error
+
+      if (error instanceof ApiException) {
+        const terminalSltErrorCodes = [
+          'AUTH_SLT_EXPIRED',
+          'AUTH_SLT_INVALID',
+          'AUTH_SLT_ALREADY_USED',
+          'AUTH_SLT_MAX_ATTEMPTS_EXCEEDED',
+          'AUTH_SLT_INVALID_PURPOSE',
+          'AUTH_EMAIL_MISSING_IN_CONTEXT'
+        ]
+
+        if (terminalSltErrorCodes.includes(error.code)) {
+          this.cookieService.clearSltCookie(res)
+        }
+        // Always re-throw the original, structured error
+        throw error
+      }
+
+      // For unexpected, non-API errors, clear cookie and throw a generic 500
+      this.cookieService.clearSltCookie(res)
       throw AuthError.InternalServerError()
     }
   }
@@ -458,7 +477,7 @@ export class AuthVerificationService {
 
     const user = await this.userAuthRepository.findById(userId, { userProfile: true })
     await this.emailService.sendSessionRevokeEmail(email, {
-      userName: user?.userProfile?.firstName ?? email.split('@')[0],
+      userName: user?.userProfile?.username ?? email.split('@')[0],
       details: [
         { label: this.i18nService.t('email.Email.common.details.ipAddress'), value: ipAddress ?? 'N/A' },
         { label: this.i18nService.t('email.Email.common.details.device'), value: userAgent ?? 'N/A' }
@@ -482,7 +501,7 @@ export class AuthVerificationService {
 
     const user = await this.userAuthRepository.findById(userId, { userProfile: true })
     await this.emailService.sendSessionRevokeEmail(email, {
-      userName: user?.userProfile?.firstName ?? email.split('@')[0],
+      userName: user?.userProfile?.username ?? email.split('@')[0],
       details: [
         { label: this.i18nService.t('email.Email.common.details.ipAddress'), value: ipAddress ?? 'N/A' },
         { label: this.i18nService.t('email.Email.common.details.device'), value: userAgent ?? 'N/A' }

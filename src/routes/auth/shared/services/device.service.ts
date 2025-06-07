@@ -167,7 +167,7 @@ export class DeviceService implements IDeviceService {
       ]
 
       await this.emailService.sendNewDeviceLoginEmail(user.email, {
-        userName: user.userProfile?.firstName ?? user.email,
+        userName: user.userProfile?.username ?? user.email,
         details
       })
 
@@ -241,7 +241,7 @@ export class DeviceService implements IDeviceService {
         if (!lastWarning) {
           // Gửi email cảnh báo
           await this.emailService.sendDeviceLimitWarningEmail(user.email, {
-            userName: user.userProfile?.firstName || user.email.split('@')[0],
+            userName: user.userProfile?.username || user.email.split('@')[0],
             details: [
               { label: 'Thiết bị hiện tại', value: `${userDevices.length}` },
               { label: 'Giới hạn thiết bị', value: `${this.maxAllowedDevices}` }

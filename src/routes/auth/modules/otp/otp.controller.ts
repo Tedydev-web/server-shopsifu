@@ -55,7 +55,7 @@ export class OtpController {
     }
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: 6, ttl: 60000 } })
   @IsPublic()
   @Post('verify')
   async verifyOtp(

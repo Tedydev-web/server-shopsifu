@@ -1,6 +1,7 @@
 import { Button, Heading, Text, Section, Row, Column, Hr, Link } from '@react-email/components'
 import * as React from 'react'
 import { EmailLayout } from 'emails/components/email-layout'
+import { tableRow, tableCellLabel, tableCellValue, hr, heading, paragraph } from './components/style'
 
 export interface SecurityLoginAlertProps {
   userName: string
@@ -22,22 +23,6 @@ const tableContainer = {
   backgroundColor: '#f8fafc'
 }
 
-const tableRow = {
-  padding: '8px 0'
-}
-
-const tableCellLabel = {
-  fontWeight: 'bold' as const,
-  color: '#475569',
-  width: '120px',
-  fontSize: '14px'
-}
-
-const tableCellValue = {
-  color: '#1e293b',
-  fontSize: '14px'
-}
-
 export const SecurityLoginAlert = ({
   title,
   greeting,
@@ -49,12 +34,12 @@ export const SecurityLoginAlert = ({
 }: SecurityLoginAlertProps) => {
   return (
     <EmailLayout previewText={title}>
-      <Heading as='h2' style={{ fontSize: '24px', fontWeight: '600', textAlign: 'center' }}>
+      <Heading as='h2' style={heading}>
         {title}
       </Heading>
 
-      <Text style={{ fontSize: '16px', color: '#334155' }}>{greeting}</Text>
-      <Text style={{ fontSize: '16px', color: '#334155' }}>{mainMessage}</Text>
+      <Text style={{ ...paragraph, fontWeight: 'bold' }}>{greeting}</Text>
+      <Text style={paragraph}>{mainMessage}</Text>
 
       <Section style={tableContainer}>
         {details.map((detail) => (
@@ -65,12 +50,12 @@ export const SecurityLoginAlert = ({
         ))}
       </Section>
 
-      <Text style={{ fontSize: '16px', color: '#334155' }}>{secondaryMessage}</Text>
+      <Text style={paragraph}>{secondaryMessage}</Text>
 
       <Section style={{ textAlign: 'center', marginTop: '26px' }}>
         <Button
           style={{
-            backgroundColor: '#0ea5e9', // sky-500
+            backgroundColor: '#d0201c', // sky-500
             borderRadius: '6px',
             color: '#ffffff',
             fontSize: '16px',
@@ -84,11 +69,11 @@ export const SecurityLoginAlert = ({
         </Button>
       </Section>
 
-      <Hr style={{ borderColor: '#e2e8f0', margin: '26px 0' }} />
+      <Hr style={hr} />
 
-      <Text style={{ fontSize: '14px', color: '#64748b' }}>
+      <Text style={{ fontSize: '14px', color: '#64748b', textAlign: 'center' as const }}>
         Nếu bạn không thực hiện hành động này, hãy{' '}
-        <Link href='#' style={{ color: '#0ea5e9', textDecoration: 'underline' }}>
+        <Link href='#' style={{ color: '#d0201c', textDecoration: 'underline' }}>
           bảo vệ tài khoản của bạn ngay lập tức.
         </Link>
       </Text>

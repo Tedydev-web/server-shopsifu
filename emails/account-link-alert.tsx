@@ -1,7 +1,7 @@
 import { Button, Heading, Section, Text } from '@react-email/components'
 import * as React from 'react'
 import EmailLayout from './components/email-layout'
-import { buttonContainer, button } from './components/style'
+import { buttonContainer, button, heading } from './components/style'
 
 export interface AccountLinkAlertProps {
   userName: string
@@ -31,10 +31,10 @@ export const AccountLinkAlert = ({
   return (
     <EmailLayout previewText={title}>
       <Section style={content}>
-        <Heading as='h2' style={{ ...titleStyle, color: titleColor }}>
+        <Heading as='h2' style={{ ...heading, color: titleColor }}>
           {title}
         </Heading>
-        <Text style={paragraph}>{greeting}</Text>
+        <Text style={{ ...paragraph, fontWeight: 'bold' }}>{greeting}</Text>
         <Text style={paragraph}>{mainMessage}</Text>
         <Text style={paragraph}>{secondaryMessage}</Text>
         <Section style={buttonContainer}>
@@ -65,4 +65,3 @@ const paragraph = {
   lineHeight: '26px',
   color: '#3c4043'
 }
- 

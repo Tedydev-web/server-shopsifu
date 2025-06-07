@@ -16,6 +16,15 @@ import {
 } from '@react-email/components'
 import * as React from 'react'
 import { EmailLayout } from 'emails/components/email-layout'
+import {
+  detailsTableContainer,
+  tableRow,
+  tableCellLabel,
+  tableCellValue,
+  hr,
+  heading,
+  paragraph
+} from './components/style'
 
 export interface RecoveryCodesEmailProps {
   userName: string
@@ -51,11 +60,11 @@ export const RecoveryCodesEmail = ({
 
   return (
     <EmailLayout previewText={headline}>
-      <Heading as='h2' style={{ fontSize: '24px', fontWeight: '600', textAlign: 'center' }}>
+      <Heading as='h2' style={heading}>
         {headline}
       </Heading>
-      <Text style={text}>{greeting}</Text>
-      <Text style={text}>{content}</Text>
+      <Text style={{ ...paragraph, fontWeight: 'bold' }}>{greeting}</Text>
+      <Text style={paragraph}>{content}</Text>
 
       <Section style={codesContainer}>
         <Text style={{ ...text, textAlign: 'center', fontWeight: 'bold', marginBottom: '20px' }}>{codesLabel}</Text>
@@ -87,10 +96,9 @@ export const RecoveryCodesEmail = ({
         {warning}
       </Text>
 
+      <Hr style={hr} />
       {details && details.length > 0 && (
         <>
-          <Hr style={{ borderColor: '#e2e8f0', margin: '26px 0' }} />
-          <Text style={{ fontSize: '16px', color: '#334155', fontWeight: 'bold' }}>Chi tiết:</Text>
           <Section style={detailsTableContainer}>
             {details.map((detail) => (
               <Row key={detail.label} style={tableRow}>
@@ -102,7 +110,7 @@ export const RecoveryCodesEmail = ({
         </>
       )}
 
-      <Hr style={{ borderColor: '#e2e8f0', margin: '26px 0' }} />
+      <Hr style={hr} />
       <Section style={{ textAlign: 'center' }}>
         <Button style={mainButton} href={buttonUrl}>
           {buttonText}
@@ -162,30 +170,6 @@ const mainButton: React.CSSProperties = {
   width: '100%',
   padding: '14px 0',
   fontWeight: 'bold'
-}
-
-const detailsTableContainer = {
-  border: '1px solid #e2e8f0',
-  borderRadius: '8px',
-  padding: '16px',
-  margin: '16px 0',
-  backgroundColor: '#f8fafc'
-}
-
-const tableRow = {
-  padding: '8px 0'
-}
-
-const tableCellLabel = {
-  fontWeight: 'bold' as const,
-  color: '#475569',
-  width: '120px',
-  fontSize: '14px'
-}
-
-const tableCellValue = {
-  color: '#1e293b',
-  fontSize: '14px'
 }
 
 export default RecoveryCodesEmail

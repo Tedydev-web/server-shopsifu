@@ -194,7 +194,7 @@ export class SessionsService implements ISessionService {
       ]
 
       await this.emailService.sendDeviceTrustChangeEmail(user.email, {
-        userName: user.userProfile?.firstName ?? user.email,
+        userName: user.userProfile?.username ?? user.email,
         action,
         details
       })
