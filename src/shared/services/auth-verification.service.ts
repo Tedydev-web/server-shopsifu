@@ -100,7 +100,8 @@ export class AuthVerificationService {
     TypeOfVerificationCode.REVOKE_SESSIONS,
     TypeOfVerificationCode.REVOKE_ALL_SESSIONS,
     TypeOfVerificationCode.UNLINK_GOOGLE_ACCOUNT,
-    TypeOfVerificationCode.REGENERATE_2FA_CODES
+    TypeOfVerificationCode.REGENERATE_2FA_CODES,
+    TypeOfVerificationCode.RESET_PASSWORD
   ]
 
   private readonly VERIFICATION_ACTION_HANDLERS: Partial<Record<TypeOfVerificationCodeType, PostVerificationHandler>>
@@ -132,7 +133,8 @@ export class AuthVerificationService {
       [TypeOfVerificationCode.DISABLE_2FA]: this.handleDisable2FAVerification.bind(this),
       [TypeOfVerificationCode.SETUP_2FA]: this.handleSetup2FAVerification.bind(this),
       [TypeOfVerificationCode.REGISTER]: this.handleRegistrationOtpVerified.bind(this),
-      [TypeOfVerificationCode.REGENERATE_2FA_CODES]: this.handleRegenerate2FACodesVerification.bind(this)
+      [TypeOfVerificationCode.REGENERATE_2FA_CODES]: this.handleRegenerate2FACodesVerification.bind(this),
+      [TypeOfVerificationCode.RESET_PASSWORD]: this.handleResetPasswordVerification.bind(this)
     }
   }
 
@@ -353,7 +355,10 @@ export class AuthVerificationService {
 
     const result = await this.handlePostVerificationActions(sltContext, code, res, sltCookieValue)
 
-    if (sltContext.purpose !== TypeOfVerificationCode.REGISTER) {
+    if (
+      sltContext.purpose !== TypeOfVerificationCode.REGISTER &&
+      sltContext.purpose !== TypeOfVerificationCode.RESET_PASSWORD
+    ) {
       this.cookieService.clearSltCookie(res)
     }
 
@@ -575,6 +580,18 @@ export class AuthVerificationService {
       success: true,
       message: this.i18nService.t('auth.Auth.Error.2FA.RecoveryCodesRegenerated'),
       data: { recoveryCodes }
+    }
+  }
+
+  private async handleResetPasswordVerification(
+    context: SltContextData & { sltJti: string }
+  ): Promise<VerificationResult> {
+    await this.sltService.updateSltContext(context.sltJti, {
+      metadata: { ...context.metadata, otpVerified: 'true' }
+    })
+    return {
+      success: true,
+      message: this.i18nService.t('auth.Auth.Otp.Verified')
     }
   }
 

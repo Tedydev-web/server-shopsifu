@@ -7,6 +7,7 @@ import { SocialModule } from './modules/social/social.module'
 import { TwoFactorModule } from './modules/two-factor/two-factor.module'
 import { AuthSharedModule } from './shared/auth-shared.module'
 import { AuthVerificationModule } from '../../shared/services/auth-verification.module'
+import { PasswordModule } from './modules/password/password.module'
 
 @Module({
   imports: [
@@ -16,7 +17,8 @@ import { AuthVerificationModule } from '../../shared/services/auth-verification.
     SessionsModule,
     OtpModule,
     SocialModule,
-    TwoFactorModule
+    TwoFactorModule,
+    PasswordModule
   ],
   providers: [],
   exports: [AuthSharedModule]

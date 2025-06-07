@@ -183,6 +183,16 @@ export class UserAuthRepository {
     })
   }
 
+  async updatePassword(userId: number, password: string): Promise<User> {
+    return this.prismaService.user.update({
+      where: { id: userId },
+      data: {
+        password,
+        passwordChangedAt: new Date()
+      }
+    })
+  }
+
   async updateUser(userId: number, data: Partial<CreateUserData & { status?: string }>): Promise<User> {
     const { password, firstName, lastName, username, phoneNumber, status } = data
 
