@@ -27,7 +27,7 @@ export const DeviceTrustAlert = ({
   details,
   action
 }: DeviceTrustAlertProps) => {
-  const titleColor = action === 'trusted' ? '#28a745' : '#e00707'
+  const titleColor = action === 'trusted' ? '#28a745' : '#d0201c'
   return (
     <EmailLayout previewText={title}>
       <Section style={content}>

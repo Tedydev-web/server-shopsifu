@@ -23,7 +23,8 @@ import {
   tableCellValue,
   hr,
   heading,
-  paragraph
+  paragraph,
+  button
 } from './components/style'
 
 export interface RecoveryCodesEmailProps {
@@ -86,12 +87,6 @@ export const RecoveryCodesEmail = ({
         </Row>
       </Section>
 
-      <Section style={{ textAlign: 'center', marginTop: '20px' }}>
-        <Button style={downloadButton} href={downloadUrl}>
-          Tải xuống (.txt)
-        </Button>
-      </Section>
-
       <Text style={{ ...text, fontWeight: 'bold', color: '#c0392b', textAlign: 'center', marginTop: '20px' }}>
         {warning}
       </Text>
@@ -112,7 +107,7 @@ export const RecoveryCodesEmail = ({
 
       <Hr style={hr} />
       <Section style={{ textAlign: 'center' }}>
-        <Button style={mainButton} href={buttonUrl}>
+        <Button style={button} href={buttonUrl}>
           {buttonText}
         </Button>
       </Section>
@@ -146,30 +141,6 @@ const codeText: React.CSSProperties = {
   fontSize: '18px',
   letterSpacing: '1px',
   fontWeight: 600
-}
-
-const downloadButton: React.CSSProperties = {
-  backgroundColor: '#16a34a', // green-600
-  borderRadius: '6px',
-  color: '#ffffff',
-  fontSize: '16px',
-  textDecoration: 'none',
-  padding: '12px 20px',
-  fontWeight: '600',
-  display: 'inline-block'
-}
-
-const mainButton: React.CSSProperties = {
-  backgroundColor: '#2563eb',
-  borderRadius: '6px',
-  color: '#fff',
-  fontSize: '16px',
-  textDecoration: 'none',
-  textAlign: 'center',
-  display: 'block',
-  width: '100%',
-  padding: '14px 0',
-  fontWeight: 'bold'
 }
 
 export default RecoveryCodesEmail

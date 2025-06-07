@@ -1,7 +1,7 @@
 import { Button, Heading, Text, Section, Row, Column, Hr, Link } from '@react-email/components'
 import * as React from 'react'
 import { EmailLayout } from 'emails/components/email-layout'
-import { tableRow, tableCellLabel, tableCellValue, hr, heading, paragraph } from './components/style'
+import { tableRow, tableCellLabel, tableCellValue, hr, heading, paragraph, button } from './components/style'
 
 export interface SuspiciousActivityEmailProps {
   userName: string
@@ -53,18 +53,7 @@ export const SuspiciousActivityEmail = ({
       <Text style={{ fontSize: '16px', color: '#334155' }}>{secondaryMessage}</Text>
 
       <Section style={{ textAlign: 'center', marginTop: '26px' }}>
-        <Button
-          style={{
-            backgroundColor: '#dc2626', // red-600
-            borderRadius: '6px',
-            color: '#ffffff',
-            fontSize: '16px',
-            textDecoration: 'none',
-            padding: '12px 24px',
-            fontWeight: '600'
-          }}
-          href={buttonUrl}
-        >
+        <Button style={button} href={buttonUrl}>
           {buttonText}
         </Button>
       </Section>

@@ -1,7 +1,7 @@
 import { Button, Heading, Text, Section, Row, Column, Hr, Link } from '@react-email/components'
 import * as React from 'react'
 import { EmailLayout } from 'emails/components/email-layout'
-import { tableRow, tableCellLabel, tableCellValue, hr, heading, paragraph } from './components/style'
+import { tableRow, tableCellLabel, tableCellValue, hr, heading, paragraph, button } from './components/style'
 
 export interface SecurityLoginAlertProps {
   userName: string
@@ -53,18 +53,7 @@ export const SecurityLoginAlert = ({
       <Text style={paragraph}>{secondaryMessage}</Text>
 
       <Section style={{ textAlign: 'center', marginTop: '26px' }}>
-        <Button
-          style={{
-            backgroundColor: '#d0201c', // sky-500
-            borderRadius: '6px',
-            color: '#ffffff',
-            fontSize: '16px',
-            textDecoration: 'none',
-            padding: '12px 24px',
-            fontWeight: '600'
-          }}
-          href={buttonUrl}
-        >
+        <Button style={button} href={buttonUrl}>
           {buttonText}
         </Button>
       </Section>
@@ -72,7 +61,7 @@ export const SecurityLoginAlert = ({
       <Hr style={hr} />
 
       <Text style={{ fontSize: '14px', color: '#64748b', textAlign: 'center' as const }}>
-        Nếu bạn không thực hiện hành động này, hãy{' '}
+        Nếu bạn không thực hiện hành động này, hãy <br />
         <Link href='#' style={{ color: '#d0201c', textDecoration: 'underline' }}>
           bảo vệ tài khoản của bạn ngay lập tức.
         </Link>

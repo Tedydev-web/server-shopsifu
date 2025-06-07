@@ -4,7 +4,7 @@ const buttonContainer = {
 }
 
 const button = {
-  backgroundColor: '#e00707',
+  backgroundColor: '#d0201c',
   borderRadius: 3,
   color: '#FFF',
   fontWeight: 'bold',

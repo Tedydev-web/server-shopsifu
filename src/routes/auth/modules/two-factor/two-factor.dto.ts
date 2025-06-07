@@ -7,7 +7,8 @@ import { VerificationNeededResponseSchema } from '../../shared/dtos/verification
 // ===================================================================================
 
 export const TwoFactorVerifySchema = z.object({
-  code: z.string().min(6).max(6)
+  code: z.string().min(6, 'Mã xác thực phải có ít nhất 6 ký tự.').max(20, 'Mã xác thực không được vượt quá 20 ký tự.'),
+  method: z.enum(['TOTP', 'RECOVERY']).optional()
 })
 
 // ===================================================================================

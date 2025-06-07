@@ -26,7 +26,7 @@ export const TwoFactorAlert = ({
   details,
   action
 }: TwoFactorAlertProps) => {
-  const titleColor = action === 'enabled' ? '#16a34a' : '#dc2626' // green-600 or red-600
+  const titleColor = action === 'enabled' ? '#d0201c' : '#dc2626' // green-600 or red-600
   return (
     <EmailLayout previewText={title}>
       <Heading as='h2' style={{ ...titleStyle, color: titleColor }}>

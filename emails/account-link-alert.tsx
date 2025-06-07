@@ -27,7 +27,7 @@ export const AccountLinkAlert = ({
   action,
   provider
 }: AccountLinkAlertProps) => {
-  const titleColor = action === 'linked' ? '#28a745' : '#e00707'
+  const titleColor = action === 'linked' ? '#28a745' : '#d0201c'
   return (
     <EmailLayout previewText={title}>
       <Section style={content}>

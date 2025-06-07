@@ -32,7 +32,7 @@ import { UserAgentService } from 'src/routes/auth/shared/services/common/user-ag
  */
 const RECOVERY_CODES_COUNT = 8
 const RECOVERY_CODE_LENGTH = 10
-const TOTP_WINDOW = 1 // Cho phép mã hợp lệ trong khoảng thời gian 30 giây trước/sau
+const TOTP_WINDOW = 2 // Cho phép mã hợp lệ trong khoảng thời gian 60 giây trước/sau
 
 /**
  * Kết quả thiết lập TOTP
@@ -169,7 +169,7 @@ export class TwoFactorService implements IMultiFactorService {
     }
 
     // Xác thực theo phương thức (TOTP hoặc mã khôi phục)
-    const method = context.method || TwoFactorMethodType.TOTP
+    const method = context.method || 'TOTP'
     const verificationResult = await this.verifyByMethod(method, code, context.userId)
 
     if (!verificationResult.success) {

@@ -131,7 +131,8 @@ export class AuthVerificationService {
       [TypeOfVerificationCode.UNLINK_GOOGLE_ACCOUNT]: this.handleUnlinkGoogleAccountVerification.bind(this),
       [TypeOfVerificationCode.DISABLE_2FA]: this.handleDisable2FAVerification.bind(this),
       [TypeOfVerificationCode.SETUP_2FA]: this.handleSetup2FAVerification.bind(this),
-      [TypeOfVerificationCode.REGISTER]: this.handleRegistrationOtpVerified.bind(this)
+      [TypeOfVerificationCode.REGISTER]: this.handleRegistrationOtpVerified.bind(this),
+      [TypeOfVerificationCode.REGENERATE_2FA_CODES]: this.handleRegenerate2FACodesVerification.bind(this)
     }
   }
 
@@ -363,7 +364,12 @@ export class AuthVerificationService {
     this.logger.debug(`[verifyAuthCode] Verifying code for purpose: ${sltContext.purpose}`)
     try {
       if (sltContext.purpose === TypeOfVerificationCode.SETUP_2FA) {
-        await this._verifyWithTwoFactor(code, sltContext.userId, sltContext.metadata?.secret)
+        await this._verifyWithTwoFactor(
+          code,
+          sltContext.userId,
+          sltContext.metadata?.secret,
+          sltContext.metadata?.twoFactorMethod
+        )
         return
       }
 
@@ -377,7 +383,12 @@ export class AuthVerificationService {
       }
 
       if (user?.twoFactorEnabled) {
-        await this._verifyWithTwoFactor(code, user.id)
+        await this._verifyWithTwoFactor(
+          code,
+          user.id,
+          sltContext.metadata?.secret,
+          sltContext.metadata?.twoFactorMethod
+        )
       } else {
         await this._verifyWithOtp(code, sltContext)
       }
@@ -400,12 +411,15 @@ export class AuthVerificationService {
     if (!isValid) throw AuthError.InvalidOTP()
   }
 
-  private async _verifyWithTwoFactor(code: string, userId: number, secret?: string): Promise<void> {
-    const context = secret
-      ? { userId, secret, method: TwoFactorMethodType.TOTP }
-      : { userId, method: TwoFactorMethodType.TOTP }
-    const isValid = await this.twoFactorService.verifyCode(code, context)
-    if (!isValid) throw AuthError.InvalidTOTP()
+  private async _verifyWithTwoFactor(
+    code: string,
+    userId: number,
+    secret?: string,
+    method?: 'TOTP' | 'RECOVERY'
+  ): Promise<void> {
+    const context = secret ? { userId, secret, method: 'TOTP' } : { userId, method: method || 'TOTP' }
+    // Chỉ cần gọi service, nó sẽ tự throw lỗi nếu không hợp lệ
+    await this.twoFactorService.verifyCode(code, context)
   }
 
   private async handlePostVerificationActions(
@@ -551,6 +565,16 @@ export class AuthVerificationService {
     return {
       success: true,
       message: this.i18nService.t('auth.Auth.Otp.Verified')
+    }
+  }
+
+  private async handleRegenerate2FACodesVerification(context: SltContextData): Promise<VerificationResult> {
+    const { userId, ipAddress, userAgent } = context
+    const recoveryCodes = await this.twoFactorService.regenerateRecoveryCodes(userId, ipAddress, userAgent)
+    return {
+      success: true,
+      message: this.i18nService.t('auth.Auth.Error.2FA.RecoveryCodesRegenerated'),
+      data: { recoveryCodes }
     }
   }
 

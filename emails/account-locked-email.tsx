@@ -45,20 +45,7 @@ export const AccountLockedEmail = ({
       </Section>
       <Text style={{ fontSize: '16px', lineHeight: '26px', color: '#3c4043' }}>{secondaryMessage}</Text>
       <Section style={buttonContainer}>
-        <Button
-          style={{
-            backgroundColor: '#2563eb',
-            borderRadius: '6px',
-            color: '#fff',
-            fontSize: '16px',
-            textDecoration: 'none',
-            textAlign: 'center',
-            display: 'inline-block',
-            padding: '12px 20px',
-            fontWeight: 'bold'
-          }}
-          href={buttonUrl}
-        >
+        <Button style={button} href={buttonUrl}>
           {buttonText}
         </Button>
       </Section>

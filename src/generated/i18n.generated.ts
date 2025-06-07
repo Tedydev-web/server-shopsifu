@@ -88,6 +88,7 @@ export type I18nTranslations = {
                     "InvalidPurpose": string;
                     "EmailMissingInContext": string;
                     "AlreadyUsed": string;
+                    "TooManyAttempts": string;
                 };
                 "2FA": {
                     "AlreadyEnabled": string;
@@ -95,6 +96,7 @@ export type I18nTranslations = {
                     "InvalidTOTP": string;
                     "InvalidRecoveryCode": string;
                     "InvalidVerificationMethod": string;
+                    "TooManyAttempts": string;
                     "Disable": {
                         "Success": string;
                         "Failed": string;

@@ -45,16 +45,16 @@ export class CsrfMiddleware implements NestMiddleware {
           .json({ message: 'Invalid CSRF token', code: err.code, errorId: uuidv4() })
       }
 
-        const token = req.csrfToken()
+      const token = req.csrfToken()
       // Set cookie XSRF-TOKEN cho client đọc
       res.cookie(this.configService.get<string>('cookie.csrfToken.name'), token, {
         ...csrfTokenCookieOptions,
         maxAge: undefined // Đây là session cookie, không cần maxAge
-        })
+      })
 
       // Đặt cả hai header để client dễ dàng lấy
-        res.header(SecurityHeaders.XSRF_TOKEN_HEADER, token)
-        res.header(SecurityHeaders.CSRF_TOKEN_HEADER, token)
+      res.header(SecurityHeaders.XSRF_TOKEN_HEADER, token)
+      res.header(SecurityHeaders.CSRF_TOKEN_HEADER, token)
 
       next()
     })

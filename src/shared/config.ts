@@ -170,7 +170,8 @@ const cookieDefinitions = {
   csrfToken: {
     name: CookieNames.XSRF_TOKEN,
     options: {
-      ...getCookieOptions(true) // httpOnly: true
+      ...getCookieOptions(true),
+      secure: true
     }
   },
   csrfSecret: {

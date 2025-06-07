@@ -10,6 +10,8 @@ import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/shared/cons
 import { AuthError } from '../../auth.error'
 import { IsPublic, Auth } from 'src/routes/auth/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../../../../shared/services/auth-verification.service'
+import { I18nService } from 'nestjs-i18n'
+import { SuccessMessage } from 'src/shared/decorators/success-message.decorator'
 
 @Auth()
 @Controller('auth/2fa')
@@ -19,7 +21,8 @@ export class TwoFactorController {
   constructor(
     @Inject(TWO_FACTOR_SERVICE) private readonly twoFactorService: TwoFactorService,
     @Inject(forwardRef(() => AuthVerificationService))
-    private readonly authVerificationService: AuthVerificationService
+    private readonly authVerificationService: AuthVerificationService,
+    private readonly i18nService: I18nService
   ) {}
 
   @Post('setup')
@@ -75,7 +78,9 @@ export class TwoFactorController {
       throw AuthError.SLTCookieMissing()
     }
 
-    return this.authVerificationService.verifyCode(sltCookieValue, body.code, ip, userAgent, res)
+    return this.authVerificationService.verifyCode(sltCookieValue, body.code, ip, userAgent, res, {
+      twoFactorMethod: body.method || 'TOTP'
+    })
   }
 
   /**
@@ -91,12 +96,15 @@ export class TwoFactorController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.debug(`[verifyTwoFactor] Verifying 2FA code`)
+    this.logger.debug(`[verifyTwoFactor] Verifying 2FA code with method: ${body.method}`)
     const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
     if (!sltCookieValue) {
       throw AuthError.SLTCookieMissing()
     }
-    return this.authVerificationService.verifyCode(sltCookieValue, body.code, ip, userAgent, res)
+    // Truyền thêm method vào metadata để service trung tâm biết cách xác thực
+    return this.authVerificationService.verifyCode(sltCookieValue, body.code, ip, userAgent, res, {
+      twoFactorMethod: body.method || 'TOTP'
+    })
   }
 
   /**
@@ -105,25 +113,19 @@ export class TwoFactorController {
    */
   @Post('disable')
   @HttpCode(HttpStatus.OK)
+  @SuccessMessage('auth.Auth.Error.2FA.Disable.Success')
   async disableTwoFactor(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: TwoFactorVerifyDto
-  ): Promise<{ message: string }> {
+  ): Promise<void> {
     this.logger.log(`[disableTwoFactor] Attempting to disable 2FA for user: ${activeUser.userId}`)
 
-    const isValid = await this.twoFactorService.verifyCode(body.code, {
-      userId: activeUser.userId
+    await this.twoFactorService.verifyCode(body.code, {
+      userId: activeUser.userId,
+      method: body.method
     })
 
-    if (!isValid) {
-      throw AuthError.InvalidTOTP() // Hoặc một lỗi chung hơn cho mã không hợp lệ
-    }
-
     await this.twoFactorService.disableVerification(activeUser.userId)
-
-    return {
-      message: 'auth.Auth.Error.2FA.Disable.Success'
-    }
   }
 
   /**
@@ -132,32 +134,26 @@ export class TwoFactorController {
    */
   @Post('regenerate-recovery-codes')
   @HttpCode(HttpStatus.OK)
+  @SuccessMessage('auth.Auth.Error.2FA.RecoveryCodesRegenerated')
   async regenerateRecoveryCodes(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: TwoFactorVerifyDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string
-  ): Promise<{ message: string; data: { recoveryCodes: string[] } }> {
+  ): Promise<{ recoveryCodes: string[] }> {
     this.logger.log(`[regenerateRecoveryCodes] User ${activeUser.userId} is attempting to regenerate recovery codes.`)
 
     // Xác thực người dùng bằng mã TOTP hoặc recovery code hiện tại
-    const isValid = await this.twoFactorService.verifyCode(body.code, {
-      userId: activeUser.userId
+    await this.twoFactorService.verifyCode(body.code, {
+      userId: activeUser.userId,
+      method: body.method
     })
-
-    if (!isValid) {
-      this.logger.warn(`[regenerateRecoveryCodes] Invalid 2FA code provided by user ${activeUser.userId}.`)
-      throw AuthError.InvalidTOTP()
-    }
 
     // Nếu mã hợp lệ, tạo mã khôi phục mới
     const recoveryCodes = await this.twoFactorService.regenerateRecoveryCodes(activeUser.userId, ip, userAgent)
 
     return {
-      message: 'auth.Auth.Error.2FA.RecoveryCodesRegenerated',
-      data: {
-        recoveryCodes
-      }
+      recoveryCodes
     }
   }
 }

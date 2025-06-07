@@ -133,7 +133,11 @@ export class AuthError {
   }
 
   static SLTMaxAttemptsExceeded(): ApiException {
-    return new ApiException(HttpStatus.FORBIDDEN, 'SLT_MAX_ATTEMPTS_EXCEEDED', 'auth.Auth.Error.Otp.TooManyAttempts')
+    return new ApiException(
+      HttpStatus.TOO_MANY_REQUESTS,
+      'SLT_MAX_ATTEMPTS_EXCEEDED',
+      'auth.Auth.Error.SLT.TooManyAttempts'
+    )
   }
 
   static SLTAlreadyUsed(): ApiException {
