@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
+import { VerificationNeededResponseSchema } from '../../shared/dtos/verification.dto'
 
 // ===================================================================================
 // Lược đồ cho nội dung yêu cầu
@@ -85,11 +86,6 @@ export const GetGroupedSessionsResponseSchema = z.object({
 export const RevokeSessionsResponseSchema = z.object({
   revokedSessionsCount: z.number(),
   untrustedDevicesCount: z.number()
-})
-
-export const VerificationNeededResponseSchema = z.object({
-  requiresAdditionalVerification: z.literal(true).default(true),
-  verificationType: z.enum(['2FA', 'OTP']).optional()
 })
 
 // --- Update Device Name ---

@@ -1,11 +1,7 @@
 import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { RedisService } from 'src/providers/redis/redis.service'
-import {
-  TypeOfVerificationCodeType,
-  OTP_LENGTH,
-  OTP_COOLDOWN_SECONDS
-} from 'src/routes/auth/shared/constants/auth.constants'
+import { TypeOfVerificationCodeType, OTP_LENGTH } from 'src/routes/auth/shared/constants/auth.constants'
 import { OtpData, IOTPService } from 'src/routes/auth/shared/auth.types'
 import { ConfigService } from '@nestjs/config'
 import { AuthError } from 'src/routes/auth/auth.error'
@@ -48,29 +44,14 @@ export class OtpService implements IOTPService {
   }
 
   /**
-   * Tạo key cho cooldown của OTP
-   */
-  private getOtpCooldownKey(identifierForCooldown: string, purpose: TypeOfVerificationCodeType): string {
-    return RedisKeyManager.getOtpCooldownKey(identifierForCooldown, purpose)
-  }
-
-  /**
    * Gửi OTP
    */
   async sendOTP(
     targetEmail: string,
     type: TypeOfVerificationCodeType,
-    userIdForCooldownAndOtpData?: number,
     metadata?: Record<string, any>
   ): Promise<{ message: string; otpCode: string }> {
     try {
-      const identifierForCooldown = userIdForCooldownAndOtpData
-        ? `user:${userIdForCooldownAndOtpData}`
-        : `email:${targetEmail}`
-      const otpLastSentKey = this.getOtpCooldownKey(identifierForCooldown, type)
-
-      await this.checkOtpCooldown(otpLastSentKey)
-
       const otpCode = this.generateOTP()
       const otpKey = this.getOtpKey(type, targetEmail)
       const otpExpirySeconds = this.configService.get<number>('security.otpExpirySeconds', 300)
@@ -78,8 +59,7 @@ export class OtpService implements IOTPService {
       const otpDataForRedis: Record<string, string | number> = {
         code: otpCode,
         attempts: 0,
-        createdAt: Date.now(),
-        ...(userIdForCooldownAndOtpData && { userId: userIdForCooldownAndOtpData })
+        createdAt: Date.now()
       }
 
       // Xử lý metadata là object hoặc giá trị khác
@@ -102,8 +82,6 @@ export class OtpService implements IOTPService {
         throw AuthError.InternalServerError('Failed to send OTP email.')
       }
 
-      await this.redisService.set(otpLastSentKey, Date.now().toString(), 'EX', OTP_COOLDOWN_SECONDS)
-
       return { message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully'), otpCode }
     } catch (error) {
       this.logger.error(`[sendOTP] Lỗi: ${error.message}`, error.stack)
@@ -111,22 +89,6 @@ export class OtpService implements IOTPService {
         throw error
       }
       throw AuthError.InternalServerError('Failed to send OTP')
-    }
-  }
-
-  /**
-   * Kiểm tra thời gian chờ giữa các lần gửi OTP
-   */
-  private async checkOtpCooldown(otpLastSentKey: string): Promise<void> {
-    const lastSentTimestamp = await this.redisService.get(otpLastSentKey)
-    if (lastSentTimestamp) {
-      const elapsedSeconds = (Date.now() - parseInt(lastSentTimestamp, 10)) / 1000
-      const cooldown = this.configService.get<number>('security.otpCooldownSeconds', OTP_COOLDOWN_SECONDS)
-      if (elapsedSeconds < cooldown) {
-        const remainingSeconds = Math.ceil(cooldown - elapsedSeconds)
-        this.logger.warn(`[checkOtpCooldown] OTP request blocked due to cooldown. ${remainingSeconds}s remaining.`)
-        throw AuthError.OTPSendingLimited()
-      }
     }
   }
 

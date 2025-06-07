@@ -12,7 +12,7 @@ import { TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { ITokenService } from 'src/routes/auth/shared/auth.types'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.service'
+import { SessionsService } from 'src/routes/auth/modules/sessions/session.service'
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {

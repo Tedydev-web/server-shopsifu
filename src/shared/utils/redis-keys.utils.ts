@@ -19,7 +19,6 @@ export enum RedisPrefix {
   TOKEN_REFRESH_USED = 'auth:token:refresh:used',
 
   OTP_DATA = 'auth:otp:data',
-  OTP_COOLDOWN = 'auth:otp:cooldown',
 
   SLT_CONTEXT = 'auth:slt:context',
   SLT_BLACKLIST = 'auth:slt:blacklist',
@@ -131,15 +130,6 @@ export class RedisKeyManager {
    */
   public static getOtpDataKey(type: string, identifier: string): string {
     return this.a(RedisPrefix.OTP_DATA, type, identifier)
-  }
-
-  /**
-   * Key for OTP cooldown timer.
-   * @type STRING
-   * @example "auth:otp:cooldown:REGISTER:user@example.com"
-   */
-  public static getOtpCooldownKey(identifier: string, purpose: string): string {
-    return this.a(RedisPrefix.OTP_COOLDOWN, purpose, identifier)
   }
 
   /**

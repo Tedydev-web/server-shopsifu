@@ -3,10 +3,11 @@ import { Reflector } from '@nestjs/core'
 import { I18nService, I18nContext } from 'nestjs-i18n'
 import { Observable } from 'rxjs'
 import { map } from 'rxjs/operators'
-import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
-import { isObject } from '../utils/type-guards.utils'
 import { Request, Response } from 'express'
 import { SUCCESS_MESSAGE_KEY } from 'src/shared/decorators/success-message.decorator'
+
+// Định nghĩa type cho hàm translate
+type TranslateFunction = (key: string, options?: Record<string, any>) => string
 
 /**
  * Interface cho một response thành công chuẩn hóa.
@@ -28,7 +29,7 @@ export class TransformInterceptor<T> implements NestInterceptor<T, SuccessRespon
   private readonly logger = new Logger(TransformInterceptor.name)
 
   constructor(
-    @Inject(I18nService) private readonly i18n: I18nService<I18nTranslations>,
+    @Inject(I18nService) private readonly i18n: I18nService,
     private readonly reflector: Reflector
   ) {}
 
@@ -38,11 +39,17 @@ export class TransformInterceptor<T> implements NestInterceptor<T, SuccessRespon
     const request = httpContext.getRequest<Request>()
     const statusCode = response.statusCode
 
+    // Định nghĩa hàm t với type rõ ràng
+    const t: TranslateFunction = (key, options) =>
+      this.i18n.t(key, { lang: options?.lang ?? I18nContext.current()?.lang ?? 'vi' })
+
     return next.handle().pipe(
       map((result: any) => {
-        // Case 1: The service/controller returns a full response object. This is preferred for complex cases.
-        if (result && result.message && result.data !== undefined) {
-          const message = this.i18n.t(result.message as I18nPath, { lang: I18nContext.current()?.lang }) as string
+        this.logger.debug(`Transforming response for request: ${request.method} ${request.url}`)
+
+        // Case 1: Controller trả về object đầy đủ với message và data
+        if (result && typeof result.message === 'string' && result.data !== undefined) {
+          const message = t(result.message)
           return {
             success: true,
             statusCode,
@@ -52,15 +59,12 @@ export class TransformInterceptor<T> implements NestInterceptor<T, SuccessRespon
           }
         }
 
-        // Case 2: The controller returns data, and the message is provided by the @SuccessMessage decorator.
+        // Case 2: Lấy message từ decorator @SuccessMessage hoặc fallback
         const i18nMessageKey =
-          this.reflector.get<I18nPath>(SUCCESS_MESSAGE_KEY, context.getHandler()) || 'global.success.general.default'
+          this.reflector.get<string>(SUCCESS_MESSAGE_KEY, context.getHandler()) || 'global.success.general.default'
+        const message = t(i18nMessageKey)
 
-        const message = this.i18n.t(i18nMessageKey, {
-          lang: I18nContext.current()?.lang
-        }) as string
-
-        // Handle paginated responses
+        // Case 3: Xử lý response phân trang (paginated)
         if (result && result.meta && result.data) {
           return {
             success: true,
@@ -71,7 +75,7 @@ export class TransformInterceptor<T> implements NestInterceptor<T, SuccessRespon
           }
         }
 
-        // Handle regular data responses
+        // Case 4: Response thông thường
         return {
           success: true,
           statusCode,

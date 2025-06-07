@@ -80,7 +80,6 @@ export type I18nTranslations = {
                     "Expired": string;
                     "TooManyAttempts": string;
                     "FailedToSend": string;
-                    "CooldownActive": string;
                 };
                 "SLT": {
                     "CookieMissing": string;

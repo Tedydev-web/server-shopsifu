@@ -23,13 +23,12 @@ import {
   SessionRepository,
   UserWithProfileAndRole
 } from 'src/routes/auth/shared/repositories'
-import { I18nTranslations, I18nPath } from 'src/generated/i18n.generated'
 import { RedisService } from 'src/providers/redis/redis.service'
 import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 import { DeviceService } from 'src/routes/auth/shared/services/device.service'
-import { SessionsService } from 'src/routes/auth/modules/sessions/sessions.service'
-import { AuthVerificationService } from '../../services/auth-verification.service'
-import { CompleteRegistrationDto, LoginDto } from './auth.dto'
+import { SessionsService } from 'src/routes/auth/modules/sessions/session.service'
+import { AuthVerificationService } from '../../../../shared/services/auth-verification.service'
+import { CompleteRegistrationDto, LoginDto } from './core.dto'
 import { ConfigService } from '@nestjs/config'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
@@ -59,7 +58,7 @@ export class CoreService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly i18nService: I18nService<I18nTranslations>,
+    private readonly i18nService: I18nService,
     private readonly userAuthRepository: UserAuthRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly otpService: OtpService,
@@ -105,7 +104,7 @@ export class CoreService {
     ipAddress: string,
     userAgent: string,
     res: Response
-  ): Promise<{ message: I18nPath; data: any }> {
+  ): Promise<{ message: string; data: any }> {
     try {
       // Kiểm tra email đã tồn tại chưa
       await this.checkEmailNotExists(email)
@@ -129,7 +128,7 @@ export class CoreService {
       )
 
       return {
-        message: verificationResult.message as I18nPath,
+        message: verificationResult.message,
         data: verificationResult.data
       }
     } catch (error) {
@@ -147,7 +146,7 @@ export class CoreService {
     params: CompleteRegistrationDto,
     ipAddress?: string,
     userAgent?: string
-  ): Promise<{ message: I18nPath }> {
+  ): Promise<{ message: string }> {
     if (!this.sltService) throw AuthError.InternalServerError('SLTService not available')
 
     const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
@@ -277,7 +276,7 @@ export class CoreService {
   /**
    * Làm mới token
    */
-  async refreshToken(refreshToken: string, deviceInfo: any, res: Response): Promise<{ message: I18nPath }> {
+  async refreshToken(refreshToken: string, deviceInfo: any, res: Response): Promise<{ message: string }> {
     try {
       const { userAgent, ip } = deviceInfo
 
@@ -335,7 +334,7 @@ export class CoreService {
   /**
    * Đăng xuất
    */
-  async logout(userId: number, sessionId: string, req?: Request, res?: Response): Promise<{ message: I18nPath }> {
+  async logout(userId: number, sessionId: string, req?: Request, res?: Response): Promise<{ message: string }> {
     try {
       // Xóa cookie nếu có response
       if (res) {

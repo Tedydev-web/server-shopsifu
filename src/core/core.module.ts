@@ -1,8 +1,8 @@
 import { Module, Global } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
+import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE, APP_GUARD } from '@nestjs/core'
 import { ScheduleModule } from '@nestjs/schedule'
-import { ThrottlerModule } from '@nestjs/throttler'
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { I18nModule, AcceptLanguageResolver, QueryResolver } from 'nestjs-i18n'
 import path from 'path'
 import { AllExceptionsFilter } from 'src/shared/filters/all-exceptions.filter'
@@ -15,6 +15,7 @@ import { WinstonModule } from 'nest-winston'
 import { WinstonConfig } from 'src/shared/logger/winston.config'
 import { LOGGER_SERVICE } from 'src/shared/constants/injection.tokens'
 import { ConfigService } from '@nestjs/config'
+import { ThrottlerProxyGuard } from 'src/shared/guards/throttler-proxy.guard'
 
 @Global()
 @Module({
@@ -50,10 +51,10 @@ import { ConfigService } from '@nestjs/config'
       provide: LOGGER_SERVICE,
       useExisting: Logger
     },
-    // {
-    //   provide: APP_GUARD,
-    //   useClass: ThrottlerGuard
-    // },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerProxyGuard
+    },
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter

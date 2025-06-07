@@ -7,7 +7,7 @@ import { SendOtpDto, VerifyOtpDto } from './otp.dto'
 import { CoreService } from '../core/core.service'
 import { CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
 import { IsPublic } from 'src/routes/auth/shared/decorators/auth.decorator'
-import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
+import { AuthVerificationService } from 'src/shared/services/auth-verification.service'
 
 @Controller('auth/otp')
 export class OtpController {
@@ -84,17 +84,14 @@ export class OtpController {
     @UserAgent() userAgent: string,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
-  ): Promise<{ message: string; data: any }> {
+  ): Promise<any> {
+    this.logger.log(`[resendOtp] Resend OTP request received from IP: ${ip}`)
+
     const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
     if (!sltCookieValue) {
       throw AuthError.SLTCookieMissing()
     }
 
-    const result = await this.authVerificationService.reInitiateVerification(sltCookieValue, ip, userAgent, res)
-
-    return {
-      message: result.message,
-      data: result.data
-    }
+    return this.authVerificationService.reInitiateVerification(sltCookieValue, ip, userAgent, res)
   }
 }

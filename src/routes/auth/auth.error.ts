@@ -107,10 +107,6 @@ export class AuthError {
     return new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'OTP_SENDING_FAILED', 'auth.Auth.Error.Otp.FailedToSend')
   }
 
-  static OTPSendingLimited(): ApiException {
-    return new ApiException(HttpStatus.TOO_MANY_REQUESTS, 'OTP_SENDING_LIMITED', 'auth.Auth.Otp.CooldownActive')
-  }
-
   // Lỗi liên quan đến SLT (Short-Lived Token)
   static SLTCookieMissing(): ApiException {
     return new ApiException(HttpStatus.BAD_REQUEST, 'SLT_COOKIE_MISSING', 'auth.Auth.Error.SltCookieMissing')

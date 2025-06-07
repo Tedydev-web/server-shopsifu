@@ -14,7 +14,6 @@ import { GetGroupedSessionsResponseDto, GetGroupedSessionsResponseSchema } from 
 import { GeolocationService } from 'src/routes/auth/shared/services/common/geolocation.service'
 import { SessionRepository, DeviceRepository } from 'src/routes/auth/shared/repositories'
 import { Device } from '@prisma/client'
-import { I18nPath } from 'src/generated/i18n.generated'
 import { RedisService } from 'src/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { z } from 'zod'
@@ -258,7 +257,7 @@ export class SessionsService implements ISessionService {
 
     const messageKey =
       revokedSessionsCount > 0 ? 'auth.Auth.Session.RevokedSuccessfullyCount' : 'auth.Auth.Session.NoSessionsToRevoke'
-    const i18nMessage = this.i18nService.t(messageKey as I18nPath, {
+    const i18nMessage = this.i18nService.t(messageKey, {
       args: { count: revokedSessionsCount }
     })
     const message = typeof i18nMessage === 'string' ? i18nMessage : 'Sessions have been revoked.'

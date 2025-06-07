@@ -15,7 +15,7 @@ import {
   Req,
   forwardRef
 } from '@nestjs/common'
-import { SessionsService } from './sessions.service'
+import { SessionsService } from './session.service'
 import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decorator'
 import { AccessTokenPayload } from 'src/routes/auth/shared/auth.types'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
@@ -33,10 +33,9 @@ import {
 import { I18nService } from 'nestjs-i18n'
 import { TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 import { Response, Request } from 'express'
-import { I18nTranslations } from 'src/generated/i18n.generated'
 import { AuthError } from '../../auth.error'
 import { Auth } from 'src/routes/auth/shared/decorators/auth.decorator'
-import { AuthVerificationService } from '../../services/auth-verification.service'
+import { AuthVerificationService } from '../../../../shared/services/auth-verification.service'
 import { SuccessMessage } from 'src/shared/decorators/success-message.decorator'
 
 /**
@@ -72,7 +71,7 @@ export class SessionsController {
 
   constructor(
     private readonly sessionsService: SessionsService,
-    private readonly i18nService: I18nService<I18nTranslations>,
+    private readonly i18nService: I18nService,
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService
   ) {}
@@ -139,7 +138,6 @@ export class SessionsController {
       return {
         message: verificationResult.message,
         data: {
-          requiresAdditionalVerification: true,
           verificationType: verificationResult.verificationType
         }
       }
@@ -194,7 +192,6 @@ export class SessionsController {
     return {
       message: verificationResult.message,
       data: {
-        requiresAdditionalVerification: true,
         verificationType: verificationResult.verificationType
       }
     }

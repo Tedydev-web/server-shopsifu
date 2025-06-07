@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
+import { VerificationNeededResponseSchema } from '../../shared/dtos/verification.dto'
 
 // ===================================================================================
 // Schemas for Request Bodies
@@ -26,14 +27,6 @@ export const TwoFactorSetupDataSchema = z.object({
  */
 export const TwoFactorRecoveryCodesDataSchema = z.object({
   recoveryCodes: z.array(z.string())
-})
-
-/**
- * Dữ liệu trả về khi cần xác minh (response từ /setup, /disable, etc.).
- */
-export const VerificationNeededResponseSchema = z.object({
-  requiresAdditionalVerification: z.literal(true).default(true),
-  verificationType: z.enum(['2FA', 'OTP']).optional()
 })
 
 // ===================================================================================

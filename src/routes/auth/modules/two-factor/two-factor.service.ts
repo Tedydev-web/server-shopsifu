@@ -22,7 +22,6 @@ import { AuthError } from '../../auth.error'
 import { SLTService } from 'src/routes/auth/shared/services/slt.service'
 import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
 import { CoreService } from '../core/core.service'
-import { I18nTranslations } from 'src/generated/i18n.generated'
 
 /**
  * Cấu hình và hằng số
@@ -50,7 +49,7 @@ export class TwoFactorService implements IMultiFactorService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly i18nService: I18nService<I18nTranslations>,
+    private readonly i18nService: I18nService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly otpService: OtpService,

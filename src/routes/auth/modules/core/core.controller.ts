@@ -2,7 +2,6 @@ import { Body, Controller, HttpCode, HttpStatus, Ip, Logger, Post, Req, Res, Inj
 import { Request, Response } from 'express'
 import { I18nService } from 'nestjs-i18n'
 import { Throttle } from '@nestjs/throttler'
-import { I18nPath } from 'src/generated/i18n.generated'
 
 import { CoreService } from './core.service'
 import { CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
@@ -12,7 +11,7 @@ import {
   LoginDto,
   RefreshTokenDto,
   RefreshTokenResponseDto
-} from './auth.dto'
+} from './core.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { AuthError } from 'src/routes/auth/auth.error'
@@ -20,8 +19,7 @@ import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decora
 import { AccessTokenPayload, ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
 import { IsPublic } from 'src/routes/auth/shared/decorators/auth.decorator'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { I18nTranslations } from 'src/generated/i18n.generated'
-import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
+import { AuthVerificationService } from 'src/shared/services/auth-verification.service'
 
 @Controller('auth')
 export class CoreController {
@@ -33,7 +31,7 @@ export class CoreController {
     private readonly authVerificationService: AuthVerificationService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
-    private readonly i18nService: I18nService<I18nTranslations>
+    private readonly i18nService: I18nService
   ) {}
 
   @Throttle({ default: { limit: 5, ttl: 60000 } })
@@ -60,7 +58,7 @@ export class CoreController {
     @Body() body: CompleteRegistrationDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
-  ): Promise<{ message: I18nPath }> {
+  ): Promise<{ message: string }> {
     this.logger.log(`[completeRegistration] Attempting to complete registration for email associated with SLT.`)
 
     const sltCookie = req.cookies[CookieNames.SLT_TOKEN]
@@ -131,7 +129,7 @@ export class CoreController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
-  ): Promise<{ message: I18nPath }> {
+  ): Promise<{ message: string }> {
     return this.coreService.logout(activeUser.userId, activeUser.sessionId, req, res)
   }
 }

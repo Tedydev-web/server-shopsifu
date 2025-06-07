@@ -37,7 +37,7 @@ export class CsrfMiddleware implements NestMiddleware {
       }
     })
 
-    csurfProtection(req, res, (err: any) => {
+    void csurfProtection(req, res, (err: any) => {
       if (err) {
         this.logger.warn(`CSRF Error: ${err.code} for request to ${req.originalUrl}`)
         return res

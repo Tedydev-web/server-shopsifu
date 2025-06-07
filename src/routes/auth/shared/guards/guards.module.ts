@@ -6,7 +6,7 @@ import { RedisProviderModule } from 'src/providers/redis/redis.module'
 import { AuthenticationGuard } from './authentication.guard'
 import { AuthSharedModule } from '../auth-shared.module'
 import { ApiKeyGuard } from './auth/api-key.guard'
-import { SessionsModule } from '../../modules/sessions/sessions.module'
+import { SessionsModule } from '../../modules/sessions/session.module'
 
 /**
  * Module tập trung quản lý tất cả các guard trong ứng dụng

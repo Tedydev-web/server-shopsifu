@@ -106,7 +106,6 @@ export type TokenTypeType = (typeof TokenType)[keyof typeof TokenType]
 export const OTP_EXPIRATION_TIME = 10 * 60 * 1000 // 10 phút
 export const MAX_OTP_ATTEMPTS = 5
 export const OTP_LENGTH = 6 // Độ dài mã OTP
-export const OTP_COOLDOWN_SECONDS = 60 // 1 minute
 export const SLT_EXPIRY_SECONDS = 300 // 5 minutes
 export const SLT_MAX_ATTEMPTS = 5
 
@@ -128,6 +127,5 @@ export const LOGIN_HISTORY_TTL = 90 * 24 * 60 * 60 // 90 ngày
 export const SESSION_MAXAGE_TTL = 30 * 24 * 60 * 60 // 30 ngày
 export const ACCESS_TOKEN_BLACKLIST_TTL = 24 * 60 * 60 // 24 giờ
 export const OTP_TTL = 5 * 60 // 5 phút
-export const OTP_COOLDOWN_TTL = 60 // 1 phút
 export const SLT_TOKEN_TTL = 5 * 60 // 5 phút
 export const SLT_CONTEXT_TTL = 10 * 60 // 10 phút

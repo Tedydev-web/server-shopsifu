@@ -215,11 +215,11 @@ export class TokenService implements ITokenService {
   async invalidateAccessTokenJti(accessTokenJti: string, accessTokenExp: number): Promise<void> {
     try {
       const key = RedisKeyManager.getAccessTokenBlacklistKey(accessTokenJti)
-    const now = Math.floor(Date.now() / 1000)
-    const ttl = accessTokenExp - now
+      const now = Math.floor(Date.now() / 1000)
+      const ttl = accessTokenExp - now
 
-    if (ttl > 0) {
-      await this.redisService.set(key, '1', 'EX', ttl)
+      if (ttl > 0) {
+        await this.redisService.set(key, '1', 'EX', ttl)
       }
     } catch (error) {
       this.logger.error(`Lỗi khi đánh dấu access token là đã vô hiệu hóa: ${error.message}`, error.stack)

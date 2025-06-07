@@ -1,49 +1,60 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
-import { CompleteRegistrationSchema } from 'src/routes/auth/shared/schemas'
+import { VerificationNeededResponseSchema } from '../../shared/dtos/verification.dto'
 
 // ===================================================================================
-// Lược đồ cho nội dung yêu cầu
+// Schemas for Request Bodies
 // ===================================================================================
 
-// --- Registration ---
+// --- Initiate Registration ---
 export const InitiateRegistrationSchema = z.object({
   email: z.string().email()
 })
 
+// --- Complete Registration ---
+export const CompleteRegistrationSchema = z.object({
+  password: z.string().min(8),
+  confirmPassword: z.string().min(8),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  username: z.string().optional(),
+  phoneNumber: z.string().optional()
+})
+
 // --- Login ---
 export const LoginSchema = z.object({
-  emailOrUsername: z.string().min(1, 'Email or username is required'),
-  password: z.string().min(1, 'Password is required'),
-  rememberMe: z.boolean().optional().default(false)
+  emailOrUsername: z.string(),
+  password: z.string(),
+  rememberMe: z.boolean().optional()
 })
 
 // --- Refresh Token ---
 export const RefreshTokenSchema = z.object({
-  refreshToken: z.string().optional()
+  refreshToken: z.string()
 })
 
 // --- Logout ---
-export const LogoutSchema = z.object({
-  refreshToken: z.string().optional()
-})
+export const LogoutSchema = z.object({}).optional()
 
 // ===================================================================================
-// Lược đồ cho dữ liệu phản hồi (sẽ được bao bọc bởi TransformInterceptor)
+// Schemas for Response Data
 // ===================================================================================
 
 // --- Login ---
-// Lược đồ cho phần dữ liệu của phản hồi khi cần xác minh thêm.
-export const LoginVerificationNeededResponseSchema = z.object({
-  sltToken: z.string().optional(),
-  verificationType: z.enum(['OTP', '2FA']).optional()
+const LoginSuccessDataSchema = z.object({
+  user: z.object({
+    id: z.number(),
+    username: z.string().nullable(),
+    avatar: z.string().nullable(),
+    isDeviceTrustedInSession: z.boolean()
+  })
+})
+export const LoginSuccessResponseSchema = z.object({
+  data: LoginSuccessDataSchema
 })
 
 // --- Refresh Token ---
-// Lược đồ cho phần dữ liệu của phản hồi khi mã thông báo được làm mới.
-export const RefreshTokenResponseSchema = z.object({
-  accessToken: z.string()
-})
+export const RefreshTokenResponseSchema = z.object({})
 
 // ===================================================================================
 // DTO Classes
@@ -57,6 +68,6 @@ export class RefreshTokenDto extends createZodDto(RefreshTokenSchema) {}
 export class LogoutDto extends createZodDto(LogoutSchema) {}
 
 // --- Response DTOs ---
-// Lưu ý: Các DTO này hiện đại diện cho trường "dữ liệu" trong phản hồi API cuối cùng.
-export class LoginVerificationNeededResponseDto extends createZodDto(LoginVerificationNeededResponseSchema) {}
+export class LoginSuccessResponseDto extends createZodDto(LoginSuccessResponseSchema) {}
+export class LoginVerificationNeededResponseDto extends createZodDto(VerificationNeededResponseSchema) {}
 export class RefreshTokenResponseDto extends createZodDto(RefreshTokenResponseSchema) {}

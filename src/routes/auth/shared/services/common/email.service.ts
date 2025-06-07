@@ -1,17 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
+import { I18nContext } from 'nestjs-i18n'
 import { Resend } from 'resend'
 import * as React from 'react'
 import { render } from '@react-email/render'
-import { I18nContext } from 'nestjs-i18n'
 import { TypeOfVerificationCodeType } from 'src/routes/auth/shared/constants/auth.constants'
 import I18nEmail from 'src/i18n/vi/email.json'
-import { I18nPath } from 'src/generated/i18n.generated'
-
-// Import các template email
 import OtpEmail from 'emails/otp-email'
 import SecurityAlertEmail from 'emails/security-alert-email'
+
+// Định nghĩa type cho hàm translate
+type TranslateFunction = (key: string, options?: Record<string, any>) => string
 
 // Các loại cảnh báo bảo mật
 export enum SecurityAlertType {
@@ -57,7 +57,7 @@ export interface OtpEmailPayload {
  */
 @Injectable()
 export class EmailService {
-  private resend: Resend
+  private resend: Resend | undefined // Đặt undefined để kiểm tra sự tồn tại
   private readonly logger = new Logger(EmailService.name)
   private readonly isProduction: boolean
   private readonly notificationEmailFrom: string
@@ -70,7 +70,6 @@ export class EmailService {
   ) {
     // Khởi tạo Resend API client
     const resendApiKey = this.configService.get<string>('RESEND_API_KEY')
-
     if (!resendApiKey) {
       this.logger.warn('RESEND_API_KEY chưa được cấu hình. Email sẽ không được gửi.')
     } else {
@@ -79,12 +78,12 @@ export class EmailService {
     }
 
     // Cấu hình khác
-    this.isProduction = ['production', 'staging'].includes(this.configService.get<string>('NODE_ENV') || 'development')
+    this.isProduction = ['production', 'staging'].includes(this.configService.get<string>('NODE_ENV') ?? 'development')
     this.notificationEmailFrom =
-      this.configService.get<string>('NOTI_MAIL_FROM_ADDRESS') || 'Shopsifu <no-reply@shopsifu.live>'
+      this.configService.get<string>('NOTI_MAIL_FROM_ADDRESS') ?? 'Shopsifu <no-reply@shopsifu.live>'
     this.securityEmailFrom =
-      this.configService.get<string>('SEC_MAIL_FROM_ADDRESS') || 'Shopsifu Security <security@shopsifu.live>'
-    this.frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://localhost:8000'
+      this.configService.get<string>('SEC_MAIL_FROM_ADDRESS') ?? 'Shopsifu Security <security@shopsifu.live>'
+    this.frontendUrl = this.configService.get<string>('FRONTEND_URL') ?? 'https://localhost:8000'
 
     this.logger.debug(
       `EmailService khởi tạo với cấu hình: isProduction=${this.isProduction}, notificationEmailFrom=${this.notificationEmailFrom}, securityEmailFrom=${this.securityEmailFrom}, frontendUrl=${this.frontendUrl}`
@@ -96,22 +95,27 @@ export class EmailService {
    */
   async sendOtpEmail(payload: OtpEmailPayload): Promise<void> {
     const { email, otpCode, otpType } = payload
-    this.logger.debug(`Preparing OTP email for ${email}, type: ${otpType}`)
+    this.logger.debug(`Chuẩn bị gửi email OTP cho ${email}, loại: ${otpType}`)
 
     try {
       // Xác định ngôn ngữ, mặc định là 'vi'
-      const lang = I18nContext.current()?.lang === 'en' ? 'en' : 'vi'
+      const lang = (payload.lang ?? I18nContext.current()?.lang === 'en') ? 'en' : 'vi'
 
-      // Render a component react thành HTML
+      // Render component React thành HTML
       const emailHtml = await render(React.createElement(OtpEmail, { otpCode, otpType, lang }))
 
       // Lấy chủ đề email từ cấu trúc i18n
-      const subject = (I18nEmail.Email.otp[otpType] as any)?.subject || I18nEmail.Email.otp.default.subject
+      const subject = I18nEmail.Email.otp[otpType]?.subject ?? I18nEmail.Email.otp.default.subject
+
+      if (!this.resend) {
+        this.logger.warn(`Resend API chưa được cấu hình. Email OTP không được gửi đến ${email}`)
+        return
+      }
 
       await this.resend.emails.send({
         from: this.notificationEmailFrom,
         to: email,
-        subject: subject,
+        subject,
         html: emailHtml
       })
 
@@ -131,7 +135,7 @@ export class EmailService {
     metadata?: Record<string, any>
   ): Promise<void> {
     try {
-      // Chuẩn bị nội dung email dựa trên loại cảnh báo
+      // Chuẩn bị nội dung email
       const alertContent = this.prepareSecurityAlertContent(alertType, email, metadata)
 
       // Render email với React
@@ -139,34 +143,27 @@ export class EmailService {
       try {
         emailHtml = await render(React.createElement(SecurityAlertEmail, alertContent))
       } catch (renderError) {
-        this.logger.error(`Lỗi khi render email Security Alert template: ${renderError.message}`, renderError.stack)
+        this.logger.error(`Lỗi khi render email Security Alert: ${renderError.message}`, renderError.stack)
         throw new Error(`Không thể render email template: ${renderError.message}`)
       }
 
-      // Kiểm tra resendApiKey trước khi gửi
-      if (this.resend) {
-        try {
-          const result = await this.resend.emails.send({
-            from: this.securityEmailFrom,
-            to: [email],
-            subject: alertContent.alertSubject,
-            html: emailHtml
-          })
-
-          this.logger.debug(`Email cảnh báo bảo mật đã gửi thành công: ${JSON.stringify(result)}`)
-        } catch (sendError) {
-          this.logger.error(`Lỗi khi gửi email cảnh báo qua Resend: ${sendError.message}`, sendError.stack)
-        }
-      } else {
-        this.logger.warn(
-          `Resend API chưa được cấu hình. Email không được gửi đi (alertType: ${alertType}, to: ${email})`
-        )
+      // Kiểm tra Resend trước khi gửi
+      if (!this.resend) {
+        this.logger.warn(`Resend API chưa được cấu hình. Email không được gửi (alertType: ${alertType}, to: ${email})`)
+        return
       }
 
-      // Log thông tin
+      const result = await this.resend.emails.send({
+        from: this.securityEmailFrom,
+        to: [email],
+        subject: alertContent.alertSubject,
+        html: emailHtml
+      })
+
+      this.logger.debug(`Email cảnh báo bảo mật gửi thành công: ${JSON.stringify(result)}`)
       this.logger.log(`Đã gửi email thông báo bảo mật ${alertType} đến ${email}`, metadata)
     } catch (error) {
-      this.logger.error(`Lỗi tổng thể khi gửi email thông báo bảo mật: ${error.message}`, error.stack)
+      this.logger.error(`Lỗi khi gửi email thông báo bảo mật: ${error.message}`, error.stack)
       // Không throw lỗi để không làm gián đoạn luồng bảo mật
     }
   }
@@ -183,7 +180,8 @@ export class EmailService {
     const lang = currentLang === 'en' ? 'en' : 'vi'
     const userName = metadata?.userName
 
-    const t = (key: string, options?: any) => this.i18nService.t(key as I18nPath, { lang, ...options }) as string
+    // Định nghĩa hàm t với type rõ ràng
+    const t: TranslateFunction = (key, options) => this.i18nService.t(key, { lang, ...options })
 
     let alertSubject: string
     let alertTitle: string
@@ -209,7 +207,7 @@ export class EmailService {
           },
           {
             label: t('email.Email.common.details.ipAddress'),
-            value: metadata?.ipAddress || t('email.Email.common.locationUnknown')
+            value: metadata?.ipAddress ?? t('email.Email.common.locationUnknown')
           }
         ]
         break
@@ -228,23 +226,23 @@ export class EmailService {
           },
           {
             label: t('email.Email.common.details.ipAddress'),
-            value: metadata?.ipAddress || t('email.Email.common.locationUnknown')
+            value: metadata?.ipAddress ?? t('email.Email.common.locationUnknown')
           },
           {
             label: t('email.Email.common.details.device'),
-            value: metadata?.device || 'Unknown'
+            value: metadata?.device ?? 'Unknown'
           },
           {
             label: t('email.Email.common.details.location'),
-            value: metadata?.location || t('email.Email.common.locationUnknown')
+            value: metadata?.location ?? t('email.Email.common.locationUnknown')
           }
         ]
         break
 
       default:
         alertSubject = t('email.Email.securityAlert.default.subject')
-        alertTitle = t('email.Email.securityAlert.default.subject') // Fallback to subject
-        mainMessage = '' // No default message for unknown alerts
+        alertTitle = t('email.Email.securityAlert.default.subject')
+        mainMessage = ''
         secondaryMessage = undefined
         actionButtonText = undefined
         actionButtonUrl = undefined

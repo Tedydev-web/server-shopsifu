@@ -2,7 +2,6 @@ import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus, Logge
 import { HttpAdapterHost } from '@nestjs/core'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { I18nService, I18nContext } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
 import { isObject } from '../utils/type-guards.utils'
 
 /**
@@ -15,14 +14,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
   constructor(
     private readonly httpAdapterHost: HttpAdapterHost,
-    private readonly i18n: I18nService<I18nTranslations>
+    private readonly i18n: I18nService
   ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const { httpAdapter } = this.httpAdapterHost
     const ctx = host.switchToHttp()
     const request = ctx.getRequest<Request>()
-    const i18nContext = I18nContext.current<I18nTranslations>(host)
+    const i18nContext = I18nContext.current()
 
     let statusCode: number
     let error: string

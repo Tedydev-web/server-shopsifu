@@ -1,6 +1,7 @@
 import { Controller, Post, Body, HttpCode, HttpStatus, Req, Res, Ip, Inject, forwardRef, Logger } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { TwoFactorService } from './two-factor.service'
+import { TWO_FACTOR_SERVICE } from 'src/shared/constants/injection.tokens'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decorator'
 import { AccessTokenPayload } from 'src/routes/auth/shared/auth.types'
@@ -8,7 +9,7 @@ import { TwoFactorVerifyDto, TwoFactorSetupDataDto, VerificationNeededResponseDt
 import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
 import { AuthError } from '../../auth.error'
 import { IsPublic, Auth } from 'src/routes/auth/shared/decorators/auth.decorator'
-import { AuthVerificationService } from '../../services/auth-verification.service'
+import { AuthVerificationService } from '../../../../shared/services/auth-verification.service'
 
 @Auth()
 @Controller('auth/2fa')
@@ -16,7 +17,7 @@ export class TwoFactorController {
   private readonly logger = new Logger(TwoFactorController.name)
 
   constructor(
-    private readonly twoFactorService: TwoFactorService,
+    @Inject(TWO_FACTOR_SERVICE) private readonly twoFactorService: TwoFactorService,
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService
   ) {}

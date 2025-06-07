@@ -30,7 +30,6 @@ export interface IOTPService {
   sendOTP(
     targetEmail: string,
     type: TypeOfVerificationCodeType,
-    userIdForCooldownAndOtpData?: number,
     metadata?: Record<string, any>
   ): Promise<{ message: string; otpCode: string }>
   verifyOTP(
