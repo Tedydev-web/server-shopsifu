@@ -1,5 +1,5 @@
 import { createZodDto } from 'nestjs-zod'
-import { TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth/auth.constants'
 import { z } from 'zod'
 
 // ===================================================================================

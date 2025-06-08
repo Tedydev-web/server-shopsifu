@@ -5,22 +5,11 @@ import { SessionsModule } from './modules/sessions/session.module'
 import { OtpModule } from './modules/otp/otp.module'
 import { SocialModule } from './modules/social/social.module'
 import { TwoFactorModule } from './modules/two-factor/two-factor.module'
-import { AuthSharedModule } from './shared/auth-shared.module'
-import { AuthVerificationModule } from '../../shared/services/auth-verification.module'
 import { PasswordModule } from './modules/password/password.module'
 
 @Module({
-  imports: [
-    AuthSharedModule,
-    AuthVerificationModule,
-    CoreModule,
-    SessionsModule,
-    OtpModule,
-    SocialModule,
-    TwoFactorModule,
-    PasswordModule
-  ],
+  imports: [CoreModule, SessionsModule, OtpModule, SocialModule, TwoFactorModule, PasswordModule],
   providers: [],
-  exports: [AuthSharedModule]
+  exports: []
 })
 export class AuthModule {}

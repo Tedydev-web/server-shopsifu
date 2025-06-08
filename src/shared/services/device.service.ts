@@ -3,20 +3,20 @@ import { I18nService, I18nContext } from 'nestjs-i18n'
 import { ConfigService } from '@nestjs/config'
 import { Device } from '@prisma/client'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { GeolocationService, GeoLocationResult } from 'src/routes/auth/shared/services/common/geolocation.service'
-import { RedisService } from 'src/providers/redis/redis.service'
+import { GeolocationService } from 'src/shared/services/geolocation.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import {
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
   REDIS_SERVICE,
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
-import { DeviceRepository, UserAuthRepository } from 'src/routes/auth/shared/repositories'
-import { DEVICE_REVERIFICATION_TTL } from '../../shared/constants/auth.constants'
-import { IDeviceService } from 'src/routes/auth/shared/auth.types'
+import { EmailService } from 'src/shared/services/email.service'
+import { DeviceRepository, UserAuthRepository } from 'src/shared/repositories/auth'
+import { DEVICE_REVERIFICATION_TTL } from '../constants/auth/auth.constants'
+import { IDeviceService } from 'src/shared/types/auth.types'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { UserAgentService } from './common/user-agent.service'
+import { UserAgentService } from 'src/shared/services/user-agent.service'
 
 /**
  * Kết quả đánh giá rủi ro thiết bị

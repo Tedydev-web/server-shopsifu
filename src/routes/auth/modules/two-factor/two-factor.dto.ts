@@ -1,6 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
-import { VerificationNeededResponseSchema } from '../../shared/dtos/verification.dto'
+import { VerificationNeededResponseSchema } from '../../../../shared/dtos/auth/verification.dto'
 
 // ===================================================================================
 // Schemas for Request Bodies

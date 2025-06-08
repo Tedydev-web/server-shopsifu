@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common'
-import { ProfileService } from './profile.service'
 import { ProfileController } from './profile.controller'
-import { AuthSharedModule } from '../auth/shared/auth-shared.module'
+import { ProfileService } from './profile.service'
+import { ProfileRepository } from './profile.repository'
 
 @Module({
-  imports: [AuthSharedModule],
-  providers: [ProfileService],
-  controllers: [ProfileController]
+  imports: [],
+  controllers: [ProfileController],
+  providers: [ProfileService, ProfileRepository],
+  exports: [ProfileService]
 })
 export class ProfileModule {}

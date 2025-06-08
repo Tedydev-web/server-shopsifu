@@ -1,9 +1,9 @@
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { RedisService } from 'src/providers/redis/redis.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { CRYPTO_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { CryptoService } from 'src/routes/auth/shared/services/common/crypto.service'
+import { CryptoService } from 'src/shared/services/crypto.service'
 import { isObject } from 'src/shared/utils/type-guards.utils'
 import { safeNumber } from 'src/shared/utils/validation.utils'
 

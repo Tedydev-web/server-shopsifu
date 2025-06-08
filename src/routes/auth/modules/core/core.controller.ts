@@ -4,7 +4,7 @@ import { I18nService } from 'nestjs-i18n'
 import { Throttle } from '@nestjs/throttler'
 
 import { CoreService } from './core.service'
-import { CookieNames } from 'src/routes/auth/shared/constants/auth.constants'
+import { CookieNames } from 'src/shared/constants/auth/auth.constants'
 import {
   CompleteRegistrationDto,
   InitiateRegistrationDto,
@@ -15,9 +15,9 @@ import {
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { AuthError } from 'src/routes/auth/auth.error'
-import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decorator'
-import { AccessTokenPayload, ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
-import { IsPublic } from 'src/routes/auth/shared/decorators/auth.decorator'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { AccessTokenPayload, ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { AuthVerificationService } from 'src/shared/services/auth-verification.service'
 

@@ -1,12 +1,13 @@
-import { Controller, Get, Logger, Post, Body, HttpCode, HttpStatus, Ip, UseGuards } from '@nestjs/common'
-import { Auth } from '../auth/shared/decorators/auth.decorator'
-import { ActiveUser } from '../auth/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from '../auth/shared/auth.types'
+import { Controller, Get, Logger, Post, Body, HttpCode, HttpStatus, Ip, UseGuards, Put, Res } from '@nestjs/common'
+import { Auth } from '../../shared/decorators/auth.decorator'
+import { ActiveUser } from '../../shared/decorators/active-user.decorator'
+import { AccessTokenPayload } from '../../shared/types/auth.types'
 import { ProfileService } from './profile.service'
 import { ProfileResponseDto, ChangePasswordDto } from './profile.dto'
 import { SuccessMessage } from 'src/shared/decorators/success-message.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
+import { Response } from 'express'
 
 @Auth()
 @UseGuards(ThrottlerGuard)
@@ -22,7 +23,7 @@ export class ProfileController {
     return this.profileService.getProfile(activeUser.userId)
   }
 
-  @Post('change-password')
+  @Post('password')
   @HttpCode(HttpStatus.OK)
   @SuccessMessage('auth.Auth.Password.ChangeSuccess')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
@@ -30,9 +31,10 @@ export class ProfileController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: ChangePasswordDto,
     @Ip() ip: string,
-    @UserAgent() userAgent: string
-  ): Promise<void> {
-    this.logger.debug(`[POST /profile/change-password] Called by user ${activeUser.userId}`)
-    await this.profileService.changePassword(activeUser, body, ip, userAgent)
+    @UserAgent() userAgent: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<any> {
+    this.logger.debug(`[POST /profile/password] Called by user ${activeUser.userId}`)
+    return this.profileService.changePassword(activeUser, body, ip, userAgent, res)
   }
 }

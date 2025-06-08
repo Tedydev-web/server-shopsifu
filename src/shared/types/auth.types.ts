@@ -1,6 +1,6 @@
 import { Device, Role, User, UserProfile } from '@prisma/client'
 import { Response, Request } from 'express'
-import { TypeOfVerificationCodeType, TwoFactorMethodTypeType } from 'src/routes/auth/shared/constants/auth.constants'
+import { TypeOfVerificationCodeType, TwoFactorMethodTypeType } from 'src/shared/constants/auth/auth.constants'
 import { PrismaTransactionClient } from 'src/shared/types/prisma.type'
 
 /**

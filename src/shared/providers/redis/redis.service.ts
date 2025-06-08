@@ -2,7 +2,7 @@ import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit, HttpStatus }
 import Redis, { RedisKey, RedisValue } from 'ioredis'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { REDIS_CLIENT } from 'src/shared/constants/injection.tokens'
-import { CryptoService } from 'src/routes/auth/shared/services/common/crypto.service'
+import { CryptoService } from 'src/shared/services/crypto.service'
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {

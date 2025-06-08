@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { RedisService } from 'src/providers/redis/redis.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import {
   REDIS_SERVICE,
   TOKEN_SERVICE,
@@ -11,26 +11,30 @@ import {
   CORE_SERVICE,
   SESSIONS_SERVICE,
   SOCIAL_SERVICE,
-  EMAIL_SERVICE
+  EMAIL_SERVICE,
+  GEOLOCATION_SERVICE,
+  USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { ICookieService, SltContextData, IOTPService } from 'src/routes/auth/shared/auth.types'
+import { ICookieService, SltContextData, IOTPService } from 'src/shared/types/auth.types'
 import {
   TypeOfVerificationCode,
   TypeOfVerificationCodeType,
   TwoFactorMethodType
-} from 'src/routes/auth/shared/constants/auth.constants'
+} from 'src/shared/constants/auth/auth.constants'
 import { TwoFactorService } from 'src/routes/auth/modules/two-factor/two-factor.service'
-import { UserAuthRepository, DeviceRepository } from 'src/routes/auth/shared/repositories'
+import { UserAuthRepository, DeviceRepository } from 'src/shared/repositories/auth'
 import { Response } from 'express'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { I18nService } from 'nestjs-i18n'
-import { SLTService } from 'src/routes/auth/shared/services/slt.service'
+import { SLTService } from 'src/shared/services/slt.service'
 import { CoreService } from 'src/routes/auth/modules/core/core.service'
 import { SessionsService } from 'src/routes/auth/modules/sessions/session.service'
 import { SocialService } from 'src/routes/auth/modules/social/social.service'
 import { User } from '@prisma/client'
-import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
+import { EmailService } from 'src/shared/services/email.service'
 import { ApiException } from 'src/shared/exceptions/api.exception'
+import { GeolocationService } from 'src/shared/services/geolocation.service'
+import { UserAgentService } from 'src/shared/services/user-agent.service'
 
 export interface VerificationContext {
   userId: number
@@ -65,32 +69,6 @@ type PostVerificationHandler = (
   sltCookieValue?: string
 ) => Promise<VerificationResult>
 
-/**
- * @file auth-verification.service.ts
- * @description Dịch vụ trung tâm điều phối tất cả các luồng xác thực đa bước trong ứng dụng.
- * Service này hoạt động như một State Machine, quản lý quá trình từ khi bắt đầu
- * cho đến khi hoàn thành một hành động yêu cầu xác thực (ví dụ: đăng nhập,
- * thực hiện hành động nhạy cảm, đăng ký).
- *
- * @workflow
- * 1.  **Initiation**: Một module khác (ví dụ: CoreService, SessionsService) gọi `initiateVerification`
- *     với một `VerificationContext` chứa tất cả thông tin cần thiết (userId, purpose, v.v.).
- *     - Dựa vào `purpose` và trạng thái người dùng (có bật 2FA không, thiết bị có tin cậy không),
- *       service sẽ quyết định có cần xác thực hay không.
- *     - Nếu cần, nó sẽ tạo một Short-Lived Token (SLT), lưu context vào Redis, đặt SLT vào cookie
- *       và gửi mã OTP/yêu cầu mã 2FA.
- *
- * 2.  **Verification**: Người dùng gửi mã xác thực. `verifyCode` được gọi.
- *     - Service xác thực SLT token từ cookie, lấy lại context từ Redis.
- *     - Dựa vào context, nó gọi `OtpService` hoặc `TwoFactorService` để xác minh mã.
- *
- * 3.  **Post-Verification Action**: Sau khi mã được xác minh, `handlePostVerificationActions` được gọi.
- *     - Sử dụng một `VERIFICATION_ACTION_HANDLERS` map (Strategy Pattern), nó thực thi hành động
- *       cuối cùng tương ứng với `purpose` ban đầu (ví dụ: hoàn tất đăng nhập, vô hiệu hóa 2FA).
- *
- * 4.  **Resending**: Nếu người dùng yêu cầu gửi lại mã, `reInitiateVerification` được gọi, lặp lại
- *     bước 1 với context đã có.
- */
 @Injectable()
 export class AuthVerificationService {
   private readonly logger = new Logger(AuthVerificationService.name)
@@ -119,7 +97,9 @@ export class AuthVerificationService {
     @Inject(forwardRef(() => CoreService)) private readonly coreService: CoreService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionsService: SessionsService,
     @Inject(forwardRef(() => SocialService)) private readonly socialService: SocialService,
-    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService
+    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
+    @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
+    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
   ) {
     this.VERIFICATION_ACTION_HANDLERS = {
       [TypeOfVerificationCode.LOGIN]: (context, _code, res) => {
@@ -134,7 +114,8 @@ export class AuthVerificationService {
       [TypeOfVerificationCode.SETUP_2FA]: this.handleSetup2FAVerification.bind(this),
       [TypeOfVerificationCode.REGISTER]: this.handleRegistrationOtpVerified.bind(this),
       [TypeOfVerificationCode.REGENERATE_2FA_CODES]: this.handleRegenerate2FACodesVerification.bind(this),
-      [TypeOfVerificationCode.RESET_PASSWORD]: this.handleResetPasswordVerification.bind(this)
+      [TypeOfVerificationCode.RESET_PASSWORD]: this.handleResetPasswordVerification.bind(this),
+      [TypeOfVerificationCode.CHANGE_PASSWORD]: this.handleChangePasswordVerification.bind(this)
     }
   }
 
@@ -592,6 +573,49 @@ export class AuthVerificationService {
     return {
       success: true,
       message: this.i18nService.t('auth.Auth.Otp.Verified')
+    }
+  }
+
+  private async handleChangePasswordVerification(context: SltContextData): Promise<VerificationResult> {
+    const { userId, metadata, ipAddress, userAgent, email } = context
+    const { hashedNewPassword, revokeOtherSessions, sessionIdToExclude } = metadata || {}
+
+    if (!hashedNewPassword) {
+      this.logger.error(`[handleChangePasswordVerification] Missing hashedNewPassword for user ${userId}`)
+      throw AuthError.InternalServerError('Missing new password in verification context.')
+    }
+
+    await this.userAuthRepository.updatePassword(userId, hashedNewPassword)
+    this.logger.log(`[handleChangePasswordVerification] Password changed for user ${userId} via verification flow.`)
+
+    if (revokeOtherSessions) {
+      await this.sessionsService.invalidateAllUserSessions(userId, 'password_change', sessionIdToExclude)
+      this.logger.log(`[handleChangePasswordVerification] Revoked all other sessions for user ${userId}.`)
+    }
+
+    const user = await this.userAuthRepository.findById(userId, { userProfile: true })
+    const locationResult = await this.geolocationService.getLocationFromIP(ipAddress)
+    const uaInfo = this.userAgentService.parse(userAgent)
+
+    await this.emailService.sendPasswordChangedEmail(email, {
+      userName: user?.userProfile?.username ?? email.split('@')[0],
+      details: [
+        {
+          label: this.i18nService.t('email.Email.common.details.time'),
+          value: new Date().toLocaleString('vi-VN', {
+            timeZone: locationResult.timezone || 'Asia/Ho_Chi_Minh',
+            dateStyle: 'full',
+            timeStyle: 'long'
+          })
+        },
+        { label: this.i18nService.t('email.Email.common.details.ipAddress'), value: ipAddress ?? 'N/A' },
+        { label: this.i18nService.t('email.Email.common.details.device'), value: `${uaInfo.browser} on ${uaInfo.os}` }
+      ]
+    })
+
+    return {
+      success: true,
+      message: this.i18nService.t('auth.Auth.Password.ChangeSuccess')
     }
   }
 

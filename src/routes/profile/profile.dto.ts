@@ -1,6 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
-import { TwoFactorMethodType } from '../auth/shared/constants/auth.constants'
+import { TwoFactorMethodType } from '../../shared/constants/auth/auth.constants'
 
 const validationMessages = {
   required: (field: string) => `${field} không được để trống.`,
@@ -43,9 +43,7 @@ export const ChangePasswordSchema = z
     currentPassword: z.string({ required_error: validationMessages.required('Mật khẩu hiện tại') }),
     newPassword: passwordSchema,
     confirmPassword: passwordSchema,
-    revokeOtherSessions: z.boolean().optional().default(false),
-    twoFactorCode: z.string().optional(),
-    twoFactorMethod: z.nativeEnum(TwoFactorMethodType).optional()
+    revokeOtherSessions: z.boolean().optional().default(false)
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
     message: 'Mật khẩu xác nhận không khớp.',

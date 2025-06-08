@@ -1,19 +1,19 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { RedisService } from 'src/providers/redis/redis.service'
-import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { EmailService } from 'src/shared/services/email.service'
 import {
   REDIS_SERVICE,
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { UserAuthRepository } from 'src/routes/auth/shared/repositories'
+import { UserAuthRepository } from 'src/shared/repositories/auth'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { I18nService, I18nContext } from 'nestjs-i18n'
-import { GeolocationService, GeoLocationResult } from 'src/routes/auth/shared/services/common/geolocation.service'
+import { GeolocationService, GeoLocationResult } from 'src/shared/services/geolocation.service'
 import { calculateDistance, Coordinates } from 'src/shared/utils/geolocation.utils'
-import { UserAgentService } from './common/user-agent.service'
+import { UserAgentService } from 'src/shared/services/user-agent.service'
 
 /**
  * Các loại hoạt động người dùng

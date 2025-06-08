@@ -14,18 +14,18 @@ import {
   TOKEN_SERVICE,
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/routes/auth/shared/constants/auth.constants'
-import { UserAuthRepository, RecoveryCodeRepository, DeviceRepository } from 'src/routes/auth/shared/repositories'
-import { HashingService } from 'src/routes/auth/shared/services/common/hashing.service'
-import { RedisService } from 'src/providers/redis/redis.service'
+import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/shared/constants/auth/auth.constants'
+import { UserAuthRepository, RecoveryCodeRepository, DeviceRepository } from 'src/shared/repositories/auth'
+import { HashingService } from 'src/shared/services/hashing.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { OtpService } from '../otp/otp.service'
-import { ICookieService, ITokenService, IMultiFactorService } from 'src/routes/auth/shared/auth.types'
+import { ICookieService, ITokenService, IMultiFactorService } from 'src/shared/types/auth.types'
 import { AuthError } from '../../auth.error'
-import { SLTService } from 'src/routes/auth/shared/services/slt.service'
-import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
+import { SLTService } from 'src/shared/services/slt.service'
+import { EmailService } from 'src/shared/services/email.service'
 import { CoreService } from '../core/core.service'
-import { GeolocationService } from 'src/routes/auth/shared/services/common/geolocation.service'
-import { UserAgentService } from 'src/routes/auth/shared/services/common/user-agent.service'
+import { GeolocationService } from 'src/shared/services/geolocation.service'
+import { UserAgentService } from 'src/shared/services/user-agent.service'
 
 /**
  * Cấu hình và hằng số

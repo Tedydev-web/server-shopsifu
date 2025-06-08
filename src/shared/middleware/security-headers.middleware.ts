@@ -1,7 +1,7 @@
 import { Injectable, NestMiddleware } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
 import { ConfigService } from '@nestjs/config'
-import { SecurityHeaders } from 'src/routes/auth/shared/constants/auth.constants'
+import { SecurityHeaders } from 'src/shared/constants/auth/auth.constants'
 
 @Injectable()
 export class SecurityHeadersMiddleware implements NestMiddleware {

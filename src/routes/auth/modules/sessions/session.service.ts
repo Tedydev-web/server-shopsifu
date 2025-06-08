@@ -2,7 +2,7 @@ import { Injectable, Logger, Inject } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ConfigService } from '@nestjs/config'
-import { IDeviceService, ISessionService } from 'src/routes/auth/shared/auth.types'
+import { IDeviceService, ISessionService } from 'src/shared/types/auth.types'
 import {
   DEVICE_SERVICE,
   EMAIL_SERVICE,
@@ -12,15 +12,15 @@ import {
 } from 'src/shared/constants/injection.tokens'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { GetGroupedSessionsResponseDto, GetGroupedSessionsResponseSchema } from './session.dto'
-import { GeolocationService } from 'src/routes/auth/shared/services/common/geolocation.service'
-import { SessionRepository, DeviceRepository } from 'src/routes/auth/shared/repositories'
+import { GeolocationService } from 'src/shared/services/geolocation.service'
+import { SessionRepository, DeviceRepository } from 'src/shared/repositories/auth'
 import { Device } from '@prisma/client'
-import { RedisService } from 'src/providers/redis/redis.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { z } from 'zod'
-import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
-import { GeoLocationResult } from 'src/routes/auth/shared/services/common/geolocation.service'
-import { UserAgentService } from '../../shared/services/common/user-agent.service'
+import { EmailService } from 'src/shared/services/email.service'
+import { GeoLocationResult } from 'src/shared/services/geolocation.service'
+import { UserAgentService } from '../../../../shared/services/user-agent.service'
 
 // Infer the type for a single device session group from the Zod schema
 type DeviceSessionGroup = z.infer<typeof GetGroupedSessionsResponseSchema.shape.data.element>

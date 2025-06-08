@@ -3,12 +3,12 @@ import { I18nService } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
 import { Response, Request } from 'express'
 import { AuthError } from '../../auth.error'
-import { HashingService } from 'src/routes/auth/shared/services/common/hashing.service'
-import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
-import { TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
+import { HashingService } from 'src/shared/services/hashing.service'
+import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth/auth.constants'
 import { OtpService } from '../../modules/otp/otp.service'
 import { User, Device, Role, UserProfile } from '@prisma/client'
-import { AccessTokenPayloadCreate } from 'src/routes/auth/shared/auth.types'
+import { AccessTokenPayloadCreate } from 'src/shared/types/auth.types'
 import {
   COOKIE_SERVICE,
   DEVICE_SERVICE,
@@ -23,16 +23,16 @@ import {
   DeviceRepository,
   SessionRepository,
   UserWithProfileAndRole
-} from 'src/routes/auth/shared/repositories'
-import { RedisService } from 'src/providers/redis/redis.service'
-import { SLTService } from 'src/routes/auth/shared/services/slt.service'
-import { DeviceService } from 'src/routes/auth/shared/services/device.service'
+} from 'src/shared/repositories/auth'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { SLTService } from 'src/shared/services/slt.service'
+import { DeviceService } from 'src/shared/services/device.service'
 import { SessionsService } from 'src/routes/auth/modules/sessions/session.service'
 import { AuthVerificationService } from '../../../../shared/services/auth-verification.service'
 import { CompleteRegistrationDto, LoginDto } from './core.dto'
 import { ConfigService } from '@nestjs/config'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
+import { EmailService } from 'src/shared/services/email.service'
 
 interface RegisterUserParams {
   userId: number

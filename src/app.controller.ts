@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common'
 import { SkipThrottle } from '@nestjs/throttler'
-import { IsPublic } from '../src/routes/auth/shared/decorators/auth.decorator'
+import { IsPublic } from './shared/decorators/auth.decorator'
 import { AppService } from './app.service'
 
 @Controller()

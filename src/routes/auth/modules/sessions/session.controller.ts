@@ -16,8 +16,8 @@ import {
   forwardRef
 } from '@nestjs/common'
 import { SessionsService } from './session.service'
-import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from 'src/routes/auth/shared/auth.types'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { AccessTokenPayload } from 'src/shared/types/auth.types'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import {
   GetSessionsQueryDto,
@@ -31,10 +31,10 @@ import {
   VerificationNeededResponseDto
 } from './session.dto'
 import { I18nService } from 'nestjs-i18n'
-import { TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth/auth.constants'
 import { Response, Request } from 'express'
 import { AuthError } from '../../auth.error'
-import { Auth } from 'src/routes/auth/shared/decorators/auth.decorator'
+import { Auth } from 'src/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../../../../shared/services/auth-verification.service'
 import { SuccessMessage } from 'src/shared/decorators/success-message.decorator'
 

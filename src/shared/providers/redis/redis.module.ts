@@ -5,7 +5,7 @@ import Redis, { RedisOptions } from 'ioredis'
 import { REDIS_CLIENT, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { RedisService } from './redis.service'
 import { ConfigService, ConfigModule } from '@nestjs/config'
-import { CryptoService } from 'src/routes/auth/shared/services/common/crypto.service'
+import { CryptoService } from 'src/shared/services/crypto.service'
 
 export const IORedisKey = REDIS_CLIENT
 

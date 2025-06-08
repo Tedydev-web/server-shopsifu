@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { REQUEST_USER_KEY } from 'src/routes/auth/shared/constants/auth.constants'
+import { REQUEST_USER_KEY } from 'src/shared/constants/auth/auth.constants'
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {

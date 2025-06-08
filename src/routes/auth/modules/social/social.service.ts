@@ -1,24 +1,24 @@
 import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
-import { HashingService } from 'src/routes/auth/shared/services/common/hashing.service'
+import { HashingService } from 'src/shared/services/hashing.service'
 import { Response, Request } from 'express'
 import * as crypto from 'crypto'
 import { OAuth2Client, TokenPayload } from 'google-auth-library'
 import { AuthError } from 'src/routes/auth/auth.error'
-import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
-import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/routes/auth/shared/repositories'
+import { CookieNames, TypeOfVerificationCode } from 'src/shared/constants/auth/auth.constants'
+import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/shared/repositories/auth'
 import { OtpService } from '../../modules/otp/otp.service'
 import { EMAIL_SERVICE, HASHING_SERVICE, OTP_SERVICE, SLT_SERVICE } from 'src/shared/constants/injection.tokens'
 import {
   GoogleCallbackReturnType,
   GoogleCallbackErrorResult,
   GoogleCallbackAccountExistsWithoutLinkResult
-} from '../../shared/auth.types'
-import { ICookieService, ITokenService } from 'src/routes/auth/shared/auth.types'
+} from '../../../../shared/types/auth.types'
+import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { SLTService } from 'src/routes/auth/shared/services/slt.service'
-import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
+import { SLTService } from 'src/shared/services/slt.service'
+import { EmailService } from 'src/shared/services/email.service'
 
 /**
  * Interface để lưu thông tin state khi tạo URL xác thực Google

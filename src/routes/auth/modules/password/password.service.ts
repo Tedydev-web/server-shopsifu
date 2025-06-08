@@ -2,10 +2,10 @@ import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { Response } from 'express'
 import { AuthError } from '../../auth.error'
 import { AuthVerificationService } from 'src/shared/services/auth-verification.service'
-import { UserAuthRepository } from '../../shared/repositories/user-auth.repository'
-import { TypeOfVerificationCode } from '../../shared/constants/auth.constants'
+import { UserAuthRepository } from '../../../../shared/repositories/auth/user-auth.repository'
+import { TypeOfVerificationCode } from '../../../../shared/constants/auth/auth.constants'
 import { SetNewPasswordDto } from './password.dto'
-import { SLTService } from '../../shared/services/slt.service'
+import { SLTService } from '../../../../shared/services/slt.service'
 import {
   HASHING_SERVICE,
   SLT_SERVICE,
@@ -14,12 +14,12 @@ import {
   USER_AGENT_SERVICE,
   SESSIONS_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { HashingService } from '../../shared/services/common/hashing.service'
+import { HashingService } from '../../../../shared/services/hashing.service'
 import { SessionsService } from '../sessions/session.service'
-import { EmailService } from '../../shared/services/common/email.service'
+import { EmailService } from '../../../../shared/services/email.service'
 import { I18nService } from 'nestjs-i18n'
-import { GeolocationService } from '../../shared/services/common/geolocation.service'
-import { UserAgentService } from '../../shared/services/common/user-agent.service'
+import { GeolocationService } from '../../../../shared/services/geolocation.service'
+import { UserAgentService } from '../../../../shared/services/user-agent.service'
 
 @Injectable()
 export class PasswordService {

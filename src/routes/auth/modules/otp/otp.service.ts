@@ -1,12 +1,12 @@
 import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
-import { RedisService } from 'src/providers/redis/redis.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import {
   TypeOfVerificationCodeType,
   OTP_LENGTH,
   TypeOfVerificationCode
-} from 'src/routes/auth/shared/constants/auth.constants'
-import { OtpData, IOTPService } from 'src/routes/auth/shared/auth.types'
+} from 'src/shared/constants/auth/auth.constants'
+import { OtpData, IOTPService } from 'src/shared/types/auth.types'
 import { ConfigService } from '@nestjs/config'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { I18nService, I18nContext } from 'nestjs-i18n'
@@ -16,11 +16,11 @@ import {
   GEOLOCATION_SERVICE,
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { EmailService } from 'src/routes/auth/shared/services/common/email.service'
+import { EmailService } from 'src/shared/services/email.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { DeviceRepository, UserAuthRepository } from 'src/routes/auth/shared/repositories'
-import { GeolocationService } from 'src/routes/auth/shared/services/common/geolocation.service'
-import { UserAgentService } from 'src/routes/auth/shared/services/common/user-agent.service'
+import { DeviceRepository, UserAuthRepository } from 'src/shared/repositories/auth'
+import { GeolocationService } from 'src/shared/services/geolocation.service'
+import { UserAgentService } from 'src/shared/services/user-agent.service'
 
 @Injectable()
 export class OtpService implements IOTPService {

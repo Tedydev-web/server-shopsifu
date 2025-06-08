@@ -2,9 +2,9 @@ import { Controller, Post, Body, Res, Ip, Req, HttpCode, HttpStatus, UseGuards }
 import { Response, Request } from 'express'
 import { PasswordService } from './password.service'
 import { InitiatePasswordResetDto, SetNewPasswordDto } from './password.dto'
-import { IsPublic } from '../../shared/decorators/auth.decorator'
+import { IsPublic } from '../../../../shared/decorators/auth.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
-import { CookieNames } from '../../shared/constants/auth.constants'
+import { CookieNames } from '../../../../shared/constants/auth/auth.constants'
 import { AuthError } from '../../auth.error'
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 

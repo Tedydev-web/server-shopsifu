@@ -3,14 +3,14 @@ import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { Request } from 'express'
 import { v4 as uuidv4 } from 'uuid'
-import { RedisService } from 'src/providers/redis/redis.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import {
   ITokenService,
   AccessTokenPayload,
   AccessTokenPayloadCreate,
   PendingLinkTokenPayload,
   PendingLinkTokenPayloadCreate
-} from 'src/routes/auth/shared/auth.types'
+} from 'src/shared/types/auth.types'
 import { REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'

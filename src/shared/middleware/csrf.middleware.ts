@@ -3,8 +3,8 @@ import { Request, Response, NextFunction } from 'express'
 import csurf from 'csurf'
 import { ConfigService } from '@nestjs/config'
 import { v4 as uuidv4 } from 'uuid'
-import { SecurityHeaders } from '../../routes/auth/shared/constants/auth.constants'
-import { CookieConfig } from 'src/routes/auth/shared/auth.types'
+import { SecurityHeaders } from '../constants/auth/auth.constants'
+import { CookieConfig } from 'src/shared/types/auth.types'
 
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {
@@ -45,16 +45,16 @@ export class CsrfMiddleware implements NestMiddleware {
           .json({ message: 'Invalid CSRF token', code: err.code, errorId: uuidv4() })
       }
 
-        const token = req.csrfToken()
+      const token = req.csrfToken()
       // Set cookie XSRF-TOKEN cho client đọc
       res.cookie(this.configService.get<string>('cookie.csrfToken.name'), token, {
         ...csrfTokenCookieOptions,
         maxAge: undefined // Đây là session cookie, không cần maxAge
-        })
+      })
 
       // Đặt cả hai header để client dễ dàng lấy
-        res.header(SecurityHeaders.XSRF_TOKEN_HEADER, token)
-        res.header(SecurityHeaders.CSRF_TOKEN_HEADER, token)
+      res.header(SecurityHeaders.XSRF_TOKEN_HEADER, token)
+      res.header(SecurityHeaders.CSRF_TOKEN_HEADER, token)
 
       next()
     })

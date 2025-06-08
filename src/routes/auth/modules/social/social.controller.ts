@@ -19,13 +19,13 @@ import { ConfigService } from '@nestjs/config'
 import { SocialService } from './social.service'
 import { CoreService } from 'src/routes/auth/modules/core/core.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
-import { ActiveUser } from 'src/routes/auth/shared/decorators/active-user.decorator'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import {
   ICookieService,
   ITokenService,
   AccessTokenPayload,
   PendingLinkTokenPayloadCreate
-} from 'src/routes/auth/shared/auth.types'
+} from 'src/shared/types/auth.types'
 import {
   GoogleAuthUrlQueryDto,
   GoogleCallbackQueryDto,
@@ -33,8 +33,8 @@ import {
   GoogleAuthUrlDataDto,
   AccountLinkingRequiredDataDto
 } from './social.dto'
-import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/shared/constants/auth.constants'
-import { Auth, IsPublic } from 'src/routes/auth/shared/decorators/auth.decorator'
+import { CookieNames, TypeOfVerificationCode } from 'src/shared/constants/auth/auth.constants'
+import { Auth, IsPublic } from 'src/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../../../../shared/services/auth-verification.service'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'

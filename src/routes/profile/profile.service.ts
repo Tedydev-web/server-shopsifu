@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common'
-import { UserAuthRepository } from '../auth/shared/repositories/user-auth.repository'
+import { UserAuthRepository } from '../../shared/repositories/auth/user-auth.repository'
 import { AuthError } from '../auth/auth.error'
 import { ChangePasswordDto, ProfileResponseDto } from './profile.dto'
 import { ProfileRepository } from './profile.repository'
@@ -11,14 +11,18 @@ import {
   TWO_FACTOR_SERVICE,
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { HashingService } from '../auth/shared/services/common/hashing.service'
+import { HashingService } from '../../shared/services/hashing.service'
 import { TwoFactorService } from '../auth/modules/two-factor/two-factor.service'
 import { SessionsService } from '../auth/modules/sessions/session.service'
-import { EmailService } from '../auth/shared/services/common/email.service'
-import { AccessTokenPayload } from '../auth/shared/auth.types'
-import { GeolocationService } from '../auth/shared/services/common/geolocation.service'
-import { UserAgentService } from '../auth/shared/services/common/user-agent.service'
+import { EmailService } from '../../shared/services/email.service'
+import { AccessTokenPayload } from '../../shared/types/auth.types'
+import { GeolocationService } from '../../shared/services/geolocation.service'
+import { UserAgentService } from '../../shared/services/user-agent.service'
 import { I18nService } from 'nestjs-i18n'
+import { AuthVerificationService } from 'src/shared/services/auth-verification.service'
+import { Response } from 'express'
+import { TypeOfVerificationCode } from '../../shared/constants/auth/auth.constants'
+import { UserProfile, User, Role } from '@prisma/client'
 
 @Injectable()
 export class ProfileService {
@@ -28,12 +32,13 @@ export class ProfileService {
     private readonly userAuthRepository: UserAuthRepository,
     private readonly profileRepository: ProfileRepository,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
-    @Inject(forwardRef(() => TwoFactorService)) private readonly twoFactorService: TwoFactorService,
     @Inject(SESSIONS_SERVICE) private readonly sessionsService: SessionsService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
     @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
-    private readonly i18nService: I18nService
+    private readonly i18nService: I18nService,
+    @Inject(forwardRef(() => AuthVerificationService))
+    private readonly authVerificationService: AuthVerificationService
   ) {}
 
   async getProfile(userId: number): Promise<ProfileResponseDto> {
@@ -73,10 +78,11 @@ export class ProfileService {
     activeUser: AccessTokenPayload,
     dto: ChangePasswordDto,
     ipAddress: string,
-    userAgent: string
-  ): Promise<void> {
-    const { userId, sessionId } = activeUser
-    const { currentPassword, newPassword, revokeOtherSessions, twoFactorCode, twoFactorMethod } = dto
+    userAgent: string,
+    res: Response
+  ): Promise<any> {
+    const { userId, sessionId, deviceId } = activeUser
+    const { currentPassword, newPassword, revokeOtherSessions } = dto
     this.logger.debug(`[changePassword] User ${userId} attempting to change password.`)
 
     const user = await this.userAuthRepository.findById(userId)
@@ -93,18 +99,29 @@ export class ProfileService {
       throw AuthError.InvalidPassword()
     }
 
+    const hashedPassword = await this.hashingService.hash(newPassword)
+
     if (user.twoFactorEnabled) {
-      if (!twoFactorCode) {
-        throw AuthError.BadRequest('Two-factor code is required.')
-      }
-      await this.twoFactorService.verifyCode(twoFactorCode, {
-        userId,
-        method: twoFactorMethod
-      })
-      this.logger.debug(`[changePassword] 2FA verification successful for user ${userId}.`)
+      this.logger.debug(`[changePassword] User ${userId} has 2FA enabled. Initiating verification flow.`)
+      return this.authVerificationService.initiateVerification(
+        {
+          userId,
+          deviceId,
+          email: user.email,
+          ipAddress,
+          userAgent,
+          purpose: TypeOfVerificationCode.CHANGE_PASSWORD,
+          metadata: {
+            hashedNewPassword: hashedPassword,
+            revokeOtherSessions,
+            sessionIdToExclude: sessionId
+          }
+        },
+        res
+      )
     }
 
-    const hashedPassword = await this.hashingService.hash(newPassword)
+    // If 2FA is not enabled, change password directly.
     await this.userAuthRepository.updatePassword(userId, hashedPassword)
     this.logger.log(`[changePassword] Password changed successfully for user ${userId}.`)
 
@@ -113,6 +130,19 @@ export class ProfileService {
       this.logger.log(`[changePassword] Revoked all other sessions for user ${userId}.`)
     }
 
+    await this.sendPasswordChangeEmail(user, ipAddress, userAgent)
+
+    return {
+      success: true,
+      message: this.i18nService.t('auth.Auth.Password.ChangeSuccess')
+    }
+  }
+
+  private async sendPasswordChangeEmail(
+    user: User & { userProfile: UserProfile | null },
+    ipAddress: string,
+    userAgent: string
+  ) {
     const locationResult = await this.geolocationService.getLocationFromIP(ipAddress)
     const uaInfo = this.userAgentService.parse(userAgent)
     const details = [
@@ -135,7 +165,7 @@ export class ProfileService {
     ]
 
     await this.emailService.sendPasswordChangedEmail(user.email, {
-      userName: user.userProfile?.username ?? user.email,
+      userName: user.userProfile?.username ?? user.email.split('@')[0],
       details
     })
   }
