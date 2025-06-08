@@ -1,5 +1,6 @@
 import { AuthType, ConditionGuard } from 'src/shared/constants/auth/auth.constants'
-import { SetMetadata, applyDecorators } from '@nestjs/common'
+import { SetMetadata, UseGuards, applyDecorators } from '@nestjs/common'
+import { AuthenticationGuard } from '../guards/authentication.guard'
 
 // Auth Type Decorator
 export const AUTH_TYPE_KEY = 'auth_type'
@@ -15,7 +16,11 @@ export const Auth = (
   authTypes: string[] = [AuthType.JWT],
   options: { condition: string } = { condition: ConditionGuard.RolesAndPermissions }
 ) => {
-  return applyDecorators(SetMetadata('auth_type', authTypes), SetMetadata('auth_options', options))
+  return applyDecorators(
+    SetMetadata('auth_type', authTypes),
+    SetMetadata('auth_options', options),
+    UseGuards(AuthenticationGuard)
+  )
 }
 
 // Public decorator

@@ -7,7 +7,7 @@ import { SendOtpDto, VerifyOtpDto } from './otp.dto'
 import { CoreService } from '../core/core.service'
 import { CookieNames } from 'src/shared/constants/auth/auth.constants'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
-import { AuthVerificationService } from 'src/shared/services/auth-verification.service'
+import { AuthVerificationService } from '../../services/auth-verification.service'
 
 @Controller('auth/otp')
 export class OtpController {

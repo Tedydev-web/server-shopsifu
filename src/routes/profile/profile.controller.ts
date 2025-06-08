@@ -23,7 +23,7 @@ export class ProfileController {
     return this.profileService.getProfile(activeUser.userId)
   }
 
-  @Post('password')
+  @Post('change-password')
   @HttpCode(HttpStatus.OK)
   @SuccessMessage('auth.Auth.Password.ChangeSuccess')
   @Throttle({ default: { limit: 5, ttl: 60000 } })

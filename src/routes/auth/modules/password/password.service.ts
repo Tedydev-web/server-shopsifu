@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { Response } from 'express'
 import { AuthError } from '../../auth.error'
-import { AuthVerificationService } from 'src/shared/services/auth-verification.service'
+import { AuthVerificationService } from '../../services/auth-verification.service'
 import { UserAuthRepository } from '../../../../shared/repositories/auth/user-auth.repository'
 import { TypeOfVerificationCode } from '../../../../shared/constants/auth/auth.constants'
 import { SetNewPasswordDto } from './password.dto'

@@ -9,7 +9,7 @@ import { TwoFactorVerifyDto, TwoFactorSetupDataDto, VerificationNeededResponseDt
 import { CookieNames, TypeOfVerificationCode } from 'src/shared/constants/auth/auth.constants'
 import { AuthError } from '../../auth.error'
 import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
-import { AuthVerificationService } from '../../../../shared/services/auth-verification.service'
+import { AuthVerificationService } from '../../services/auth-verification.service'
 import { I18nService } from 'nestjs-i18n'
 import { SuccessMessage } from 'src/shared/decorators/success-message.decorator'
 

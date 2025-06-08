@@ -35,7 +35,7 @@ import {
 } from './social.dto'
 import { CookieNames, TypeOfVerificationCode } from 'src/shared/constants/auth/auth.constants'
 import { Auth, IsPublic } from 'src/shared/decorators/auth.decorator'
-import { AuthVerificationService } from '../../../../shared/services/auth-verification.service'
+import { AuthVerificationService } from '../../services/auth-verification.service'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import * as crypto from 'crypto'

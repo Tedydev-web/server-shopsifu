@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisService } from '../../../shared/providers/redis/redis.service'
 import {
   REDIS_SERVICE,
   TOKEN_SERVICE,
@@ -14,27 +14,27 @@ import {
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
   USER_AGENT_SERVICE
-} from 'src/shared/constants/injection.tokens'
-import { ICookieService, SltContextData, IOTPService } from 'src/shared/types/auth.types'
+} from '../../../shared/constants/injection.tokens'
+import { ICookieService, SltContextData, IOTPService } from '../../../shared/types/auth.types'
 import {
   TypeOfVerificationCode,
   TypeOfVerificationCodeType,
   TwoFactorMethodType
-} from 'src/shared/constants/auth/auth.constants'
-import { TwoFactorService } from 'src/routes/auth/modules/two-factor/two-factor.service'
-import { UserAuthRepository, DeviceRepository } from 'src/shared/repositories/auth'
+} from '../../../shared/constants/auth/auth.constants'
+import { TwoFactorService } from '../modules/two-factor/two-factor.service'
+import { UserAuthRepository, DeviceRepository } from '../../../shared/repositories/auth'
 import { Response } from 'express'
-import { AuthError } from 'src/routes/auth/auth.error'
+import { AuthError } from '../auth.error'
 import { I18nService } from 'nestjs-i18n'
-import { SLTService } from 'src/shared/services/slt.service'
-import { CoreService } from 'src/routes/auth/modules/core/core.service'
-import { SessionsService } from 'src/routes/auth/modules/sessions/session.service'
-import { SocialService } from 'src/routes/auth/modules/social/social.service'
+import { SLTService } from '../../../shared/services/slt.service'
+import { CoreService } from '../modules/core/core.service'
+import { SessionsService } from '../modules/sessions/session.service'
+import { SocialService } from '../modules/social/social.service'
 import { User } from '@prisma/client'
-import { EmailService } from 'src/shared/services/email.service'
-import { ApiException } from 'src/shared/exceptions/api.exception'
-import { GeolocationService } from 'src/shared/services/geolocation.service'
-import { UserAgentService } from 'src/shared/services/user-agent.service'
+import { EmailService } from '../../../shared/services/email.service'
+import { ApiException } from '../../../shared/exceptions/api.exception'
+import { GeolocationService } from '../../../shared/services/geolocation.service'
+import { UserAgentService } from '../../../shared/services/user-agent.service'
 
 export interface VerificationContext {
   userId: number

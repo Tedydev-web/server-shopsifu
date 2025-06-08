@@ -16,10 +16,11 @@ import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { Auth } from 'src/shared/decorators/auth.decorator'
 import { AccessTokenPayload, ICookieService, ITokenService } from 'src/shared/types/auth.types'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { AuthVerificationService } from 'src/shared/services/auth-verification.service'
+import { AuthVerificationService } from '../../services/auth-verification.service'
 
 @Controller('auth')
 export class CoreController {
@@ -123,6 +124,7 @@ export class CoreController {
     return this.coreService.refreshToken(refreshToken, deviceInfo, res)
   }
 
+  @Auth()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(

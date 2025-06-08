@@ -170,7 +170,7 @@ const cookieDefinitions = {
   csrfToken: {
     name: CookieNames.XSRF_TOKEN,
     options: {
-      ...getCookieOptions(true),
+      ...getCookieOptions(false), // Client needs to read this for CSRF header
       secure: true
     }
   },

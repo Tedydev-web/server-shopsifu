@@ -1,4 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common'
+import { JwtModule } from '@nestjs/jwt'
 import { TwoFactorController } from './two-factor.controller'
 import { TwoFactorService } from './two-factor.service'
 import { SessionsModule } from '../sessions/session.module'
@@ -7,7 +8,7 @@ import { CoreModule } from '../core/core.module'
 import { TWO_FACTOR_SERVICE } from 'src/shared/constants/injection.tokens'
 
 @Module({
-  imports: [forwardRef(() => OtpModule), forwardRef(() => SessionsModule), forwardRef(() => CoreModule)],
+  imports: [JwtModule, forwardRef(() => OtpModule), forwardRef(() => SessionsModule), forwardRef(() => CoreModule)],
   controllers: [TwoFactorController],
   providers: [
     {
