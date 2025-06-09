@@ -1,6 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
-import { TwoFactorMethodType } from '../../shared/constants/auth/auth.constants'
+import { TwoFactorMethodType } from '../auth/auth.constants'
 
 const validationMessages = {
   required: (field: string) => `${field} không được để trống.`,

@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common'
-import { UserAuthRepository } from '../../shared/repositories/auth/user-auth.repository'
+import { UserAuthRepository } from '../auth/repositories/user-auth.repository'
 import { AuthError } from '../auth/auth.error'
 import { ChangePasswordDto, ProfileResponseDto } from './profile.dto'
 import { ProfileRepository } from './profile.repository'
@@ -12,8 +12,8 @@ import {
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import { HashingService } from '../../shared/services/hashing.service'
-import { TwoFactorService } from '../auth/modules/two-factor/two-factor.service'
-import { SessionsService } from '../auth/modules/sessions/session.service'
+import { TwoFactorService } from '../auth/services/two-factor.service'
+import { SessionsService } from '../auth/services/session.service'
 import { EmailService } from '../../shared/services/email.service'
 import { AccessTokenPayload } from '../../shared/types/auth.types'
 import { GeolocationService } from '../../shared/services/geolocation.service'
@@ -21,7 +21,7 @@ import { UserAgentService } from '../../shared/services/user-agent.service'
 import { I18nService } from 'nestjs-i18n'
 import { AuthVerificationService } from '../auth/services/auth-verification.service'
 import { Response } from 'express'
-import { TypeOfVerificationCode } from '../../shared/constants/auth/auth.constants'
+import { TypeOfVerificationCode } from '../auth/auth.constants'
 import { UserProfile, User, Role } from '@prisma/client'
 
 @Injectable()

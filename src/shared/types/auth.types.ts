@@ -1,7 +1,33 @@
 import { Device, Role, User, UserProfile } from '@prisma/client'
 import { Response, Request } from 'express'
-import { TypeOfVerificationCodeType, TwoFactorMethodTypeType } from 'src/shared/constants/auth/auth.constants'
+import { TypeOfVerificationCodeType, TwoFactorMethodTypeType } from 'src/routes/auth/auth.constants'
 import { PrismaTransactionClient } from 'src/shared/types/prisma.type'
+
+// Payload for login finalization
+export interface ILoginFinalizationPayload {
+  userId: number
+  deviceId: number
+  rememberMe: boolean
+  ipAddress?: string
+  userAgent?: string
+}
+
+// Result from login finalization
+export interface ILoginFinalizationResult {
+  message: string
+  data: any // Should contain user info, tokens, etc.
+}
+
+// Injection token for the login finalizer service
+export const LOGIN_FINALIZER_SERVICE = Symbol('ILoginFinalizerService')
+
+// Interface for the service that finalizes login after verification
+export interface ILoginFinalizerService {
+  finalizeLoginAfterVerification(
+    payload: ILoginFinalizationPayload,
+    res: any // Express Response object
+  ): Promise<ILoginFinalizationResult>
+}
 
 /**
  * Auth Provider Interface - Định nghĩa các methods cho authentication provider
@@ -100,7 +126,11 @@ export interface ISessionService {
 
   isSessionInvalidated(sessionId: string): Promise<boolean>
 
-  invalidateAllUserSessions(userId: number, reason?: string, sessionIdToExclude?: string): Promise<{ count: number }>
+  invalidateAllUserSessions(
+    userId: number,
+    reason?: string,
+    sessionIdToExclude?: string
+  ): Promise<{ deletedSessionsCount: number; untrustedDeviceIds: number[] }>
 }
 
 /**

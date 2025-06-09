@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { RedisService } from '../../../shared/providers/redis/redis.service'
+import { RedisService } from '../../../shared/services/redis.service'
 import {
   COOKIE_SERVICE,
   SLT_SERVICE,
@@ -10,18 +10,25 @@ import {
   GEOLOCATION_SERVICE,
   USER_AGENT_SERVICE
 } from '../../../shared/constants/injection.tokens'
-import { ICookieService, SltContextData, IOTPService } from '../../../shared/types/auth.types'
-import { TypeOfVerificationCode, TypeOfVerificationCodeType } from '../../../shared/constants/auth/auth.constants'
-import { TwoFactorService } from '../modules/two-factor/two-factor.service'
-import { UserAuthRepository, DeviceRepository } from '../../../shared/repositories/auth'
+import {
+  ICookieService,
+  SltContextData,
+  IOTPService,
+  ILoginFinalizationPayload,
+  ILoginFinalizerService,
+  LOGIN_FINALIZER_SERVICE
+} from '../../../shared/types/auth.types'
+import { TypeOfVerificationCode, TypeOfVerificationCodeType } from '../auth.constants'
+import { TwoFactorService } from './two-factor.service'
+import { UserAuthRepository, DeviceRepository } from '../repositories'
 import { Response } from 'express'
 import { AuthError } from '../auth.error'
 import { I18nService } from 'nestjs-i18n'
 import { SLTService } from '../../../shared/services/slt.service'
-import { CoreService } from '../modules/core/core.service'
-import { SessionsService } from '../modules/sessions/session.service'
-import { SocialService } from '../modules/social/social.service'
-import { User } from '@prisma/client'
+
+import { SessionsService } from './session.service'
+import { SocialService } from './social.service'
+import { TwoFactorMethodType, User } from '@prisma/client'
 import { EmailService } from '../../../shared/services/email.service'
 import { ApiException } from '../../../shared/exceptions/api.exception'
 import { GeolocationService } from '../../../shared/services/geolocation.service'
@@ -85,7 +92,7 @@ export class AuthVerificationService {
     private readonly userAuthRepository: UserAuthRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly i18nService: I18nService,
-    @Inject(forwardRef(() => CoreService)) private readonly coreService: CoreService,
+    @Inject(LOGIN_FINALIZER_SERVICE) private readonly loginFinalizerService: ILoginFinalizerService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionsService: SessionsService,
     @Inject(forwardRef(() => SocialService)) private readonly socialService: SocialService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
@@ -341,11 +348,32 @@ export class AuthVerificationService {
     this.logger.debug(`[verifyAuthCode] Verifying code for purpose: ${sltContext.purpose}`)
     try {
       if (sltContext.purpose === TypeOfVerificationCode.SETUP_2FA) {
+        this.logger.debug(`[verifyAuthCode] SETUP_2FA: sltContext.metadata = ${JSON.stringify(sltContext.metadata)}`)
+
+        let methodFor2FASetup: TwoFactorMethodType = TwoFactorMethodType.AUTHENTICATOR_APP // Default for setup
+        const rawSltMethod: unknown = sltContext.metadata?.twoFactorMethod
+
+        if (rawSltMethod) {
+          // If rawSltMethod is the string 'TOTP' (from old logic) or the enum value AUTHENTICATOR_APP
+          if (rawSltMethod === 'TOTP' || rawSltMethod === TwoFactorMethodType.AUTHENTICATOR_APP) {
+            methodFor2FASetup = TwoFactorMethodType.AUTHENTICATOR_APP
+          } else if (Object.values(TwoFactorMethodType).includes(rawSltMethod as TwoFactorMethodType)) {
+            // If it's another valid TwoFactorMethodType enum value
+            methodFor2FASetup = rawSltMethod as TwoFactorMethodType
+          } else {
+            const methodToLog = typeof rawSltMethod === 'string' ? rawSltMethod : '[Non-string value for SLT method]'
+            this.logger.warn(
+              `[verifyAuthCode] SETUP_2FA: Unknown twoFactorMethod '${methodToLog}' in SLT metadata for user ${sltContext.userId}. Defaulting to AUTHENTICATOR_APP.`
+            )
+            // Default to AUTHENTICATOR_APP if the value is unrecognized
+          }
+        }
+
         await this._verifyWithTwoFactor(
           code,
           sltContext.userId,
-          sltContext.metadata?.secret,
-          sltContext.metadata?.twoFactorMethod
+          sltContext.metadata?.twoFactorSecret,
+          methodFor2FASetup
         )
         return
       }
@@ -391,12 +419,60 @@ export class AuthVerificationService {
   private async _verifyWithTwoFactor(
     code: string,
     userId: number,
-    secret?: string,
-    method?: 'TOTP' | 'RECOVERY'
+    totpSecret: string | undefined, // Secret from SLT metadata
+    method?: TwoFactorMethodType // Method from SLT metadata
   ): Promise<void> {
-    const context = secret ? { userId, secret, method: 'TOTP' } : { userId, method: method || 'TOTP' }
-    // Chỉ cần gọi service, nó sẽ tự throw lỗi nếu không hợp lệ
-    await this.twoFactorService.verifyCode(code, context)
+    if (!method) {
+      this.logger.error(
+        `AuthVerificationService:_verifyWithTwoFactor - TwoFactorMethodType not provided for user ${userId}. SLT context might be missing 'twoFactorMethod'.`
+      )
+      throw AuthError.TwoFactorConfigurationError()
+    }
+
+    const verificationContext: {
+      userId: number
+      method: TwoFactorMethodType
+      secret?: string
+    } = {
+      userId,
+      method
+    }
+
+    this.logger.debug(
+      `AuthVerificationService:_verifyWithTwoFactor - Initial context for userId ${userId}: method=${method}, sltSecretProvided=${!!totpSecret}`
+    )
+
+    // If a totpSecret is provided via SLT (e.g., during 2FA setup) and the method is AUTHENTICATOR_APP, use it.
+    if (totpSecret && method === TwoFactorMethodType.AUTHENTICATOR_APP) {
+      verificationContext.secret = totpSecret
+      this.logger.debug(
+        `AuthVerificationService:_verifyWithTwoFactor - Using SLT secret for userId ${userId} with method ${method}.`
+      )
+    } else if (method === TwoFactorMethodType.AUTHENTICATOR_APP && !totpSecret) {
+      // Method is AUTHENTICATOR_APP, but no secret was passed from SLT.
+      // This is an error for flows like setup that expect a secret from SLT.
+      this.logger.error(
+        `AuthVerificationService:_verifyWithTwoFactor - TOTP/Authenticator secret expected from SLT for method ${method} but not provided for user ${userId}.`
+      )
+      throw AuthError.TwoFactorSetupMissingSecret()
+    }
+    // If the method is not AUTHENTICATOR_APP (e.g. EMAIL, SMS), or if totpSecret was not applicable/provided for AUTHENTICATOR_APP,
+    // verificationContext.secret remains undefined. TwoFactorService.verifyCode will handle these cases
+    // (e.g., fetching the user's stored secret for login, or handling non-TOTP methods if implemented there).
+
+    this.logger.debug(
+      `AuthVerificationService:_verifyWithTwoFactor - Calling twoFactorService.verifyCode for userId: ${userId}, method: ${method}, contextSecretIsSet: ${!!verificationContext.secret}`
+    )
+
+    try {
+      await this.twoFactorService.verifyCode(code, verificationContext)
+    } catch (error) {
+      this.logger.error(
+        `AuthVerificationService:_verifyWithTwoFactor - Error from twoFactorService.verifyCode for userId ${userId}, method ${method}: ${error.message}`,
+        error.stack // Include stack for better debugging
+      )
+      throw error // Re-throw the original error to be handled by the global exception filter
+    }
   }
 
   private async handlePostVerificationActions(
@@ -432,17 +508,19 @@ export class AuthVerificationService {
     userAgent: string,
     res: Response
   ): Promise<VerificationResult> {
-    if (!this.coreService) {
-      throw AuthError.InternalServerError('CoreService is not available')
+    if (!this.loginFinalizerService) {
+      throw AuthError.InternalServerError('LoginFinalizerService is not available')
     }
-    const loginResult = await this.coreService.finalizeLoginAfterVerification(
+
+    const loginPayload: ILoginFinalizationPayload = {
       userId,
       deviceId,
       rememberMe,
-      res,
       ipAddress,
       userAgent
-    )
+    }
+
+    const loginResult = await this.loginFinalizerService.finalizeLoginAfterVerification(loginPayload, res)
 
     if (rememberMe) {
       await this.deviceRepository.updateDeviceTrustStatus(deviceId, true)
@@ -523,7 +601,7 @@ export class AuthVerificationService {
 
   private async handleSetup2FAVerification(context: SltContextData, code: string): Promise<VerificationResult> {
     const { userId, metadata, ipAddress, userAgent } = context
-    const secret = metadata?.secret
+    const secret = metadata?.twoFactorSecret
     if (!secret) throw AuthError.InternalServerError('Missing 2FA secret for setup.')
     const result = await this.twoFactorService.confirmTwoFactorSetup(userId, code, secret, ipAddress, userAgent)
     return {

@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { Request } from 'express'
 import { v4 as uuidv4 } from 'uuid'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisService } from 'src/shared/services/redis.service'
 import {
   ITokenService,
   AccessTokenPayload,

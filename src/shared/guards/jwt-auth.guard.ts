@@ -7,12 +7,12 @@ import {
   forwardRef,
   UnauthorizedException
 } from '@nestjs/common'
-import { REQUEST_USER_KEY } from 'src/shared/constants/auth/auth.constants'
+import { REQUEST_USER_KEY } from 'src/routes/auth/auth.constants'
 import { TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { ITokenService } from 'src/shared/types/auth.types'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { SessionsService } from 'src/routes/auth/modules/sessions/session.service'
+import { SessionsService } from 'src/routes/auth/services/session.service'
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {

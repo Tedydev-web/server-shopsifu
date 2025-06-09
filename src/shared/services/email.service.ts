@@ -4,7 +4,7 @@ import { Resend } from 'resend'
 import { I18nService, I18nContext } from 'nestjs-i18n'
 import * as React from 'react'
 
-import { TypeOfVerificationCodeType } from 'src/shared/constants/auth/auth.constants'
+import { TypeOfVerificationCodeType } from 'src/routes/auth/auth.constants'
 
 // --- Import Email Components ---
 import { OtpEmail, OtpEmailProps } from 'emails/otp-email'

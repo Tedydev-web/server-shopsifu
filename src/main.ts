@@ -4,14 +4,14 @@ import compression from 'compression'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import { HttpHeader } from './shared/constants/http.constants'
-import { VersioningType, Logger as NestLogger } from '@nestjs/common'
+import { VersioningType } from '@nestjs/common'
+import CustomZodValidationPipe from './shared/pipes/custom-zod-validation.pipe'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import { WinstonModule } from 'nest-winston'
 import { winstonLogger as winstonLoggerConfig, WinstonConfig } from './shared/logger/winston.config'
 import appConfig from './shared/config'
 
 async function bootstrap() {
-  const bootstrapLogger = new NestLogger('Bootstrap')
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: WinstonModule.createLogger(WinstonConfig)
   })
@@ -62,9 +62,11 @@ async function bootstrap() {
     type: VersioningType.URI
   })
 
+  // Use I18nValidationPipe globally
+  app.useGlobalPipes(new CustomZodValidationPipe())
+
   const port = appConfig().PORT ?? 3000
   await app.listen(port)
   winstonLoggerConfig.log(`Application is running on: ${appConfig().API_URL}/api/v1`, 'Bootstrap')
-  bootstrapLogger.log(`Swagger documentation available at ${await app.getUrl()}/api-docs`)
 }
 void bootstrap()

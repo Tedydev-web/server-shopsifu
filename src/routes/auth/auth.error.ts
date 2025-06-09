@@ -161,6 +161,22 @@ export class AuthError {
     return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_RECOVERY_CODE', 'auth.Auth.Error.2FA.InvalidRecoveryCode')
   }
 
+  static TwoFactorConfigurationError(): ApiException {
+    return new ApiException(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+      'TWO_FACTOR_CONFIGURATION_ERROR',
+      'auth.Auth.Error.TwoFactor.ConfigurationError'
+    )
+  }
+
+  static TwoFactorSetupMissingSecret(): ApiException {
+    return new ApiException(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+      'TWO_FACTOR_SETUP_MISSING_SECRET',
+      'auth.Auth.Error.TwoFactor.SetupMissingSecret'
+    )
+  }
+
   static InvalidVerificationMethod(): ApiException {
     return new ApiException(
       HttpStatus.BAD_REQUEST,

@@ -1,4 +1,4 @@
-import { AuthType, AuthTypeType, ConditionGuard, ConditionGuardType } from 'src/shared/constants/auth/auth.constants'
+import { AuthType, AuthTypeType, ConditionGuard, ConditionGuardType } from 'src/routes/auth/auth.constants'
 import { SetMetadata, UseGuards, applyDecorators } from '@nestjs/common'
 import { AuthenticationGuard } from '../guards/authentication.guard'
 

@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, InternalServerErrorException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { AUTH_TYPE_KEY, IS_PUBLIC_KEY } from 'src/shared/decorators/auth.decorator'
-import { AuthType } from 'src/shared/constants/auth/auth.constants'
+import { AuthType } from 'src/routes/auth/auth.constants'
 
 import { Observable } from 'rxjs'
 import { ApiKeyGuard } from './api-key.guard'

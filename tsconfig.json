@@ -32,7 +32,8 @@
   "include": [
     "src",
     "emails",
-    "test"
+    "test",
+    "initialScript"
   ],
   "exclude": [
     "node_modules",

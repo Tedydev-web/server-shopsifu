@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { config } from 'dotenv'
 import ms from 'ms'
-import { CookieNames } from 'src/shared/constants/auth/auth.constants'
+import { CookieNames } from 'src/routes/auth/auth.constants'
 
 // Load và kiểm tra file .env
 config({ path: '.env' })

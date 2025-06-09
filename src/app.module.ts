@@ -11,7 +11,11 @@ import { I18nModule, AcceptLanguageResolver, QueryResolver } from 'nestjs-i18n'
 import path from 'path'
 import { ProfileModule } from './routes/profile/profile.module'
 import { SharedModule } from './shared/shared.module'
-import { RedisProviderModule } from './shared/providers/redis/redis.module'
+// import { RedisProviderModule } from './shared/providers/redis/redis.module'
+import { RoleModule } from './routes/role/role.module'
+// import { UserModule } from './routes/user/user.module'
+import { PermissionModule } from './routes/permission/permission.module'
+import { UserModule } from './routes/user/user.module'
 
 @Module({
   imports: [
@@ -26,7 +30,7 @@ import { RedisProviderModule } from './shared/providers/redis/redis.module'
       typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
     }),
     SharedModule,
-    RedisProviderModule,
+    // RedisProviderModule,
     AuthModule,
     ProfileModule,
     ThrottlerModule.forRoot([
@@ -34,7 +38,11 @@ import { RedisProviderModule } from './shared/providers/redis/redis.module'
         ttl: 60000, // 60 seconds
         limit: 10 // 10 requests per 60 seconds per IP
       }
-    ])
+    ]),
+    RoleModule,
+    // UserModule,
+    PermissionModule,
+    UserModule
   ],
   controllers: [AppController],
   providers: [
