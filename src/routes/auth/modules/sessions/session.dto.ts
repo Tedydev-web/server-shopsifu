@@ -1,6 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
-import { VerificationNeededResponseSchema } from '../../../../shared/dtos/auth/verification.dto'
+import { VerificationNeededResponseSchema } from '../../services/auth-verification.dto'
 
 // ===================================================================================
 // Lược đồ cho nội dung yêu cầu

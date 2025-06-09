@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { CRYPTO_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
+import { CRYPTO_SERVICE } from 'src/shared/constants/injection.tokens'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { CryptoService } from 'src/shared/services/crypto.service'
 import { isObject } from 'src/shared/utils/type-guards.utils'
@@ -37,18 +37,6 @@ export interface SessionPaginationResult {
   totalPages: number
 }
 
-// Định nghĩa interface cho Redis operation
-interface RedisOperation {
-  command: string
-  args: any[]
-}
-
-// Định nghĩa interface cho phiên được lưu trong Redis
-interface SessionInRedis {
-  key: string
-  data: Record<string, string>
-}
-
 @Injectable()
 export class SessionRepository {
   private readonly logger = new Logger(SessionRepository.name)
@@ -57,7 +45,7 @@ export class SessionRepository {
 
   constructor(
     private readonly prismaService: PrismaService,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly redisService: RedisService,
     @Inject(CRYPTO_SERVICE) @Optional() private readonly cryptoService?: CryptoService
   ) {}
 

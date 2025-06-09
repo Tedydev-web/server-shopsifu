@@ -2,25 +2,16 @@ import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { RedisService } from '../../../shared/providers/redis/redis.service'
 import {
-  REDIS_SERVICE,
-  TOKEN_SERVICE,
   COOKIE_SERVICE,
   SLT_SERVICE,
   OTP_SERVICE,
   TWO_FACTOR_SERVICE,
-  CORE_SERVICE,
-  SESSIONS_SERVICE,
-  SOCIAL_SERVICE,
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
   USER_AGENT_SERVICE
 } from '../../../shared/constants/injection.tokens'
 import { ICookieService, SltContextData, IOTPService } from '../../../shared/types/auth.types'
-import {
-  TypeOfVerificationCode,
-  TypeOfVerificationCodeType,
-  TwoFactorMethodType
-} from '../../../shared/constants/auth/auth.constants'
+import { TypeOfVerificationCode, TypeOfVerificationCodeType } from '../../../shared/constants/auth/auth.constants'
 import { TwoFactorService } from '../modules/two-factor/two-factor.service'
 import { UserAuthRepository, DeviceRepository } from '../../../shared/repositories/auth'
 import { Response } from 'express'
@@ -86,7 +77,7 @@ export class AuthVerificationService {
 
   constructor(
     private readonly configService: ConfigService,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly redisService: RedisService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
     @Inject(OTP_SERVICE) private readonly otpService: IOTPService,

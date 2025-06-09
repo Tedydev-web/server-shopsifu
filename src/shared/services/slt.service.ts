@@ -2,7 +2,7 @@ import { Injectable, Logger, Inject } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { ITokenService, ISLTService, SltContextData, SltJwtPayload } from 'src/shared/types/auth.types'
 import {
   TypeOfVerificationCodeType,
@@ -20,7 +20,7 @@ export class SLTService implements ISLTService {
 
   constructor(
     private readonly configService: ConfigService,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly redisService: RedisService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly jwtService: JwtService
   ) {}
@@ -245,7 +245,7 @@ export class SLTService implements ISLTService {
     if (redisContext.metadata) {
       try {
         parsedContext.metadata = JSON.parse(redisContext.metadata)
-      } catch (e) {
+      } catch (_e) {
         this.logger.warn(`[parseSltContextFromRedis] Failed to parse metadata: ${redisContext.metadata}`)
         parsedContext.metadata = { value: redisContext.metadata }
       }

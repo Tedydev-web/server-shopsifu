@@ -1,7 +1,7 @@
 import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit, HttpStatus } from '@nestjs/common'
 import Redis, { RedisKey, RedisValue } from 'ioredis'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { REDIS_CLIENT } from 'src/shared/constants/injection.tokens'
+import { IORedisKey } from './redis.constants'
 import { CryptoService } from 'src/shared/services/crypto.service'
 
 @Injectable()
@@ -9,7 +9,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name)
 
   constructor(
-    @Inject(REDIS_CLIENT) private readonly redisClient: Redis,
+    @Inject(IORedisKey) private readonly redisClient: Redis,
     private readonly cryptoService?: CryptoService
   ) {}
 

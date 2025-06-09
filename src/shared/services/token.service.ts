@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { Request } from 'express'
@@ -11,7 +11,6 @@ import {
   PendingLinkTokenPayload,
   PendingLinkTokenPayloadCreate
 } from 'src/shared/types/auth.types'
-import { REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
@@ -21,14 +20,14 @@ export class TokenService implements ITokenService {
 
   constructor(
     private readonly jwtService: JwtService,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly redisService: RedisService,
     private readonly configService: ConfigService
   ) {}
 
   /**
    * Tạo access token
    */
-  async generateAccessToken(userId: number, expiresIn?: string): Promise<string> {
+  async generateAccessToken(userId: number): Promise<string> {
     const tokenJti = `access_${Date.now()}_${uuidv4().substring(0, 8)}`
     const payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
       userId,

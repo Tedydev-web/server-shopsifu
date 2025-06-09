@@ -2,12 +2,11 @@ import { DynamicModule, Global, Logger, Module, Provider } from '@nestjs/common'
 import { CacheModule } from '@nestjs/cache-manager'
 import { redisStore } from 'cache-manager-redis-yet'
 import Redis, { RedisOptions } from 'ioredis'
-import { REDIS_CLIENT, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
+
+import { IORedisKey } from './redis.constants'
 import { RedisService } from './redis.service'
 import { ConfigService, ConfigModule } from '@nestjs/config'
 import { CryptoService } from 'src/shared/services/crypto.service'
-
-export const IORedisKey = REDIS_CLIENT
 
 export interface RedisModuleOptions {
   connectionOptions: RedisOptions
@@ -21,7 +20,7 @@ export interface RedisAsyncModuleOptions {
 
 // Redis client factory
 const createRedisClient = (): Provider => ({
-  provide: REDIS_CLIENT,
+  provide: IORedisKey,
   useFactory: (configService: ConfigService) => {
     // Tạo và trả về Redis client instance
     const redisClient = new Redis({
@@ -37,7 +36,7 @@ const createRedisClient = (): Provider => ({
 
 // Redis service factory
 const createRedisService = (): Provider => ({
-  provide: REDIS_SERVICE,
+  provide: RedisService,
   useClass: RedisService
 })
 
@@ -79,7 +78,7 @@ const createRedisService = (): Provider => ({
     })
   ],
   providers: [createRedisClient(), createRedisService(), RedisService, CryptoService],
-  exports: [REDIS_CLIENT, REDIS_SERVICE]
+  exports: [IORedisKey, RedisService]
 })
 export class RedisProviderModule {
   static register(options: RedisModuleOptions): DynamicModule {
@@ -92,7 +91,7 @@ export class RedisProviderModule {
           useValue: options
         }
       ],
-      exports: [REDIS_CLIENT]
+      exports: [IORedisKey]
     }
   }
 
@@ -108,7 +107,7 @@ export class RedisProviderModule {
           inject: options.inject || []
         }
       ],
-      exports: [REDIS_CLIENT]
+      exports: [IORedisKey]
     }
   }
 }

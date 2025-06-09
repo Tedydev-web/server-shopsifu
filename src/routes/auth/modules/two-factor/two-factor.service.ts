@@ -9,7 +9,6 @@ import {
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
   HASHING_SERVICE,
-  REDIS_SERVICE,
   SLT_SERVICE,
   TOKEN_SERVICE,
   USER_AGENT_SERVICE
@@ -61,7 +60,7 @@ export class TwoFactorService implements IMultiFactorService {
     private readonly userAuthRepository: UserAuthRepository,
     private readonly recoveryCodeRepository: RecoveryCodeRepository,
     private readonly deviceRepository: DeviceRepository,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly redisService: RedisService,
     private readonly jwtService: JwtService,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,

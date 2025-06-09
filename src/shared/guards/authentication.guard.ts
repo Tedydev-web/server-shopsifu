@@ -1,7 +1,8 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common'
+import { CanActivate, ExecutionContext, Injectable, InternalServerErrorException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
+import { AUTH_TYPE_KEY, IS_PUBLIC_KEY } from 'src/shared/decorators/auth.decorator'
 import { AuthType } from 'src/shared/constants/auth/auth.constants'
-import { IS_PUBLIC_KEY } from 'src/shared/decorators/auth.decorator'
+
 import { Observable } from 'rxjs'
 import { ApiKeyGuard } from './api-key.guard'
 import { JwtAuthGuard } from './jwt-auth.guard'
@@ -37,7 +38,10 @@ export class AuthenticationGuard implements CanActivate {
       return true
     }
 
-    const authTypes = this.reflector.getAllAndOverride<AuthType[]>('auth_type', [
+    // Get the authentication types specified by the @Auth() decorator.
+    // If multiple auth types are provided, this guard currently only considers the first one.
+    // For 'OR' logic across multiple auth types, this guard would need further enhancement.
+    const authTypes = this.reflector.getAllAndOverride<AuthType[]>(AUTH_TYPE_KEY, [
       context.getHandler(),
       context.getClass()
     ])
@@ -49,7 +53,8 @@ export class AuthenticationGuard implements CanActivate {
     const guard = this.authTypeGuardMap[selectedAuthType]
 
     if (!guard) {
-      throw new Error(`Unsupported authentication type: ${selectedAuthType}`)
+      // This indicates a configuration error (e.g., an unsupported AuthType was used in @Auth decorator)
+      throw new InternalServerErrorException(`Unsupported authentication type: ${selectedAuthType}`)
     }
 
     return guard.canActivate(context)

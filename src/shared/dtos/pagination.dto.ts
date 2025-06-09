@@ -5,7 +5,9 @@ export const BasePaginationQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().max(100).optional().default(10),
   sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
-  search: z.string().optional()
+  sortBy: z.string().optional(), // Added sortBy for client-side configuration
+  search: z.string().optional(),
+  includeDeleted: z.coerce.boolean().optional().default(false) // Added includeDeleted
 })
 
 export const PaginatedResponseSchema = z.object({
@@ -23,10 +25,7 @@ export const createPaginatedResponseSchema = <T extends z.ZodType>(itemSchema: T
 
 export type BasePaginationQueryType = z.infer<typeof BasePaginationQuerySchema>
 
-export interface PaginationOptions extends BasePaginationQueryType {
-  sortBy?: string
-  includeDeleted?: boolean
-}
+// PaginationOptions interface removed as its fields are now covered by BasePaginationQueryType.
 
 export interface PaginatedResponseType<T> {
   data: T[]
@@ -39,7 +38,7 @@ export interface PaginatedResponseType<T> {
 export function createPaginatedResponse<T>(
   data: T[],
   totalItems: number,
-  options: PaginationOptions
+  options: BasePaginationQueryType // Updated to use BasePaginationQueryType
 ): PaginatedResponseType<T> {
   const { page = 1, limit = 10 } = options
   return {
@@ -52,8 +51,6 @@ export function createPaginatedResponse<T>(
 }
 
 export class BasePaginationQueryDTO extends createZodDto(BasePaginationQuerySchema) {}
-
-export class PaginatedResponseDTO extends createZodDto(PaginatedResponseSchema) {}
 
 export function createPaginatedResponseDTO<T extends ZodType>(itemSchema: T) {
   return class extends createZodDto(createPaginatedResponseSchema(itemSchema)) {}

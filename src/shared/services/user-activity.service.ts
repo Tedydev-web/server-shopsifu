@@ -2,12 +2,7 @@ import { Injectable, Logger, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { EmailService } from 'src/shared/services/email.service'
-import {
-  REDIS_SERVICE,
-  EMAIL_SERVICE,
-  GEOLOCATION_SERVICE,
-  USER_AGENT_SERVICE
-} from 'src/shared/constants/injection.tokens'
+import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
 import { UserAuthRepository } from 'src/shared/repositories/auth'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { I18nService, I18nContext } from 'nestjs-i18n'
@@ -79,7 +74,7 @@ export class UserActivityService {
 
   constructor(
     private readonly configService: ConfigService,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly redisService: RedisService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
     private readonly userAuthRepository: UserAuthRepository,

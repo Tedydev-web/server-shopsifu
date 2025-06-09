@@ -13,7 +13,6 @@ import {
   COOKIE_SERVICE,
   DEVICE_SERVICE,
   HASHING_SERVICE,
-  REDIS_SERVICE,
   SLT_SERVICE,
   TOKEN_SERVICE,
   EMAIL_SERVICE
@@ -68,7 +67,7 @@ export class CoreService {
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly redisService: RedisService,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
     @Inject(DEVICE_SERVICE) private readonly deviceService?: DeviceService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionsService?: SessionsService,

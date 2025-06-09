@@ -593,7 +593,6 @@ enum HTTPMethod {
 
 enum TwoFactorMethodType {
   TOTP
-  OTP
   RECOVERY
 }
 

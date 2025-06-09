@@ -3,7 +3,7 @@ import { AppModule } from './app.module'
 import compression from 'compression'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
-import { SecurityHeaders } from './shared/constants/auth/auth.constants'
+import { HttpHeader } from './shared/constants/http.constants'
 import { VersioningType, Logger as NestLogger } from '@nestjs/common'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import { WinstonModule } from 'nest-winston'
@@ -22,13 +22,8 @@ async function bootstrap() {
     origin: appConfig().FRONTEND_URL,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      SecurityHeaders.XSRF_TOKEN_HEADER,
-      SecurityHeaders.CSRF_TOKEN_HEADER
-    ],
-    exposedHeaders: [SecurityHeaders.XSRF_TOKEN_HEADER, SecurityHeaders.CSRF_TOKEN_HEADER]
+    allowedHeaders: ['Content-Type', 'Authorization', HttpHeader.XSRF_TOKEN_HEADER, HttpHeader.CSRF_TOKEN_HEADER],
+    exposedHeaders: [HttpHeader.XSRF_TOKEN_HEADER, HttpHeader.CSRF_TOKEN_HEADER]
   })
 
   app.use(

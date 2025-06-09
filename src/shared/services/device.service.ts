@@ -5,15 +5,10 @@ import { Device } from '@prisma/client'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import {
-  EMAIL_SERVICE,
-  GEOLOCATION_SERVICE,
-  REDIS_SERVICE,
-  USER_AGENT_SERVICE
-} from 'src/shared/constants/injection.tokens'
+import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService } from 'src/shared/services/email.service'
 import { DeviceRepository, UserAuthRepository } from 'src/shared/repositories/auth'
-import { DEVICE_REVERIFICATION_TTL } from '../constants/auth/auth.constants'
+import { DEVICE_REVERIFICATION_TTL } from 'src/shared/providers/redis/redis.constants'
 import { IDeviceService } from 'src/shared/types/auth.types'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
@@ -61,7 +56,7 @@ export class DeviceService implements IDeviceService {
   private readonly deviceDataExpirationDays: number
 
   constructor(
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly redisService: RedisService,
     private readonly i18nService: I18nService,
     private readonly configService: ConfigService,
     private readonly deviceRepository: DeviceRepository,

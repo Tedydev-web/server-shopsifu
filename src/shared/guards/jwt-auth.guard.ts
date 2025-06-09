@@ -76,7 +76,13 @@ export class JwtAuthGuard implements CanActivate {
         throw AuthError.InvalidAccessToken()
       }
 
-      throw error
+      // For any errors not specifically handled above, throw a generic authentication failure.
+      // This ensures that we always return a well-formed ApiException.
+      this.logger.error(
+        `JWT Auth: Unhandled error type during authentication: ${error?.constructor?.name}`,
+        error.stack
+      )
+      throw AuthError.Unauthorized() // Use a generic unauthorized error
     }
   }
 }

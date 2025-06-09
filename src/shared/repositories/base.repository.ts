@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { PrismaService } from '../services/prisma.service'
-import { PaginationOptions, PaginatedResponseType, createPaginatedResponse } from '../dtos/pagination.dto'
+import { BasePaginationQueryType, PaginatedResponseType, createPaginatedResponse } from '../dtos/pagination.dto'
 import { Prisma } from '@prisma/client'
 
 export type PrismaTransactionClient = Omit<
@@ -17,13 +17,13 @@ export abstract class BaseRepository<T> {
     return prismaClient || this.prismaService
   }
 
-  protected async paginateQuery<Entity>(
+  protected async paginateQuery(
     model: string,
-    query: PaginationOptions,
+    query: BasePaginationQueryType,
     where: any = {},
     include: any = {},
     prismaClient?: PrismaTransactionClient
-  ): Promise<PaginatedResponseType<Entity>> {
+  ): Promise<PaginatedResponseType<T>> {
     const client = this.getClient(prismaClient)
     const { page = 1, limit = 10, sortBy, sortOrder = 'asc', search, includeDeleted = false } = query
 
@@ -49,7 +49,7 @@ export abstract class BaseRepository<T> {
       take: limit
     })
 
-    return createPaginatedResponse<Entity>(data as Entity[], totalItems, {
+    return createPaginatedResponse<T>(data as T[], totalItems, {
       page,
       limit,
       sortBy,
@@ -63,7 +63,7 @@ export abstract class BaseRepository<T> {
     return []
   }
 
-  protected async paginateWithCursor<Entity>(
+  protected async paginateWithCursor(
     model: string,
     cursorField: string = 'id',
     cursorValue?: string | number,
@@ -73,7 +73,7 @@ export abstract class BaseRepository<T> {
     sortOrder: 'asc' | 'desc' = 'asc',
     prismaClient?: PrismaTransactionClient
   ): Promise<{
-    data: Entity[]
+    data: T[]
     nextCursor: string | number | null
     hasMore: boolean
   }> {
@@ -95,7 +95,7 @@ export abstract class BaseRepository<T> {
     const nextCursor = hasMore && items.length > 0 ? items[items.length - 1][cursorField] : null
 
     return {
-      data: items as Entity[],
+      data: items as T[],
       nextCursor,
       hasMore
     }

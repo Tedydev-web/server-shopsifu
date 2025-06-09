@@ -7,7 +7,6 @@ import {
   DEVICE_SERVICE,
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
-  REDIS_SERVICE,
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import { PrismaService } from 'src/shared/services/prisma.service'
@@ -38,7 +37,7 @@ export class SessionsService implements ISessionService {
     private readonly prismaService: PrismaService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
     @Inject(DEVICE_SERVICE) private readonly deviceService: IDeviceService,
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly redisService: RedisService,
     @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
   ) {}
 

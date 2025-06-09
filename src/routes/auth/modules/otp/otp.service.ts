@@ -10,12 +10,7 @@ import { OtpData, IOTPService } from 'src/shared/types/auth.types'
 import { ConfigService } from '@nestjs/config'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { I18nService, I18nContext } from 'nestjs-i18n'
-import {
-  REDIS_SERVICE,
-  EMAIL_SERVICE,
-  GEOLOCATION_SERVICE,
-  USER_AGENT_SERVICE
-} from 'src/shared/constants/injection.tokens'
+import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService } from 'src/shared/services/email.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { DeviceRepository, UserAuthRepository } from 'src/shared/repositories/auth'
@@ -27,7 +22,7 @@ export class OtpService implements IOTPService {
   private readonly logger = new Logger(OtpService.name)
 
   constructor(
-    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    private readonly redisService: RedisService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     private readonly jwtService: JwtService,
     private readonly i18nService: I18nService,
@@ -155,9 +150,9 @@ export class OtpService implements IOTPService {
     emailToVerifyAgainst: string,
     code: string,
     type: TypeOfVerificationCodeType,
-    userIdForAudit?: number,
-    ip?: string,
-    userAgent?: string
+    _userIdForAudit?: number,
+    _ip?: string,
+    _userAgent?: string
   ): Promise<boolean> {
     try {
       if (!code || !emailToVerifyAgainst) {
@@ -216,7 +211,7 @@ export class OtpService implements IOTPService {
     if (rawOtpData.metadata) {
       try {
         otpData.metadata = JSON.parse(rawOtpData.metadata)
-      } catch (e) {
+      } catch (_e) {
         this.logger.warn(`[getOtpData] Failed to parse OTP metadata: ${rawOtpData.metadata}`)
         otpData.metadata = { raw: rawOtpData.metadata }
       }

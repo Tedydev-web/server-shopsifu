@@ -56,6 +56,10 @@ export class BasicAuthGuard implements CanActivate {
       return true
     } catch (error) {
       this.logger.error(`Basic authentication failed: ${error.message}`)
+      if (error instanceof UnauthorizedException) {
+        throw error // Re-throw the original, more specific UnauthorizedException
+      }
+      // For other types of errors, wrap them in a generic UnauthorizedException
       throw new UnauthorizedException('Authentication failed')
     }
   }

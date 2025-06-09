@@ -1,9 +1,9 @@
-import { Injectable, NestMiddleware, Inject, Logger, HttpStatus } from '@nestjs/common'
+import { Injectable, NestMiddleware, Logger, HttpStatus } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
 import csurf from 'csurf'
 import { ConfigService } from '@nestjs/config'
 import { v4 as uuidv4 } from 'uuid'
-import { SecurityHeaders } from '../constants/auth/auth.constants'
+import { HttpHeader } from 'src/shared/constants/http.constants'
 import { CookieConfig } from 'src/shared/types/auth.types'
 
 @Injectable()
@@ -53,8 +53,8 @@ export class CsrfMiddleware implements NestMiddleware {
       })
 
       // Đặt cả hai header để client dễ dàng lấy
-      res.header(SecurityHeaders.XSRF_TOKEN_HEADER, token)
-      res.header(SecurityHeaders.CSRF_TOKEN_HEADER, token)
+      res.header(HttpHeader.XSRF_TOKEN_HEADER, token)
+      res.header(HttpHeader.CSRF_TOKEN_HEADER, token)
 
       next()
     })
