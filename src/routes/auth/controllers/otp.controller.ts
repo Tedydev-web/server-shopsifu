@@ -28,7 +28,7 @@ export class OtpController {
     @Ip() ip: string,
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
-  ): Promise<{ message: string; data: any }> {
+  ): Promise<any> {
     this.logger.log(`[sendOtp] Sending OTP to: ${body.email}, purpose: ${body.purpose}`)
 
     const user = await this.coreService.findUserByEmail(body.email)
@@ -51,7 +51,7 @@ export class OtpController {
 
     return {
       message: verificationResult.message,
-      data: verificationResult.data
+      ...verificationResult
     }
   }
 

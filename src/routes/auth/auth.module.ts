@@ -13,6 +13,12 @@ import { SessionsController } from './controllers/session.controller'
 import { SocialController } from './controllers/social.controller'
 import { TwoFactorController } from './controllers/two-factor.controller'
 
+// Repositories
+import { DeviceRepository } from './repositories/device.repository'
+import { RecoveryCodeRepository } from './repositories/recovery-code.repository'
+import { SessionRepository } from './repositories/session.repository'
+import { UserAuthRepository } from './repositories/user-auth.repository'
+
 // Services
 import { AuthVerificationService } from './services/auth-verification.service'
 import { CoreService } from './services/core.service'
@@ -21,9 +27,6 @@ import { PasswordService } from './services/password.service'
 import { SessionsService } from './services/session.service'
 import { SocialService } from './services/social.service'
 import { TwoFactorService } from './services/two-factor.service'
-
-// RedisService is likely provided globally by SharedModule, so explicit import might not be needed here
-// import { RedisService } from '../../shared/services/redis.service'
 
 @Global()
 @Module({
@@ -40,6 +43,13 @@ import { TwoFactorService } from './services/two-factor.service'
     TwoFactorController
   ],
   providers: [
+    // Repositories
+    DeviceRepository,
+    RecoveryCodeRepository,
+    SessionRepository,
+    UserAuthRepository,
+
+    // Services
     AuthVerificationService,
     CoreService,
     OtpService,
@@ -67,6 +77,13 @@ import { TwoFactorService } from './services/two-factor.service'
     // RedisService, // Likely provided by SharedModule globally
   ],
   exports: [
+    // Repositories
+    DeviceRepository,
+    RecoveryCodeRepository,
+    SessionRepository,
+    UserAuthRepository,
+
+    // Services
     AuthVerificationService,
     CoreService,
     OtpService,

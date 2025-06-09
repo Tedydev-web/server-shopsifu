@@ -56,6 +56,15 @@ export type I18nTranslations = {
                     "AskToTrustDevice": string;
                 };
             };
+            "Core": {
+                "Success": {
+                    "InitiateRegistration": string;
+                    "CompleteRegistration": string;
+                    "Login": string;
+                    "RefreshToken": string;
+                    "Logout": string;
+                };
+            };
             "Error": {
                 "User": {
                     "EmailNotFound": string;
@@ -80,6 +89,7 @@ export type I18nTranslations = {
                     "Expired": string;
                     "TooManyAttempts": string;
                     "FailedToSend": string;
+                    "PasswordResetNotVerified": string;
                 };
                 "SLT": {
                     "CookieMissing": string;
@@ -335,59 +345,82 @@ export type I18nTranslations = {
         "success": {
             "general": {
                 "default": string;
-            };
-            "profile": {
-                "email": {
-                    "otpSent": string;
-                    "verified": string;
-                };
+                "defaultTitle": string;
+                "defaultMessage": string;
             };
         };
         "error": {
             "general": {
                 "unknown": string;
-                "validationFailed": string;
                 "serializationFailed": string;
-                "internalServerError": string;
+                "validationFailed": {
+                    "title": string;
+                    "message": string;
+                };
+                "internalServerError": {
+                    "title": string;
+                    "message": string;
+                };
+                "default": {
+                    "title": string;
+                };
             };
             "http": {
-                "badRequest": string;
-                "unauthorized": string;
-                "forbidden": string;
-                "notFound": string;
-                "conflict": string;
-                "unprocessableEntity": string;
-                "preconditionFailed": string;
-                "internalServerError": string;
-                "serviceUnavailable": string;
-                "httpError": string;
-            };
-            "profile": {
-                "email": {
-                    "unchanged": string;
-                    "alreadyExists": string;
-                    "pendingMatchesCurrent": string;
-                    "noPendingChange": string;
-                    "invalidVerificationToken": string;
-                    "expiredVerificationToken": string;
-                    "alreadyVerified": string;
+                "badRequest": {
+                    "title": string;
+                    "message": string;
                 };
-                "general": {
-                    "updateFailed": string;
+                "unauthorized": {
+                    "title": string;
+                    "message": string;
                 };
-                "username": {
-                    "invalidLength": string;
-                    "invalidChars": string;
-                    "taken": string;
+                "forbidden": {
+                    "title": string;
+                    "message": string;
                 };
-                "phone": {
-                    "taken": string;
+                "notFound": {
+                    "title": string;
+                    "message": string;
+                };
+                "conflict": {
+                    "title": string;
+                    "message": string;
+                };
+                "unprocessableEntity": {
+                    "title": string;
+                    "message": string;
+                };
+                "preconditionFailed": {
+                    "title": string;
+                    "message": string;
+                };
+                "serviceUnavailable": {
+                    "title": string;
+                    "message": string;
+                };
+                "httpError": {
+                    "title": string;
+                    "message": string;
                 };
             };
             "server": {
                 "config": {
                     "missingOAuthCookie": string;
                 };
+            };
+        };
+        "errors": {
+            "VALIDATION_FAILED": {
+                "title": string;
+            };
+            "INTERNAL_SERVER_ERROR": {
+                "title": string;
+            };
+            "UNHANDLED_HTTP_EXCEPTION": {
+                "title": string;
+            };
+            "HTTP_EXCEPTION": {
+                "title": string;
             };
         };
     };

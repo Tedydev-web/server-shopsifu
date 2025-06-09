@@ -128,7 +128,7 @@ export class OtpService implements IOTPService {
           const safeLang: 'vi' | 'en' = preferredLang === 'en' || preferredLang === 'vi' ? preferredLang : 'vi'
           const emailContext = await this._buildOtpEmailContext(targetEmail, type, otpCode, safeLang, metadata)
           await this.emailService.sendOtpEmail(targetEmail, type, emailContext)
-          this.logger.log(`[sendOTP] Email OTP cho mục đích ${type} đã được gửi đến ${targetEmail}`)
+          this.logger.log(`[sendOTP] Email OTP cho mục đích ${type} đã được gửi đến ${targetEmail} ${otpCode}`)
         } else {
           this.logger.warn('EmailService không được inject, không thể gửi email OTP.')
         }
@@ -198,7 +198,6 @@ export class OtpService implements IOTPService {
   private async getOtpData(otpKey: string): Promise<OtpData> {
     const rawOtpData = await this.redisService.hgetall(otpKey)
     if (!rawOtpData || Object.keys(rawOtpData).length === 0) {
-      this.logger.warn(`[getOtpData] OTP data not found or expired for key: ${otpKey}`)
       throw AuthError.OTPExpired()
     }
 

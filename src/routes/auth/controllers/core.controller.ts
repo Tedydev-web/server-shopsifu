@@ -12,6 +12,7 @@ import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { AccessTokenPayload, ICookieService, ITokenService } from 'src/shared/types/auth.types'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { ResponseMessage } from 'src/shared/decorators/response-message.decorator'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 
 @Controller('auth')
@@ -29,6 +30,7 @@ export class CoreController {
   @IsPublic()
   @Post('initiate-registration')
   @HttpCode(HttpStatus.OK)
+  @ResponseMessage('auth.Core.Success.InitiateRegistration')
   async initiateRegistration(
     @Body() body: InitiateRegistrationDto,
     @Ip() ip: string,
@@ -48,11 +50,12 @@ export class CoreController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @IsPublic()
   @Post('complete-registration')
+  @ResponseMessage('auth.Core.Success.CompleteRegistration')
   async completeRegistration(
     @Body() body: CompleteRegistrationDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
-  ): Promise<{ message: string }> {
+  ): Promise<any> {
     this.logger.log(`[completeRegistration] Attempting to complete registration for email associated with SLT.`)
 
     const sltCookie = req.cookies[CookieNames.SLT_TOKEN]
@@ -81,6 +84,7 @@ export class CoreController {
   @IsPublic()
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @ResponseMessage('auth.Core.Success.Login')
   async login(
     @Body() body: LoginDto,
     @Ip() ip: string,
@@ -97,6 +101,7 @@ export class CoreController {
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @IsPublic()
   @Post('refresh-token')
+  @ResponseMessage('auth.Core.Success.RefreshToken')
   async refreshToken(
     @UserAgent() userAgent: string,
     @Ip() ip: string,
@@ -120,11 +125,12 @@ export class CoreController {
   @Auth()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
+  @ResponseMessage('auth.Core.Success.Logout')
   async logout(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
-  ): Promise<{ message: string }> {
+  ): Promise<any> {
     return this.coreService.logout(activeUser.userId, activeUser.sessionId, req, res)
   }
 }

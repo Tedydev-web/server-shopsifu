@@ -1,10 +1,10 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common'
 import { Request } from 'express'
-import { HTTPRequestHeaderKeys } from 'src/shared/constants/http.constant'
+import { HttpHeader } from 'src/shared/constants/http.constants'
 
 export const UserAgent = createParamDecorator((_: unknown, ctx: ExecutionContext): string | undefined => {
   const request = ctx.switchToHttp().getRequest<Request>()
-  const userAgentValue = request.headers[HTTPRequestHeaderKeys.USER_AGENT]
+  const userAgentValue = request.headers[HttpHeader.USER_AGENT]
 
   if (Array.isArray(userAgentValue)) {
     // It's uncommon for User-Agent to be an array, but headers can be.

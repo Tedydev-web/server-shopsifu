@@ -9,7 +9,7 @@ import {
   ITokenService,
   ILoginFinalizerService,
   ILoginFinalizationPayload,
-  ILoginFinalizationResult
+  ISLTService
 } from 'src/shared/types/auth.types'
 import { TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
 import { OtpService } from './otp.service'
@@ -30,7 +30,6 @@ import {
   UserWithProfileAndRole
 } from 'src/routes/auth/repositories'
 import { RedisService } from 'src/shared/services/redis.service'
-import { SLTService } from 'src/shared/services/slt.service'
 import { DeviceService } from 'src/shared/services/device.service'
 import { SessionsService } from 'src/routes/auth/services/session.service'
 import { AuthVerificationService } from './auth-verification.service'
@@ -66,7 +65,7 @@ export class CoreService implements ILoginFinalizerService {
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly redisService: RedisService,
-    @Inject(SLT_SERVICE) private readonly sltService: SLTService,
+    @Inject(SLT_SERVICE) private readonly sltService: ISLTService,
     @Inject(DEVICE_SERVICE) private readonly deviceService?: DeviceService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionsService?: SessionsService,
     @Inject(forwardRef(() => AuthVerificationService))
@@ -99,12 +98,7 @@ export class CoreService implements ILoginFinalizerService {
   /**
    * Khởi tạo đăng ký
    */
-  async initiateRegistration(
-    email: string,
-    ipAddress: string,
-    userAgent: string,
-    res: Response
-  ): Promise<{ message: string; data: any }> {
+  async initiateRegistration(email: string, ipAddress: string, userAgent: string, res: Response): Promise<any> {
     try {
       // Kiểm tra email đã tồn tại chưa
       await this.checkEmailNotExists(email)
@@ -128,8 +122,7 @@ export class CoreService implements ILoginFinalizerService {
       )
 
       return {
-        message: verificationResult.message,
-        data: verificationResult.data
+        ...verificationResult
       }
     } catch (error) {
       this.logger.error(`[initiateRegistration] Error: ${error.message}`, error.stack)
@@ -146,7 +139,7 @@ export class CoreService implements ILoginFinalizerService {
     params: CompleteRegistrationDto,
     ipAddress?: string,
     userAgent?: string
-  ): Promise<{ message: string }> {
+  ): Promise<any> {
     if (!this.sltService) throw AuthError.InternalServerError('SLTService not available')
 
     const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
@@ -295,9 +288,9 @@ export class CoreService implements ILoginFinalizerService {
   /**
    * Làm mới token
    */
-  async refreshToken(refreshToken: string, deviceInfo: any, res: Response): Promise<{ message: string }> {
+  async refreshToken(refreshToken: string, _deviceInfo: any, res: Response): Promise<any> {
     try {
-      const { userAgent, ip } = deviceInfo
+      // const { userAgent, ip } = deviceInfo; // deviceInfo is not used in this function
 
       // Xác minh refresh token
       const payload = await this.tokenService.verifyRefreshToken(refreshToken)
@@ -339,9 +332,7 @@ export class CoreService implements ILoginFinalizerService {
       // Set cookie mới
       this.cookieService.setTokenCookies(res, newAccessToken, newRefreshToken)
 
-      return {
-        message: 'auth.Auth.Token.Refreshed'
-      }
+      return { message: 'auth.Auth.Token.Refreshed' }
     } catch (error) {
       this.logger.error(`Lỗi làm mới token: ${error.message}`, error.stack)
       this.cookieService.clearTokenCookies(res)
@@ -441,17 +432,11 @@ export class CoreService implements ILoginFinalizerService {
       const sessionId = await this.createSessionForLogin(user.id, device.id, ipAddress, userAgent)
       const effectiveIsTrustedSession = isTrustedSession ?? (await this.deviceRepository.isDeviceTrustValid(device.id))
 
-      const { accessToken, refreshToken } = this.generateAndSetAuthTokens(
-        user,
-        device.id,
-        sessionId,
-        effectiveIsTrustedSession,
-        rememberMe,
-        res
-      )
+      this.generateAndSetAuthTokens(user, device.id, sessionId, effectiveIsTrustedSession, rememberMe, res)
 
       const userResponse = {
         id: user.id,
+        role: user.role.name,
         username: user.userProfile?.username,
         avatar: user.userProfile?.avatar,
         isDeviceTrustedInSession: effectiveIsTrustedSession
@@ -459,9 +444,7 @@ export class CoreService implements ILoginFinalizerService {
 
       return {
         message: 'auth.Auth.Login.Success',
-        data: {
-          user: userResponse
-        }
+        user: userResponse
       }
     } catch (error) {
       this.logger.error(`[finalizeLoginAndCreateTokens] Error: ${error.message}`, error.stack)
@@ -633,28 +616,23 @@ export class CoreService implements ILoginFinalizerService {
 
     // The interceptor will wrap this into the standard response format.
     // The `data` part contains any information the client might need, like a verification token (SLT).
-    if (verificationResult.success && verificationResult.tokens) {
+    if (verificationResult.tokens) {
       return {
         message: verificationResult.message,
-        data: {
-          user: verificationResult.user
-        }
+        user: verificationResult.user
       }
     }
 
     return {
       message: verificationResult.message,
-      data: verificationResult.data
+      ...verificationResult
     }
   }
 
   /**
    * Hoàn tất đăng nhập sau khi xác minh
    */
-  async finalizeLoginAfterVerification(
-    payload: ILoginFinalizationPayload,
-    res: Response
-  ): Promise<ILoginFinalizationResult> {
+  async finalizeLoginAfterVerification(payload: ILoginFinalizationPayload, res: Response): Promise<any> {
     const { userId, deviceId, rememberMe, ipAddress, userAgent } = payload
     try {
       // Tìm user
@@ -699,10 +677,7 @@ export class CoreService implements ILoginFinalizerService {
         void this.deviceService.notifyLoginOnUntrustedDevice(userId, deviceId, ipAddress, userAgent)
       }
 
-      return {
-        message: loginResult.message,
-        data: loginResult.data
-      }
+      return loginResult
     } catch (error) {
       this.logger.error(`[finalizeLoginAfterVerification] Error: ${error.message}`, error.stack)
       if (error instanceof AuthError) throw error

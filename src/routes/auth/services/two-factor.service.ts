@@ -135,46 +135,57 @@ export class TwoFactorService implements IMultiFactorService {
       secret?: string
     }
   ): Promise<boolean> {
-    this.logger.debug(`[verifyCode] Verifying code for userId: ${context.userId}, method: ${context.method || 'TOTP'}`)
+    this.logger.debug(
+      `[verifyCode] Verifying 2FA code for userId: ${context.userId}, method: ${context.method || 'Not specified'}`
+    )
 
-    if (!code) {
-      throw AuthError.InvalidTOTP()
-    }
-
-    // Nếu context cung cấp secret trực tiếp (trường hợp thiết lập)
+    // Nếu context cung cấp secret trực tiếp (chỉ xảy ra trong quá trình thiết lập),
+    // phương thức luôn là AUTHENTICATOR_APP.
     if (context.secret) {
-      const isValid = this.verifyTOTP(context.secret, code)
-      if (!isValid) throw AuthError.InvalidTOTP()
-      return true
-    }
-
-    // Lấy thông tin người dùng
-    const user = await this.userAuthRepository.findById(context.userId, {
-      twoFactorEnabled: true,
-      twoFactorSecret: true
-    })
-
-    if (!user) {
-      this.logger.error(`[verifyCode] User not found: ${context.userId}`)
-      throw AuthError.EmailNotFound()
-    }
-
-    if (!user.twoFactorEnabled || !user.twoFactorSecret) {
-      this.logger.warn(`[verifyCode] 2FA is not enabled for user: ${context.userId}`)
-      throw AuthError.TOTPNotEnabled()
-    }
-
-    // Xác thực theo phương thức (TOTP hoặc mã khôi phục)
-    const method = context.method || 'TOTP'
-    const verificationResult = await this.verifyByMethod(method, code, context.userId)
-
-    if (!verificationResult.success) {
-      if (method === 'RECOVERY') {
-        throw AuthError.InvalidRecoveryCode()
+      if (this.verifyTOTP(context.secret, code)) {
+        return true
       }
       throw AuthError.InvalidTOTP()
     }
-    return true
+
+    // Xác định phương thức xác minh sẽ sử dụng
+    const verificationMethod = context.method ?? TwoFactorMethodType.AUTHENTICATOR_APP
+
+    // Xử lý dựa trên phương thức
+    switch (verificationMethod as TwoFactorMethodType) {
+      case TwoFactorMethodType.AUTHENTICATOR_APP: {
+        const user = await this.userAuthRepository.findById(context.userId, {
+          twoFactorEnabled: true,
+          twoFactorSecret: true
+        })
+        if (!user?.twoFactorEnabled || !user.twoFactorSecret) {
+          throw AuthError.TOTPNotEnabled()
+        }
+        // Thử xác minh bằng TOTP trước
+        if (this.verifyTOTP(user.twoFactorSecret, code)) {
+          return true
+        }
+        // Nếu TOTP thất bại, thử mã khôi phục như một phương án dự phòng
+        const isRecoveryCode = await this.verifyRecoveryCode(context.userId, code)
+        if (isRecoveryCode) {
+          return true
+        }
+        // Nếu cả hai đều thất bại
+        throw AuthError.InvalidTOTP()
+      }
+
+      case TwoFactorMethodType.RECOVERY_CODE: {
+        const isVerified = await this.verifyRecoveryCode(context.userId, code)
+        if (!isVerified) {
+          throw AuthError.InvalidRecoveryCode()
+        }
+        return true
+      }
+
+      default:
+        this.logger.warn(`[verifyCode] Verification method '${verificationMethod}' not implemented.`)
+        throw AuthError.InvalidVerificationMethod()
+    }
   }
 
   /**

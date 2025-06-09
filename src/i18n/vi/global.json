@@ -1,60 +1,83 @@
 {
   "success": {
     "general": {
-      "default": "Thành công!"
-    },
-    "profile": {
-      "email": {
-        "otpSent": "Mã OTP đã được gửi đến {email} để xác minh email mới. Vui lòng kiểm tra hộp thư.",
-        "verified": "Email của bạn đã được cập nhật thành công thành {email}."
-      }
+      "default": "Thành công!",
+      "defaultTitle": "Thao tác thành công",
+      "defaultMessage": "Yêu cầu của bạn đã được xử lý thành công."
     }
   },
   "error": {
     "general": {
       "unknown": "Đã xảy ra lỗi không xác định.",
-      "validationFailed": "Xác thực thất bại. Vui lòng kiểm tra lại thông tin.",
       "serializationFailed": "Tuần tự hóa dữ liệu thất bại. Vui lòng thử lại.",
-      "internalServerError": "Lỗi máy chủ nội bộ. Vui lòng thử lại sau."
+      "validationFailed": {
+        "title": "Dữ liệu không hợp lệ",
+        "message": "Dữ liệu cung cấp không hợp lệ. Vui lòng kiểm tra lại các trường thông tin."
+      },
+      "internalServerError": {
+        "title": "Lỗi máy chủ",
+        "message": "Đã có lỗi xảy ra ở phía máy chủ. Vui lòng thử lại sau hoặc liên hệ hỗ trợ."
+      },
+      "default": {
+        "title": "Đã có lỗi xảy ra"
+      }
     },
     "http": {
-      "badRequest": "Yêu cầu không hợp lệ.",
-      "unauthorized": "Không được phép.",
-      "forbidden": "Bị cấm.",
-      "notFound": "Không tìm thấy.",
-      "conflict": "Xung đột.",
-      "unprocessableEntity": "Không thể xử lý đối tượng.",
-      "preconditionFailed": "Điều kiện tiên quyết thất bại.",
-      "internalServerError": "Lỗi máy chủ nội bộ.",
-      "serviceUnavailable": "Dịch vụ không khả dụng.",
-      "httpError": "Lỗi HTTP."
-    },
-    "profile": {
-      "email": {
-        "unchanged": "Email mới trùng với email hiện tại.",
-        "alreadyExists": "Email '{email}' đã được sử dụng bởi tài khoản khác.",
-        "pendingMatchesCurrent": "Email bạn đang xác thực đã là email chính hiện tại.",
-        "noPendingChange": "Không có yêu cầu thay đổi email nào đang chờ xử lý.",
-        "invalidVerificationToken": "Mã xác thực email không hợp lệ hoặc đã được sử dụng.",
-        "expiredVerificationToken": "Mã xác thực email đã hết hạn. Vui lòng yêu cầu mã mới.",
-        "alreadyVerified": "Email hiện tại đã được xác thực."
+      "badRequest": {
+        "title": "Yêu cầu không hợp lệ",
+        "message": "Yêu cầu của bạn không thể được xử lý do định dạng sai hoặc thiếu thông tin."
       },
-      "general": {
-        "updateFailed": "Cập nhật hồ sơ thất bại. Vui lòng thử lại."
+      "unauthorized": {
+        "title": "Chưa xác thực",
+        "message": "Bạn cần đăng nhập để thực hiện hành động này."
       },
-      "username": {
-        "invalidLength": "Tên người dùng phải từ {min} đến {max} ký tự.",
-        "invalidChars": "Tên người dùng chỉ được chứa chữ cái, số và dấu gạch dưới.",
-        "taken": "Tên người dùng '{username}' đã được sử dụng."
+      "forbidden": {
+        "title": "Không có quyền truy cập",
+        "message": "Bạn không có quyền thực hiện hành động này."
       },
-      "phone": {
-        "taken": "Số điện thoại đã được sử dụng bởi tài khoản khác."
+      "notFound": {
+        "title": "Không tìm thấy tài nguyên",
+        "message": "Tài nguyên bạn yêu cầu không tồn tại."
+      },
+      "conflict": {
+        "title": "Xung đột dữ liệu",
+        "message": "Yêu cầu của bạn gây ra xung đột với trạng thái hiện tại của tài nguyên."
+      },
+      "unprocessableEntity": {
+        "title": "Không thể xử lý yêu cầu",
+        "message": "Yêu cầu hợp lệ về mặt cú pháp nhưng không thể xử lý được."
+      },
+      "preconditionFailed": {
+        "title": "Điều kiện tiên quyết thất bại",
+        "message": "Một hoặc nhiều điều kiện tiên quyết cho yêu cầu không được đáp ứng."
+      },
+      "serviceUnavailable": {
+        "title": "Dịch vụ không khả dụng",
+        "message": "Dịch vụ hiện không khả dụng. Vui lòng thử lại sau."
+      },
+      "httpError": {
+        "title": "Lỗi giao tiếp HTTP",
+        "message": "Đã xảy ra lỗi trong quá trình giao tiếp HTTP."
       }
     },
     "server": {
       "config": {
         "missingOAuthCookie": "Lỗi cấu hình máy chủ: Thiếu hoặc cấu hình cookie OAuth không đầy đủ. Vui lòng liên hệ hỗ trợ."
       }
+    }
+  },
+  "errors": {
+    "VALIDATION_FAILED": {
+      "title": "Dữ liệu không hợp lệ"
+    },
+    "INTERNAL_SERVER_ERROR": {
+      "title": "Lỗi máy chủ"
+    },
+    "UNHANDLED_HTTP_EXCEPTION": {
+      "title": "Lỗi HTTP không xác định"
+    },
+    "HTTP_EXCEPTION": {
+      "title": "Lỗi HTTP"
     }
   }
 }

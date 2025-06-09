@@ -57,20 +57,10 @@ export enum TypeOfVerificationCode {
 
 export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof typeof TypeOfVerificationCode]
 
-/**
- * Two-factor authentication methods.
- * This enum must be kept in sync with the Prisma schema's `TwoFactorMethodType`.
- * Prisma schema definition:
- * enum TwoFactorMethodType {
- *   EMAIL             // Two-factor authentication via email OTP
- *   SMS               // Two-factor authentication via SMS OTP
- *   AUTHENTICATOR_APP // Two-factor authentication via an authenticator app (e.g., Google Authenticator, Authy)
- * }
- */
 export enum TwoFactorMethodType {
   EMAIL = 'EMAIL',
-  SMS = 'SMS',
-  AUTHENTICATOR_APP = 'AUTHENTICATOR_APP'
+  AUTHENTICATOR_APP = 'AUTHENTICATOR_APP',
+  RECOVERY_CODE = 'RECOVERY_CODE'
 }
 
 export type TwoFactorMethodTypeType = (typeof TwoFactorMethodType)[keyof typeof TwoFactorMethodType]

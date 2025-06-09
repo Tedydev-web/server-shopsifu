@@ -13,10 +13,6 @@ export interface ILoginFinalizationPayload {
 }
 
 // Result from login finalization
-export interface ILoginFinalizationResult {
-  message: string
-  data: any // Should contain user info, tokens, etc.
-}
 
 // Injection token for the login finalizer service
 export const LOGIN_FINALIZER_SERVICE = Symbol('ILoginFinalizerService')
@@ -26,7 +22,7 @@ export interface ILoginFinalizerService {
   finalizeLoginAfterVerification(
     payload: ILoginFinalizationPayload,
     res: any // Express Response object
-  ): Promise<ILoginFinalizationResult>
+  ): Promise<any>
 }
 
 /**

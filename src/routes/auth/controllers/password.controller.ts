@@ -29,7 +29,7 @@ export class PasswordController {
   @IsPublic()
   @Post('set-new')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  // @Throttle({ default: { limit: 5, ttl: 60000 } })
   async setNewPassword(
     @Body() body: SetNewPasswordDto,
     @Ip() ip: string,

@@ -136,7 +136,7 @@ async function bootstrap() {
   }
 
   // 2. Find or create the ADMIN role
-  const adminRoleName = 'ADMIN'
+  const adminRoleName = 'Admin'
   let adminRole = await prisma.role.findUnique({
     where: { name: adminRoleName }
   })

@@ -12,7 +12,6 @@ import {
   Ip,
   Res,
   Inject,
-  Req,
   forwardRef
 } from '@nestjs/common'
 import { SessionsService } from '../services/session.service'
@@ -25,35 +24,16 @@ import {
   RevokeSessionsBodyDto,
   DeviceIdParamsDto,
   UpdateDeviceNameBodyDto,
-  RevokeAllSessionsBodyDto,
-  UpdateDeviceNameResponseDto,
-  RevokeSessionsResponseDto,
-  VerificationNeededResponseDto
+  RevokeAllSessionsBodyDto
 } from '../dtos/session.dto'
 import { I18nService } from 'nestjs-i18n'
 import { TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
-import { Response, Request } from 'express'
+import { Response } from 'express'
 import { AuthError } from '../auth.error'
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../services/auth-verification.service'
 import { SuccessMessage } from 'src/shared/decorators/success-message.decorator'
 
-/**
- * Metadata cho quá trình thu hồi phiên
- */
-interface RevokeMetadata {
-  sessionIds?: string[]
-  deviceIds?: number[]
-  revokeAllUserSessions?: boolean
-  excludeCurrentSession?: boolean
-  currentSessionIdToExclude?: string
-  currentDeviceIdToExclude?: number
-  actionType: 'SINGLE' | 'MULTIPLE' | 'ALL'
-}
-
-/**
- * Các thông tin hiện tại của người dùng
- */
 interface CurrentUserContext {
   userId: number
   sessionId: string
@@ -61,9 +41,6 @@ interface CurrentUserContext {
   email?: string
 }
 
-/**
- * Controller quản lý phiên đăng nhập và thiết bị
- */
 @Auth()
 @Controller('auth/sessions')
 export class SessionsController {
@@ -86,7 +63,6 @@ export class SessionsController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Query() query: GetSessionsQueryDto
   ): Promise<GetGroupedSessionsResponseDto> {
-    this.logger.debug(`[getSessions] Getting session list for userId ${activeUser.userId}`)
     return this.sessionsService.getSessions(activeUser.userId, query.page, query.limit, activeUser.sessionId)
   }
 
@@ -101,11 +77,9 @@ export class SessionsController {
     @UserAgent() userAgent: string,
     @Ip() ip: string,
     @Res({ passthrough: true }) res: Response
-  ): Promise<{ message: string; data: RevokeSessionsResponseDto | VerificationNeededResponseDto }> {
+  ): Promise<any> {
     const userContext = this.getUserContext(activeUser)
     const { sessionIds, deviceIds, excludeCurrentSession } = body
-
-    this.logger.debug(`[revokeSessions] User ${userContext.userId} requests revocation.`)
 
     const revocationOptions = { sessionIds, deviceIds, excludeCurrentSession }
     const requiresVerification = await this.sessionsService.checkIfActionRequiresVerification(
@@ -114,7 +88,6 @@ export class SessionsController {
     )
 
     if (requiresVerification) {
-      this.logger.debug(`[revokeSessions] Additional verification required for user ${userContext.userId}`)
       if (!userContext.email) {
         throw AuthError.InternalServerError('Active user email missing in token.')
       }
@@ -137,19 +110,15 @@ export class SessionsController {
       )
       return {
         message: verificationResult.message,
-        data: {
-          verificationType: verificationResult.verificationType
-        }
+        ...verificationResult
       }
     }
 
     const result = await this.sessionsService.revokeItems(userContext.userId, revocationOptions, userContext)
     return {
       message: result.message,
-      data: {
-        revokedSessionsCount: result.revokedSessionsCount,
-        untrustedDevicesCount: result.untrustedDevicesCount
-      }
+      revokedSessionsCount: result.revokedSessionsCount,
+      untrustedDevicesCount: result.untrustedDevicesCount
     }
   }
 
@@ -164,10 +133,8 @@ export class SessionsController {
     @UserAgent() userAgent: string,
     @Ip() ip: string,
     @Res({ passthrough: true }) res: Response
-  ): Promise<{ message: string; data: VerificationNeededResponseDto }> {
+  ): Promise<any> {
     const userContext = this.getUserContext(activeUser)
-    this.logger.debug(`[revokeAllSessions] User ${userContext.userId} requests to revoke all sessions.`)
-
     if (!userContext.email) {
       throw AuthError.InternalServerError('Active user email missing in token.')
     }
@@ -191,9 +158,7 @@ export class SessionsController {
 
     return {
       message: verificationResult.message,
-      data: {
-        verificationType: verificationResult.verificationType
-      }
+      verificationType: verificationResult.verificationType
     }
   }
 
@@ -218,17 +183,12 @@ export class SessionsController {
     @ActiveUser() activeUser: AccessTokenPayload,
     @Param() params: DeviceIdParamsDto,
     @Body() body: UpdateDeviceNameBodyDto
-  ): Promise<{ message: string; data: UpdateDeviceNameResponseDto }> {
-    this.logger.debug(
-      `[updateDeviceName] User ${activeUser.userId} updating device name ${params.deviceId} to "${body.name}"`
-    )
+  ): Promise<{ message: string; deviceId: number; name: string }> {
     await this.sessionsService.updateDeviceName(activeUser.userId, params.deviceId, body.name)
     return {
       message: 'auth.Auth.Device.NameUpdated',
-      data: {
-        deviceId: params.deviceId,
-        name: body.name
-      }
+      deviceId: params.deviceId,
+      name: body.name
     }
   }
 
@@ -253,14 +213,12 @@ export class SessionsController {
   async untrustDevice(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Param() params: DeviceIdParamsDto
-  ): Promise<{ message: string; data: { deviceId: number } }> {
+  ): Promise<{ message: string; deviceId: number }> {
     this.logger.debug(`[untrustDevice] User ${activeUser.userId} untrusting device ${params.deviceId}`)
     await this.sessionsService.untrustDevice(activeUser.userId, params.deviceId)
     return {
       message: 'auth.Auth.Device.Untrusted',
-      data: {
-        deviceId: params.deviceId
-      }
+      deviceId: params.deviceId
     }
   }
 }

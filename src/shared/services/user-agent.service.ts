@@ -9,49 +9,63 @@ export interface ParsedUserAgent {
   deviceType?: string
   deviceVendor?: string
   deviceModel?: string
+  deviceName: string
   app: string
   raw: string
 }
 
 @Injectable()
 export class UserAgentService {
-  private readonly defaultResult: Omit<ParsedUserAgent, 'app' | 'raw'> = {
+  private readonly defaultResult: Omit<ParsedUserAgent, 'app' | 'raw' | 'deviceName'> = {
     browser: 'Unknown',
-    browserVersion: '',
+    browserVersion: 'Unknown',
     os: 'Unknown',
-    osVersion: '',
+    osVersion: 'Unknown',
     deviceType: 'Unknown',
     deviceVendor: 'Unknown',
     deviceModel: 'Unknown'
   }
 
   parse(userAgentString?: string, appIdentifier?: string): ParsedUserAgent {
-    const raw = userAgentString || 'No-User-Agent'
-    if (!userAgentString) {
-      return { ...this.defaultResult, app: appIdentifier || 'Unknown', raw }
+    if (!userAgentString || typeof userAgentString !== 'string') {
+      return {
+        ...this.defaultResult,
+        deviceName: 'Unknown Device',
+        app: this.determineApp('', appIdentifier),
+        raw: ''
+      }
     }
 
     const parser = new UAParser(userAgentString)
     const result = parser.getResult()
 
-    let deviceType = result.device.type
-    if (!deviceType) {
-      // Fallback for desktop devices that don't have a type
-      if (['Windows', 'Mac OS', 'Linux'].includes(result.os.name || '')) {
-        deviceType = 'mobile' // Default to mobile for desktop OS
-      } else {
-        deviceType = 'tablet' // Default to tablet for unknown OS
-      }
+    const deviceType = result.device.type ?? 'desktop'
+    let deviceName: string
+
+    if (result.device.vendor && result.device.model) {
+      deviceName = `${result.device.vendor} ${result.device.model}`
+    } else if (result.os.name) {
+      deviceName = `${result.browser.name ?? 'Unknown Browser'} on ${result.os.name}`
+    } else {
+      deviceName = result.browser.name ? `${result.browser.name} on Unknown OS` : 'Unknown Device'
+    }
+
+    // Refine names for better user experience
+    if (result.os.name === 'Mac OS') {
+      deviceName = 'Mac'
+    } else if (result.os.name === 'iOS') {
+      deviceName = deviceType === 'mobile' ? 'iPhone' : 'iPad'
     }
 
     return {
-      browser: result.browser.name,
-      browserVersion: result.browser.version,
-      os: result.os.name,
-      osVersion: result.os.version,
-      deviceType: deviceType.charAt(0).toUpperCase() + deviceType.slice(1), // Capitalize
-      deviceVendor: result.device.vendor,
-      deviceModel: result.device.model,
+      browser: result.browser.name ?? 'Unknown',
+      browserVersion: result.browser.version ?? 'Unknown',
+      os: result.os.name ?? 'Unknown',
+      osVersion: result.os.version ?? 'Unknown',
+      deviceType: result.device.type ?? 'Desktop',
+      deviceVendor: result.device.vendor ?? 'Unknown',
+      deviceModel: result.device.model ?? 'Unknown',
+      deviceName: deviceName.replace('undefined on ', ''),
       app: this.determineApp(userAgentString, appIdentifier),
       raw: userAgentString
     }
@@ -59,8 +73,14 @@ export class UserAgentService {
 
   private determineApp(userAgent: string, appIdentifier?: string): string {
     if (appIdentifier) return appIdentifier
-    // This is a placeholder for your own app identification logic
-    if (userAgent.includes('Shopsifu-MobileApp')) return 'MobileApp'
+
+    const ua = userAgent.toLowerCase()
+    if (ua.includes('shopsifu-mobile-app')) {
+      return 'MobileApp'
+    }
+    if (ua.includes('shopsifu-desktop-app')) {
+      return 'DesktopApp'
+    }
     return 'WebApp'
   }
 }

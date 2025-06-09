@@ -5,7 +5,7 @@ import { TWO_FACTOR_SERVICE } from 'src/shared/constants/injection.tokens'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { AccessTokenPayload } from 'src/shared/types/auth.types'
-import { TwoFactorVerifyDto, TwoFactorSetupDataDto, VerificationNeededResponseDto } from '../dtos/two-factor.dto'
+import { TwoFactorVerifyDto } from '../dtos/two-factor.dto'
 import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
 import { AuthError } from '../auth.error'
 import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
@@ -55,7 +55,8 @@ export class TwoFactorController {
 
     return {
       message: verificationResult.message,
-      data: { secret, qrCode }
+      secret,
+      qrCode
     }
   }
 

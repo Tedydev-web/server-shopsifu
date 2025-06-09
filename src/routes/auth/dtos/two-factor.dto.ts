@@ -1,19 +1,23 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
 import { VerificationNeededResponseSchema } from './auth-verification.dto'
-
-// ===================================================================================
-// Schemas for Request Bodies
-// ===================================================================================
+import { TwoFactorMethodType } from '../auth.constants'
 
 export const TwoFactorVerifySchema = z.object({
   code: z.string().min(6, 'Mã xác thực phải có ít nhất 6 ký tự.').max(20, 'Mã xác thực không được vượt quá 20 ký tự.'),
-  method: z.enum(['TOTP', 'RECOVERY']).optional()
+  method: z
+    .preprocess((val) => {
+      const upperVal = typeof val === 'string' ? val.toUpperCase() : val
+      if (upperVal === 'TOTP') {
+        return TwoFactorMethodType.AUTHENTICATOR_APP
+      }
+      if (upperVal === 'RECOVERY') {
+        return TwoFactorMethodType.RECOVERY_CODE
+      }
+      return val
+    }, z.nativeEnum(TwoFactorMethodType))
+    .optional()
 })
-
-// ===================================================================================
-// Schemas for Response Data (to be wrapped by TransformInterceptor)
-// ===================================================================================
 
 /**
  * Dữ liệu trả về khi bắt đầu thiết lập 2FA.
@@ -29,10 +33,6 @@ export const TwoFactorSetupDataSchema = z.object({
 export const TwoFactorRecoveryCodesDataSchema = z.object({
   recoveryCodes: z.array(z.string())
 })
-
-// ===================================================================================
-// DTO Classes
-// ===================================================================================
 
 // --- Request DTOs ---
 export class TwoFactorVerifyDto extends createZodDto(TwoFactorVerifySchema) {}

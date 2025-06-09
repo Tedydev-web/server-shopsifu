@@ -16,7 +16,6 @@ enum UserStatus {
 
 enum TwoFactorMethodType {
   EMAIL
-  SMS 
   AUTHENTICATOR_APP
 }
 

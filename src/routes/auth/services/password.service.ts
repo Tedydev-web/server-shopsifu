@@ -12,7 +12,8 @@ import {
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
   USER_AGENT_SERVICE,
-  SESSIONS_SERVICE
+  SESSIONS_SERVICE,
+  COOKIE_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import { HashingService } from '../../../shared/services/hashing.service'
 import { SessionsService } from './session.service'
@@ -20,6 +21,7 @@ import { EmailService } from '../../../shared/services/email.service'
 import { I18nService } from 'nestjs-i18n'
 import { GeolocationService } from '../../../shared/services/geolocation.service'
 import { UserAgentService } from '../../../shared/services/user-agent.service'
+import { ICookieService, ISessionService, ISLTService } from 'src/shared/types/auth.types'
 
 @Injectable()
 export class PasswordService {
@@ -29,13 +31,14 @@ export class PasswordService {
     private readonly userAuthRepository: UserAuthRepository,
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService,
-    @Inject(SLT_SERVICE) private readonly sltService: SLTService,
+    @Inject(SLT_SERVICE) private readonly sltService: ISLTService,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
-    @Inject(SESSIONS_SERVICE) private readonly sessionsService: SessionsService,
+    @Inject(SESSIONS_SERVICE) private readonly sessionsService: ISessionService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     private readonly i18nService: I18nService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
-    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
+    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService
   ) {}
 
   async initiatePasswordReset(email: string, ipAddress: string, userAgent: string, res: Response) {
@@ -78,9 +81,7 @@ export class PasswordService {
     )
 
     if (sltContext.metadata?.otpVerified !== 'true') {
-      throw AuthError.VerificationFailed({
-        message: 'OTP for password reset has not been verified.'
-      })
+      throw AuthError.OtpForPasswordResetNotVerified()
     }
 
     const { userId } = sltContext
@@ -117,10 +118,11 @@ export class PasswordService {
       details
     })
 
-    this.sltService.finalizeSlt(sltContext.sltJti)
-    // No need to clear cookie here, `finalizeSlt` handles the context.
-    // The response will not include a Set-Cookie header to clear it, which is fine.
+    await this.sltService.finalizeSlt(sltContext.sltJti)
+    this.cookieService.clearSltCookie(res)
 
-    return { message: this.i18nService.t('auth.Auth.Password.ResetSuccess') }
+    return {
+      message: this.i18nService.t('auth.Auth.Password.ResetSuccess')
+    }
   }
 }

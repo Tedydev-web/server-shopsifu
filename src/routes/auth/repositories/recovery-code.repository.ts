@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { RecoveryCode, Prisma } from '@prisma/client'
-import { PrismaTransactionClient } from 'src/shared/repositories/base.repository'
+import { Prisma, RecoveryCode } from '@prisma/client'
+import { PrismaTransactionClient } from 'src/shared/types/prisma.type'
 
 @Injectable()
 export class RecoveryCodeRepository {

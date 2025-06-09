@@ -22,7 +22,7 @@ import { GeoLocationResult } from 'src/shared/services/geolocation.service'
 import { UserAgentService } from '../../../shared/services/user-agent.service'
 
 // Infer the type for a single device session group from the Zod schema
-type DeviceSessionGroup = z.infer<typeof GetGroupedSessionsResponseSchema.shape.data.element>
+type DeviceSessionGroup = z.infer<typeof GetGroupedSessionsResponseSchema.shape.devices.element>
 
 @Injectable()
 export class SessionsService implements ISessionService {
@@ -92,6 +92,9 @@ export class SessionsService implements ISessionService {
             browser: sessionInfo.browser,
             browserVersion: sessionInfo.browserVersion,
             app: sessionInfo.app,
+            os: sessionInfo.os,
+            osVersion: sessionInfo.osVersion,
+            deviceType: sessionInfo.deviceType,
             isActive: session.isActive,
             inactiveDuration,
             isCurrentSession
@@ -101,7 +104,7 @@ export class SessionsService implements ISessionService {
 
       deviceGroups.push({
         deviceId: device.id,
-        deviceName: device.name,
+        deviceName: deviceInfo.deviceName,
         deviceType: deviceInfo.deviceType,
         os: deviceInfo.os,
         osVersion: deviceInfo.osVersion,
@@ -125,7 +128,7 @@ export class SessionsService implements ISessionService {
     const paginatedDeviceGroups = deviceGroups.slice(startIndex, startIndex + itemsPerPage)
 
     return {
-      data: paginatedDeviceGroups,
+      devices: paginatedDeviceGroups,
       meta: { currentPage, itemsPerPage, totalItems, totalPages }
     }
   }

@@ -1,10 +1,5 @@
 import { HttpStatus } from '@nestjs/common'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-
-/**
- * Một factory class để tạo các `ApiException` cụ thể cho module xác thực.
- * Giúp mã nguồn sạch sẽ và nhất quán hơn.
- */
 export class AuthError {
   // Lỗi liên quan đến User/Email/Password
   static EmailNotFound(): ApiException {
@@ -24,13 +19,24 @@ export class AuthError {
   }
 
   static UsernameAlreadyExists(username: string): ApiException {
-    return new ApiException(HttpStatus.CONFLICT, 'USERNAME_ALREADY_EXISTS', 'auth.Auth.Error.Username.AlreadyExists', {
-      username
-    })
+    return new ApiException(HttpStatus.CONFLICT, 'USERNAME_ALREADY_EXISTS', 'auth.Auth.Error.Username.AlreadyExists', [
+      {
+        field: 'username',
+        message: 'errors.details.auth.usernameAlreadyExists', // Cần tạo i18n key này
+        value: username,
+        args: { username }
+      }
+    ])
   }
 
   static InvalidPassword(): ApiException {
-    return new ApiException(HttpStatus.UNAUTHORIZED, 'INVALID_PASSWORD', 'auth.Auth.Error.Password.Invalid')
+    return new ApiException(HttpStatus.CONFLICT, 'INVALID_PASSWORD', 'auth.Auth.Error.Password.Invalid', [
+      {
+        field: 'password',
+        message: 'errors.details.auth.invalidPassword',
+        value: 'password'
+      }
+    ])
   }
 
   static AccountLocked(): ApiException {
@@ -82,7 +88,7 @@ export class AuthError {
     return new ApiException(
       HttpStatus.UNAUTHORIZED,
       'REFRESH_TOKEN_ALREADY_USED',
-      'auth.Auth.Error.Token.RefreshTokenAlreadyUsed'
+      'auth.Auth.Error.Token.RefreshTokenUsed'
     )
   }
 
@@ -96,28 +102,32 @@ export class AuthError {
   }
 
   static TooManyOTPAttempts(): ApiException {
-    return new ApiException(
-      HttpStatus.TOO_MANY_REQUESTS,
-      'TOO_MANY_OTP_ATTEMPTS',
-      'auth.Auth.Error.Otp.TooManyAttempts'
-    )
+    return new ApiException(HttpStatus.TOO_MANY_REQUESTS, 'TOO_MANY_OTP_ATTEMPTS', 'auth.Auth.Error.Otp.MaxAttempts')
   }
 
   static OTPSendingFailed(): ApiException {
-    return new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'OTP_SENDING_FAILED', 'auth.Auth.Error.Otp.FailedToSend')
+    return new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'OTP_SENDING_FAILED', 'auth.Auth.Error.Otp.SendingFailed')
+  }
+
+  static OtpForPasswordResetNotVerified(): ApiException {
+    return new ApiException(
+      HttpStatus.BAD_REQUEST,
+      'OTP_PASSWORD_RESET_NOT_VERIFIED',
+      'auth.Auth.Error.Otp.PasswordResetNotVerified'
+    )
   }
 
   // Lỗi liên quan đến SLT (Short-Lived Token)
   static SLTCookieMissing(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'SLT_COOKIE_MISSING', 'auth.Auth.Error.SltCookieMissing')
+    return new ApiException(HttpStatus.UNAUTHORIZED, 'SLT_COOKIE_MISSING', 'auth.Auth.Error.SLT.CookieMissing')
   }
 
   static SLTExpired(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'SLT_EXPIRED', 'auth.Auth.Error.SLT.Expired')
+    return new ApiException(HttpStatus.UNAUTHORIZED, 'SLT_EXPIRED', 'auth.Auth.Error.SLT.Expired')
   }
 
   static InvalidSLT(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_SLT', 'auth.Auth.Error.Token.Invalid')
+    return new ApiException(HttpStatus.UNAUTHORIZED, 'INVALID_SLT', 'auth.Auth.Error.SLT.Invalid')
   }
 
   static SLTInvalidPurpose(): ApiException {
@@ -126,7 +136,7 @@ export class AuthError {
 
   static EmailMissingInSltContext(): ApiException {
     return new ApiException(
-      HttpStatus.INTERNAL_SERVER_ERROR,
+      HttpStatus.BAD_REQUEST,
       'EMAIL_MISSING_IN_SLT_CONTEXT',
       'auth.Auth.Error.SLT.EmailMissingInContext'
     )
@@ -136,7 +146,7 @@ export class AuthError {
     return new ApiException(
       HttpStatus.TOO_MANY_REQUESTS,
       'SLT_MAX_ATTEMPTS_EXCEEDED',
-      'auth.Auth.Error.SLT.TooManyAttempts'
+      'auth.Auth.Error.SLT.MaxAttemptsExceeded'
     )
   }
 
@@ -146,34 +156,34 @@ export class AuthError {
 
   // Lỗi 2FA
   static TOTPAlreadyEnabled(): ApiException {
-    return new ApiException(HttpStatus.CONFLICT, '2FA_ALREADY_ENABLED', 'auth.Auth.Error.2FA.AlreadyEnabled')
+    return new ApiException(HttpStatus.CONFLICT, 'TOTP_ALREADY_ENABLED', 'auth.Auth.Error.2FA.AlreadyEnabled')
   }
 
   static TOTPNotEnabled(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, '2FA_NOT_ENABLED', 'auth.Auth.Error.2FA.NotEnabled')
+    return new ApiException(HttpStatus.BAD_REQUEST, 'TOTP_NOT_ENABLED', 'auth.Auth.Error.2FA.NotEnabled')
   }
 
   static InvalidTOTP(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_2FA_CODE', 'auth.Auth.Error.2FA.InvalidTOTP')
+    return new ApiException(HttpStatus.UNAUTHORIZED, 'INVALID_TOTP', 'auth.Auth.Error.2FA.InvalidCode')
   }
 
   static InvalidRecoveryCode(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_RECOVERY_CODE', 'auth.Auth.Error.2FA.InvalidRecoveryCode')
+    return new ApiException(HttpStatus.UNAUTHORIZED, 'INVALID_RECOVERY_CODE', 'auth.Auth.Error.2FA.InvalidRecoveryCode')
   }
 
   static TwoFactorConfigurationError(): ApiException {
     return new ApiException(
       HttpStatus.INTERNAL_SERVER_ERROR,
       'TWO_FACTOR_CONFIGURATION_ERROR',
-      'auth.Auth.Error.TwoFactor.ConfigurationError'
+      'auth.Auth.Error.2FA.ConfigurationError'
     )
   }
 
   static TwoFactorSetupMissingSecret(): ApiException {
     return new ApiException(
-      HttpStatus.INTERNAL_SERVER_ERROR,
+      HttpStatus.BAD_REQUEST,
       'TWO_FACTOR_SETUP_MISSING_SECRET',
-      'auth.Auth.Error.TwoFactor.SetupMissingSecret'
+      'auth.Auth.Error.2FA.SetupMissingSecret'
     )
   }
 
@@ -181,13 +191,13 @@ export class AuthError {
     return new ApiException(
       HttpStatus.BAD_REQUEST,
       'INVALID_VERIFICATION_METHOD',
-      'auth.Auth.Error.2FA.InvalidVerificationMethod'
+      'auth.Auth.Error.Verification.InvalidMethod'
     )
   }
 
   // Lỗi Session
   static SessionRevoked(): ApiException {
-    return new ApiException(HttpStatus.UNAUTHORIZED, 'SESSION_REVOKED', 'auth.Auth.Error.Session.RevokedRemotely')
+    return new ApiException(HttpStatus.UNAUTHORIZED, 'SESSION_REVOKED', 'auth.Auth.Error.Session.Revoked')
   }
 
   static SessionNotFound(): ApiException {
@@ -206,23 +216,29 @@ export class AuthError {
     return new ApiException(
       HttpStatus.INTERNAL_SERVER_ERROR,
       'MISSING_SESSION_ID_IN_TOKEN',
-      'auth.Auth.Error.Session.MissingSessionIdInToken'
+      'auth.Auth.Error.Token.MissingSessionId'
     )
   }
 
   // Lỗi Device
   static DeviceNotFound(): ApiException {
-    return new ApiException(HttpStatus.NOT_FOUND, 'DEVICE_NOT_FOUND', 'auth.Auth.Device.NotFound')
+    return new ApiException(HttpStatus.NOT_FOUND, 'DEVICE_NOT_FOUND', 'auth.Auth.Error.Device.NotFound')
   }
 
   static DeviceNotOwnedByUser(): ApiException {
-    return new ApiException(HttpStatus.FORBIDDEN, 'DEVICE_NOT_OWNED_BY_USER', 'auth.Auth.Device.NotOwnedByUser')
+    return new ApiException(
+      HttpStatus.FORBIDDEN,
+      'DEVICE_NOT_OWNED_BY_USER',
+      'errors.titles.auth.deviceNotOwnedByUser',
+      'auth.Auth.Device.NotOwnedByUser'
+    )
   }
 
   static DeviceProcessingFailed(): ApiException {
     return new ApiException(
       HttpStatus.INTERNAL_SERVER_ERROR,
       'DEVICE_PROCESSING_FAILED',
+      'errors.titles.auth.deviceProcessingFailed',
       'auth.Auth.Device.ProcessingFailed'
     )
   }
@@ -231,6 +247,7 @@ export class AuthError {
     return new ApiException(
       HttpStatus.INTERNAL_SERVER_ERROR,
       'MISSING_DEVICE_INFORMATION',
+      'errors.titles.auth.missingDeviceInformation',
       'auth.Auth.Device.MissingInformation'
     )
   }
@@ -262,9 +279,12 @@ export class AuthError {
       HttpStatus.BAD_REQUEST,
       'GOOGLE_CALLBACK_ERROR',
       'auth.Auth.Error.Google.CallbackErrorGeneric',
-      {
-        details
-      }
+      [
+        {
+          message: 'errors.details.auth.googleCallbackError', // Cần tạo i18n key này
+          args: { details }
+        }
+      ]
     )
   }
 
@@ -325,7 +345,8 @@ export class AuthError {
     return new ApiException(HttpStatus.UNAUTHORIZED, 'UNAUTHORIZED', message ?? 'global.error.http.unauthorized')
   }
 
-  static VerificationFailed(details?: any): ApiException {
+  static VerificationFailed(details?: any[]): ApiException {
+    // Chú ý: signature đã thay đổi
     return new ApiException(
       HttpStatus.BAD_REQUEST,
       'VERIFICATION_FAILED',

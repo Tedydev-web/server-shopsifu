@@ -46,7 +46,6 @@ export interface VerificationContext {
 }
 
 export interface VerificationResult {
-  success: boolean
   message: string
   sltToken?: string
   verificationType?: 'OTP' | '2FA'
@@ -56,8 +55,7 @@ export interface VerificationResult {
     accessToken: string
     refreshToken: string
   }
-  user?: any
-  data?: Record<string, any>
+  user?: Record<string, any>
 }
 
 type PostVerificationHandler = (
@@ -77,7 +75,8 @@ export class AuthVerificationService {
     TypeOfVerificationCode.REVOKE_ALL_SESSIONS,
     TypeOfVerificationCode.UNLINK_GOOGLE_ACCOUNT,
     TypeOfVerificationCode.REGENERATE_2FA_CODES,
-    TypeOfVerificationCode.RESET_PASSWORD
+    TypeOfVerificationCode.RESET_PASSWORD,
+    TypeOfVerificationCode.CHANGE_PASSWORD
   ]
 
   private readonly VERIFICATION_ACTION_HANDLERS: Partial<Record<TypeOfVerificationCodeType, PostVerificationHandler>>
@@ -141,7 +140,6 @@ export class AuthVerificationService {
       // Phía controller sẽ trả về phản hồi thực tế với mã QR.
       // Phản hồi này chỉ để xác nhận việc tạo SLT.
       return {
-        success: true,
         message: 'SLT for 2FA setup created successfully.'
       }
     }
@@ -157,7 +155,6 @@ export class AuthVerificationService {
 
     this.logger.warn(`[initiateVerification] No defined action for purpose: ${purpose}.`)
     return {
-      success: true,
       message: this.i18nService.t('global.success.general.default')
     }
   }
@@ -196,7 +193,6 @@ export class AuthVerificationService {
 
     this.logger.warn(`[handleLoginOrSensitiveAction] No defined action for purpose: ${purpose}.`)
     return {
-      success: true,
       message: this.i18nService.t('global.success.general.default')
     }
   }
@@ -214,9 +210,8 @@ export class AuthVerificationService {
       const sltToken = await this.sltService.createAndStoreSltToken({ ...context })
       this.cookieService.setSltCookie(res, sltToken, purpose)
       return {
-        success: false,
         message: this.i18nService.t('auth.Auth.Login.2FARequired'),
-        data: { verificationType: '2FA' }
+        verificationType: '2FA'
       }
     }
 
@@ -246,9 +241,8 @@ export class AuthVerificationService {
     if (sltContext.metadata?.twoFactorMethod) {
       this.logger.debug('[reInitiateVerification] Context is 2FA. No email will be sent.')
       return {
-        success: false,
         message: this.i18nService.t('auth.Auth.Login.2FARequired'),
-        data: { verificationType: '2FA' }
+        verificationType: '2FA'
       }
     }
 
@@ -261,9 +255,8 @@ export class AuthVerificationService {
     this.cookieService.setSltCookie(res, newSltToken, sltContext.purpose)
 
     return {
-      success: false,
       message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully'),
-      data: { verificationType: 'OTP' }
+      verificationType: 'OTP'
     }
   }
 
@@ -373,7 +366,8 @@ export class AuthVerificationService {
           code,
           sltContext.userId,
           sltContext.metadata?.twoFactorSecret,
-          methodFor2FASetup
+          methodFor2FASetup,
+          sltContext.purpose
         )
         return
       }
@@ -392,7 +386,8 @@ export class AuthVerificationService {
           code,
           user.id,
           sltContext.metadata?.secret,
-          sltContext.metadata?.twoFactorMethod
+          sltContext.metadata?.twoFactorMethod as TwoFactorMethodType,
+          sltContext.purpose
         )
       } else {
         await this._verifyWithOtp(code, sltContext)
@@ -420,13 +415,23 @@ export class AuthVerificationService {
     code: string,
     userId: number,
     totpSecret: string | undefined, // Secret from SLT metadata
-    method?: TwoFactorMethodType // Method from SLT metadata
+    method?: TwoFactorMethodType, // Method from SLT metadata
+    purpose?: TypeOfVerificationCodeType
   ): Promise<void> {
     if (!method) {
       this.logger.error(
         `AuthVerificationService:_verifyWithTwoFactor - TwoFactorMethodType not provided for user ${userId}. SLT context might be missing 'twoFactorMethod'.`
       )
-      throw AuthError.TwoFactorConfigurationError()
+      method = TwoFactorMethodType.AUTHENTICATOR_APP
+    }
+
+    // Temporary backward compatibility for old clients sending 'TOTP'
+    let effectiveMethod = method
+    if (method === ('TOTP' as any)) {
+      this.logger.warn(
+        `[Deprecation] Received legacy 'TOTP' method for userId ${userId}. Please update client to send 'AUTHENTICATOR_APP'.`
+      )
+      effectiveMethod = TwoFactorMethodType.AUTHENTICATOR_APP
     }
 
     const verificationContext: {
@@ -435,40 +440,41 @@ export class AuthVerificationService {
       secret?: string
     } = {
       userId,
-      method
+      method: effectiveMethod
     }
 
     this.logger.debug(
-      `AuthVerificationService:_verifyWithTwoFactor - Initial context for userId ${userId}: method=${method}, sltSecretProvided=${!!totpSecret}`
+      `AuthVerificationService:_verifyWithTwoFactor - Initial context for userId ${userId}: method=${effectiveMethod}, sltSecretProvided=${!!totpSecret}`
     )
 
     // If a totpSecret is provided via SLT (e.g., during 2FA setup) and the method is AUTHENTICATOR_APP, use it.
-    if (totpSecret && method === TwoFactorMethodType.AUTHENTICATOR_APP) {
+    if (totpSecret && effectiveMethod === TwoFactorMethodType.AUTHENTICATOR_APP) {
       verificationContext.secret = totpSecret
       this.logger.debug(
-        `AuthVerificationService:_verifyWithTwoFactor - Using SLT secret for userId ${userId} with method ${method}.`
+        `AuthVerificationService:_verifyWithTwoFactor - Using SLT secret for userId ${userId} with method ${effectiveMethod}.`
       )
-    } else if (method === TwoFactorMethodType.AUTHENTICATOR_APP && !totpSecret) {
+    } else if (
+      purpose === TypeOfVerificationCode.SETUP_2FA &&
+      effectiveMethod === TwoFactorMethodType.AUTHENTICATOR_APP &&
+      !totpSecret
+    ) {
       // Method is AUTHENTICATOR_APP, but no secret was passed from SLT.
       // This is an error for flows like setup that expect a secret from SLT.
       this.logger.error(
-        `AuthVerificationService:_verifyWithTwoFactor - TOTP/Authenticator secret expected from SLT for method ${method} but not provided for user ${userId}.`
+        `AuthVerificationService:_verifyWithTwoFactor - TOTP/Authenticator secret expected from SLT for method ${effectiveMethod} but not provided for user ${userId}.`
       )
       throw AuthError.TwoFactorSetupMissingSecret()
     }
-    // If the method is not AUTHENTICATOR_APP (e.g. EMAIL, SMS), or if totpSecret was not applicable/provided for AUTHENTICATOR_APP,
-    // verificationContext.secret remains undefined. TwoFactorService.verifyCode will handle these cases
-    // (e.g., fetching the user's stored secret for login, or handling non-TOTP methods if implemented there).
 
     this.logger.debug(
-      `AuthVerificationService:_verifyWithTwoFactor - Calling twoFactorService.verifyCode for userId: ${userId}, method: ${method}, contextSecretIsSet: ${!!verificationContext.secret}`
+      `AuthVerificationService:_verifyWithTwoFactor - Calling twoFactorService.verifyCode for userId: ${userId}, method: ${effectiveMethod}, contextSecretIsSet: ${!!verificationContext.secret}`
     )
 
     try {
       await this.twoFactorService.verifyCode(code, verificationContext)
     } catch (error) {
       this.logger.error(
-        `AuthVerificationService:_verifyWithTwoFactor - Error from twoFactorService.verifyCode for userId ${userId}, method ${method}: ${error.message}`,
+        `AuthVerificationService:_verifyWithTwoFactor - Error from twoFactorService.verifyCode for userId ${userId}, method ${effectiveMethod}: ${error.message}`,
         error.stack // Include stack for better debugging
       )
       throw error // Re-throw the original error to be handled by the global exception filter
@@ -484,7 +490,10 @@ export class AuthVerificationService {
     const { purpose } = sltContext
     this.logger.debug(`[handlePostActions] Executing action for purpose: ${purpose}`)
 
-    if (purpose !== TypeOfVerificationCode.REGISTER) {
+    if (
+      sltContext.purpose !== TypeOfVerificationCode.REGISTER &&
+      sltContext.purpose !== TypeOfVerificationCode.RESET_PASSWORD
+    ) {
       await this.sltService.finalizeSlt(sltContext.sltJti)
     }
 
@@ -495,7 +504,6 @@ export class AuthVerificationService {
 
     this.logger.warn(`[handlePostActions] Unhandled purpose: ${purpose}.`)
     return {
-      success: true,
       message: this.i18nService.t('global.success.general.default')
     }
   }
@@ -527,9 +535,8 @@ export class AuthVerificationService {
     }
 
     return {
-      success: true,
-      message: loginResult.message,
-      data: loginResult.data
+      ...loginResult,
+      message: loginResult.message
     }
   }
 
@@ -554,7 +561,6 @@ export class AuthVerificationService {
     })
 
     return {
-      success: true,
       message: revokeResult.message || this.i18nService.t('auth.Auth.Session.RevokedSuccessfully')
     }
   }
@@ -578,7 +584,6 @@ export class AuthVerificationService {
     })
 
     return {
-      success: true,
       message: revokeResult.message || this.i18nService.t('auth.Auth.Session.AllRevoked')
     }
   }
@@ -586,7 +591,6 @@ export class AuthVerificationService {
   private async handleUnlinkGoogleAccountVerification(context: SltContextData): Promise<VerificationResult> {
     const result = await this.socialService.unlinkGoogleAccount(context.userId)
     return {
-      success: result.success,
       message: result.message
     }
   }
@@ -594,7 +598,6 @@ export class AuthVerificationService {
   private async handleDisable2FAVerification(context: SltContextData): Promise<VerificationResult> {
     await this.twoFactorService.disableVerification(context.userId)
     return {
-      success: true,
       message: this.i18nService.t('auth.Auth.2FA.Disable.Success')
     }
   }
@@ -605,9 +608,8 @@ export class AuthVerificationService {
     if (!secret) throw AuthError.InternalServerError('Missing 2FA secret for setup.')
     const result = await this.twoFactorService.confirmTwoFactorSetup(userId, code, secret, ipAddress, userAgent)
     return {
-      success: true,
       message: result.message,
-      data: { recoveryCodes: result.recoveryCodes }
+      ...result
     }
   }
 
@@ -618,7 +620,6 @@ export class AuthVerificationService {
       metadata: { ...context.metadata, otpVerified: 'true' }
     })
     return {
-      success: true,
       message: this.i18nService.t('auth.Auth.Otp.Verified')
     }
   }
@@ -627,9 +628,8 @@ export class AuthVerificationService {
     const { userId, ipAddress, userAgent } = context
     const recoveryCodes = await this.twoFactorService.regenerateRecoveryCodes(userId, ipAddress, userAgent)
     return {
-      success: true,
       message: this.i18nService.t('auth.Auth.Error.2FA.RecoveryCodesRegenerated'),
-      data: { recoveryCodes }
+      ...recoveryCodes
     }
   }
 
@@ -640,7 +640,6 @@ export class AuthVerificationService {
       metadata: { ...context.metadata, otpVerified: 'true' }
     })
     return {
-      success: true,
       message: this.i18nService.t('auth.Auth.Otp.Verified')
     }
   }
@@ -683,7 +682,6 @@ export class AuthVerificationService {
     })
 
     return {
-      success: true,
       message: this.i18nService.t('auth.Auth.Password.ChangeSuccess')
     }
   }
@@ -697,9 +695,8 @@ export class AuthVerificationService {
     await this.otpService.sendOTP(email, purpose, { ...metadata, ipAddress, userAgent })
 
     return {
-      success: false,
       message: this.i18nService.t('auth.Auth.Otp.SentSuccessfully'),
-      data: { verificationType: 'OTP' }
+      verificationType: 'OTP'
     }
   }
 }

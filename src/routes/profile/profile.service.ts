@@ -8,11 +8,9 @@ import {
   GEOLOCATION_SERVICE,
   HASHING_SERVICE,
   SESSIONS_SERVICE,
-  TWO_FACTOR_SERVICE,
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import { HashingService } from '../../shared/services/hashing.service'
-import { TwoFactorService } from '../auth/services/two-factor.service'
 import { SessionsService } from '../auth/services/session.service'
 import { EmailService } from '../../shared/services/email.service'
 import { AccessTokenPayload } from '../../shared/types/auth.types'
@@ -22,7 +20,7 @@ import { I18nService } from 'nestjs-i18n'
 import { AuthVerificationService } from '../auth/services/auth-verification.service'
 import { Response } from 'express'
 import { TypeOfVerificationCode } from '../auth/auth.constants'
-import { UserProfile, User, Role } from '@prisma/client'
+import { UserProfile, User } from '@prisma/client'
 
 @Injectable()
 export class ProfileService {
@@ -101,41 +99,23 @@ export class ProfileService {
 
     const hashedPassword = await this.hashingService.hash(newPassword)
 
-    if (user.twoFactorEnabled) {
-      this.logger.debug(`[changePassword] User ${userId} has 2FA enabled. Initiating verification flow.`)
-      return this.authVerificationService.initiateVerification(
-        {
-          userId,
-          deviceId,
-          email: user.email,
-          ipAddress,
-          userAgent,
-          purpose: TypeOfVerificationCode.CHANGE_PASSWORD,
-          metadata: {
-            hashedNewPassword: hashedPassword,
-            revokeOtherSessions,
-            sessionIdToExclude: sessionId
-          }
-        },
-        res
-      )
-    }
-
-    // If 2FA is not enabled, change password directly.
-    await this.userAuthRepository.updatePassword(userId, hashedPassword)
-    this.logger.log(`[changePassword] Password changed successfully for user ${userId}.`)
-
-    if (revokeOtherSessions) {
-      await this.sessionsService.invalidateAllUserSessions(userId, 'password_change', sessionId)
-      this.logger.log(`[changePassword] Revoked all other sessions for user ${userId}.`)
-    }
-
-    await this.sendPasswordChangeEmail(user, ipAddress, userAgent)
-
-    return {
-      success: true,
-      message: this.i18nService.t('auth.Auth.Password.ChangeSuccess')
-    }
+    this.logger.debug(`[changePassword] Current password is valid. Initiating verification flow for user ${userId}.`)
+    return this.authVerificationService.initiateVerification(
+      {
+        userId,
+        deviceId,
+        email: user.email,
+        ipAddress,
+        userAgent,
+        purpose: TypeOfVerificationCode.CHANGE_PASSWORD,
+        metadata: {
+          hashedNewPassword: hashedPassword,
+          revokeOtherSessions,
+          sessionIdToExclude: sessionId
+        }
+      },
+      res
+    )
   }
 
   private async sendPasswordChangeEmail(
