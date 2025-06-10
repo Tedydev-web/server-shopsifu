@@ -1,17 +1,33 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Req, Res, Ip, Inject, forwardRef, Logger } from '@nestjs/common'
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Req,
+  Res,
+  Ip,
+  Inject,
+  forwardRef,
+  Logger,
+  UseGuards
+} from '@nestjs/common'
 import { Request, Response } from 'express'
 import { TwoFactorService } from '../services/two-factor.service'
 import { TWO_FACTOR_SERVICE } from 'src/shared/constants/injection.tokens'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from 'src/shared/types/auth.types'
+import { AccessTokenPayload } from 'src/routes/auth/auth.types'
 import { TwoFactorVerifyDto } from '../dtos/two-factor.dto'
 import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
 import { AuthError } from '../auth.error'
 import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../services/auth-verification.service'
 import { I18nService } from 'nestjs-i18n'
-import { SuccessMessage } from 'src/shared/decorators/success-message.decorator'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+import { PoliciesGuard } from 'src/shared/guards/policies.guard'
+import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
+import { Action, AppAbility } from 'src/shared/casl/casl-ability.factory'
 
 @Auth()
 @Controller('auth/2fa')
@@ -22,10 +38,12 @@ export class TwoFactorController {
     @Inject(TWO_FACTOR_SERVICE) private readonly twoFactorService: TwoFactorService,
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService,
-    private readonly i18nService: I18nService
+    private readonly i18nService: I18nService<I18nTranslations>
   ) {}
 
   @Post('setup')
+  @UseGuards(PoliciesGuard)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
   @HttpCode(HttpStatus.OK)
   async setupTwoFactor(
     @ActiveUser() activeUser: AccessTokenPayload,
@@ -38,7 +56,7 @@ export class TwoFactorController {
       throw AuthError.InternalServerError('Email not found in access token payload.')
     }
 
-    const { secret, qrCode } = await this.twoFactorService.generateSetupDetails(activeUser.userId)
+    const setupResult = await this.twoFactorService.generateSetupDetails(activeUser.userId)
 
     const verificationResult = await this.authVerificationService.initiateVerification(
       {
@@ -48,15 +66,17 @@ export class TwoFactorController {
         ipAddress: ip,
         userAgent: userAgent,
         purpose: TypeOfVerificationCode.SETUP_2FA,
-        metadata: { twoFactorSecret: secret }
+        metadata: { twoFactorSecret: setupResult.data.secret }
       },
       res
     )
 
     return {
       message: verificationResult.message,
-      secret,
-      qrCode
+      data: {
+        secret: setupResult.data.secret,
+        qrCode: setupResult.data.qrCode
+      }
     }
   }
 
@@ -113,20 +133,15 @@ export class TwoFactorController {
    * Cần xác thực bổ sung.
    */
   @Post('disable')
+  @UseGuards(PoliciesGuard)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
   @HttpCode(HttpStatus.OK)
-  @SuccessMessage('auth.Auth.Error.2FA.Disable.Success')
   async disableTwoFactor(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: TwoFactorVerifyDto
-  ): Promise<void> {
+  ): Promise<{ message: string }> {
     this.logger.log(`[disableTwoFactor] Attempting to disable 2FA for user: ${activeUser.userId}`)
-
-    await this.twoFactorService.verifyCode(body.code, {
-      userId: activeUser.userId,
-      method: body.method
-    })
-
-    await this.twoFactorService.disableVerification(activeUser.userId)
+    return this.twoFactorService.disableVerification(activeUser.userId, body.code, body.method)
   }
 
   /**
@@ -134,27 +149,17 @@ export class TwoFactorController {
    * Yêu cầu xác thực bằng TOTP hoặc một mã khôi phục cũ.
    */
   @Post('regenerate-recovery-codes')
+  @UseGuards(PoliciesGuard)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
   @HttpCode(HttpStatus.OK)
-  @SuccessMessage('auth.Auth.Error.2FA.RecoveryCodesRegenerated')
   async regenerateRecoveryCodes(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Body() body: TwoFactorVerifyDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string
-  ): Promise<{ recoveryCodes: string[] }> {
+  ): Promise<{ message: string; data: { recoveryCodes: string[] } }> {
     this.logger.log(`[regenerateRecoveryCodes] User ${activeUser.userId} is attempting to regenerate recovery codes.`)
 
-    // Xác thực người dùng bằng mã TOTP hoặc recovery code hiện tại
-    await this.twoFactorService.verifyCode(body.code, {
-      userId: activeUser.userId,
-      method: body.method
-    })
-
-    // Nếu mã hợp lệ, tạo mã khôi phục mới
-    const recoveryCodes = await this.twoFactorService.regenerateRecoveryCodes(activeUser.userId, ip, userAgent)
-
-    return {
-      recoveryCodes
-    }
+    return this.twoFactorService.regenerateRecoveryCodes(activeUser.userId, body.code, body.method, ip, userAgent)
   }
 }

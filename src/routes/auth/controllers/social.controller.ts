@@ -25,7 +25,7 @@ import {
   ITokenService,
   AccessTokenPayload,
   PendingLinkTokenPayloadCreate
-} from 'src/shared/types/auth.types'
+} from 'src/routes/auth/auth.types'
 import {
   GoogleAuthUrlQueryDto,
   GoogleCallbackQueryDto,
@@ -39,7 +39,6 @@ import { AuthVerificationService } from '../services/auth-verification.service'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import * as crypto from 'crypto'
-import { SuccessMessage } from 'src/shared/decorators/success-message.decorator'
 
 @Controller('auth/social')
 export class SocialController {
@@ -58,7 +57,6 @@ export class SocialController {
   @IsPublic()
   @Get('google')
   @HttpCode(HttpStatus.OK)
-  @SuccessMessage('auth.Auth.Google.UrlGeneratedSuccess' as any)
   getGoogleAuthUrl(
     @Query() query: GoogleAuthUrlQueryDto,
     @Res({ passthrough: true }) res: Response,
@@ -92,7 +90,7 @@ export class SocialController {
     this.cookieService.clearOAuthNonceCookie(res)
 
     if (error) {
-      throw AuthError.GoogleCallbackError(error)
+      throw AuthError.GoogleCallbackError({ originalError: error })
     }
 
     const result = await this.socialService.googleCallback({
@@ -104,7 +102,7 @@ export class SocialController {
     })
 
     if ('redirectToError' in result && result.redirectToError) {
-      throw AuthError.GoogleCallbackError(result.errorMessage)
+      throw AuthError.GoogleCallbackError({ code: result.errorCode, message: result.errorMessage })
     }
 
     if ('needsLinking' in result && result.needsLinking) {
@@ -135,8 +133,6 @@ export class SocialController {
 
     if ('user' in result && 'device' in result) {
       this.logger.debug(`[googleCallback] Google auth successful for user ${result.user.id}. Initiating verification.`)
-      // This is a successful login/registration via Google. Now, hand over to the
-      // central verification service to handle 2FA or device verification if needed.
       return this.authVerificationService.initiateVerification(
         {
           userId: result.user.id,
@@ -145,15 +141,15 @@ export class SocialController {
           ipAddress: ip,
           userAgent,
           purpose: result.purpose,
-          rememberMe: true, // Social logins are generally "remembered"
+          rememberMe: true,
           metadata: { from: 'google-login', isNewUser: result.isNewUser }
         },
         res
       )
     }
 
-    // Fallback for unexpected results
-    throw AuthError.InternalServerError('An unexpected error occurred during Google callback processing.')
+    this.logger.error('[googleCallback] Unexpected result from socialService.googleCallback', result)
+    throw AuthError.InternalServerError('auth.error.social.googleCallbackError')
   }
 
   @IsPublic()
@@ -173,17 +169,12 @@ export class SocialController {
 
     this.logger.debug(`[completeLink] Attempting to complete social account linking.`)
 
-    const { user, device } = await this.socialService.completeLinkAndLogin(
-      pendingLinkToken,
-      body.password || '',
-      userAgent,
-      ip
-    )
+    const result = await this.socialService.completeLinkAndLogin(pendingLinkToken, body.password || '', userAgent, ip)
+    const { user, device } = result.data
 
     this.cookieService.clearOAuthPendingLinkTokenCookie(res)
 
     this.logger.log(`[completeLink] Social account linked successfully for user ${user.id}. Finalizing login.`)
-    // After linking, finalize the login to create session and tokens
     return this.coreService.finalizeLoginAndCreateTokens(user, device, true, res, ip, userAgent)
   }
 
@@ -198,12 +189,8 @@ export class SocialController {
   ): Promise<any> {
     this.logger.debug(`[initiateUnlinkGoogleAccount] User ${activeUser.userId} initiating Google account unlinking.`)
     if (!activeUser.email) {
-      // This should ideally not happen if token payload is correct
-      throw AuthError.InternalServerError('Email is required for this action.')
+      throw AuthError.InternalServerError('User email not found in token payload.')
     }
-    // This will start the verification flow (e.g., send OTP).
-    // The user must then call a verification endpoint (e.g., /auth/otp/verify)
-    // which will complete the unlinking process via AuthVerificationService.
     return this.authVerificationService.initiateVerification(
       {
         userId: activeUser.userId,

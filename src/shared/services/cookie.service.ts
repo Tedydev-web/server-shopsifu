@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common'
 import { Response } from 'express'
 import { ConfigService } from '@nestjs/config'
 import { CookieNames, TypeOfVerificationCodeType } from 'src/routes/auth/auth.constants'
-import { ICookieService, CookieConfig } from 'src/shared/types/auth.types'
+import { ICookieService, CookieConfig } from 'src/routes/auth/auth.types'
+import { GlobalError } from '../global.error'
 
 @Injectable()
 export class CookieService implements ICookieService {
@@ -29,9 +30,9 @@ export class CookieService implements ICookieService {
         secure,
         sameSite
       })
-      this.logger.debug(`Cookie ${name} set successfully`)
+      this.logger.debug(`Cookie ${name} set successfully.`)
     } catch (error) {
-      this.logger.error(`Lỗi khi thiết lập cookie ${name}: ${error.message}`, error.stack)
+      this.logger.error(`Error setting cookie ${name}: ${error.message}`, error.stack)
     }
   }
 
@@ -51,9 +52,9 @@ export class CookieService implements ICookieService {
         secure: baseOptions.secure,
         sameSite: baseOptions.sameSite
       })
-      this.logger.debug(`Cookie ${name} cleared successfully`)
+      this.logger.debug(`Cookie ${name} cleared successfully.`)
     } catch (error) {
-      this.logger.error(`Lỗi khi xóa cookie ${name}: ${error.message}`, error.stack)
+      this.logger.error(`Error clearing cookie ${name}: ${error.message}`, error.stack)
     }
   }
 
@@ -115,7 +116,7 @@ export class CookieService implements ICookieService {
 
   clearSltCookie(res: Response): void {
     const config = this.getCookieConfig('slt')
-    this.logger.debug(`[clearSltCookie] Clearing SLT cookie`)
+    this.logger.debug(`[clearSltCookie] Clearing SLT cookie.`)
     this.clearCookie(res, config.name, config.options.path, config.options.domain)
   }
 
@@ -142,9 +143,9 @@ export class CookieService implements ICookieService {
   private getCookieConfig(cookieKey: string): { name: string; options: CookieConfig } {
     const config = this.configService.get<{ name: string; options: CookieConfig }>(`cookie.${cookieKey}`)
     if (!config || !config.name || !config.options) {
-      const errorMessage = `[getCookieConfig] Cấu hình cho cookie '${cookieKey}' không tồn tại hoặc không hợp lệ trong config.ts. Vui lòng kiểm tra lại.`
-      this.logger.error(errorMessage)
-      throw new Error(errorMessage)
+      const errorMessage = `Configuration for cookie '${cookieKey}' is missing or invalid in config.ts. Please check.`
+      this.logger.error(`[getCookieConfig] ${errorMessage}`)
+      throw GlobalError.InternalServerError('auth.error.cookieConfigMissing', { cookieKey })
     }
     this.logger.debug(`[getCookieConfig] Using config for ${cookieKey}: ${JSON.stringify(config)}`)
     return { name: config.name, options: { ...config.options, path: config.options.path || '/' } }

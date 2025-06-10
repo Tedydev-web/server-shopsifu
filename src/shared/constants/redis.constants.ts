@@ -21,3 +21,12 @@ export const DEVICE_REVERIFICATION_TTL = 7 * 24 * 60 * 60 // 7 days
 export const LOGIN_HISTORY_TTL = 90 * 24 * 60 * 60 // 90 days
 export const SESSION_MAXAGE_TTL = 30 * 24 * 60 * 60 // 30 days (used for session cookie maxAge and Redis key TTL)
 export const ACCESS_TOKEN_BLACKLIST_TTL = 24 * 60 * 60 // 24 hours (for blacklisted JWT IDs after logout)
+
+/**
+ * Time-to-live (TTL) values for application-level caches.
+ * Measured in seconds.
+ */
+export const ROLE_CACHE_TTL = 60 * 60 // 1 hour
+export const ALL_ROLES_CACHE_TTL = 60 * 60 // 1 hour
+export const PERMISSION_CACHE_TTL = 60 * 60 // 1 hour
+export const ALL_PERMISSIONS_CACHE_TTL = 60 * 60 // 1 hour

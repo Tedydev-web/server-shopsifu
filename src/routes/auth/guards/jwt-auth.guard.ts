@@ -5,14 +5,16 @@ import {
   Logger,
   Inject,
   forwardRef,
-  UnauthorizedException
+  UnauthorizedException,
+  ForbiddenException
 } from '@nestjs/common'
 import { REQUEST_USER_KEY } from 'src/routes/auth/auth.constants'
 import { TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { ITokenService } from 'src/shared/types/auth.types'
+import { ITokenService, AccessTokenPayload } from 'src/routes/auth/auth.types'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { SessionsService } from 'src/routes/auth/services/session.service'
+import { UserRepository } from 'src/routes/user/user.repository'
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -20,7 +22,8 @@ export class JwtAuthGuard implements CanActivate {
 
   constructor(
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
-    @Inject(forwardRef(() => SessionsService)) private readonly sessionService: SessionsService
+    @Inject(forwardRef(() => SessionsService)) private readonly sessionService: SessionsService,
+    private readonly userRepository: UserRepository
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -34,7 +37,7 @@ export class JwtAuthGuard implements CanActivate {
         throw AuthError.MissingAccessToken()
       }
 
-      const payload = await this.tokenService.verifyAccessToken(token)
+      const payload: AccessTokenPayload = await this.tokenService.verifyAccessToken(token)
 
       if (!payload || !payload.sessionId) {
         this.logger.warn('JWT Auth: Session ID missing in token payload')
@@ -46,7 +49,16 @@ export class JwtAuthGuard implements CanActivate {
         throw AuthError.SessionRevoked()
       }
 
-      request[REQUEST_USER_KEY] = payload
+      const user = await this.userRepository.findByIdWithDetails(payload.userId)
+
+      if (!user) {
+        this.logger.warn(`Authenticated user with ID ${payload.userId} not found in database.`)
+        throw new ForbiddenException('User belonging to this token no longer exists.')
+      }
+
+      // Merge the token payload and the full user object.
+      // This provides a complete context (session + user data) for the request.
+      request[REQUEST_USER_KEY] = { ...user, ...payload }
 
       return true
     } catch (error) {

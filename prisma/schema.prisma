@@ -249,8 +249,8 @@ model Permission {
   id          Int     @id @default(autoincrement())
   action      String  @db.VarChar(100) 
   subject     String  @db.VarChar(100) 
+  category    String  @db.VarChar(100)
   description String?
-  category    String? @db.VarChar(100) 
   // conditions  Json?    
 
   roles       RolePermission[] 

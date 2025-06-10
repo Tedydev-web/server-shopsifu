@@ -1,9 +1,14 @@
-import { Global, Module } from '@nestjs/common'
+import { Global, Module, forwardRef } from '@nestjs/common'
 import { JwtModule } from '@nestjs/jwt'
 
 // Constants for Injection Tokens
-import { OTP_SERVICE, SESSIONS_SERVICE, TWO_FACTOR_SERVICE } from '../../shared/constants/injection.tokens'
-import { LOGIN_FINALIZER_SERVICE } from '../../shared/types/auth.types'
+import {
+  DEVICE_SERVICE,
+  OTP_SERVICE,
+  SESSIONS_SERVICE,
+  TWO_FACTOR_SERVICE
+} from '../../shared/constants/injection.tokens'
+import { LOGIN_FINALIZER_SERVICE } from './auth.types'
 
 // Controllers
 import { CoreController } from './controllers/core.controller'
@@ -13,11 +18,15 @@ import { SessionsController } from './controllers/session.controller'
 import { SocialController } from './controllers/social.controller'
 import { TwoFactorController } from './controllers/two-factor.controller'
 
+// Guards
+import { AuthenticationGuard } from './guards/authentication.guard'
+import { BasicAuthGuard } from './guards/basic-auth.guard'
+import { JwtAuthGuard } from './guards/jwt-auth.guard'
+
 // Repositories
-import { DeviceRepository } from './repositories/device.repository'
+import { DeviceRepository } from '../../shared/repositories/device.repository'
 import { RecoveryCodeRepository } from './repositories/recovery-code.repository'
 import { SessionRepository } from './repositories/session.repository'
-import { UserAuthRepository } from './repositories/user-auth.repository'
 
 // Services
 import { AuthVerificationService } from './services/auth-verification.service'
@@ -27,12 +36,20 @@ import { PasswordService } from './services/password.service'
 import { SessionsService } from './services/session.service'
 import { SocialService } from './services/social.service'
 import { TwoFactorService } from './services/two-factor.service'
+import { DeviceService } from './services/device.service'
+import { UserActivityService } from './services/user-activity.service'
+import { UserModule } from 'src/routes/user/user.module'
+import { ProfileModule } from 'src/routes/profile/profile.module'
+import { RoleModule } from 'src/routes/role/role.module'
 
 @Global()
 @Module({
   imports: [
-    JwtModule.register({}) // Configure this properly with secret, signOptions, etc.
+    JwtModule.register({}), // Configure this properly with secret, signOptions, etc.
     // SharedModule, // Only if SharedModule is not global or AuthModule needs specific imports from it
+    forwardRef(() => UserModule),
+    forwardRef(() => ProfileModule),
+    RoleModule
   ],
   controllers: [
     CoreController,
@@ -43,11 +60,15 @@ import { TwoFactorService } from './services/two-factor.service'
     TwoFactorController
   ],
   providers: [
+    // Guards
+    AuthenticationGuard,
+    BasicAuthGuard,
+    JwtAuthGuard,
+
     // Repositories
     DeviceRepository,
     RecoveryCodeRepository,
     SessionRepository,
-    UserAuthRepository,
 
     // Services
     AuthVerificationService,
@@ -57,6 +78,9 @@ import { TwoFactorService } from './services/two-factor.service'
     SessionsService,
     SocialService,
     TwoFactorService,
+    DeviceService,
+    UserActivityService,
+
     // Custom providers for injection tokens
     {
       provide: OTP_SERVICE,
@@ -71,17 +95,25 @@ import { TwoFactorService } from './services/two-factor.service'
       useClass: TwoFactorService // Note: useClass, not useExisting, as per original two-factor.module
     },
     {
+      provide: DEVICE_SERVICE,
+      useClass: DeviceService
+    },
+    {
       provide: LOGIN_FINALIZER_SERVICE,
       useExisting: CoreService
     }
     // RedisService, // Likely provided by SharedModule globally
   ],
   exports: [
+    // Guards
+    AuthenticationGuard,
+    BasicAuthGuard,
+    JwtAuthGuard,
+
     // Repositories
     DeviceRepository,
     RecoveryCodeRepository,
     SessionRepository,
-    UserAuthRepository,
 
     // Services
     AuthVerificationService,
@@ -94,6 +126,9 @@ import { TwoFactorService } from './services/two-factor.service'
     SocialService,
     TwoFactorService,
     TWO_FACTOR_SERVICE,
+    DeviceService,
+    DEVICE_SERVICE,
+    UserActivityService,
     LOGIN_FINALIZER_SERVICE
   ]
 })

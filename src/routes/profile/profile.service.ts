@@ -1,51 +1,31 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common'
-import { UserAuthRepository } from '../auth/repositories/user-auth.repository'
-import { AuthError } from '../auth/auth.error'
-import { ChangePasswordDto, ProfileResponseDto } from './profile.dto'
+import { ProfileResponseDto, UpdateProfileDto } from './profile.dto'
 import { ProfileRepository } from './profile.repository'
-import {
-  EMAIL_SERVICE,
-  GEOLOCATION_SERVICE,
-  HASHING_SERVICE,
-  SESSIONS_SERVICE,
-  USER_AGENT_SERVICE
-} from 'src/shared/constants/injection.tokens'
+import { HASHING_SERVICE } from 'src/shared/constants/injection.tokens'
 import { HashingService } from '../../shared/services/hashing.service'
-import { SessionsService } from '../auth/services/session.service'
-import { EmailService } from '../../shared/services/email.service'
-import { AccessTokenPayload } from '../../shared/types/auth.types'
-import { GeolocationService } from '../../shared/services/geolocation.service'
-import { UserAgentService } from '../../shared/services/user-agent.service'
 import { I18nService } from 'nestjs-i18n'
-import { AuthVerificationService } from '../auth/services/auth-verification.service'
-import { Response } from 'express'
-import { TypeOfVerificationCode } from '../auth/auth.constants'
-import { UserProfile, User } from '@prisma/client'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+import { ProfileError } from './profile.error'
+import { UserRepository } from '../user/user.repository'
 
 @Injectable()
 export class ProfileService {
   private readonly logger = new Logger(ProfileService.name)
 
   constructor(
-    private readonly userAuthRepository: UserAuthRepository,
+    private readonly userRepository: UserRepository,
     private readonly profileRepository: ProfileRepository,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
-    @Inject(SESSIONS_SERVICE) private readonly sessionsService: SessionsService,
-    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
-    @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
-    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
-    private readonly i18nService: I18nService,
-    @Inject(forwardRef(() => AuthVerificationService))
-    private readonly authVerificationService: AuthVerificationService
+    private readonly i18nService: I18nService<I18nTranslations>
   ) {}
 
   async getProfile(userId: number): Promise<ProfileResponseDto> {
     this.logger.debug(`Fetching profile for user ID: ${userId}`)
 
-    const user = await this.userAuthRepository.findById(userId)
+    const user = await this.userRepository.findByIdWithDetails(userId)
     if (!user) {
       this.logger.warn(`[getProfile] User with ID ${userId} not found.`)
-      throw AuthError.EmailNotFound()
+      throw ProfileError.NotFound()
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -72,81 +52,33 @@ export class ProfileService {
     }
   }
 
-  async changePassword(
-    activeUser: AccessTokenPayload,
-    dto: ChangePasswordDto,
-    ipAddress: string,
-    userAgent: string,
-    res: Response
-  ): Promise<any> {
-    const { userId, sessionId, deviceId } = activeUser
-    const { currentPassword, newPassword, revokeOtherSessions } = dto
-    this.logger.debug(`[changePassword] User ${userId} attempting to change password.`)
+  async updateProfile(userId: number, dto: UpdateProfileDto): Promise<ProfileResponseDto> {
+    this.logger.debug(`Updating profile for user ID: ${userId}`)
 
-    const user = await this.userAuthRepository.findById(userId)
-    if (!user) {
-      throw AuthError.EmailNotFound()
-    }
+    const { username, phoneNumber, ...rest } = dto
 
-    if (!user.password) {
-      throw AuthError.BadRequest('Cannot change password for accounts without a password (e.g., social login).')
-    }
-
-    const isPasswordValid = await this.hashingService.compare(currentPassword, user.password)
-    if (!isPasswordValid) {
-      throw AuthError.InvalidPassword()
-    }
-
-    const hashedPassword = await this.hashingService.hash(newPassword)
-
-    this.logger.debug(`[changePassword] Current password is valid. Initiating verification flow for user ${userId}.`)
-    return this.authVerificationService.initiateVerification(
-      {
-        userId,
-        deviceId,
-        email: user.email,
-        ipAddress,
-        userAgent,
-        purpose: TypeOfVerificationCode.CHANGE_PASSWORD,
-        metadata: {
-          hashedNewPassword: hashedPassword,
-          revokeOtherSessions,
-          sessionIdToExclude: sessionId
-        }
-      },
-      res
-    )
-  }
-
-  private async sendPasswordChangeEmail(
-    user: User & { userProfile: UserProfile | null },
-    ipAddress: string,
-    userAgent: string
-  ) {
-    const locationResult = await this.geolocationService.getLocationFromIP(ipAddress)
-    const uaInfo = this.userAgentService.parse(userAgent)
-    const details = [
-      {
-        label: this.i18nService.t('email.Email.common.details.time'),
-        value: new Date().toLocaleString('vi-VN', {
-          timeZone: locationResult.timezone || 'Asia/Ho_Chi_Minh',
-          dateStyle: 'full',
-          timeStyle: 'long'
-        })
-      },
-      {
-        label: this.i18nService.t('email.Email.common.details.ipAddress'),
-        value: ipAddress
-      },
-      {
-        label: this.i18nService.t('email.Email.common.details.device'),
-        value: `${uaInfo.browser} on ${uaInfo.os}`
+    if (username) {
+      const existing = await this.profileRepository.doesUsernameExist(username)
+      if (existing) {
+        // You should create a specific error for this
+        throw ProfileError.AlreadyExists()
       }
-    ]
+    }
 
-    await this.emailService.sendPasswordChangedEmail(user.email, {
-      userName: user.userProfile?.username ?? user.email.split('@')[0],
-      details
+    if (phoneNumber) {
+      const existing = await this.profileRepository.doesPhoneNumberExist(phoneNumber)
+      if (existing) {
+        // You should create a specific error for this
+        throw ProfileError.AlreadyExists()
+      }
+    }
+
+    await this.profileRepository.updateByUserId(userId, {
+      username,
+      phoneNumber,
+      ...rest
     })
+
+    return this.getProfile(userId)
   }
 }

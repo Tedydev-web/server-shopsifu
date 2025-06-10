@@ -50,9 +50,19 @@ export const ChangePasswordSchema = z
     path: ['confirmPassword']
   })
 
+export const UpdateProfileSchema = z
+  .object({
+    firstName: z.string().min(1).optional(),
+    lastName: z.string().min(1).optional(),
+    username: z.string().min(3).optional(),
+    phoneNumber: z.string().min(10).optional()
+  })
+  .partial()
+
 // ===================================================================================
 // DTOs
 // ===================================================================================
 
 export class ProfileResponseDto extends createZodDto(ProfileResponseSchema) {}
 export class ChangePasswordDto extends createZodDto(ChangePasswordSchema) {}
+export class UpdateProfileDto extends createZodDto(UpdateProfileSchema) {}

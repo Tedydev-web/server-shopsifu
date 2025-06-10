@@ -1,10 +1,12 @@
-import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus, Logger, Response } from '@nestjs/common'
+import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus, Logger } from '@nestjs/common'
 import { HttpAdapterHost } from '@nestjs/core'
 import { ApiException } from 'src/shared/exceptions/api.exception'
-import { I18nService, I18nContext } from 'nestjs-i18n'
+import { I18nService, I18nContext, Path } from 'nestjs-i18n'
 import { isObject } from '../utils/type-guards.utils'
-import { v4 as uuidv4 } from 'uuid' // Added for requestId
+import { v4 as uuidv4 } from 'uuid'
 import { CookieService } from 'src/shared/services/cookie.service'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+import { Response, Request } from 'express'
 
 /**
  * Một bộ lọc exception toàn cục để bắt tất cả các lỗi và định dạng chúng
@@ -16,7 +18,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
   constructor(
     private readonly httpAdapterHost: HttpAdapterHost,
-    private readonly i18n: I18nService,
+    private readonly i18nService: I18nService<I18nTranslations>,
     private readonly cookieService: CookieService
   ) {}
 
@@ -24,134 +26,121 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const { httpAdapter } = this.httpAdapterHost
     const ctx = host.switchToHttp()
     const request = ctx.getRequest<Request>()
-    const i18nContext = I18nContext.current()
     const response = ctx.getResponse<Response>()
+    const i18nContext = I18nContext.current()
+    const lang = i18nContext?.lang
 
     let statusCode: number
-    let error: string
-    let message: string
+    let errorCode: string
     let details: any
 
     if (exception instanceof ApiException) {
-      // Xử lý lỗi tùy chỉnh của ứng dụng
       statusCode = exception.getStatus()
-      error = exception.code
-      // message trong ApiException là i18n key
-      message = this.i18n.t(exception.message, {
-        lang: i18nContext?.lang,
-        args: isObject(exception.details) ? exception.details : { detail: exception.details }
-      })
+      errorCode = exception.code
       details = exception.details
     } else if (exception instanceof HttpException) {
-      // Xử lý các lỗi HTTP khác (ví dụ: từ các guard, pipe của NestJS)
       statusCode = exception.getStatus()
-      const response = exception.getResponse()
-
-      if (typeof response === 'string') {
-        error = 'HTTP_EXCEPTION'
-        message = this.i18n.t(response, { lang: i18nContext?.lang }) ?? response
-      } else if (isObject(response)) {
-        error = response.error || 'VALIDATION_FAILED'
-        // Đối với ZodValidationPipe, `message` là một mảng các lỗi
-        const originalMessage = response.message
-        message = this.i18n.t('global.error.general.validationFailed.message', { lang: i18nContext?.lang }) // Default message for validation
-        details = originalMessage
+      const httpResponse = exception.getResponse()
+      if (isObject(httpResponse)) {
+        errorCode = httpResponse.error || 'VALIDATION_FAILED'
+        details = httpResponse.message
       } else {
-        error = 'UNHANDLED_HTTP_EXCEPTION'
-        message = this.i18n.t('global.error.http.httpError.message', { lang: i18nContext?.lang })
+        errorCode = 'UNHANDLED_HTTP_EXCEPTION'
+        details = httpResponse
       }
     } else {
-      // Xử lý các lỗi server không mong muốn (500)
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR
-      error = 'INTERNAL_SERVER_ERROR'
-      message = this.i18n.t('global.error.general.internalServerError.message', { lang: i18nContext?.lang })
-      // Chỉ hiển thị chi tiết lỗi ở môi trường dev
+      errorCode = 'INTERNAL_SERVER_ERROR'
       if (process.env.NODE_ENV !== 'production') {
         details = (exception as Error).message
       }
     }
 
-    this.logger.error(
-      `[${request.method} ${request.url}] - Status: ${statusCode} - Error: ${error} - Message: ${
-        (exception as any).message
-      }`,
-      (exception as Error).stack
-    )
+    const titleKey = this.findTitleKey(errorCode)
+    const messageKey = this.findMessageKey(errorCode)
 
-    if (statusCode === 401) {
-      if (response) {
-        // Xóa các cookie liên quan đến đăng nhập
-        this.cookieService.clearTokenCookies(response as any)
-
-        // Xóa SLT cookie nếu có
-        this.cookieService.clearSltCookie(response as any)
-
-        // Xóa các cookie khác nếu có (trừ csrf)
-        const cookies = (request as any).cookies
-        if (cookies) {
-          Object.keys(cookies).forEach((cookieName) => {
-            if (cookieName !== '_csrf' && cookieName !== 'xsrf-token') {
-              ;(response as any).clearCookie(cookieName, { path: '/' })
-              this.logger.debug(`[logout] Cookie ${cookieName} đã được xóa`)
-            }
+    const title = this.i18nService.t(titleKey, { lang, defaultValue: 'Error' })
+    const message =
+      exception instanceof ApiException
+        ? this.i18nService.t(exception.message as any, {
+            lang,
+            args: isObject(details) ? details : { detail: details }
           })
-        }
-      }
-    }
-    // Tạo body cho response lỗi theo format chuẩn
-    const typeSuffix = error.toLowerCase().replace(/_/g, '-')
-    const errorTypeUrl = `https://api.shopsifu.live/errors/${typeSuffix}`
+        : this.i18nService.t(messageKey, { lang, defaultValue: 'An unexpected error occurred.' })
 
-    // Default title, can be overridden by specific error configurations
-    let title = this.i18n.t(`errors.${error}.title`, {
-      lang: i18nContext?.lang,
-      defaultValue: this.i18n.t('global.error.general.default.title', { lang: i18nContext?.lang })
-    })
+    this.logError(request, statusCode, errorCode, exception)
+    this.handleAuthCookies(statusCode, request, response)
 
-    let structuredErrors: Array<{ field: string; description: string }> | undefined = undefined
+    let structuredErrors: Array<{ field: string; description: string }> | undefined
 
-    // Handle validation errors specifically to structure the 'errors' array
-    if (error === 'VALIDATION_FAILED' && Array.isArray(details)) {
-      title = this.i18n.t('global.error.general.validationFailed.title', { lang: i18nContext?.lang })
-      structuredErrors = details.map((err: any) => {
-        const field = err.path?.join('.') || err.property || 'general'
-        // err.message is already the i18n key from Zod DTOs or a translated message from class-validator
-        // If it's a key, i18n.t will translate it. If it's already translated, it will return as is.
-        // For class-validator, messages are often pre-defined or come from default messages.
-        // For Zod, we ensure DTOs provide i18n keys.
-        let description = err.message
-        if (i18nContext && typeof err.message === 'string' && !err.message.includes(' ')) {
-          // Heuristic: check if it's a key
-          description = this.i18n.t(err.message, {
-            lang: i18nContext.lang,
-            defaultValue: err.message,
-            args: err.contexts
-          })
-        }
-        return {
-          field,
-          description
-        }
-      })
-    } else if (details && statusCode >= 500 && process.env.NODE_ENV === 'production') {
-      // Do not expose details for 5xx errors in production unless it's a structured error array
-      details = undefined
+    if (errorCode === 'VALIDATION_FAILED' && Array.isArray(details)) {
+      structuredErrors = details.map((err: any) => ({
+        field: err.path?.join('.') || err.property || 'general',
+        description: err.message
+      }))
     }
 
     const responseBody = {
-      type: errorTypeUrl,
+      type: `https://api.shopsifu.live/errors/${errorCode.toLowerCase().replace(/_/g, '-')}`,
       title,
       status: statusCode,
-      message, // This is the main, global message for the error type
+      message,
       timestamp: new Date().toISOString(),
-      requestId: (request as any).id || uuidv4(), // Assumes requestId is attached by a middleware, or generates one
-      errors: structuredErrors // Specific field errors for validation
-      // _internal_details: process.env.NODE_ENV !== 'production' ? undefined : details // For debugging non-validation details in dev
+      requestId: (request as any).id || uuidv4(),
+      errors: structuredErrors
     }
-    if (process.env.NODE_ENV !== 'production' && !structuredErrors && details) {
-      ;(responseBody as any).errors = details
+
+    if (process.env.NODE_ENV !== 'production') {
+      if (details && !structuredErrors) {
+        ;(responseBody as any)._internal_details = details
+      }
+    } else if (statusCode >= 500 && !structuredErrors) {
+      delete (responseBody as any).errors
     }
 
     httpAdapter.reply(ctx.getResponse(), responseBody, statusCode)
+  }
+
+  private findTitleKey(errorCode: string): Path<I18nTranslations> {
+    const keys: Path<I18nTranslations>[] = [
+      `http.${errorCode}.title` as any,
+      `general.error.${errorCode}.title` as any,
+      'general.error.default.title'
+    ]
+    // This is a simplified check. A more robust solution might check if the key actually exists.
+    return keys[0]
+  }
+
+  private findMessageKey(errorCode: string): Path<I18nTranslations> {
+    const keys: Path<I18nTranslations>[] = [
+      `http.${errorCode}.message` as any,
+      `general.error.${errorCode}.message` as any,
+      'general.error.default.message'
+    ]
+    return keys[0]
+  }
+
+  private logError(request: Request, statusCode: number, errorCode: string, exception: unknown) {
+    const { method, url } = request
+    const message = (exception as any).message || 'No exception message available'
+    this.logger.error(`[${method} ${url}] - Status: ${statusCode} - Code: ${errorCode} - Message: ${message}`, {
+      stack: (exception as Error).stack,
+      exception
+    })
+  }
+
+  private handleAuthCookies(statusCode: number, request: Request, response: Response) {
+    if (statusCode === 401) {
+      this.cookieService.clearTokenCookies(response)
+      this.cookieService.clearSltCookie(response)
+      const cookies = (request as any).cookies
+      if (cookies) {
+        Object.keys(cookies).forEach((cookieName) => {
+          if (cookieName !== '_csrf' && cookieName !== 'xsrf-token') {
+            response.clearCookie(cookieName, { path: '/' })
+          }
+        })
+      }
+    }
   }
 }

@@ -1,6 +1,12 @@
 import { PrismaClient } from '@prisma/client'
+import { HashingService } from '../src/shared/services/hashing.service'
+import appConfig from '../src/shared/config'
+import * as fs from 'fs'
+import * as path from 'path'
 
 const prisma = new PrismaClient()
+const hashingService = new HashingService()
+const config = appConfig()
 
 // IMPORTANT: Define a system user ID that exists in your User table.
 // This ID will be used for createdById and updatedById fields for permissions created by this script.
@@ -13,92 +19,80 @@ interface DesiredPermission {
   description?: string | null
 }
 
-// Source of truth for all permissions in the system
-const desiredPermissions: DesiredPermission[] = [
-  // RBAC - PERMISSIONS
-  {
-    category: 'RBAC_PERMISSIONS',
-    subject: 'Permission',
-    action: 'READ', // Standardized from 'List Permissions'
-    description: 'GET /rbac/permissions (View all permissions)'
-  },
-  {
-    category: 'RBAC_PERMISSIONS',
-    subject: 'Permission',
-    action: 'READ', // Standardized from 'Read Permission'
-    description: 'GET /rbac/permissions/:id (View a specific permission)'
-  },
-  {
-    category: 'RBAC_PERMISSIONS',
-    subject: 'Permission',
-    action: 'CREATE', // Standardized from 'Create Permission'
-    description: 'POST /rbac/permissions (Create a new permission)'
-  },
-  {
-    category: 'RBAC_PERMISSIONS',
-    subject: 'Permission',
-    action: 'UPDATE', // Standardized from 'Update Permission'
-    description: 'PATCH /rbac/permissions/:id (Update a specific permission)'
-  },
-  {
-    category: 'RBAC_PERMISSIONS',
-    subject: 'Permission',
-    action: 'DELETE', // Standardized from 'Delete Permission'
-    description: 'DELETE /rbac/permissions/:id (Delete a specific permission)'
-  },
+function discoverPermissionsFromControllers(): DesiredPermission[] {
+  const discoveredPermissions = new Map<string, DesiredPermission>()
+  const routesDir = path.join(__dirname, '../src/routes')
 
-  // RBAC - ROLES (Example, expand as needed)
-  {
-    category: 'RBAC_ROLES',
-    subject: 'Role',
-    action: 'READ', // Standardized from 'List Roles'
-    description: 'GET /rbac/roles (View all roles)'
-  },
-  {
-    category: 'RBAC_ROLES',
-    subject: 'Role',
-    action: 'CREATE', // Standardized from 'Create Role'
-    description: 'POST /rbac/roles (Create a new role)'
-  },
-  // Add more permissions for USERS, FILES, etc. as per your UI and requirements
+  const controllerFiles = getAllFiles(routesDir).filter((file) => file.endsWith('.controller.ts'))
 
-  // PROFILE MANAGEMENT
-  {
-    category: 'PROFILE_MANAGEMENT',
-    subject: 'OwnProfile',
-    action: 'READ',
-    description: 'Xem thông tin cá nhân của chính mình'
-  },
-  {
-    category: 'PROFILE_MANAGEMENT',
-    subject: 'OwnProfile',
-    action: 'UPDATE',
-    description: 'Cập nhật thông tin cá nhân của chính mình'
-  }
-]
+  const permissionRegex = /ability\.can\(\s*Action\.(\w+)\s*,\s*'(\w+)'\s*\)/g
 
-async function bootstrap() {
+  controllerFiles.forEach((file) => {
+    const content = fs.readFileSync(file, 'utf8')
+    let match
+    while ((match = permissionRegex.exec(content)) !== null) {
+      const action = match[1].toLowerCase()
+      const subject = match[2]
+      const key = `${action}:${subject}`
+
+      if (!discoveredPermissions.has(key)) {
+        discoveredPermissions.set(key, {
+          action: action,
+          subject: subject,
+          category: subject.replace('UserProfile', 'Profile'), // Simple mapping for category
+          description: `Allows to ${action} ${subject}(s)`
+        })
+      }
+    }
+  })
+
+  return Array.from(discoveredPermissions.values())
+}
+
+function getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
+  const files = fs.readdirSync(dirPath)
+
+  files.forEach(function (file) {
+    if (fs.statSync(path.join(dirPath, file)).isDirectory()) {
+      arrayOfFiles = getAllFiles(path.join(dirPath, file), arrayOfFiles)
+    } else {
+      arrayOfFiles.push(path.join(dirPath, file))
+    }
+  })
+
+  return arrayOfFiles
+}
+
+async function seedPermissions() {
   console.log('Starting permission synchronization...')
-
   let createdCount = 0
   let updatedCount = 0
+  let deletedCount = 0
 
+  const desiredPermissions = discoverPermissionsFromControllers()
+
+  // Always add the 'manage all' permission for admins
+  desiredPermissions.push({
+    action: 'manage',
+    subject: 'all',
+    category: 'System',
+    description: 'Grants full access to all resources.'
+  })
+
+  const existingPermissions = await prisma.permission.findMany()
+
+  // Sync: Create or Update
   for (const dp of desiredPermissions) {
     const permissionData = {
       action: dp.action,
       subject: dp.subject,
       category: dp.category,
-      description: dp.description ?? null // Handle undefined description
-      // 'conditions' field is omitted as it's not in DesiredPermission interface or array
-      // createdById and updatedById are not set here, assuming they are optional or handled by DB/Prisma defaults if needed.
+      description: dp.description ?? null
     }
 
-    const existingPermission = await prisma.permission.findUnique({
-      where: { UQ_action_subject: { action: dp.action, subject: dp.subject } } // Corrected unique constraint name
-    })
+    const existingPermission = existingPermissions.find((p) => p.action === dp.action && p.subject === dp.subject)
 
     if (existingPermission) {
-      // Check if update is needed (category or description changed)
       if (
         existingPermission.category !== permissionData.category ||
         existingPermission.description !== permissionData.description
@@ -108,96 +102,168 @@ async function bootstrap() {
           data: {
             category: permissionData.category,
             description: permissionData.description
-            // updatedById: SYSTEM_USER_ID, // Example if you need to set it
           }
         })
         updatedCount++
       }
     } else {
-      // Create new permission
-      await prisma.permission.create({
-        data: {
-          ...permissionData
-          // createdById: SYSTEM_USER_ID, // Example if you need to set it
-        }
-      })
+      await prisma.permission.create({ data: permissionData })
       createdCount++
     }
   }
 
-  if (createdCount > 0) {
-    console.log(`Created ${createdCount} new permissions.`)
-  }
-  if (updatedCount > 0) {
-    console.log(`Updated ${updatedCount} existing permissions.`)
-  }
-  if (createdCount === 0 && updatedCount === 0) {
-    console.log('All desired permissions are already up to date.')
+  // Sync: Delete
+  const desiredPermissionKeys = new Set(desiredPermissions.map((p) => `${p.action}:${p.subject}`))
+  for (const ep of existingPermissions) {
+    const key = `${ep.action}:${ep.subject}`
+    if (!desiredPermissionKeys.has(key)) {
+      // Before deleting, ensure it's not linked to any roles
+      await prisma.rolePermission.deleteMany({ where: { permissionId: ep.id } })
+      await prisma.permission.delete({ where: { id: ep.id } })
+      deletedCount++
+    }
   }
 
-  // 2. Find or create the ADMIN role
+  console.log(`Discovered ${desiredPermissions.length - 1} permissions from controllers.`)
+  console.log(`Created ${createdCount} new permissions.`)
+  console.log(`Updated ${updatedCount} existing permissions.`)
+  console.log(`Deleted ${deletedCount} obsolete permissions.`)
+  if (createdCount === 0 && updatedCount === 0 && deletedCount === 0) {
+    console.log('All permissions are already up to date.')
+  }
+}
+
+async function seedRolesAndAssignments() {
+  console.log('Starting role and assignment synchronization...')
+
+  // 1. Create/find Admin role and set as system role
   const adminRoleName = 'Admin'
-  let adminRole = await prisma.role.findUnique({
-    where: { name: adminRoleName }
+  const adminRole = await prisma.role.upsert({
+    where: { name: adminRoleName },
+    update: { isSystemRole: true },
+    create: {
+      name: adminRoleName,
+      description: 'Administrator role with all permissions',
+      isSystemRole: true
+    }
+  })
+  console.log(`Upserted ADMIN role (ID: ${adminRole.id}) and ensured it is a system role.`)
+
+  // 2. Assign 'manage all' permission to Admin role
+  const manageAllPermission = await prisma.permission.findUnique({
+    where: { UQ_action_subject: { action: 'manage', subject: 'all' } }
   })
 
-  if (!adminRole) {
-    adminRole = await prisma.role.create({
-      data: {
-        name: adminRoleName,
-        description: 'Administrator role with all permissions'
-        // createdById: SYSTEM_USER_ID, // Example if you need to set it
-      }
-    })
-    console.log(`Created ADMIN role (ID: ${adminRole.id}).`)
-  } else {
-    console.log(`Found ADMIN role (ID: ${adminRole.id}).`)
-  }
-
-  // 3. Fetch ALL permissions from the database
-  const allPermissions = await prisma.permission.findMany()
-  console.log(`Found ${allPermissions.length} total permissions in the database.`)
-
-  // 4. Assign all permissions to the ADMIN role
-  if (adminRole && allPermissions.length > 0) {
-    const rolePermissionsData = allPermissions.map((p) => ({
-      roleId: adminRole.id,
-      permissionId: p.id
-      // assignedById: SYSTEM_USER_ID, // Example if you need to set it
-    }))
-
-    const assignResult = await prisma.rolePermission.createMany({
-      data: rolePermissionsData,
+  if (manageAllPermission) {
+    await prisma.rolePermission.createMany({
+      data: [{ roleId: adminRole.id, permissionId: manageAllPermission.id }],
       skipDuplicates: true
     })
-
-    const newLinksCreated = assignResult.count
-    // Note: assignResult.count for createMany with skipDuplicates indicates the number of records actually created.
-    // It doesn't directly tell us how many were skipped if we don't know how many potential duplicates existed.
-    // To accurately log skipped duplicates, we'd need to query existing RolePermissions first or count distinct roleId-permissionId pairs.
-    // For simplicity, we'll just log the number of links processed for creation.
-    console.log(
-      `Processed ${rolePermissionsData.length} permission assignments for ADMIN role. ${newLinksCreated} new links created (duplicates skipped).`
-    )
-  } else if (allPermissions.length === 0) {
-    console.log('No permissions found in the database to assign to ADMIN role.')
-  } else if (!adminRole) {
-    console.warn('ADMIN role not available, cannot assign permissions.')
+    console.log(`Ensured 'manage:all' permission is assigned to ADMIN role.`)
+  } else {
+    console.warn(`Could not find 'manage:all' permission to assign to ADMIN role.`)
   }
 
-  console.log('Permission synchronization and ADMIN role assignment finished successfully.')
+  // 3. Create/find Customer role
+  const customerRoleName = 'Customer'
+  const customerRole = await prisma.role.upsert({
+    where: { name: customerRoleName },
+    update: {},
+    create: {
+      name: customerRoleName,
+      description: 'Standard customer role with basic permissions'
+    }
+  })
+  console.log(`Upserted CUSTOMER role (ID: ${customerRole.id}).`)
+
+  // 4. Assign specific permissions to Customer role
+  const customerPermissions = await prisma.permission.findMany({
+    where: {
+      OR: [
+        { subject: 'Product', action: 'read' },
+        { subject: 'Category', action: 'read' },
+        { subject: 'Brand', action: 'read' },
+        { subject: 'UserProfile', action: 'read' },
+        { subject: 'UserProfile', action: 'update' },
+        { subject: 'Device', action: 'read' },
+        { subject: 'Device', action: 'update' },
+        { subject: 'Device', action: 'delete' }
+      ]
+    }
+  })
+
+  if (customerPermissions.length > 0) {
+    await prisma.rolePermission.createMany({
+      data: customerPermissions.map((p) => ({
+        roleId: customerRole.id,
+        permissionId: p.id
+      })),
+      skipDuplicates: true
+    })
+    console.log(`Assigned ${customerPermissions.length} permissions to CUSTOMER role.`)
+  }
+}
+
+async function seedAdminUser() {
+  console.log('Starting admin user synchronization...')
+  if (!config.ADMIN_EMAIL) {
+    console.warn('ADMIN_EMAIL not set in environment variables. Skipping admin user creation.')
+    return
+  }
+
+  const adminRole = await prisma.role.findUnique({ where: { name: 'Admin' } })
+  if (!adminRole) {
+    console.error('Admin role not found. Cannot create admin user.')
+    return
+  }
+
+  const existingAdmin = await prisma.user.findUnique({ where: { email: config.ADMIN_EMAIL } })
+
+  if (existingAdmin) {
+    console.log(`Admin user ${config.ADMIN_EMAIL} already exists.`)
+    // Optionally update roleId if it's incorrect
+    if (existingAdmin.roleId !== adminRole.id) {
+      await prisma.user.update({ where: { id: existingAdmin.id }, data: { roleId: adminRole.id } })
+      console.log(`Updated role for admin user ${config.ADMIN_EMAIL}.`)
+    }
+    return
+  }
+
+  // Create admin user if they don't exist
+  if (!config.ADMIN_PASSWORD || !config.ADMIN_NAME) {
+    throw new Error('Missing admin environment variables (ADMIN_PASSWORD, ADMIN_NAME) for new admin creation.')
+  }
+  const hashedPassword = await hashingService.hash(config.ADMIN_PASSWORD)
+  await prisma.user.create({
+    data: {
+      email: config.ADMIN_EMAIL,
+      password: hashedPassword,
+      roleId: adminRole.id,
+      isEmailVerified: true,
+      userProfile: {
+        create: {
+          username: config.ADMIN_NAME,
+          firstName: 'Admin',
+          lastName: 'User'
+        }
+      }
+    }
+  })
+  console.log(`Created admin user: ${config.ADMIN_EMAIL}`)
 }
 
 async function main() {
   try {
-    await bootstrap()
+    await seedPermissions()
+    await seedRolesAndAssignments()
+    await seedAdminUser()
+    console.log('Seeding script finished successfully.')
   } catch (e) {
-    console.error('Error during permission synchronization script:', e)
+    console.error('Error during seeding script:', e)
     process.exit(1)
   } finally {
     await prisma.$disconnect()
-    console.log('Script finished. Prisma client disconnected.')
   }
 }
 
-void main()
+main()

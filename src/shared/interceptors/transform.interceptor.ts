@@ -4,7 +4,6 @@ import { I18nService, I18nContext } from 'nestjs-i18n'
 import { Observable } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { Request, Response } from 'express'
-import { SUCCESS_MESSAGE_KEY } from 'src/shared/decorators/success-message.decorator'
 
 // Định nghĩa type cho hàm translate
 type TranslateFunction = (key: string, options?: Record<string, any>) => string
@@ -60,8 +59,7 @@ export class TransformInterceptor<T> implements NestInterceptor<T, SuccessRespon
         }
 
         // Case 2: Lấy message từ decorator @SuccessMessage hoặc fallback
-        const i18nMessageKey =
-          this.reflector.get<string>(SUCCESS_MESSAGE_KEY, context.getHandler()) || 'global.success.general.default'
+        const i18nMessageKey = 'global.success.general.default'
         const message = t(i18nMessageKey)
 
         // Case 3: Xử lý response phân trang (paginated)

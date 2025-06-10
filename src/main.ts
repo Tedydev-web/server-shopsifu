@@ -6,15 +6,12 @@ import cookieParser from 'cookie-parser'
 import { HttpHeader } from './shared/constants/http.constants'
 import { VersioningType } from '@nestjs/common'
 import CustomZodValidationPipe from './shared/pipes/custom-zod-validation.pipe'
-import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
-import { ResponseInterceptor } from './shared/interceptors/response.interceptor'
-import { I18nService } from 'nestjs-i18n'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import { WinstonModule } from 'nest-winston'
-import { winstonLogger as winstonLoggerConfig, WinstonConfig } from './shared/logger/winston.config'
+import { WinstonConfig, winstonLogger as winstonLoggerConfig } from './shared/logger/winston.config'
 import appConfig from './shared/config'
 import { RequestIdMiddleware } from './shared/middleware/request-id.middleware'
-import { CookieService } from './shared/services/cookie.service'
+import { I18nTranslations } from './generated/i18n.generated'
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -73,22 +70,6 @@ async function bootstrap() {
 
   // Use I18nValidationPipe globally
   app.useGlobalPipes(new CustomZodValidationPipe())
-
-  // Register global filter and interceptor
-  const httpAdapterHost = app.get(HttpAdapterHost)
-  const reflector = app.get(Reflector)
-  const i18nService = app.get(I18nService)
-  const cookieService = app.get(CookieService)
-  app.useGlobalFilters(
-    new AllExceptionsFilter(
-      httpAdapterHost,
-      i18nService as unknown as I18nService<Record<string, unknown>>,
-      cookieService
-    )
-  )
-  app.useGlobalInterceptors(
-    new ResponseInterceptor(reflector, i18nService as unknown as I18nService<Record<string, unknown>>)
-  )
 
   const port = appConfig().PORT ?? 3000
   await app.listen(port)

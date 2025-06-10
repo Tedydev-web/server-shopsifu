@@ -4,17 +4,19 @@ import { v4 as uuidv4 } from 'uuid'
 import { Response, Request } from 'express'
 import { AuthError } from '../auth.error'
 import { HashingService } from 'src/shared/services/hashing.service'
+import { ApiException } from 'src/shared/exceptions/api.exception'
+import { GlobalError } from 'src/shared/global.error'
 import {
   ICookieService,
   ITokenService,
   ILoginFinalizerService,
   ILoginFinalizationPayload,
   ISLTService
-} from 'src/shared/types/auth.types'
+} from 'src/routes/auth/auth.types'
 import { TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
 import { OtpService } from './otp.service'
 import { User, Device, Role, UserProfile } from '@prisma/client'
-import { AccessTokenPayloadCreate } from 'src/shared/types/auth.types'
+import { AccessTokenPayloadCreate } from 'src/routes/auth/auth.types'
 import {
   COOKIE_SERVICE,
   DEVICE_SERVICE,
@@ -23,20 +25,20 @@ import {
   TOKEN_SERVICE,
   EMAIL_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import {
-  UserAuthRepository,
-  DeviceRepository,
-  SessionRepository,
-  UserWithProfileAndRole
-} from 'src/routes/auth/repositories'
+import { SessionRepository } from 'src/routes/auth/repositories'
 import { RedisService } from 'src/shared/services/redis.service'
-import { DeviceService } from 'src/shared/services/device.service'
+import { DeviceService } from './device.service'
 import { SessionsService } from 'src/routes/auth/services/session.service'
 import { AuthVerificationService } from './auth-verification.service'
 import { CompleteRegistrationDto, LoginDto } from '../dtos/core.dto'
 import { ConfigService } from '@nestjs/config'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { EmailService } from 'src/shared/services/email.service'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+import { DeviceRepository } from 'src/shared/repositories/device.repository'
+import { UserRepository, UserWithProfileAndRole } from 'src/routes/user/user.repository'
+import { ProfileRepository } from 'src/routes/profile/profile.repository'
+import { RoleRepository } from 'src/routes/role/role.repository'
 
 interface RegisterUserParams {
   userId: number
@@ -56,8 +58,10 @@ export class CoreService implements ILoginFinalizerService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly i18nService: I18nService,
-    private readonly userAuthRepository: UserAuthRepository,
+    private readonly i18nService: I18nService<I18nTranslations>,
+    private readonly userRepository: UserRepository,
+    private readonly profileRepository: ProfileRepository,
+    private readonly roleRepository: RoleRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly otpService: OtpService,
     private readonly sessionRepository: SessionRepository,
@@ -84,7 +88,7 @@ export class CoreService implements ILoginFinalizerService {
       .substring(0, 15)
 
     // Kiểm tra username đã tồn tại chưa
-    const exists = await this.userAuthRepository.doesUsernameExist(username)
+    const exists = await this.profileRepository.doesUsernameExist(username)
 
     // Nếu username đã tồn tại, thêm số ngẫu nhiên
     if (exists) {
@@ -104,7 +108,7 @@ export class CoreService implements ILoginFinalizerService {
       await this.checkEmailNotExists(email)
 
       if (!this.authVerificationService) {
-        throw AuthError.InternalServerError('AuthVerificationService is not available.')
+        throw AuthError.ServiceNotAvailable('AuthVerificationService')
       }
 
       // Không tạo user tạm thời, chỉ khởi tạo quá trình xác thực với email và metadata
@@ -121,13 +125,11 @@ export class CoreService implements ILoginFinalizerService {
         res
       )
 
-      return {
-        ...verificationResult
-      }
+      return verificationResult
     } catch (error) {
       this.logger.error(`[initiateRegistration] Error: ${error.message}`, error.stack)
-      if (error instanceof AuthError) throw error
-      throw AuthError.InternalServerError(error.message)
+      if (error instanceof ApiException) throw error
+      throw GlobalError.InternalServerError()
     }
   }
 
@@ -140,7 +142,11 @@ export class CoreService implements ILoginFinalizerService {
     ipAddress?: string,
     userAgent?: string
   ): Promise<any> {
-    if (!this.sltService) throw AuthError.InternalServerError('SLTService not available')
+    if (params.password !== params.confirmPassword) {
+      throw AuthError.PasswordsNotMatch()
+    }
+
+    if (!this.sltService) throw AuthError.ServiceNotAvailable('SLTService')
 
     const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
       sltCookie,
@@ -150,13 +156,13 @@ export class CoreService implements ILoginFinalizerService {
     )
 
     if (sltContext.metadata?.otpVerified !== 'true') {
-      throw AuthError.InsufficientPermissions() // Hoặc một lỗi cụ thể hơn
+      throw AuthError.InsufficientPermissions()
     }
 
     // Lấy email từ metadata hoặc trực tiếp từ context
     const email = sltContext.metadata?.pendingEmail || sltContext.email
     if (!email) {
-      throw AuthError.InternalServerError('Email is missing in SLT context')
+      throw AuthError.EmailMissingInSltContext()
     }
 
     // Kiểm tra email không tồn tại trong cơ sở dữ liệu
@@ -186,7 +192,7 @@ export class CoreService implements ILoginFinalizerService {
     this.logger.log(`[completeRegistrationWithSlt] Registration completed and SLT finalized for email: ${email}`)
 
     return {
-      message: 'auth.Auth.Register.Success'
+      message: this.i18nService.t('auth.success.register.complete')
     }
   }
 
@@ -205,7 +211,7 @@ export class CoreService implements ILoginFinalizerService {
     // 2. Xử lý Username
     let finalUsername: string
     if (providedUsername) {
-      const usernameExists = await this.userAuthRepository.doesUsernameExist(providedUsername)
+      const usernameExists = await this.profileRepository.doesUsernameExist(providedUsername)
       if (usernameExists) {
         throw AuthError.UsernameAlreadyExists(providedUsername)
       }
@@ -218,22 +224,22 @@ export class CoreService implements ILoginFinalizerService {
     const hashedPassword = password ? await this.hashingService.hash(password) : undefined
     if (!hashedPassword) {
       this.logger.error('Password is required for new user creation but was not provided or hashing failed.')
-      throw AuthError.InternalServerError('Password processing failed.')
+      throw GlobalError.InternalServerError(this.i18nService.t('auth.error.passwordProcessingFailed'))
     }
 
-    // 4. Lấy Role ID cho 'Client'
-    const clientRole = await this.userAuthRepository.findRoleByName('Client')
-    if (!clientRole) {
-      this.logger.error('Default "Client" role not found in the database.')
-      // TODO: Consider creating the 'Client' role if it doesn't exist, or having a more robust fallback/setup mechanism.
-      throw AuthError.InternalServerError('Default role configuration error. Please ensure "Client" role exists.')
+    // 4. Lấy Role ID cho 'Customer'
+    const customerRole = await this.roleRepository.findByName('Customer')
+    if (!customerRole) {
+      this.logger.error('Default "Customer" role not found in the database.')
+      // TODO: Consider creating the 'Customer' role if it doesn't exist, or having a more robust fallback/setup mechanism.
+      throw GlobalError.InternalServerError(this.i18nService.t('auth.error.roleConfigurationError'))
     }
 
     // 5. Gọi repository để tạo user
-    return this.userAuthRepository.createUser({
+    return this.userRepository.createWithProfile({
       email,
       password: hashedPassword,
-      roleId: clientRole.id,
+      roleId: customerRole.id,
       username: finalUsername,
       firstName,
       lastName,
@@ -250,12 +256,12 @@ export class CoreService implements ILoginFinalizerService {
   async validateUser(
     emailOrUsername: string,
     password: string
-  ): Promise<Omit<UserWithProfileAndRole, 'password'> | null> {
+  ): Promise<Omit<UserWithProfileAndRole, 'password' | 'role.permissions'> | null> {
     // Tìm user theo email hoặc username
-    const user = await this.userAuthRepository.findByEmailOrUsername(emailOrUsername)
+    const user = await this.userRepository.findByEmailOrUsername(emailOrUsername)
 
     // Kiểm tra user tồn tại
-    if (!user) {
+    if (!user || !user.password) {
       return null
     }
 
@@ -288,9 +294,12 @@ export class CoreService implements ILoginFinalizerService {
   /**
    * Làm mới token
    */
-  async refreshToken(refreshToken: string, _deviceInfo: any, res: Response): Promise<any> {
+  async refreshToken(req: Request, deviceInfo: { ipAddress: string; userAgent: string }, res: Response): Promise<any> {
     try {
-      // const { userAgent, ip } = deviceInfo; // deviceInfo is not used in this function
+      const refreshToken = this.tokenService.extractRefreshTokenFromRequest(req)
+      if (!refreshToken) {
+        throw AuthError.MissingRefreshToken()
+      }
 
       // Xác minh refresh token
       const payload = await this.tokenService.verifyRefreshToken(refreshToken)
@@ -302,9 +311,9 @@ export class CoreService implements ILoginFinalizerService {
       }
 
       // Lấy thông tin user mới nhất
-      const user = await this.userAuthRepository.findById(payload.userId)
+      const user = await this.userRepository.findByIdWithDetails(payload.userId)
       if (!user) {
-        throw AuthError.EmailNotFound()
+        throw GlobalError.NotFound('user')
       }
 
       // Đánh dấu refresh token cũ là đã sử dụng
@@ -332,12 +341,12 @@ export class CoreService implements ILoginFinalizerService {
       // Set cookie mới
       this.cookieService.setTokenCookies(res, newAccessToken, newRefreshToken)
 
-      return { message: 'auth.Auth.Token.Refreshed' }
+      return { message: this.i18nService.t('auth.success.token.refreshed') }
     } catch (error) {
-      this.logger.error(`Lỗi làm mới token: ${error.message}`, error.stack)
+      this.logger.error(`Error refreshing token: ${error.message}`, error.stack)
       this.cookieService.clearTokenCookies(res)
-      if (error instanceof AuthError) throw error
-      throw AuthError.InternalServerError(error.message)
+      if (error instanceof ApiException) throw error
+      throw GlobalError.InternalServerError()
     }
   }
 
@@ -382,16 +391,16 @@ export class CoreService implements ILoginFinalizerService {
             const payload = await this.tokenService.verifyAccessToken(accessToken)
             await this.tokenService.invalidateAccessTokenJti(payload.jti, payload.exp)
           } catch (error) {
-            this.logger.warn(`Lỗi vô hiệu hóa access token khi logout: ${error.message}`)
+            this.logger.warn(`Error invalidating access token on logout: ${error.message}`)
           }
         }
       }
 
-      return { message: 'auth.Auth.Logout.Success' }
+      return { message: this.i18nService.t('auth.success.logout.success') }
     } catch (error) {
-      this.logger.error(`Lỗi đăng xuất: ${error.message}`, error.stack)
-      if (error instanceof AuthError) throw error
-      throw AuthError.InternalServerError(error.message)
+      this.logger.error(`Logout error: ${error.message}`, error.stack)
+      if (error instanceof ApiException) throw error
+      throw GlobalError.InternalServerError()
     }
   }
 
@@ -399,7 +408,7 @@ export class CoreService implements ILoginFinalizerService {
    * Tìm người dùng theo email
    */
   async findUserByEmail(email: string): Promise<any> {
-    return this.userAuthRepository.findByEmailOrUsername(email)
+    return this.userRepository.findByEmailOrUsername(email)
   }
 
   /**
@@ -443,13 +452,13 @@ export class CoreService implements ILoginFinalizerService {
       }
 
       return {
-        message: 'auth.Auth.Login.Success',
-        user: userResponse
+        message: this.i18nService.t('auth.success.login.success'),
+        data: userResponse
       }
     } catch (error) {
       this.logger.error(`[finalizeLoginAndCreateTokens] Error: ${error.message}`, error.stack)
-      if (error instanceof AuthError) throw error
-      throw AuthError.InternalServerError(error.message)
+      if (error instanceof ApiException) throw error
+      throw GlobalError.InternalServerError()
     }
   }
 
@@ -531,48 +540,9 @@ export class CoreService implements ILoginFinalizerService {
    * Kiểm tra email chưa tồn tại
    */
   async checkEmailNotExists(email: string): Promise<void> {
-    const existingUser = await this.userAuthRepository.findByEmail(email)
+    const existingUser = await this.userRepository.findByEmail(email)
     if (existingUser) {
       throw AuthError.EmailAlreadyExists()
-    }
-  }
-
-  /**
-   * Tạo user tạm thời trong quá trình đăng ký
-   */
-  async createTemporaryUser(email: string): Promise<User> {
-    try {
-      // Tạo một temporary user với trạng thái PENDING
-      const tempUser = await this.userAuthRepository.createUser({
-        email: email,
-        password: await this.hashingService.hash(`temp_${Date.now()}_${Math.random()}`),
-        roleId: 1,
-        username: email
-      })
-
-      return tempUser
-    } catch (error) {
-      this.logger.error(`[createTemporaryUser] Error creating temporary user: ${error.message}`, error.stack)
-      throw AuthError.InternalServerError('Failed to create temporary user')
-    }
-  }
-
-  /**
-   * Tạo device tạm thời trong quá trình đăng ký
-   */
-  async createTemporaryDevice(userId: number, userAgent: string, ipAddress: string): Promise<Device> {
-    try {
-      // Tạo một temporary device
-      const tempDevice = await this.deviceRepository.createDevice({
-        userId: userId,
-        userAgent: userAgent,
-        ipAddress: ipAddress
-      })
-
-      return tempDevice
-    } catch (error) {
-      this.logger.error(`[createTemporaryDevice] Error creating temporary device: ${error.message}`, error.stack)
-      throw AuthError.InternalServerError('Failed to create temporary device')
     }
   }
 
@@ -597,7 +567,7 @@ export class CoreService implements ILoginFinalizerService {
     }
 
     if (!this.authVerificationService) {
-      throw AuthError.InternalServerError('AuthVerificationService is not available.')
+      throw AuthError.ServiceNotAvailable('AuthVerificationService')
     }
 
     const verificationResult = await this.authVerificationService.initiateVerification(
@@ -616,17 +586,7 @@ export class CoreService implements ILoginFinalizerService {
 
     // The interceptor will wrap this into the standard response format.
     // The `data` part contains any information the client might need, like a verification token (SLT).
-    if (verificationResult.tokens) {
-      return {
-        message: verificationResult.message,
-        user: verificationResult.user
-      }
-    }
-
-    return {
-      message: verificationResult.message,
-      ...verificationResult
-    }
+    return verificationResult
   }
 
   /**
@@ -636,13 +596,10 @@ export class CoreService implements ILoginFinalizerService {
     const { userId, deviceId, rememberMe, ipAddress, userAgent } = payload
     try {
       // Tìm user
-      const userWithPassword = await this.userAuthRepository.findById(userId)
-      if (!userWithPassword) {
-        throw AuthError.EmailNotFound()
+      const user = await this.userRepository.findByIdWithDetails(userId)
+      if (!user) {
+        throw GlobalError.NotFound('user')
       }
-
-      // Loại bỏ mật khẩu để đảm bảo an toàn
-      const { password: _, ...user } = userWithPassword
 
       // Tìm thiết bị
       const device = await this.deviceRepository.findById(deviceId)
@@ -674,14 +631,16 @@ export class CoreService implements ILoginFinalizerService {
       if (!wasDeviceTrusted && this.deviceService) {
         this.logger.log(`[finalizeLoginAfterVerification] Device ${deviceId} was untrusted, sending notification.`)
         // Chạy bất đồng bộ để không chặn phản hồi của người dùng
-        void this.deviceService.notifyLoginOnUntrustedDevice(userId, deviceId, ipAddress, userAgent)
+        if (this.deviceService) {
+          void this.deviceService.notifyLoginOnUntrustedDevice(user, deviceId, ipAddress, userAgent)
+        }
       }
 
       return loginResult
     } catch (error) {
       this.logger.error(`[finalizeLoginAfterVerification] Error: ${error.message}`, error.stack)
-      if (error instanceof AuthError) throw error
-      throw AuthError.InternalServerError(error.message)
+      if (error instanceof ApiException) throw error
+      throw GlobalError.InternalServerError()
     }
   }
 }

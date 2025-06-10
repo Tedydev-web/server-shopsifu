@@ -2,7 +2,7 @@ import { Injectable, Logger, Inject } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ConfigService } from '@nestjs/config'
-import { IDeviceService, ISessionService } from 'src/shared/types/auth.types'
+import { IDeviceService, ISessionService } from 'src/routes/auth/auth.types'
 import {
   DEVICE_SERVICE,
   EMAIL_SERVICE,
@@ -12,7 +12,8 @@ import {
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { GetGroupedSessionsResponseDto, GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
-import { SessionRepository, DeviceRepository } from 'src/routes/auth/repositories'
+import { SessionRepository } from 'src/routes/auth/repositories'
+import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { Device } from '@prisma/client'
 import { RedisService } from 'src/shared/services/redis.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
@@ -20,6 +21,7 @@ import { z } from 'zod'
 import { EmailService } from 'src/shared/services/email.service'
 import { GeoLocationResult } from 'src/shared/services/geolocation.service'
 import { UserAgentService } from '../../../shared/services/user-agent.service'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 // Infer the type for a single device session group from the Zod schema
 type DeviceSessionGroup = z.infer<typeof GetGroupedSessionsResponseSchema.shape.devices.element>
@@ -29,7 +31,7 @@ export class SessionsService implements ISessionService {
   private readonly logger = new Logger(SessionsService.name)
 
   constructor(
-    private readonly i18nService: I18nService,
+    private readonly i18nService: I18nService<I18nTranslations>,
     private readonly configService: ConfigService,
     private readonly sessionRepository: SessionRepository,
     private readonly deviceRepository: DeviceRepository,
@@ -49,7 +51,7 @@ export class SessionsService implements ISessionService {
     currentPage: number = 1,
     itemsPerPage: number = 5,
     currentSessionIdFromToken: string
-  ): Promise<GetGroupedSessionsResponseDto> {
+  ): Promise<any> {
     this.logger.debug(
       `[getSessions] Attempting to get grouped sessions for userId: ${userId}, page: ${currentPage}, limit: ${itemsPerPage}`
     )
@@ -128,8 +130,11 @@ export class SessionsService implements ISessionService {
     const paginatedDeviceGroups = deviceGroups.slice(startIndex, startIndex + itemsPerPage)
 
     return {
-      devices: paginatedDeviceGroups,
-      meta: { currentPage, itemsPerPage, totalItems, totalPages }
+      message: this.i18nService.t('auth.success.session.retrieved'),
+      data: {
+        devices: paginatedDeviceGroups,
+        meta: { currentPage, itemsPerPage, totalItems, totalPages }
+      }
     }
   }
 
@@ -150,21 +155,38 @@ export class SessionsService implements ISessionService {
   }
 
   private async getLocationFromIP(ip: string): Promise<GeoLocationResult> {
-    if (!ip) return { display: 'Unknown' }
     return this.geolocationService.getLocationFromIP(ip)
   }
 
   private calculateInactiveDuration(lastActiveDate: Date): string {
     const now = new Date()
-    const diffSeconds = Math.floor((now.getTime() - lastActiveDate.getTime()) / 1000)
-    if (diffSeconds < 60) return 'Vừa xong'
-    const diffMinutes = Math.floor(diffSeconds / 60)
-    if (diffMinutes < 60) return `${diffMinutes} phút`
-    const diffHours = Math.floor(diffMinutes / 60)
-    if (diffHours < 24) return `${diffHours} giờ`
-    const diffDays = Math.floor(diffHours / 24)
-    if (diffDays < 7) return `${diffDays} ngày`
-    return `${Math.floor(diffDays / 7)} tuần`
+    const diffSeconds = Math.round((now.getTime() - lastActiveDate.getTime()) / 1000)
+
+    if (diffSeconds < 60) {
+      return (this.i18nService as any).t('global.error.duration.justNow')
+    }
+
+    const diffMinutes = Math.round(diffSeconds / 60)
+    if (diffMinutes === 1) {
+      return (this.i18nService as any).t('global.error.duration.aMinuteAgo')
+    }
+    if (diffMinutes < 60) {
+      return (this.i18nService as any).t('global.error.duration.minutesAgo', { args: { count: diffMinutes } })
+    }
+
+    const diffHours = Math.round(diffMinutes / 60)
+    if (diffHours === 1) {
+      return (this.i18nService as any).t('global.error.duration.anHourAgo')
+    }
+    if (diffHours < 24) {
+      return (this.i18nService as any).t('global.error.duration.hoursAgo', { args: { count: diffHours } })
+    }
+
+    const diffDays = Math.round(diffHours / 24)
+    if (diffDays === 1) {
+      return (this.i18nService as any).t('global.error.duration.aDayAgo')
+    }
+    return (this.i18nService as any).t('global.error.duration.daysAgo', { args: { count: diffDays } })
   }
 
   private async notifyDeviceTrustChange(
@@ -229,7 +251,7 @@ export class SessionsService implements ISessionService {
       excludeCurrentSession?: boolean
     },
     currentSessionContext: { sessionId?: string; deviceId?: number }
-  ): Promise<{ message: string; revokedSessionsCount: number; untrustedDevicesCount: number }> {
+  ): Promise<{ message: string; data: { revokedSessionsCount: number; untrustedDevicesCount: number } }> {
     let revokedSessionsCount = 0
     let untrustedDevicesCount = 0
     const excludeSessionId = options.excludeCurrentSession ? currentSessionContext.sessionId : undefined
@@ -271,14 +293,20 @@ export class SessionsService implements ISessionService {
       await this.setReverifyFlagForUser(userId)
     }
 
-    const messageKey =
-      revokedSessionsCount > 0 ? 'auth.Auth.Session.RevokedSuccessfullyCount' : 'auth.Auth.Session.NoSessionsToRevoke'
-    const i18nMessage = this.i18nService.t(messageKey, {
-      args: { count: revokedSessionsCount }
-    })
-    const message = typeof i18nMessage === 'string' ? i18nMessage : 'Sessions have been revoked.'
+    const i18nMessage =
+      revokedSessionsCount > 0
+        ? this.i18nService.t('auth.success.session.revokedCount', {
+            args: { count: revokedSessionsCount }
+          })
+        : this.i18nService.t('auth.success.session.noSessionsToRevoke')
 
-    return { message, revokedSessionsCount, untrustedDevicesCount }
+    return {
+      message: typeof i18nMessage === 'string' ? i18nMessage : 'Sessions have been revoked.',
+      data: {
+        revokedSessionsCount,
+        untrustedDevicesCount
+      }
+    }
   }
 
   private async setReverifyFlagForUser(userId: number): Promise<void> {
@@ -321,58 +349,85 @@ export class SessionsService implements ISessionService {
   ): Promise<{ revokedSessionsCount: number; untrusted: boolean }> {
     const device = await this.deviceRepository.findById(deviceId)
     if (!device || device.userId !== userId) {
-      throw AuthError.DeviceNotOwnedByUser()
+      throw AuthError.DeviceNotFound()
     }
 
-    const { count: revokedCount } = await this.sessionRepository.deleteSessionsByDeviceId(deviceId, excludeSessionId)
+    const { count } = await this.sessionRepository.deleteSessionsByDeviceId(deviceId, excludeSessionId)
+    await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
 
-    // Luôn bỏ tin cậy thiết bị khi nó bị thu hồi một cách rõ ràng
-    let wasUntrusted = false
-    if (device.isTrusted) {
-      await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
-      wasUntrusted = true
-    }
+    // Notify user about the action
+    await this.notifyDeviceTrustChange(userId, deviceId, 'untrusted')
 
-    this.logger.log(`[revokeDevice] Đã thu hồi ${revokedCount} phiên cho thiết bị ${deviceId} và bỏ tin cậy nó.`)
-
-    return { revokedSessionsCount: revokedCount, untrusted: wasUntrusted }
+    return { revokedSessionsCount: count, untrusted: true }
   }
 
-  async updateDeviceName(userId: number, deviceId: number, name: string): Promise<void> {
+  async updateDeviceName(userId: number, deviceId: number, name: string): Promise<{ message: string }> {
     const device = await this.deviceRepository.findById(deviceId)
     if (!device || device.userId !== userId) {
       throw AuthError.DeviceNotFound()
     }
     await this.deviceRepository.updateDeviceName(deviceId, name)
+    return {
+      message: this.i18nService.t('auth.success.device.nameUpdated')
+    }
   }
 
-  async trustCurrentDevice(userId: number, deviceId: number): Promise<void> {
+  async trustCurrentDevice(userId: number, deviceId: number): Promise<{ message: string }> {
+    const device = await this.deviceRepository.findById(deviceId)
+    if (!device || device.userId !== userId) {
+      throw AuthError.DeviceNotFound()
+    }
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, true)
     await this.notifyDeviceTrustChange(userId, deviceId, 'trusted')
+    return {
+      message: this.i18nService.t('auth.success.device.trusted')
+    }
   }
 
-  async untrustDevice(userId: number, deviceId: number): Promise<void> {
+  async untrustDevice(userId: number, deviceId: number): Promise<{ message: string }> {
+    const device = await this.deviceRepository.findById(deviceId)
+    if (!device || device.userId !== userId) {
+      throw AuthError.DeviceNotFound()
+    }
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
     await this.notifyDeviceTrustChange(userId, deviceId, 'untrusted')
+    return {
+      message: this.i18nService.t('auth.success.device.untrusted')
+    }
   }
 
   async isSessionInvalidated(sessionId: string): Promise<boolean> {
-    const session = await this.sessionRepository.findById(sessionId)
-    return !session
+    const key = RedisKeyManager.getInvalidatedSessionsKey()
+    return (await this.redisService.sismember(key, sessionId)) === 1
   }
 
   async invalidateSession(sessionId: string, reason?: string): Promise<void> {
-    const session = await this.sessionRepository.findById(sessionId)
-    if (session) {
-      this.logger.debug(`[invalidateSession] Vô hiệu hóa phiên ${sessionId} cho người dùng ${session.userId}.`)
-      // Xác định nếu đây là thao tác logout
-      const isLogout = reason === 'logout'
-      await this.revokeSingleSession(sessionId, session.userId, isLogout)
+    const key = RedisKeyManager.getInvalidatedSessionsKey()
+    const sessionTtl = this.configService.get<number>('ABSOLUTE_SESSION_LIFETIME_MS', 30 * 24 * 60 * 60 * 1000)
+    await this.redisService.sadd(key, sessionId)
+    // It's good practice to set an expiration on the set itself,
+    // though managing individual session expirations within the set can be complex.
+    // For now, we rely on a global TTL for the whole set if it's created for the first time.
+    await this.redisService.expire(key, sessionTtl / 1000)
 
-      // Chỉ đặt cờ yêu cầu xác minh lại nếu đây không phải là một thao tác đăng xuất thông thường
-      if (!isLogout) {
-        await this.setReverifyFlagForUser(session.userId)
-      }
+    this.logger.log(`Session ${sessionId} invalidated. Reason: ${reason || 'Not specified'}.`)
+
+    // To properly check permissions when revoking, we need the user ID.
+    // Fetch the session data to get the associated userId.
+    const session = await this.sessionRepository.findById(sessionId)
+
+    // If the session doesn't exist (e.g., already deleted or invalid ID), we can't proceed.
+    if (!session) {
+      this.logger.warn(
+        `[invalidateSession] Could not find session ${sessionId} to revoke. It might have been deleted already.`
+      )
+      return
+    }
+
+    // Now call revokeSingleSession with the correct userId.
+    const deviceId = await this.revokeSingleSession(sessionId, session.userId, true)
+    if (deviceId) {
+      this.logger.log(`Session ${sessionId} was linked to device ${deviceId}.`)
     }
   }
 

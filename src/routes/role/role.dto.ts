@@ -39,9 +39,9 @@ export class RoleDto
   updatedAt: Date
   deletedAt: Date | null
 
-  // constructor(partial: Partial<RoleDto>) {
-  //   Object.assign(this, partial)
-  // }
+  constructor(partial: Partial<RoleDto>) {
+    Object.assign(this, partial)
+  }
 
   // static fromEntity(entity: Role): RoleDto {
   //   return new RoleDto({

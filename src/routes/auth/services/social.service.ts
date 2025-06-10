@@ -7,18 +7,23 @@ import * as crypto from 'crypto'
 import { OAuth2Client, TokenPayload } from 'google-auth-library'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
-import { UserAuthRepository, DeviceRepository, SessionRepository } from 'src/routes/auth/repositories'
+import { SessionRepository } from 'src/routes/auth/repositories'
+import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { OtpService } from './otp.service'
 import { EMAIL_SERVICE, HASHING_SERVICE, OTP_SERVICE, SLT_SERVICE } from 'src/shared/constants/injection.tokens'
 import {
   GoogleCallbackReturnType,
   GoogleCallbackErrorResult,
   GoogleCallbackAccountExistsWithoutLinkResult
-} from '../../../shared/types/auth.types'
-import { ICookieService, ITokenService } from 'src/shared/types/auth.types'
+} from '../auth.types'
+import { ICookieService, ITokenService } from 'src/routes/auth/auth.types'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { SLTService } from 'src/shared/services/slt.service'
 import { EmailService } from 'src/shared/services/email.service'
+import { GlobalError } from 'src/shared/global.error'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+import { UserRepository } from 'src/routes/user/user.repository'
+import { RoleRepository } from 'src/routes/role/role.repository'
 
 /**
  * Interface để lưu thông tin state khi tạo URL xác thực Google
@@ -40,9 +45,10 @@ export class SocialService {
     private readonly configService: ConfigService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
-    private readonly i18nService: I18nService,
+    private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
-    private readonly userAuthRepository: UserAuthRepository,
+    private readonly userRepository: UserRepository,
+    private readonly roleRepository: RoleRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly sessionRepository: SessionRepository,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
@@ -134,7 +140,7 @@ export class SocialService {
       return { url, nonce }
     } catch (error) {
       this.logger.error(`[getGoogleAuthUrl] Lỗi khi tạo URL xác thực Google: ${error.message}`, error.stack)
-      throw error
+      throw AuthError.GoogleUserInfoFailed()
     }
   }
 
@@ -148,7 +154,7 @@ export class SocialService {
       return tokens
     } catch (error) {
       this.logger.error(`[getGoogleTokens] Lỗi lấy Google tokens: ${error.message}`)
-      throw error
+      throw AuthError.GoogleUserInfoFailed()
     }
   }
 
@@ -181,7 +187,7 @@ export class SocialService {
         this.logger.warn('[verifyAndDecodeState] State không được cung cấp')
         return {
           errorCode: 'MISSING_STATE',
-          errorMessage: 'State không được cung cấp',
+          errorMessage: 'auth.error.social.googleCallbackError',
           redirectToError: true
         }
       }
@@ -197,7 +203,7 @@ export class SocialService {
         this.logger.warn('[verifyAndDecodeState] Không tìm thấy nonce trong cookie')
         return {
           errorCode: 'MISSING_NONCE_COOKIE',
-          errorMessage: 'Không tìm thấy nonce trong cookie',
+          errorMessage: 'auth.error.social.googleCallbackError',
           redirectToError: true
         }
       }
@@ -208,7 +214,7 @@ export class SocialService {
         )
         return {
           errorCode: 'NONCE_MISMATCH',
-          errorMessage: 'Xác thực không hợp lệ',
+          errorMessage: 'auth.error.social.googleCallbackError',
           redirectToError: true
         }
       }
@@ -223,7 +229,7 @@ export class SocialService {
           this.logger.warn(`[verifyAndDecodeState] State đã hết hạn: ${stateAge}ms (max: ${maxStateAge}ms)`)
           return {
             errorCode: 'STATE_EXPIRED',
-            errorMessage: 'Phiên xác thực đã hết hạn, vui lòng thử lại',
+            errorMessage: 'auth.error.social.googleCallbackError',
             redirectToError: true
           }
         }
@@ -241,7 +247,7 @@ export class SocialService {
       this.logger.error(`[verifyAndDecodeState] Lỗi giải mã state: ${error.message}`, error.stack)
       return {
         errorCode: 'INVALID_STATE',
-        errorMessage: 'Dữ liệu xác thực không hợp lệ',
+        errorMessage: 'auth.error.social.googleCallbackError',
         redirectToError: true
       }
     }
@@ -332,14 +338,14 @@ export class SocialService {
       if (error.message.includes('invalid_grant')) {
         return {
           errorCode: 'INVALID_GRANT',
-          errorMessage: 'Mã xác thực đã hết hạn hoặc đã được sử dụng. Vui lòng thử lại.',
+          errorMessage: 'auth.error.social.googleCallbackError',
           redirectToError: true
         }
       }
 
       return {
         errorCode: 'GOOGLE_API_ERROR',
-        errorMessage: 'Không thể lấy thông tin từ Google. Vui lòng thử lại sau.',
+        errorMessage: 'auth.error.social.googleUserInfoFailed',
         redirectToError: true
       }
     }
@@ -349,9 +355,19 @@ export class SocialService {
    * Tạo đối tượng thông báo lỗi chuẩn
    */
   private createErrorResponse(errorCode: string): GoogleCallbackErrorResult {
+    const errorKeyMap: Record<string, string> = {
+      MISSING_STATE: 'auth.error.social.googleCallbackError',
+      MISSING_CODE: 'auth.error.social.googleMissingCode',
+      EMAIL_NOT_VERIFIED: 'auth.error.social.googleInvalidPayload',
+      ACCOUNT_NOT_FOUND: 'global.error.notFound.user',
+      USER_CREATION_FAILED: 'auth.error.social.googleLinkFailed',
+      INTERNAL_ERROR: 'global.error.general.internalServerError'
+    }
+    const messageKey = errorKeyMap[errorCode] || 'auth.error.social.googleCallbackError'
+
     return {
       errorCode,
-      errorMessage: this.i18nService.t('auth.Auth.Google.Error'),
+      errorMessage: messageKey,
       redirectToError: true
     }
   }
@@ -359,14 +375,14 @@ export class SocialService {
   /**
    * Tạo đối tượng yêu cầu liên kết tài khoản
    */
-  private async createAccountLinkingResponse(
+  private createAccountLinkingResponse(
     existingUserId: number,
     existingUserEmail: string,
     googleId: string,
     googleEmail: string,
     googleName: string | null,
     googleAvatar: string | null
-  ): Promise<GoogleCallbackAccountExistsWithoutLinkResult> {
+  ): GoogleCallbackAccountExistsWithoutLinkResult {
     return {
       needsLinking: true,
       existingUserId,
@@ -375,7 +391,7 @@ export class SocialService {
       googleEmail,
       googleName: googleName || null,
       googleAvatar: googleAvatar || null,
-      message: await this.i18nService.t('auth.Auth.Google.AccountNeedsLinking')
+      message: this.i18nService.t('auth.success.social.accountNeedsLinking')
     }
   }
 
@@ -387,12 +403,18 @@ export class SocialService {
     const lastName = nameParts.length > 1 ? nameParts.pop() || '' : ''
     const firstName = nameParts.join(' ')
 
+    const customerRole = await this.roleRepository.findByName('Customer')
+    if (!customerRole) {
+      this.logger.error(`[createUserFromGoogle] Role 'Customer' not found. Cannot create user.`)
+      throw GlobalError.InternalServerError('Role configuration error.')
+    }
+
     // Tạo user mới
-    return this.userAuthRepository.createUser({
+    return this.userRepository.createWithProfile({
       email,
       password: '', // Không có mật khẩu khi đăng ký bằng Google
-      roleId: 1,
-      username: email,
+      roleId: customerRole.id,
+      username: email, // Tạm thời dùng email, có thể cho user đổi sau
       firstName,
       lastName,
       googleId,
@@ -459,7 +481,7 @@ export class SocialService {
 
       // 4. Tìm tài khoản người dùng
       this.logger.debug(`[googleCallback] Tìm kiếm người dùng với googleId: ${googleId}`)
-      let user = await this.userAuthRepository.findByGoogleId(googleId)
+      let user = await this.userRepository.findByGoogleId(googleId)
       let isNewUser = false
 
       // 5. Xử lý khi không tìm thấy user theo googleId
@@ -467,12 +489,12 @@ export class SocialService {
         this.logger.debug(`[googleCallback] Không tìm thấy user với googleId, tìm kiếm theo email: ${googleEmail}`)
 
         // Tìm theo email
-        const existingUserByEmail = await this.userAuthRepository.findByEmail(googleEmail)
+        const existingUserByEmail = await this.userRepository.findByEmailWithDetails(googleEmail)
 
         // 5.1. Nếu có user với email này nhưng chưa liên kết với Google
         if (existingUserByEmail) {
           this.logger.debug(`[googleCallback] Tìm thấy user với email ${googleEmail}, cần liên kết tài khoản`)
-          return await this.createAccountLinkingResponse(
+          return this.createAccountLinkingResponse(
             existingUserByEmail.id,
             existingUserByEmail.email,
             googleId,
@@ -519,9 +541,9 @@ export class SocialService {
         requiresUntrustedDeviceVerification,
         twoFactorMethod: user.twoFactorMethod as any,
         isLoginViaGoogle: true,
-        message: await this.i18nService.t('auth.Auth.Google.SuccessProceedToSecurityChecks'),
         isNewUser,
-        purpose: isNewUser ? TypeOfVerificationCode.REGISTER : TypeOfVerificationCode.LOGIN
+        purpose: isNewUser ? TypeOfVerificationCode.REGISTER : TypeOfVerificationCode.LOGIN,
+        message: this.i18nService.t('auth.success.social.successProceedToSecurityChecks')
       }
     } catch (error) {
       this.logger.error(`[googleCallback] Lỗi không mong đợi trong Google callback: ${error.message}`, error.stack)
@@ -548,20 +570,20 @@ export class SocialService {
     }
 
     // Kiểm tra tài khoản Google đã được liên kết với user khác chưa
-    const existingUserWithGoogleId = await this.userAuthRepository.findByGoogleId(googleId || '')
+    const existingUserWithGoogleId = await this.userRepository.findByGoogleId(googleId || '')
 
     if (existingUserWithGoogleId && existingUserWithGoogleId.id !== userId) {
       throw AuthError.GoogleAccountAlreadyLinked()
     }
 
     // Lấy thông tin user hiện tại
-    const currentUser = await this.userAuthRepository.findById(userId)
+    const currentUser = await this.userRepository.findByIdWithDetails(userId)
     if (!currentUser) {
-      throw AuthError.EmailNotFound()
+      throw GlobalError.NotFound('user')
     }
 
     // Cập nhật user
-    await this.userAuthRepository.updateGoogleId(userId, googleId || '')
+    await this.userRepository.updateGoogleId(userId, googleId || '')
 
     // Gửi email thông báo
     await this.emailService.sendAccountLinkStatusChangeEmail(currentUser.email, {
@@ -571,7 +593,7 @@ export class SocialService {
     })
 
     return {
-      message: await this.i18nService.t('auth.Auth.Google.LinkSuccess')
+      message: this.i18nService.t('auth.success.social.linkSuccess')
     }
   }
 
@@ -579,11 +601,11 @@ export class SocialService {
    * Hoàn tất hủy liên kết tài khoản Google sau khi đã xác thực.
    * Hàm này không tự xác thực mà giả định việc xác thực đã được thực hiện bởi một service khác (VD: AuthVerificationService).
    */
-  async unlinkGoogleAccount(userId: number): Promise<{ message: string; success: boolean }> {
+  async unlinkGoogleAccount(userId: number): Promise<{ message: string; data: { success: boolean } }> {
     // Lấy thông tin user
-    const user = await this.userAuthRepository.findById(userId)
+    const user = await this.userRepository.findByIdWithDetails(userId)
     if (!user) {
-      throw AuthError.EmailNotFound()
+      throw GlobalError.NotFound('user')
     }
 
     // Kiểm tra user có liên kết với Google không
@@ -591,15 +613,15 @@ export class SocialService {
       // Có thể không cần throw lỗi ở đây, mà trả về thông báo nhẹ nhàng hơn
       this.logger.warn(`[unlinkGoogleAccount] User ${userId} requested unlink but has no Google ID.`)
       return {
-        message: 'Tài khoản này chưa được liên kết với Google.',
-        success: false
+        message: this.i18nService.t('auth.error.social.notLinked'),
+        data: { success: false }
       }
     }
 
     const googleIdBeforeUnlink = user.googleId
 
     // Cập nhật user, xóa googleId
-    await this.userAuthRepository.updateGoogleId(userId, null)
+    await this.userRepository.updateGoogleId(userId, null)
     this.logger.log(`[unlinkGoogleAccount] Successfully unlinked Google account for user ${userId}.`)
 
     // Gửi email thông báo
@@ -610,8 +632,8 @@ export class SocialService {
     })
 
     return {
-      message: 'Hủy liên kết tài khoản Google thành công.', // Sử dụng i18n key ở đây sẽ tốt hơn
-      success: true
+      message: this.i18nService.t('auth.success.social.unlinkSuccess'),
+      data: { success: true }
     }
   }
 
@@ -622,7 +644,7 @@ export class SocialService {
     const pendingLinkToken = req.cookies?.[CookieNames.OAUTH_PENDING_LINK]
 
     if (!pendingLinkToken) {
-      throw AuthError.MissingAccessToken()
+      throw AuthError.PendingSocialLinkTokenMissing()
     }
 
     try {
@@ -638,7 +660,7 @@ export class SocialService {
       }
     } catch (err) {
       this.logger.error(`[getPendingLinkDetails] Lỗi: ${err instanceof Error ? err.message : 'Unknown error'}`)
-      throw AuthError.InvalidAccessToken()
+      throw AuthError.InvalidSocialToken()
     }
   }
 
@@ -650,7 +672,7 @@ export class SocialService {
     password: string,
     userAgent: string,
     ip: string
-  ): Promise<{ user: any; device: any }> {
+  ): Promise<{ message: string; data: { user: any; device: any } }> {
     if (!pendingLinkToken) {
       throw AuthError.PendingSocialLinkTokenMissing()
     }
@@ -660,10 +682,10 @@ export class SocialService {
       const payload = await this.tokenService.verifyPendingLinkToken(pendingLinkToken)
 
       // Lấy user
-      const user = await this.userAuthRepository.findById(payload.existingUserId)
+      const user = await this.userRepository.findByIdWithDetails(payload.existingUserId)
 
       if (!user) {
-        throw AuthError.EmailNotFound()
+        throw GlobalError.NotFound('user')
       }
 
       // Kiểm tra mật khẩu nếu user đã có mật khẩu
@@ -675,7 +697,7 @@ export class SocialService {
       }
 
       // Cập nhật user với thông tin Google
-      await this.userAuthRepository.updateGoogleId(user.id, payload.googleId)
+      await this.userRepository.updateGoogleId(user.id, payload.googleId)
 
       // Gửi email thông báo
       await this.emailService.sendAccountLinkStatusChangeEmail(user.email, {
@@ -687,10 +709,13 @@ export class SocialService {
       // Tạo hoặc tìm device
       const device = await this.deviceRepository.upsertDevice(user.id, userAgent || 'unknown', ip || 'unknown')
 
-      return { user, device }
+      return {
+        message: this.i18nService.t('auth.success.social.linkSuccess'),
+        data: { user, device }
+      }
     } catch (err) {
       this.logger.error(`[completeLinkAndLogin] Lỗi: ${err instanceof Error ? err.message : 'Unknown error'}`)
-      if (err instanceof AuthError) throw err
+      if (err instanceof HttpException) throw err
       throw AuthError.GoogleLinkFailed()
     }
   }
@@ -698,17 +723,17 @@ export class SocialService {
   /**
    * Hủy liên kết đang chờ
    */
-  async cancelPendingLink(req: Request, res: Response): Promise<{ message: string }> {
+  cancelPendingLink(req: Request, res: Response): { message: string } {
     try {
       // Xóa cookie liên kết
       this.cookieService.clearOAuthPendingLinkTokenCookie(res)
 
       return {
-        message: await this.i18nService.t('auth.Auth.Google.Link.CancelledSuccessfully')
+        message: this.i18nService.t('auth.success.social.linkCancelled')
       }
     } catch (err) {
       this.logger.error(`[cancelPendingLink] Lỗi: ${err instanceof Error ? err.message : 'Unknown error'}`)
-      throw err
+      throw GlobalError.InternalServerError(err.message)
     }
   }
 }

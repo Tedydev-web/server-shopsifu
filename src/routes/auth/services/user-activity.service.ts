@@ -3,12 +3,13 @@ import { ConfigService } from '@nestjs/config'
 import { RedisService } from 'src/shared/services/redis.service'
 import { EmailService } from 'src/shared/services/email.service'
 import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
-import { UserAuthRepository } from 'src/routes/auth/repositories'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { I18nService, I18nContext } from 'nestjs-i18n'
 import { GeolocationService, GeoLocationResult } from 'src/shared/services/geolocation.service'
 import { calculateDistance, Coordinates } from 'src/shared/utils/geolocation.utils'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+import { UserRepository, UserWithProfileAndRole } from 'src/routes/user/user.repository'
 
 /**
  * Các loại hoạt động người dùng
@@ -77,9 +78,9 @@ export class UserActivityService {
     private readonly redisService: RedisService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
-    private readonly userAuthRepository: UserAuthRepository,
-    private readonly i18nService: I18nService,
-    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
+    private readonly i18nService: I18nService<I18nTranslations>,
+    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
+    private readonly userRepository: UserRepository
   ) {
     // Cấu hình quy tắc phát hiện
     this.activityRetentionDays = this.configService.get<number>('USER_ACTIVITY_RETENTION_DAYS', 90)
@@ -172,24 +173,22 @@ export class UserActivityService {
         case UserActivityType.LOGIN_FAILURE:
           await this.handleLoginFailure(activity)
           break
-
         case UserActivityType.LOGIN_SUCCESS:
           await this.handleLoginSuccess(activity)
           break
-
         case UserActivityType.PASSWORD_CHANGED:
-          await this.handlePasswordChanged(activity)
+          const userForPasswordChange = await this.userRepository.findByIdWithDetails(activity.userId)
+          if (userForPasswordChange) {
+            await this.handlePasswordChanged(activity, userForPasswordChange)
+          }
           break
-
         case UserActivityType.EMAIL_CHANGED:
           await this.handleEmailChanged(activity)
           break
-
         case UserActivityType.TWO_FACTOR_ENABLED:
         case UserActivityType.TWO_FACTOR_DISABLED:
           await this.handleTwoFactorChange(activity)
           break
-
         default:
           // Không có xử lý đặc biệt
           break
@@ -203,7 +202,6 @@ export class UserActivityService {
    * Kiểm tra vi phạm quy tắc
    */
   private async checkRuleViolations(activity: UserActivity): Promise<void> {
-    // Kiểm tra từng quy tắc phù hợp với loại hoạt động
     const applicableRules = this.rules.filter((rule) => rule.type === activity.type)
 
     for (const rule of applicableRules) {
@@ -228,15 +226,23 @@ export class UserActivityService {
           }
         })
 
+        const user = await this.userRepository.findByIdWithDetails(activity.userId)
+        if (!user) {
+          this.logger.warn(
+            `[checkRuleViolations] User not found for ID ${activity.userId}, cannot proceed with notifications or actions.`
+          )
+          return
+        }
+
         // Thông báo cho người dùng nếu nghiêm trọng
         if (rule.severity === ActivitySeverity.WARNING || rule.severity === ActivitySeverity.CRITICAL) {
           const extraDetails = await this.getExtraDetailsForRule(rule, activity.userId)
-          await this.notifyUserAboutSuspiciousActivity(activity.userId, rule, activity, extraDetails)
+          await this.notifyUserAboutSuspiciousActivity(user, rule, activity, extraDetails)
         }
 
         // Nếu là đăng nhập thất bại và đạt ngưỡng khóa tài khoản
         if (activity.type === UserActivityType.LOGIN_FAILURE && rule.threshold >= this.maxLoginAttemptsBeforeLock) {
-          await this.lockAccount(activity.userId, activity)
+          await this.lockAccount(user, activity)
         }
 
         // Nếu là di chuyển phi thực tế, đặt cờ xác minh lại
@@ -348,8 +354,7 @@ export class UserActivityService {
   /**
    * Xử lý thay đổi mật khẩu
    */
-  private async handlePasswordChanged(activity: UserActivity): Promise<void> {
-    const user = await this.userAuthRepository.findById(activity.userId, { email: true, userProfile: true })
+  private async handlePasswordChanged(activity: UserActivity, user: UserWithProfileAndRole): Promise<void> {
     if (!user) return
 
     const uaInfo = this.userAgentService.parse(activity.userAgent)
@@ -401,36 +406,31 @@ export class UserActivityService {
   /**
    * Khóa tài khoản người dùng
    */
-  private async lockAccount(userId: number, activity: UserActivity): Promise<void> {
-    this.logger.warn(`[lockAccount] Locking account for userId: ${userId} due to suspicious activity.`)
-    const lockKey = RedisKeyManager.getAccountLockKey(userId)
+  private async lockAccount(user: UserWithProfileAndRole, activity: UserActivity): Promise<void> {
+    this.logger.warn(`[lockAccount] Locking account for userId: ${user.id} due to suspicious activity.`)
+    const lockKey = RedisKeyManager.getAccountLockKey(user.id)
     await this.redisService.set(lockKey, 'locked', 'EX', this.loginLockoutMinutes * 60)
 
-    // Cập nhật trạng thái trong DB
-    await this.userAuthRepository.updateUser(userId, { status: 'LOCKED' })
+    await this.userRepository.update(user.id, { status: 'SUSPENDED' })
 
-    // Gửi thông báo cho người dùng
-    const user = await this.userAuthRepository.findById(userId, { email: true, userProfile: true })
-    if (user) {
-      await this.emailService.sendAccountLockedEmail(user.email, {
-        userName: user.userProfile?.username ?? user.email,
-        lockoutMinutes: this.loginLockoutMinutes,
-        details: [
-          {
-            label: this.i18nService.t('email.Email.common.details.ipAddress'),
-            value: activity.ipAddress ?? 'N/A'
-          },
-          {
-            label: this.i18nService.t('email.Email.common.details.location'),
-            value: activity.location ?? 'N/A'
-          }
-        ]
-      })
-    }
+    await this.emailService.sendAccountLockedEmail(user.email, {
+      userName: user.userProfile?.username ?? user.email,
+      lockoutMinutes: this.loginLockoutMinutes,
+      details: [
+        {
+          label: this.i18nService.t('email.Email.common.details.ipAddress'),
+          value: activity.ipAddress ?? 'N/A'
+        },
+        {
+          label: this.i18nService.t('email.Email.common.details.location'),
+          value: activity.location ?? 'N/A'
+        }
+      ]
+    })
 
     // Ghi lại hoạt động khóa tài khoản
     await this.logActivity({
-      userId,
+      userId: user.id,
       type: UserActivityType.ACCOUNT_LOCKED,
       timestamp: Date.now(),
       ipAddress: activity.ipAddress,
@@ -489,22 +489,16 @@ export class UserActivityService {
    * Thông báo cho người dùng về hoạt động đáng ngờ
    */
   private async notifyUserAboutSuspiciousActivity(
-    userId: number,
+    user: UserWithProfileAndRole,
     rule: DetectionRule,
     activity: UserActivity,
     extraDetails?: Record<string, any>
   ): Promise<void> {
-    const notificationKey = RedisKeyManager.getSuspiciousActivityNotificationKey(userId, rule.name) // Sử dụng rule.name để có key duy nhất
+    const notificationKey = RedisKeyManager.getSuspiciousActivityNotificationKey(user.id, rule.name)
     const alreadyNotified = await this.redisService.get(notificationKey)
 
     if (alreadyNotified) {
-      this.logger.debug(`[notifyUser] User ${userId} already notified for ${rule.name}. Skipping.`)
-      return
-    }
-
-    const user = await this.userAuthRepository.findById(userId, { email: true, userProfile: true })
-    if (!user) {
-      this.logger.warn(`[notifyUser] User not found with ID: ${userId}`)
+      this.logger.debug(`[notifyUser] User ${user.id} already notified for ${rule.name}. Skipping.`)
       return
     }
 

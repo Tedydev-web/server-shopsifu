@@ -18,8 +18,8 @@ export class CryptoService {
 
     if (!key) {
       this.logger.warn(
-        'ENCRYPTION_KEY không được cấu hình. Dữ liệu nhạy cảm sẽ được lưu trữ mà không mã hóa. ' +
-          'Đối với môi trường production, hãy đảm bảo cấu hình ENCRYPTION_KEY.'
+        'ENCRYPTION_KEY is not configured. Sensitive data will be stored unencrypted. ' +
+          'For production environments, please ensure ENCRYPTION_KEY is set.'
       )
       this.encryptionKey = Buffer.from('default-key-please-change-in-production!', 'utf-8')
     } else {
@@ -64,7 +64,7 @@ export class CryptoService {
       // Trả về chuỗi base64
       return result.toString('base64')
     } catch (error) {
-      this.logger.error(`Lỗi khi mã hóa dữ liệu: ${error.message}`, error.stack)
+      this.logger.error(`Error during data encryption: ${error.message}`, error.stack)
       return ''
     }
   }
@@ -110,7 +110,7 @@ export class CryptoService {
 
       return decrypted
     } catch (error) {
-      this.logger.error(`Lỗi khi giải mã dữ liệu: ${error.message}`, error.stack)
+      this.logger.error(`Error during data decryption: ${error.message}`, error.stack)
       return asObject ? ({} as T) : ''
     }
   }

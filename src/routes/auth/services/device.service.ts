@@ -7,11 +7,14 @@ import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { RedisService } from 'src/shared/services/redis.service'
 import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService } from 'src/shared/services/email.service'
-import { DeviceRepository, UserAuthRepository } from 'src/routes/auth/repositories'
+import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { DEVICE_REVERIFICATION_TTL } from 'src/shared/constants/redis.constants'
-import { IDeviceService } from 'src/shared/types/auth.types'
+import { IDeviceService } from 'src/routes/auth/auth.types'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
+import { GlobalError } from 'src/shared/global.error'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+import { UserWithProfileAndRole } from 'src/routes/user/user.repository'
 
 /**
  * Kết quả đánh giá rủi ro thiết bị
@@ -57,12 +60,11 @@ export class DeviceService implements IDeviceService {
 
   constructor(
     private readonly redisService: RedisService,
-    private readonly i18nService: I18nService,
+    private readonly i18nService: I18nService<I18nTranslations>,
     private readonly configService: ConfigService,
     private readonly deviceRepository: DeviceRepository,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
-    private readonly userAuthRepository: UserAuthRepository,
     private readonly prisma: PrismaService,
     @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
   ) {
@@ -91,15 +93,14 @@ export class DeviceService implements IDeviceService {
    * Phương thức này được gọi sau khi quá trình xác thực hoàn tất.
    */
   async notifyLoginOnUntrustedDevice(
-    userId: number,
+    user: UserWithProfileAndRole,
     deviceId: number,
     ipAddress?: string,
     userAgent?: string
   ): Promise<void> {
     try {
-      const user = await this.userAuthRepository.findById(userId)
       if (!user) {
-        this.logger.warn(`[notifyLoginOnUntrustedDevice] User not found: ${userId}`)
+        this.logger.warn(`[notifyLoginOnUntrustedDevice] User not found`)
         return
       }
 
@@ -170,11 +171,11 @@ export class DeviceService implements IDeviceService {
       await this.deviceRepository.updateLastNotificationSent(deviceId)
 
       this.logger.log(
-        `[notifyLoginOnUntrustedDevice] Sent new device login notification to user ${userId} for device ${deviceId}`
+        `[notifyLoginOnUntrustedDevice] Sent new device login notification to user ${user.id} for device ${deviceId}`
       )
     } catch (error) {
       this.logger.error(
-        `[notifyLoginOnUntrustedDevice] Failed to send notification for user ${userId}. Error: ${error.message}`,
+        `[notifyLoginOnUntrustedDevice] Failed to send notification for user ${user.id}. Error: ${error.message}`,
         error.stack
       )
     }
@@ -208,11 +209,11 @@ export class DeviceService implements IDeviceService {
     const device = await this.deviceRepository.findById(deviceId)
 
     if (!device || device.userId !== userId) {
-      throw new Error('Không tìm thấy thiết bị hoặc thiết bị không thuộc về người dùng')
+      throw GlobalError.NotFound('device')
     }
 
     // Xóa đánh dấu đáng ngờ
-    const suspiciousKey = `device:${device.id}:suspicious`
+    const suspiciousKey = RedisKeyManager.getDeviceSuspiciousKey(deviceId)
     await this.redisService.del(suspiciousKey)
 
     this.logger.debug(`[markDeviceAsSafe] Đã đánh dấu thiết bị ${deviceId} là an toàn`)
@@ -221,32 +222,37 @@ export class DeviceService implements IDeviceService {
   /**
    * Cảnh báo về thiết bị khi số lượng thiết bị của người dùng gần đạt giới hạn
    */
-  async warnAboutDeviceLimit(userId: number): Promise<boolean> {
-    const userDevices = await this.deviceRepository.findDevicesByUserId(userId)
+  async warnAboutDeviceLimit(user: UserWithProfileAndRole): Promise<boolean> {
+    const userDevices = await this.deviceRepository.findDevicesByUserId(user.id)
 
     // Nếu số lượng thiết bị đã đạt 80% giới hạn
     if (userDevices.length >= Math.floor(this.maxAllowedDevices * 0.8)) {
-      const user = await this.userAuthRepository.findById(userId)
-
       if (user) {
         // Kiểm tra đã cảnh báo gần đây chưa
-        const warningKey = `user:${userId}:device_limit_warning`
+        const warningKey = `user:${user.id}:device_limit_warning`
         const lastWarning = await this.redisService.get(warningKey)
 
         if (!lastWarning) {
+          const lang = I18nContext.current()?.lang ?? 'vi'
           // Gửi email cảnh báo
           await this.emailService.sendDeviceLimitWarningEmail(user.email, {
             userName: user.userProfile?.username || user.email.split('@')[0],
             details: [
-              { label: 'Thiết bị hiện tại', value: `${userDevices.length}` },
-              { label: 'Giới hạn thiết bị', value: `${this.maxAllowedDevices}` }
+              {
+                label: this.i18nService.t('email.Email.common.details.currentDevices', { lang }),
+                value: `${userDevices.length}`
+              },
+              {
+                label: this.i18nService.t('email.Email.common.details.deviceLimit', { lang }),
+                value: `${this.maxAllowedDevices}`
+              }
             ]
           })
 
           // Đánh dấu đã cảnh báo (trong 7 ngày)
           await this.redisService.set(warningKey, Date.now().toString(), 'EX', 60 * 60 * 24 * 7)
 
-          this.logger.debug(`[warnAboutDeviceLimit] Đã cảnh báo userId ${userId} về giới hạn thiết bị`)
+          this.logger.debug(`[warnAboutDeviceLimit] Đã cảnh báo userId ${user.id} về giới hạn thiết bị`)
           return true
         }
       }

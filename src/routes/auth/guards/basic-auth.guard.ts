@@ -1,5 +1,5 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Logger, Inject } from '@nestjs/common'
-import { UserAuthRepository } from 'src/routes/auth/repositories'
+import { UserRepository } from 'src/routes/user/user.repository'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { HASHING_SERVICE } from 'src/shared/constants/injection.tokens'
 import { REQUEST_USER_KEY } from 'src/routes/auth/auth.constants'
@@ -9,7 +9,7 @@ export class BasicAuthGuard implements CanActivate {
   private readonly logger = new Logger(BasicAuthGuard.name)
 
   constructor(
-    private readonly userAuthRepository: UserAuthRepository,
+    private readonly userRepository: UserRepository,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService
   ) {}
 
@@ -32,7 +32,7 @@ export class BasicAuthGuard implements CanActivate {
       }
 
       // Tìm user theo email
-      const user = await this.userAuthRepository.findByEmail(email)
+      const user = await this.userRepository.findByEmailWithDetails(email)
 
       if (!user) {
         throw new UnauthorizedException('Invalid credentials')
@@ -63,4 +63,4 @@ export class BasicAuthGuard implements CanActivate {
       throw new UnauthorizedException('Authentication failed')
     }
   }
-}
+} 

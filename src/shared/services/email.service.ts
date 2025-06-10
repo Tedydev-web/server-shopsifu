@@ -101,10 +101,11 @@ export class EmailService {
       })
 
       if (error) {
-        throw new Error(JSON.stringify(error))
+        this.logger.error(`Resend API returned an error for recipient ${payload.to}`, error)
+        return
       }
 
-      this.logger.log(`Email sent successfully to ${payload.to} with subject: ${subject}`)
+      this.logger.log(`Email sent successfully to ${payload.to} with subject: ${subject}, ID: ${data?.id}`)
     } catch (error) {
       this.logger.error(`Failed to send email to ${payload.to}. Subject: ${subject}`, error.stack)
       // Do not re-throw to avoid crashing the caller

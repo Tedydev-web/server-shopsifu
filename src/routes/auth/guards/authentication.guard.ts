@@ -4,7 +4,7 @@ import { AUTH_TYPE_KEY, IS_PUBLIC_KEY } from 'src/shared/decorators/auth.decorat
 import { AuthType } from 'src/routes/auth/auth.constants'
 
 import { Observable } from 'rxjs'
-import { ApiKeyGuard } from './api-key.guard'
+import { ApiKeyGuard } from 'src/shared/guards/api-key.guard'
 import { JwtAuthGuard } from './jwt-auth.guard'
 import { BasicAuthGuard } from './basic-auth.guard'
 
@@ -59,4 +59,4 @@ export class AuthenticationGuard implements CanActivate {
 
     return guard.canActivate(context)
   }
-}
+} 

@@ -30,7 +30,9 @@ export enum RedisPrefix {
   USER_SUSPICIOUS_NOTIFICATION = 'auth:user:suspicious_notification',
   USER_REVERIFY_NEXT_LOGIN = 'auth:user:reverify_next_login',
 
-  CACHE = 'cache'
+  CACHE = 'cache',
+  CACHE_ROLE = 'cache:role',
+  CACHE_PERMISSION = 'cache:permission'
 }
 
 /**
@@ -94,6 +96,15 @@ export class RedisKeyManager {
    */
   public static getDeviceReverificationKey(deviceId: number): string {
     return `${RedisPrefix.AUTH}:device:${deviceId}:reverify`
+  }
+
+  /**
+   * Key for the device suspicious flag.
+   * @type STRING
+   * @example "auth:device:suspicious:456"
+   */
+  public static getDeviceSuspiciousKey(deviceId: number): string {
+    return `${RedisPrefix.AUTH}:device:${deviceId}:suspicious`
   }
 
   /**
@@ -223,5 +234,61 @@ export class RedisKeyManager {
    */
   static getLastLoginTimestampKey(userId: number): string {
     return `${RedisPrefix.AUTH}:user:${userId}:last-login-timestamp`
+  }
+
+  // --- Cache Keys ---
+
+  /**
+   * Key for caching a single role by its ID.
+   * @type STRING (JSON)
+   * @example "cache:role:1"
+   */
+  public static getRoleCacheKey(roleId: number): string {
+    return this.a(RedisPrefix.CACHE_ROLE, roleId)
+  }
+
+  /**
+   * Key for caching a single role by its name.
+   * @type STRING (JSON)
+   * @example "cache:role:name:Admin"
+   */
+  public static getRoleByNameCacheKey(roleName: string): string {
+    return this.a(RedisPrefix.CACHE_ROLE, 'name', roleName)
+  }
+
+  /**
+   * Key for caching the list of all roles.
+   * @type STRING (JSON)
+   * @example "cache:role:all"
+   */
+  public static getAllRolesCacheKey(): string {
+    return this.a(RedisPrefix.CACHE_ROLE, 'all')
+  }
+
+  /**
+   * Key for caching a single permission by its ID.
+   * @type STRING (JSON)
+   * @example "cache:permission:1"
+   */
+  public static getPermissionCacheKey(permissionId: number): string {
+    return this.a(RedisPrefix.CACHE_PERMISSION, permissionId)
+  }
+
+  /**
+   * Key for caching a single permission by its action and subject.
+   * @type STRING (JSON)
+   * @example "cache:permission:action:create:subject:user"
+   */
+  public static getPermissionByActionAndSubjectCacheKey(action: string, subject: string): string {
+    return this.a(RedisPrefix.CACHE_PERMISSION, 'action', action, 'subject', subject)
+  }
+
+  /**
+   * Key for caching the list of all permissions.
+   * @type STRING (JSON)
+   * @example "cache:permission:all"
+   */
+  public static getAllPermissionsCacheKey(): string {
+    return this.a(RedisPrefix.CACHE_PERMISSION, 'all')
   }
 }

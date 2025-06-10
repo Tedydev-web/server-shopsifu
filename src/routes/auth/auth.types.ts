@@ -53,15 +53,8 @@ export interface IOTPService {
     targetEmail: string,
     type: TypeOfVerificationCodeType,
     metadata?: Record<string, any>
-  ): Promise<{ message: string; otpCode: string }>
-  verifyOTP(
-    emailToVerifyAgainst: string,
-    code: string,
-    type: TypeOfVerificationCodeType,
-    userIdForAudit?: number,
-    ip?: string,
-    userAgent?: string
-  ): Promise<boolean>
+  ): Promise<{ message: string; otpCode?: string }>
+  verifyOTP(emailToVerifyAgainst: string, code: string, type: TypeOfVerificationCodeType): Promise<boolean>
 }
 
 /**
@@ -196,7 +189,7 @@ export interface ITokenService {
  */
 export interface IVerificationService {
   // Giai đoạn thiết lập và cấu hình
-  generateSetupDetails?(userId: number, options?: any): Promise<any>
+  generateSetupDetails?(userId: number, options?: any): Promise<{ message: string; data: any }>
 
   // Xác minh mã đã nhập
   verifyCode(code: string, context: any): Promise<boolean>
@@ -205,7 +198,7 @@ export interface IVerificationService {
   generateVerificationCode(options?: any): Promise<string>
 
   // Vô hiệu hóa phương thức xác thực
-  disableVerification(userId: number): Promise<void>
+  disableVerification(userId: number, code: string, method?: string): Promise<{ message: string }>
 }
 
 /**
@@ -213,10 +206,27 @@ export interface IVerificationService {
  */
 export interface IMultiFactorService extends IVerificationService {
   // Tạo lại các mã khôi phục
-  regenerateRecoveryCodes(userId: number, verificationCode: string): Promise<string[]>
+  regenerateRecoveryCodes(
+    userId: number,
+    code: string,
+    method?: string,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<{ message: string; data: { recoveryCodes: string[] } }>
 
   // Xác minh mã thông qua phương thức cụ thể
-  verifyByMethod(method: string, code: string, userId: number): Promise<{ success: boolean; method: string }>
+  verifyByMethod(
+    method: string,
+    code: string,
+    userId: number
+  ): Promise<{ message: string; data: { success: boolean; method: string } }>
+
+  /**
+   * Disables two-factor authentication for a user after the verification code has already been confirmed.
+   * This method does not perform any verification itself.
+   * @param userId The ID of the user.
+   */
+  disableVerificationAfterConfirm(userId: number): Promise<{ message: string }>
 }
 
 // OTP related

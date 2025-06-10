@@ -1,0 +1,16 @@
+{
+  "error": {
+    "notFound": "Quyền không được tìm thấy.",
+    "alreadyExists": "Quyền với hành động '{action}' trên đối tượng '{subject}' đã tồn tại.",
+    "createFailed": "Tạo quyền thất bại.",
+    "updateFailed": "Cập nhật quyền thất bại.",
+    "deleteFailed": "Xóa quyền thất bại."
+  },
+  "success": {
+    "create": "Tạo quyền thành công.",
+    "update": "Cập nhật quyền thành công.",
+    "delete": "Xóa quyền thành công.",
+    "get": "Lấy quyền thành công.",
+    "list": "Lấy danh sách quyền thành công."
+  }
+}

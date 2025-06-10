@@ -32,5 +32,12 @@ export const SetNewPasswordSchema = z
     path: ['confirmPassword']
   })
 
+export const ChangePasswordSchema = z.object({
+  currentPassword: z.string(),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters long'),
+  revokeOtherSessions: z.boolean().default(true)
+})
+
 export class InitiatePasswordResetDto extends createZodDto(InitiatePasswordResetSchema) {}
 export class SetNewPasswordDto extends createZodDto(SetNewPasswordSchema) {}
+export class ChangePasswordDto extends createZodDto(ChangePasswordSchema) {}

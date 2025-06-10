@@ -1,6 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Ip, Logger, Post, Req, Res, Inject } from '@nestjs/common'
 import { Request, Response } from 'express'
-import { I18nService } from 'nestjs-i18n'
 import { Throttle } from '@nestjs/throttler'
 
 import { CoreService } from '../services/core.service'
@@ -10,10 +9,9 @@ import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { Auth } from 'src/shared/decorators/auth.decorator'
-import { AccessTokenPayload, ICookieService, ITokenService } from 'src/shared/types/auth.types'
+import { AccessTokenPayload, ICookieService } from 'src/routes/auth/auth.types'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
-import { ResponseMessage } from 'src/shared/decorators/response-message.decorator'
-import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
 
 @Controller('auth')
 export class CoreController {
@@ -21,16 +19,13 @@ export class CoreController {
 
   constructor(
     private readonly coreService: CoreService,
-    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
-    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
-    private readonly i18nService: I18nService
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService
   ) {}
 
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @IsPublic()
   @Post('initiate-registration')
   @HttpCode(HttpStatus.OK)
-  @ResponseMessage('auth.Core.Success.InitiateRegistration')
   async initiateRegistration(
     @Body() body: InitiateRegistrationDto,
     @Ip() ip: string,
@@ -50,7 +45,7 @@ export class CoreController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @IsPublic()
   @Post('complete-registration')
-  @ResponseMessage('auth.Core.Success.CompleteRegistration')
+  @HttpCode(HttpStatus.CREATED)
   async completeRegistration(
     @Body() body: CompleteRegistrationDto,
     @Req() req: Request,
@@ -61,10 +56,6 @@ export class CoreController {
     const sltCookie = req.cookies[CookieNames.SLT_TOKEN]
     if (!sltCookie) {
       throw AuthError.SLTCookieMissing()
-    }
-
-    if (body.password !== body.confirmPassword) {
-      throw AuthError.InvalidPassword()
     }
 
     const result = await this.coreService.completeRegistrationWithSlt(
@@ -84,7 +75,6 @@ export class CoreController {
   @IsPublic()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ResponseMessage('auth.Core.Success.Login')
   async login(
     @Body() body: LoginDto,
     @Ip() ip: string,
@@ -101,31 +91,23 @@ export class CoreController {
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @IsPublic()
   @Post('refresh-token')
-  @ResponseMessage('auth.Core.Success.RefreshToken')
+  @HttpCode(HttpStatus.OK)
   async refreshToken(
     @UserAgent() userAgent: string,
     @Ip() ip: string,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    const refreshToken = this.tokenService.extractRefreshTokenFromRequest(req)
-
-    if (!refreshToken) {
-      throw AuthError.MissingRefreshToken()
-    }
-
     const deviceInfo = {
       ipAddress: ip,
       userAgent
     }
-
-    return this.coreService.refreshToken(refreshToken, deviceInfo, res)
+    return this.coreService.refreshToken(req, deviceInfo, res)
   }
 
   @Auth()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ResponseMessage('auth.Core.Success.Logout')
   async logout(
     @ActiveUser() activeUser: AccessTokenPayload,
     @Req() req: Request,

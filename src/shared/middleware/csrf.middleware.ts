@@ -4,7 +4,7 @@ import csurf from 'csurf'
 import { ConfigService } from '@nestjs/config'
 import { v4 as uuidv4 } from 'uuid'
 import { HttpHeader } from 'src/shared/constants/http.constants'
-import { CookieConfig } from 'src/shared/types/auth.types'
+import { CookieConfig } from 'src/routes/auth/auth.types'
 
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {

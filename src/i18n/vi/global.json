@@ -1,83 +1,65 @@
 {
-  "success": {
-    "general": {
-      "default": "Thành công!",
-      "defaultTitle": "Thao tác thành công",
-      "defaultMessage": "Yêu cầu của bạn đã được xử lý thành công."
-    }
-  },
-  "error": {
-    "general": {
-      "unknown": "Đã xảy ra lỗi không xác định.",
-      "serializationFailed": "Tuần tự hóa dữ liệu thất bại. Vui lòng thử lại.",
-      "validationFailed": {
-        "title": "Dữ liệu không hợp lệ",
-        "message": "Dữ liệu cung cấp không hợp lệ. Vui lòng kiểm tra lại các trường thông tin."
-      },
+  "general": {
+    "error": {
       "internalServerError": {
-        "title": "Lỗi máy chủ",
-        "message": "Đã có lỗi xảy ra ở phía máy chủ. Vui lòng thử lại sau hoặc liên hệ hỗ trợ."
+        "title": "Lỗi Máy Chủ",
+        "message": "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại sau."
       },
       "default": {
-        "title": "Đã có lỗi xảy ra"
+        "title": "Đã có lỗi",
+        "message": "Một lỗi đã xảy ra."
+      },
+      "validationFailed": {
+        "title": "Dữ liệu không hợp lệ",
+        "message": "Vui lòng kiểm tra lại các trường được cung cấp."
       }
     },
-    "http": {
-      "badRequest": {
-        "title": "Yêu cầu không hợp lệ",
-        "message": "Yêu cầu của bạn không thể được xử lý do định dạng sai hoặc thiếu thông tin."
-      },
-      "unauthorized": {
-        "title": "Chưa xác thực",
-        "message": "Bạn cần đăng nhập để thực hiện hành động này."
-      },
-      "forbidden": {
-        "title": "Không có quyền truy cập",
-        "message": "Bạn không có quyền thực hiện hành động này."
-      },
-      "notFound": {
-        "title": "Không tìm thấy tài nguyên",
-        "message": "Tài nguyên bạn yêu cầu không tồn tại."
-      },
-      "conflict": {
-        "title": "Xung đột dữ liệu",
-        "message": "Yêu cầu của bạn gây ra xung đột với trạng thái hiện tại của tài nguyên."
-      },
-      "unprocessableEntity": {
-        "title": "Không thể xử lý yêu cầu",
-        "message": "Yêu cầu hợp lệ về mặt cú pháp nhưng không thể xử lý được."
-      },
-      "preconditionFailed": {
-        "title": "Điều kiện tiên quyết thất bại",
-        "message": "Một hoặc nhiều điều kiện tiên quyết cho yêu cầu không được đáp ứng."
-      },
-      "serviceUnavailable": {
-        "title": "Dịch vụ không khả dụng",
-        "message": "Dịch vụ hiện không khả dụng. Vui lòng thử lại sau."
-      },
-      "httpError": {
-        "title": "Lỗi giao tiếp HTTP",
-        "message": "Đã xảy ra lỗi trong quá trình giao tiếp HTTP."
-      }
-    },
-    "server": {
-      "config": {
-        "missingOAuthCookie": "Lỗi cấu hình máy chủ: Thiếu hoặc cấu hình cookie OAuth không đầy đủ. Vui lòng liên hệ hỗ trợ."
-      }
+    "success": {
+      "default": "Hành động đã được thực hiện thành công.",
+      "updated": "Cập nhật thành công.",
+      "created": "Tạo mới thành công.",
+      "deleted": "Xóa thành công."
     }
   },
-  "errors": {
-    "VALIDATION_FAILED": {
-      "title": "Dữ liệu không hợp lệ"
+  "http": {
+    "BAD_REQUEST": {
+      "title": "Yêu Cầu Không Hợp Lệ",
+      "message": "Yêu cầu không hợp lệ."
     },
-    "INTERNAL_SERVER_ERROR": {
-      "title": "Lỗi máy chủ"
+    "UNAUTHORIZED": {
+      "title": "Yêu Cầu Xác Thực",
+      "message": "Xác thực không thành công."
     },
-    "UNHANDLED_HTTP_EXCEPTION": {
-      "title": "Lỗi HTTP không xác định"
+    "FORBIDDEN": {
+      "title": "Truy Cập Bị Từ Chối",
+      "message": "Bạn không có quyền thực hiện hành động này."
+    },
+    "NOT_FOUND": {
+      "title": "Không Tìm Thấy",
+      "message": "Không tìm thấy tài nguyên được yêu cầu."
     },
     "HTTP_EXCEPTION": {
-      "title": "Lỗi HTTP"
+      "title": "Lỗi HTTP",
+      "message": "Có lỗi xảy ra khi xử lý yêu cầu của bạn."
+    },
+    "UNHANDLED_HTTP_EXCEPTION": {
+      "title": "Lỗi HTTP không xác định",
+      "message": "Có lỗi không xác định xảy ra."
     }
+  },
+  "notFound": {
+    "user": "Không tìm thấy người dùng.",
+    "device": "Không tìm thấy thiết bị.",
+    "session": "Không tìm thấy phiên đăng nhập.",
+    "resource": "Không tìm thấy tài nguyên được yêu cầu."
+  },
+  "duration": {
+    "justNow": "Vừa xong",
+    "minutesAgo": "{count} phút trước",
+    "hoursAgo": "{count} giờ trước",
+    "daysAgo": "{count} ngày trước",
+    "aMinuteAgo": "1 phút trước",
+    "anHourAgo": "1 giờ trước",
+    "aDayAgo": "1 ngày trước"
   }
 }

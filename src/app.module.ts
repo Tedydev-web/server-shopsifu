@@ -1,5 +1,5 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common'
-import { APP_GUARD } from '@nestjs/core'
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { ConfigModule } from '@nestjs/config'
 import appConfig from './shared/config'
@@ -11,11 +11,12 @@ import { I18nModule, AcceptLanguageResolver, QueryResolver } from 'nestjs-i18n'
 import path from 'path'
 import { ProfileModule } from './routes/profile/profile.module'
 import { SharedModule } from './shared/shared.module'
-// import { RedisProviderModule } from './shared/providers/redis/redis.module'
 import { RoleModule } from './routes/role/role.module'
-// import { UserModule } from './routes/user/user.module'
 import { PermissionModule } from './routes/permission/permission.module'
 import { UserModule } from './routes/user/user.module'
+import { CaslModule } from './shared/casl/casl.module'
+import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
+import { ResponseInterceptor } from './shared/interceptors/response.interceptor'
 
 @Module({
   imports: [
@@ -23,14 +24,13 @@ import { UserModule } from './routes/user/user.module'
     I18nModule.forRoot({
       fallbackLanguage: 'vi',
       loaderOptions: {
-        path: path.resolve('src/i18n/'),
+        path: path.resolve('src/i18n'),
         watch: true
       },
-      resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
+      resolvers: [AcceptLanguageResolver, { use: QueryResolver, options: ['lang'] }],
       typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
     }),
     SharedModule,
-    // RedisProviderModule,
     AuthModule,
     ProfileModule,
     ThrottlerModule.forRoot([
@@ -40,9 +40,9 @@ import { UserModule } from './routes/user/user.module'
       }
     ]),
     RoleModule,
-    // UserModule,
     PermissionModule,
-    UserModule
+    UserModule,
+    CaslModule
   ],
   controllers: [AppController],
   providers: [
@@ -50,6 +50,14 @@ import { UserModule } from './routes/user/user.module'
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard
+    },
+    {
+      provide: APP_FILTER,
+      useClass: AllExceptionsFilter
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ResponseInterceptor
     }
   ]
 })

@@ -14,16 +14,20 @@ import {
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/routes/auth/auth.constants'
-import { UserAuthRepository, RecoveryCodeRepository, DeviceRepository } from 'src/routes/auth/repositories'
+import { RecoveryCodeRepository } from 'src/routes/auth/repositories'
+import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { RedisService } from 'src/shared/services/redis.service'
 import { OtpService } from './otp.service'
-import { ICookieService, ITokenService, IMultiFactorService } from 'src/shared/types/auth.types'
+import { ICookieService, ITokenService, IMultiFactorService } from 'src/routes/auth/auth.types'
 import { AuthError } from '../auth.error'
 import { SLTService } from 'src/shared/services/slt.service'
 import { EmailService } from 'src/shared/services/email.service'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
+import { GlobalError } from 'src/shared/global.error'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+import { UserRepository } from 'src/routes/user/user.repository'
 
 /**
  * Cấu hình và hằng số
@@ -51,12 +55,12 @@ export class TwoFactorService implements IMultiFactorService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly i18nService: I18nService,
+    private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly otpService: OtpService,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
-    private readonly userAuthRepository: UserAuthRepository,
+    private readonly userRepository: UserRepository,
     private readonly recoveryCodeRepository: RecoveryCodeRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly redisService: RedisService,
@@ -84,17 +88,14 @@ export class TwoFactorService implements IMultiFactorService {
    * Tạo thông tin cần thiết (secret, uri) để thiết lập TOTP.
    * Phương thức này không lưu bất cứ gì vào DB, chỉ tạo dữ liệu.
    */
-  async generateSetupDetails(userId: number): Promise<{ secret: string; qrCode: string }> {
+  async generateSetupDetails(userId: number): Promise<{ message: string; data: { secret: string; qrCode: string } }> {
     this.logger.debug(`[generateSetupDetails] Generating 2FA setup details for userId ${userId}`)
 
-    const user = await this.userAuthRepository.findById(userId, {
-      email: true,
-      twoFactorEnabled: true
-    })
+    const user = await this.userRepository.findById(userId)
 
     if (!user) {
       this.logger.error(`[generateSetupDetails] User not found with ID: ${userId}`)
-      throw AuthError.EmailNotFound()
+      throw GlobalError.NotFound('user')
     }
 
     if (user.twoFactorEnabled) {
@@ -106,8 +107,11 @@ export class TwoFactorService implements IMultiFactorService {
     const qrCode = await this.generateQRCode(uri)
 
     return {
-      secret,
-      qrCode
+      message: this.i18nService.t('auth.success.2fa.setupInitiated'),
+      data: {
+        secret,
+        qrCode
+      }
     }
   }
 
@@ -154,10 +158,7 @@ export class TwoFactorService implements IMultiFactorService {
     // Xử lý dựa trên phương thức
     switch (verificationMethod as TwoFactorMethodType) {
       case TwoFactorMethodType.AUTHENTICATOR_APP: {
-        const user = await this.userAuthRepository.findById(context.userId, {
-          twoFactorEnabled: true,
-          twoFactorSecret: true
-        })
+        const user = await this.userRepository.findById(context.userId)
         if (!user?.twoFactorEnabled || !user.twoFactorSecret) {
           throw AuthError.TOTPNotEnabled()
         }
@@ -189,18 +190,49 @@ export class TwoFactorService implements IMultiFactorService {
   }
 
   /**
-   * Vô hiệu hóa xác thực hai yếu tố
+   * Vô hiệu hóa xác thực hai yếu tố sau khi xác thực
    * @implements IVerificationService.disableVerification
    */
-  async disableVerification(userId: number): Promise<void> {
-    this.logger.debug(`[disableVerification] Vô hiệu hóa 2FA cho userId ${userId}`)
+  async disableVerification(userId: number, code: string, method?: string): Promise<{ message: string }> {
+    this.logger.debug(`[disableVerification] Disabling 2FA for userId ${userId}`)
 
-    const user = await this.userAuthRepository.findById(userId, { email: true, userProfile: true })
-    if (!user) throw AuthError.EmailNotFound()
+    // 1. Verify user with the provided code
+    await this.verifyCode(code, { userId, method })
 
-    await this.userAuthRepository.disableTwoFactor(userId)
+    // 2. Perform the actual disabling logic
+    await this._performDisable(userId)
+
+    // 3. Return success message
+    return {
+      message: this.i18nService.t('auth.success.2fa.disabled')
+    }
+  }
+
+  /**
+   * Disables two-factor authentication for a user after the verification code has already been confirmed.
+   * This method does not perform any verification itself.
+   * @param userId The ID of the user.
+   * @returns A success message.
+   */
+  async disableVerificationAfterConfirm(userId: number): Promise<{ message: string }> {
+    this.logger.debug(`[disableVerificationAfterConfirm] Disabling 2FA for userId ${userId} after pre-verification.`)
+    await this._performDisable(userId)
+    return {
+      message: this.i18nService.t('auth.success.2fa.disabled')
+    }
+  }
+
+  private async _performDisable(userId: number): Promise<void> {
+    this.logger.debug(`[_performDisable] Performing 2FA disable logic for userId ${userId}`)
+    // 1. Get user information
+    const user = await this.userRepository.findByIdWithDetails(userId)
+    if (!user) throw GlobalError.NotFound('user')
+
+    // 2. Disable 2FA and delete recovery codes
+    await this.userRepository.disableTwoFactor(userId)
     await this.recoveryCodeRepository.deleteRecoveryCodes(userId)
 
+    // 3. Send notification email
     await this.emailService.sendTwoFactorStatusChangedEmail(user.email, {
       userName: user.userProfile?.username ?? user.email,
       action: 'disabled',
@@ -212,15 +244,26 @@ export class TwoFactorService implements IMultiFactorService {
    * Tạo mới các mã khôi phục.
    * Yêu cầu xác thực (đã thực hiện trước đó) để gọi hàm này.
    */
-  async regenerateRecoveryCodes(userId: number, ipAddress?: string, userAgent?: string): Promise<string[]> {
-    this.logger.debug(`[regenerateRecoveryCodes] Bắt đầu tạo lại mã khôi phục cho userId ${userId}`)
+  async regenerateRecoveryCodes(
+    userId: number,
+    code: string,
+    method?: string,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<{ message: string; data: { recoveryCodes: string[] } }> {
+    this.logger.debug(`[regenerateRecoveryCodes] Regenerating recovery codes for user ${userId}`)
 
-    const user = await this.userAuthRepository.findById(userId, {
-      email: true,
-      userProfile: true,
-      twoFactorEnabled: true
-    })
-    if (!user || !user.twoFactorEnabled) {
+    // 1. Xác thực người dùng
+    await this.verifyCode(code, { userId, method })
+
+    // 2. Lấy thông tin người dùng
+    const user = await this.userRepository.findByIdWithDetails(userId)
+    if (!user) {
+      this.logger.warn(`[regenerateRecoveryCodes] User not found: ${userId}`)
+      throw GlobalError.NotFound('user')
+    }
+
+    if (!user.twoFactorEnabled) {
       this.logger.warn(`[regenerateRecoveryCodes] 2FA is not enabled for user ${userId}. Cannot regenerate codes.`)
       throw AuthError.TOTPNotEnabled()
     }
@@ -270,26 +313,29 @@ export class TwoFactorService implements IMultiFactorService {
 
     this.logger.log(`[regenerateRecoveryCodes] Successfully regenerated recovery codes for user ${userId}.`)
 
-    return plainRecoveryCodes
+    return {
+      message: this.i18nService.t('auth.success.2fa.recoveryCodesRegenerated'),
+      data: { recoveryCodes: plainRecoveryCodes }
+    }
   }
 
   /**
    * Xác minh mã theo phương thức cụ thể
    * @implements IMultiFactorService.verifyByMethod
    */
-  async verifyByMethod(method: string, code: string, userId: number): Promise<{ success: boolean; method: string }> {
+  async verifyByMethod(
+    method: string,
+    code: string,
+    userId: number
+  ): Promise<{ message: string; data: { success: boolean; method: string } }> {
     this.logger.debug(`[verifyByMethod] Xác minh mã bằng phương thức: ${method}`)
 
     // Lấy thông tin người dùng
-    const user = await this.userAuthRepository.findById(userId, {
-      twoFactorEnabled: true,
-      twoFactorSecret: true,
-      twoFactorMethod: true
-    })
+    const user = await this.userRepository.findById(userId)
 
     if (!user) {
       this.logger.error(`[verifyByMethod] Không tìm thấy người dùng với ID ${userId}`)
-      throw AuthError.EmailNotFound()
+      throw GlobalError.NotFound('user')
     }
 
     // Xác minh theo phương thức cụ thể
@@ -310,7 +356,15 @@ export class TwoFactorService implements IMultiFactorService {
       throw AuthError.InvalidVerificationMethod()
     }
 
-    return { success, method }
+    if (success) {
+      return {
+        message: this.i18nService.t('auth.success.otp.verified'),
+        data: { success, method }
+      }
+    }
+
+    // Nếu không thành công, throw lỗi thay vì trả về success: false
+    throw AuthError.InvalidOTP()
   }
 
   /**
@@ -342,18 +396,24 @@ export class TwoFactorService implements IMultiFactorService {
     secret: string,
     ipAddress?: string,
     userAgent?: string
-  ): Promise<{ message: string; recoveryCodes: string[] }> {
-    this.logger.debug(`[confirmTwoFactorSetup] Bắt đầu xác nhận thiết lập 2FA cho userId ${userId}`)
+  ): Promise<{ message: string; data: { recoveryCodes: string[] } }> {
+    this.logger.debug(`[confirmTwoFactorSetup] Confirming 2FA setup for user ${userId}`)
 
-    const user = await this.userAuthRepository.findById(userId, { email: true, userProfile: true })
-    if (!user) throw AuthError.EmailNotFound()
+    const user = await this.userRepository.findByIdWithDetails(userId)
+    if (!user) throw GlobalError.NotFound('user')
 
     if (!this.verifyTOTP(secret, totpCode)) throw AuthError.InvalidTOTP()
 
-    await this.userAuthRepository.enableTwoFactor(userId, secret, TwoFactorMethodType.AUTHENTICATOR_APP)
+    await this.userRepository.enableTwoFactor(userId, secret, TwoFactorMethodType.AUTHENTICATOR_APP)
 
     // This call now also sends an email with the codes
-    const recoveryCodes = await this.regenerateRecoveryCodes(userId, ipAddress, userAgent)
+    const result = await this.regenerateRecoveryCodes(
+      userId,
+      totpCode, // Dùng lại totpCode để xác thực vì nó vẫn hợp lệ
+      TwoFactorMethodType.AUTHENTICATOR_APP,
+      ipAddress,
+      userAgent
+    )
 
     await this.emailService.sendTwoFactorStatusChangedEmail(user.email, {
       userName: user.userProfile?.username ?? user.email,
@@ -362,8 +422,8 @@ export class TwoFactorService implements IMultiFactorService {
     })
 
     return {
-      message: this.i18nService.t('auth.Auth.Error.2FA.Confirm.Success'),
-      recoveryCodes
+      message: this.i18nService.t('auth.success.2fa.setupConfirmed'),
+      data: { recoveryCodes: result.data.recoveryCodes }
     }
   }
 

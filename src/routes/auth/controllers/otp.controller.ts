@@ -5,9 +5,11 @@ import { AuthError } from '../auth.error'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { SendOtpDto, VerifyOtpDto } from '../dtos/otp.dto'
 import { CoreService } from '../services/core.service'
-import { CookieNames } from 'src/routes/auth/auth.constants'
+import { CookieNames, TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/routes/auth/auth.constants'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../services/auth-verification.service'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Controller('auth/otp')
 export class OtpController {
@@ -16,7 +18,8 @@ export class OtpController {
   constructor(
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService,
-    private readonly coreService: CoreService
+    private readonly coreService: CoreService,
+    private readonly i18nService: I18nService<I18nTranslations>
   ) {}
 
   @Throttle({ default: { limit: 3, ttl: 60000 } })
@@ -29,10 +32,24 @@ export class OtpController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[sendOtp] Sending OTP to: ${body.email}, purpose: ${body.purpose}`)
+    this.logger.debug(`Sending OTP for purpose: ${body.purpose} to email associated with the request.`)
 
     const user = await this.coreService.findUserByEmail(body.email)
+
     if (!user) {
+      const sensitivePurposes: TypeOfVerificationCodeType[] = [
+        TypeOfVerificationCode.LOGIN,
+        TypeOfVerificationCode.RESET_PASSWORD
+      ]
+      if (sensitivePurposes.includes(body.purpose)) {
+        this.logger.warn(
+          `OTP request for non-existent user '${body.email}' with sensitive purpose '${body.purpose}'. Aborting to prevent user enumeration.`
+        )
+        return {
+          message: this.i18nService.t('auth.success.otp.sent'),
+          verificationType: 'OTP'
+        }
+      }
       throw AuthError.EmailNotFound()
     }
 
@@ -65,7 +82,7 @@ export class OtpController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[verifyOtp] Verifying OTP.`)
+    this.logger.debug(`Verifying OTP from SLT cookie.`)
 
     const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
     if (!sltCookieValue) {
@@ -85,7 +102,7 @@ export class OtpController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[resendOtp] Resend OTP request received from IP: ${ip}`)
+    this.logger.debug(`Resending OTP based on SLT cookie from IP: ${ip}`)
 
     const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
     if (!sltCookieValue) {

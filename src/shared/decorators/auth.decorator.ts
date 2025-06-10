@@ -1,30 +1,23 @@
-import { AuthType, AuthTypeType, ConditionGuard, ConditionGuardType } from 'src/routes/auth/auth.constants'
 import { SetMetadata, UseGuards, applyDecorators } from '@nestjs/common'
-import { AuthenticationGuard } from '../guards/authentication.guard'
+import { AuthType, AuthTypeType, ConditionGuardType } from '../../routes/auth/auth.constants'
+import { AuthenticationGuard } from '../../routes/auth/guards/authentication.guard'
 
-// Auth Type Decorator
-export const AUTH_TYPE_KEY = 'auth_type'
-export const AUTH_OPTIONS_KEY = 'auth_options'
+export const IS_PUBLIC_KEY = 'isPublic'
+export const ROLES_KEY = 'roles'
+export const PERMISSIONS_KEY = 'permissions'
+export const AUTH_TYPE_KEY = 'authType'
 
 export const Auth = (
   authTypes: AuthTypeType[] = [AuthType.JWT],
-  options: { condition: ConditionGuardType } = { condition: ConditionGuard.RolesAndPermissions }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  options?: { condition: ConditionGuardType }
 ) => {
-  return applyDecorators(
-    SetMetadata(AUTH_TYPE_KEY, authTypes),
-    SetMetadata(AUTH_OPTIONS_KEY, options),
-    UseGuards(AuthenticationGuard)
-  )
+  const authGuards = authTypes.map(() => AuthenticationGuard)
+  return applyDecorators(SetMetadata(AUTH_TYPE_KEY, authTypes), UseGuards(...authGuards))
 }
 
-// Public decorator
-export const IS_PUBLIC_KEY = 'is_public'
 export const IsPublic = () => SetMetadata(IS_PUBLIC_KEY, true)
 
-// Roles decorator
-export const ROLES_KEY = 'roles'
 export const RolesAllowed = (...roles: string[]) => SetMetadata(ROLES_KEY, roles)
 
-// Permissions decorator
-export const PERMISSIONS_KEY = 'permissions'
 export const PermissionsRequired = (...permissions: string[]) => SetMetadata(PERMISSIONS_KEY, permissions)

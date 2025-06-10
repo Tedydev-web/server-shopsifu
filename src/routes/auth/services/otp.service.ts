@@ -2,16 +2,17 @@ import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { RedisService } from 'src/shared/services/redis.service'
 import { TypeOfVerificationCodeType, OTP_LENGTH, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
-import { OtpData, IOTPService } from 'src/shared/types/auth.types'
+import { OtpData, IOTPService } from 'src/routes/auth/auth.types'
 import { ConfigService } from '@nestjs/config'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { I18nService, I18nContext } from 'nestjs-i18n'
 import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService, OtpEmailProps } from 'src/shared/services/email.service'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { UserAuthRepository } from 'src/routes/auth/repositories'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+import { UserRepository } from 'src/routes/user/user.repository'
 
 @Injectable()
 export class OtpService implements IOTPService {
@@ -21,11 +22,11 @@ export class OtpService implements IOTPService {
     private readonly redisService: RedisService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     private readonly jwtService: JwtService,
-    private readonly i18nService: I18nService,
+    private readonly i18nService: I18nService<I18nTranslations>,
     private readonly configService: ConfigService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
     @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
-    private readonly userAuthRepository: UserAuthRepository
+    private readonly userRepository: UserRepository
   ) {}
 
   /**
@@ -56,7 +57,7 @@ export class OtpService implements IOTPService {
   ): Promise<Omit<OtpEmailProps, 'headline' | 'content' | 'codeLabel' | 'validity' | 'disclaimer' | 'greeting'>> {
     let userName = metadata?.userName
     if (!userName && type !== TypeOfVerificationCode.REGISTER) {
-      const user = await this.userAuthRepository.findByEmail(targetEmail)
+      const user = await this.userRepository.findByEmailWithDetails(targetEmail)
       if (user) {
         userName = user.userProfile?.username
       }
@@ -101,7 +102,7 @@ export class OtpService implements IOTPService {
     targetEmail: string,
     type: TypeOfVerificationCodeType,
     metadata?: Record<string, any>
-  ): Promise<{ message: string; otpCode: string }> {
+  ): Promise<{ message: string; data: { verificationType: string; otpCode?: string } }> {
     try {
       const otpCode = this.generateOTP()
       const otpKey = this.getOtpKey(type, targetEmail)
@@ -133,13 +134,22 @@ export class OtpService implements IOTPService {
           this.logger.warn('EmailService không được inject, không thể gửi email OTP.')
         }
       } catch (error) {
-        this.logger.error(`[sendOTP] Lỗi gửi email OTP đến ${targetEmail}: ${error.message}`, error.stack)
+        this.logger.error(`[sendOTP] Error sending OTP email to ${targetEmail}: ${error.message}`, error.stack)
         throw AuthError.OTPSendingFailed()
       }
 
-      const message = this.i18nService.t('auth.Auth.Otp.SentSuccessfully')
+      const responseData: { verificationType: string; otpCode?: string } = {
+        verificationType: 'OTP'
+      }
 
-      return { message, otpCode }
+      if (this.configService.get('NODE_ENV') !== 'production') {
+        responseData.otpCode = otpCode
+      }
+
+      return {
+        message: this.i18nService.t('auth.success.otp.sent'),
+        data: responseData
+      }
     } catch (error) {
       this.logger.error(`[sendOTP] Lỗi: ${error.message}`, error.stack)
       if (error instanceof HttpException) {
@@ -150,45 +160,41 @@ export class OtpService implements IOTPService {
   }
 
   /**
-   * Xác minh OTP
+   * Xác minh mã OTP
+   * @returns `true` nếu hợp lệ, ngược lại sẽ throw exception
    */
-  async verifyOTP(
-    emailToVerifyAgainst: string,
-    code: string,
-    type: TypeOfVerificationCodeType,
-    _userIdForAudit?: number,
-    _ip?: string,
-    _userAgent?: string
-  ): Promise<boolean> {
-    void _userIdForAudit
-    void _ip
-    void _userAgent
-    try {
-      if (!code || !emailToVerifyAgainst) {
-        throw AuthError.InvalidOTP()
-      }
+  async verifyOTP(emailToVerifyAgainst: string, code: string, type: TypeOfVerificationCodeType): Promise<boolean> {
+    const otpKey = this.getOtpKey(type, emailToVerifyAgainst)
+    this.logger.debug(`Verifying OTP for key: ${otpKey}`)
 
-      const otpKey = this.getOtpKey(type, emailToVerifyAgainst)
+    try {
+      // Lấy dữ liệu OTP từ Redis
       const otpData = await this.getOtpData(otpKey)
 
-      // Chỉ kiểm tra và tăng số lần thử khi mã OTP không chính xác
+      // Kiểm tra số lần thử
+      await this.checkOtpMaxAttempts(otpKey)
+
+      // Kiểm tra thời gian hết hạn
+      await this.checkOtpExpiry(otpKey, otpData.createdAt)
+
+      // So sánh mã
       if (otpData.code !== code) {
-        await this.checkOtpMaxAttempts(otpKey) // Tăng và kiểm tra số lần thử
+        this.logger.warn(`Invalid OTP attempt for key ${otpKey}.`)
+        // Ghi lại lần thử thất bại
+        await this.redisService.hincrby(otpKey, 'attempts', 1)
         throw AuthError.InvalidOTP()
       }
 
-      await this.checkOtpExpiry(otpKey, otpData.createdAt)
-
-      this.logger.log(`[verifyOTP] OTP xác thực thành công cho ${emailToVerifyAgainst}, mục đích: ${type}`)
+      // Xóa OTP sau khi xác minh thành công
       await this.redisService.del(otpKey)
-
+      this.logger.log(`OTP for key ${otpKey} verified successfully and deleted.`)
       return true
     } catch (error) {
-      this.logger.error(`[verifyOTP] Lỗi: ${error.message}`, error.stack)
-      if (error instanceof HttpException) {
-        throw error
-      }
-      throw AuthError.InternalServerError('Failed to verify OTP')
+      if (error instanceof HttpException) throw error
+
+      this.logger.error(`Error during OTP verification for key ${otpKey}: ${error.message}`, error.stack)
+      // Throw một lỗi chung để không tiết lộ chi tiết
+      throw AuthError.InvalidOTP()
     }
   }
 
@@ -198,6 +204,7 @@ export class OtpService implements IOTPService {
   private async getOtpData(otpKey: string): Promise<OtpData> {
     const rawOtpData = await this.redisService.hgetall(otpKey)
     if (!rawOtpData || Object.keys(rawOtpData).length === 0) {
+      this.logger.warn(`OTP data not found or empty for key: ${otpKey}. Assuming expired.`)
       throw AuthError.OTPExpired()
     }
 
@@ -233,13 +240,11 @@ export class OtpService implements IOTPService {
    * Kiểm tra số lần thử tối đa
    */
   private async checkOtpMaxAttempts(otpKey: string): Promise<void> {
-    const maxAttempts = this.configService.get('security.otpMaxAttempts', 5)
+    const maxAttempts = this.configService.get<number>('OTP_MAX_ATTEMPTS', 5)
+    const currentAttempts = parseInt((await this.redisService.hget(otpKey, 'attempts')) || '0', 10)
 
-    // Tăng số lần thử một cách an toàn bằng HINCRBY
-    const newAttempts = await this.redisService.hincrby(otpKey, 'attempts', 1)
-
-    if (newAttempts >= maxAttempts) {
-      this.logger.warn(`[checkOtpMaxAttempts] OTP max attempts exceeded for key: ${otpKey}, attempts: ${newAttempts}`)
+    if (currentAttempts >= maxAttempts) {
+      this.logger.warn(`Max OTP attempts reached for key: ${otpKey}. Deleting OTP.`)
       // Xóa OTP để ngăn chặn brute force
       await this.redisService.del(otpKey)
       throw AuthError.TooManyOTPAttempts()
@@ -250,12 +255,10 @@ export class OtpService implements IOTPService {
    * Kiểm tra OTP hết hạn
    */
   private async checkOtpExpiry(otpKey: string, createdAtTimestamp: number): Promise<void> {
-    const otpExpirySeconds = this.configService.get<number>('security.otpExpirySeconds', 300)
-    const now = Date.now()
-    const elapsedSeconds = (now - createdAtTimestamp) / 1000
+    const otpExpirySeconds = this.configService.get<number>('OTP_EXPIRY_SECONDS', 300)
 
-    if (elapsedSeconds > otpExpirySeconds) {
-      this.logger.warn(`[checkOtpExpiry] OTP expired for key: ${otpKey}`)
+    if (Date.now() > createdAtTimestamp + otpExpirySeconds * 1000) {
+      this.logger.warn(`OTP has expired for key: ${otpKey}. Deleting.`)
       // Xóa OTP đã hết hạn
       await this.redisService.del(otpKey)
       throw AuthError.OTPExpired()

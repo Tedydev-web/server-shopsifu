@@ -1,28 +1,23 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common'
-import { I18nService, I18nContext } from 'nestjs-i18n'
-import { PermissionRepository } from './permission.repository' // Added
-import { Permission } from './permission.model' // Updated path
+import { Injectable } from '@nestjs/common'
+import { I18nService } from 'nestjs-i18n'
+import { PermissionRepository } from './permission.repository'
+import { Permission } from './permission.model'
 import { CreatePermissionDto, UpdatePermissionDto } from './permission.dto'
+import { PermissionError } from './permission.error'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class PermissionService {
   constructor(
-    private readonly permissionRepository: PermissionRepository, // Injected repository
-    private readonly i18n: I18nService
+    private readonly permissionRepository: PermissionRepository,
+    private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   async create(createPermissionDto: CreatePermissionDto): Promise<Permission> {
     const { action, subject } = createPermissionDto
-
     const existingPermission = await this.permissionRepository.findByActionAndSubject(action, subject)
-
     if (existingPermission) {
-      throw new ConflictException(
-        this.i18n.t('rbac.PERMISSION_ALREADY_EXISTS', {
-          lang: I18nContext.current()?.lang,
-          args: { action, subject }
-        })
-      )
+      throw PermissionError.AlreadyExists(action, subject)
     }
     return this.permissionRepository.create(createPermissionDto)
   }
@@ -33,46 +28,28 @@ export class PermissionService {
 
   async findOne(id: number): Promise<Permission> {
     const permission = await this.permissionRepository.findById(id)
-
     if (!permission) {
-      throw new NotFoundException(
-        this.i18n.t('rbac.PERMISSION_NOT_FOUND', {
-          lang: I18nContext.current()?.lang,
-          args: { id }
-        })
-      )
+      throw PermissionError.NotFound()
     }
     return permission
   }
 
   async update(id: number, updatePermissionDto: UpdatePermissionDto): Promise<Permission> {
-    const currentPermission = await this.findOne(id) // Kiểm tra tồn tại và lấy permission hiện tại
+    await this.findOne(id) // Ensure permission exists
 
     const { action, subject } = updatePermissionDto
-
-    // Nếu action hoặc subject thay đổi, kiểm tra xung đột
-    if ((action && action !== currentPermission.action) || (subject && subject !== currentPermission.subject)) {
-      const newAction = action || currentPermission.action
-      const newSubject = subject || currentPermission.subject
-
-      const conflictingPermission = await this.permissionRepository.findByActionAndSubject(newAction, newSubject)
-
+    if (action && subject) {
+      const conflictingPermission = await this.permissionRepository.findByActionAndSubject(action, subject)
       if (conflictingPermission && conflictingPermission.id !== id) {
-        throw new ConflictException(
-          this.i18n.t('rbac.PERMISSION_ALREADY_EXISTS', {
-            lang: I18nContext.current()?.lang,
-            args: { action: newAction, subject: newSubject }
-          })
-        )
+        throw PermissionError.AlreadyExists(action, subject)
       }
     }
-    // Repository's update method handles partial updates based on its implementation
+
     return this.permissionRepository.update(id, updatePermissionDto)
   }
 
   async remove(id: number): Promise<Permission> {
-    await this.findOne(id) // Kiểm tra tồn tại
-
+    await this.findOne(id) // Ensure permission exists
     return this.permissionRepository.remove(id)
   }
 }

@@ -10,7 +10,7 @@ import {
   AccessTokenPayloadCreate,
   PendingLinkTokenPayload,
   PendingLinkTokenPayloadCreate
-} from 'src/shared/types/auth.types'
+} from 'src/routes/auth/auth.types'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 
@@ -25,7 +25,7 @@ export class TokenService implements ITokenService {
   ) {}
 
   /**
-   * Tạo access token
+   * Generates an access token.
    */
   async generateAccessToken(userId: number): Promise<string> {
     const tokenJti = `access_${Date.now()}_${uuidv4().substring(0, 8)}`
@@ -38,7 +38,7 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Tạo refresh token
+   * Generates a refresh token.
    */
   async generateRefreshToken(userId: number, rememberMe?: boolean): Promise<string> {
     const tokenJti = `refresh_${Date.now()}_${uuidv4().substring(0, 8)}`
@@ -53,7 +53,7 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Xác minh access token
+   * Validates an access token.
    */
   async validateAccessToken(token: string): Promise<any> {
     try {
@@ -65,13 +65,13 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Xác minh refresh token
+   * Validates a refresh token.
    */
   async validateRefreshToken(token: string): Promise<any> {
     try {
       const payload = await this.verifyRefreshToken(token)
 
-      // Kiểm tra token có trong blacklist không
+      // Check if the token is blacklisted
       const isBlacklisted = await this.isRefreshTokenJtiBlacklisted(payload.jti)
       if (isBlacklisted) {
         throw AuthError.InvalidRefreshToken()
@@ -85,7 +85,7 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Tạo access token
+   * Signs an access token.
    */
   signAccessToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>): string {
     return this.jwtService.sign(payload, {
@@ -95,7 +95,7 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Tạo refresh token
+   * Signs a refresh token.
    */
   signRefreshToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>): string {
     const expiresIn =
@@ -109,7 +109,7 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Tạo Short-Lived Token
+   * Signs a Short-Lived Token (SLT).
    */
   signShortLivedToken(payload: any): string {
     return this.jwtService.sign(payload, {
@@ -119,7 +119,7 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Xác minh access token
+   * Verifies an access token.
    */
   async verifyAccessToken(token: string): Promise<AccessTokenPayload> {
     try {
@@ -127,7 +127,7 @@ export class TokenService implements ITokenService {
         secret: this.configService.get<string>('ACCESS_TOKEN_SECRET')
       })
 
-      // Kiểm tra token có trong blacklist không
+      // Check if the token is blacklisted
       const isBlacklisted = await this.isAccessTokenJtiBlacklisted(payload.jti)
       if (isBlacklisted) {
         throw AuthError.InvalidAccessToken()
@@ -142,7 +142,7 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Xác minh refresh token
+   * Verifies a refresh token.
    */
   async verifyRefreshToken(token: string): Promise<AccessTokenPayload> {
     try {
@@ -164,7 +164,7 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Tạo pending link token
+   * Signs a pending link token.
    */
   signPendingLinkToken(payload: PendingLinkTokenPayloadCreate): string {
     return this.jwtService.sign(payload, {
@@ -174,7 +174,7 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Xác minh pending link token
+   * Verifies a pending link token.
    */
   async verifyPendingLinkToken(token: string): Promise<PendingLinkTokenPayload> {
     try {
@@ -183,33 +183,33 @@ export class TokenService implements ITokenService {
       })
     } catch (error) {
       this.logger.error(`Pending link token validation error: ${error.message}`)
-      throw error
+      throw AuthError.InvalidPendingLinkToken()
     }
   }
 
   /**
-   * Lấy token từ request
+   * Extracts a token from the request.
    */
   extractTokenFromRequest(req: Request): string | null {
-    // Ưu tiên lấy từ Authorization header
+    // Prioritize getting from Authorization header
     const authHeader = req.headers.authorization
     if (authHeader && authHeader.startsWith('Bearer ')) {
       return authHeader.substring(7)
     }
 
-    // Nếu không có, lấy từ cookie
+    // If not present, get from cookie
     return req.cookies?.access_token || null
   }
 
   /**
-   * Lấy refresh token từ request
+   * Extracts a refresh token from the request.
    */
   extractRefreshTokenFromRequest(req: Request): string | null {
     return req.cookies?.refresh_token || null
   }
 
   /**
-   * Đánh dấu access token là đã vô hiệu hóa
+   * Blacklists an access token JTI.
    */
   async invalidateAccessTokenJti(accessTokenJti: string, accessTokenExp: number): Promise<void> {
     try {
@@ -221,22 +221,26 @@ export class TokenService implements ITokenService {
         await this.redisService.set(key, '1', 'EX', ttl)
       }
     } catch (error) {
-      this.logger.error(`Lỗi khi đánh dấu access token là đã vô hiệu hóa: ${error.message}`, error.stack)
+      this.logger.error(`Error blacklisting access token: ${error.message}`, error.stack)
     }
   }
 
   /**
-   * Đánh dấu refresh token là đã vô hiệu hóa
+   * Blacklists a refresh token JTI.
    */
   async invalidateRefreshTokenJti(refreshTokenJti: string, sessionId: string): Promise<void> {
-    const key = RedisKeyManager.getRefreshTokenBlacklistKey(refreshTokenJti)
-    const refreshTokenConfig = this.configService.get<any>('security.jwt.refresh')
-    const ttlSeconds = refreshTokenConfig.expiresIn
-    await this.redisService.set(key, sessionId, 'EX', ttlSeconds)
+    try {
+      const key = RedisKeyManager.getRefreshTokenBlacklistKey(refreshTokenJti)
+      const refreshTokenConfig = this.configService.get<any>('security.jwt.refresh')
+      const ttlSeconds = refreshTokenConfig.expiresIn
+      await this.redisService.set(key, sessionId, 'EX', ttlSeconds)
+    } catch (error) {
+      this.logger.error(`Error blacklisting refresh token: ${error.message}`, error.stack)
+    }
   }
 
   /**
-   * Kiểm tra access token có trong blacklist không
+   * Checks if an access token JTI is blacklisted.
    */
   async isAccessTokenJtiBlacklisted(accessTokenJti: string): Promise<boolean> {
     const key = RedisKeyManager.getAccessTokenBlacklistKey(accessTokenJti)
@@ -245,7 +249,7 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Kiểm tra refresh token có trong blacklist không
+   * Checks if a refresh token JTI is blacklisted.
    */
   async isRefreshTokenJtiBlacklisted(refreshTokenJti: string): Promise<boolean> {
     const key = RedisKeyManager.getRefreshTokenBlacklistKey(refreshTokenJti)

@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { RedisService } from 'src/shared/services/redis.service'
 import { TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { ITokenService, ISLTService, SltContextData, SltJwtPayload } from 'src/shared/types/auth.types'
+import { ITokenService, ISLTService, SltContextData, SltJwtPayload } from 'src/routes/auth/auth.types'
 import { TypeOfVerificationCodeType, SLT_EXPIRY_SECONDS, SLT_MAX_ATTEMPTS } from 'src/routes/auth/auth.constants'
 import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
 import { AuthError } from 'src/routes/auth/auth.error'
@@ -22,7 +22,7 @@ export class SLTService implements ISLTService {
   ) {}
 
   /**
-   * Tạo và lưu SLT token
+   * Creates and stores a Short-Lived Token (SLT).
    */
   async createAndStoreSltToken(payload: {
     userId: number
@@ -37,16 +37,18 @@ export class SLTService implements ISLTService {
     const { ipAddress, userAgent, purpose, email } = payload
     let { metadata } = payload
 
-    // Tạo userId và deviceId tạm thời cho luồng đăng ký nếu giá trị bằng 0
+    // Create temporary userId and deviceId for registration flow if values are 0
     const isRegistrationFlow = purpose === TypeOfVerificationCode.REGISTER && userId === 0 && deviceId === 0
     if (isRegistrationFlow) {
-      // Tạo một userId tạm thời dạng âm để không xung đột với userId thật
+      // Create a temporary negative userId to avoid conflicts with real userIds
       userId = -Math.floor(Math.random() * 1000000) - 1
       deviceId = -Math.floor(Math.random() * 1000000) - 1
 
-      this.logger.debug(`[createAndStoreSltToken] Tạo userId tạm (${userId}) và deviceId tạm (${deviceId}) cho đăng ký`)
+      this.logger.debug(
+        `[createAndStoreSltToken] Created temporary userId (${userId}) and deviceId (${deviceId}) for registration.`
+      )
 
-      // Đảm bảo email được lưu trong metadata cho quá trình đăng ký
+      // Ensure email is stored in metadata for the registration process
       if (email && (!metadata || !metadata.pendingEmail)) {
         metadata = { ...metadata, pendingEmail: email }
       }
@@ -92,14 +94,14 @@ export class SLTService implements ISLTService {
     await this.storeSltContext(jti, sltContextData)
 
     this.logger.log(
-      `[createAndStoreSltToken] Tạo SLT token cho ${isRegistrationFlow ? 'đăng ký với email ' + email : 'user ID ' + userId}, device ID ${deviceId}, purpose ${purpose}`
+      `[createAndStoreSltToken] Created SLT for ${isRegistrationFlow ? 'registration with email ' + email : 'user ID ' + userId}, device ID ${deviceId}, purpose ${purpose}`
     )
 
     return sltToken
   }
 
   /**
-   * Lưu context của SLT vào Redis
+   * Stores the SLT context in Redis.
    */
   private async storeSltContext(sltJti: string, sltContextData: SltContextData): Promise<void> {
     const sltContextKey = this.getSltContextKey(sltJti)
@@ -137,7 +139,7 @@ export class SLTService implements ISLTService {
   }
 
   /**
-   * Xác thực SLT từ cookie và lấy context
+   * Validates the SLT from a cookie and retrieves its context.
    */
   async validateSltFromCookieAndGetContext(
     sltCookieValue: string,
@@ -167,17 +169,17 @@ export class SLTService implements ISLTService {
         throw AuthError.SLTExpired()
       }
 
-      // Xử lý đặc biệt cho quy trình đăng ký
-      // Nếu SLT đã finalized nhưng là quy trình đăng ký và đã xác minh OTP
-      // thì vẫn cho phép sử dụng để hoàn tất quá trình đăng ký
+      // Special handling for the registration process
+      // If the SLT is finalized but it's a registration flow and OTP has been verified,
+      // allow its use to complete the registration.
       const sltContext = this.parseSltContextFromRedis(redisContext)
 
-      // Kiểm tra số lần thử trước khi làm bất cứ điều gì khác
+      // Check attempt count before doing anything else
       const currentAttempts = sltContext.attempts || 0
       const maxAttempts = this.configService.get('security.sltMaxAttempts', SLT_MAX_ATTEMPTS)
       if (currentAttempts >= maxAttempts) {
         this.logger.warn(`[validateSltFromCookieAndGetContext] SLT max attempts exceeded for jti: ${jti}`)
-        // Xóa context để ngăn các lần thử tiếp theo
+        // Delete the context to prevent further attempts
         await this.redisService.del(sltContextKey)
         throw AuthError.SLTMaxAttemptsExceeded()
       }
@@ -213,7 +215,7 @@ export class SLTService implements ISLTService {
   }
 
   /**
-   * Parse SLT context từ Redis
+   * Parses SLT context from a Redis hash.
    */
   private parseSltContextFromRedis(redisContext: Record<string, string>): SltContextData {
     const parsedContext: SltContextData = {
@@ -250,78 +252,62 @@ export class SLTService implements ISLTService {
   }
 
   /**
-   * Cập nhật SLT context
+   * Updates the SLT context
    */
   async updateSltContext(jti: string, updateData: Partial<SltContextData>): Promise<void> {
     const sltContextKey = this.getSltContextKey(jti)
-    const exists = await this.redisService.exists(sltContextKey)
-    if (!exists) {
+
+    if (!(await this.redisService.exists(sltContextKey))) {
+      this.logger.warn(`[updateSltContext] Attempted to update non-existent SLT context for jti: ${jti}`)
       throw AuthError.SLTExpired()
     }
 
-    const updateObj: Record<string, string> = {}
-    for (const key in updateData) {
-      if (Object.prototype.hasOwnProperty.call(updateData, key)) {
-        const typedKey = key as keyof SltContextData
-        const value = updateData[typedKey]
-
-        if (value === undefined) continue
-        if (value === null) {
-          updateObj[key] = ''
-          continue
-        }
-
-        if (typedKey === 'metadata' && typeof value === 'object') {
-          updateObj[key] = JSON.stringify(value)
-        } else if (value instanceof Date) {
-          updateObj[key] = value.toISOString()
-        } else if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
-          updateObj[key] = String(value)
-        } else if (typeof value === 'object') {
-          this.logger.warn(`Unexpected object for SLT key ${key}. Using JSON.stringify.`)
-          try {
-            updateObj[key] = JSON.stringify(value)
-          } catch (e) {
-            this.logger.error(`Failed to stringify object for SLT key ${key}`, e)
-            updateObj[key] = '[SerializationError]'
-          }
+    const updatePayload: Record<string, string> = {}
+    for (const [key, value] of Object.entries(updateData)) {
+      if (value !== undefined && value !== null) {
+        if (typeof value === 'object') {
+          updatePayload[key] = JSON.stringify(value)
         } else {
-          this.logger.warn(`Unhandled type for SLT key ${key}: ${typeof value}. Using String().`)
-          updateObj[key] = String(value)
+          updatePayload[key] = String(value)
         }
       }
     }
 
-    if (Object.keys(updateObj).length > 0) {
-      await this.redisService.hset(sltContextKey, updateObj)
+    if (Object.keys(updatePayload).length > 0) {
+      await this.redisService.hset(sltContextKey, updatePayload)
+      this.logger.debug(
+        `[updateSltContext] Updated SLT context for jti: ${jti} with keys: ${Object.keys(updatePayload).join(', ')}`
+      )
     }
   }
 
   /**
-   * Hoàn thành SLT
+   * Finalizes the SLT
    */
   async finalizeSlt(sltJti: string): Promise<void> {
     await this.updateSltContext(sltJti, { finalized: '1' })
-    this.logger.log(`[finalizeSlt] SLT finalized: ${sltJti}`)
+    this.logger.log(`[finalizeSlt] Finalized SLT for jti: ${sltJti}`)
   }
 
   /**
-   * Tăng số lượt thử cho SLT
+   * Increments the SLT attempt count
    */
   async incrementSltAttempts(sltJti: string): Promise<number> {
     const sltContextKey = this.getSltContextKey(sltJti)
-    return this.redisService.hincrby(sltContextKey, 'attempts', 1)
+    const newAttemptCount = await this.redisService.hincrby(sltContextKey, 'attempts', 1)
+    this.logger.debug(`[incrementSltAttempts] Incrementing attempt count for jti ${sltJti} to ${newAttemptCount}`)
+    return newAttemptCount
   }
 
   /**
-   * Tạo key cho Redis SLT context
+   * Creates a key for Redis SLT context
    */
   private getSltContextKey(jti: string): string {
     return RedisKeyManager.getSltContextKey(jti)
   }
 
   /**
-   * Khởi tạo OTP và lưu vào SLT Cookie
+   * Initiates OTP and stores it in the SLT Cookie
    */
   async initiateOtpWithSltCookie(payload: {
     email: string
@@ -334,7 +320,7 @@ export class SLTService implements ISLTService {
   }): Promise<string> {
     const { email, userId, deviceId, ipAddress, userAgent, purpose, metadata } = payload
 
-    // Tạo và lưu SLT token
+    // Create and store SLT token
     const sltToken = await this.createAndStoreSltToken({
       userId,
       deviceId,
@@ -345,8 +331,7 @@ export class SLTService implements ISLTService {
       metadata
     })
 
-    this.logger.log(`[initiateOtpWithSltCookie] SLT token created for user ${userId}, purpose: ${purpose}`)
-
+    this.logger.log(`[initiateOtpWithSltCookie] Initiated OTP flow with SLT for ${email}, purpose: ${purpose}`)
     return sltToken
   }
 }

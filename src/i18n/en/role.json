@@ -1,0 +1,18 @@
+{
+  "error": {
+    "notFound": "Role not found.",
+    "alreadyExists": "Role with name '{name}' already exists.",
+    "createFailed": "Failed to create role.",
+    "updateFailed": "Failed to update role.",
+    "deleteFailed": "Failed to delete role.",
+    "cannotDeleteSystemRole": "Cannot delete a system role.",
+    "cannotUpdateSystemRole": "Cannot update a system role."
+  },
+  "success": {
+    "create": "Role created successfully.",
+    "update": "Role updated successfully.",
+    "delete": "Role deleted successfully.",
+    "get": "Role retrieved successfully.",
+    "list": "Roles listed successfully."
+  }
+}

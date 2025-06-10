@@ -176,9 +176,12 @@
         "device": "Thiết bị",
         "browser": "Trình duyệt",
         "os": "Hệ điều hành",
-        "location": "Vị trí (ước tính)",
+        "location": "Vị trí",
+        "currentDevices": "Thiết bị hiện tại",
+        "deviceLimit": "Giới hạn thiết bị",
         "status": "Trạng thái"
-      }
+      },
+      "closing": "Trân trọng,"
     }
   }
 }
