@@ -13,7 +13,8 @@ import {
   Res,
   Inject,
   forwardRef,
-  Delete
+  Delete,
+  UseGuards
 } from '@nestjs/common'
 import { SessionsService } from '../services/session.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -32,16 +33,12 @@ import { Auth } from 'src/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../services/auth-verification.service'
 import { AuthError } from '../auth.error'
 import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
+import { PoliciesGuard } from 'src/shared/guards/policies.guard'
 import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
-
-interface CurrentUserContext {
-  userId: number
-  sessionId: string
-  deviceId: number
-  email?: string
-}
+import { CurrentUserContext } from 'src/shared/types/current-user-context.type'
 
 @Auth()
+@UseGuards(PoliciesGuard)
 @Controller('sessions')
 export class SessionsController {
   private readonly logger = new Logger(SessionsController.name)

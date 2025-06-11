@@ -9,6 +9,9 @@ import { AuthError } from '../auth.error'
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { ActiveUserData } from 'src/shared/types/active-user.type'
+import { PoliciesGuard } from 'src/shared/guards/policies.guard'
+import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
+import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
 
 @UseGuards(ThrottlerGuard)
 @Auth()
@@ -17,6 +20,8 @@ export class PasswordController {
   constructor(private readonly passwordService: PasswordService) {}
 
   @Post('change')
+  @UseGuards(PoliciesGuard)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
   async changePassword(
     @ActiveUser() activeUser: ActiveUserData,
     @Body() body: ChangePasswordDto,
