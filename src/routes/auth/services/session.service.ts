@@ -118,7 +118,7 @@ export class SessionsService implements ISessionService {
       const deviceInfo = this.userAgentService.parse(latestSession?.userAgent)
       const activeSessionsCount = deviceSessions.filter((s) => s.isActive).length
       const lastActive = new Date(latestSession.lastActive)
-      const locationResult = await this.getLocationFromIP(latestSession.ipAddress)
+      const locationResult = await this.getLocationFromIP(latestSession.ipAddress || '')
 
       // Xử lý thông tin chi tiết cho từng session
       const sessionItems = await Promise.all(

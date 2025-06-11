@@ -97,6 +97,11 @@ export class GeolocationService {
    * @returns true nếu là local IP
    */
   private isLocalIP(ip: string): boolean {
+    // Kiểm tra type safety - đảm bảo ip là string hợp lệ
+    if (!ip || typeof ip !== 'string') {
+      return true // Coi như local IP nếu IP không hợp lệ
+    }
+
     return (
       ip === '127.0.0.1' ||
       ip === 'localhost' ||

@@ -1,6 +1,6 @@
 // Auto-generated roles from scanning database and codebase
-// Generated at: 2025-06-11T16:26:24.700Z
-// Total roles found: 3
+// Generated at: 2025-06-11T18:11:59.411Z
+// Total roles found: 4
 
 export const SCANNED_ROLES = [
   {
@@ -108,7 +108,7 @@ export const SCANNED_ROLES = [
       }
     ],
     "foundIn": "code",
-    "filePath": "/Users/tedydev/Workspace/Codespaces/GitHub/Shopsifu/server-shopsifu/src/routes/auth/services/social.service.ts"
+    "filePath": "/Users/tedydev/Workspace/Codespaces/GitHub/Shopsifu/server-shopsifu/src/routes/user/user.service.ts"
   },
   {
     "name": "Seller",
@@ -126,15 +126,24 @@ export const SCANNED_ROLES = [
       }
     ],
     "foundIn": "database"
+  },
+  {
+    "name": "Administrator",
+    "description": "Administrator role (auto-detected)",
+    "isSystemRole": true,
+    "permissionStrategy": "CUSTOM",
+    "permissions": [],
+    "foundIn": "code",
+    "filePath": "/Users/tedydev/Workspace/Codespaces/GitHub/Shopsifu/server-shopsifu/src/routes/user/user.service.ts"
   }
 ] as const;
 
 // Breakdown by source:
 // database: 2 roles
-// code: 1 roles
+// code: 2 roles
 
 
 // Role strategies:
 // ALL: 1 roles
-// CUSTOM: 2 roles
+// CUSTOM: 3 roles
 
