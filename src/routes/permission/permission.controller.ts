@@ -16,12 +16,7 @@ import { CreatePermissionDto, UpdatePermissionDto, PermissionDto } from './permi
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { PoliciesGuard } from 'src/shared/guards/policies.guard'
 import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
-import {
-  CanCreatePermissionPolicy,
-  CanDeletePermissionPolicy,
-  CanReadPermissionPolicy,
-  CanUpdatePermissionPolicy
-} from './permission.policies'
+import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
 
 @Auth()
 @UseGuards(PoliciesGuard)
@@ -30,7 +25,7 @@ export class PermissionController {
   constructor(private readonly permissionService: PermissionService) {}
 
   @Post()
-  @CheckPolicies(...CanCreatePermissionPolicy)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Create, 'Permission'))
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createPermissionDto: CreatePermissionDto) {
     const permission = await this.permissionService.create(createPermissionDto)
@@ -38,28 +33,28 @@ export class PermissionController {
   }
 
   @Get()
-  @CheckPolicies(...CanReadPermissionPolicy)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'Permission'))
   async findAll() {
     const permissions = await this.permissionService.findAll()
     return permissions.map((permission) => PermissionDto.fromEntity(permission))
   }
 
   @Get(':id')
-  @CheckPolicies(...CanReadPermissionPolicy)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'Permission'))
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const permission = await this.permissionService.findOne(id)
     return PermissionDto.fromEntity(permission)
   }
 
   @Patch(':id')
-  @CheckPolicies(...CanUpdatePermissionPolicy)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'Permission'))
   async update(@Param('id', ParseIntPipe) id: number, @Body() updatePermissionDto: UpdatePermissionDto) {
     const permission = await this.permissionService.update(id, updatePermissionDto)
     return PermissionDto.fromEntity(permission)
   }
 
   @Delete(':id')
-  @CheckPolicies(...CanDeletePermissionPolicy)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Delete, 'Permission'))
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     await this.permissionService.remove(id)

@@ -16,7 +16,7 @@ import { CreateUserDto, UpdateUserDto, UserDto } from './user.dto'
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { PoliciesGuard } from 'src/shared/guards/policies.guard'
 import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
-import { CanCreateUserPolicy, CanDeleteUserPolicy, CanReadUserPolicy, CanUpdateUserPolicy } from './user.policies'
+import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
 
 @Auth()
 @UseGuards(PoliciesGuard)
@@ -25,7 +25,7 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post()
-  @CheckPolicies(...CanCreateUserPolicy)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Create, 'User'))
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createUserDto: CreateUserDto) {
     const user = await this.userService.create(createUserDto)
@@ -33,28 +33,28 @@ export class UserController {
   }
 
   @Get()
-  @CheckPolicies(...CanReadUserPolicy)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'User'))
   async findAll() {
     const users = await this.userService.findAll()
     return users.map((user) => UserDto.fromEntity(user))
   }
 
   @Get(':id')
-  @CheckPolicies(...CanReadUserPolicy)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'User'))
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const user = await this.userService.findOne(id)
     return UserDto.fromEntity(user)
   }
 
   @Patch(':id')
-  @CheckPolicies(...CanUpdateUserPolicy)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'User'))
   async update(@Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
     const user = await this.userService.update(id, updateUserDto)
     return UserDto.fromEntity(user)
   }
 
   @Delete(':id')
-  @CheckPolicies(...CanDeleteUserPolicy)
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Delete, 'User'))
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     await this.userService.remove(id)
