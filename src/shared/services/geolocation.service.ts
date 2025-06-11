@@ -1,7 +1,17 @@
+// ================================================================
+// NestJS Dependencies
+// ================================================================
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+
+// ================================================================
+// External Libraries
+// ================================================================
 import axios from 'axios'
 
+// ================================================================
+// Interfaces & Types
+// ================================================================
 export interface GeoLocationResult {
   country?: string
   city?: string
@@ -11,11 +21,15 @@ export interface GeoLocationResult {
   display: string
 }
 
+/**
+ * Service quản lý việc xác định vị trí địa lý từ IP address
+ * Hỗ trợ cache, fallback và development mode
+ */
 @Injectable()
 export class GeolocationService {
   private readonly logger = new Logger(GeolocationService.name)
   private readonly ipCache = new Map<string, { location: GeoLocationResult; timestamp: number }>()
-  private readonly CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours
+  private readonly CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 giờ
   private readonly DEFAULT_LOCATION: GeoLocationResult = {
     display: 'Vietnam',
     timezone: 'Asia/Ho_Chi_Minh'
@@ -26,48 +40,61 @@ export class GeolocationService {
     this.isDevMode = this.configService.get('NODE_ENV') !== 'production'
   }
 
+  // ================================================================
+  // Public Methods - Geolocation API
+  // ================================================================
+
   /**
-   * Get location information from an IP address, with caching and error handling.
+   * Lấy thông tin vị trí từ IP address với cache và xử lý lỗi
+   * Hỗ trợ các trường hợp: Local IP, Development mode, External API
+   * @param ip - IP address cần tra cứu
+   * @returns Thông tin vị trí địa lý
    */
   async getLocationFromIP(ip: string): Promise<GeoLocationResult> {
-    // Check for local IP
+    // Kiểm tra IP local/private - trả về location mặc định
     if (!ip || this.isLocalIP(ip)) {
       return this.DEFAULT_LOCATION
     }
 
-    // Check cache
+    // Kiểm tra cache - tránh gọi API không cần thiết
     const cachedResult = this.ipCache.get(ip)
     if (cachedResult && Date.now() - cachedResult.timestamp < this.CACHE_DURATION) {
-      this.logger.debug(`[getLocationFromIP] Returning cached result for IP ${ip}: ${cachedResult.location.display}`)
+      this.logger.debug(`[getLocationFromIP] Trả về kết quả từ cache cho IP ${ip}: ${cachedResult.location.display}`)
       return cachedResult.location
     }
 
     try {
-      // Development environment - return mock value to avoid excessive API calls
+      // Development environment - trả về mock data để tránh gọi API quá nhiều
       if (this.isDevMode) {
         const devLocation = this.getDevModeLocation(ip)
         this.ipCache.set(ip, { location: devLocation, timestamp: Date.now() })
         return devLocation
       }
 
-      // Call the actual IP geolocation API
+      // Gọi API thực tế để lấy thông tin geolocation
       const response = await this.callIPGeolocationAPI(ip)
 
-      // Cache the result
+      // Lưu kết quả vào cache
       this.ipCache.set(ip, { location: response, timestamp: Date.now() })
       return response
     } catch (error) {
-      this.logger.error(`Error getting location information from IP ${ip}: ${error.message}`)
+      this.logger.error(`Lỗi khi lấy thông tin location từ IP ${ip}: ${error.message}`)
 
-      // Return a suitable value based on the IP
+      // Trả về fallback location phù hợp dựa trên IP
       const fallbackLocation = this.getFallbackLocation(ip)
       this.ipCache.set(ip, { location: fallbackLocation, timestamp: Date.now() })
       return fallbackLocation
     }
   }
 
+  // ================================================================
+  // Private Methods - Utility & Helper Functions
+  // ================================================================
+
   /**
-   * Check if the IP is a local IP.
+   * Kiểm tra xem IP có phải là local/private IP không
+   * @param ip - IP address cần kiểm tra
+   * @returns true nếu là local IP
    */
   private isLocalIP(ip: string): boolean {
     return (
@@ -96,14 +123,17 @@ export class GeolocationService {
   }
 
   /**
-   * Create a mock value for the development environment based on the IP.
+   * Tạo mock location cho development environment dựa trên IP
+   * Giúp tránh gọi API thực tế trong quá trình phát triển
+   * @param ip - IP address làm seed cho mock data
+   * @returns Mock location data
    */
   private getDevModeLocation(ip: string): GeoLocationResult {
-    // Create diverse mock locations based on the last part of the IP
+    // Tạo mock location đa dạng dựa trên phần cuối của IP
     const ipParts = ip.split('.')
     const lastPart = parseInt(ipParts[ipParts.length - 1], 10)
 
-    // Create a list of mock cities
+    // Danh sách các thành phố mock để test
     const locations: GeoLocationResult[] = [
       {
         city: 'Hanoi',
@@ -137,7 +167,14 @@ export class GeolocationService {
         timezone: 'Asia/Singapore',
         display: 'Singapore'
       },
-      { city: 'Tokyo', country: 'Japan', lat: 35.6762, lon: 139.6503, timezone: 'Asia/Tokyo', display: 'Tokyo, Japan' },
+      { 
+        city: 'Tokyo', 
+        country: 'Japan', 
+        lat: 35.6762, 
+        lon: 139.6503, 
+        timezone: 'Asia/Tokyo', 
+        display: 'Tokyo, Japan' 
+      },
       {
         city: 'Sydney',
         country: 'Australia',
@@ -148,18 +185,26 @@ export class GeolocationService {
       }
     ]
 
+    // Sử dụng phần cuối IP để chọn location (tạo tính đa dạng)
     return locations[lastPart % locations.length]
   }
 
+  // ================================================================
+  // Private Methods - External API Integration
+  // ================================================================
+
   /**
-   * Call the actual IP Geolocation API.
+   * Gọi API thực tế để lấy thông tin geolocation từ IP
+   * Sử dụng ip-api.com (miễn phí, giới hạn 45 requests/phút)
+   * @param ip - IP address cần tra cứu
+   * @returns Thông tin location từ API
    */
   private async callIPGeolocationAPI(ip: string): Promise<GeoLocationResult> {
-    // Set a timeout to avoid waiting too long
+    // Timeout để tránh chờ quá lâu
     const timeoutMs = 2000
 
     try {
-      // Use ip-api.com - free API with a limit of 45 requests/minute
+      // Sử dụng ip-api.com - API miễn phí với giới hạn 45 requests/phút
       const response = await axios.get(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon,timezone`, {
         timeout: timeoutMs
       })
@@ -170,10 +215,10 @@ export class GeolocationService {
         return { country, city, lat, lon, timezone, display }
       }
 
-      // Fallback if the API does not return the expected result
-      throw new Error('Could not determine location from API data')
+      // Fallback nếu API không trả về kết quả mong đợi
+      throw new Error('Không thể xác định location từ dữ liệu API')
     } catch (error) {
-      // Try another API if the first one fails
+      // Thử API backup nếu API chính bị lỗi
       try {
         const response = await axios.get(`https://ipapi.co/${ip}/json/`, { timeout: timeoutMs })
 
@@ -183,25 +228,33 @@ export class GeolocationService {
           return { country: country_name, city, lat: latitude, lon: longitude, timezone, display }
         }
       } catch (innerError) {
-        this.logger.error(`Error calling fallback API: ${innerError.message}`)
+        this.logger.error(`Lỗi khi gọi backup API: ${innerError.message}`)
       }
 
-      throw error // Re-throw the error to be handled at a higher level
+      throw error // Re-throw lỗi để xử lý ở tầng cao hơn
     }
   }
 
+  // ================================================================
+  // Private Methods - Fallback & Default Logic
+  // ================================================================
+
   /**
-   * Return a fallback location based on the IP when APIs fail.
+   * Trả về fallback location dựa trên IP khi các API bị lỗi
+   * Sử dụng logic đơn giản dựa trên octet đầu của IP
+   * @param ip - IP address để tạo fallback
+   * @returns Fallback location data
    */
   private getFallbackLocation(ip: string): GeoLocationResult {
-    // Create a location based on the first octet of the IP
+    // Tạo location dựa trên octet đầu tiên của IP
     try {
       const firstOctet = parseInt(ip.split('.')[0], 10)
 
       if (isNaN(firstOctet)) {
-        return { display: 'Vietnam', timezone: 'Asia/Ho_Chi_Minh' } // Fallback for IPv6 or other formats
+        return { display: 'Vietnam', timezone: 'Asia/Ho_Chi_Minh' } // Fallback cho IPv6 hoặc format khác
       }
 
+      // Phân chia theo dải IP để tạo fallback phù hợp
       if (firstOctet < 100)
         return { city: 'Hanoi', country: 'Vietnam', display: 'Hanoi, Vietnam', timezone: 'Asia/Ho_Chi_Minh' }
       else if (firstOctet < 150)
@@ -211,10 +264,12 @@ export class GeolocationService {
           display: 'Ho Chi Minh, Vietnam',
           timezone: 'Asia/Ho_Chi_Minh'
         }
-      else if (firstOctet < 200) return { country: 'Singapore', display: 'Singapore', timezone: 'Asia/Singapore' }
-      else return { country: 'Asia', display: 'Asia', timezone: 'Asia/Bangkok' }
+      else if (firstOctet < 200) 
+        return { country: 'Singapore', display: 'Singapore', timezone: 'Asia/Singapore' }
+      else 
+        return { country: 'Asia', display: 'Asia', timezone: 'Asia/Bangkok' }
     } catch (error) {
-      return { display: 'Vietnam', timezone: 'Asia/Ho_Chi_Minh' } // Final fallback
+      return { display: 'Vietnam', timezone: 'Asia/Ho_Chi_Minh' } // Fallback cuối cùng
     }
   }
 }

@@ -54,7 +54,7 @@ export class RoleRepository {
     const { permissions, ...restOfRole } = roleWithPermissions
     return {
       ...restOfRole,
-      permissions: permissions.map((p) => p.permission)
+      permissions: permissions?.map((p) => p.permission) || []
     }
   }
 
@@ -195,15 +195,28 @@ export class RoleRepository {
   }
 
   async deleteById(id: number): Promise<Role> {
-    // Note: Transaction ensures we get the role for cache invalidation before deleting it
-    const [roleToDelete, deletedRole] = await this.prisma.$transaction([
-      this.prisma.role.findUnique({ where: { id } }),
-      this.prisma.role.delete({ where: { id } })
-    ])
+    // First check if the role exists
+    const roleToDelete = await this.prisma.role.findUnique({
+      where: { id },
+      include: {
+        permissions: {
+          include: {
+            permission: true
+          }
+        }
+      }
+    })
 
-    if (deletedRole && roleToDelete) {
-      await this.invalidateRoleCache(this.mapToRole(roleToDelete as any))
+    if (!roleToDelete) {
+      throw new Error(`Role with ID ${id} not found`)
     }
+
+    // Delete the role
+    const deletedRole = await this.prisma.role.delete({ where: { id } })
+
+    // Invalidate cache after successful deletion
+    await this.invalidateRoleCache(this.mapToRole(roleToDelete as any))
+    
     return deletedRole
   }
 

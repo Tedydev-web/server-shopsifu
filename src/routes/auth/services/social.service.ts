@@ -1,29 +1,52 @@
+// ================================================================
+// NestJS Dependencies
+// ================================================================
 import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
-import { HashingService } from 'src/shared/services/hashing.service'
+
+// ================================================================
+// External Libraries
+// ================================================================
 import { Response, Request } from 'express'
 import * as crypto from 'crypto'
 import { OAuth2Client, TokenPayload } from 'google-auth-library'
-import { AuthError } from 'src/routes/auth/auth.error'
-import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
+
+// ================================================================
+// Internal Services & Types
+// ================================================================
+import { HashingService } from 'src/shared/services/hashing.service'
+import { SLTService } from 'src/shared/services/slt.service'
+import { EmailService } from 'src/shared/services/email.service'
+import { OtpService } from './otp.service'
+
+// ================================================================
+// Repositories
+// ================================================================
 import { SessionRepository } from 'src/routes/auth/repositories'
 import { DeviceRepository } from 'src/shared/repositories/device.repository'
-import { OtpService } from './otp.service'
+import { UserRepository } from 'src/routes/user/user.repository'
+import { RoleRepository } from 'src/routes/role/role.repository'
+
+// ================================================================
+// Constants & Injection Tokens
+// ================================================================
 import { EMAIL_SERVICE, HASHING_SERVICE, OTP_SERVICE, SLT_SERVICE } from 'src/shared/constants/injection.tokens'
+import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
+
+// ================================================================
+// Types & Interfaces
+// ================================================================
+import { AuthError } from 'src/routes/auth/auth.error'
+import { GlobalError } from 'src/shared/global.error'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+import { ICookieService, ITokenService } from 'src/routes/auth/auth.types'
 import {
   GoogleCallbackReturnType,
   GoogleCallbackErrorResult,
   GoogleCallbackAccountExistsWithoutLinkResult
 } from '../auth.types'
-import { ICookieService, ITokenService } from 'src/routes/auth/auth.types'
-import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { SLTService } from 'src/shared/services/slt.service'
-import { EmailService } from 'src/shared/services/email.service'
-import { GlobalError } from 'src/shared/global.error'
-import { I18nTranslations } from 'src/generated/i18n.generated'
-import { UserRepository } from 'src/routes/user/user.repository'
-import { RoleRepository } from 'src/routes/role/role.repository'
 
 /**
  * Interface để lưu thông tin state khi tạo URL xác thực Google

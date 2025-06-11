@@ -1,12 +1,24 @@
+// ================================================================
+// NestJS Dependencies
+// ================================================================
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { Resend } from 'resend'
 import { I18nService, I18nContext } from 'nestjs-i18n'
+
+// ================================================================
+// External Libraries
+// ================================================================
+import { Resend } from 'resend'
 import * as React from 'react'
 
+// ================================================================
+// Internal Types & Constants
+// ================================================================
 import { TypeOfVerificationCodeType } from 'src/routes/auth/auth.constants'
 
-// --- Import Email Components ---
+// ================================================================
+// Email Components
+// ================================================================
 import { OtpEmail, OtpEmailProps } from 'emails/otp-email'
 import { RecoveryCodesEmail, RecoveryCodesEmailProps } from 'emails/recovery-codes-email'
 import { SecurityLoginAlert, SecurityLoginAlertProps } from 'emails/security-login-alert'
@@ -19,6 +31,9 @@ import { SuspiciousActivityEmail, SuspiciousActivityEmailProps } from 'emails/su
 import { AccountLinkAlert, AccountLinkAlertProps } from 'emails/account-link-alert'
 import { WelcomeEmail, WelcomeEmailProps } from 'emails/welcome-email'
 
+// ================================================================
+// Type Exports & Interfaces
+// ================================================================
 // Re-export props for external use
 export {
   OtpEmailProps,
@@ -46,6 +61,10 @@ interface BaseEmailPayload<T> {
   from?: string
 }
 
+/**
+ * Service quản lý việc gửi email với hỗ trợ đa ngôn ngữ và template
+ * Sử dụng Resend API để gửi email và React components làm template
+ */
 @Injectable()
 export class EmailService {
   private resend: Resend | undefined
@@ -58,19 +77,31 @@ export class EmailService {
     private readonly configService: ConfigService,
     private readonly i18nService: I18nService
   ) {
+    // Khởi tạo Resend API client nếu có API key
     const apiKey = this.configService.get<string>('RESEND_API_KEY')
     if (apiKey) {
       this.resend = new Resend(apiKey)
-      this.logger.log('Resend API client initialized successfully.')
+      this.logger.log('Resend API client khởi tạo thành công.')
     } else {
-      this.logger.warn('RESEND_API_KEY is not configured. Email services will be disabled.')
+      this.logger.warn('RESEND_API_KEY chưa được cấu hình. Dịch vụ email sẽ bị vô hiệu hóa.')
     }
+
+    // Cấu hình các địa chỉ email gửi
     this.notificationEmailFrom =
       this.configService.get<string>('NOTIFICATION_EMAIL_FROM') ?? 'notification@shopsifu.live'
     this.securityEmailFrom = this.configService.get<string>('SECURITY_EMAIL_FROM') ?? 'security@shopsifu.live'
     this.frontendUrl = this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:8000'
   }
 
+  // ================================================================
+  // Private Methods - Utility & Helper Functions
+  // ================================================================
+
+  /**
+   * Đảm bảo ngôn ngữ hợp lệ, fallback về 'vi' nếu không hợp lệ
+   * @param preferredLang - Ngôn ngữ ưa thích
+   * @returns Ngôn ngữ hợp lệ ('vi' hoặc 'en')
+   */
   private getSafeLang(preferredLang?: 'vi' | 'en'): 'vi' | 'en' {
     if (preferredLang && ['vi', 'en'].includes(preferredLang)) {
       return preferredLang
@@ -79,12 +110,17 @@ export class EmailService {
     if (langFromContext === 'vi' || langFromContext === 'en') {
       return langFromContext
     }
-    return 'vi'
+    return 'vi' // Mặc định tiếng Việt
   }
 
+  /**
+   * Phương thức core để gửi email với React component template
+   * Xử lý việc render component, dịch subject và gửi qua Resend API
+   * @param payload - Thông tin email và component để render
+   */
   private async send<T>(payload: BaseEmailPayload<T>): Promise<void> {
     if (!this.resend) {
-      this.logger.warn(`Email sending is disabled. Would have sent to ${payload.to}.`)
+      this.logger.warn(`Gửi email bị vô hiệu hóa. Đã bỏ qua email gửi tới ${payload.to}.`)
       return
     }
 
@@ -101,19 +137,27 @@ export class EmailService {
       })
 
       if (error) {
-        this.logger.error(`Resend API returned an error for recipient ${payload.to}`, error)
+        this.logger.error(`Resend API trả về lỗi cho người nhận ${payload.to}`, error)
         return
       }
 
-      this.logger.log(`Email sent successfully to ${payload.to} with subject: ${subject}, ID: ${data?.id}`)
+      this.logger.log(`Email gửi thành công tới ${payload.to} với subject: ${subject}, ID: ${data?.id}`)
     } catch (error) {
-      this.logger.error(`Failed to send email to ${payload.to}. Subject: ${subject}`, error.stack)
-      // Do not re-throw to avoid crashing the caller
+      this.logger.error(`Gửi email thất bại tới ${payload.to}. Subject: ${subject}`, error.stack)
+      // Không re-throw để tránh làm crash caller
     }
   }
 
-  // --- PUBLIC METHODS ---
+  // ================================================================
+  // Public Methods - Email Sending API
+  // ================================================================
 
+  /**
+   * Gửi email OTP cho xác thực đa yếu tố hoặc xác minh tài khoản
+   * @param to - Địa chỉ email người nhận
+   * @param otpType - Loại OTP (LOGIN, REGISTER, RECOVERY, v.v.)
+   * @param props - Thông tin cần thiết cho email (code, userName, etc.)
+   */
   async sendOtpEmail(
     to: string,
     otpType: TypeOfVerificationCodeType,
@@ -143,6 +187,11 @@ export class EmailService {
     })
   }
 
+  /**
+   * Gửi email chứa mã recovery codes cho 2FA
+   * @param to - Địa chỉ email người nhận
+   * @param props - Thông tin recovery codes và user
+   */
   async sendRecoveryCodesEmail(
     to: string,
     props: Omit<
@@ -177,8 +226,18 @@ export class EmailService {
     })
   }
 
-  // --- SECURITY ALERTS ---
+  // ================================================================
+  // Private Methods - Security Alert Helper
+  // ================================================================
 
+  /**
+   * Helper method để gửi các loại security alert email
+   * Tự động điền các field title, greeting, message và buttonText từ i18n
+   * @param to - Địa chỉ email người nhận
+   * @param alertType - Loại alert (DEVICE_TRUSTED, PASSWORD_CHANGED, etc.)
+   * @param component - React component để render email
+   * @param props - Props cho component (không bao gồm các field tự động điền)
+   */
   private async sendSecurityAlert<T extends { lang?: 'vi' | 'en'; userName: string; greeting?: string }>(
     to: string,
     alertType: string,
@@ -207,6 +266,15 @@ export class EmailService {
     })
   }
 
+  // ================================================================
+  // Public Methods - Security Alert Emails
+  // ================================================================
+
+  /**
+   * Gửi email thông báo đăng nhập từ thiết bị mới chưa được tin cậy
+   * @param to - Địa chỉ email người nhận
+   * @param props - Thông tin về thiết bị và vị trí đăng nhập
+   */
   async sendNewDeviceLoginEmail(
     to: string,
     props: Omit<
@@ -220,6 +288,11 @@ export class EmailService {
     })
   }
 
+  /**
+   * Gửi email thông báo thay đổi trạng thái tin cậy của thiết bị
+   * @param to - Địa chỉ email người nhận
+   * @param props - Thông tin về thiết bị và action (trusted/untrusted)
+   */
   async sendDeviceTrustChangeEmail(
     to: string,
     props: Omit<
@@ -234,6 +307,11 @@ export class EmailService {
     })
   }
 
+  /**
+   * Gửi email thông báo mật khẩu đã được thay đổi
+   * @param to - Địa chỉ email người nhận
+   * @param props - Thông tin về việc đổi mật khẩu
+   */
   async sendPasswordChangedEmail(
     to: string,
     props: Omit<
@@ -247,6 +325,11 @@ export class EmailService {
     })
   }
 
+  /**
+   * Gửi email thông báo thay đổi trạng thái 2FA (bật/tắt)
+   * @param to - Địa chỉ email người nhận
+   * @param props - Thông tin về action 2FA (enabled/disabled)
+   */
   async sendTwoFactorStatusChangedEmail(
     to: string,
     props: Omit<

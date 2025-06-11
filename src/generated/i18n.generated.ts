@@ -613,6 +613,31 @@ export type I18nTranslations = {
             "list": string;
         };
     };
+    "user": {
+        "error": {
+            "notFound": string;
+            "alreadyExists": string;
+            "createFailed": string;
+            "updateFailed": string;
+            "deleteFailed": string;
+            "invalidData": string;
+            "passwordRequired": string;
+            "emailRequired": string;
+            "weakPassword": string;
+            "cannotDeleteSelf": string;
+            "cannotDeleteSystemUser": string;
+        };
+        "success": {
+            "create": string;
+            "update": string;
+            "delete": string;
+            "get": string;
+            "list": string;
+            "passwordChanged": string;
+            "profileUpdated": string;
+            "statusChanged": string;
+        };
+    };
 };
 /* prettier-ignore */
 export type I18nPath = Path<I18nTranslations>;

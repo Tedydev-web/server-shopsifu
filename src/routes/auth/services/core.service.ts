@@ -1,22 +1,41 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
-import { v4 as uuidv4 } from 'uuid'
 import { Response, Request } from 'express'
-import { AuthError } from '../auth.error'
+import { v4 as uuidv4 } from 'uuid'
+
+// Prisma Types
+import { User, Device, Role, UserProfile } from '@prisma/client'
+
+// Internal Services
 import { HashingService } from 'src/shared/services/hashing.service'
-import { ApiException } from 'src/shared/exceptions/api.exception'
-import { GlobalError } from 'src/shared/global.error'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { EmailService } from 'src/shared/services/email.service'
+
+// Auth Services
+import { OtpService } from './otp.service'
+import { DeviceService } from './device.service'
+import { SessionsService } from 'src/routes/auth/services/session.service'
+import { AuthVerificationService } from './auth-verification.service'
+
+// Repositories
+import { SessionRepository } from 'src/routes/auth/repositories'
+
+// Types & Interfaces
 import {
   ICookieService,
   ITokenService,
   ILoginFinalizerService,
   ILoginFinalizationPayload,
-  ISLTService
+  ISLTService,
+  AccessTokenPayloadCreate
 } from 'src/routes/auth/auth.types'
+
+// DTOs
+import { CompleteRegistrationDto, LoginDto } from '../dtos/core.dto'
+
+// Constants & Enums
 import { TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
-import { OtpService } from './otp.service'
-import { User, Device, Role, UserProfile } from '@prisma/client'
-import { AccessTokenPayloadCreate } from 'src/routes/auth/auth.types'
 import {
   COOKIE_SERVICE,
   DEVICE_SERVICE,
@@ -25,15 +44,14 @@ import {
   TOKEN_SERVICE,
   EMAIL_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { SessionRepository } from 'src/routes/auth/repositories'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { DeviceService } from './device.service'
-import { SessionsService } from 'src/routes/auth/services/session.service'
-import { AuthVerificationService } from './auth-verification.service'
-import { CompleteRegistrationDto, LoginDto } from '../dtos/core.dto'
-import { ConfigService } from '@nestjs/config'
+
+// Utils
 import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
-import { EmailService } from 'src/shared/services/email.service'
+
+// Errors
+import { AuthError } from '../auth.error'
+import { ApiException } from 'src/shared/exceptions/api.exception'
+import { GlobalError } from 'src/shared/global.error'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { UserRepository, UserWithProfileAndRole } from 'src/routes/user/user.repository'
@@ -78,20 +96,21 @@ export class CoreService implements ILoginFinalizerService {
   ) {}
 
   /**
-   * Tạo username ngẫu nhiên
+   * Tạo username duy nhất từ chuỗi base
+   * @param baseUsername - Chuỗi base để tạo username (thường từ email)
+   * @returns Username duy nhất đã được validate
    */
   private async generateUniqueUsername(baseUsername: string): Promise<string> {
-    // Tạo username cơ bản từ email hoặc tên
+    // Chuẩn hóa username: chỉ giữ chữ thường và số, tối đa 15 ký tự
     let username = baseUsername
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '')
       .substring(0, 15)
 
-    // Kiểm tra username đã tồn tại chưa
     const exists = await this.profileRepository.doesUsernameExist(username)
 
-    // Nếu username đã tồn tại, thêm số ngẫu nhiên
     if (exists) {
+      // Thêm suffix ngẫu nhiên để đảm bảo tính duy nhất
       const randomSuffix = Math.floor(Math.random() * 10000)
       username = `${username.substring(0, 10)}${randomSuffix}`
     }
@@ -100,22 +119,26 @@ export class CoreService implements ILoginFinalizerService {
   }
 
   /**
-   * Khởi tạo đăng ký
+   * Khởi tạo quy trình đăng ký người dùng mới
+   * @param email - Email người dùng đăng ký
+   * @param ipAddress - Địa chỉ IP của client
+   * @param userAgent - Thông tin User Agent của browser
+   * @param res - Response object để set cookie
+   * @returns Kết quả khởi tạo xác thực (SLT token)
    */
   async initiateRegistration(email: string, ipAddress: string, userAgent: string, res: Response): Promise<any> {
     try {
-      // Kiểm tra email đã tồn tại chưa
       await this.checkEmailNotExists(email)
 
       if (!this.authVerificationService) {
         throw AuthError.ServiceNotAvailable('AuthVerificationService')
       }
 
-      // Không tạo user tạm thời, chỉ khởi tạo quá trình xác thực với email và metadata
+      // Khởi tạo quá trình xác thực email mà không tạo user tạm thời
       const verificationResult = await this.authVerificationService.initiateVerification(
         {
-          userId: 0, // Giá trị tạm thời sẽ được tạo bởi SLT service
-          deviceId: 0, // Giá trị tạm thời sẽ được tạo bởi SLT service
+          userId: 0, // Placeholder - sẽ được xử lý bởi SLT service
+          deviceId: 0, // Placeholder - sẽ được xử lý bởi SLT service
           email: email,
           ipAddress: ipAddress,
           userAgent: userAgent,
@@ -134,7 +157,12 @@ export class CoreService implements ILoginFinalizerService {
   }
 
   /**
-   * Hoàn tất đăng ký bằng SLT
+   * Hoàn tất đăng ký người dùng bằng SLT token
+   * @param sltCookie - SLT cookie từ client
+   * @param params - Thông tin đăng ký từ form
+   * @param ipAddress - Địa chỉ IP (optional)
+   * @param userAgent - User Agent (optional)
+   * @returns Thông báo hoàn tất đăng ký
    */
   async completeRegistrationWithSlt(
     sltCookie: string,
@@ -142,12 +170,14 @@ export class CoreService implements ILoginFinalizerService {
     ipAddress?: string,
     userAgent?: string
   ): Promise<any> {
+    // Validate password confirmation
     if (params.password !== params.confirmPassword) {
       throw AuthError.PasswordsNotMatch()
     }
 
     if (!this.sltService) throw AuthError.ServiceNotAvailable('SLTService')
 
+    // Xác thực SLT token và lấy context
     const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
       sltCookie,
       ipAddress || 'unknown',
@@ -155,20 +185,21 @@ export class CoreService implements ILoginFinalizerService {
       TypeOfVerificationCode.REGISTER
     )
 
+    // Kiểm tra OTP đã được xác minh chưa
     if (sltContext.metadata?.otpVerified !== 'true') {
       throw AuthError.InsufficientPermissions()
     }
 
-    // Lấy email từ metadata hoặc trực tiếp từ context
+    // Lấy email từ SLT context
     const email = sltContext.metadata?.pendingEmail || sltContext.email
     if (!email) {
       throw AuthError.EmailMissingInSltContext()
     }
 
-    // Kiểm tra email không tồn tại trong cơ sở dữ liệu
+    // Double-check email chưa tồn tại
     await this.checkEmailNotExists(email)
 
-    // Hoàn tất đăng ký với thông tin từ params
+    // Tạo user và profile mới trong database
     const newUser = await this.createUserAndProfile({
       email,
       password: params.password,
@@ -180,16 +211,16 @@ export class CoreService implements ILoginFinalizerService {
       userAgent: userAgent
     })
 
-    // Gửi email chào mừng
+    // Gửi email chào mừng (async, không block response)
     if (this.emailService) {
       await this.emailService.sendWelcomeEmail(email, {
         userName: newUser.userProfile?.username || email.split('@')[0]
       })
     }
 
-    // Finalize SLT
+    // Kết thúc và xóa SLT token
     await this.sltService.finalizeSlt(sltContext.sltJti)
-    this.logger.log(`[completeRegistrationWithSlt] Registration completed and SLT finalized for email: ${email}`)
+    this.logger.log(`[completeRegistrationWithSlt] Registration completed for email: ${email}`)
 
     return {
       message: 'auth.success.register.complete'
@@ -197,18 +228,19 @@ export class CoreService implements ILoginFinalizerService {
   }
 
   /**
-   * Tạo người dùng và hồ sơ trong cơ sở dữ liệu.
-   * Được gọi sau khi tất cả các bước xác minh đã hoàn tất.
+   * Tạo user và profile mới trong database sau khi đã xác thực
+   * @param params - Thông tin user cần tạo (bao gồm email, password, thông tin profile)
+   * @returns User object với profile và role đã được tạo
    */
   async createUserAndProfile(
     params: Omit<RegisterUserParams, 'userId'> & { email: string }
   ): Promise<UserWithProfileAndRole> {
     const { email, password, firstName, lastName, username: providedUsername, phoneNumber } = params
 
-    // 1. Kiểm tra email đã tồn tại chưa
+    // 1. Validate email chưa tồn tại
     await this.checkEmailNotExists(email)
 
-    // 2. Xử lý Username
+    // 2. Xử lý username - sử dụng username được cung cấp hoặc tạo tự động
     let finalUsername: string
     if (providedUsername) {
       const usernameExists = await this.profileRepository.doesUsernameExist(providedUsername)
@@ -217,25 +249,25 @@ export class CoreService implements ILoginFinalizerService {
       }
       finalUsername = providedUsername
     } else {
+      // Tạo username tự động từ phần đầu email
       finalUsername = await this.generateUniqueUsername(email.split('@')[0])
     }
 
-    // 3. Hash mật khẩu
+    // 3. Hash password để lưu trữ an toàn
     const hashedPassword = password ? await this.hashingService.hash(password) : undefined
     if (!hashedPassword) {
-      this.logger.error('Password is required for new user creation but was not provided or hashing failed.')
+      this.logger.error('[createUserAndProfile] Password hashing failed or password not provided')
       throw GlobalError.InternalServerError('auth.error.passwordProcessingFailed')
     }
 
-    // 4. Lấy Role ID cho 'Customer'
+    // 4. Lấy default role 'Customer' cho user mới
     const customerRole = await this.roleRepository.findByName('Customer')
     if (!customerRole) {
-      this.logger.error('Default "Customer" role not found in the database.')
-      // TODO: Consider creating the 'Customer' role if it doesn't exist, or having a more robust fallback/setup mechanism.
+      this.logger.error('[createUserAndProfile] Default "Customer" role not found in database')
       throw GlobalError.InternalServerError('auth.error.roleConfigurationError')
     }
 
-    // 5. Gọi repository để tạo user
+    // 5. Tạo user với profile trong database (transaction)
     return this.userRepository.createWithProfile({
       email,
       password: hashedPassword,
@@ -244,38 +276,43 @@ export class CoreService implements ILoginFinalizerService {
       firstName,
       lastName,
       phoneNumber
-      // googleId and googleAvatar are not part of RegisterUserParams,
-      // they are part of CreateUserData directly for social logins if needed.
-      // If they are needed here, RegisterUserParams should be updated.
     })
   }
 
   /**
-   * Validate user credentials
+   * Xác thực thông tin đăng nhập của người dùng
+   * @param emailOrUsername - Email hoặc username của người dùng
+   * @param password - Mật khẩu chưa được mã hóa
+   * @returns Thông tin user đã validated (không bao gồm password) hoặc null nếu không hợp lệ
    */
   async validateUser(
     emailOrUsername: string,
     password: string
   ): Promise<Omit<UserWithProfileAndRole, 'password' | 'role.permissions'> | null> {
-    // Tìm user theo email hoặc username
     const user = await this.userRepository.findByEmailOrUsername(emailOrUsername)
 
-    // Kiểm tra user tồn tại
     if (!user || !user.password) {
       return null
     }
 
-    // Kiểm tra mật khẩu
     const isPasswordValid = await this.hashingService.compare(password, user.password)
     if (!isPasswordValid) {
       return null
     }
 
-    // Loại bỏ mật khẩu trước khi trả về
-    const { password: _, ...result } = user
+    // Loại bỏ password khỏi response để bảo mật
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: userPassword, ...result } = user
     return result
   }
 
+  /**
+   * Lấy hoặc tạo mới thiết bị cho người dùng
+   * @param userId - ID của người dùng
+   * @param ip - Địa chỉ IP (optional)
+   * @param userAgent - Thông tin User Agent (optional)
+   * @returns Device object đã được tạo hoặc cập nhật
+   */
   async getOrCreateDevice(userId: number, ip?: string, userAgent?: string): Promise<Device> {
     try {
       const device = await this.deviceRepository.upsertDevice(
@@ -286,13 +323,17 @@ export class CoreService implements ILoginFinalizerService {
       )
       return device
     } catch (error) {
-      this.logger.error(`[Login] Error upserting device for user ${userId}: ${error.message}`, error.stack)
+      this.logger.error(`[getOrCreateDevice] Error upserting device for user ${userId}: ${error.message}`, error.stack)
       throw AuthError.DeviceProcessingFailed()
     }
   }
 
   /**
-   * Làm mới token
+   * Làm mới cặp token access/refresh
+   * @param req - Request object chứa refresh token
+   * @param deviceInfo - Thông tin thiết bị (IP, User Agent)
+   * @param res - Response object để set cookie mới
+   * @returns Thông báo refresh thành công
    */
   async refreshToken(req: Request, deviceInfo: { ipAddress: string; userAgent: string }, res: Response): Promise<any> {
     try {
@@ -301,25 +342,25 @@ export class CoreService implements ILoginFinalizerService {
         throw AuthError.MissingRefreshToken()
       }
 
-      // Xác minh refresh token
+      // Xác minh tính hợp lệ của refresh token
       const payload = await this.tokenService.verifyRefreshToken(refreshToken)
 
-      // Kiểm tra token có trong blacklist không
+      // Kiểm tra token có bị blacklist không
       const isBlacklisted = await this.tokenService.isRefreshTokenJtiBlacklisted(payload.jti)
       if (isBlacklisted) {
         throw AuthError.InvalidRefreshToken()
       }
 
-      // Lấy thông tin user mới nhất
+      // Lấy thông tin user mới nhất từ database
       const user = await this.userRepository.findByIdWithDetails(payload.userId)
       if (!user) {
         throw GlobalError.NotFound('user')
       }
 
-      // Đánh dấu refresh token cũ là đã sử dụng
+      // Đánh dấu refresh token cũ là đã sử dụng (one-time use)
       await this.tokenService.markRefreshTokenJtiAsUsed(payload.jti, payload.sessionId)
 
-      // Tạo payload mới với thông tin đầy đủ
+      // Tạo payload cho cặp token mới
       const newPayload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> = {
         userId: user.id,
         email: user.email,
@@ -331,19 +372,19 @@ export class CoreService implements ILoginFinalizerService {
         isDeviceTrustedInSession: payload.isDeviceTrustedInSession
       }
 
-      // Tạo token mới
+      // Tạo cặp token mới
       const newAccessToken = this.tokenService.signAccessToken(newPayload)
       const newRefreshToken = this.tokenService.signRefreshToken({
         ...newPayload,
         jti: `refresh_${Date.now()}_${this.generateRandomId()}`
       })
 
-      // Set cookie mới
+      // Thiết lập cookie mới cho client
       this.cookieService.setTokenCookies(res, newAccessToken, newRefreshToken)
 
       return { message: 'auth.success.token.refreshed' }
     } catch (error) {
-      this.logger.error(`Error refreshing token: ${error.message}`, error.stack)
+      this.logger.error(`[refreshToken] Error refreshing token: ${error.message}`, error.stack)
       this.cookieService.clearTokenCookies(res)
       if (error instanceof ApiException) throw error
       throw GlobalError.InternalServerError()
@@ -351,39 +392,40 @@ export class CoreService implements ILoginFinalizerService {
   }
 
   /**
-   * Đăng xuất
+   * Đăng xuất người dùng và xóa tất cả thông tin phiên
+   * @param userId - ID của người dùng
+   * @param sessionId - ID của phiên đăng nhập
+   * @param req - Request object (optional)
+   * @param res - Response object để xóa cookie (optional)
+   * @returns Thông báo đăng xuất thành công
    */
   async logout(userId: number, sessionId: string, req?: Request, res?: Response): Promise<{ message: string }> {
     try {
-      // Xóa cookie nếu có response
+      // Xóa các cookie liên quan đến authentication
       if (res) {
-        // Xóa các cookie liên quan đến đăng nhập
         this.cookieService.clearTokenCookies(res)
-
-        // Xóa SLT cookie nếu có
         this.cookieService.clearSltCookie(res)
 
-        // Xóa các cookie khác nếu có (trừ csrf)
+        // Xóa các cookie khác (trừ CSRF protection)
         const cookies = req?.cookies
         if (cookies) {
           Object.keys(cookies).forEach((cookieName) => {
             if (cookieName !== '_csrf' && cookieName !== 'xsrf-token') {
               res.clearCookie(cookieName, { path: '/' })
-              this.logger.debug(`[logout] Cookie ${cookieName} đã được xóa`)
+              this.logger.debug(`[logout] Cleared cookie: ${cookieName}`)
             }
           })
         }
       }
 
-      // Đánh dấu session là đã vô hiệu hóa
+      // Vô hiệu hóa session trong database
       if (this.sessionsService) {
         await this.sessionsService.invalidateSession(sessionId, 'logout')
       } else {
-        // Log warning khi không có SessionsService
-        this.logger.warn(`[logout] SessionsService không khả dụng, không thể vô hiệu hóa session ${sessionId}`)
+        this.logger.warn(`[logout] SessionsService not available, cannot invalidate session ${sessionId}`)
       }
 
-      // Đánh dấu token là đã vô hiệu hóa nếu có request
+      // Vô hiệu hóa access token hiện tại
       if (req) {
         const accessToken = this.tokenService.extractTokenFromRequest(req)
         if (accessToken) {
@@ -391,28 +433,32 @@ export class CoreService implements ILoginFinalizerService {
             const payload = await this.tokenService.verifyAccessToken(accessToken)
             await this.tokenService.invalidateAccessTokenJti(payload.jti, payload.exp)
           } catch (error) {
-            this.logger.warn(`Error invalidating access token on logout: ${error.message}`)
+            this.logger.warn(`[logout] Error invalidating access token: ${error.message}`)
           }
         }
       }
 
       return { message: 'auth.success.logout.success' }
     } catch (error) {
-      this.logger.error(`Logout error: ${error.message}`, error.stack)
+      this.logger.error(`[logout] Logout error: ${error.message}`, error.stack)
       if (error instanceof ApiException) throw error
       throw GlobalError.InternalServerError()
     }
   }
 
   /**
-   * Tìm người dùng theo email
+   * Tìm kiếm người dùng theo email
+   * @param email - Email cần tìm
+   * @returns User object hoặc null nếu không tìm thấy
    */
   async findUserByEmail(email: string): Promise<any> {
     return this.userRepository.findByEmailOrUsername(email)
   }
 
   /**
-   * Lấy thiết bị dựa trên ID
+   * Lấy thông tin thiết bị theo ID
+   * @param deviceId - ID của thiết bị
+   * @returns Device object hoặc null nếu không tìm thấy
    */
   async getDeviceById(deviceId: number): Promise<Device | null> {
     if (!deviceId) return null
@@ -426,7 +472,15 @@ export class CoreService implements ILoginFinalizerService {
   }
 
   /**
-   * Hoàn tất đăng nhập khi không cần xác thực bổ sung
+   * Hoàn tất quá trình đăng nhập và tạo token cho người dùng
+   * @param user - Thông tin user đã được validated
+   * @param device - Thiết bị đăng nhập
+   * @param rememberMe - Có ghi nhớ đăng nhập không
+   * @param res - Response object để set cookie
+   * @param ipAddress - Địa chỉ IP (optional)
+   * @param userAgent - User Agent (optional)
+   * @param isTrustedSession - Session có được tin cậy không (optional)
+   * @returns Kết quả đăng nhập thành công với thông tin user
    */
   async finalizeLoginAndCreateTokens(
     user: Omit<User & { role: Role; userProfile: UserProfile | null }, 'password'>,
@@ -438,9 +492,13 @@ export class CoreService implements ILoginFinalizerService {
     isTrustedSession?: boolean
   ): Promise<any> {
     try {
+      // Tạo session mới cho lần đăng nhập này
       const sessionId = await this.createSessionForLogin(user.id, device.id, ipAddress, userAgent)
+
+      // Xác định trạng thái trusted của session
       const effectiveIsTrustedSession = isTrustedSession ?? (await this.deviceRepository.isDeviceTrustValid(device.id))
 
+      // Tạo và thiết lập các token authentication
       this.generateAndSetAuthTokens(user, device.id, sessionId, effectiveIsTrustedSession, rememberMe, res)
 
       const userResponse = {
@@ -465,7 +523,12 @@ export class CoreService implements ILoginFinalizerService {
   }
 
   /**
-   * Tạo một session mới cho người dùng khi đăng nhập.
+   * Tạo session mới cho người dùng khi đăng nhập
+   * @param userId - ID của người dùng
+   * @param deviceId - ID của thiết bị
+   * @param ipAddress - Địa chỉ IP (optional)
+   * @param userAgent - User Agent (optional)
+   * @returns ID của session vừa tạo
    */
   private async createSessionForLogin(
     userId: number,
@@ -494,7 +557,14 @@ export class CoreService implements ILoginFinalizerService {
   }
 
   /**
-   * Tạo và thiết lập access/refresh tokens cho người dùng.
+   * Tạo và thiết lập cặp access/refresh token cho authentication
+   * @param user - Thông tin user
+   * @param deviceId - ID thiết bị
+   * @param sessionId - ID session
+   * @param isTrustedSession - Session có được tin cậy không
+   * @param rememberMe - Có ghi nhớ đăng nhập không
+   * @param res - Response object để set cookie
+   * @returns Cặp token đã tạo
    */
   private generateAndSetAuthTokens(
     user: Omit<UserWithProfileAndRole, 'password'>,
@@ -527,7 +597,9 @@ export class CoreService implements ILoginFinalizerService {
   }
 
   /**
-   * Helper để tạo ID ngẫu nhiên
+   * Tạo chuỗi ID ngẫu nhiên cho JTI token
+   * @param length - Độ dài chuỗi (mặc định 12 ký tự)
+   * @returns Chuỗi ngẫu nhiên
    */
   private generateRandomId(length: number = 12): string {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
@@ -539,7 +611,9 @@ export class CoreService implements ILoginFinalizerService {
   }
 
   /**
-   * Kiểm tra email chưa tồn tại
+   * Kiểm tra email chưa tồn tại trong hệ thống
+   * @param email - Email cần kiểm tra
+   * @throws AuthError nếu email đã tồn tại
    */
   async checkEmailNotExists(email: string): Promise<void> {
     const existingUser = await this.userRepository.findByEmail(email)
@@ -548,23 +622,32 @@ export class CoreService implements ILoginFinalizerService {
     }
   }
 
+  /**
+   * Khởi tạo quá trình đăng nhập và xác thực
+   * @param loginDto - Thông tin đăng nhập từ client
+   * @param ip - Địa chỉ IP
+   * @param userAgent - User Agent
+   * @param res - Response object để set cookie
+   * @returns Kết quả khởi tạo xác thực (SLT token hoặc login trực tiếp)
+   */
   async initiateLogin(loginDto: LoginDto, ip: string, userAgent: string, res: Response) {
-    this.logger.log(`[Login] Bắt đầu đăng nhập cho người dùng ${loginDto.emailOrUsername}`)
+    this.logger.log(`[initiateLogin] Starting login for user ${loginDto.emailOrUsername}`)
 
+    // Xác thực thông tin đăng nhập cơ bản
     const user = await this.validateUser(loginDto.emailOrUsername, loginDto.password)
     if (!user) {
       throw AuthError.InvalidPassword()
     }
 
-    // Kiểm tra xem người dùng có bị gắn cờ yêu cầu xác minh lại không
+    // Kiểm tra có yêu cầu xác minh lại từ hệ thống không
     const reverifyKey = RedisKeyManager.getUserReverifyNextLoginKey(user.id)
     const needsReverification = await this.redisService.get(reverifyKey)
 
     const device = await this.getOrCreateDevice(user.id, ip, userAgent)
 
     if (needsReverification) {
-      this.logger.log(`[Login] Người dùng ${user.id} bị gắn cờ xác minh lại. Buộc phải qua luồng xác thực.`)
-      // Xóa cờ ngay sau khi đọc để nó chỉ có hiệu lực một lần
+      this.logger.log(`[initiateLogin] User ${user.id} flagged for re-verification. Forcing verification flow.`)
+      // Xóa flag sau khi đọc để chỉ có hiệu lực một lần
       await this.redisService.del(reverifyKey)
     }
 
@@ -572,6 +655,7 @@ export class CoreService implements ILoginFinalizerService {
       throw AuthError.ServiceNotAvailable('AuthVerificationService')
     }
 
+    // Khởi tạo quá trình xác thực (OTP/2FA nếu cần)
     const verificationResult = await this.authVerificationService.initiateVerification(
       {
         userId: user.id,
@@ -586,39 +670,39 @@ export class CoreService implements ILoginFinalizerService {
       res
     )
 
-    // The interceptor will wrap this into the standard response format.
-    // The `data` part contains any information the client might need, like a verification token (SLT).
     return verificationResult
   }
 
   /**
-   * Hoàn tất đăng nhập sau khi xác minh
+   * Hoàn tất đăng nhập sau khi đã xác thực thành công
+   * @param payload - Thông tin cần thiết để hoàn tất đăng nhập
+   * @param res - Response object để set cookie
+   * @returns Kết quả đăng nhập thành công với thông tin user
    */
   async finalizeLoginAfterVerification(payload: ILoginFinalizationPayload, res: Response): Promise<any> {
     const { userId, deviceId, rememberMe, ipAddress, userAgent } = payload
     try {
-      // Tìm user
+      // Lấy thông tin user đầy đủ từ database
       const user = await this.userRepository.findByIdWithDetails(userId)
       if (!user) {
         throw GlobalError.NotFound('user')
       }
 
-      // Tìm thiết bị
+      // Lấy thông tin thiết bị
       const device = await this.deviceRepository.findById(deviceId)
       if (!device) {
         throw AuthError.DeviceNotFound()
       }
 
-      // Check if the device was trusted *before* this successful login.
+      // Kiểm tra trạng thái trusted của thiết bị trước khi đăng nhập
       const wasDeviceTrusted = await this.deviceRepository.isDeviceTrustValid(deviceId)
 
-      // Sau khi xác minh thành công và nếu rememberMe là true, thiết bị NÊN được trust.
+      // Xác định trạng thái trusted sau đăng nhập (nếu rememberMe = true thì trust thiết bị)
       const isDeviceTrustedNow = rememberMe || wasDeviceTrusted
 
-      this.logger.debug(
-        `[finalizeLoginAfterVerification] Calling finalizeLoginAndCreateTokens for user ${userId}, device ${deviceId}`
-      )
+      this.logger.debug(`[finalizeLoginAfterVerification] Finalizing login for user ${userId}, device ${deviceId}`)
 
+      // Hoàn tất đăng nhập và tạo token
       const loginResult = await this.finalizeLoginAndCreateTokens(
         user,
         device,
@@ -629,13 +713,11 @@ export class CoreService implements ILoginFinalizerService {
         isDeviceTrustedNow
       )
 
-      // Nếu đăng nhập trên một thiết bị chưa được tin cậy trước đó, hãy gửi thông báo.
+      // Gửi thông báo nếu đăng nhập trên thiết bị chưa được tin cậy
       if (!wasDeviceTrusted && this.deviceService) {
         this.logger.log(`[finalizeLoginAfterVerification] Device ${deviceId} was untrusted, sending notification.`)
-        // Chạy bất đồng bộ để không chặn phản hồi của người dùng
-        if (this.deviceService) {
-          void this.deviceService.notifyLoginOnUntrustedDevice(user, deviceId, ipAddress, userAgent)
-        }
+        // Chạy bất đồng bộ để không block response
+        void this.deviceService.notifyLoginOnUntrustedDevice(user, deviceId, ipAddress, userAgent)
       }
 
       return loginResult

@@ -20,7 +20,7 @@ import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.facto
 
 @Auth()
 @UseGuards(PoliciesGuard)
-@Controller('role')
+@Controller('roles')
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}
 

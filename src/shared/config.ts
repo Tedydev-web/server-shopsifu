@@ -99,7 +99,6 @@ const parsedConfig = configServer.data
 const isProduction = parsedConfig.NODE_ENV === 'production'
 const isDevlopment = parsedConfig.NODE_ENV === 'development'
 
-
 /**
  * Chuyển đổi chuỗi thời gian sang milliseconds
  */

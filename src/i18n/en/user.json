@@ -1,0 +1,25 @@
+{
+  "error": {
+    "notFound": "User not found",
+    "alreadyExists": "Email '{email}' is already in use",
+    "createFailed": "Failed to create user",
+    "updateFailed": "Failed to update user",
+    "deleteFailed": "Failed to delete user",
+    "invalidData": "Invalid user data",
+    "passwordRequired": "Password is required",
+    "emailRequired": "Email is required",
+    "weakPassword": "Password is too weak, please choose a stronger password",
+    "cannotDeleteSelf": "Cannot delete your own account",
+    "cannotDeleteSystemUser": "Cannot delete system user"
+  },
+  "success": {
+    "create": "User created successfully",
+    "update": "User updated successfully",
+    "delete": "User deleted successfully",
+    "get": "User retrieved successfully",
+    "list": "Users retrieved successfully",
+    "passwordChanged": "Password changed successfully",
+    "profileUpdated": "Profile updated successfully",
+    "statusChanged": "User status changed successfully"
+  }
+}

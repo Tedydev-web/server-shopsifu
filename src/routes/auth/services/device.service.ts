@@ -1,20 +1,33 @@
+// NestJS core modules
 import { Injectable, Logger, Inject } from '@nestjs/common'
-import { I18nService, I18nContext } from 'nestjs-i18n'
 import { ConfigService } from '@nestjs/config'
+import { I18nService, I18nContext } from 'nestjs-i18n'
+
+// External libraries
 import { Device } from '@prisma/client'
+
+// Internal services
 import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
-import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
+import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { EmailService } from 'src/shared/services/email.service'
-import { DeviceRepository } from 'src/shared/repositories/device.repository'
-import { DEVICE_REVERIFICATION_TTL } from 'src/shared/providers/redis/redis.constants'
-import { IDeviceService } from 'src/routes/auth/auth.types'
-import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
-import { GlobalError } from 'src/shared/global.error'
+
+// Repositories
+import { DeviceRepository } from 'src/shared/repositories/device.repository'
+
+// Types and interfaces
+import { IDeviceService } from 'src/routes/auth/auth.types'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { UserWithProfileAndRole } from 'src/routes/user/user.repository'
+
+// Constants and utilities
+import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
+import { DEVICE_REVERIFICATION_TTL } from 'src/shared/providers/redis/redis.constants'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
+
+// Errors
+import { GlobalError } from 'src/shared/global.error'
 
 /**
  * Kết quả đánh giá rủi ro thiết bị

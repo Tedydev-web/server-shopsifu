@@ -18,7 +18,7 @@ import { EmailService } from '../../../shared/services/email.service'
 import { I18nService } from 'nestjs-i18n'
 import { GeolocationService } from '../../../shared/services/geolocation.service'
 import { UserAgentService } from '../../../shared/services/user-agent.service'
-import { ICookieService, ISessionService, ISLTService, AccessTokenPayload } from 'src/routes/auth/auth.types'
+import { ICookieService, ISessionService, ISLTService } from 'src/routes/auth/auth.types'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { UserRepository } from 'src/routes/user/user.repository'
 import { ActiveUserData } from 'src/shared/types/active-user.type'
@@ -42,22 +42,32 @@ export class PasswordService {
   ) {}
 
   /**
-   * Khởi tạo quá trình đặt lại mật khẩu cho người dùng đã quên.
+   * Khởi tạo quá trình reset mật khẩu cho người dùng đã quên
+   *
+   * Gửi OTP/2FA để xác thực trước khi cho phép đổi mật khẩu.
+   * Dù email không tồn tại vẫn trả về success để tránh email enumeration.
+   *
+   * @param email - Email của user cần reset password
+   * @param ipAddress - Địa chỉ IP của request
+   * @param userAgent - User Agent của browser
+   * @param res - Response object để set SLT cookie
+   * @returns Kết quả khởi tạo verification flow
    */
   async initiatePasswordReset(email: string, ipAddress: string, userAgent: string, res: Response) {
-    this.logger.log(`Initiating password reset for email: ${email}`)
+    this.logger.log(`[initiatePasswordReset] Initiating password reset for email: ${email}`)
     const user = await this.userRepository.findByEmail(email)
 
     if (!user) {
-      this.logger.warn(`Password reset initiated for non-existent email: ${email}`)
+      // Không tiết lộ email không tồn tại để tránh email enumeration attack
+      this.logger.warn(`[initiatePasswordReset] Password reset attempted for non-existent email: ${email}`)
       return { message: 'auth.success.password.initiateReset' }
     }
 
-    // Gửi đi flow xác thực
+    // Khởi tạo luồng xác thực (OTP/2FA) trước khi cho phép reset password
     return this.authVerificationService.initiateVerification(
       {
         userId: user.id,
-        deviceId: 0, // Sẽ được tạo/cập nhật nếu cần
+        deviceId: 0, // Sẽ được tạo/cập nhật nếu cần trong verification service
         email: user.email,
         ipAddress,
         userAgent,
@@ -68,7 +78,17 @@ export class PasswordService {
   }
 
   /**
-   * Đặt mật khẩu mới sau khi người dùng xác thực thành công (luồng quên mật khẩu).
+   * Đặt mật khẩu mới sau khi user đã xác thực thành công (forgot password flow)
+   *
+   * Validate SLT token, kiểm tra OTP đã verified, hash password mới
+   * và có option revoke tất cả sessions khác.
+   *
+   * @param sltCookieValue - SLT token từ cookie
+   * @param dto - Data chứa password mới và các options
+   * @param ipAddress - Địa chỉ IP
+   * @param userAgent - User Agent
+   * @param res - Response object để clear cookies
+   * @returns Kết quả đổi password thành công
    */
   async setNewPassword(
     sltCookieValue: string,
@@ -77,8 +97,9 @@ export class PasswordService {
     userAgent: string,
     res: Response
   ) {
-    this.logger.log(`Setting new password from reset flow.`)
+    this.logger.log(`[setNewPassword] Setting new password from reset flow.`)
 
+    // Validate SLT token và lấy context
     const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
       sltCookieValue,
       ipAddress,
@@ -86,10 +107,12 @@ export class PasswordService {
       TypeOfVerificationCode.RESET_PASSWORD
     )
 
+    // Kiểm tra OTP/2FA đã được verify chưa
     if (sltContext.metadata?.otpVerified !== 'true') {
       throw AuthError.InsufficientPermissions()
     }
 
+    // Thực hiện update password và xử lý session
     const result = await this.performPasswordUpdate({
       userId: sltContext.userId,
       newPassword: dto.newPassword,

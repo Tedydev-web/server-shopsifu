@@ -23,9 +23,6 @@
     "scan:permissions": "tsx initialScript/scan-permissions-standalone.ts",
     "scan:roles": "tsx initialScript/scan-roles-standalone.ts"
   },
-  "prisma": {
-    "seed": "ts-node initialScript/create-permissions.ts"
-  },
   "dependencies": {
     "@casl/ability": "^6.7.3",
     "@casl/prisma": "^1.5.1",

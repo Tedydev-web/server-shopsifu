@@ -25,7 +25,9 @@ export class TokenService implements ITokenService {
   ) {}
 
   /**
-   * Generates an access token.
+   * Tạo access token cho user với thời hạn ngắn
+   * @param userId - ID của user
+   * @returns Access token string
    */
   async generateAccessToken(userId: number): Promise<string> {
     const tokenJti = `access_${Date.now()}_${uuidv4().substring(0, 8)}`
@@ -38,7 +40,10 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Generates a refresh token.
+   * Tạo refresh token cho user với thời hạn dài
+   * @param userId - ID của user
+   * @param rememberMe - Có remember login không (ảnh hưởng đến thời hạn token)
+   * @returns Refresh token string
    */
   async generateRefreshToken(userId: number, rememberMe?: boolean): Promise<string> {
     const tokenJti = `refresh_${Date.now()}_${uuidv4().substring(0, 8)}`
@@ -48,30 +53,35 @@ export class TokenService implements ITokenService {
       type: 'REFRESH',
       rememberMe
     }
-
     return Promise.resolve(this.signRefreshToken(payload))
   }
 
   /**
-   * Validates an access token.
+   * Validate access token và kiểm tra blacklist
+   * @param token - Access token cần validate
+   * @returns Token payload nếu hợp lệ
+   * @throws AuthError nếu token không hợp lệ
    */
   async validateAccessToken(token: string): Promise<any> {
     try {
       return await this.verifyAccessToken(token)
     } catch (error) {
-      this.logger.error(`AccessToken validation error: ${error.message}`)
+      this.logger.error(`[validateAccessToken] AccessToken validation error: ${error.message}`)
       throw AuthError.InvalidAccessToken()
     }
   }
 
   /**
-   * Validates a refresh token.
+   * Validate refresh token và kiểm tra blacklist
+   * @param token - Refresh token cần validate
+   * @returns Token payload nếu hợp lệ
+   * @throws AuthError nếu token không hợp lệ hoặc bị blacklist
    */
   async validateRefreshToken(token: string): Promise<any> {
     try {
       const payload = await this.verifyRefreshToken(token)
 
-      // Check if the token is blacklisted
+      // Kiểm tra token có bị blacklist không
       const isBlacklisted = await this.isRefreshTokenJtiBlacklisted(payload.jti)
       if (isBlacklisted) {
         throw AuthError.InvalidRefreshToken()
@@ -79,13 +89,15 @@ export class TokenService implements ITokenService {
 
       return payload
     } catch (error) {
-      this.logger.error(`RefreshToken validation error: ${error.message}`)
+      this.logger.error(`[validateRefreshToken] RefreshToken validation error: ${error.message}`)
       throw AuthError.InvalidRefreshToken()
     }
   }
 
   /**
-   * Signs an access token.
+   * Ký access token với secret và thời hạn ngắn
+   * @param payload - Token payload (không bao gồm exp, iat)
+   * @returns JWT access token string
    */
   signAccessToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>): string {
     return this.jwtService.sign(payload, {
@@ -95,9 +107,12 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Signs a refresh token.
+   * Ký refresh token với secret và thời hạn dài (có thể extend nếu rememberMe)
+   * @param payload - Token payload (không bao gồm exp, iat)
+   * @returns JWT refresh token string
    */
   signRefreshToken(payload: Omit<AccessTokenPayloadCreate, 'exp' | 'iat'>): string {
+    // Thời hạn token phụ thuộc vào rememberMe option
     const expiresIn =
       payload.rememberMe === true
         ? this.configService.get('auth.refreshToken.extendedExpiresIn', '30d')
@@ -109,7 +124,9 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Signs a Short-Lived Token (SLT).
+   * Ký Short-Lived Token (SLT) cho các flow xác thực tạm thời
+   * @param payload - SLT payload
+   * @returns JWT SLT token string với thời hạn rất ngắn
    */
   signShortLivedToken(payload: any): string {
     return this.jwtService.sign(payload, {
@@ -119,7 +136,10 @@ export class TokenService implements ITokenService {
   }
 
   /**
-   * Verifies an access token.
+   * Xác minh access token và kiểm tra blacklist
+   * @param token - Access token cần verify
+   * @returns Token payload đã decode
+   * @throws AuthError nếu token invalid hoặc bị blacklist
    */
   async verifyAccessToken(token: string): Promise<AccessTokenPayload> {
     try {
@@ -127,7 +147,7 @@ export class TokenService implements ITokenService {
         secret: this.configService.get<string>('ACCESS_TOKEN_SECRET')
       })
 
-      // Check if the token is blacklisted
+      // Kiểm tra token có bị blacklist không
       const isBlacklisted = await this.isAccessTokenJtiBlacklisted(payload.jti)
       if (isBlacklisted) {
         throw AuthError.InvalidAccessToken()
@@ -135,14 +155,17 @@ export class TokenService implements ITokenService {
 
       return payload
     } catch (error) {
-      this.logger.error(`Token validation error: ${error.message}`)
+      this.logger.error(`[verifyAccessToken] Token validation error: ${error.message}`)
       if (error instanceof AuthError) throw error
       throw AuthError.InvalidAccessToken()
     }
   }
 
   /**
-   * Verifies a refresh token.
+   * Xác minh refresh token (không check blacklist ở đây)
+   * @param token - Refresh token cần verify
+   * @returns Token payload đã decode
+   * @throws AuthError nếu token invalid
    */
   async verifyRefreshToken(token: string): Promise<AccessTokenPayload> {
     try {

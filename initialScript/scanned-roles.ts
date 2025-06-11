@@ -1,5 +1,5 @@
 // Auto-generated roles from scanning database and codebase
-// Generated at: 2025-06-11T10:57:59.854Z
+// Generated at: 2025-06-11T16:06:39.958Z
 // Total roles found: 3
 
 export const SCANNED_ROLES = [
@@ -46,14 +46,6 @@ export const SCANNED_ROLES = [
         "subject": "Role"
       },
       {
-        "action": "read",
-        "subject": "UserProfile"
-      },
-      {
-        "action": "update",
-        "subject": "UserProfile"
-      },
-      {
         "action": "create",
         "subject": "Permission"
       },
@@ -84,10 +76,6 @@ export const SCANNED_ROLES = [
       {
         "action": "delete",
         "subject": "Device"
-      },
-      {
-        "action": "update",
-        "subject": "Device"
       }
     ],
     "foundIn": "database"
@@ -100,18 +88,6 @@ export const SCANNED_ROLES = [
     "permissions": [
       {
         "action": "read",
-        "subject": "UserProfile"
-      },
-      {
-        "action": "update",
-        "subject": "UserProfile"
-      },
-      {
-        "action": "read",
-        "subject": "Device"
-      },
-      {
-        "action": "update",
         "subject": "Device"
       },
       {
@@ -130,18 +106,6 @@ export const SCANNED_ROLES = [
     "permissions": [
       {
         "action": "read",
-        "subject": "UserProfile"
-      },
-      {
-        "action": "update",
-        "subject": "UserProfile"
-      },
-      {
-        "action": "read",
-        "subject": "Device"
-      },
-      {
-        "action": "update",
         "subject": "Device"
       },
       {

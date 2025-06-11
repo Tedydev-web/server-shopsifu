@@ -55,8 +55,9 @@ export class PermissionController {
 
   @Delete(':id')
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Delete, 'Permission'))
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
+  @HttpCode(HttpStatus.OK)
+  async remove(@Param('id', ParseIntPipe) id: number): Promise<{ message: string }> {
     await this.permissionService.remove(id)
+    return { message: 'permission.success.delete' }
   }
 }

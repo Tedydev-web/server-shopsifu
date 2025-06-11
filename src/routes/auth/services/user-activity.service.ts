@@ -1,18 +1,49 @@
+// ================================================================
+// NestJS Dependencies
+// ================================================================
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { EmailService } from 'src/shared/services/email.service'
-import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
-import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { I18nService, I18nContext } from 'nestjs-i18n'
+
+// ================================================================
+// External Libraries
+// ================================================================
+
+// ================================================================
+// Internal Services & Types
+// ================================================================
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
+import { EmailService } from 'src/shared/services/email.service'
 import { GeolocationService, GeoLocationResult } from 'src/shared/services/geolocation.service'
-import { calculateDistance, Coordinates } from 'src/shared/utils/geolocation.utils'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { calculateDistance, Coordinates } from 'src/shared/utils/geolocation.utils'
+
+// ================================================================
+// Repositories
+// ================================================================
 import { UserRepository, UserWithProfileAndRole } from 'src/routes/user/user.repository'
 
+// ================================================================
+// Constants & Injection Tokens
+// ================================================================
+import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
+
+// ================================================================
+// Types & Interfaces
+// ================================================================
+import { I18nTranslations } from 'src/generated/i18n.generated'
+
 /**
- * Các loại hoạt động người dùng
+ * Service theo dõi và phân tích hoạt động người dùng
+ * - Ghi lại các hoạt động quan trọng của user (login, thay đổi mật khẩu, v.v.)
+ * - Phát hiện hoạt động đáng ngờ dựa trên location và device fingerprint
+ * - Gửi cảnh báo bảo mật qua email khi cần thiết
+ * - Quản lý lịch sử hoạt động với Redis cache
+ */
+
+/**
+ * Các loại hoạt động người dùng được theo dõi
  */
 export enum UserActivityType {
   LOGIN_ATTEMPT = 'LOGIN_ATTEMPT',
@@ -82,26 +113,26 @@ export class UserActivityService {
     @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
     private readonly userRepository: UserRepository
   ) {
-    // Cấu hình quy tắc phát hiện
+    // Cấu hình từ environment variables
     this.activityRetentionDays = this.configService.get<number>('USER_ACTIVITY_RETENTION_DAYS', 90)
     this.maxLoginAttemptsBeforeLock = this.configService.get<number>('MAX_LOGIN_ATTEMPTS_BEFORE_LOCK', 5)
     this.loginLockoutMinutes = this.configService.get<number>('LOGIN_LOCKOUT_MINUTES', 30)
     this.impossibleTravelSpeedKph = this.configService.get<number>('IMPOSSIBLE_TRAVEL_SPEED_KPH', 1000)
 
-    // Khởi tạo các quy tắc phát hiện
+    // Khởi tạo các quy tắc phát hiện hoạt động đáng ngờ
     this.rules = [
       {
-        name: 'Nhiều lần đăng nhập thất bại',
+        name: 'Nhiều lần đăng nhập thất bại liên tiếp',
         type: UserActivityType.LOGIN_FAILURE,
         timeWindowMinutes: 10,
         threshold: 3,
         severity: ActivitySeverity.WARNING
       },
       {
-        name: 'Di chuyển phi thực tế',
+        name: 'Di chuyển địa lý phi thực tế (impossible travel)',
         type: UserActivityType.LOGIN_SUCCESS,
         timeWindowMinutes: 240, // 4 giờ
-        threshold: 2, // Cần ít nhất 2 lần đăng nhập để so sánh
+        threshold: 2, // Cần ít nhất 2 lần đăng nhập để so sánh location
         severity: ActivitySeverity.CRITICAL
       },
       {
@@ -112,9 +143,9 @@ export class UserActivityService {
         severity: ActivitySeverity.WARNING
       },
       {
-        name: 'Thay đổi mật khẩu nhiều lần',
+        name: 'Thay đổi mật khẩu nhiều lần trong ngày',
         type: UserActivityType.PASSWORD_CHANGED,
-        timeWindowMinutes: 1440, // 24h
+        timeWindowMinutes: 1440, // 24 giờ
         threshold: 3,
         severity: ActivitySeverity.WARNING
       },
@@ -128,44 +159,56 @@ export class UserActivityService {
     ]
   }
 
+  // ================================================================
+  // Public Methods - Activity Logging & Management
+  // ================================================================
+
   /**
-   * Ghi lại hoạt động của người dùng
+   * Ghi lại hoạt động của người dùng vào Redis và xử lý theo quy tắc bảo mật
+   * Tự động kiểm tra vi phạm các rule để phát hiện hoạt động đáng ngờ
+   * @param activity - Thông tin chi tiết về hoạt động
    */
   async logActivity(activity: UserActivity): Promise<void> {
-    this.logger.debug(`[logActivity] Recording activity: ${activity.type} for user ${activity.userId}`)
+    this.logger.debug(`[logActivity] Ghi nhận hoạt động: ${activity.type} cho user ${activity.userId}`)
 
     try {
-      // Lưu vào Redis danh sách hoạt động
+      // Lưu vào Redis danh sách hoạt động với timestamp
       const activityKey = RedisKeyManager.getUserActivityKey(activity.userId)
       const activityJson = JSON.stringify({
         ...activity,
         timestamp: activity.timestamp || Date.now()
       })
 
-      // Thêm vào đầu danh sách
+      // Thêm vào đầu danh sách (FIFO)
       await this.redisService.lpush(activityKey, activityJson)
 
-      // Giữ danh sách trong giới hạn
+      // Giữ danh sách trong giới hạn để tiết kiệm memory
       await this.redisService.ltrim(activityKey, 0, 99) // Giữ 100 hoạt động gần nhất
 
-      // Thiết lập thời gian hết hạn nếu chưa có
+      // Thiết lập thời gian hết hạn cho data retention
       const ttl = await this.redisService.ttl(activityKey)
       if (ttl < 0) {
         await this.redisService.expire(activityKey, 60 * 60 * 24 * this.activityRetentionDays)
       }
 
-      // Xử lý theo loại hoạt động
+      // Xử lý business logic theo loại hoạt động
       await this.processActivity(activity)
 
-      // Kiểm tra vi phạm các quy tắc
+      // Kiểm tra vi phạm các quy tắc bảo mật
       await this.checkRuleViolations(activity)
     } catch (error) {
-      this.logger.error(`[logActivity] Error: ${error.message}`, error.stack)
+      this.logger.error(`[logActivity] Lỗi ghi nhận hoạt động: ${error.message}`, error.stack)
     }
   }
 
+  // ================================================================
+  // Private Methods - Activity Processing
+  // ================================================================
+
   /**
-   * Xử lý hoạt động dựa vào loại
+   * Xử lý logic nghiệp vụ cụ thể cho từng loại hoạt động
+   * Ví dụ: đếm số lần đăng nhập thất bại, cập nhật last login, etc.
+   * @param activity - Hoạt động cần xử lý
    */
   private async processActivity(activity: UserActivity): Promise<void> {
     try {

@@ -1,9 +1,37 @@
+// NestJS core modules
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { I18nService, I18nContext } from 'nestjs-i18n'
 import { JwtService } from '@nestjs/jwt'
+import { I18nService, I18nContext } from 'nestjs-i18n'
+
+// External libraries
 import * as otplib from 'otplib'
 import { HashAlgorithms } from '@otplib/core'
+
+// Internal services
+import { OtpService } from './otp.service'
+import { HashingService } from 'src/shared/services/hashing.service'
+import { SLTService } from 'src/shared/services/slt.service'
+import { EmailService } from 'src/shared/services/email.service'
+import { GeolocationService } from 'src/shared/services/geolocation.service'
+import { UserAgentService } from 'src/shared/services/user-agent.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+
+// Repositories
+import { UserRepository } from 'src/routes/user/user.repository'
+import { RecoveryCodeRepository } from 'src/routes/auth/repositories'
+import { DeviceRepository } from 'src/shared/repositories/device.repository'
+
+// Types and interfaces
+import { ICookieService, ITokenService, IMultiFactorService } from 'src/routes/auth/auth.types'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+
+// Constants and enums
+import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/routes/auth/auth.constants'
+
+// Errors and injection tokens
+import { AuthError } from '../auth.error'
+import { GlobalError } from 'src/shared/global.error'
 import {
   COOKIE_SERVICE,
   EMAIL_SERVICE,
@@ -13,21 +41,6 @@ import {
   TOKEN_SERVICE,
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/routes/auth/auth.constants'
-import { RecoveryCodeRepository } from 'src/routes/auth/repositories'
-import { DeviceRepository } from 'src/shared/repositories/device.repository'
-import { HashingService } from 'src/shared/services/hashing.service'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { OtpService } from './otp.service'
-import { ICookieService, ITokenService, IMultiFactorService } from 'src/routes/auth/auth.types'
-import { AuthError } from '../auth.error'
-import { SLTService } from 'src/shared/services/slt.service'
-import { EmailService } from 'src/shared/services/email.service'
-import { GeolocationService } from 'src/shared/services/geolocation.service'
-import { UserAgentService } from 'src/shared/services/user-agent.service'
-import { GlobalError } from 'src/shared/global.error'
-import { I18nTranslations } from 'src/generated/i18n.generated'
-import { UserRepository } from 'src/routes/user/user.repository'
 
 /**
  * Cấu hình và hằng số

@@ -1,9 +1,35 @@
+// ================================================================
+// NestJS Dependencies
+// ================================================================
 import { Injectable, Logger, Inject } from '@nestjs/common'
-import { Response } from 'express'
-import { I18nService } from 'nestjs-i18n'
-import { AuthError } from 'src/routes/auth/auth.error'
 import { ConfigService } from '@nestjs/config'
-import { ICookieService, IDeviceService, ISessionService } from 'src/routes/auth/auth.types'
+import { I18nService } from 'nestjs-i18n'
+
+// ================================================================
+// External Libraries
+// ================================================================
+import { Response } from 'express'
+import { z } from 'zod'
+
+// ================================================================
+// Internal Services & Types
+// ================================================================
+import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
+import { GeolocationService, GeoLocationResult } from 'src/shared/services/geolocation.service'
+import { EmailService } from 'src/shared/services/email.service'
+import { UserAgentService } from '../../../shared/services/user-agent.service'
+
+// ================================================================
+// Repositories
+// ================================================================
+import { SessionRepository } from 'src/routes/auth/repositories'
+import { DeviceRepository } from 'src/shared/repositories/device.repository'
+
+// ================================================================
+// Constants & Injection Tokens
+// ================================================================
 import {
   DEVICE_SERVICE,
   EMAIL_SERVICE,
@@ -11,23 +37,23 @@ import {
   USER_AGENT_SERVICE,
   COOKIE_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
+
+// ================================================================
+// Types & Interfaces
+// ================================================================
+import { AuthError } from 'src/routes/auth/auth.error'
+import { ICookieService, IDeviceService, ISessionService } from 'src/routes/auth/auth.types'
 import { GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
-import { GeolocationService } from 'src/shared/services/geolocation.service'
-import { SessionRepository } from 'src/routes/auth/repositories'
-import { DeviceRepository } from 'src/shared/repositories/device.repository'
-import { Device } from '@prisma/client'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
-import { z } from 'zod'
-import { EmailService } from 'src/shared/services/email.service'
-import { GeoLocationResult } from 'src/shared/services/geolocation.service'
-import { UserAgentService } from '../../../shared/services/user-agent.service'
 import { I18nTranslations } from 'src/generated/i18n.generated'
+import { Device } from '@prisma/client'
 
 // Infer the type for a single device session group from the Zod schema
 type DeviceSessionGroup = z.infer<typeof GetGroupedSessionsResponseSchema.shape.devices.element>
 
+/**
+ * Service quản lý sessions và devices của người dùng
+ * Cung cấp các chức năng xem, thu hồi, và quản lý sessions/devices
+ */
 @Injectable()
 export class SessionsService implements ISessionService {
   private readonly logger = new Logger(SessionsService.name)
@@ -46,8 +72,18 @@ export class SessionsService implements ISessionService {
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService
   ) {}
 
+  // ================================================================
+  // Public Methods - Session Management
+  // ================================================================
+
   /**
-   * Lấy danh sách sessions của user, nhóm theo device
+   * Lấy danh sách sessions của user được nhóm theo device
+   * Bao gồm thông tin device, location, và các session đang hoạt động
+   * @param userId - ID của user
+   * @param currentPage - Trang hiện tại (pagination)
+   * @param itemsPerPage - Số item trên mỗi trang
+   * @param currentSessionIdFromToken - ID session hiện tại từ token
+   * @returns Danh sách sessions được nhóm theo device với pagination
    */
   async getSessions(
     userId: number,
@@ -56,19 +92,24 @@ export class SessionsService implements ISessionService {
     currentSessionIdFromToken: string
   ): Promise<any> {
     this.logger.debug(
-      `[getSessions] Attempting to get grouped sessions for userId: ${userId}, page: ${currentPage}, limit: ${itemsPerPage}`
+      `[getSessions] Getting grouped sessions for userId: ${userId}, page: ${currentPage}, limit: ${itemsPerPage}`
     )
 
+    // Lấy tất cả sessions và devices của user
     const sessionResult = await this.sessionRepository.findSessionsByUserId(userId, { page: 1, limit: 1000 })
     let devices = await this.deviceRepository.findDevicesByUserId(userId)
+
+    // Đảm bảo device hiện tại được include trong danh sách
     devices = await this.ensureCurrentDeviceIncluded(currentSessionIdFromToken, devices)
 
     const deviceGroups: DeviceSessionGroup[] = []
 
+    // Tạo group cho mỗi device
     for (const device of devices) {
       const currentSessionDetails = await this.sessionRepository.findById(currentSessionIdFromToken)
       const isCurrentDevice = currentSessionDetails?.deviceId === device.id
 
+      // Lọc sessions thuộc device này
       const deviceSessions = sessionResult.data.filter((session) => session.deviceId === device.id)
 
       if (deviceSessions.length === 0) continue
@@ -79,6 +120,7 @@ export class SessionsService implements ISessionService {
       const lastActive = new Date(latestSession.lastActive)
       const locationResult = await this.getLocationFromIP(latestSession.ipAddress)
 
+      // Xử lý thông tin chi tiết cho từng session
       const sessionItems = await Promise.all(
         deviceSessions.map(async (session) => {
           const sessionInfo = this.userAgentService.parse(session.userAgent)
@@ -125,8 +167,10 @@ export class SessionsService implements ISessionService {
       })
     }
 
+    // Sắp xếp theo thời gian active gần nhất
     deviceGroups.sort((a, b) => (b.lastActive?.getTime() || 0) - (a.lastActive?.getTime() || 0))
 
+    // Áp dụng pagination
     const totalItems = deviceGroups.length
     const totalPages = Math.ceil(totalItems / itemsPerPage)
     const startIndex = (currentPage - 1) * itemsPerPage
@@ -141,6 +185,10 @@ export class SessionsService implements ISessionService {
     }
   }
 
+  /**
+   * Đảm bảo device hiện tại được bao gồm trong danh sách devices
+   * (có thể xảy ra trường hợp device không được trả về do phân quyền)
+   */
   private async ensureCurrentDeviceIncluded(currentSessionId: string, devices: Device[]): Promise<Device[]> {
     const currentSession = await this.sessionRepository.findById(currentSessionId)
     if (!currentSession) return devices
@@ -157,10 +205,18 @@ export class SessionsService implements ISessionService {
     return devices
   }
 
+  /**
+   * Lấy thông tin địa lý từ địa chỉ IP
+   */
   private async getLocationFromIP(ip: string): Promise<GeoLocationResult> {
     return this.geolocationService.getLocationFromIP(ip)
   }
 
+  /**
+   * Tính toán thời gian inactive của session và format thành string hiển thị
+   * @param lastActiveDate - Thời điểm active cuối cùng
+   * @returns Chuỗi mô tả thời gian inactive (vd: "5 minutes ago", "2 hours ago")
+   */
   private calculateInactiveDuration(lastActiveDate: Date): string {
     const now = new Date()
     const diffSeconds = Math.round((now.getTime() - lastActiveDate.getTime()) / 1000)
