@@ -1,16 +1,16 @@
 {
   "error": {
-    "notFound": "Permission not found.",
-    "alreadyExists": "Permission with action '{action}' on subject '{subject}' already exists.",
-    "createFailed": "Failed to create permission.",
-    "updateFailed": "Failed to update permission.",
-    "deleteFailed": "Failed to delete permission."
+    "notFound": "Permission not found",
+    "alreadyExists": "Permission with action '{action}' on subject '{subject}' already exists",
+    "createFailed": "Failed to create permission",
+    "updateFailed": "Failed to update permission",
+    "deleteFailed": "Failed to delete permission"
   },
   "success": {
-    "create": "Permission created successfully.",
-    "update": "Permission updated successfully.",
-    "delete": "Permission deleted successfully.",
-    "get": "Permission retrieved successfully.",
-    "list": "Permissions listed successfully."
+    "create": "Permission created successfully",
+    "update": "Permission updated successfully",
+    "delete": "Permission deleted successfully",
+    "get": "Permission retrieved successfully",
+    "list": "Permissions listed successfully"
   }
 }

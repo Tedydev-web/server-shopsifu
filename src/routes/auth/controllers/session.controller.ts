@@ -28,7 +28,7 @@ import {
   UpdateDeviceNameBodyDto,
   RevokeAllSessionsBodyDto
 } from '../dtos/session.dto'
-import { TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
+import { AuthType, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
 import { Response } from 'express'
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../services/auth-verification.service'
@@ -45,7 +45,6 @@ interface CurrentUserContext {
 }
 
 @Auth()
-@UseGuards(PoliciesGuard)
 @Controller('sessions')
 export class SessionsController {
   private readonly logger = new Logger(SessionsController.name)

@@ -1,8 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import { HashingService } from '../src/shared/services/hashing.service'
 import appConfig from '../src/shared/config'
-import * as fs from 'fs'
-import * as path from 'path'
+import { ALL_PERMISSIONS, ROLES_TO_SEED } from './permission-definitions'
 
 const prisma = new PrismaClient()
 const hashingService = new HashingService()
@@ -12,98 +11,31 @@ const config = appConfig()
 // This ID will be used for createdById and updatedById fields for permissions created by this script.
 // TODO: Replace with a real system user ID or make configurable
 
-interface DesiredPermission {
-  action: string
-  subject: string
-  category: string
-  description?: string | null
-}
-
-function discoverPermissionsFromControllers(): DesiredPermission[] {
-  const discoveredPermissions = new Map<string, DesiredPermission>()
-  const routesDir = path.join(__dirname, '../src/routes')
-
-  const controllerFiles = getAllFiles(routesDir).filter((file) => file.endsWith('.controller.ts'))
-
-  const permissionRegex = /ability\.can\(\s*Action\.(\w+)\s*,\s*'(\w+)'\s*\)/g
-
-  controllerFiles.forEach((file) => {
-    const content = fs.readFileSync(file, 'utf8')
-    let match
-    while ((match = permissionRegex.exec(content)) !== null) {
-      const action = match[1].toLowerCase()
-      const subject = match[2]
-      const key = `${action}:${subject}`
-
-      if (!discoveredPermissions.has(key)) {
-        discoveredPermissions.set(key, {
-          action: action,
-          subject: subject,
-          category: subject.replace('UserProfile', 'Profile'), // Simple mapping for category
-          description: `Allows to ${action} ${subject}(s)`
-        })
-      }
-    }
-  })
-
-  return Array.from(discoveredPermissions.values())
-}
-
-function getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
-  const files = fs.readdirSync(dirPath)
-
-  files.forEach(function (file) {
-    if (fs.statSync(path.join(dirPath, file)).isDirectory()) {
-      arrayOfFiles = getAllFiles(path.join(dirPath, file), arrayOfFiles)
-    } else {
-      arrayOfFiles.push(path.join(dirPath, file))
-    }
-  })
-
-  return arrayOfFiles
-}
-
 async function seedPermissions() {
-  console.log('Starting permission synchronization...')
+  console.log('--- Starting Permission Synchronization ---')
   let createdCount = 0
   let updatedCount = 0
   let deletedCount = 0
 
-  const desiredPermissions = discoverPermissionsFromControllers()
-
-  // Always add the 'manage all' permission for admins
-  desiredPermissions.push({
-    action: 'manage',
-    subject: 'all',
-    category: 'System',
-    description: 'Grants full access to all resources.'
-  })
-
+  const desiredPermissions = ALL_PERMISSIONS
   const existingPermissions = await prisma.permission.findMany()
+  const existingPermissionMap = new Map(existingPermissions.map((p) => [`${p.action}:${p.subject}`, p]))
 
-  // Sync: Create or Update
-  for (const dp of desiredPermissions) {
+  // 1. Create or Update permissions
+  for (const p of desiredPermissions) {
+    const key = `${p.action}:${p.subject}`
+    const existing = existingPermissionMap.get(key)
+
     const permissionData = {
-      action: dp.action,
-      subject: dp.subject,
-      category: dp.category,
-      description: dp.description ?? null
+      action: p.action,
+      subject: p.subject,
+      category: p.category,
+      description: p.description ?? null
     }
 
-    const existingPermission = existingPermissions.find((p) => p.action === dp.action && p.subject === dp.subject)
-
-    if (existingPermission) {
-      if (
-        existingPermission.category !== permissionData.category ||
-        existingPermission.description !== permissionData.description
-      ) {
-        await prisma.permission.update({
-          where: { id: existingPermission.id },
-          data: {
-            category: permissionData.category,
-            description: permissionData.description
-          }
-        })
+    if (existing) {
+      if (existing.category !== permissionData.category || existing.description !== permissionData.description) {
+        await prisma.permission.update({ where: { id: existing.id }, data: permissionData })
         updatedCount++
       }
     } else {
@@ -112,126 +44,97 @@ async function seedPermissions() {
     }
   }
 
-  // Sync: Delete
+  // 2. Delete obsolete permissions
   const desiredPermissionKeys = new Set(desiredPermissions.map((p) => `${p.action}:${p.subject}`))
   for (const ep of existingPermissions) {
     const key = `${ep.action}:${ep.subject}`
     if (!desiredPermissionKeys.has(key)) {
-      // Before deleting, ensure it's not linked to any roles
-      await prisma.rolePermission.deleteMany({ where: { permissionId: ep.id } })
+      // RolePermission table has onDelete: Cascade, so we only need to delete from Permission
       await prisma.permission.delete({ where: { id: ep.id } })
       deletedCount++
     }
   }
 
-  console.log(`Discovered ${desiredPermissions.length - 1} permissions from controllers.`)
-  console.log(`Created ${createdCount} new permissions.`)
-  console.log(`Updated ${updatedCount} existing permissions.`)
-  console.log(`Deleted ${deletedCount} obsolete permissions.`)
-  if (createdCount === 0 && updatedCount === 0 && deletedCount === 0) {
-    console.log('All permissions are already up to date.')
+  console.log(`Synchronization complete.`)
+  console.log(`Created: ${createdCount}, Updated: ${updatedCount}, Deleted: ${deletedCount}`)
+  if (createdCount + updatedCount + deletedCount === 0) {
+    console.log('All permissions are already up-to-date.')
   }
 }
 
 async function seedRolesAndAssignments() {
-  console.log('Starting role and assignment synchronization...')
+  console.log('\n--- Starting Role and Assignment Synchronization ---')
 
-  // 1. Create/find Admin role and set as system role
-  const adminRoleName = 'Admin'
-  const adminRole = await prisma.role.upsert({
-    where: { name: adminRoleName },
-    update: { isSystemRole: true },
-    create: {
-      name: adminRoleName,
-      description: 'Administrator role with all permissions',
-      isSystemRole: true
-    }
-  })
-  console.log(`Upserted ADMIN role (ID: ${adminRole.id}) and ensured it is a system role.`)
-
-  // 2. Assign 'manage all' permission to Admin role
-  const manageAllPermission = await prisma.permission.findUnique({
-    where: { UQ_action_subject: { action: 'manage', subject: 'all' } }
-  })
-
-  if (manageAllPermission) {
-    await prisma.rolePermission.createMany({
-      data: [{ roleId: adminRole.id, permissionId: manageAllPermission.id }],
-      skipDuplicates: true
+  for (const roleData of ROLES_TO_SEED) {
+    const role = await prisma.role.upsert({
+      where: { name: roleData.name },
+      update: { description: roleData.description, isSystemRole: roleData.isSystemRole },
+      create: {
+        name: roleData.name,
+        description: roleData.description,
+        isSystemRole: roleData.isSystemRole
+      }
     })
-    console.log(`Ensured 'manage:all' permission is assigned to ADMIN role.`)
-  } else {
-    console.warn(`Could not find 'manage:all' permission to assign to ADMIN role.`)
-  }
+    console.log(`Upserted role: ${role.name.toUpperCase()} (ID: ${role.id})`)
 
-  // 3. Create/find Customer role
-  const customerRoleName = 'Customer'
-  const customerRole = await prisma.role.upsert({
-    where: { name: customerRoleName },
-    update: {},
-    create: {
-      name: customerRoleName,
-      description: 'Standard customer role with basic permissions'
-    }
-  })
-  console.log(`Upserted CUSTOMER role (ID: ${customerRole.id}).`)
-
-  // 4. Assign specific permissions to Customer role
-  const customerPermissions = await prisma.permission.findMany({
-    where: {
-      OR: [
-        { subject: 'Product', action: 'read' },
-        { subject: 'Category', action: 'read' },
-        { subject: 'Brand', action: 'read' },
-        { subject: 'UserProfile', action: 'read' },
-        { subject: 'UserProfile', action: 'update' },
-        { subject: 'Device', action: 'read' },
-        { subject: 'Device', action: 'update' },
-        { subject: 'Device', action: 'delete' }
-      ]
-    }
-  })
-
-  if (customerPermissions.length > 0) {
-    await prisma.rolePermission.createMany({
-      data: customerPermissions.map((p) => ({
-        roleId: customerRole.id,
-        permissionId: p.id
-      })),
-      skipDuplicates: true
+    // Find the IDs of the permissions to be assigned
+    const permissionsToAssign = await prisma.permission.findMany({
+      where: {
+        OR: roleData.permissions.map((p) => ({ action: p.action, subject: p.subject }))
+      },
+      select: { id: true }
     })
-    console.log(`Assigned ${customerPermissions.length} permissions to CUSTOMER role.`)
+
+    const permissionIds = permissionsToAssign.map((p) => p.id)
+
+    // Clear existing permissions for this role to ensure a clean slate
+    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } })
+
+    // Create new assignments
+    if (permissionIds.length > 0) {
+      await prisma.rolePermission.createMany({
+        data: permissionIds.map((permissionId) => ({
+          roleId: role.id,
+          permissionId: permissionId
+        })),
+        skipDuplicates: true // Should not be necessary after deleteMany, but good for safety
+      })
+      console.log(`-> Assigned ${permissionIds.length} permissions to ${role.name.toUpperCase()}.`)
+    } else {
+      console.log(`-> No permissions assigned to ${role.name.toUpperCase()}.`)
+    }
   }
 }
 
 async function seedAdminUser() {
-  console.log('Starting admin user synchronization...')
+  console.log('\n--- Starting Admin User Synchronization ---')
   if (!config.ADMIN_EMAIL) {
-    console.warn('ADMIN_EMAIL not set in environment variables. Skipping admin user creation.')
+    console.warn('ADMIN_EMAIL not set in .env. Skipping admin user creation.')
     return
   }
 
   const adminRole = await prisma.role.findUnique({ where: { name: 'Admin' } })
   if (!adminRole) {
-    console.error('Admin role not found. Cannot create admin user.')
+    console.error('FATAL: Admin role not found in database. Cannot create admin user. Please run role seeding first.')
     return
   }
 
   const existingAdmin = await prisma.user.findUnique({ where: { email: config.ADMIN_EMAIL } })
 
   if (existingAdmin) {
-    console.log(`Admin user ${config.ADMIN_EMAIL} already exists.`)
-    // Optionally update roleId if it's incorrect
+    console.log(`Admin user ${config.ADMIN_EMAIL} already exists. Verifying role...`)
     if (existingAdmin.roleId !== adminRole.id) {
       await prisma.user.update({ where: { id: existingAdmin.id }, data: { roleId: adminRole.id } })
-      console.log(`Updated role for admin user ${config.ADMIN_EMAIL}.`)
+      console.log(`-> Role updated for admin user ${config.ADMIN_EMAIL}.`)
+    } else {
+      console.log(`-> Admin role is correct.`)
     }
     return
   }
 
   // Create admin user if they don't exist
   if (!config.ADMIN_PASSWORD || !config.ADMIN_NAME) {
-    throw new Error('Missing admin environment variables (ADMIN_PASSWORD, ADMIN_NAME) for new admin creation.')
+    throw new Error('FATAL: Missing ADMIN_PASSWORD or ADMIN_NAME in .env. Cannot create new admin.')
   }
   const hashedPassword = await hashingService.hash(config.ADMIN_PASSWORD)
   await prisma.user.create({
@@ -240,6 +143,7 @@ async function seedAdminUser() {
       password: hashedPassword,
       roleId: adminRole.id,
       isEmailVerified: true,
+      status: 'ACTIVE',
       userProfile: {
         create: {
           username: config.ADMIN_NAME,
@@ -249,7 +153,7 @@ async function seedAdminUser() {
       }
     }
   })
-  console.log(`Created admin user: ${config.ADMIN_EMAIL}`)
+  console.log(`Created new admin user: ${config.ADMIN_EMAIL}`)
 }
 
 async function main() {
@@ -257,9 +161,9 @@ async function main() {
     await seedPermissions()
     await seedRolesAndAssignments()
     await seedAdminUser()
-    console.log('Seeding script finished successfully.')
+    console.log('\n✅ Seeding script finished successfully.')
   } catch (e) {
-    console.error('Error during seeding script:', e)
+    console.error('\n❌ Error during seeding script execution:', e)
     process.exit(1)
   } finally {
     await prisma.$disconnect()

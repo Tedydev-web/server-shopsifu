@@ -46,73 +46,73 @@
         "headline": "Confirm Revocation of All Sessions"
       },
       "common": {
-        "content": "Please use the verification code below to complete your action. If you did not request this, please ignore this email.",
+        "content": "Please use the verification code below to complete your action. If you did not request this, please ignore this email",
         "codeLabel": "Your Verification Code",
         "validity": "(This code is valid for 5 minutes)",
-        "disclaimer": "For security, never share this code. We will never ask you for this code."
+        "disclaimer": "For security, never share this code. We will never ask you for this code"
       }
     },
     "securityAlert": {
       "default": {
         "subject": "Shopsifu Account Security Alert",
         "title": "Security Alert",
-        "mainMessage": "A security-related activity occurred on your account.",
+        "mainMessage": "A security-related activity occurred on your account",
         "buttonText": "Check Activity"
       },
       "PASSWORD_CHANGED": {
         "subject": "Alert: Your Password Has Been Changed",
         "title": "Your Password Has Been Changed",
-        "mainMessage": "This is a confirmation that the password for your Shopsifu account has been successfully changed.",
-        "secondaryMessage": "If you did not make this change, please contact our support team immediately.",
+        "mainMessage": "This is a confirmation that the password for your Shopsifu account has been successfully changed",
+        "secondaryMessage": "If you did not make this change, please contact our support team immediately",
         "buttonText": "Secure Your Account"
       },
       "NEW_DEVICE_LOGIN": {
         "subject": "Alert: New Device Login Detected",
         "title": "New Device Login Detected",
-        "mainMessage": "Your account was accessed from a new device or location.",
-        "secondaryMessage": "If this was not you, please change your password and review recent login activity.",
+        "mainMessage": "Your account was accessed from a new device or location",
+        "secondaryMessage": "If this was not you, please change your password and review recent login activity",
         "buttonText": "Review Login Activity"
       },
       "DEVICE_TRUSTED": {
         "subject": "Notification: New Device Trusted",
         "title": "New Device Trusted",
-        "mainMessage": "This device will not require additional verification for future logins.",
-        "secondaryMessage": "If you do not recognize this action, please review your device list.",
+        "mainMessage": "This device will not require additional verification for future logins",
+        "secondaryMessage": "If you do not recognize this action, please review your device list",
         "buttonText": "Manage Devices"
       },
       "DEVICE_UNTRUSTED": {
         "subject": "Notification: Device Untrusted",
         "title": "Device Untrusted",
-        "mainMessage": "This device will require additional verification on its next login.",
-        "secondaryMessage": "If you did not perform this action, please review your device list.",
+        "mainMessage": "This device will require additional verification on its next login",
+        "secondaryMessage": "If you did not perform this action, please review your device list",
         "buttonText": "Manage Devices"
       },
       "TWO_FACTOR_ENABLED": {
         "subject": "Account Security Enhanced",
         "title": "Two-Factor Authentication (2FA) Enabled",
-        "mainMessage": "Two-factor authentication has been successfully enabled for your account. You will now need to provide a verification code when logging in.",
-        "secondaryMessage": "If you did not perform this action, please contact us immediately.",
+        "mainMessage": "Two-factor authentication has been successfully enabled for your account. You will now need to provide a verification code when logging in",
+        "secondaryMessage": "If you did not perform this action, please contact us immediately",
         "buttonText": "View Security Settings"
       },
       "TWO_FACTOR_DISABLED": {
         "subject": "Alert: Two-Factor Authentication Disabled",
         "title": "Two-Factor Authentication (2FA) Disabled",
-        "mainMessage": "Two-factor authentication has been disabled on your account. Your account is now protected only by your password.",
-        "secondaryMessage": "If you did not perform this action, please re-enable 2FA and contact support immediately.",
+        "mainMessage": "Two-factor authentication has been disabled on your account. Your account is now protected only by your password",
+        "secondaryMessage": "If you did not perform this action, please re-enable 2FA and contact support immediately",
         "buttonText": "Secure Account"
       },
       "SESSIONS_REVOKED": {
         "subject": "Notification: Login Sessions Revoked",
         "title": "Login Sessions Revoked",
-        "mainMessage": "One or more login sessions have been revoked. Affected devices will need to log in again.",
-        "secondaryMessage": "If you did not perform this action, please change your password and check account activity.",
+        "mainMessage": "One or more login sessions have been revoked. Affected devices will need to log in again",
+        "secondaryMessage": "If you did not perform this action, please change your password and check account activity",
         "buttonText": "Review Login Activity"
       },
       "ACCOUNT_LOCKED": {
         "subject": "Alert: Your Account Has Been Locked",
         "title": "Your Account Has Been Temporarily Locked",
-        "mainMessage": "We detected too many failed login attempts and have temporarily locked your account for security.",
-        "secondaryMessage": "Please wait {lockoutMinutes} minutes before trying again or reset your password if you’ve forgotten it.",
+        "mainMessage": "We detected too many failed login attempts and have temporarily locked your account for security",
+        "secondaryMessage": "Please wait {lockoutMinutes} minutes before trying again or reset your password if you’ve forgotten it",
         "buttonText": "Reset Password",
         "details": {
           "lockoutDuration": "Lockout Duration"
@@ -121,8 +121,8 @@
       "SUSPICIOUS_ACTIVITY": {
         "subject": "Alert: Suspicious Activity Detected",
         "title": "Suspicious Activity Detected",
-        "mainMessage": "Our system detected unusual activity related to your account.",
-        "secondaryMessage": "For security, we recommend reviewing recent activity and changing your password if needed.",
+        "mainMessage": "Our system detected unusual activity related to your account",
+        "secondaryMessage": "For security, we recommend reviewing recent activity and changing your password if needed",
         "buttonText": "Review Activity",
         "details": {
           "activityDetected": "Activity",
@@ -132,43 +132,43 @@
       "ACCOUNT_LINKED": {
         "subject": "Notification: Account Linked",
         "title": "Account Linked Successfully",
-        "mainMessage": "Your {provider} account has been successfully linked to your Shopsifu account.",
-        "secondaryMessage": "If you did not perform this action, please contact our support team immediately.",
+        "mainMessage": "Your {provider} account has been successfully linked to your Shopsifu account",
+        "secondaryMessage": "If you did not perform this action, please contact our support team immediately",
         "buttonText": "View Security Settings"
       },
       "ACCOUNT_UNLINKED": {
         "subject": "Notification: Account Unlinked",
         "title": "Account Unlinked Successfully",
-        "mainMessage": "Your {provider} account has been successfully unlinked from your Shopsifu account.",
-        "secondaryMessage": "If you did not perform this action, please contact our support team immediately.",
+        "mainMessage": "Your {provider} account has been successfully unlinked from your Shopsifu account",
+        "secondaryMessage": "If you did not perform this action, please contact our support team immediately",
         "buttonText": "View Security Settings"
       },
       "DEVICE_LIMIT_WARNING": {
         "subject": "Alert: Approaching Device Limit",
         "title": "Device Limit Warning",
-        "mainMessage": "You are approaching the maximum number of devices linked to your account. Please review and manage your devices.",
-        "secondaryMessage": "If you reach the limit, you will not be able to log in on a new device until you remove some existing ones.",
+        "mainMessage": "You are approaching the maximum number of devices linked to your account. Please review and manage your devices",
+        "secondaryMessage": "If you reach the limit, you will not be able to log in on a new device until you remove some existing ones",
         "buttonText": "Manage Devices"
       }
     },
     "welcome": {
       "subject": "Welcome to Shopsifu!",
       "headline": "Welcome to Shopsifu!",
-      "content": "Thank you for signing up. We’re thrilled to have you here. Start exploring our amazing features now.",
+      "content": "Thank you for signing up. We’re thrilled to have you here. Start exploring our amazing features now",
       "buttonText": "Get Started"
     },
     "recoveryCodes": {
       "subject": "Your 2FA Recovery Codes",
       "headline": "Store Your Recovery Codes",
-      "content": "These are your recovery codes for your account. Please store them in a safe place. You can use these codes to access your account if you lose access to your authentication device.",
+      "content": "These are your recovery codes for your account. Please store them in a safe place. You can use these codes to access your account if you lose access to your authentication device",
       "codesLabel": "Your Recovery Codes:",
-      "warning": "Each code can only be used once. Do not share these codes with anyone.",
+      "warning": "Each code can only be used once. Do not share these codes with anyone",
       "buttonText": "Manage 2FA Settings"
     },
     "common": {
       "greeting": "Hello {userName},",
       "contactUs": "Contact Us",
-      "copyright": "© {year} Shopsifu. All rights reserved.",
+      "copyright": "© {year} Shopsifu. All rights reserved",
       "locationUnknown": "Unknown",
       "details": {
         "time": "Time",

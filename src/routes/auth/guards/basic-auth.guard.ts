@@ -63,4 +63,4 @@ export class BasicAuthGuard implements CanActivate {
       throw new UnauthorizedException('Authentication failed')
     }
   }
-} 
+}

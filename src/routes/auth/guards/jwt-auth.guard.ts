@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
   ForbiddenException
 } from '@nestjs/common'
+import { ClsService } from 'nestjs-cls'
 import { REQUEST_USER_KEY } from 'src/routes/auth/auth.constants'
 import { TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { ITokenService, AccessTokenPayload } from 'src/routes/auth/auth.types'
@@ -23,7 +24,8 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionService: SessionsService,
-    private readonly userRepository: UserRepository
+    private readonly userRepository: UserRepository,
+    private readonly cls: ClsService
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -56,9 +58,18 @@ export class JwtAuthGuard implements CanActivate {
         throw new ForbiddenException('User belonging to this token no longer exists.')
       }
 
-      // Merge the token payload and the full user object.
-      // This provides a complete context (session + user data) for the request.
-      request[REQUEST_USER_KEY] = { ...user, ...payload }
+      const userWithContext = {
+        ...user,
+        sessionId: payload.sessionId,
+        deviceId: payload.deviceId,
+        isDeviceTrustedInSession: payload.isDeviceTrustedInSession
+      }
+
+      // Store the user object in the CLS context
+      this.cls.set(REQUEST_USER_KEY, userWithContext)
+
+      // Also attach to request for compatibility, though CLS is preferred
+      request[REQUEST_USER_KEY] = userWithContext
 
       return true
     } catch (error) {

@@ -445,7 +445,9 @@ export class CoreService implements ILoginFinalizerService {
 
       const userResponse = {
         id: user.id,
-        role: user.role.name,
+        roleId: user.role.id,
+        roleName: user.role.name,
+        email: user.email,
         username: user.userProfile?.username,
         avatar: user.userProfile?.avatar,
         isDeviceTrustedInSession: effectiveIsTrustedSession

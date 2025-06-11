@@ -17,7 +17,6 @@ export const Auth = (
 }
 
 export const IsPublic = () => SetMetadata(IS_PUBLIC_KEY, true)
-
 export const RolesAllowed = (...roles: string[]) => SetMetadata(ROLES_KEY, roles)
 
 export const PermissionsRequired = (...permissions: string[]) => SetMetadata(PERMISSIONS_KEY, permissions)

@@ -1,18 +1,18 @@
 {
   "error": {
-    "notFound": "Vai trò không được tìm thấy.",
-    "alreadyExists": "Vai trò với tên '{name}' đã tồn tại.",
-    "createFailed": "Tạo vai trò thất bại.",
-    "updateFailed": "Cập nhật vai trò thất bại.",
-    "deleteFailed": "Xóa vai trò thất bại.",
-    "cannotDeleteSystemRole": "Không thể xóa vai trò hệ thống.",
-    "cannotUpdateSystemRole": "Không thể cập nhật vai trò hệ thống."
+    "notFound": "Vai trò không được tìm thấy",
+    "alreadyExists": "Vai trò với tên '{name}' đã tồn tại",
+    "createFailed": "Tạo vai trò thất bại",
+    "updateFailed": "Cập nhật vai trò thất bại",
+    "deleteFailed": "Xóa vai trò thất bại",
+    "cannotDeleteSystemRole": "Không thể xóa vai trò hệ thống",
+    "cannotUpdateSystemRole": "Không thể cập nhật vai trò hệ thống"
   },
   "success": {
-    "create": "Tạo vai trò thành công.",
-    "update": "Cập nhật vai trò thành công.",
-    "delete": "Xóa vai trò thành công.",
-    "get": "Lấy vai trò thành công.",
-    "list": "Lấy danh sách vai trò thành công."
+    "create": "Tạo vai trò thành công",
+    "update": "Cập nhật vai trò thành công",
+    "delete": "Xóa vai trò thành công",
+    "get": "Lấy vai trò thành công",
+    "list": "Lấy danh sách vai trò thành công"
   }
 }

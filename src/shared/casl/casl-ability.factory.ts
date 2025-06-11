@@ -45,7 +45,7 @@ export type Subjects = PrismaSubjects<AppModelTypes> | 'all'
 
 export type AppAbility = PureAbility<[Action, Subjects], PrismaQuery>
 
-type UserWithRolesAndPermissions = User & {
+export type UserWithRolesAndPermissions = User & {
   role: Role & {
     permissions?: Permission[]
   }

@@ -1,4 +1,4 @@
-import { HttpAdapterHost, NestFactory, Reflector } from '@nestjs/core'
+import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
 import compression from 'compression'
 import helmet from 'helmet'
@@ -10,8 +10,6 @@ import { NestExpressApplication } from '@nestjs/platform-express'
 import { WinstonModule } from 'nest-winston'
 import { WinstonConfig, winstonLogger as winstonLoggerConfig } from './shared/logger/winston.config'
 import appConfig from './shared/config'
-import { RequestIdMiddleware } from './shared/middleware/request-id.middleware'
-import { I18nTranslations } from './generated/i18n.generated'
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -19,10 +17,6 @@ async function bootstrap() {
   })
 
   app.set('trust proxy', 1)
-
-  // Apply RequestIdMiddleware to ensure all requests have an ID
-  const requestIdMiddleware = new RequestIdMiddleware()
-  app.use((req, res, next) => requestIdMiddleware.use(req, res, next))
 
   app.enableCors({
     origin: appConfig().FRONTEND_URL,

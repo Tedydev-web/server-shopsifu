@@ -169,6 +169,7 @@ export class UserActivityService {
    */
   private async processActivity(activity: UserActivity): Promise<void> {
     try {
+      const userForPasswordChange = await this.userRepository.findByIdWithDetails(activity.userId)
       switch (activity.type) {
         case UserActivityType.LOGIN_FAILURE:
           await this.handleLoginFailure(activity)
@@ -177,7 +178,6 @@ export class UserActivityService {
           await this.handleLoginSuccess(activity)
           break
         case UserActivityType.PASSWORD_CHANGED:
-          const userForPasswordChange = await this.userRepository.findByIdWithDetails(activity.userId)
           if (userForPasswordChange) {
             await this.handlePasswordChanged(activity, userForPasswordChange)
           }

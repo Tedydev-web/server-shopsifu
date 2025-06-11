@@ -46,73 +46,73 @@
         "headline": "Xác nhận thu hồi tất cả phiên"
       },
       "common": {
-        "content": "Vui lòng sử dụng mã xác minh dưới đây để hoàn tất hành động của bạn. Nếu bạn không yêu cầu, hãy bỏ qua email này.",
+        "content": "Vui lòng sử dụng mã xác minh dưới đây để hoàn tất hành động của bạn. Nếu bạn không yêu cầu, hãy bỏ qua email này",
         "codeLabel": "Mã xác minh của bạn",
         "validity": "(Mã này có hiệu lực trong 5 phút)",
-        "disclaimer": "Để bảo mật, không bao giờ chia sẻ mã này. Chúng tôi sẽ không bao giờ hỏi bạn về mã này."
+        "disclaimer": "Để bảo mật, không bao giờ chia sẻ mã này. Chúng tôi sẽ không bao giờ hỏi bạn về mã này"
       }
     },
     "securityAlert": {
       "default": {
         "subject": "Cảnh báo bảo mật tài khoản Shopsifu",
         "title": "Cảnh báo bảo mật",
-        "mainMessage": "Một hoạt động liên quan đến bảo mật vừa xảy ra trên tài khoản của bạn.",
+        "mainMessage": "Một hoạt động liên quan đến bảo mật vừa xảy ra trên tài khoản của bạn",
         "buttonText": "Kiểm tra hoạt động"
       },
       "PASSWORD_CHANGED": {
         "subject": "Cảnh báo: Mật khẩu của bạn đã được thay đổi",
         "title": "Mật khẩu của bạn đã được thay đổi",
-        "mainMessage": "Đây là thông báo xác nhận rằng mật khẩu cho tài khoản Shopsifu của bạn đã được thay đổi thành công.",
-        "secondaryMessage": "Nếu bạn không thực hiện thay đổi này, vui lòng liên hệ với bộ phận hỗ trợ của chúng tôi ngay lập tức.",
+        "mainMessage": "Đây là thông báo xác nhận rằng mật khẩu cho tài khoản Shopsifu của bạn đã được thay đổi thành công",
+        "secondaryMessage": "Nếu bạn không thực hiện thay đổi này, vui lòng liên hệ với bộ phận hỗ trợ của chúng tôi ngay lập tức",
         "buttonText": "Bảo mật tài khoản của bạn"
       },
       "NEW_DEVICE_LOGIN": {
         "subject": "Cảnh báo: Đăng nhập từ thiết bị mới",
         "title": "Phát hiện đăng nhập từ thiết bị mới",
-        "mainMessage": "Tài khoản của bạn vừa được đăng nhập từ một thiết bị hoặc vị trí mới.",
-        "secondaryMessage": "Nếu đây không phải là bạn, vui lòng thay đổi mật khẩu và xem lại các phiên đăng nhập gần đây.",
+        "mainMessage": "Tài khoản của bạn vừa được đăng nhập từ một thiết bị hoặc vị trí mới",
+        "secondaryMessage": "Nếu đây không phải là bạn, vui lòng thay đổi mật khẩu và xem lại các phiên đăng nhập gần đây",
         "buttonText": "Xem lại hoạt động đăng nhập"
       },
       "DEVICE_TRUSTED": {
         "subject": "Thông báo: Thiết bị mới đã được tin cậy",
         "title": "Một thiết bị mới đã được tin cậy",
-        "mainMessage": "Thiết bị này sẽ không yêu cầu xác thực bổ sung cho các lần đăng nhập tiếp theo.",
-        "secondaryMessage": "Nếu bạn không nhận ra hành động này, hãy xem lại danh sách thiết bị của bạn.",
+        "mainMessage": "Thiết bị này sẽ không yêu cầu xác thực bổ sung cho các lần đăng nhập tiếp theo",
+        "secondaryMessage": "Nếu bạn không nhận ra hành động này, hãy xem lại danh sách thiết bị của bạn",
         "buttonText": "Quản lý thiết bị"
       },
       "DEVICE_UNTRUSTED": {
         "subject": "Thông báo: Thiết bị đã bị hủy tin cậy",
         "title": "Một thiết bị đã bị hủy tin cậy",
-        "mainMessage": "Thiết bị này sẽ yêu cầu xác thực bổ sung trong lần đăng nhập tiếp theo.",
-        "secondaryMessage": "Nếu bạn không thực hiện hành động này, hãy xem lại danh sách thiết bị của bạn.",
+        "mainMessage": "Thiết bị này sẽ yêu cầu xác thực bổ sung trong lần đăng nhập tiếp theo",
+        "secondaryMessage": "Nếu bạn không thực hiện hành động này, hãy xem lại danh sách thiết bị của bạn",
         "buttonText": "Quản lý thiết bị"
       },
       "TWO_FACTOR_ENABLED": {
         "subject": "Bảo mật tài khoản đã được nâng cao",
         "title": "Xác thực hai yếu tố (2FA) đã được kích hoạt",
-        "mainMessage": "Xác thực hai yếu tố đã được kích hoạt thành công cho tài khoản của bạn. Từ bây giờ, bạn sẽ cần cung cấp mã xác thực khi đăng nhập.",
-        "secondaryMessage": "Nếu bạn không thực hiện hành động này, hãy liên hệ với chúng tôi ngay lập tức.",
+        "mainMessage": "Xác thực hai yếu tố đã được kích hoạt thành công cho tài khoản của bạn. Từ bây giờ, bạn sẽ cần cung cấp mã xác thực khi đăng nhập",
+        "secondaryMessage": "Nếu bạn không thực hiện hành động này, hãy liên hệ với chúng tôi ngay lập tức",
         "buttonText": "Xem cài đặt bảo mật"
       },
       "TWO_FACTOR_DISABLED": {
         "subject": "Cảnh báo: Xác thực hai yếu tố đã bị vô hiệu hóa",
         "title": "Xác thực hai yếu tố (2FA) đã bị vô hiệu hóa",
-        "mainMessage": "Xác thực hai yếu tố đã bị tắt trên tài khoản của bạn. Tài khoản của bạn hiện chỉ được bảo vệ bằng mật khẩu.",
-        "secondaryMessage": "Nếu bạn không thực hiện hành động này, vui lòng kích hoạt lại 2FA và liên hệ hỗ trợ ngay.",
+        "mainMessage": "Xác thực hai yếu tố đã bị tắt trên tài khoản của bạn. Tài khoản của bạn hiện chỉ được bảo vệ bằng mật khẩu",
+        "secondaryMessage": "Nếu bạn không thực hiện hành động này, vui lòng kích hoạt lại 2FA và liên hệ hỗ trợ ngay",
         "buttonText": "Bảo mật tài khoản"
       },
       "SESSIONS_REVOKED": {
         "subject": "Thông báo: Phiên đăng nhập đã bị thu hồi",
         "title": "Phiên đăng nhập đã bị thu hồi",
-        "mainMessage": "Một hoặc nhiều phiên đăng nhập đã bị thu hồi. Các thiết bị bị ảnh hưởng sẽ cần đăng nhập lại.",
-        "secondaryMessage": "Nếu bạn không thực hiện hành động này, vui lòng thay đổi mật khẩu và kiểm tra hoạt động tài khoản.",
+        "mainMessage": "Một hoặc nhiều phiên đăng nhập đã bị thu hồi. Các thiết bị bị ảnh hưởng sẽ cần đăng nhập lại",
+        "secondaryMessage": "Nếu bạn không thực hiện hành động này, vui lòng thay đổi mật khẩu và kiểm tra hoạt động tài khoản",
         "buttonText": "Xem hoạt động đăng nhập"
       },
       "ACCOUNT_LOCKED": {
         "subject": "Cảnh báo: Tài khoản của bạn đã bị khóa",
         "title": "Tài khoản của bạn đã tạm thời bị khóa",
-        "mainMessage": "Chúng tôi đã phát hiện quá nhiều lần đăng nhập không thành công và đã tạm thời khóa tài khoản của bạn để bảo vệ.",
-        "secondaryMessage": "Vui lòng đợi {lockoutMinutes} phút trước khi thử lại hoặc đặt lại mật khẩu nếu bạn đã quên.",
+        "mainMessage": "Chúng tôi đã phát hiện quá nhiều lần đăng nhập không thành công và đã tạm thời khóa tài khoản của bạn để bảo vệ",
+        "secondaryMessage": "Vui lòng đợi {lockoutMinutes} phút trước khi thử lại hoặc đặt lại mật khẩu nếu bạn đã quên",
         "buttonText": "Đặt lại mật khẩu",
         "details": {
           "lockoutDuration": "Thời gian khóa"
@@ -121,8 +121,8 @@
       "SUSPICIOUS_ACTIVITY": {
         "subject": "Cảnh báo: Hoạt động đáng ngờ được phát hiện",
         "title": "Phát hiện hoạt động đáng ngờ",
-        "mainMessage": "Hệ thống của chúng tôi đã phát hiện hoạt động bất thường liên quan đến tài khoản của bạn.",
-        "secondaryMessage": "Để bảo mật, chúng tôi khuyên bạn nên xem lại hoạt động gần đây và thay đổi mật khẩu nếu cần.",
+        "mainMessage": "Hệ thống của chúng tôi đã phát hiện hoạt động bất thường liên quan đến tài khoản của bạn",
+        "secondaryMessage": "Để bảo mật, chúng tôi khuyên bạn nên xem lại hoạt động gần đây và thay đổi mật khẩu nếu cần",
         "buttonText": "Xem lại hoạt động",
         "details": {
           "activityDetected": "Hoạt động",
@@ -132,37 +132,37 @@
       "ACCOUNT_LINKED": {
         "subject": "Thông báo: Tài khoản của bạn đã được liên kết",
         "title": "Liên kết tài khoản thành công",
-        "mainMessage": "Tài khoản {provider} của bạn đã được liên kết thành công với tài khoản Shopsifu của bạn.",
-        "secondaryMessage": "Nếu bạn không thực hiện hành động này, vui lòng liên hệ với bộ phận hỗ trợ của chúng tôi ngay lập tức.",
+        "mainMessage": "Tài khoản {provider} của bạn đã được liên kết thành công với tài khoản Shopsifu của bạn",
+        "secondaryMessage": "Nếu bạn không thực hiện hành động này, vui lòng liên hệ với bộ phận hỗ trợ của chúng tôi ngay lập tức",
         "buttonText": "Xem cài đặt bảo mật"
       },
       "ACCOUNT_UNLINKED": {
         "subject": "Thông báo: Tài khoản của bạn đã được hủy liên kết",
         "title": "Hủy liên kết tài khoản thành công",
-        "mainMessage": "Tài khoản {provider} của bạn đã được hủy liên kết khỏi tài khoản Shopsifu của bạn.",
-        "secondaryMessage": "Nếu bạn không thực hiện hành động này, vui lòng liên hệ với bộ phận hỗ trợ của chúng tôi ngay lập tức.",
+        "mainMessage": "Tài khoản {provider} của bạn đã được hủy liên kết khỏi tài khoản Shopsifu của bạn",
+        "secondaryMessage": "Nếu bạn không thực hiện hành động này, vui lòng liên hệ với bộ phận hỗ trợ của chúng tôi ngay lập tức",
         "buttonText": "Xem cài đặt bảo mật"
       },
       "DEVICE_LIMIT_WARNING": {
         "subject": "Cảnh báo: Sắp đạt đến giới hạn thiết bị",
         "title": "Cảnh báo giới hạn thiết bị",
-        "mainMessage": "Bạn sắp đạt đến giới hạn số lượng thiết bị được liên kết với tài khoản của mình. Vui lòng xem lại và quản lý các thiết bị của bạn.",
-        "secondaryMessage": "Nếu bạn đạt đến giới hạn, bạn sẽ không thể đăng nhập trên một thiết bị mới cho đến khi bạn xóa một số thiết bị cũ.",
+        "mainMessage": "Bạn sắp đạt đến giới hạn số lượng thiết bị được liên kết với tài khoản của mình. Vui lòng xem lại và quản lý các thiết bị của bạn",
+        "secondaryMessage": "Nếu bạn đạt đến giới hạn, bạn sẽ không thể đăng nhập trên một thiết bị mới cho đến khi bạn xóa một số thiết bị cũ",
         "buttonText": "Quản lý thiết bị"
       }
     },
     "welcome": {
       "subject": "Chào mừng bạn đến với Shopsifu!",
       "headline": "Chào mừng bạn đến với Shopsifu!",
-      "content": "Cảm ơn bạn đã đăng ký. Chúng tôi rất vui khi có bạn ở đây. Hãy bắt đầu khám phá các tính năng tuyệt vời của chúng tôi.",
+      "content": "Cảm ơn bạn đã đăng ký. Chúng tôi rất vui khi có bạn ở đây. Hãy bắt đầu khám phá các tính năng tuyệt vời của chúng tôi",
       "buttonText": "Bắt đầu ngay"
     },
     "recoveryCodes": {
       "subject": "Mã khôi phục 2FA của bạn",
       "headline": "Lưu trữ mã khôi phục của bạn",
-      "content": "Đây là các mã khôi phục cho tài khoản của bạn. Hãy lưu chúng ở một nơi an toàn. Bạn có thể sử dụng các mã này để truy cập tài khoản nếu mất quyền truy cập vào thiết bị xác thực.",
+      "content": "Đây là các mã khôi phục cho tài khoản của bạn. Hãy lưu chúng ở một nơi an toàn. Bạn có thể sử dụng các mã này để truy cập tài khoản nếu mất quyền truy cập vào thiết bị xác thực",
       "codesLabel": "Mã khôi phục của bạn:",
-      "warning": "Mỗi mã chỉ có thể sử dụng một lần. Không chia sẻ các mã này với bất kỳ ai.",
+      "warning": "Mỗi mã chỉ có thể sử dụng một lần. Không chia sẻ các mã này với bất kỳ ai",
       "buttonText": "Quản lý cài đặt 2FA"
     },
     "common": {

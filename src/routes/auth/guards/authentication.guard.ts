@@ -1,62 +1,60 @@
-import { CanActivate, ExecutionContext, Injectable, InternalServerErrorException } from '@nestjs/common'
+import { Injectable, CanActivate, ExecutionContext, Logger } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { AUTH_TYPE_KEY, IS_PUBLIC_KEY } from 'src/shared/decorators/auth.decorator'
 import { AuthType } from 'src/routes/auth/auth.constants'
-
 import { Observable } from 'rxjs'
-import { ApiKeyGuard } from 'src/shared/guards/api-key.guard'
 import { JwtAuthGuard } from './jwt-auth.guard'
+import { ApiKeyGuard } from 'src/shared/guards/api-key.guard'
 import { BasicAuthGuard } from './basic-auth.guard'
 
 @Injectable()
 export class AuthenticationGuard implements CanActivate {
+  private readonly logger = new Logger(AuthenticationGuard.name)
   private readonly defaultAuthType = AuthType.JWT
-  private readonly authTypeGuardMap: Record<AuthType, CanActivate> = {
-    [AuthType.JWT]: this.jwtAuthGuard,
-    [AuthType.Bearer]: this.jwtAuthGuard,
-    [AuthType.ApiKey]: this.apiKeyGuard,
-    [AuthType.Basic]: this.basicAuthGuard,
-    [AuthType.None]: { canActivate: () => true }
-  }
+  private readonly authTypeGuardMap: Record<AuthType, CanActivate | undefined>
 
   constructor(
     private readonly reflector: Reflector,
     private readonly jwtAuthGuard: JwtAuthGuard,
     private readonly apiKeyGuard: ApiKeyGuard,
     private readonly basicAuthGuard: BasicAuthGuard
-  ) {}
+  ) {
+    this.authTypeGuardMap = {
+      [AuthType.JWT]: this.jwtAuthGuard,
+      [AuthType.ApiKey]: this.apiKeyGuard,
+      [AuthType.Basic]: this.basicAuthGuard,
+      [AuthType.Bearer]: this.jwtAuthGuard,
+      [AuthType.None]: undefined // No guard for 'None'
+    }
+  }
 
   canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
-    // Kiểm tra xem route có được đánh dấu là public không
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass()
     ])
 
-    // Nếu route là public, cho phép truy cập
     if (isPublic) {
+      this.logger.verbose(`Public route detected: ${context.getClass().name}.${context.getHandler().name}`)
       return true
     }
 
-    // Get the authentication types specified by the @Auth() decorator.
-    // If multiple auth types are provided, this guard currently only considers the first one.
-    // For 'OR' logic across multiple auth types, this guard would need further enhancement.
-    const authTypes = this.reflector.getAllAndOverride<AuthType[]>(AUTH_TYPE_KEY, [
-      context.getHandler(),
-      context.getClass()
-    ])
+    const authTypes =
+      this.reflector.getAllAndOverride<AuthType[]>(AUTH_TYPE_KEY, [context.getHandler(), context.getClass()]) ?? []
 
-    // Nếu không có decorator @Auth, sử dụng JWT mặc định
-    const selectedAuthType = authTypes?.[0] || this.defaultAuthType
-
-    // Lấy guard tương ứng với auth type
-    const guard = this.authTypeGuardMap[selectedAuthType]
-
-    if (!guard) {
-      // This indicates a configuration error (e.g., an unsupported AuthType was used in @Auth decorator)
-      throw new InternalServerErrorException(`Unsupported authentication type: ${selectedAuthType}`)
+    if (authTypes.length === 0) {
+      authTypes.push(this.defaultAuthType)
     }
 
-    return guard.canActivate(context)
+    for (const type of authTypes) {
+      const guard = this.authTypeGuardMap[type]
+      if (guard) {
+        this.logger.verbose(`Activating guard for auth type: ${type}`)
+        return guard.canActivate(context)
+      }
+    }
+
+    this.logger.warn(`No valid guard found for auth types: ${authTypes.join(', ')}. Access granted by default.`)
+    return true
   }
-} 
+}

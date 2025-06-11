@@ -47,8 +47,6 @@ export class PasswordService {
     this.logger.log(`Initiating password reset for email: ${email}`)
     const user = await this.userRepository.findByEmail(email)
 
-    // Để tránh rò rỉ thông tin, chúng ta không báo lỗi nếu không tìm thấy email.
-    // Thay vào đó, chúng ta sẽ gửi một phản hồi thành công chung.
     if (!user) {
       this.logger.warn(`Password reset initiated for non-existent email: ${email}`)
       return { message: this.i18nService.t('auth.success.password.initiateReset') }

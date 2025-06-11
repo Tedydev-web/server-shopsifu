@@ -3,55 +3,55 @@
     "error": {
       "internalServerError": {
         "title": "Lỗi Máy Chủ",
-        "message": "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại sau."
+        "message": "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại sau"
       },
       "default": {
         "title": "Đã có lỗi",
-        "message": "Một lỗi đã xảy ra."
+        "message": "Một lỗi đã xảy ra"
       },
       "validationFailed": {
         "title": "Dữ liệu không hợp lệ",
-        "message": "Vui lòng kiểm tra lại các trường được cung cấp."
+        "message": "Vui lòng kiểm tra lại các trường được cung cấp"
       }
     },
     "success": {
-      "default": "Hành động đã được thực hiện thành công.",
-      "updated": "Cập nhật thành công.",
-      "created": "Tạo mới thành công.",
-      "deleted": "Xóa thành công."
+      "default": "Hành động đã được thực hiện thành công",
+      "updated": "Cập nhật thành công",
+      "created": "Tạo mới thành công",
+      "deleted": "Xóa thành công"
     }
   },
   "http": {
     "BAD_REQUEST": {
       "title": "Yêu Cầu Không Hợp Lệ",
-      "message": "Yêu cầu không hợp lệ."
+      "message": "Yêu cầu không hợp lệ"
     },
     "UNAUTHORIZED": {
       "title": "Yêu Cầu Xác Thực",
-      "message": "Xác thực không thành công."
+      "message": "Xác thực không thành công"
     },
     "FORBIDDEN": {
       "title": "Truy Cập Bị Từ Chối",
-      "message": "Bạn không có quyền thực hiện hành động này."
+      "message": "Bạn không có quyền thực hiện hành động này"
     },
     "NOT_FOUND": {
       "title": "Không Tìm Thấy",
-      "message": "Không tìm thấy tài nguyên được yêu cầu."
+      "message": "Không tìm thấy tài nguyên được yêu cầu"
     },
     "HTTP_EXCEPTION": {
       "title": "Lỗi HTTP",
-      "message": "Có lỗi xảy ra khi xử lý yêu cầu của bạn."
+      "message": "Có lỗi xảy ra khi xử lý yêu cầu của bạn"
     },
     "UNHANDLED_HTTP_EXCEPTION": {
       "title": "Lỗi HTTP không xác định",
-      "message": "Có lỗi không xác định xảy ra."
+      "message": "Có lỗi không xác định xảy ra"
     }
   },
   "notFound": {
-    "user": "Không tìm thấy người dùng.",
-    "device": "Không tìm thấy thiết bị.",
-    "session": "Không tìm thấy phiên đăng nhập.",
-    "resource": "Không tìm thấy tài nguyên được yêu cầu."
+    "user": "Không tìm thấy người dùng",
+    "device": "Không tìm thấy thiết bị",
+    "session": "Không tìm thấy phiên đăng nhập",
+    "resource": "Không tìm thấy tài nguyên được yêu cầu"
   },
   "duration": {
     "justNow": "Vừa xong",

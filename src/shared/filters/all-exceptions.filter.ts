@@ -3,7 +3,6 @@ import { HttpAdapterHost } from '@nestjs/core'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { I18nService, I18nContext, Path } from 'nestjs-i18n'
 import { isObject } from '../utils/type-guards.utils'
-import { v4 as uuidv4 } from 'uuid'
 import { CookieService } from 'src/shared/services/cookie.service'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { Response, Request } from 'express'
@@ -56,10 +55,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     }
 
-    const titleKey = this.findTitleKey(errorCode)
     const messageKey = this.findMessageKey(errorCode)
 
-    const title = this.i18nService.t(titleKey, { lang, defaultValue: 'Error' })
     const message =
       exception instanceof ApiException
         ? this.i18nService.t(exception.message as any, {
@@ -81,34 +78,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     const responseBody = {
-      type: `https://api.shopsifu.live/errors/${errorCode.toLowerCase().replace(/_/g, '-')}`,
-      title,
       status: statusCode,
       message,
-      timestamp: new Date().toISOString(),
-      requestId: (request as any).id || uuidv4(),
       errors: structuredErrors
     }
 
     if (process.env.NODE_ENV !== 'production') {
       if (details && !structuredErrors) {
-        ;(responseBody as any)._internal_details = details
+        ;(responseBody as any).message = details
       }
     } else if (statusCode >= 500 && !structuredErrors) {
       delete (responseBody as any).errors
     }
 
     httpAdapter.reply(ctx.getResponse(), responseBody, statusCode)
-  }
-
-  private findTitleKey(errorCode: string): Path<I18nTranslations> {
-    const keys: Path<I18nTranslations>[] = [
-      `http.${errorCode}.title` as any,
-      `general.error.${errorCode}.title` as any,
-      'general.error.default.title'
-    ]
-    // This is a simplified check. A more robust solution might check if the key actually exists.
-    return keys[0]
   }
 
   private findMessageKey(errorCode: string): Path<I18nTranslations> {

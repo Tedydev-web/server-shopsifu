@@ -1,7 +1,8 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Logger, Type } from '@nestjs/common'
-import { Reflector, ModuleRef } from '@nestjs/core'
+import { ModuleRef, Reflector } from '@nestjs/core'
+import { ClsService } from 'nestjs-cls'
 import { REQUEST_USER_KEY } from 'src/routes/auth/auth.constants'
-import { AppAbility, CaslAbilityFactory } from '../casl/casl-ability.factory'
+import { AppAbility, CaslAbilityFactory, UserWithRolesAndPermissions } from '../casl/casl-ability.factory'
 import { IPolicyHandler, PolicyHandlerCallback } from '../casl/casl.types'
 import { CHECK_POLICIES_KEY } from '../decorators/check-policies.decorator'
 
@@ -12,7 +13,8 @@ export class PoliciesGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly caslAbilityFactory: CaslAbilityFactory,
-    private readonly moduleRef: ModuleRef
+    private readonly moduleRef: ModuleRef,
+    private readonly cls: ClsService
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -27,11 +29,11 @@ export class PoliciesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest()
-    const user = request[REQUEST_USER_KEY]
+    const user = this.cls.get<UserWithRolesAndPermissions>(REQUEST_USER_KEY)
 
     if (!user) {
-      this.logger.warn('PoliciesGuard requires a user object on the request. Did you forget to use an auth guard?')
-      throw new ForbiddenException('Access Denied. User not found for permission check.')
+      this.logger.warn('PoliciesGuard could not find user in CLS context. Auth guard may have failed.')
+      throw new ForbiddenException('Access Denied. User context not found for permission check.')
     }
 
     const ability = this.caslAbilityFactory.createForUser(user)
@@ -52,13 +54,13 @@ export class PoliciesGuard implements CanActivate {
   private async execPolicyHandler(
     handler: Type<IPolicyHandler> | PolicyHandlerCallback,
     ability: AppAbility,
-    request: any
+    user: UserWithRolesAndPermissions
   ): Promise<boolean> {
     if (typeof handler === 'function' && handler.prototype?.handle) {
       const policyInstance = await this.moduleRef.resolve(handler as Type<IPolicyHandler>)
-      return policyInstance.handle(ability, request)
+      return policyInstance.handle(ability, user)
     } else {
-      return (handler as PolicyHandlerCallback)(ability, request)
+      return (handler as PolicyHandlerCallback)(ability, user)
     }
   }
 }

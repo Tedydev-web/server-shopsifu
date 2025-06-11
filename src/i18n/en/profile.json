@@ -1,11 +1,11 @@
 {
   "error": {
-    "notFound": "Profile not found.",
-    "updateFailed": "Failed to update profile.",
-    "alreadyExists": "Profile already exists."
+    "notFound": "Profile not found",
+    "updateFailed": "Failed to update profile",
+    "alreadyExists": "Profile already exists"
   },
   "success": {
-    "get": "Profile retrieved successfully.",
-    "update": "Profile updated successfully."
+    "get": "Profile retrieved successfully",
+    "update": "Profile updated successfully"
   }
 }

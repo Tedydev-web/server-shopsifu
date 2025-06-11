@@ -1,11 +1,11 @@
 {
   "error": {
-    "notFound": "Hồ sơ không được tìm thấy.",
-    "updateFailed": "Cập nhật hồ sơ thất bại.",
-    "alreadyExists": "Hồ sơ đã tồn tại."
+    "notFound": "Hồ sơ không được tìm thấy",
+    "updateFailed": "Cập nhật hồ sơ thất bại",
+    "alreadyExists": "Hồ sơ đã tồn tại"
   },
   "success": {
-    "get": "Lấy hồ sơ thành công.",
-    "update": "Cập nhật hồ sơ thành công."
+    "get": "Lấy hồ sơ thành công",
+    "update": "Cập nhật hồ sơ thành công"
   }
 }
