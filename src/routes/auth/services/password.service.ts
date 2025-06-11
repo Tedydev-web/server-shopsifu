@@ -21,6 +21,7 @@ import { UserAgentService } from '../../../shared/services/user-agent.service'
 import { ICookieService, ISessionService, ISLTService, AccessTokenPayload } from 'src/routes/auth/auth.types'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { UserRepository } from 'src/routes/user/user.repository'
+import { ActiveUserData } from 'src/shared/types/active-user.type'
 
 @Injectable()
 export class PasswordService {
@@ -49,7 +50,7 @@ export class PasswordService {
 
     if (!user) {
       this.logger.warn(`Password reset initiated for non-existent email: ${email}`)
-      return { message: this.i18nService.t('auth.success.password.initiateReset') }
+      return { message: 'auth.success.password.initiateReset' }
     }
 
     // Gửi đi flow xác thực
@@ -148,15 +149,15 @@ export class PasswordService {
         userName: user.userProfile?.username || user.email.split('@')[0],
         details: [
           {
-            label: this.i18nService.t('email.Email.common.details.ipAddress'),
+            label: 'email.Email.common.details.ipAddress',
             value: ipAddress
           },
           {
-            label: this.i18nService.t('email.Email.common.details.location'),
+            label: 'email.Email.common.details.location',
             value: locationInfo.display
           },
           {
-            label: this.i18nService.t('email.Email.common.details.device'),
+            label: 'email.Email.common.details.device',
             value: `${userAgentInfo.browser || 'Unknown'} on ${userAgentInfo.os || 'Unknown'}`
           }
         ]
@@ -167,7 +168,7 @@ export class PasswordService {
     }
 
     return {
-      message: this.i18nService.t('auth.success.password.resetSuccess'),
+      message: 'auth.success.password.resetSuccess',
       data: {
         sessionsRevoked: revokeAllSessions,
         revokedCount
@@ -176,13 +177,13 @@ export class PasswordService {
   }
 
   async changePassword(
-    activeUser: AccessTokenPayload,
+    activeUser: ActiveUserData,
     dto: ChangePasswordDto,
     ipAddress: string,
     userAgent: string,
     res: Response
   ): Promise<any> {
-    const { userId, sessionId, deviceId } = activeUser
+    const { id: userId, sessionId, deviceId } = activeUser
     const { currentPassword, newPassword, revokeOtherSessions } = dto
     this.logger.debug(`[changePassword] User ${userId} attempting to change password.`)
 

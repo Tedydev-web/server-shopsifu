@@ -17,7 +17,7 @@ import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/routes/auth/aut
 import { RecoveryCodeRepository } from 'src/routes/auth/repositories'
 import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { HashingService } from 'src/shared/services/hashing.service'
-import { RedisService } from 'src/shared/services/redis.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { OtpService } from './otp.service'
 import { ICookieService, ITokenService, IMultiFactorService } from 'src/routes/auth/auth.types'
 import { AuthError } from '../auth.error'
@@ -107,7 +107,7 @@ export class TwoFactorService implements IMultiFactorService {
     const qrCode = await this.generateQRCode(uri)
 
     return {
-      message: this.i18nService.t('auth.success.2fa.setupInitiated'),
+      message: 'auth.success.2fa.setupInitiated',
       data: {
         secret,
         qrCode
@@ -204,7 +204,7 @@ export class TwoFactorService implements IMultiFactorService {
 
     // 3. Return success message
     return {
-      message: this.i18nService.t('auth.success.2fa.disabled')
+      message: 'auth.success.2fa.disabled'
     }
   }
 
@@ -218,7 +218,7 @@ export class TwoFactorService implements IMultiFactorService {
     this.logger.debug(`[disableVerificationAfterConfirm] Disabling 2FA for userId ${userId} after pre-verification.`)
     await this._performDisable(userId)
     return {
-      message: this.i18nService.t('auth.success.2fa.disabled')
+      message: 'auth.success.2fa.disabled'
     }
   }
 
@@ -286,7 +286,7 @@ export class TwoFactorService implements IMultiFactorService {
 
       details.push(
         {
-          label: this.i18nService.t('email.Email.common.details.time', { lang }),
+          label: 'email.Email.common.details.time',
           value: new Date().toLocaleString(localeForDate, {
             timeZone: locationResult.timezone || 'Asia/Ho_Chi_Minh',
             dateStyle: 'full',
@@ -294,11 +294,11 @@ export class TwoFactorService implements IMultiFactorService {
           })
         },
         {
-          label: this.i18nService.t('email.Email.common.details.ipAddress', { lang }),
+          label: 'email.Email.common.details.ipAddress',
           value: ipAddress
         },
         {
-          label: this.i18nService.t('email.Email.common.details.device', { lang }),
+          label: 'email.Email.common.details.device',
           value: `${uaInfo.browser} on ${uaInfo.os}`
         }
       )
@@ -314,7 +314,7 @@ export class TwoFactorService implements IMultiFactorService {
     this.logger.log(`[regenerateRecoveryCodes] Successfully regenerated recovery codes for user ${userId}.`)
 
     return {
-      message: this.i18nService.t('auth.success.2fa.recoveryCodesRegenerated'),
+      message: 'auth.success.2fa.recoveryCodesRegenerated',
       data: { recoveryCodes: plainRecoveryCodes }
     }
   }
@@ -358,7 +358,7 @@ export class TwoFactorService implements IMultiFactorService {
 
     if (success) {
       return {
-        message: this.i18nService.t('auth.success.otp.verified'),
+        message: 'auth.success.otp.verified',
         data: { success, method }
       }
     }
@@ -422,7 +422,7 @@ export class TwoFactorService implements IMultiFactorService {
     })
 
     return {
-      message: this.i18nService.t('auth.success.2fa.setupConfirmed'),
+      message: 'auth.success.2fa.setupConfirmed',
       data: { recoveryCodes: result.data.recoveryCodes }
     }
   }

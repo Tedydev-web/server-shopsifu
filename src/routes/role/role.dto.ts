@@ -1,33 +1,19 @@
-import { IsString, IsNotEmpty, MaxLength, IsOptional, IsBoolean, IsArray, IsNumber } from 'class-validator'
-import { PartialType } from '@nestjs/mapped-types'
+import { createZodDto } from 'nestjs-zod'
+import { z } from 'zod'
 import { Role } from '@prisma/client'
 
-// Originally from create-role.dto.ts
-export class CreateRoleDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  name: string
+const RoleSchema = z.object({
+  name: z.string().min(1, { message: 'Name is required' }).max(100),
+  description: z.string().max(500).optional().nullable(),
+  isSystemRole: z.boolean().optional(),
+  isSuperAdmin: z.boolean().optional(),
+  permissionIds: z.array(z.number().int().positive()).optional()
+})
 
-  @IsOptional()
-  @IsString()
-  description?: string
+export class CreateRoleDto extends createZodDto(RoleSchema) {}
 
-  @IsOptional()
-  @IsBoolean()
-  isSystemRole?: boolean
+export class UpdateRoleDto extends createZodDto(RoleSchema.partial()) {}
 
-  @IsOptional()
-  @IsArray()
-  @IsNumber({}, { each: true })
-  permissionIds?: number[]
-}
-
-// Originally from update-role.dto.ts
-// CreateRoleDto is now defined in the same file
-export class UpdateRoleDto extends PartialType(CreateRoleDto) {}
-
-// Originally from role.dto.ts (the old one)
 export class RoleDto
   implements Omit<Role, 'createdById' | 'updatedById' | 'deletedById' | 'createdBy' | 'updatedBy' | 'deletedBy'>
 {
@@ -35,6 +21,7 @@ export class RoleDto
   name: string
   description: string | null
   isSystemRole: boolean
+  isSuperAdmin: boolean
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
@@ -43,15 +30,16 @@ export class RoleDto
     Object.assign(this, partial)
   }
 
-  // static fromEntity(entity: Role): RoleDto {
-  //   return new RoleDto({
-  //     id: entity.id,
-  //     name: entity.name,
-  //     description: entity.description,
-  //     isSystemRole: entity.isSystemRole,
-  //     createdAt: entity.createdAt,
-  //     updatedAt: entity.updatedAt,
-  //     deletedAt: entity.deletedAt,
-  //   })
-  // }
+  static fromEntity(entity: Role): RoleDto {
+    return new RoleDto({
+      id: entity.id,
+      name: entity.name,
+      description: entity.description,
+      isSystemRole: entity.isSystemRole,
+      isSuperAdmin: entity.isSuperAdmin,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt,
+      deletedAt: entity.deletedAt
+    })
+  }
 }

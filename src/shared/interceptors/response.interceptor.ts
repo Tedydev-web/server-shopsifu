@@ -32,7 +32,6 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, SuccessRespons
         const messageKey = (customMessage || 'global.general.success.default') as Path<I18nTranslations>
 
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
         const message = this.i18n.t(messageKey, { lang: i18nContext?.lang, args: data?.args }) as string
 
         const finalResponse: Partial<SuccessResponse<T>> = {

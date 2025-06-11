@@ -8,13 +8,13 @@ import { CookieService } from './services/cookie.service'
 import { EmailService } from './services/email.service'
 import { GeolocationService } from './services/geolocation.service'
 import { HashingService } from './services/hashing.service'
-import { PrismaService } from './services/prisma.service'
+import { PrismaService } from './providers/prisma/prisma.service'
 import { SLTService } from './services/slt.service'
 import { TokenService } from './services/token.service'
 import { UserAgentService } from './services/user-agent.service'
-import { RedisService } from './services/redis.service'
+import { RedisService } from './providers/redis/redis.service'
 import { CryptoService } from './services/crypto.service'
-import { CaslAbilityFactory } from './casl/casl-ability.factory'
+import { CaslAbilityFactory } from './providers/casl/casl-ability.factory'
 
 import { ApiKeyGuard } from './guards/api-key.guard'
 import { PoliciesGuard } from './guards/policies.guard'
@@ -28,7 +28,7 @@ import {
   TOKEN_SERVICE,
   USER_AGENT_SERVICE
 } from './constants/injection.tokens'
-import { IORedisKey } from './constants/redis.constants'
+import { IORedisKey } from './providers/redis/redis.constants'
 
 const serviceClasses = [
   PrismaService,

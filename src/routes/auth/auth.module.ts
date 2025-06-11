@@ -88,11 +88,11 @@ import { RoleModule } from 'src/routes/role/role.module'
     },
     {
       provide: SESSIONS_SERVICE,
-      useClass: SessionsService // Note: useClass, not useExisting, as per original sessions.module
+      useClass: SessionsService
     },
     {
       provide: TWO_FACTOR_SERVICE,
-      useClass: TwoFactorService // Note: useClass, not useExisting, as per original two-factor.module
+      useClass: TwoFactorService
     },
     {
       provide: DEVICE_SERVICE,
@@ -102,7 +102,6 @@ import { RoleModule } from 'src/routes/role/role.module'
       provide: LOGIN_FINALIZER_SERVICE,
       useExisting: CoreService
     }
-    // RedisService, // Likely provided by SharedModule globally
   ],
   exports: [
     // Guards

@@ -32,8 +32,6 @@ export class OtpController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.debug(`Sending OTP for purpose: ${body.purpose} to email associated with the request.`)
-
     const user = await this.coreService.findUserByEmail(body.email)
 
     if (!user) {
@@ -42,11 +40,8 @@ export class OtpController {
         TypeOfVerificationCode.RESET_PASSWORD
       ]
       if (sensitivePurposes.includes(body.purpose)) {
-        this.logger.warn(
-          `OTP request for non-existent user '${body.email}' with sensitive purpose '${body.purpose}'. Aborting to prevent user enumeration.`
-        )
         return {
-          message: this.i18nService.t('auth.success.otp.sent'),
+          message: 'auth.success.otp.sent',
           verificationType: 'OTP'
         }
       }
@@ -82,8 +77,6 @@ export class OtpController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.debug(`Verifying OTP from SLT cookie.`)
-
     const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
     if (!sltCookieValue) {
       throw AuthError.SLTCookieMissing()
@@ -102,8 +95,6 @@ export class OtpController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.debug(`Resending OTP based on SLT cookie from IP: ${ip}`)
-
     const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
     if (!sltCookieValue) {
       throw AuthError.SLTCookieMissing()

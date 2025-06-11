@@ -26,13 +26,13 @@ import {
   EMAIL_SERVICE
 } from 'src/shared/constants/injection.tokens'
 import { SessionRepository } from 'src/routes/auth/repositories'
-import { RedisService } from 'src/shared/services/redis.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { DeviceService } from './device.service'
 import { SessionsService } from 'src/routes/auth/services/session.service'
 import { AuthVerificationService } from './auth-verification.service'
 import { CompleteRegistrationDto, LoginDto } from '../dtos/core.dto'
 import { ConfigService } from '@nestjs/config'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { EmailService } from 'src/shared/services/email.service'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { DeviceRepository } from 'src/shared/repositories/device.repository'
@@ -192,7 +192,7 @@ export class CoreService implements ILoginFinalizerService {
     this.logger.log(`[completeRegistrationWithSlt] Registration completed and SLT finalized for email: ${email}`)
 
     return {
-      message: this.i18nService.t('auth.success.register.complete')
+      message: 'auth.success.register.complete'
     }
   }
 
@@ -224,7 +224,7 @@ export class CoreService implements ILoginFinalizerService {
     const hashedPassword = password ? await this.hashingService.hash(password) : undefined
     if (!hashedPassword) {
       this.logger.error('Password is required for new user creation but was not provided or hashing failed.')
-      throw GlobalError.InternalServerError(this.i18nService.t('auth.error.passwordProcessingFailed'))
+      throw GlobalError.InternalServerError('auth.error.passwordProcessingFailed')
     }
 
     // 4. Lấy Role ID cho 'Customer'
@@ -232,7 +232,7 @@ export class CoreService implements ILoginFinalizerService {
     if (!customerRole) {
       this.logger.error('Default "Customer" role not found in the database.')
       // TODO: Consider creating the 'Customer' role if it doesn't exist, or having a more robust fallback/setup mechanism.
-      throw GlobalError.InternalServerError(this.i18nService.t('auth.error.roleConfigurationError'))
+      throw GlobalError.InternalServerError('auth.error.roleConfigurationError')
     }
 
     // 5. Gọi repository để tạo user
@@ -341,7 +341,7 @@ export class CoreService implements ILoginFinalizerService {
       // Set cookie mới
       this.cookieService.setTokenCookies(res, newAccessToken, newRefreshToken)
 
-      return { message: this.i18nService.t('auth.success.token.refreshed') }
+      return { message: 'auth.success.token.refreshed' }
     } catch (error) {
       this.logger.error(`Error refreshing token: ${error.message}`, error.stack)
       this.cookieService.clearTokenCookies(res)
@@ -396,7 +396,7 @@ export class CoreService implements ILoginFinalizerService {
         }
       }
 
-      return { message: this.i18nService.t('auth.success.logout.success') }
+      return { message: 'auth.success.logout.success' }
     } catch (error) {
       this.logger.error(`Logout error: ${error.message}`, error.stack)
       if (error instanceof ApiException) throw error
@@ -454,7 +454,7 @@ export class CoreService implements ILoginFinalizerService {
       }
 
       return {
-        message: this.i18nService.t('auth.success.login.success'),
+        message: 'auth.success.login.success',
         data: userResponse
       }
     } catch (error) {

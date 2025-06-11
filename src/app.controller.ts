@@ -10,7 +10,5 @@ export class AppController {
   @SkipThrottle()
   @IsPublic()
   @Get('get-cookies')
-  getHello(): string {
-    return this.appService.getHello()
-  }
+  getHello() {}
 }

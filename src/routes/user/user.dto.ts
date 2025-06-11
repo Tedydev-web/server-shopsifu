@@ -33,4 +33,20 @@ export const UserResponseSchema = z.object({
   updatedAt: z.date()
 })
 
-export class UserDto extends createZodDto(UserResponseSchema) {}
+export class UserDto extends createZodDto(UserResponseSchema) {
+  constructor(partial: Partial<UserDto>) {
+    super()
+    Object.assign(this, partial)
+  }
+
+  static fromEntity(entity: any): UserDto {
+    return new UserDto({
+      id: entity.id,
+      email: entity.email,
+      status: entity.status,
+      roleId: entity.roleId,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt
+    })
+  }
+}

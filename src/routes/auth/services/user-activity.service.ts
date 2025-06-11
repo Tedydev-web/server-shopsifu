@@ -1,9 +1,9 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { RedisService } from 'src/shared/services/redis.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { EmailService } from 'src/shared/services/email.service'
 import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { I18nService, I18nContext } from 'nestjs-i18n'
 import { GeolocationService, GeoLocationResult } from 'src/shared/services/geolocation.service'
 import { calculateDistance, Coordinates } from 'src/shared/utils/geolocation.utils'
@@ -363,11 +363,11 @@ export class UserActivityService {
       userName: user.userProfile?.username ?? user.email,
       details: [
         {
-          label: this.i18nService.t('email.Email.common.details.ipAddress'),
+          label: 'email.Email.common.details.ipAddress',
           value: activity.ipAddress ?? 'N/A'
         },
         {
-          label: this.i18nService.t('email.Email.common.details.device'),
+          label: 'email.Email.common.details.device',
           value: `${uaInfo.browser} on ${uaInfo.os}`
         }
       ]
@@ -418,11 +418,11 @@ export class UserActivityService {
       lockoutMinutes: this.loginLockoutMinutes,
       details: [
         {
-          label: this.i18nService.t('email.Email.common.details.ipAddress'),
+          label: 'email.Email.common.details.ipAddress',
           value: activity.ipAddress ?? 'N/A'
         },
         {
-          label: this.i18nService.t('email.Email.common.details.location'),
+          label: 'email.Email.common.details.location',
           value: activity.location ?? 'N/A'
         }
       ]
@@ -519,17 +519,15 @@ export class UserActivityService {
       userName: user.userProfile?.username ?? user.email,
       details: [
         {
-          label: this.i18nService.t('email.Email.securityAlert.SUSPICIOUS_ACTIVITY.details.activityDetected', {
-            lang
-          }),
+          label: 'email.Email.securityAlert.SUSPICIOUS_ACTIVITY.details.activityDetected',
           value: activityName
         },
         {
-          label: this.i18nService.t('email.Email.securityAlert.SUSPICIOUS_ACTIVITY.details.reason', { lang }),
+          label: 'email.Email.securityAlert.SUSPICIOUS_ACTIVITY.details.reason',
           value: suspiciousDetails
         },
         {
-          label: this.i18nService.t('email.Email.common.details.time', { lang }),
+          label: 'email.Email.common.details.time',
           value: new Date(activity.timestamp).toLocaleString(localeForDate, {
             timeZone: locationResult.timezone || 'Asia/Ho_Chi_Minh',
             dateStyle: 'full',
@@ -537,19 +535,19 @@ export class UserActivityService {
           })
         },
         {
-          label: this.i18nService.t('email.Email.common.details.ipAddress', { lang }),
+          label: 'email.Email.common.details.ipAddress',
           value: activity.ipAddress ?? 'N/A'
         },
         {
-          label: this.i18nService.t('email.Email.common.details.location', { lang }),
+          label: 'email.Email.common.details.location',
           value: activity.location ?? extraDetails?.currentLocation ?? 'N/A'
         },
         {
-          label: this.i18nService.t('email.Email.common.details.browser', { lang }),
+          label: 'email.Email.common.details.browser',
           value: [uaInfo.browser, uaInfo.browserVersion].filter(Boolean).join(' ') || 'N/A'
         },
         {
-          label: this.i18nService.t('email.Email.common.details.os', { lang }),
+          label: 'email.Email.common.details.os',
           value: [uaInfo.os, uaInfo.osVersion].filter(Boolean).join(' ') || 'N/A'
         }
       ],

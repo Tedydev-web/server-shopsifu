@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Device, Prisma } from '@prisma/client'
-import { PrismaService } from 'src/shared/services/prisma.service'
+import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
 import { ConfigService } from '@nestjs/config'
 import { UAParser } from 'ua-parser-js'
 import { UserAgentService } from 'src/shared/services/user-agent.service'

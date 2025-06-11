@@ -391,7 +391,7 @@ export class SocialService {
       googleEmail,
       googleName: googleName || null,
       googleAvatar: googleAvatar || null,
-      message: this.i18nService.t('auth.success.social.accountNeedsLinking')
+      message: 'auth.success.social.accountNeedsLinking'
     }
   }
 
@@ -543,7 +543,7 @@ export class SocialService {
         isLoginViaGoogle: true,
         isNewUser,
         purpose: isNewUser ? TypeOfVerificationCode.REGISTER : TypeOfVerificationCode.LOGIN,
-        message: this.i18nService.t('auth.success.social.successProceedToSecurityChecks')
+        message: 'auth.success.social.successProceedToSecurityChecks'
       }
     } catch (error) {
       this.logger.error(`[googleCallback] Lỗi không mong đợi trong Google callback: ${error.message}`, error.stack)
@@ -593,7 +593,7 @@ export class SocialService {
     })
 
     return {
-      message: this.i18nService.t('auth.success.social.linkSuccess')
+      message: 'auth.success.social.linkSuccess'
     }
   }
 
@@ -613,7 +613,7 @@ export class SocialService {
       // Có thể không cần throw lỗi ở đây, mà trả về thông báo nhẹ nhàng hơn
       this.logger.warn(`[unlinkGoogleAccount] User ${userId} requested unlink but has no Google ID.`)
       return {
-        message: this.i18nService.t('auth.error.social.notLinked'),
+        message: 'auth.error.social.notLinked',
         data: { success: false }
       }
     }
@@ -632,7 +632,7 @@ export class SocialService {
     })
 
     return {
-      message: this.i18nService.t('auth.success.social.unlinkSuccess'),
+      message: 'auth.success.social.unlinkSuccess',
       data: { success: true }
     }
   }
@@ -710,7 +710,7 @@ export class SocialService {
       const device = await this.deviceRepository.upsertDevice(user.id, userAgent || 'unknown', ip || 'unknown')
 
       return {
-        message: this.i18nService.t('auth.success.social.linkSuccess'),
+        message: 'auth.success.social.linkSuccess',
         data: { user, device }
       }
     } catch (err) {
@@ -729,7 +729,7 @@ export class SocialService {
       this.cookieService.clearOAuthPendingLinkTokenCookie(res)
 
       return {
-        message: this.i18nService.t('auth.success.social.linkCancelled')
+        message: 'auth.success.social.linkCancelled'
       }
     } catch (err) {
       this.logger.error(`[cancelPendingLink] Lỗi: ${err instanceof Error ? err.message : 'Unknown error'}`)

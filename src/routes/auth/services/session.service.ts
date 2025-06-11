@@ -1,22 +1,24 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
+import { Response } from 'express'
 import { I18nService } from 'nestjs-i18n'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ConfigService } from '@nestjs/config'
-import { IDeviceService, ISessionService } from 'src/routes/auth/auth.types'
+import { ICookieService, IDeviceService, ISessionService } from 'src/routes/auth/auth.types'
 import {
   DEVICE_SERVICE,
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
-  USER_AGENT_SERVICE
+  USER_AGENT_SERVICE,
+  COOKIE_SERVICE
 } from 'src/shared/constants/injection.tokens'
-import { PrismaService } from 'src/shared/services/prisma.service'
-import { GetGroupedSessionsResponseDto, GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
+import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
+import { GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { SessionRepository } from 'src/routes/auth/repositories'
 import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { Device } from '@prisma/client'
-import { RedisService } from 'src/shared/services/redis.service'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { z } from 'zod'
 import { EmailService } from 'src/shared/services/email.service'
 import { GeoLocationResult } from 'src/shared/services/geolocation.service'
@@ -40,7 +42,8 @@ export class SessionsService implements ISessionService {
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
     @Inject(DEVICE_SERVICE) private readonly deviceService: IDeviceService,
     private readonly redisService: RedisService,
-    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
+    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
+    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService
   ) {}
 
   /**
@@ -130,7 +133,7 @@ export class SessionsService implements ISessionService {
     const paginatedDeviceGroups = deviceGroups.slice(startIndex, startIndex + itemsPerPage)
 
     return {
-      message: this.i18nService.t('auth.success.session.retrieved'),
+      message: 'auth.success.session.retrieved',
       data: {
         devices: paginatedDeviceGroups,
         meta: { currentPage, itemsPerPage, totalItems, totalPages }
@@ -163,15 +166,15 @@ export class SessionsService implements ISessionService {
     const diffSeconds = Math.round((now.getTime() - lastActiveDate.getTime()) / 1000)
 
     if (diffSeconds < 60) {
-      return (this.i18nService as any).t('global.error.duration.justNow')
+      return 'global.error.duration.justNow'
     }
 
     const diffMinutes = Math.round(diffSeconds / 60)
     if (diffMinutes === 1) {
-      return (this.i18nService as any).t('global.error.duration.aMinuteAgo')
+      return 'global.error.duration.aMinuteAgo'
     }
     if (diffMinutes < 60) {
-      return (this.i18nService as any).t('global.error.duration.minutesAgo', { args: { count: diffMinutes } })
+      return 'global.error.duration.minutesAgo'
     }
 
     const diffHours = Math.round(diffMinutes / 60)
@@ -204,15 +207,15 @@ export class SessionsService implements ISessionService {
       const deviceInfo = this.userAgentService.parse(device.userAgent)
       const details = [
         {
-          label: this.i18nService.t('email.Email.common.details.device'),
+          label: 'email.Email.common.details.device',
           value: `${deviceInfo.browser} on ${deviceInfo.os}`
         },
         {
-          label: this.i18nService.t('email.Email.common.details.ipAddress'),
+          label: 'email.Email.common.details.ipAddress',
           value: device.lastKnownIp ?? 'N/A'
         },
         {
-          label: this.i18nService.t('email.Email.common.details.location'),
+          label: 'email.Email.common.details.location',
           value: (await this.getLocationFromIP(device.lastKnownIp ?? '')).display
         }
       ]
@@ -231,15 +234,21 @@ export class SessionsService implements ISessionService {
     _userId: number,
     options: { sessionIds?: string[]; deviceIds?: number[] }
   ): Promise<boolean> {
+    // If multiple devices/sessions are involved, always require verification
     if (options.deviceIds?.length) return true
     if (options.sessionIds && options.sessionIds.length > 1) return true
+
     if (options.sessionIds?.length === 1) {
       const session = await this.sessionRepository.findById(options.sessionIds[0])
-      if (!session) return false
+      if (!session) return true // No session found, require verification
+
       const device = await this.deviceRepository.findById(session.deviceId)
-      return device?.isTrusted ?? false
+      // If device is NOT trusted, require verification
+      return !(device?.isTrusted ?? false)
     }
-    return false
+
+    // Default: require verification
+    return true
   }
 
   async revokeItems(
@@ -250,7 +259,8 @@ export class SessionsService implements ISessionService {
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
     },
-    currentSessionContext: { sessionId?: string; deviceId?: number }
+    currentSessionContext: { sessionId?: string; deviceId?: number },
+    res?: Response
   ): Promise<{ message: string; data: { revokedSessionsCount: number; untrustedDevicesCount: number } }> {
     let revokedSessionsCount = 0
     let untrustedDevicesCount = 0
@@ -293,15 +303,23 @@ export class SessionsService implements ISessionService {
       await this.setReverifyFlagForUser(userId)
     }
 
-    const i18nMessage =
-      revokedSessionsCount > 0
-        ? this.i18nService.t('auth.success.session.revokedCount', {
-            args: { count: revokedSessionsCount }
-          })
-        : this.i18nService.t('auth.success.session.noSessionsToRevoke')
+    // Kiểm tra xem có revoke phiên hiện tại hay không, nếu có thì clear cookies
+    const currentSessionRevoked = this.isCurrentSessionRevoked(options, currentSessionContext)
+    if (currentSessionRevoked && res) {
+      this.clearCurrentSessionCookies(res)
+    }
+
+    let message: string
+    if (revokedSessionsCount > 0) {
+      message = this.i18nService.t('auth.success.session.revokedCount', {
+        args: { count: revokedSessionsCount }
+      })
+    } else {
+      message = this.i18nService.t('auth.success.session.noSessionsToRevoke')
+    }
 
     return {
-      message: typeof i18nMessage === 'string' ? i18nMessage : 'Sessions have been revoked.',
+      message,
       data: {
         revokedSessionsCount,
         untrustedDevicesCount
@@ -314,6 +332,59 @@ export class SessionsService implements ISessionService {
     const ttl = 24 * 60 * 60 // 24 giờ
     await this.redisService.set(key, '1', 'EX', ttl)
     this.logger.log(`[setReverifyFlagForUser] Đã đặt cờ xác minh lại cho người dùng ${userId} với TTL ${ttl}s.`)
+  }
+
+  /**
+   * Kiểm tra xem phiên hiện tại có bị revoke hay không
+   */
+  private isCurrentSessionRevoked(
+    options: {
+      sessionIds?: string[]
+      deviceIds?: number[]
+      revokeAllUserSessions?: boolean
+      excludeCurrentSession?: boolean
+    },
+    currentSessionContext: { sessionId?: string; deviceId?: number }
+  ): boolean {
+    const { sessionIds, deviceIds, revokeAllUserSessions, excludeCurrentSession } = options
+    const { sessionId: currentSessionId, deviceId: currentDeviceId } = currentSessionContext
+
+    // Nếu excludeCurrentSession = true, thì không revoke phiên hiện tại
+    if (excludeCurrentSession) {
+      return false
+    }
+
+    // Nếu revokeAllUserSessions = true và không exclude current session
+    if (revokeAllUserSessions) {
+      return true
+    }
+
+    // Kiểm tra xem current session có trong danh sách sessionIds không
+    if (sessionIds?.length && currentSessionId && sessionIds.includes(currentSessionId)) {
+      return true
+    }
+
+    // Kiểm tra xem current device có trong danh sách deviceIds không
+    if (deviceIds?.length && currentDeviceId && deviceIds.includes(currentDeviceId)) {
+      return true
+    }
+
+    return false
+  }
+
+  /**
+   * Clear cookies của phiên hiện tại (tương tự như logout)
+   */
+  private clearCurrentSessionCookies(res: Response): void {
+    this.logger.log('[clearCurrentSessionCookies] Clearing cookies for current session due to revocation')
+
+    // Xóa các cookie liên quan đến đăng nhập
+    this.cookieService.clearTokenCookies(res)
+
+    // Xóa SLT cookie nếu có
+    this.cookieService.clearSltCookie(res)
+
+    this.logger.log('[clearCurrentSessionCookies] Cookies cleared successfully')
   }
 
   private async revokeSingleSession(
@@ -332,9 +403,6 @@ export class SessionsService implements ISessionService {
     // Kiểm tra xem đó có phải là phiên cuối cùng trên thiết bị không
     const remainingSessions = await this.sessionRepository.countSessionsByDeviceId(deviceId)
     if (remainingSessions === 0 && !isLogout) {
-      this.logger.log(
-        `[revokeSingleSession] Phiên cuối cùng của thiết bị ${deviceId} đã bị thu hồi. Bỏ tin cậy thiết bị.`
-      )
       await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
       return deviceId
     }
@@ -368,7 +436,7 @@ export class SessionsService implements ISessionService {
     }
     await this.deviceRepository.updateDeviceName(deviceId, name)
     return {
-      message: this.i18nService.t('auth.success.device.nameUpdated')
+      message: 'auth.success.device.nameUpdated'
     }
   }
 
@@ -380,7 +448,7 @@ export class SessionsService implements ISessionService {
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, true)
     await this.notifyDeviceTrustChange(userId, deviceId, 'trusted')
     return {
-      message: this.i18nService.t('auth.success.device.trusted')
+      message: 'auth.success.device.trusted'
     }
   }
 
@@ -392,7 +460,7 @@ export class SessionsService implements ISessionService {
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
     await this.notifyDeviceTrustChange(userId, deviceId, 'untrusted')
     return {
-      message: this.i18nService.t('auth.success.device.untrusted')
+      message: 'auth.success.device.untrusted'
     }
   }
 

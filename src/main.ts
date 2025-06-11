@@ -62,7 +62,6 @@ async function bootstrap() {
     type: VersioningType.URI
   })
 
-  // Use I18nValidationPipe globally
   app.useGlobalPipes(new CustomZodValidationPipe())
 
   const port = appConfig().PORT ?? 3000

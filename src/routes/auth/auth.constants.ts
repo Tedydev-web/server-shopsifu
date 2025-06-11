@@ -1,7 +1,3 @@
-/**
- * Auth Constants
- */
-
 export enum AuthType {
   JWT = 'JWT',
   ApiKey = 'ApiKey',
@@ -9,6 +5,10 @@ export enum AuthType {
   Bearer = 'Bearer',
   None = 'None'
 }
+
+export const OTP_LENGTH = 6 // OTP length
+export const SLT_EXPIRY_SECONDS = 300 // SLT expiry time in seconds
+export const SLT_MAX_ATTEMPTS = 5 // Maximum attempts for SLT
 
 export type AuthTypeType = (typeof AuthType)[keyof typeof AuthType]
 
@@ -37,9 +37,6 @@ export type CookieNamesType = (typeof CookieNames)[keyof typeof CookieNames]
 
 export const REQUEST_USER_KEY = 'user'
 
-/**
- * Verification types for OTP and short-lived tokens
- */
 export enum TypeOfVerificationCode {
   REGISTER = 'REGISTER',
   RESET_PASSWORD = 'RESET_PASSWORD',
@@ -65,9 +62,6 @@ export enum TwoFactorMethodType {
 
 export type TwoFactorMethodTypeType = (typeof TwoFactorMethodType)[keyof typeof TwoFactorMethodType]
 
-/**
- * Token types
- */
 export enum TokenType {
   ACCESS = 'ACCESS',
   REFRESH = 'REFRESH',
@@ -75,10 +69,3 @@ export enum TokenType {
 }
 
 export type TokenTypeType = (typeof TokenType)[keyof typeof TokenType]
-
-/**
- * Các hằng số liên quan đến OTP và SLT
- */
-export const OTP_LENGTH = 6 // Độ dài mã OTP
-export const SLT_EXPIRY_SECONDS = 300 // 5 minutes (default expiry for SLT context in Redis)
-export const SLT_MAX_ATTEMPTS = 5 // Số lần thử tối đa cho SLT

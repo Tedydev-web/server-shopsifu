@@ -9,13 +9,14 @@ import {
   ForbiddenException
 } from '@nestjs/common'
 import { ClsService } from 'nestjs-cls'
-import { REQUEST_USER_KEY } from 'src/routes/auth/auth.constants'
 import { TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import { ITokenService, AccessTokenPayload } from 'src/routes/auth/auth.types'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { SessionsService } from 'src/routes/auth/services/session.service'
 import { UserRepository } from 'src/routes/user/user.repository'
+import { ActiveUserData } from 'src/shared/types/active-user.type'
+import { UserStatus } from '@prisma/client'
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -58,7 +59,12 @@ export class JwtAuthGuard implements CanActivate {
         throw new ForbiddenException('User belonging to this token no longer exists.')
       }
 
-      const userWithContext = {
+      if (user.status !== UserStatus.ACTIVE) {
+        this.logger.warn(`Authentication failed: User ${user.id} is not active. Status: ${user.status}`)
+        throw AuthError.Unauthorized('User is not active')
+      }
+
+      const activeUser: ActiveUserData = {
         ...user,
         sessionId: payload.sessionId,
         deviceId: payload.deviceId,
@@ -66,10 +72,10 @@ export class JwtAuthGuard implements CanActivate {
       }
 
       // Store the user object in the CLS context
-      this.cls.set(REQUEST_USER_KEY, userWithContext)
+      this.cls.set('user', activeUser)
 
       // Also attach to request for compatibility, though CLS is preferred
-      request[REQUEST_USER_KEY] = userWithContext
+      request.user = activeUser
 
       return true
     } catch (error) {

@@ -221,13 +221,14 @@ model Device {
 
 model Role {
   id           Int      @id @default(autoincrement())
-  name         String   @unique @db.VarChar(100) 
+  name         String   @unique @db.VarChar(100)
   description  String?
-  isSystemRole Boolean  @default(false) 
+  isSystemRole Boolean  @default(false)
+  isSuperAdmin Boolean  @default(false)
 
-  users        User[] 
+  users        User[]
 
-  permissions RolePermission[] 
+  permissions RolePermission[]
 
   createdById  Int?
   createdBy    User?    @relation("RoleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -247,13 +248,13 @@ model Role {
 
 model Permission {
   id          Int     @id @default(autoincrement())
-  action      String  @db.VarChar(100) 
-  subject     String  @db.VarChar(100) 
-  category    String  @db.VarChar(100)
+  action      String  @db.VarChar(100)
+  subject     String  @db.VarChar(255)
   description String?
-  // conditions  Json?    
+  category    String? @db.VarChar(100)
+  conditions  Json?
 
-  roles       RolePermission[] 
+  roles RolePermission[]
 
   createdById Int?
   createdBy   User?    @relation("PermissionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -266,21 +267,22 @@ model Permission {
   updatedAt   DateTime @updatedAt
   deletedAt   DateTime?
 
-  @@unique([action, subject], name: "UQ_action_subject")
+  @@unique([action, subject])
+  @@index([subject, action])
   @@index([category])
   @@index([deletedAt])
 }
 
 model RolePermission {
-  roleId       Int
-  permissionId Int
+  roleId         Int
+  permissionId   Int
 
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role           Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission     Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
-  assignedAt   DateTime @default(now())
-  assignedById Int?     
-  assignedBy   User?    @relation("RolePermissionAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  assignedAt     DateTime @default(now())
+  assignedById   Int?     
+  assignedBy     User?    @relation("RolePermissionAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@id([roleId, permissionId])
   @@index([assignedById])

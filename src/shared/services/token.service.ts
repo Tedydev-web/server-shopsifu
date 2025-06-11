@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { Request } from 'express'
 import { v4 as uuidv4 } from 'uuid'
-import { RedisService } from 'src/shared/services/redis.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import {
   ITokenService,
   AccessTokenPayload,
@@ -12,7 +12,7 @@ import {
   PendingLinkTokenPayloadCreate
 } from 'src/routes/auth/auth.types'
 import { AuthError } from 'src/routes/auth/auth.error'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 
 @Injectable()
 export class TokenService implements ITokenService {

@@ -9,9 +9,10 @@ import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { Auth } from 'src/shared/decorators/auth.decorator'
-import { AccessTokenPayload, ICookieService } from 'src/routes/auth/auth.types'
+import { ICookieService } from 'src/routes/auth/auth.types'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
+import { ActiveUserData } from 'src/shared/types/active-user.type'
 
 @Controller('auth')
 export class CoreController {
@@ -32,16 +33,9 @@ export class CoreController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[Registration] Attempt from IP: ${ip}, User-Agent: ${userAgent}`)
-    this.logger.debug(
-      `[CoreController] initiateRegistration called with email: "${body.email}" (type: ${typeof body.email})`
-    )
     return this.coreService.initiateRegistration(body.email, ip, userAgent, res)
   }
 
-  /**
-   * Hoàn thành đăng ký
-   */
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @IsPublic()
   @Post('complete-registration')
@@ -51,8 +45,6 @@ export class CoreController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[completeRegistration] Attempting to complete registration for email associated with SLT.`)
-
     const sltCookie = req.cookies[CookieNames.SLT_TOKEN]
     if (!sltCookie) {
       throw AuthError.SLTCookieMissing()
@@ -81,13 +73,9 @@ export class CoreController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ) {
-    this.logger.log(`[Login] Attempt for user ${body.emailOrUsername} from IP: ${ip}, User-Agent: ${userAgent}`)
     return this.coreService.initiateLogin(body, ip, userAgent, res)
   }
 
-  /**
-   * Làm mới token
-   */
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @IsPublic()
   @Post('refresh-token')
@@ -109,10 +97,10 @@ export class CoreController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(
-    @ActiveUser() activeUser: AccessTokenPayload,
+    @ActiveUser() activeUser: ActiveUserData,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    return this.coreService.logout(activeUser.userId, activeUser.sessionId, req, res)
+    return this.coreService.logout(activeUser.id, activeUser.sessionId, req, res)
   }
 }

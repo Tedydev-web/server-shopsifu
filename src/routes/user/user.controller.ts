@@ -12,11 +12,11 @@ import {
   UseGuards
 } from '@nestjs/common'
 import { UserService } from './user.service'
-import { CreateUserDto, UpdateUserDto } from './user.dto'
+import { CreateUserDto, UpdateUserDto, UserDto } from './user.dto'
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { PoliciesGuard } from 'src/shared/guards/policies.guard'
 import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
-import { Action, AppAbility } from 'src/shared/casl/casl-ability.factory'
+import { CanCreateUserPolicy, CanDeleteUserPolicy, CanReadUserPolicy, CanUpdateUserPolicy } from './user.policies'
 
 @Auth()
 @UseGuards(PoliciesGuard)
@@ -25,54 +25,38 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post()
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Create, 'User'))
+  @CheckPolicies(...CanCreateUserPolicy)
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createUserDto: CreateUserDto) {
     const user = await this.userService.create(createUserDto)
-    return {
-      message: 'user.success.create',
-      data: user
-    }
+    return UserDto.fromEntity(user)
   }
 
   @Get()
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'User'))
+  @CheckPolicies(...CanReadUserPolicy)
   async findAll() {
     const users = await this.userService.findAll()
-    return {
-      message: 'user.success.list',
-      data: users
-    }
+    return users.map((user) => UserDto.fromEntity(user))
   }
 
   @Get(':id')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'User'))
+  @CheckPolicies(...CanReadUserPolicy)
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const user = await this.userService.findOne(id)
-    return {
-      message: 'user.success.get',
-      data: user
-    }
+    return UserDto.fromEntity(user)
   }
 
   @Patch(':id')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'User'))
+  @CheckPolicies(...CanUpdateUserPolicy)
   async update(@Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
     const user = await this.userService.update(id, updateUserDto)
-    return {
-      message: 'user.success.update',
-      data: user
-    }
+    return UserDto.fromEntity(user)
   }
 
   @Delete(':id')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Delete, 'User'))
-  @HttpCode(HttpStatus.OK)
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    const user = await this.userService.remove(id)
-    return {
-      message: 'user.success.delete',
-      data: user
-    }
+  @CheckPolicies(...CanDeleteUserPolicy)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
+    await this.userService.remove(id)
   }
 }

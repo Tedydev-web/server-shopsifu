@@ -39,6 +39,7 @@ import { AuthVerificationService } from '../services/auth-verification.service'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import * as crypto from 'crypto'
+import { ActiveUserData } from 'src/shared/types/active-user.type'
 
 @Controller('auth/social')
 export class SocialController {
@@ -60,13 +61,13 @@ export class SocialController {
   getGoogleAuthUrl(
     @Query() query: GoogleAuthUrlQueryDto,
     @Res({ passthrough: true }) res: Response,
-    @ActiveUser() activeUser?: AccessTokenPayload
+    @ActiveUser() activeUser?: ActiveUserData
   ): GoogleAuthUrlDataDto {
     this.logger.debug(`[getGoogleAuthUrl] Getting Google auth URL for action: ${query.action}`)
     const nonce = crypto.randomBytes(16).toString('hex')
     const { url } = this.socialService.getGoogleAuthUrl({
       action: query.action,
-      userId: activeUser?.userId,
+      userId: activeUser?.id,
       redirectUrl: query.redirectUrl,
       nonce: nonce
     })
@@ -182,18 +183,18 @@ export class SocialController {
   @Post('unlink/google')
   @HttpCode(HttpStatus.OK)
   async initiateUnlinkGoogleAccount(
-    @ActiveUser() activeUser: AccessTokenPayload,
+    @ActiveUser() activeUser: ActiveUserData,
     @Ip() ip: string,
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.debug(`[initiateUnlinkGoogleAccount] User ${activeUser.userId} initiating Google account unlinking.`)
+    this.logger.debug(`[initiateUnlinkGoogleAccount] User ${activeUser.id} initiating Google account unlinking.`)
     if (!activeUser.email) {
       throw AuthError.InternalServerError('User email not found in token payload.')
     }
     return this.authVerificationService.initiateVerification(
       {
-        userId: activeUser.userId,
+        userId: activeUser.id,
         deviceId: activeUser.deviceId,
         email: activeUser.email,
         ipAddress: ip,

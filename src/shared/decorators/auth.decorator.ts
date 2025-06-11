@@ -4,7 +4,6 @@ import { AuthenticationGuard } from '../../routes/auth/guards/authentication.gua
 
 export const IS_PUBLIC_KEY = 'isPublic'
 export const ROLES_KEY = 'roles'
-export const PERMISSIONS_KEY = 'permissions'
 export const AUTH_TYPE_KEY = 'authType'
 
 export const Auth = (
@@ -18,5 +17,3 @@ export const Auth = (
 
 export const IsPublic = () => SetMetadata(IS_PUBLIC_KEY, true)
 export const RolesAllowed = (...roles: string[]) => SetMetadata(ROLES_KEY, roles)
-
-export const PermissionsRequired = (...permissions: string[]) => SetMetadata(PERMISSIONS_KEY, permissions)

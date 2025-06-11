@@ -1,7 +1,7 @@
 import { Device, Role, User, UserProfile } from '@prisma/client'
 import { Response, Request } from 'express'
 import { TypeOfVerificationCodeType, TwoFactorMethodTypeType } from 'src/routes/auth/auth.constants'
-import { PrismaTransactionClient } from 'src/shared/types/prisma.type'
+import { PrismaTransactionClient } from 'src/shared/providers/prisma/prisma.type'
 
 // Payload for login finalization
 export interface ILoginFinalizationPayload {
@@ -105,6 +105,7 @@ export interface ISessionService {
       excludeCurrentSession?: boolean
     },
     currentSessionDetails?: { sessionId?: string; deviceId?: number },
+    res?: Response,
     verificationToken?: string,
     otpCode?: string,
     ipAddress?: string,

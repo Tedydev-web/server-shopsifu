@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
-import { RedisService } from 'src/shared/services/redis.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { TypeOfVerificationCodeType, OTP_LENGTH, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
 import { OtpData, IOTPService } from 'src/routes/auth/auth.types'
 import { ConfigService } from '@nestjs/config'
@@ -8,7 +8,7 @@ import { AuthError } from 'src/routes/auth/auth.error'
 import { I18nService, I18nContext } from 'nestjs-i18n'
 import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService, OtpEmailProps } from 'src/shared/services/email.service'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
 import { I18nTranslations } from 'src/generated/i18n.generated'
@@ -70,7 +70,7 @@ export class OtpService implements IOTPService {
       const localeForDate = lang === 'vi' ? 'vi-VN' : 'en-US'
 
       details.push({
-        label: this.i18nService.t('email.Email.common.details.time', { lang }),
+        label: 'email.Email.common.details.time',
         value: new Date().toLocaleString(localeForDate, {
           timeZone: locationResult.timezone || 'Asia/Ho_Chi_Minh',
           dateStyle: 'full',
@@ -78,11 +78,11 @@ export class OtpService implements IOTPService {
         })
       })
       details.push({
-        label: this.i18nService.t('email.Email.common.details.ipAddress', { lang }),
+        label: 'email.Email.common.details.ipAddress',
         value: metadata.ipAddress
       })
       details.push({
-        label: this.i18nService.t('email.Email.common.details.device', { lang }),
+        label: 'email.Email.common.details.device',
         value: `${uaInfo.browser} on ${uaInfo.os}`
       })
     }
@@ -147,7 +147,7 @@ export class OtpService implements IOTPService {
       }
 
       return {
-        message: this.i18nService.t('auth.success.otp.sent'),
+        message: 'auth.success.otp.sent',
         data: responseData
       }
     } catch (error) {

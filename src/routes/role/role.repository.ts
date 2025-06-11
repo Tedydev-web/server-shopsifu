@@ -1,23 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { PrismaService } from 'src/shared/services/prisma.service'
-import { Role } from './role.model'
+import { Prisma } from '@prisma/client'
+import { ALL_ROLES_CACHE_TTL, ROLE_CACHE_TTL } from 'src/shared/providers/redis/redis.constants'
+import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { CreateRoleDto, UpdateRoleDto } from './role.dto'
-import { Permission, Role as PrismaRole } from '@prisma/client' // Import Permission for type casting
-import { RedisService } from 'src/shared/services/redis.service'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { ALL_ROLES_CACHE_TTL, ROLE_CACHE_TTL } from 'src/shared/constants/redis.constants'
+import { Role } from './role.model'
+import { UserWithProfileAndRole } from '../user/user.repository'
 
-// Helper type for Prisma's return when including PermissionsOnRoles with Permission
-type RoleWithPermissionsOnRoles = PrismaRole & {
-  permissions: ({
-    permission: Permission
-  } & {
-    roleId: number
-    permissionId: number
-    assignedAt: Date
-    assignedById: number | null
-  })[]
-}
+type RoleWithPermissions = Prisma.RoleGetPayload<{
+  include: { permissions: { include: { permission: true } } }
+}>
 
 @Injectable()
 export class RoleRepository {
@@ -27,14 +20,41 @@ export class RoleRepository {
     private readonly redisService: RedisService
   ) {}
 
-  private mapToRoleType(roleWithPor: RoleWithPermissionsOnRoles | null): Role | null {
-    if (!roleWithPor) {
+  private mapUserWithPermissions(
+    userWithRole:
+      | (Prisma.UserGetPayload<{
+          include: {
+            userProfile: true
+            role: { include: { permissions: { include: { permission: true } } } }
+          }
+        }> & { role: { permissions: any } })
+      | null
+  ): UserWithProfileAndRole | null {
+    if (!userWithRole) {
       return null
     }
-    const { permissions, ...restOfRole } = roleWithPor
+    const {
+      role: { permissions, ...restRole },
+      ...restUser
+    } = userWithRole
+
+    return {
+      ...restUser,
+      role: {
+        ...restRole,
+        permissions: permissions.map((p: any) => p.permission)
+      }
+    }
+  }
+
+  private mapToRole(roleWithPermissions: RoleWithPermissions | null): Role | null {
+    if (!roleWithPermissions) {
+      return null
+    }
+    const { permissions, ...restOfRole } = roleWithPermissions
     return {
       ...restOfRole,
-      permissions: permissions.map((por) => por.permission)
+      permissions: permissions.map((p) => p.permission)
     }
   }
 
@@ -44,36 +64,78 @@ export class RoleRepository {
       keysToDel.push(RedisKeyManager.getRoleCacheKey(role.id))
       keysToDel.push(RedisKeyManager.getRoleByNameCacheKey(role.name))
     }
-    await this.redisService.del(keysToDel)
-    this.logger.debug(`Invalidated role cache for keys: ${keysToDel.join(', ')}`)
+    if (keysToDel.length > 0) {
+      await this.redisService.del(keysToDel)
+      this.logger.debug(`Invalidated role cache for keys: ${keysToDel.join(', ')}`)
+    }
   }
 
-  async create(createRoleDto: CreateRoleDto): Promise<Role> {
-    const { name, description, isSystemRole, permissionIds } = createRoleDto
-    const createdRoleWithPor = await this.prisma.role.create({
+  async create(createRoleDto: CreateRoleDto, createdById?: number): Promise<Role> {
+    const { name, description, isSystemRole, isSuperAdmin, permissionIds } = createRoleDto
+    const createdRoleWithPermissions = await this.prisma.role.create({
       data: {
         name,
         description,
         isSystemRole: isSystemRole ?? false,
-        permissions: permissionIds?.length
-          ? {
-              create: permissionIds.map((pid) => ({
-                permission: { connect: { id: pid } }
-                // assignedById: userId, // You might want to set this if available
-              }))
-            }
-          : undefined
+        isSuperAdmin: isSuperAdmin ?? false,
+        createdBy: createdById ? { connect: { id: createdById } } : undefined,
+        permissions:
+          permissionIds && permissionIds.length > 0
+            ? {
+                create: permissionIds.map((pid) => ({
+                  permission: { connect: { id: pid } },
+                  assignedBy: createdById ? { connect: { id: createdById } } : undefined
+                }))
+              }
+            : undefined
       },
-      include: {
-        permissions: { include: { permission: true } }
-      }
+      include: { permissions: { include: { permission: true } } }
     })
 
-    const createdRole = this.mapToRoleType(createdRoleWithPor)
-    if (createdRole) {
-      await this.invalidateRoleCache()
+    const role = this.mapToRole(createdRoleWithPermissions)
+    await this.invalidateRoleCache()
+    return role
+  }
+
+  async update(id: number, updateRoleDto: UpdateRoleDto, updatedById?: number): Promise<Role> {
+    const { permissionIds, ...restDto } = updateRoleDto
+
+    const roleData: Prisma.RoleUpdateInput = {
+      ...restDto,
+      updatedBy: updatedById ? { connect: { id: updatedById } } : undefined
     }
-    return createdRole
+
+    if (permissionIds !== undefined) {
+      // Transaction to ensure atomicity
+      const [, updatedRoleWithPermissions] = await this.prisma.$transaction([
+        this.prisma.rolePermission.deleteMany({ where: { roleId: id } }),
+        this.prisma.role.update({
+          where: { id },
+          data: {
+            ...roleData,
+            permissions: {
+              create: permissionIds.map((pid) => ({
+                permission: { connect: { id: pid } },
+                assignedBy: updatedById ? { connect: { id: updatedById } } : undefined
+              }))
+            }
+          },
+          include: { permissions: { include: { permission: true } } }
+        })
+      ])
+      const role = this.mapToRole(updatedRoleWithPermissions)
+      await this.invalidateRoleCache(role)
+      return role
+    } else {
+      const updatedRoleWithPermissions = await this.prisma.role.update({
+        where: { id },
+        data: roleData,
+        include: { permissions: { include: { permission: true } } }
+      })
+      const role = this.mapToRole(updatedRoleWithPermissions)
+      await this.invalidateRoleCache(role)
+      return role
+    }
   }
 
   async findAll(): Promise<Role[]> {
@@ -84,12 +146,10 @@ export class RoleRepository {
       return cachedRoles
     }
 
-    const rolesWithPor = await this.prisma.role.findMany({
-      include: {
-        permissions: { include: { permission: true } }
-      }
+    const rolesWithPermissions = await this.prisma.role.findMany({
+      include: { permissions: { include: { permission: true } } }
     })
-    const roles = rolesWithPor.map((role) => this.mapToRoleType(role))
+    const roles = rolesWithPermissions.map((r) => this.mapToRole(r))
     await this.redisService.setJson(cacheKey, roles, ALL_ROLES_CACHE_TTL)
     return roles
   }
@@ -102,13 +162,11 @@ export class RoleRepository {
       return cachedRole
     }
 
-    const roleWithPor = await this.prisma.role.findUnique({
+    const roleWithPermissions = await this.prisma.role.findUnique({
       where: { id },
-      include: {
-        permissions: { include: { permission: true } }
-      }
+      include: { permissions: { include: { permission: true } } }
     })
-    const role = this.mapToRoleType(roleWithPor)
+    const role = this.mapToRole(roleWithPermissions)
     if (role) {
       await this.redisService.setJson(cacheKey, role, ROLE_CACHE_TTL)
     }
@@ -123,18 +181,12 @@ export class RoleRepository {
       return cachedRole
     }
 
-    const roleWithPor = await this.prisma.role.findUnique({
+    const roleWithPermissions = await this.prisma.role.findUnique({
       where: { name },
-      include: {
-        permissions: {
-          include: {
-            permission: true
-          }
-        }
-      }
+      include: { permissions: { include: { permission: true } } }
     })
 
-    const role = this.mapToRoleType(roleWithPor)
+    const role = this.mapToRole(roleWithPermissions)
     if (role) {
       await this.redisService.setJson(cacheKey, role, ROLE_CACHE_TTL)
       await this.redisService.setJson(RedisKeyManager.getRoleCacheKey(role.id), role, ROLE_CACHE_TTL)
@@ -142,50 +194,35 @@ export class RoleRepository {
     return role
   }
 
-  async update(id: number, updateRoleDto: UpdateRoleDto): Promise<Role> {
-    const { name, description, isSystemRole, permissionIds } = updateRoleDto
-    const dataToUpdate: any = {} // This disable is needed for flexible dataToUpdate object
-    if (name !== undefined) dataToUpdate.name = name
-    if (description !== undefined) dataToUpdate.description = description
-    if (isSystemRole !== undefined) dataToUpdate.isSystemRole = isSystemRole
+  async deleteById(id: number): Promise<Role> {
+    // Note: Transaction ensures we get the role for cache invalidation before deleting it
+    const [roleToDelete, deletedRole] = await this.prisma.$transaction([
+      this.prisma.role.findUnique({ where: { id } }),
+      this.prisma.role.delete({ where: { id } })
+    ])
 
-    if (permissionIds !== undefined) {
-      // For many-to-many with explicit join table, updating permissions typically involves:
-      // 1. Deleting existing join records for this role.
-      // 2. Creating new join records for the new set of permissionIds.
-      // This is done in a transaction to ensure atomicity.
-      // Prisma's nested writes can simplify this if structured correctly.
-      dataToUpdate.permissions = {
-        deleteMany: { roleId: id }, // Delete all existing PermissionsOnRoles for this role
-        create: permissionIds.map((pid) => ({
-          permission: { connect: { id: pid } }
-          // assignedById: userId, // Set if available and needed
-        }))
-      }
-    }
-
-    const updatedRoleWithPor = await this.prisma.role.update({
-      where: { id },
-      data: dataToUpdate,
-      include: {
-        permissions: { include: { permission: true } }
-      }
-    })
-    const updatedRole = this.mapToRoleType(updatedRoleWithPor)
-    if (updatedRole) {
-      await this.invalidateRoleCache(updatedRole)
-    }
-    return updatedRole
-  }
-
-  async deleteById(id: number): Promise<PrismaRole> {
-    const roleToDelete = await this.findById(id)
-    const deletedRole = await this.prisma.role.delete({
-      where: { id }
-    })
-    if (deletedRole) {
-      await this.invalidateRoleCache(roleToDelete)
+    if (deletedRole && roleToDelete) {
+      await this.invalidateRoleCache(this.mapToRole(roleToDelete as any))
     }
     return deletedRole
+  }
+
+  async getUserWithRoleAndPermissions(userId: number): Promise<UserWithProfileAndRole | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        userProfile: true,
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true
+              }
+            }
+          }
+        }
+      }
+    })
+    return this.mapUserWithPermissions(user)
   }
 }

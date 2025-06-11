@@ -1,5 +1,5 @@
 import { SetMetadata, Type } from '@nestjs/common'
-import { IPolicyHandler, PolicyHandler, PolicyHandlerCallback } from '../casl/casl.types'
+import { IPolicyHandler, PolicyHandler, PolicyHandlerCallback } from '../providers/casl/casl.types'
 
 export const CHECK_POLICIES_KEY = 'check_policy'
 

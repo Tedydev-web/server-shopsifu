@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { RedisService } from '../../../shared/services/redis.service'
+import { RedisService } from '../../../shared/providers/redis/redis.service'
 import {
   COOKIE_SERVICE,
   SLT_SERVICE,
@@ -141,7 +141,7 @@ export class AuthVerificationService {
       })
 
       return {
-        message: this.i18nService.t('auth.success.2fa.setupInitiated'),
+        message: 'auth.success.2fa.setupInitiated',
         data: {
           qrCode: result.data.qrCode,
           secret: result.data.secret // Chỉ trả về ở môi trường dev để dễ test
@@ -160,7 +160,7 @@ export class AuthVerificationService {
 
     this.logger.warn(`[initiateVerification] No defined action for purpose: ${purpose}.`)
     return {
-      message: this.i18nService.t('global.general.success.default')
+      message: 'global.general.success.default'
     }
   }
 
@@ -198,7 +198,7 @@ export class AuthVerificationService {
 
     this.logger.warn(`[handleLoginOrSensitiveAction] No defined action for purpose: ${purpose}.`)
     return {
-      message: this.i18nService.t('global.general.success.default')
+      message: 'global.general.success.default'
     }
   }
 
@@ -215,7 +215,7 @@ export class AuthVerificationService {
       const sltToken = await this.sltService.createAndStoreSltToken({ ...context })
       this.cookieService.setSltCookie(res, sltToken, purpose)
       return {
-        message: this.i18nService.t('auth.success.login.2faRequired'),
+        message: 'auth.success.login.2faRequired',
         data: { verificationType: '2FA' }
       }
     }
@@ -246,7 +246,7 @@ export class AuthVerificationService {
     if (sltContext.metadata?.twoFactorMethod) {
       this.logger.debug('[reInitiateVerification] Context is 2FA. No email will be sent.')
       return {
-        message: this.i18nService.t('auth.success.login.2faRequired'),
+        message: 'auth.success.login.2faRequired',
         data: { verificationType: '2FA' }
       }
     }
@@ -260,7 +260,7 @@ export class AuthVerificationService {
     this.cookieService.setSltCookie(res, newSltToken, sltContext.purpose)
 
     return {
-      message: this.i18nService.t('auth.success.otp.resend'),
+      message: 'auth.success.otp.resend',
       data: { verificationType: 'OTP' }
     }
   }
@@ -430,7 +430,7 @@ export class AuthVerificationService {
     this.logger.warn(`No post-verification handler found for purpose: ${sltContext.purpose}`)
     await this.sltService.finalizeSlt(sltContext.sltJti)
     return {
-      message: this.i18nService.t('auth.success.otp.verified') // Generic success message
+      message: 'auth.success.otp.verified' // Generic success message
     }
   }
 
@@ -467,7 +467,11 @@ export class AuthVerificationService {
     return loginResult
   }
 
-  private async handleRevokeSessionsVerification(context: SltContextData): Promise<VerificationResult> {
+  private async handleRevokeSessionsVerification(
+    context: SltContextData,
+    code: string,
+    res: Response
+  ): Promise<VerificationResult> {
     const { userId, metadata, ipAddress, userAgent, email } = context
     const { sessionIds, deviceIds, excludeCurrentSession, currentSessionId, currentDeviceId } = metadata || {}
     if (!sessionIds && !deviceIds) throw GlobalError.BadRequest('auth.error.invalidRevokeParams')
@@ -475,14 +479,15 @@ export class AuthVerificationService {
     const revokeResult = await this.sessionsService.revokeItems(
       userId,
       { sessionIds, deviceIds, excludeCurrentSession },
-      { sessionId: currentSessionId, deviceId: currentDeviceId }
+      { sessionId: currentSessionId, deviceId: currentDeviceId },
+      res
     )
 
     // Send email notification
     await this._sendSessionRevocationEmail(email, userId, ipAddress, userAgent)
 
     return {
-      message: revokeResult.message || this.i18nService.t('auth.success.session.revoked'),
+      message: revokeResult.message || 'auth.success.session.revoked',
       data: {
         revokedSessionsCount: revokeResult.data.revokedSessionsCount,
         untrustedDevicesCount: revokeResult.data.untrustedDevicesCount
@@ -490,20 +495,25 @@ export class AuthVerificationService {
     }
   }
 
-  private async handleRevokeAllSessionsVerification(context: SltContextData): Promise<VerificationResult> {
+  private async handleRevokeAllSessionsVerification(
+    context: SltContextData,
+    code: string,
+    res: Response
+  ): Promise<VerificationResult> {
     const { userId, metadata, ipAddress, userAgent, email } = context
     const { excludeCurrentSession, currentSessionId, currentDeviceId } = metadata || {}
     const revokeResult = await this.sessionsService.revokeItems(
       userId,
       { revokeAllUserSessions: true, excludeCurrentSession },
-      { sessionId: currentSessionId, deviceId: currentDeviceId }
+      { sessionId: currentSessionId, deviceId: currentDeviceId },
+      res
     )
 
     // Send email notification
     await this._sendSessionRevocationEmail(email, userId, ipAddress, userAgent)
 
     return {
-      message: revokeResult.message || this.i18nService.t('auth.success.session.allRevoked'),
+      message: revokeResult.message || 'auth.success.session.allRevoked',
       data: {
         revokedSessionsCount: revokeResult.data.revokedSessionsCount,
         untrustedDevicesCount: revokeResult.data.untrustedDevicesCount
@@ -542,7 +552,7 @@ export class AuthVerificationService {
     )
 
     return {
-      message: this.i18nService.t('auth.success.2fa.setupConfirmed'),
+      message: 'auth.success.2fa.setupConfirmed',
       data: { recoveryCodes: result.data.recoveryCodes }
     }
   }
@@ -554,7 +564,7 @@ export class AuthVerificationService {
       metadata: { ...context.metadata, otpVerified: 'true' }
     })
     return {
-      message: this.i18nService.t('auth.success.otp.verified'),
+      message: 'auth.success.otp.verified',
       data: { verificationType: 'OTP' }
     }
   }
@@ -572,7 +582,7 @@ export class AuthVerificationService {
       userAgent
     )
     return {
-      message: this.i18nService.t('auth.success.2fa.recoveryCodesRegenerated'),
+      message: 'auth.success.2fa.recoveryCodesRegenerated',
       data: {
         recoveryCodes: result.data.recoveryCodes
       }
@@ -586,7 +596,7 @@ export class AuthVerificationService {
       metadata: { ...context.metadata, otpVerified: 'true' }
     })
     return {
-      message: this.i18nService.t('auth.success.otp.verified'),
+      message: 'auth.success.otp.verified',
       data: { verificationType: 'OTP' }
     }
   }
@@ -597,7 +607,7 @@ export class AuthVerificationService {
     const { newPassword, revokeAllSessions } = context.metadata || {}
 
     // Delegate the entire logic to PasswordService
-    const result = await this.passwordService.performPasswordUpdate({
+    await this.passwordService.performPasswordUpdate({
       userId: context.userId,
       newPassword: newPassword,
       revokeAllSessions: revokeAllSessions,
@@ -607,7 +617,7 @@ export class AuthVerificationService {
     })
 
     // The message from performPasswordUpdate is for reset, so we override it for change.
-    return { message: this.i18nService.t('auth.success.password.changeSuccess') }
+    return { message: 'auth.success.password.changeSuccess' }
   }
 
   private async initiateOtpFlow(context: VerificationContext, res: Response): Promise<VerificationResult> {
@@ -619,7 +629,7 @@ export class AuthVerificationService {
     await this.otpService.sendOTP(email, purpose, { ...metadata, ipAddress, userAgent })
 
     return {
-      message: this.i18nService.t('auth.success.otp.sent'),
+      message: 'auth.success.otp.sent',
       data: { verificationType: 'OTP' }
     }
   }
@@ -647,15 +657,15 @@ export class AuthVerificationService {
         userName: user.userProfile?.username ?? user.email.split('@')[0],
         details: [
           {
-            label: this.i18nService.t('email.Email.common.details.ipAddress'),
+            label: 'email.Email.common.details.ipAddress',
             value: ipAddress ?? 'N/A'
           },
           {
-            label: this.i18nService.t('email.Email.common.details.location'),
+            label: 'email.Email.common.details.location',
             value: locationInfo?.display ?? 'N/A'
           },
           {
-            label: this.i18nService.t('email.Email.common.details.device'),
+            label: 'email.Email.common.details.device',
             value: `${userAgentInfo.browser || 'Unknown'} on ${userAgentInfo.os || 'Unknown'}`
           }
         ]

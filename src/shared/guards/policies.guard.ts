@@ -1,10 +1,11 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Logger, Type } from '@nestjs/common'
-import { ModuleRef, Reflector } from '@nestjs/core'
-import { ClsService } from 'nestjs-cls'
-import { REQUEST_USER_KEY } from 'src/routes/auth/auth.constants'
-import { AppAbility, CaslAbilityFactory, UserWithRolesAndPermissions } from '../casl/casl-ability.factory'
-import { IPolicyHandler, PolicyHandlerCallback } from '../casl/casl.types'
+import { CanActivate, ExecutionContext, Injectable, Logger, Type } from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
+import { CaslAbilityFactory, AppAbility, UserWithRolesAndPermissions } from '../providers/casl/casl-ability.factory'
 import { CHECK_POLICIES_KEY } from '../decorators/check-policies.decorator'
+import { IPolicyHandler, PolicyHandlerCallback } from '../providers/casl/casl.types'
+import { ClsService } from 'nestjs-cls'
+import { ModuleRef } from '@nestjs/core'
+import { Request } from 'express'
 
 @Injectable()
 export class PoliciesGuard implements CanActivate {
@@ -18,49 +19,53 @@ export class PoliciesGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const policyHandlers =
-      this.reflector.get<Array<Type<IPolicyHandler> | PolicyHandlerCallback>>(
-        CHECK_POLICIES_KEY,
-        context.getHandler()
-      ) || []
+    const policyHandlers = this.reflector.get<Type<IPolicyHandler>[]>(CHECK_POLICIES_KEY, context.getHandler()) || []
 
     if (policyHandlers.length === 0) {
       return true
     }
 
-    const request = context.switchToHttp().getRequest()
-    const user = this.cls.get<UserWithRolesAndPermissions>(REQUEST_USER_KEY)
+    const request: Request = context.switchToHttp().getRequest()
+    const user = this.cls.get('user')
 
     if (!user) {
-      this.logger.warn('PoliciesGuard could not find user in CLS context. Auth guard may have failed.')
-      throw new ForbiddenException('Access Denied. User context not found for permission check.')
+      this.logger.warn('No user found in CLS context for policy check.')
+      // Depending on your app's logic, you might want to throw an UnauthorizedException here.
+      return false
     }
 
     const ability = this.caslAbilityFactory.createForUser(user)
 
-    for (const handler of policyHandlers) {
-      const isAllowed = await this.execPolicyHandler(handler, ability, request)
-      if (!isAllowed) {
-        this.logger.debug(
-          `User ${user.id} failed a policy check for handler ${handler.constructor?.name || 'function'}`
-        )
-        throw new ForbiddenException('You do not have sufficient permissions to perform this action.')
-      }
-    }
+    // Attach ability to request for potential use in services/controllers
+    // Note: Be careful with this pattern as it can tightly couple your logic to Express.
+    ;(request as any).ability = ability
 
-    return true
+    const results = await Promise.all(
+      policyHandlers.map((handler) => this.execPolicyHandler(handler, ability, request))
+    )
+
+    return results.every(Boolean)
   }
 
   private async execPolicyHandler(
-    handler: Type<IPolicyHandler> | PolicyHandlerCallback,
+    handler: Type<IPolicyHandler>,
     ability: AppAbility,
-    user: UserWithRolesAndPermissions
+    request: Request
   ): Promise<boolean> {
-    if (typeof handler === 'function' && handler.prototype?.handle) {
-      const policyInstance = await this.moduleRef.resolve(handler as Type<IPolicyHandler>)
-      return policyInstance.handle(ability, user)
-    } else {
-      return (handler as PolicyHandlerCallback)(ability, user)
+    // We expect IPolicyHandler classes, not callbacks anymore for consistency.
+    const instance = this.moduleRef.get(handler, { strict: false })
+    if (!instance) {
+      // This can happen if the handler is not provided in any module.
+      // A solution is to have a specific module for policies or ensure they are provided where needed.
+      // For now, we will try to instantiate it manually if not found.
+      try {
+        const handlerInstance = await this.moduleRef.create(handler)
+        return handlerInstance.handle(ability, request)
+      } catch (e) {
+        this.logger.error(`Could not instantiate policy handler: ${handler.name}`, e.stack)
+        throw new Error(`Could not instantiate policy handler: ${handler.name}`)
+      }
     }
+    return instance.handle(ability, request)
   }
 }

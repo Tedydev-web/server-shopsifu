@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common'
-import { PrismaService } from '../services/prisma.service'
+import { PrismaService } from '../providers/prisma/prisma.service'
 import { BasePaginationQueryType, PaginatedResponseType, createPaginatedResponse } from '../dtos/pagination.dto'
 import { Prisma } from '@prisma/client'
 

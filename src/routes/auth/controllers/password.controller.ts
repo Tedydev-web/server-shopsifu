@@ -8,7 +8,7 @@ import { CookieNames } from '../auth.constants'
 import { AuthError } from '../auth.error'
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from '../auth.types'
+import { ActiveUserData } from 'src/shared/types/active-user.type'
 
 @UseGuards(ThrottlerGuard)
 @Auth()
@@ -18,7 +18,7 @@ export class PasswordController {
 
   @Post('change')
   async changePassword(
-    @ActiveUser() activeUser: AccessTokenPayload,
+    @ActiveUser() activeUser: ActiveUserData,
     @Body() body: ChangePasswordDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string,

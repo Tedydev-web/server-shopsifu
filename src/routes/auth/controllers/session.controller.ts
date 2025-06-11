@@ -13,29 +13,26 @@ import {
   Res,
   Inject,
   forwardRef,
-  Delete,
-  UseGuards
+  Delete
 } from '@nestjs/common'
 import { SessionsService } from '../services/session.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from 'src/routes/auth/auth.types'
+import { ActiveUserData } from 'src/shared/types/active-user.type'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import {
   GetSessionsQueryDto,
-  GetGroupedSessionsResponseDto,
   RevokeSessionsBodyDto,
   DeviceIdParamsDto,
   UpdateDeviceNameBodyDto,
   RevokeAllSessionsBodyDto
 } from '../dtos/session.dto'
-import { AuthType, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
+import { TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
 import { Response } from 'express'
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../services/auth-verification.service'
 import { AuthError } from '../auth.error'
-import { PoliciesGuard } from 'src/shared/guards/policies.guard'
 import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
-import { Action, AppAbility } from 'src/shared/casl/casl-ability.factory'
+import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
 
 interface CurrentUserContext {
   userId: number
@@ -60,7 +57,7 @@ export class SessionsController {
    */
   @Get()
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'Device'))
-  async getSessions(@ActiveUser() activeUser: AccessTokenPayload, @Query() query: GetSessionsQueryDto): Promise<any> {
+  async getSessions(@ActiveUser() activeUser: ActiveUserData, @Query() query: GetSessionsQueryDto): Promise<any> {
     if (query.page < 1 || query.limit < 1) {
       throw AuthError.InvalidPageOrLimit()
     }
@@ -71,12 +68,12 @@ export class SessionsController {
       query.limit,
       userContext.sessionId
     )
-    if (!sessions || sessions.devices.length === 0) {
+    if (!sessions || !sessions.data || sessions.data.devices.length === 0) {
       throw AuthError.SessionsNotFound()
     }
     return {
       message: 'auth.success.sessions.get',
-      data: sessions
+      data: sessions.data
     }
   }
 
@@ -87,7 +84,7 @@ export class SessionsController {
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Delete, 'Device'))
   @HttpCode(HttpStatus.OK)
   async revokeSessions(
-    @ActiveUser() activeUser: AccessTokenPayload,
+    @ActiveUser() activeUser: ActiveUserData,
     @Body() body: RevokeSessionsBodyDto,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
@@ -132,7 +129,7 @@ export class SessionsController {
       )
     }
 
-    const result = await this.sessionsService.revokeItems(userContext.userId, revocationOptions, userContext)
+    const result = await this.sessionsService.revokeItems(userContext.userId, revocationOptions, userContext, res)
 
     if (result.data.revokedSessionsCount === 0 && result.data.untrustedDevicesCount === 0) {
       throw AuthError.SessionOrDeviceNotFound()
@@ -154,7 +151,7 @@ export class SessionsController {
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Delete, 'Device'))
   @HttpCode(HttpStatus.OK)
   async revokeAllSessions(
-    @ActiveUser() activeUser: AccessTokenPayload,
+    @ActiveUser() activeUser: ActiveUserData,
     @Body() body: RevokeAllSessionsBodyDto,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
@@ -187,9 +184,9 @@ export class SessionsController {
   /**
    * Tạo đối tượng UserContext từ AccessTokenPayload
    */
-  private getUserContext(activeUser: AccessTokenPayload): CurrentUserContext {
+  private getUserContext(activeUser: ActiveUserData): CurrentUserContext {
     return {
-      userId: activeUser.userId,
+      userId: activeUser.id,
       sessionId: activeUser.sessionId,
       deviceId: activeUser.deviceId,
       email: activeUser.email
@@ -203,14 +200,14 @@ export class SessionsController {
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'Device'))
   @HttpCode(HttpStatus.OK)
   async updateDeviceName(
-    @ActiveUser() activeUser: AccessTokenPayload,
+    @ActiveUser() activeUser: ActiveUserData,
     @Param() params: DeviceIdParamsDto,
     @Body() body: UpdateDeviceNameBodyDto
   ): Promise<any> {
     if (isNaN(params.deviceId)) throw AuthError.InvalidDeviceId()
     if (!body.name || body.name.trim().length === 0) throw AuthError.InvalidDeviceName()
 
-    await this.sessionsService.updateDeviceName(activeUser.userId, params.deviceId, body.name)
+    await this.sessionsService.updateDeviceName(activeUser.id, params.deviceId, body.name)
 
     return {
       message: 'auth.success.device.nameUpdated',
@@ -227,9 +224,12 @@ export class SessionsController {
   @Post('devices/trust-current')
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'Device'))
   @HttpCode(HttpStatus.OK)
-  async trustCurrentDevice(@ActiveUser() activeUser: AccessTokenPayload): Promise<any> {
-    this.logger.debug(`[trustCurrentDevice] User ${activeUser.userId} trusting device ${activeUser.deviceId}`)
-    await this.sessionsService.trustCurrentDevice(activeUser.userId, activeUser.deviceId)
+  async trustCurrentDevice(@ActiveUser() activeUser: ActiveUserData): Promise<any> {
+    this.logger.debug(`[trustCurrentDevice] User ${activeUser.id} trusting device ${activeUser.deviceId}`)
+    if (!activeUser.id || !activeUser.deviceId) {
+      throw AuthError.Unauthorized()
+    }
+    await this.sessionsService.trustCurrentDevice(activeUser.id, activeUser.deviceId)
 
     return {
       message: 'auth.success.device.trusted'
@@ -242,11 +242,11 @@ export class SessionsController {
   @Delete('devices/:deviceId/untrust')
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'Device'))
   @HttpCode(HttpStatus.OK)
-  async untrustDevice(@ActiveUser() activeUser: AccessTokenPayload, @Param() params: DeviceIdParamsDto): Promise<any> {
+  async untrustDevice(@ActiveUser() activeUser: ActiveUserData, @Param() params: DeviceIdParamsDto): Promise<any> {
     if (isNaN(params.deviceId)) throw AuthError.InvalidDeviceId()
 
-    this.logger.debug(`[untrustDevice] User ${activeUser.userId} untrusting device ${params.deviceId}`)
-    await this.sessionsService.untrustDevice(activeUser.userId, params.deviceId)
+    this.logger.debug(`[untrustDevice] User ${activeUser.id} untrusting device ${params.deviceId}`)
+    await this.sessionsService.untrustDevice(activeUser.id, params.deviceId)
 
     return {
       message: 'auth.success.device.untrusted',

@@ -27,7 +27,8 @@ import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { PoliciesGuard } from 'src/shared/guards/policies.guard'
 import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
-import { Action, AppAbility } from 'src/shared/casl/casl-ability.factory'
+import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
+import { ActiveUserData } from 'src/shared/types/active-user.type'
 
 @Auth()
 @Controller('auth/2fa')
@@ -46,21 +47,21 @@ export class TwoFactorController {
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
   @HttpCode(HttpStatus.OK)
   async setupTwoFactor(
-    @ActiveUser() activeUser: AccessTokenPayload,
+    @ActiveUser() activeUser: ActiveUserData,
     @Ip() ip: string,
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[setupTwoFactor] Initiating 2FA setup for user: ${activeUser.userId}`)
+    this.logger.log(`[setupTwoFactor] Initiating 2FA setup for user: ${activeUser.id}`)
     if (!activeUser.email) {
       throw AuthError.InternalServerError('Email not found in access token payload.')
     }
 
-    const setupResult = await this.twoFactorService.generateSetupDetails(activeUser.userId)
+    const setupResult = await this.twoFactorService.generateSetupDetails(activeUser.id)
 
     const verificationResult = await this.authVerificationService.initiateVerification(
       {
-        userId: activeUser.userId,
+        userId: activeUser.id,
         deviceId: activeUser.deviceId,
         email: activeUser.email,
         ipAddress: ip,
@@ -137,11 +138,11 @@ export class TwoFactorController {
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
   @HttpCode(HttpStatus.OK)
   async disableTwoFactor(
-    @ActiveUser() activeUser: AccessTokenPayload,
+    @ActiveUser() activeUser: ActiveUserData,
     @Body() body: TwoFactorVerifyDto
   ): Promise<{ message: string }> {
-    this.logger.log(`[disableTwoFactor] Attempting to disable 2FA for user: ${activeUser.userId}`)
-    return this.twoFactorService.disableVerification(activeUser.userId, body.code, body.method)
+    this.logger.log(`[disableTwoFactor] Attempting to disable 2FA for user: ${activeUser.id}`)
+    return this.twoFactorService.disableVerification(activeUser.id, body.code, body.method)
   }
 
   /**
@@ -153,13 +154,13 @@ export class TwoFactorController {
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
   @HttpCode(HttpStatus.OK)
   async regenerateRecoveryCodes(
-    @ActiveUser() activeUser: AccessTokenPayload,
+    @ActiveUser() activeUser: ActiveUserData,
     @Body() body: TwoFactorVerifyDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string
   ): Promise<{ message: string; data: { recoveryCodes: string[] } }> {
-    this.logger.log(`[regenerateRecoveryCodes] User ${activeUser.userId} is attempting to regenerate recovery codes.`)
+    this.logger.log(`[regenerateRecoveryCodes] User ${activeUser.id} is attempting to regenerate recovery codes.`)
 
-    return this.twoFactorService.regenerateRecoveryCodes(activeUser.userId, body.code, body.method, ip, userAgent)
+    return this.twoFactorService.regenerateRecoveryCodes(activeUser.id, body.code, body.method, ip, userAgent)
   }
 }

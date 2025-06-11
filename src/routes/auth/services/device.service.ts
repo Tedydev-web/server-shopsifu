@@ -2,15 +2,15 @@ import { Injectable, Logger, Inject } from '@nestjs/common'
 import { I18nService, I18nContext } from 'nestjs-i18n'
 import { ConfigService } from '@nestjs/config'
 import { Device } from '@prisma/client'
-import { PrismaService } from 'src/shared/services/prisma.service'
+import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
-import { RedisService } from 'src/shared/services/redis.service'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EmailService } from 'src/shared/services/email.service'
 import { DeviceRepository } from 'src/shared/repositories/device.repository'
-import { DEVICE_REVERIFICATION_TTL } from 'src/shared/constants/redis.constants'
+import { DEVICE_REVERIFICATION_TTL } from 'src/shared/providers/redis/redis.constants'
 import { IDeviceService } from 'src/routes/auth/auth.types'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
 import { GlobalError } from 'src/shared/global.error'
 import { I18nTranslations } from 'src/generated/i18n.generated'
@@ -133,7 +133,7 @@ export class DeviceService implements IDeviceService {
 
       const details = [
         {
-          label: this.i18nService.t('email.Email.common.details.time', { lang }),
+          label: 'email.Email.common.details.time',
           value: new Date().toLocaleString(localeForDate, {
             timeZone: locationResult.timezone || 'Asia/Ho_Chi_Minh',
             dateStyle: 'full',
@@ -141,23 +141,23 @@ export class DeviceService implements IDeviceService {
           })
         },
         {
-          label: this.i18nService.t('email.Email.common.details.ipAddress', { lang }),
+          label: 'email.Email.common.details.ipAddress',
           value: ipAddress ?? 'N/A'
         },
         {
-          label: this.i18nService.t('email.Email.common.details.location', { lang }),
+          label: 'email.Email.common.details.location',
           value: location
         },
         {
-          label: this.i18nService.t('email.Email.common.details.device', { lang }),
+          label: 'email.Email.common.details.device',
           value: deviceString
         },
         {
-          label: this.i18nService.t('email.Email.common.details.browser', { lang }),
+          label: 'email.Email.common.details.browser',
           value: [uaInfo.browser, uaInfo.browserVersion].filter(Boolean).join(' ') || 'N/A'
         },
         {
-          label: this.i18nService.t('email.Email.common.details.os', { lang }),
+          label: 'email.Email.common.details.os',
           value: [uaInfo.os, uaInfo.osVersion].filter(Boolean).join(' ') || 'N/A'
         }
       ]
@@ -169,15 +169,10 @@ export class DeviceService implements IDeviceService {
 
       // Cập nhật thời gian thông báo cuối
       await this.deviceRepository.updateLastNotificationSent(deviceId)
-
-      this.logger.log(
-        `[notifyLoginOnUntrustedDevice] Sent new device login notification to user ${user.id} for device ${deviceId}`
-      )
     } catch (error) {
-      this.logger.error(
-        `[notifyLoginOnUntrustedDevice] Failed to send notification for user ${user.id}. Error: ${error.message}`,
-        error.stack
-      )
+      throw GlobalError.InternalServerError('auth.error.device.notifyLoginOnUntrustedDeviceFailed', {
+        error: error.message
+      })
     }
   }
 
@@ -239,11 +234,11 @@ export class DeviceService implements IDeviceService {
             userName: user.userProfile?.username || user.email.split('@')[0],
             details: [
               {
-                label: this.i18nService.t('email.Email.common.details.currentDevices', { lang }),
+                label: 'email.Email.common.details.currentDevices',
                 value: `${userDevices.length}`
               },
               {
-                label: this.i18nService.t('email.Email.common.details.deviceLimit', { lang }),
+                label: 'email.Email.common.details.deviceLimit',
                 value: `${this.maxAllowedDevices}`
               }
             ]

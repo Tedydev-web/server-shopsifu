@@ -1,47 +1,32 @@
-import { IsString, IsNotEmpty, MaxLength, IsOptional } from 'class-validator'
-import { PartialType } from '@nestjs/mapped-types'
+import { createZodDto } from 'nestjs-zod'
+import { z } from 'zod'
 import { Permission } from '@prisma/client'
 
-// Originally from create-permission.dto.ts
-export class CreatePermissionDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(50) // HTTP methods or CRUD actions are usually short
-  action: string // e.g., 'CREATE', 'GET', 'MANAGE_USERS'
+const PermissionSchema = z.object({
+  action: z
+    .string()
+    .min(1, { message: 'Action is required' })
+    .max(100, { message: 'Action must be 100 characters or less' }),
+  subject: z
+    .string()
+    .min(1, { message: 'Subject is required' })
+    .max(255, { message: 'Subject must be 255 characters or less' }),
+  description: z.string().max(500).optional().nullable(),
+  category: z.string().max(100).optional().nullable(),
+  conditions: z.record(z.any()).optional().nullable()
+})
 
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(255)
-  subject: string // e.g., 'users', '/api/v1/resource/:id', 'ProductEntity'
+export class CreatePermissionDto extends createZodDto(PermissionSchema) {}
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  description?: string
+export class UpdatePermissionDto extends createZodDto(PermissionSchema.partial()) {}
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  category?: string // e.g., 'UserManagement', 'Products', 'general'
-}
-
-// Originally from update-permission.dto.ts
-// CreatePermissionDto is now defined in the same file
-export class UpdatePermissionDto extends PartialType(CreatePermissionDto) {
-  // Các trường action, subject, description, category sẽ được kế thừa
-  // và là optional do PartialType.
-  // Không cần định nghĩa lại ở đây trừ khi muốn override decorator hoặc thêm logic.
-}
-
-// Originally from permission.dto.ts (the old one)
-export class PermissionDto
-  implements Omit<Permission, 'createdById' | 'updatedById' | 'deletedById' | 'createdBy' | 'updatedBy' | 'deletedBy'>
-{
+export class PermissionDto implements Omit<Permission, 'createdById' | 'updatedById' | 'deletedById'> {
   id: number
   action: string
   subject: string
   description: string | null
   category: string | null
+  conditions: Record<string, any> | null
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
@@ -57,6 +42,7 @@ export class PermissionDto
       subject: entity.subject,
       description: entity.description,
       category: entity.category,
+      conditions: entity.conditions as Record<string, any> | null,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
       deletedAt: entity.deletedAt

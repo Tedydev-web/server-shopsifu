@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { PrismaService } from 'src/shared/services/prisma.service'
+import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
 import { Permission } from './permission.model' // Import từ model mới tạo
 import { CreatePermissionDto, UpdatePermissionDto } from './permission.dto'
-import { RedisService } from 'src/shared/services/redis.service'
-import { RedisKeyManager } from 'src/shared/utils/redis-keys.utils'
-import { ALL_PERMISSIONS_CACHE_TTL, PERMISSION_CACHE_TTL } from 'src/shared/constants/redis.constants'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
+import { ALL_PERMISSIONS_CACHE_TTL, PERMISSION_CACHE_TTL } from 'src/shared/providers/redis/redis.constants'
 
 @Injectable()
 export class PermissionRepository {
@@ -77,7 +77,7 @@ export class PermissionRepository {
       return cachedPermission
     }
     const permission = await this.prisma.permission.findUnique({
-      where: { UQ_action_subject: { action, subject } }
+      where: { action_subject: { action, subject } }
     })
     if (permission) {
       await this.redisService.setJson(cacheKey, permission, PERMISSION_CACHE_TTL)
