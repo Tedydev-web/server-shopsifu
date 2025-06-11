@@ -363,6 +363,10 @@ export type I18nTranslations = {
                     "subject": string;
                     "headline": string;
                 };
+                "CREATE_USER": {
+                    "subject": string;
+                    "headline": string;
+                };
                 "common": {
                     "content": string;
                     "codeLabel": string;
@@ -482,6 +486,29 @@ export type I18nTranslations = {
                 "codesLabel": string;
                 "warning": string;
                 "buttonText": string;
+            };
+            "userManagement": {
+                "USER_CREATED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
+                "USER_UPDATED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
+                "USER_DELETED": {
+                    "subject": string;
+                    "title": string;
+                    "mainMessage": string;
+                    "secondaryMessage": string;
+                    "buttonText": string;
+                };
             };
             "common": {
                 "greeting": string;
@@ -617,6 +644,7 @@ export type I18nTranslations = {
         "error": {
             "notFound": string;
             "alreadyExists": string;
+            "usernameAlreadyExists": string;
             "createFailed": string;
             "updateFailed": string;
             "deleteFailed": string;
@@ -626,6 +654,7 @@ export type I18nTranslations = {
             "weakPassword": string;
             "cannotDeleteSelf": string;
             "cannotDeleteSystemUser": string;
+            "invalidVerificationData": string;
         };
         "success": {
             "create": string;
@@ -636,6 +665,7 @@ export type I18nTranslations = {
             "passwordChanged": string;
             "profileUpdated": string;
             "statusChanged": string;
+            "verificationSent": string;
         };
     };
 };

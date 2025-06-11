@@ -55,8 +55,9 @@ export class RoleController {
 
   @Delete(':id')
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Delete, 'Role'))
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
+  @HttpCode(HttpStatus.OK)
+  async remove(@Param('id', ParseIntPipe) id: number): Promise<{ message: string }> {
     await this.roleService.remove(id)
+    return { message: 'role.success.delete' }
   }
 }

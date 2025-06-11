@@ -35,6 +35,12 @@ import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { UserRepository } from 'src/routes/user/user.repository'
 
 // ================================================================
+// User Services
+// ================================================================
+import { UserService } from 'src/routes/user/user.service'
+import { CreateUserDto } from 'src/routes/user/user.dto'
+
+// ================================================================
 // Constants & Injection Tokens
 // ================================================================
 import {
@@ -157,7 +163,8 @@ export class AuthVerificationService {
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
     @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
-    private readonly passwordService: PasswordService
+    private readonly passwordService: PasswordService,
+    @Inject(forwardRef(() => UserService)) private readonly userService: UserService
   ) {
     this.VERIFICATION_ACTION_HANDLERS = this.initializeActionHandlers()
   }
@@ -184,6 +191,7 @@ export class AuthVerificationService {
       [TypeOfVerificationCode.DISABLE_2FA]: this.handleDisable2FAVerification.bind(this),
       [TypeOfVerificationCode.SETUP_2FA]: this.handleSetup2FAVerification.bind(this),
       [TypeOfVerificationCode.REGISTER]: this.handleRegistrationOtpVerified.bind(this),
+      [TypeOfVerificationCode.CREATE_USER]: this.handleCreateUserVerification.bind(this),
       [TypeOfVerificationCode.REGENERATE_2FA_CODES]: this.handleRegenerate2FACodesVerification.bind(this),
       [TypeOfVerificationCode.RESET_PASSWORD]: this.handleResetPasswordVerification.bind(this),
       [TypeOfVerificationCode.CHANGE_PASSWORD]: this.handleChangePasswordVerification.bind(this)
@@ -210,6 +218,12 @@ export class AuthVerificationService {
 
     // Xử lý đặc biệt cho đăng ký - không cần check user tồn tại
     if (purpose === TypeOfVerificationCode.REGISTER) {
+      return this.handleRegistrationInitiation(context, res)
+    }
+
+    // Xử lý đặc biệt cho tạo user mới - không cần check user tồn tại
+    if (purpose === TypeOfVerificationCode.CREATE_USER) {
+      this.logger.debug(`[initiateVerification] Starting user creation flow. Creating SLT and sending OTP.`)
       return this.handleRegistrationInitiation(context, res)
     }
 
@@ -477,16 +491,29 @@ export class AuthVerificationService {
    * Xác minh mã authentication (OTP hoặc 2FA)
    */
   private async verifyAuthenticationCode(sltContext: SltContextData & { sltJti: string }, code: string): Promise<void> {
-    const { userId, purpose, metadata } = sltContext
+    const { userId, purpose, metadata, sltJti } = sltContext
     const { twoFactorMethod, totpSecret } = metadata || {}
 
-    // Xác định phương thức xác thực và thực hiện
-    if (twoFactorMethod && (twoFactorMethod as string) !== 'EMAIL') {
-      this.logger.debug(`Verifying with two-factor method: ${twoFactorMethod}`)
-      await this.verifyWith2FA(code, userId, totpSecret, twoFactorMethod, purpose)
-    } else {
-      this.logger.debug(`Verifying with OTP method for purpose: ${purpose}`)
-      await this.verifyWithOtp(code, sltContext)
+    try {
+      // Xác định phương thức xác thực và thực hiện
+      if (twoFactorMethod && (twoFactorMethod as string) !== 'EMAIL') {
+        this.logger.debug(`Verifying with two-factor method: ${twoFactorMethod}`)
+        await this.verifyWith2FA(code, userId, totpSecret, twoFactorMethod, purpose)
+      } else {
+        this.logger.debug(`Verifying with OTP method for purpose: ${purpose}`)
+        await this.verifyWithOtp(code, sltContext)
+      }
+    } catch (error) {
+      // Increment SLT attempts khi verification fail để track failed attempts
+      try {
+        const newAttemptCount = await this.sltService.incrementSltAttempts(sltJti)
+        this.logger.warn(`Verification failed for SLT ${sltJti}. Attempt count: ${newAttemptCount}`)
+      } catch (incrementError) {
+        this.logger.error(`Failed to increment SLT attempts for ${sltJti}: ${incrementError.message}`)
+      }
+
+      // Re-throw original error
+      throw error
     }
   }
 
@@ -779,6 +806,64 @@ export class AuthVerificationService {
 
     // Override message cho change password
     return { message: 'auth.success.password.changeSuccess' }
+  }
+
+  /**
+   * Xử lý tạo user mới sau khi xác thực OTP thành công
+   * Hoàn tất quá trình tạo user với thông tin đã được verify
+   */
+  private async handleCreateUserVerification(context: SltContextData): Promise<VerificationResult> {
+    this.logger.log(`Handling post-verification for purpose: CREATE_USER`)
+
+    const { metadata } = context
+
+    if (!metadata) {
+      this.logger.error('No metadata found in SLT context for user creation')
+      throw AuthError.InternalServerError('Missing user creation data')
+    }
+
+    try {
+      // Chuyển đổi metadata thành CreateUserDto (loại bỏ confirmPassword vì đã validate)
+      const createUserDto: CreateUserDto = {
+        email: metadata.email,
+        password: metadata.password,
+        roleId: metadata.roleId,
+        firstName: metadata.firstName,
+        lastName: metadata.lastName,
+        username: metadata.username,
+        phoneNumber: metadata.phoneNumber,
+        bio: metadata.bio,
+        avatar: metadata.avatar,
+        countryCode: metadata.countryCode || 'VN',
+        isEmailVerified: metadata.isEmailVerified || false,
+        requireEmailVerification: metadata.requireEmailVerification || true
+      }
+
+      // Tạo user bằng UserService với thông tin đã được verify
+      const result = await this.userService.createFromOtpVerification(createUserDto)
+
+      this.logger.log(`User created successfully: ${result.data.email}`)
+
+      // Cast result.data to UserWithProfileAndRole để access role và userProfile
+      const userData = result.data as any
+
+      return {
+        message: result.message,
+        data: {
+          user: {
+            id: userData.id,
+            email: userData.email,
+            role: userData.role?.name,
+            username: userData.userProfile?.username,
+            firstName: userData.userProfile?.firstName,
+            lastName: userData.userProfile?.lastName
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Failed to create user: ${error.message}`, error.stack)
+      throw error
+    }
   }
 
   // ===================================================================

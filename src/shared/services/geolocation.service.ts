@@ -167,13 +167,13 @@ export class GeolocationService {
         timezone: 'Asia/Singapore',
         display: 'Singapore'
       },
-      { 
-        city: 'Tokyo', 
-        country: 'Japan', 
-        lat: 35.6762, 
-        lon: 139.6503, 
-        timezone: 'Asia/Tokyo', 
-        display: 'Tokyo, Japan' 
+      {
+        city: 'Tokyo',
+        country: 'Japan',
+        lat: 35.6762,
+        lon: 139.6503,
+        timezone: 'Asia/Tokyo',
+        display: 'Tokyo, Japan'
       },
       {
         city: 'Sydney',
@@ -264,10 +264,8 @@ export class GeolocationService {
           display: 'Ho Chi Minh, Vietnam',
           timezone: 'Asia/Ho_Chi_Minh'
         }
-      else if (firstOctet < 200) 
-        return { country: 'Singapore', display: 'Singapore', timezone: 'Asia/Singapore' }
-      else 
-        return { country: 'Asia', display: 'Asia', timezone: 'Asia/Bangkok' }
+      else if (firstOctet < 200) return { country: 'Singapore', display: 'Singapore', timezone: 'Asia/Singapore' }
+      else return { country: 'Asia', display: 'Asia', timezone: 'Asia/Bangkok' }
     } catch (error) {
       return { display: 'Vietnam', timezone: 'Asia/Ho_Chi_Minh' } // Fallback cuối cùng
     }

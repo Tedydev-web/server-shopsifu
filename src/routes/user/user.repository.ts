@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
 import { User, Prisma, Role, UserProfile, Permission, TwoFactorMethodType } from '@prisma/client'
-import { CreateUserDto, UpdateUserDto } from './user.dto'
+import { UserError } from './user.error'
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 
 export interface TwoFactorSettings {
   secret: string | null
@@ -67,30 +68,65 @@ export class UserRepository {
     firstName?: string | null
     lastName?: string | null
     phoneNumber?: string | null
+    bio?: string | null
+    avatar?: string | null
+    countryCode?: string | null
     googleId?: string
     googleAvatar?: string
   }): Promise<UserWithProfileAndRole> {
-    const { email, password, roleId, username, firstName, lastName, phoneNumber, googleId, googleAvatar } = data
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password,
-        googleId,
-        roleId,
-        status: 'ACTIVE',
-        userProfile: {
-          create: {
-            firstName: firstName || null,
-            lastName: lastName || null,
-            username,
-            phoneNumber: phoneNumber || null,
-            avatar: googleAvatar || null
+    const {
+      email,
+      password,
+      roleId,
+      username,
+      firstName,
+      lastName,
+      phoneNumber,
+      bio,
+      avatar,
+      countryCode,
+      googleId,
+      googleAvatar
+    } = data
+
+    try {
+      const user = await this.prisma.user.create({
+        data: {
+          email,
+          password,
+          googleId,
+          roleId,
+          status: 'ACTIVE',
+          userProfile: {
+            create: {
+              firstName: firstName || null,
+              lastName: lastName || null,
+              username,
+              phoneNumber: phoneNumber || null,
+              bio: bio || null,
+              avatar: avatar || googleAvatar || null,
+              countryCode: countryCode || 'VN'
+            }
+          }
+        },
+        include: userInclude
+      })
+      return this.toUserWithPermissions(user as any)
+    } catch (error) {
+      if (error instanceof PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          // Unique constraint violation
+          const target = error.meta?.target as string[]
+          if (target?.includes('email')) {
+            throw UserError.AlreadyExists(email)
+          } else if (target?.includes('username')) {
+            throw UserError.UsernameAlreadyExists(username)
           }
         }
-      },
-      include: userInclude
-    })
-    return this.toUserWithPermissions(user as any)
+      }
+      this.logger.error('Failed to create user with profile:', error)
+      throw UserError.CreateFailed()
+    }
   }
 
   async findAll(

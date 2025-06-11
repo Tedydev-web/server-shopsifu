@@ -2,6 +2,7 @@
   "error": {
     "notFound": "Người dùng không được tìm thấy",
     "alreadyExists": "Email '{email}' đã được sử dụng",
+    "usernameAlreadyExists": "Tên đăng nhập '{username}' đã được sử dụng",
     "createFailed": "Tạo người dùng thất bại",
     "updateFailed": "Cập nhật người dùng thất bại",
     "deleteFailed": "Xóa người dùng thất bại",
@@ -10,7 +11,8 @@
     "emailRequired": "Email là bắt buộc",
     "weakPassword": "Mật khẩu quá yếu, vui lòng chọn mật khẩu mạnh hơn",
     "cannotDeleteSelf": "Không thể xóa tài khoản của chính mình",
-    "cannotDeleteSystemUser": "Không thể xóa người dùng hệ thống"
+    "cannotDeleteSystemUser": "Không thể xóa người dùng hệ thống",
+    "invalidVerificationData": "Dữ liệu xác thực không hợp lệ"
   },
   "success": {
     "create": "Tạo người dùng thành công",
@@ -20,6 +22,7 @@
     "list": "Lấy danh sách người dùng thành công",
     "passwordChanged": "Thay đổi mật khẩu thành công",
     "profileUpdated": "Cập nhật hồ sơ thành công",
-    "statusChanged": "Thay đổi trạng thái người dùng thành công"
+    "statusChanged": "Thay đổi trạng thái người dùng thành công",
+    "verificationSent": "Mã xác thực đã được gửi đến email của bạn"
   }
 }

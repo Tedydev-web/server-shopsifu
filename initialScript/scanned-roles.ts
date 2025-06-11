@@ -1,5 +1,5 @@
 // Auto-generated roles from scanning database and codebase
-// Generated at: 2025-06-11T16:06:39.958Z
+// Generated at: 2025-06-11T16:26:24.700Z
 // Total roles found: 3
 
 export const SCANNED_ROLES = [
@@ -75,6 +75,18 @@ export const SCANNED_ROLES = [
       },
       {
         "action": "delete",
+        "subject": "Device"
+      },
+      {
+        "action": "read",
+        "subject": "UserProfile"
+      },
+      {
+        "action": "update",
+        "subject": "UserProfile"
+      },
+      {
+        "action": "update",
         "subject": "Device"
       }
     ],

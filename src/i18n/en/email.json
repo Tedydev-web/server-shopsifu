@@ -45,6 +45,10 @@
         "subject": "Confirm Revocation of All Sessions",
         "headline": "Confirm Revocation of All Sessions"
       },
+      "CREATE_USER": {
+        "subject": "Verify User Creation",
+        "headline": "Verify New User Creation"
+      },
       "common": {
         "content": "Please use the verification code below to complete your action. If you did not request this, please ignore this email",
         "codeLabel": "Your Verification Code",
@@ -112,7 +116,7 @@
         "subject": "Alert: Your Account Has Been Locked",
         "title": "Your Account Has Been Temporarily Locked",
         "mainMessage": "We detected too many failed login attempts and have temporarily locked your account for security",
-        "secondaryMessage": "Please wait {lockoutMinutes} minutes before trying again or reset your password if you’ve forgotten it",
+        "secondaryMessage": "Please wait {lockoutMinutes} minutes before trying again or reset your password if you've forgotten it",
         "buttonText": "Reset Password",
         "details": {
           "lockoutDuration": "Lockout Duration"
@@ -154,7 +158,7 @@
     "welcome": {
       "subject": "Welcome to Shopsifu!",
       "headline": "Welcome to Shopsifu!",
-      "content": "Thank you for signing up. We’re thrilled to have you here. Start exploring our amazing features now",
+      "content": "Thank you for signing up. We're thrilled to have you here. Start exploring our amazing features now",
       "buttonText": "Get Started"
     },
     "recoveryCodes": {
@@ -164,6 +168,29 @@
       "codesLabel": "Your Recovery Codes:",
       "warning": "Each code can only be used once. Do not share these codes with anyone",
       "buttonText": "Manage 2FA Settings"
+    },
+    "userManagement": {
+      "USER_CREATED": {
+        "subject": "Notification: New User Account Created",
+        "title": "New User Account Created",
+        "mainMessage": "A new user account has been created on the Shopsifu system",
+        "secondaryMessage": "If you did not perform this action, please contact the system administrator immediately",
+        "buttonText": "View User Management"
+      },
+      "USER_UPDATED": {
+        "subject": "Notification: Account Information Updated",
+        "title": "Account Information Updated",
+        "mainMessage": "User account information has been updated on the Shopsifu system",
+        "secondaryMessage": "If you did not perform or authorize this action, please contact the system administrator immediately",
+        "buttonText": "View Account Details"
+      },
+      "USER_DELETED": {
+        "subject": "Warning: User Account Deleted",
+        "title": "User Account Deleted",
+        "mainMessage": "A user account has been deleted from the Shopsifu system. This action cannot be undone",
+        "secondaryMessage": "If this was an unintended action, please contact the system administrator immediately for assistance",
+        "buttonText": "View System Logs"
+      }
     },
     "common": {
       "greeting": "Hello {userName},",

@@ -2,6 +2,7 @@
   "error": {
     "notFound": "User not found",
     "alreadyExists": "Email '{email}' is already in use",
+    "usernameAlreadyExists": "Username '{username}' is already in use",
     "createFailed": "Failed to create user",
     "updateFailed": "Failed to update user",
     "deleteFailed": "Failed to delete user",
@@ -10,7 +11,8 @@
     "emailRequired": "Email is required",
     "weakPassword": "Password is too weak, please choose a stronger password",
     "cannotDeleteSelf": "Cannot delete your own account",
-    "cannotDeleteSystemUser": "Cannot delete system user"
+    "cannotDeleteSystemUser": "Cannot delete system user",
+    "invalidVerificationData": "Invalid verification data"
   },
   "success": {
     "create": "User created successfully",
@@ -20,6 +22,7 @@
     "list": "Users retrieved successfully",
     "passwordChanged": "Password changed successfully",
     "profileUpdated": "Profile updated successfully",
-    "statusChanged": "User status changed successfully"
+    "statusChanged": "User status changed successfully",
+    "verificationSent": "Verification code has been sent to your email"
   }
 }

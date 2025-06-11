@@ -10,6 +10,12 @@ export class UserError {
     return new ApiException(HttpStatus.CONFLICT, 'USER_ALREADY_EXISTS', 'user.error.alreadyExists', { email })
   }
 
+  public static UsernameAlreadyExists(username: string): ApiException {
+    return new ApiException(HttpStatus.CONFLICT, 'USER_USERNAME_ALREADY_EXISTS', 'user.error.usernameAlreadyExists', {
+      username
+    })
+  }
+
   public static CreateFailed(): ApiException {
     return new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'USER_CREATE_FAILED', 'user.error.createFailed')
   }
@@ -20,5 +26,9 @@ export class UserError {
 
   public static DeleteFailed(): ApiException {
     return new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'USER_DELETE_FAILED', 'user.error.deleteFailed')
+  }
+
+  public static InvalidVerificationData(): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'INVALID_VERIFICATION_DATA', 'user.error.invalidVerificationData')
   }
 }

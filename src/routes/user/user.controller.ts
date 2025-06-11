@@ -12,8 +12,11 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
-  UseGuards
+  UseGuards,
+  Ip,
+  Res
 } from '@nestjs/common'
+import { Response } from 'express'
 
 // ================================================================
 // Internal Services & Types
@@ -28,10 +31,11 @@ import { Auth } from 'src/shared/decorators/auth.decorator'
 import { PoliciesGuard } from 'src/shared/guards/policies.guard'
 import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
 import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
+import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 
 /**
  * Controller xử lý các API endpoints cho User management
- * Hỗ trợ CRUD operations với custom i18n messages và authorization
+ * Sử dụng flow OTP verification thống nhất cho tạo user và CRUD operations
  */
 
 @Auth()
@@ -41,19 +45,28 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   // ================================================================
-  // Public Methods - API Endpoints
+  // User Creation with OTP Verification Flow
   // ================================================================
 
+  /**
+   * Tạo user mới với OTP verification
+   * Flow: Submit data → SLT token + OTP → Verify qua auth/otp/verify → User được tạo
+   */
   @Post()
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Create, 'User'))
-  @HttpCode(HttpStatus.CREATED)
-  async create(@Body() createUserDto: CreateUserDto) {
-    const result = await this.userService.create(createUserDto)
-    return {
-      message: result.message,
-      data: UserDto.fromEntity(result.data)
-    }
+  @HttpCode(HttpStatus.OK)
+  async create(
+    @Body() createUserDto: CreateUserDto,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    return await this.userService.initiateUserCreation(createUserDto, ip, userAgent, res)
   }
+
+  // ================================================================
+  // Standard CRUD Operations
+  // ================================================================
 
   @Get()
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'User'))

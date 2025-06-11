@@ -1,8 +1,9 @@
 // ================================================================
 // NestJS Dependencies
 // ================================================================
-import { Injectable, Inject } from '@nestjs/common'
+import { Injectable, Inject, forwardRef } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
+import { Response } from 'express'
 
 // ================================================================
 // External Libraries
@@ -17,6 +18,9 @@ import { CreateUserDto, UpdateUserDto } from './user.dto'
 import { UserError } from './user.error'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { I18nTranslations } from 'src/generated/i18n.generated'
+import { EmailService } from 'src/shared/services/email.service'
+import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
+import { TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
 
 // ================================================================
 // Constants & Injection Tokens
@@ -31,16 +35,26 @@ export interface UserServiceResponse<T = any> {
   data: T
 }
 
+export interface InitiateUserCreationResponse {
+  message: string
+  verificationType: 'OTP'
+  requiresVerification: boolean
+}
+
 /**
  * Service xử lý các thao tác CRUD và business logic cho User
- * Hỗ trợ hash password, validation và trả về custom i18n messages
+ * Hỗ trợ hash password, validation, OTP verification và trả về custom i18n messages
+ * Tích hợp email notifications cho tất cả các operations
  */
 @Injectable()
 export class UserService {
   constructor(
     private readonly userRepository: UserRepository,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
-    private readonly i18nService: I18nService<I18nTranslations>
+    private readonly i18nService: I18nService<I18nTranslations>,
+    private readonly emailService: EmailService,
+    @Inject(forwardRef(() => AuthVerificationService))
+    private readonly authVerificationService: AuthVerificationService
   ) {}
 
   // ================================================================
@@ -48,7 +62,49 @@ export class UserService {
   // ================================================================
 
   /**
-   * Tạo user mới với password đã được hash
+   * Bước 1: Khởi tạo tạo user với OTP verification
+   * Gửi OTP đến email để verify trước khi tạo user thực sự
+   * @param createUserDto - Thông tin user cần tạo
+   * @param ip - Địa chỉ IP của request
+   * @param userAgent - User agent của request
+   * @param res - Response object để set SLT cookie
+   * @returns InitiateUserCreationResponse với thông tin OTP verification
+   */
+  async initiateUserCreation(
+    createUserDto: CreateUserDto,
+    ip: string,
+    userAgent: string,
+    res: Response
+  ): Promise<InitiateUserCreationResponse> {
+    // Kiểm tra email đã tồn tại chưa
+    const existingUser = await this.userRepository.findByEmail(createUserDto.email)
+    if (existingUser) {
+      throw UserError.AlreadyExists(createUserDto.email)
+    }
+
+    // Khởi tạo verification với AuthVerificationService
+    const verificationResult = await this.authVerificationService.initiateVerification(
+      {
+        userId: 0, // Temporary user ID
+        deviceId: 0, // Temporary device ID
+        email: createUserDto.email,
+        ipAddress: ip,
+        userAgent,
+        purpose: TypeOfVerificationCode.CREATE_USER,
+        metadata: createUserDto
+      },
+      res
+    )
+
+    return {
+      message: verificationResult.message,
+      verificationType: 'OTP',
+      requiresVerification: true
+    }
+  }
+
+  /**
+   * Tạo user trực tiếp (admin only) - skip OTP verification
    * @param createUserDto - Thông tin user cần tạo
    * @returns UserServiceResponse với user object đã được tạo
    * @throws UserError.AlreadyExists nếu email đã tồn tại
@@ -61,15 +117,66 @@ export class UserService {
     }
 
     // Hash password trước khi lưu
-    const { password, ...rest } = createUserDto
-    const hashedPassword = await this.hashingService.hash(password)
+    const hashedPassword = await this.hashingService.hash(createUserDto.password)
 
-    const userData: any = {
-      ...rest,
-      password: hashedPassword
+    // Sử dụng createWithProfile để tạo user với thông tin profile
+    const user = await this.userRepository.createWithProfile({
+      email: createUserDto.email,
+      password: hashedPassword,
+      roleId: createUserDto.roleId,
+      username: createUserDto.username || createUserDto.email.split('@')[0],
+      firstName: createUserDto.firstName || null,
+      lastName: createUserDto.lastName || null,
+      phoneNumber: createUserDto.phoneNumber || null,
+      bio: createUserDto.bio || null,
+      avatar: createUserDto.avatar || null,
+      countryCode: createUserDto.countryCode || 'VN'
+    })
+
+    // Gửi email thông báo user mới được tạo bởi admin
+    await this.sendUserCreatedByAdminEmail(user)
+
+    return {
+      message: 'user.success.create',
+      data: user
+    }
+  }
+
+  /**
+   * Tạo user qua OTP verification flow
+   * @param createUserDto - Thông tin user cần tạo (đã verify qua OTP)
+   * @returns UserServiceResponse với user object đã được tạo
+   * @throws UserError.AlreadyExists nếu email đã tồn tại
+   */
+  async createFromOtpVerification(createUserDto: CreateUserDto): Promise<UserServiceResponse<User>> {
+    // Kiểm tra email đã tồn tại chưa
+    const existingUser = await this.userRepository.findByEmail(createUserDto.email)
+    if (existingUser) {
+      throw UserError.AlreadyExists(createUserDto.email)
     }
 
-    const user = await this.userRepository.create(userData)
+    // Hash password trước khi lưu
+    const hashedPassword = await this.hashingService.hash(createUserDto.password)
+
+    // Sử dụng createWithProfile để tạo user với thông tin profile
+    const user = await this.userRepository.createWithProfile({
+      email: createUserDto.email,
+      password: hashedPassword,
+      roleId: createUserDto.roleId,
+      username: createUserDto.username || createUserDto.email.split('@')[0],
+      firstName: createUserDto.firstName || null,
+      lastName: createUserDto.lastName || null,
+      phoneNumber: createUserDto.phoneNumber || null,
+      bio: createUserDto.bio || null,
+      avatar: createUserDto.avatar || null,
+      countryCode: createUserDto.countryCode || 'VN'
+    })
+
+    // Gửi email chào mừng cho user mới
+    await this.sendWelcomeEmail(user)
+
+    // Gửi email thông báo admin về user mới được tạo qua OTP flow
+    await this.sendUserCreatedNotificationToAdmin(user)
 
     return {
       message: 'user.success.create',
@@ -137,6 +244,9 @@ export class UserService {
 
     const updatedUser = await this.userRepository.update(id, dataToUpdate)
 
+    // Gửi email thông báo cập nhật user
+    await this.sendUserUpdatedEmail(updatedUser, existingUser)
+
     return {
       message: 'user.success.update',
       data: updatedUser
@@ -151,9 +261,13 @@ export class UserService {
    */
   async remove(id: number): Promise<UserServiceResponse<User>> {
     // Kiểm tra user tồn tại trước khi xóa
-    await this.findOne(id)
-    
+    const existingUserResponse = await this.findOne(id)
+    const existingUser = existingUserResponse.data
+
     const deletedUser = await this.userRepository.remove(id)
+
+    // Gửi email thông báo xóa user
+    await this.sendUserDeletedEmail(existingUser)
 
     return {
       message: 'user.success.delete',
@@ -162,8 +276,239 @@ export class UserService {
   }
 
   // ================================================================
+  // Private Methods - Email Notification Helper Functions
+  // ================================================================
+
+  /**
+   * Gửi email chào mừng cho user mới
+   * @param user - User object
+   */
+  private async sendWelcomeEmail(user: any): Promise<void> {
+    try {
+      await this.emailService.sendWelcomeEmail(user.email, {
+        userName: user.userProfile?.firstName || user.userProfile?.username || user.email,
+        lang: 'vi'
+      })
+    } catch (error) {
+      // Log error nhưng không throw để không affect user creation
+      console.error('Failed to send welcome email:', error)
+    }
+  }
+
+  /**
+   * Gửi email thông báo admin về user mới được tạo qua OTP flow
+   * @param user - User object với thông tin profile
+   */
+  private async sendUserCreatedNotificationToAdmin(user: any): Promise<void> {
+    try {
+      // Lấy email admin từ environment hoặc config
+      const adminEmails = process.env.USER_MANAGEMENT_ADMIN_EMAIL?.split(',') || ['admin@shopsifu.com']
+      
+      for (const adminEmail of adminEmails) {
+        await this.emailService.sendUserCreatedAlert(adminEmail.trim(), {
+          userName: 'Administrator',
+          newUserInfo: {
+            email: user.email,
+            firstName: user.userProfile?.firstName,
+            lastName: user.userProfile?.lastName,
+            phoneNumber: user.userProfile?.phoneNumber,
+            role: 'Customer' // Default role cho user tự đăng ký
+          },
+          adminInfo: {
+            adminName: 'System (Self Registration)',
+            adminEmail: 'system@shopsifu.com',
+            createdAt: new Date().toLocaleString('vi-VN'),
+            ipAddress: 'System Generated',
+            userAgent: 'OTP Verification Flow'
+          },
+          lang: 'vi'
+        })
+      }
+    } catch (error) {
+      console.error('Failed to send admin notification:', error)
+      // Không throw error để không ảnh hưởng đến flow chính
+    }
+  }
+
+  /**
+   * Gửi email thông báo user được tạo bởi admin
+   * @param user - User object với thông tin profile
+   */
+  private async sendUserCreatedByAdminEmail(user: any): Promise<void> {
+    try {
+      // Lấy email security team và admin từ environment
+      const securityEmails = process.env.USER_MANAGEMENT_SECURITY_EMAIL?.split(',') || ['security@shopsifu.com']
+      const adminEmails = process.env.USER_MANAGEMENT_ADMIN_EMAIL?.split(',') || ['admin@shopsifu.com']
+      
+      const allRecipients = [...securityEmails, ...adminEmails]
+      
+      for (const recipientEmail of allRecipients) {
+        await this.emailService.sendUserCreatedAlert(recipientEmail.trim(), {
+          userName: 'Security Team',
+          newUserInfo: {
+            email: user.email,
+            firstName: user.userProfile?.firstName,
+            lastName: user.userProfile?.lastName,
+            phoneNumber: user.userProfile?.phoneNumber,
+            role: user.role?.name || 'Unknown'
+          },
+          adminInfo: {
+            adminName: 'System Administrator',
+            adminEmail: 'admin@shopsifu.com',
+            createdAt: new Date().toLocaleString('vi-VN'),
+            ipAddress: 'Admin Panel',
+            userAgent: 'Administrative Action'
+          },
+          lang: 'vi'
+        })
+      }
+    } catch (error) {
+      console.error('Failed to send user created by admin email:', error)
+      // Không throw error để không ảnh hưởng đến flow chính
+    }
+  }
+
+  /**
+   * Gửi email thông báo user được cập nhật
+   * @param updatedUser - User object sau khi cập nhật
+   * @param previousUser - User object trước khi cập nhật
+   */
+  private async sendUserUpdatedEmail(updatedUser: any, previousUser: any): Promise<void> {
+    try {
+      // Xây dựng danh sách các thay đổi
+      const changedFields = this.buildChangedFields(previousUser, updatedUser)
+      
+      if (changedFields.length === 0) {
+        return // Không có thay đổi nào, không cần gửi email
+      }
+
+      // Lấy email security team từ environment
+      const securityEmails = process.env.USER_MANAGEMENT_SECURITY_EMAIL?.split(',') || ['security@shopsifu.com']
+      
+      for (const securityEmail of securityEmails) {
+        await this.emailService.sendUserUpdatedAlert(securityEmail.trim(), {
+          userName: 'Security Team',
+          userInfo: {
+            email: updatedUser.email,
+            firstName: updatedUser.userProfile?.firstName,
+            lastName: updatedUser.userProfile?.lastName,
+            phoneNumber: updatedUser.userProfile?.phoneNumber,
+            role: updatedUser.role?.name || 'Unknown'
+          },
+          changedFields,
+          adminInfo: {
+            adminName: 'System Administrator',
+            adminEmail: 'admin@shopsifu.com',
+            updatedAt: new Date().toLocaleString('vi-VN'),
+            ipAddress: 'Admin Panel',
+            userAgent: 'Administrative Update'
+          },
+          lang: 'vi'
+        })
+      }
+    } catch (error) {
+      console.error('Failed to send user updated email:', error)
+      // Không throw error để không ảnh hưởng đến flow chính
+    }
+  }
+
+  /**
+   * Gửi email thông báo user bị xóa
+   * @param deletedUser - User object đã bị xóa
+   */
+  private async sendUserDeletedEmail(deletedUser: any): Promise<void> {
+    try {
+      // Lấy email audit team và security team từ environment
+      const auditEmails = process.env.USER_MANAGEMENT_AUDIT_EMAIL?.split(',') || ['audit@shopsifu.com']
+      const securityEmails = process.env.USER_MANAGEMENT_SECURITY_EMAIL?.split(',') || ['security@shopsifu.com']
+      
+      const allRecipients = [...auditEmails, ...securityEmails]
+      
+      for (const recipientEmail of allRecipients) {
+        await this.emailService.sendUserDeletedAlert(recipientEmail.trim(), {
+          userName: 'Audit Team',
+          deletedUserInfo: {
+            userId: deletedUser.id.toString(),
+            email: deletedUser.email,
+            firstName: deletedUser.userProfile?.firstName,
+            lastName: deletedUser.userProfile?.lastName,
+            phoneNumber: deletedUser.userProfile?.phoneNumber,
+            role: deletedUser.role?.name || 'Unknown',
+            accountCreatedAt: deletedUser.createdAt?.toLocaleString('vi-VN') || 'Unknown'
+          },
+          adminInfo: {
+            adminName: 'System Administrator',
+            adminEmail: 'admin@shopsifu.com',
+            deletedAt: new Date().toLocaleString('vi-VN'),
+            ipAddress: 'Admin Panel',
+            userAgent: 'Administrative Deletion'
+          },
+          isDangerous: true,
+          lang: 'vi'
+        })
+      }
+    } catch (error) {
+      console.error('Failed to send user deleted email:', error)
+      // Không throw error để không ảnh hưởng đến flow chính
+    }
+  }
+
+  // ================================================================
   // Private Methods - Utility & Helper Functions
   // ================================================================
+
+  /**
+   * Xây dựng danh sách các field đã thay đổi giữa user cũ và mới
+   * @param oldUser - User object trước khi cập nhật
+   * @param newUser - User object sau khi cập nhật
+   * @returns Array các thay đổi với format { field, oldValue, newValue }
+   */
+  private buildChangedFields(oldUser: any, newUser: any): Array<{ field: string; oldValue: string; newValue: string }> {
+    const changes: Array<{ field: string; oldValue: string; newValue: string }> = []
+
+    // Kiểm tra các field chính của user
+    const fieldsToCheck = [
+      { key: 'email', label: 'Email' },
+      { key: 'status', label: 'Status' },
+      { key: 'isEmailVerified', label: 'Email Verified' },
+      { key: 'roleId', label: 'Role ID' }
+    ]
+
+    fieldsToCheck.forEach(({ key, label }) => {
+      if (oldUser[key] !== newUser[key]) {
+        changes.push({
+          field: label,
+          oldValue: oldUser[key]?.toString() || 'null',
+          newValue: newUser[key]?.toString() || 'null'
+        })
+      }
+    })
+
+    // Kiểm tra các field trong userProfile nếu có
+    if (oldUser.userProfile && newUser.userProfile) {
+      const profileFields = [
+        { key: 'firstName', label: 'First Name' },
+        { key: 'lastName', label: 'Last Name' },
+        { key: 'username', label: 'Username' },
+        { key: 'phoneNumber', label: 'Phone Number' },
+        { key: 'bio', label: 'Bio' },
+        { key: 'avatar', label: 'Avatar' },
+        { key: 'countryCode', label: 'Country Code' }
+      ]
+
+      profileFields.forEach(({ key, label }) => {
+        if (oldUser.userProfile[key] !== newUser.userProfile[key]) {
+          changes.push({
+            field: label,
+            oldValue: oldUser.userProfile[key]?.toString() || 'empty',
+            newValue: newUser.userProfile[key]?.toString() || 'empty'
+          })
+        }
+      })
+    }
+
+    return changes
+  }
 
   /**
    * Tìm user theo ID mà không trả về response wrapper (để sử dụng internal)

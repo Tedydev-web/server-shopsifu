@@ -42,6 +42,8 @@ const configSchema = z.object({
 
   // OTP & Verification
   OTP_EXPIRES_IN: z.string().default('5m'),
+  OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  OTP_EXPIRY_SECONDS: z.coerce.number().int().positive().default(300), // 5 minutes
 
   // SLT (State-Linking Token)
   SLT_JWT_SECRET: z.string(),

@@ -162,6 +162,15 @@ export class RedisKeyManager {
   }
 
   /**
+   * Key for tracking active SLT token by user and purpose.
+   * @type STRING
+   * @example "auth:slt:active:123:VERIFY_2FA"
+   */
+  public static getSltActiveTokenKey(userId: number, purpose: string): string {
+    return `${RedisPrefix.AUTH}:slt:active:${userId}:${purpose}`
+  }
+
+  /**
    * Key for the user login failures counter.
    * @type STRING (Counter)
    * @example "auth:user:login_failures:123"

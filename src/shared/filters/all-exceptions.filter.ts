@@ -83,9 +83,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
       errors: structuredErrors
     }
 
+    // Only add details for debugging in non-production, but preserve the translated message
     if (process.env.NODE_ENV !== 'production') {
       if (details && !structuredErrors) {
-        ;(responseBody as any).message = details
+        ;(responseBody as any).details = details
       }
     } else if (statusCode >= 500 && !structuredErrors) {
       delete (responseBody as any).errors

@@ -30,6 +30,9 @@ import { AccountLockedEmail, AccountLockedEmailProps } from 'emails/account-lock
 import { SuspiciousActivityEmail, SuspiciousActivityEmailProps } from 'emails/suspicious-activity-email'
 import { AccountLinkAlert, AccountLinkAlertProps } from 'emails/account-link-alert'
 import { WelcomeEmail, WelcomeEmailProps } from 'emails/welcome-email'
+import { UserCreatedAlert, UserCreatedAlertProps } from 'emails/user-created-alert'
+import { UserUpdatedAlert, UserUpdatedAlertProps } from 'emails/user-updated-alert'
+import { UserDeletedAlert, UserDeletedAlertProps } from 'emails/user-deleted-alert'
 
 // ================================================================
 // Type Exports & Interfaces
@@ -46,7 +49,10 @@ export {
   AccountLockedEmailProps,
   SuspiciousActivityEmailProps,
   AccountLinkAlertProps,
-  WelcomeEmailProps
+  WelcomeEmailProps,
+  UserCreatedAlertProps,
+  UserUpdatedAlertProps,
+  UserDeletedAlertProps
 }
 
 type TranslateFunction = (key: string, options?: any) => string
@@ -432,6 +438,121 @@ export class EmailService {
       to,
       subjectKey: 'email.Email.welcome.subject',
       component: WelcomeEmail,
+      props: fullProps,
+      lang
+    })
+  }
+
+  // ================================================================
+  // Public Methods - User Management Alert Emails
+  // ================================================================
+
+  /**
+   * Gửi email thông báo tạo user mới cho admin và các stakeholder
+   * @param to - Địa chỉ email người nhận
+   * @param props - Thông tin về user được tạo và admin thực hiện
+   */
+  async sendUserCreatedAlert(
+    to: string,
+    props: Omit<
+      UserCreatedAlertProps,
+      'title' | 'greeting' | 'mainMessage' | 'secondaryMessage' | 'buttonText' | 'buttonUrl'
+    >
+  ): Promise<void> {
+    const lang = this.getSafeLang(props.lang)
+    const t: TranslateFunction = (key, options) => this.i18nService.t(key, { lang, ...options })
+
+    const fullProps: UserCreatedAlertProps = {
+      ...props,
+      buttonUrl: `${this.frontendUrl}/admin/users`,
+      greeting: t('email.Email.common.greeting', {
+        args: { userName: props.userName }
+      }),
+      title: t('email.Email.userManagement.USER_CREATED.title'),
+      mainMessage: t('email.Email.userManagement.USER_CREATED.mainMessage'),
+      secondaryMessage: t('email.Email.userManagement.USER_CREATED.secondaryMessage'),
+      buttonText: t('email.Email.userManagement.USER_CREATED.buttonText')
+    }
+
+    await this.send({
+      to,
+      subjectKey: 'email.Email.userManagement.USER_CREATED.subject',
+      from: this.securityEmailFrom,
+      component: UserCreatedAlert,
+      props: fullProps,
+      lang
+    })
+  }
+
+  /**
+   * Gửi email thông báo cập nhật thông tin user
+   * @param to - Địa chỉ email người nhận
+   * @param props - Thông tin về user được cập nhật và các thay đổi
+   */
+  async sendUserUpdatedAlert(
+    to: string,
+    props: Omit<
+      UserUpdatedAlertProps,
+      'title' | 'greeting' | 'mainMessage' | 'secondaryMessage' | 'buttonText' | 'buttonUrl'
+    >
+  ): Promise<void> {
+    const lang = this.getSafeLang(props.lang)
+    const t: TranslateFunction = (key, options) => this.i18nService.t(key, { lang, ...options })
+
+    const fullProps: UserUpdatedAlertProps = {
+      ...props,
+      buttonUrl: `${this.frontendUrl}/admin/users/${props.userInfo.email}`,
+      greeting: t('email.Email.common.greeting', {
+        args: { userName: props.userName }
+      }),
+      title: t('email.Email.userManagement.USER_UPDATED.title'),
+      mainMessage: t('email.Email.userManagement.USER_UPDATED.mainMessage'),
+      secondaryMessage: t('email.Email.userManagement.USER_UPDATED.secondaryMessage'),
+      buttonText: t('email.Email.userManagement.USER_UPDATED.buttonText')
+    }
+
+    await this.send({
+      to,
+      subjectKey: 'email.Email.userManagement.USER_UPDATED.subject',
+      from: this.securityEmailFrom,
+      component: UserUpdatedAlert,
+      props: fullProps,
+      lang
+    })
+  }
+
+  /**
+   * Gửi email cảnh báo xóa user - hành động quan trọng
+   * @param to - Địa chỉ email người nhận
+   * @param props - Thông tin về user bị xóa và admin thực hiện
+   */
+  async sendUserDeletedAlert(
+    to: string,
+    props: Omit<
+      UserDeletedAlertProps,
+      'title' | 'greeting' | 'mainMessage' | 'secondaryMessage' | 'buttonText' | 'buttonUrl'
+    >
+  ): Promise<void> {
+    const lang = this.getSafeLang(props.lang)
+    const t: TranslateFunction = (key, options) => this.i18nService.t(key, { lang, ...options })
+
+    const fullProps: UserDeletedAlertProps = {
+      ...props,
+      buttonUrl: `${this.frontendUrl}/admin/audit-logs`,
+      greeting: t('email.Email.common.greeting', {
+        args: { userName: props.userName }
+      }),
+      title: t('email.Email.userManagement.USER_DELETED.title'),
+      mainMessage: t('email.Email.userManagement.USER_DELETED.mainMessage'),
+      secondaryMessage: t('email.Email.userManagement.USER_DELETED.secondaryMessage'),
+      buttonText: t('email.Email.userManagement.USER_DELETED.buttonText')
+    }
+
+    await this.send({
+      to,
+      subjectKey: 'email.Email.userManagement.USER_DELETED.subject',
+      from: this.securityEmailFrom,
+      component: UserDeletedAlert,
       props: fullProps,
       lang
     })

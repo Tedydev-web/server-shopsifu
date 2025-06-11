@@ -49,7 +49,8 @@ export enum TypeOfVerificationCode {
   UNLINK_GOOGLE_ACCOUNT = 'UNLINK_GOOGLE_ACCOUNT',
   REVOKE_SESSIONS = 'REVOKE_SESSIONS',
   REVOKE_ALL_SESSIONS = 'REVOKE_ALL_SESSIONS',
-  REGENERATE_2FA_CODES = 'REGENERATE_2FA_CODES'
+  REGENERATE_2FA_CODES = 'REGENERATE_2FA_CODES',
+  CREATE_USER = 'CREATE_USER'
 }
 
 export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof typeof TypeOfVerificationCode]

@@ -216,7 +216,7 @@ export class RoleRepository {
 
     // Invalidate cache after successful deletion
     await this.invalidateRoleCache(this.mapToRole(roleToDelete as any))
-    
+
     return deletedRole
   }
 
