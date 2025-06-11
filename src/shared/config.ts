@@ -97,6 +97,8 @@ if (!configServer.success) {
 
 const parsedConfig = configServer.data
 const isProduction = parsedConfig.NODE_ENV === 'production'
+const isDevlopment = parsedConfig.NODE_ENV === 'development'
+
 
 /**
  * Chuyển đổi chuỗi thời gian sang milliseconds
@@ -115,16 +117,12 @@ const convertMs = (value: string, defaultValue: number): number => {
   }
 }
 
-/**
- * Cung cấp các tùy chọn cookie cơ bản dựa trên môi trường.
- * @param httpOnly - Cookie có thể được truy cập bởi server-side không?
- */
 const getCookieOptions = (httpOnly: boolean) => {
   return {
     httpOnly,
     secure: true, // Luôn là true cho cả dev và prod
     domain: parsedConfig.COOKIE_DOMAIN,
-    sameSite: isProduction ? 'strict' : 'none' // 'none' cho dev để dễ test, 'strict' cho prod để bảo mật
+    sameSite: isDevlopment ? 'none' : 'lax' // 'none' cho dev để dễ test, 'lax' cho prod để cho phép cross-site với navigation
   }
 }
 
@@ -170,7 +168,7 @@ const cookieDefinitions = {
   csrfToken: {
     name: CookieNames.XSRF_TOKEN,
     options: {
-      ...getCookieOptions(false), // Client needs to read this for CSRF header
+      ...getCookieOptions(false), // httpOnly: false - Client cần đọc được để set header
       secure: true
     }
   },
@@ -185,7 +183,7 @@ const cookieDefinitions = {
 // Cấu hình chung đã chuyển đổi và tổng hợp
 const envConfig = {
   ...parsedConfig,
-  isProduction,
+  isDevlopment,
 
   // Thời gian đã chuyển đổi sang milliseconds
   timeInMs: {
