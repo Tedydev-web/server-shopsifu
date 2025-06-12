@@ -118,7 +118,15 @@ export class SessionsService implements ISessionService {
       const deviceInfo = this.userAgentService.parse(latestSession?.userAgent)
       const activeSessionsCount = deviceSessions.filter((s) => s.isActive).length
       const lastActive = new Date(latestSession.lastActive)
-      const locationResult = await this.getLocationFromIP(latestSession.ipAddress || '')
+      
+      // Safe handling of location result với fallback
+      let locationResult: GeoLocationResult
+      try {
+        locationResult = await this.getLocationFromIP(latestSession.ipAddress || '')
+      } catch (error) {
+        this.logger.error(`Failed to get location for latest session IP ${latestSession.ipAddress}: ${error.message}`)
+        locationResult = { display: 'Unknown Location', timezone: 'Asia/Ho_Chi_Minh' }
+      }
 
       // Xử lý thông tin chi tiết cho từng session
       const sessionItems = await Promise.all(
@@ -127,7 +135,16 @@ export class SessionsService implements ISessionService {
           const inactiveDuration = session.isActive
             ? null
             : this.calculateInactiveDuration(new Date(session.lastActive))
-          const sessionLocationResult = await this.getLocationFromIP(session.ipAddress || '')
+          
+          // Safe handling of location result với fallback
+          let sessionLocationResult: GeoLocationResult
+          try {
+            sessionLocationResult = await this.getLocationFromIP(session.ipAddress || '')
+          } catch (error) {
+            this.logger.error(`Failed to get location for IP ${session.ipAddress}: ${error.message}`)
+            sessionLocationResult = { display: 'Unknown Location', timezone: 'Asia/Ho_Chi_Minh' }
+          }
+          
           const isCurrentSession = session.id === currentSessionIdFromToken
 
           return {
@@ -135,7 +152,7 @@ export class SessionsService implements ISessionService {
             createdAt: new Date(session.createdAt),
             lastActive: new Date(session.lastActive),
             ipAddress: session.ipAddress,
-            location: sessionLocationResult.display,
+            location: sessionLocationResult?.display || 'Unknown Location',
             browser: sessionInfo.browser,
             browserVersion: sessionInfo.browserVersion,
             app: sessionInfo.app,
@@ -160,7 +177,7 @@ export class SessionsService implements ISessionService {
         isDeviceTrusted: device.isTrusted,
         deviceTrustExpiration: device.trustExpiration,
         lastActive,
-        location: locationResult.display,
+        location: locationResult?.display || 'Unknown Location',
         activeSessionsCount,
         isCurrentDevice,
         sessions: sessionItems

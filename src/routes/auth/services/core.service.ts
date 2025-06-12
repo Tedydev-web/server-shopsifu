@@ -57,7 +57,7 @@ import { I18nTranslations } from 'src/generated/i18n.generated'
 import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { UserRepository, UserWithProfileAndRole } from 'src/routes/user/user.repository'
 import { ProfileRepository } from 'src/routes/profile/profile.repository'
-import { RoleRepository } from 'src/routes/role/repositories/role.repository'
+import { RoleRepository } from 'src/routes/role/role.repository'
 
 interface RegisterUserParams {
   userId: number
@@ -80,7 +80,7 @@ export class CoreService implements ILoginFinalizerService {
     private readonly i18nService: I18nService<I18nTranslations>,
     private readonly userRepository: UserRepository,
     private readonly profileRepository: ProfileRepository,
-    private readonly roleRepository: RoleRepository,
+    @Inject(forwardRef(() => RoleRepository)) private readonly roleRepository: RoleRepository,
     private readonly deviceRepository: DeviceRepository,
     private readonly otpService: OtpService,
     private readonly sessionRepository: SessionRepository,
