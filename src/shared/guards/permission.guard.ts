@@ -1,5 +1,5 @@
-import { Injectable, CanActivate, ExecutionContext, Logger, Inject, forwardRef } from '@nestjs/common'
-import { Reflector } from '@nestjs/core'
+import { CanActivate, ExecutionContext, Inject, Injectable, Logger, OnModuleInit, forwardRef } from '@nestjs/common'
+import { Reflector, ModuleRef } from '@nestjs/core'
 import { UserService } from 'src/routes/user/user.service'
 import {
   PERMISSIONS_KEY,
@@ -9,27 +9,33 @@ import {
 } from 'src/shared/decorators/permissions.decorator'
 import { ActiveUserData } from 'src/shared/types/active-user.type'
 import { GlobalError } from 'src/shared/global.error'
+import { Permission } from '@prisma/client'
+import * as jsonLogic from 'json-logic-js'
+
+type UserPermission = Pick<Permission, 'action' | 'subject' | 'conditions'>
 
 @Injectable()
-export class PermissionGuard implements CanActivate {
+export class PermissionGuard implements CanActivate, OnModuleInit {
   private readonly logger = new Logger(PermissionGuard.name)
+  private serviceMap: Map<string, any> = new Map()
 
   constructor(
     private readonly reflector: Reflector,
-    @Inject(forwardRef(() => UserService)) private readonly userService: UserService
+    @Inject(forwardRef(() => UserService)) private readonly userService: UserService,
+    private readonly moduleRef: ModuleRef
   ) {}
 
+  onModuleInit() {
+    // We can pre-populate the service map for known subjects if needed,
+    // but dynamic resolution below is more flexible.
+    this.serviceMap.set('User', this.userService)
+  }
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requiredPermissions =
-      this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [context.getHandler(), context.getClass()]) || []
+    const requiredPermissions = this.reflector.get<string[]>(PERMISSIONS_KEY, context.getHandler())
+    const options = this.reflector.get<PermissionOptions>(PERMISSIONS_OPTIONS_KEY, context.getHandler()) || {}
 
-    const options = this.reflector.getAllAndOverride<PermissionOptions>(PERMISSIONS_OPTIONS_KEY, [
-      context.getHandler(),
-      context.getClass()
-    ]) || { condition: PermissionCondition.OR }
-
-    // Nếu endpoint không yêu cầu permission, cho phép truy cập
-    if (requiredPermissions.length === 0) {
+    if (!requiredPermissions || requiredPermissions.length === 0) {
       return true
     }
 
@@ -38,89 +44,135 @@ export class PermissionGuard implements CanActivate {
 
     if (!user) {
       this.logger.warn('[canActivate] User object not found on request. Denying access.')
-      return false // or throw UnauthorizedException
+      return false
     }
 
-    this.logger.debug(
-      `[canActivate] User ${user.id} attempting to access resource requiring permissions with condition: ${options.condition}`
-    )
-    this.logger.debug(`[canActivate] Required permissions: ${requiredPermissions.join(', ')}`)
-
-    // Lấy permissions real-time (hoặc từ cache) của user
     const userPermissions = await this.userService.getUserPermissions(user.id)
-    const userPermissionSet = new Set(userPermissions.map((p) => `${p.subject}:${p.action}`))
 
-    this.logger.debug(`[canActivate] User has permissions: ${[...userPermissionSet].join(', ')}`)
-
-    // Kiểm tra quyền hạn dựa trên điều kiện AND hoặc OR
-    let hasPermission: boolean
-    if (options.condition === PermissionCondition.AND) {
-      // Yêu cầu có TẤT CẢ các quyền
-      hasPermission = requiredPermissions.every((p) => this.checkSinglePermission(p, userPermissionSet, context))
-    } else {
-      // Yêu cầu có ÍT NHẤT MỘT trong các quyền (mặc định)
-      hasPermission = requiredPermissions.some((p) => this.checkSinglePermission(p, userPermissionSet, context))
-    }
+    const hasPermission = await this.checkPermissions(requiredPermissions, userPermissions, options, context)
 
     if (!hasPermission) {
       this.logger.warn(`[canActivate] User ${user.id} lacks required permissions. Access denied.`)
-    } else {
-      this.logger.log(`[canActivate] User ${user.id} has required permissions. Access granted.`)
+      throw GlobalError.Forbidden()
     }
 
-    return hasPermission
+    return true
   }
 
-  /**
-   * Kiểm tra một quyền đơn lẻ, có hỗ trợ wildcard 'manage' và kiểm tra sở hữu (ownership).
-   * @param requiredPermission - Quyền yêu cầu (vd: 'User:update' hoặc 'User:update:own')
-   * @param userPermissionSet - Set các quyền của user
-   * @param context - ExecutionContext để truy cập request
-   * @returns `true` nếu user có quyền
-   */
-  private checkSinglePermission(
-    requiredPermission: string,
-    userPermissionSet: Set<string>,
+  private async checkPermissions(
+    requiredPermissions: string[],
+    userPermissions: UserPermission[],
+    options: PermissionOptions,
     context: ExecutionContext
-  ): boolean {
-    // 1. Kiểm tra quyền sở hữu (ownership)
-    const ownPermissionMatch = requiredPermission.match(/^([^:]+):([^:]+):own$/)
-    if (ownPermissionMatch) {
-      const [, subject, action] = ownPermissionMatch
-      const ownPermissionString = `${subject}:${action}:own`
+  ): Promise<boolean> {
+    const checkPromises = requiredPermissions.map((required) =>
+      this.hasRequiredPermission(required, userPermissions, context)
+    )
 
-      if (userPermissionSet.has(ownPermissionString)) {
-        const request = context.switchToHttp().getRequest()
-        const user = request.user as ActiveUserData
-        const resourceId = request.params.id
+    const results = await Promise.all(checkPromises)
 
-        if (!resourceId) {
-          this.logger.warn(`[checkSinglePermission] Ownership check failed: No 'id' found in request params.`)
-          return false
+    if (options.condition === PermissionCondition.AND) {
+      return results.every((res) => res)
+    }
+    return results.some((res) => res)
+  }
+
+  private async hasRequiredPermission(
+    requiredPermission: string,
+    userPermissions: UserPermission[],
+    context: ExecutionContext
+  ): Promise<boolean> {
+    for (const p of userPermissions) {
+      const userPermString = `${p.subject}:${p.action}`
+      if (this.isPermissionMatch(requiredPermission, userPermString)) {
+        if (p.conditions) {
+          this.logger.debug(`Found matching permission '${userPermString}' with conditions. Evaluating...`)
+          return await this.checkConditions(p.conditions, context)
         }
+        this.logger.debug(`Found matching static permission '${userPermString}'. Access granted for this path.`)
+        return true // Permission matches and has no conditions
+      }
+    }
+    return false
+  }
 
-        // So sánh ID của user trong token với ID tài nguyên từ params
-        // Dùng `==` để so sánh an toàn giữa string và number
-        if (user && user.id == resourceId) {
-          this.logger.debug(
-            `[checkSinglePermission] Ownership granted for '${ownPermissionString}' on resource ${resourceId}`
-          )
-          return true
-        }
+  private isPermissionMatch(required: string, userPermission: string): boolean {
+    if (required === userPermission) return true
+
+    const [reqSubject, reqAction] = required.split(':')
+    const [userSubject, userAction] = userPermission.split(':')
+
+    if (reqSubject !== userSubject) return false
+
+    // Handle 'manage' wildcard for actions
+    if (userAction === 'manage') return true
+    // Handle ':own' suffix as a specific action
+    if (reqAction === userAction) return true
+
+    return false
+  }
+
+  private async checkConditions(conditions: any, context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest()
+    const user: ActiveUserData = request.user
+    const resourceId = request.params.id
+
+    // Lazy load resource only if conditions require it
+    let resource: any = null
+    const conditionsString = JSON.stringify(conditions)
+    if (conditionsString.includes('resource.')) {
+      if (!resourceId) {
+        this.logger.warn('[checkConditions] Conditions require a resource, but no ID found in params.')
+        return false
+      }
+      const subject = this.getSubjectFromContext(context)
+      if (!subject) {
+        this.logger.warn('[checkConditions] Could not determine subject from context.')
+        return false
+      }
+      resource = await this.getResource(subject, resourceId)
+      if (!resource) {
+        this.logger.warn(`[checkConditions] Resource '${subject}' with ID '${resourceId}' not found.`)
+        return false
       }
     }
 
-    // 2. Kiểm tra quyền thông thường (static permission) và wildcards
-    const [subject] = requiredPermission.split(':')
-    const hasStaticPermission =
-      userPermissionSet.has(requiredPermission) ||
-      userPermissionSet.has(`${subject}:manage`) ||
-      userPermissionSet.has('all:manage')
-
-    if (hasStaticPermission) {
-      this.logger.debug(`[checkSinglePermission] Static permission granted for '${requiredPermission}'`)
+    const data = {
+      user: user,
+      resource: resource
     }
 
-    return hasStaticPermission
+    this.logger.debug(`[checkConditions] Evaluating logic with data: ${JSON.stringify(data)}`)
+    return jsonLogic.apply(conditions, data)
+  }
+
+  private getSubjectFromContext(context: ExecutionContext): string | null {
+    const controllerClass = context.getClass()
+    const controllerName = controllerClass.name.replace('Controller', '')
+    // This is a simple convention. More robust mapping might be needed.
+    return controllerName
+  }
+
+  private async getResource(subject: string, id: number | string): Promise<any> {
+    try {
+      let service = this.serviceMap.get(subject)
+      if (!service) {
+        // Dynamically resolve service from module reference
+        const serviceToken = `${subject}Service` // Convention: 'User' -> 'UserService'
+        service = this.moduleRef.get(serviceToken, { strict: false })
+        this.serviceMap.set(subject, service)
+      }
+
+      if (service && typeof service.findOne === 'function') {
+        const resource = await service.findOne(Number(id))
+        // The service might return a { data, message } object
+        return resource?.data ? resource.data : resource
+      }
+      this.logger.warn(`[getResource] Could not find a 'findOne' method on the service for subject: ${subject}`)
+      return null
+    } catch (e) {
+      this.logger.error(`[getResource] Error resolving service or fetching resource for subject: ${subject}`, e)
+      return null
+    }
   }
 }

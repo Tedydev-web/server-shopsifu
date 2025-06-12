@@ -252,7 +252,7 @@ model Permission {
   subject     String  @db.VarChar(255)
   description String?
   category    String? @db.VarChar(100)
-  conditions  Json?
+  conditions  Json?    @db.Json
 
   roles RolePermission[]
 
@@ -263,8 +263,8 @@ model Permission {
   deletedById Int?
   deletedBy   User?    @relation("PermissionDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
   deletedAt   DateTime?
 
   @@unique([action, subject])

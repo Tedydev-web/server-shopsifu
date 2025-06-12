@@ -16,6 +16,7 @@ import { RedisService } from './providers/redis/redis.service'
 import { CryptoService } from './services/crypto.service'
 
 import { ApiKeyGuard } from './guards/api-key.guard'
+import { PermissionGuard } from './guards/permission.guard'
 
 import {
   COOKIE_SERVICE,
@@ -27,6 +28,7 @@ import {
   USER_AGENT_SERVICE
 } from './constants/injection.tokens'
 import { IORedisKey } from './providers/redis/redis.constants'
+import { UserModule } from 'src/routes/user/user.module'
 
 const serviceClasses = [
   PrismaService,
@@ -41,7 +43,7 @@ const serviceClasses = [
   CryptoService
 ]
 
-const guardClasses = [ApiKeyGuard]
+const guardClasses = [ApiKeyGuard, PermissionGuard]
 
 const tokenProviders = [
   { provide: COOKIE_SERVICE, useClass: CookieService },
@@ -92,7 +94,7 @@ const allExports = [...serviceClasses, ...guardClasses, ...tokenProviders, redis
 
 @Global()
 @Module({
-  imports: [ConfigModule, JwtModule],
+  imports: [ConfigModule, JwtModule, forwardRef(() => UserModule)],
   providers: allProviders,
   exports: allExports
 })

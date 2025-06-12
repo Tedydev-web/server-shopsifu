@@ -6,17 +6,19 @@ import { Permission } from '@prisma/client'
 //                                     SCHEMAS
 // ===================================================================================
 
-const PermissionSchema = z.object({
+export const PermissionSchema = z.object({
   action: z
     .string()
-    .min(1, { message: 'Action is required' })
-    .max(100, { message: 'Action must be 100 characters or less' }),
+    .min(1, 'Action must not be empty')
+    .max(255, 'Action must be less than 255 characters')
+    .regex(/^[a-zA-Z0-9_:]+$/, 'Action can only contain letters, numbers, underscores, and colons'),
   subject: z
     .string()
-    .min(1, { message: 'Subject is required' })
-    .max(255, { message: 'Subject must be 255 characters or less' }),
-  description: z.string().max(500).optional().nullable(),
-  category: z.string().max(100).optional().nullable(),
+    .min(1, 'Subject must not be empty')
+    .max(255, 'Subject must be less than 255 characters')
+    .regex(/^[a-zA-Z0-9_]+$/, 'Subject can only contain letters, numbers, and underscores'),
+  description: z.string().max(500, 'Description must be less than 500 characters').optional().nullable(),
+  category: z.string().max(100, 'Category must be less than 100 characters').optional().nullable(),
   conditions: z.record(z.any()).optional().nullable()
 })
 
