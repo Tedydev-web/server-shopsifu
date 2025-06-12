@@ -253,6 +253,7 @@ model Permission {
   description String?
   category    String? @db.VarChar(100)
   conditions  Json?    @db.Json
+  uiMetadata  Json?    @map("ui_metadata")
 
   roles RolePermission[]
 
