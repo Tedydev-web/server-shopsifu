@@ -1,6 +1,6 @@
 import { Controller, Get, Logger, Body, HttpCode, HttpStatus, UseGuards, Patch } from '@nestjs/common'
-import { Auth } from '../../shared/decorators/auth.decorator'
-import { ActiveUser } from '../../shared/decorators/active-user.decorator'
+import { Auth } from 'src/shared/decorators/auth.decorator'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { ProfileService } from './profile.service'
 import { UpdateProfileDto, ProfileResponseDto } from './profile.dto'
 import { PermissionGuard } from 'src/shared/guards/permission.guard'

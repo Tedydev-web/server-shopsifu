@@ -1,10 +1,10 @@
 import { Injectable, ForbiddenException } from '@nestjs/common'
-import { RoleRepository } from './role.repository'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/generated/i18n.generated'
+import { RoleRepository, CreateRoleData, UpdateRoleData } from './role.repository'
 import { CreateRoleDto, UpdateRoleDto } from './role.dto'
 import { Role } from './role.model'
 import { RoleError } from './role.error'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class RoleService {
@@ -20,7 +20,14 @@ export class RoleService {
     }
     // For now, we allow creating system/superadmin roles via API,
     // but this could be restricted to specific users (e.g., only super admins) in the controller layer using policies.
-    return this.roleRepository.create(createRoleDto)
+    const data: CreateRoleData = {
+      name: createRoleDto.name,
+      description: createRoleDto.description,
+      isSystemRole: createRoleDto.isSystemRole,
+      isSuperAdmin: createRoleDto.isSuperAdmin,
+      permissionIds: createRoleDto.permissionIds
+    }
+    return this.roleRepository.create(data)
   }
 
   async findAll(): Promise<Role[]> {
@@ -60,8 +67,8 @@ export class RoleService {
         throw RoleError.AlreadyExists(updateRoleDto.name)
       }
     }
-
-    return this.roleRepository.update(id, updateRoleDto)
+    const data: UpdateRoleData = { ...updateRoleDto }
+    return this.roleRepository.update(id, data)
   }
 
   async remove(id: number): Promise<Role> {

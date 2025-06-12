@@ -57,7 +57,7 @@ import { I18nTranslations } from 'src/generated/i18n.generated'
 import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { UserRepository, UserWithProfileAndRole } from 'src/routes/user/user.repository'
 import { ProfileRepository } from 'src/routes/profile/profile.repository'
-import { RoleRepository } from 'src/routes/role/role.repository'
+import { RoleRepository } from 'src/routes/role/repositories/role.repository'
 
 interface RegisterUserParams {
   userId: number

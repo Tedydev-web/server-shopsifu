@@ -1,12 +1,12 @@
-import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common'
-import { ProfileResponseDto, UpdateProfileDto } from './profile.dto'
-import { ProfileRepository } from './profile.repository'
-import { HASHING_SERVICE } from 'src/shared/constants/injection.tokens'
-import { HashingService } from '../../shared/services/hashing.service'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
+import { UserRepository } from 'src/routes/user/user.repository'
+import { HASHING_SERVICE } from 'src/shared/constants/injection.tokens'
+import { HashingService } from 'src/shared/services/hashing.service'
+import { ProfileResponseDto, UpdateProfileDto } from './profile.dto'
 import { ProfileError } from './profile.error'
-import { UserRepository } from '../user/user.repository'
+import { ProfileRepository } from './profile.repository'
 
 @Injectable()
 export class ProfileService {

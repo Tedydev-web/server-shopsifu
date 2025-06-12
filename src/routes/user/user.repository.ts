@@ -3,6 +3,7 @@ import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
 import { User, Prisma, Role, UserProfile, Permission, TwoFactorMethodType } from '@prisma/client'
 import { UserError } from './user.error'
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
+import { Permission as PermissionModel } from 'src/routes/permission/permission.model'
 
 export interface TwoFactorSettings {
   secret: string | null
@@ -60,20 +61,7 @@ export class UserRepository {
     return this.prisma.user.create({ data })
   }
 
-  async createWithProfile(data: {
-    email: string
-    password: string
-    roleId: number
-    username: string
-    firstName?: string | null
-    lastName?: string | null
-    phoneNumber?: string | null
-    bio?: string | null
-    avatar?: string | null
-    countryCode?: string | null
-    googleId?: string
-    googleAvatar?: string
-  }): Promise<UserWithProfileAndRole> {
+  async createWithProfile(data: CreateUserWithProfileData): Promise<UserWithProfileAndRole> {
     const {
       email,
       password,
@@ -249,4 +237,19 @@ export class UserRepository {
     })
     return this.toUserWithPermissions(user as any)
   }
+}
+
+export type CreateUserWithProfileData = {
+  email: string
+  password: string
+  roleId: number
+  username: string
+  firstName?: string | null
+  lastName?: string | null
+  phoneNumber?: string | null
+  bio?: string | null
+  avatar?: string | null
+  countryCode?: string | null
+  googleId?: string
+  googleAvatar?: string
 }

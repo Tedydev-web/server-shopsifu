@@ -1,17 +1,15 @@
 import { Module, forwardRef } from '@nestjs/common'
+import { PermissionModule } from 'src/routes/permission/permission.module'
+import { UserModule } from 'src/routes/user/user.module'
+import { SharedModule } from 'src/shared/shared.module'
 import { RoleController } from './role.controller'
-import { RoleService } from './role.service'
 import { RoleRepository } from './role.repository'
-import { PermissionModule } from '../permission/permission.module'
-import { UserModule } from '../user/user.module'
+import { RoleService } from './role.service'
 
 @Module({
-  imports: [
-    PermissionModule,
-    forwardRef(() => UserModule) // Import UserModule to resolve PermissionGuard dependencies
-  ],
+  imports: [SharedModule, forwardRef(() => UserModule), forwardRef(() => PermissionModule)],
   controllers: [RoleController],
   providers: [RoleService, RoleRepository],
-  exports: [RoleService, RoleRepository] // Export if other modules need to inject them
+  exports: [RoleService, RoleRepository]
 })
 export class RoleModule {}

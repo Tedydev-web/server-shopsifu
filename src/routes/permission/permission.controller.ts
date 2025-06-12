@@ -12,11 +12,11 @@ import {
   UseGuards,
   Query
 } from '@nestjs/common'
-import { PermissionService } from './permission.service'
-import { GetPermissionsQueryDto, CreatePermissionDto, UpdatePermissionDto, PermissionDto } from './permission.dto'
 import { Auth } from 'src/shared/decorators/auth.decorator'
-import { PermissionGuard } from 'src/shared/guards/permission.guard'
 import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
+import { PermissionGuard } from 'src/shared/guards/permission.guard'
+import { CreatePermissionDto, GetPermissionsQueryDto, PermissionDto, UpdatePermissionDto } from './permission.dto'
+import { PermissionService } from './permission.service'
 
 @Auth()
 @UseGuards(PermissionGuard)

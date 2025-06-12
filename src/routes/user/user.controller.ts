@@ -80,20 +80,20 @@ export class UserController {
   @Get(':id')
   @RequirePermissions(['User:read'])
   async findOne(@Param('id', ParseIntPipe) id: number) {
-    const result = await this.userService.findOne(id)
+    const { message, data } = await this.userService.findOne(id)
     return {
-      message: result.message,
-      data: UserDto.fromEntity(result.data)
+      message,
+      data: UserDto.fromEntity(data)
     }
   }
 
   @Patch(':id')
-  @RequirePermissions(['User:update', 'User:update:own'], { condition: PermissionCondition.OR })
+  @RequirePermissions(['User:update'])
   async update(@Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
-    const result = await this.userService.update(id, updateUserDto)
+    const { message, data } = await this.userService.update(id, updateUserDto)
     return {
-      message: result.message,
-      data: UserDto.fromEntity(result.data)
+      message,
+      data: UserDto.fromEntity(data)
     }
   }
 

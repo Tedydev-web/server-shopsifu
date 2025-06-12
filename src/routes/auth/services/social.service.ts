@@ -26,7 +26,7 @@ import { OtpService } from './otp.service'
 import { SessionRepository } from 'src/routes/auth/repositories'
 import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { UserRepository } from 'src/routes/user/user.repository'
-import { RoleRepository } from 'src/routes/role/role.repository'
+import { RoleRepository } from 'src/routes/role/repositories/role.repository'
 
 // ================================================================
 // Constants & Injection Tokens

@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
-import { Permission } from './permission.model' // Import từ model mới tạo
-import { CreatePermissionDto, UpdatePermissionDto } from './permission.dto'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
+import { Prisma } from '@prisma/client'
 import { ALL_PERMISSIONS_CACHE_TTL, PERMISSION_CACHE_TTL } from 'src/shared/providers/redis/redis.constants'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
+import { Permission } from './permission.model'
 
+export type CreatePermissionData = Omit<Prisma.PermissionCreateInput, 'createdBy' | 'updatedBy' | 'deletedBy'>
+export type UpdatePermissionData = Omit<Prisma.PermissionUpdateInput, 'createdBy' | 'updatedBy' | 'deletedBy'>
 @Injectable()
 export class PermissionRepository {
   private readonly logger = new Logger(PermissionRepository.name)
@@ -24,15 +26,9 @@ export class PermissionRepository {
     this.logger.debug(`Invalidated permission cache for keys: ${keysToDel.join(', ')}`)
   }
 
-  async create(createPermissionDto: CreatePermissionDto): Promise<Permission> {
-    const { action, subject, description, category } = createPermissionDto
+  async create(data: CreatePermissionData): Promise<Permission> {
     const newPermission = await this.prisma.permission.create({
-      data: {
-        action,
-        subject,
-        description,
-        category
-      }
+      data
     })
     if (newPermission) {
       await this.invalidatePermissionCache()
@@ -106,17 +102,10 @@ export class PermissionRepository {
     return permission
   }
 
-  async update(id: number, updatePermissionDto: UpdatePermissionDto): Promise<Permission> {
-    // Dữ liệu để cập nhật, chỉ lấy các trường được cung cấp
-    const dataToUpdate: Partial<UpdatePermissionDto> = {}
-    if (updatePermissionDto.action) dataToUpdate.action = updatePermissionDto.action
-    if (updatePermissionDto.subject) dataToUpdate.subject = updatePermissionDto.subject
-    if (updatePermissionDto.description) dataToUpdate.description = updatePermissionDto.description
-    if (updatePermissionDto.category) dataToUpdate.category = updatePermissionDto.category
-
+  async update(id: number, data: UpdatePermissionData): Promise<Permission> {
     const updatedPermission = await this.prisma.permission.update({
       where: { id },
-      data: dataToUpdate
+      data
     })
     if (updatedPermission) {
       await this.invalidatePermissionCache(updatedPermission)
@@ -134,6 +123,4 @@ export class PermissionRepository {
     }
     return deletedPermission
   }
-
-  // Thêm các phương thức truy cập dữ liệu khác nếu cần
 }

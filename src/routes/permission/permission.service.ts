@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
-import { PermissionRepository } from './permission.repository'
-import { Permission } from './permission.model'
-import { CreatePermissionDto, UpdatePermissionDto, PermissionGroup } from './permission.dto'
-import { PermissionError } from './permission.error'
 import { I18nTranslations } from 'src/generated/i18n.generated'
+import { CreatePermissionDto, PermissionGroup, UpdatePermissionDto } from './permission.dto'
+import { PermissionError } from './permission.error'
+import { Permission } from './permission.model'
+import { CreatePermissionData, PermissionRepository, UpdatePermissionData } from './permission.repository'
 
 @Injectable()
 export class PermissionService {
@@ -21,7 +21,14 @@ export class PermissionService {
     if (existingPermission) {
       throw PermissionError.AlreadyExists(action, subject)
     }
-    return this.permissionRepository.create(createPermissionDto)
+    const data: CreatePermissionData = {
+      action: createPermissionDto.action,
+      subject: createPermissionDto.subject,
+      description: createPermissionDto.description,
+      category: createPermissionDto.category,
+      conditions: createPermissionDto.conditions
+    }
+    return this.permissionRepository.create(data)
   }
 
   async findAll(page?: number, limit?: number): Promise<Permission[]> {
@@ -216,8 +223,8 @@ export class PermissionService {
         throw PermissionError.AlreadyExists(action, subject)
       }
     }
-
-    return this.permissionRepository.update(id, updatePermissionDto)
+    const data: UpdatePermissionData = { ...updatePermissionDto }
+    return this.permissionRepository.update(id, data)
   }
 
   async remove(id: number): Promise<Permission> {

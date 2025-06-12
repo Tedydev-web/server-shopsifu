@@ -1,9 +1,9 @@
 import { Module, forwardRef } from '@nestjs/common'
-import { PermissionService } from './permission.service'
+import { UserModule } from 'src/routes/user/user.module'
+import { SharedModule } from 'src/shared/shared.module'
 import { PermissionController } from './permission.controller'
 import { PermissionRepository } from './permission.repository'
-import { SharedModule } from 'src/shared/shared.module'
-import { UserModule } from 'src/routes/user/user.module'
+import { PermissionService } from './permission.service'
 
 @Module({
   imports: [SharedModule, forwardRef(() => UserModule)],

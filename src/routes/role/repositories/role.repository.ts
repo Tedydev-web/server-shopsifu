@@ -5,7 +5,7 @@ import { ALL_ROLES_CACHE_TTL, ROLE_CACHE_TTL } from 'src/shared/providers/redis/
 import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
-import { Role } from './role.model'
+import { Role } from '../role.model'
 
 type RoleWithPermissions = Prisma.RoleGetPayload<{
   include: { permissions: { include: { permission: true } } }

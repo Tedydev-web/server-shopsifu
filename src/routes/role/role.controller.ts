@@ -11,12 +11,11 @@ import {
   HttpStatus,
   UseGuards
 } from '@nestjs/common'
-import { RoleService } from './role.service'
-import { CreateRoleDto, UpdateRoleDto, RoleDto } from './role.dto'
-import { RoleError } from './role.error'
 import { Auth } from 'src/shared/decorators/auth.decorator'
-import { PermissionGuard } from 'src/shared/guards/permission.guard'
 import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
+import { PermissionGuard } from 'src/shared/guards/permission.guard'
+import { CreateRoleDto, RoleDto, UpdateRoleDto } from './role.dto'
+import { RoleService } from './role.service'
 
 @Auth()
 @UseGuards(PermissionGuard)

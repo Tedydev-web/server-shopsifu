@@ -1,13 +1,13 @@
 import { Module, forwardRef } from '@nestjs/common'
-import { UserService } from './user.service'
+import { AuthModule } from 'src/routes/auth/auth.module'
+import { RoleModule } from 'src/routes/role/role.module'
+import { SharedModule } from 'src/shared/shared.module'
 import { UserController } from './user.controller'
 import { UserRepository } from './user.repository'
-import { RoleModule } from '../role/role.module'
-import { SharedModule } from 'src/shared/shared.module'
-import { AuthModule } from '../auth/auth.module'
+import { UserService } from './user.service'
 
 @Module({
-  imports: [forwardRef(() => SharedModule), forwardRef(() => AuthModule), RoleModule],
+  imports: [SharedModule, forwardRef(() => AuthModule), RoleModule],
   controllers: [UserController],
   providers: [UserService, UserRepository],
   exports: [UserService, UserRepository]

@@ -1,10 +1,10 @@
 import { Module, forwardRef } from '@nestjs/common'
-import { ProfileController } from './profile.controller'
-import { ProfileService } from './profile.service'
-import { ProfileRepository } from './profile.repository'
-import { RoleModule } from '../role/role.module' // Import RoleModule
 import { PermissionModule } from '../permission/permission.module' // Import PermissionModule
+import { RoleModule } from '../role/role.module' // Import RoleModule
 import { UserModule } from '../user/user.module'
+import { ProfileController } from './profile.controller'
+import { ProfileRepository } from './profile.repository'
+import { ProfileService } from './profile.service'
 
 @Module({
   imports: [forwardRef(() => UserModule), RoleModule, PermissionModule],
