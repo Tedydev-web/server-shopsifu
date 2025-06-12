@@ -28,9 +28,8 @@ import { CreateUserDto, UpdateUserDto, UserDto } from './user.dto'
 // Decorators & Guards
 // ================================================================
 import { Auth } from 'src/shared/decorators/auth.decorator'
-import { PoliciesGuard } from 'src/shared/guards/policies.guard'
-import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
-import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
+import { PermissionGuard } from 'src/shared/guards/permission.guard'
+import { RequirePermissions, PermissionCondition } from 'src/shared/decorators/permissions.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 
 /**
@@ -39,7 +38,7 @@ import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
  */
 
 @Auth()
-@UseGuards(PoliciesGuard)
+@UseGuards(PermissionGuard)
 @Controller('users')
 export class UserController {
   constructor(private readonly userService: UserService) {}
@@ -53,7 +52,7 @@ export class UserController {
    * Flow: Submit data → SLT token + OTP → Verify qua auth/otp/verify → User được tạo
    */
   @Post()
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Create, 'User'))
+  @RequirePermissions(['User:create'])
   @HttpCode(HttpStatus.OK)
   async create(
     @Body() createUserDto: CreateUserDto,
@@ -69,7 +68,7 @@ export class UserController {
   // ================================================================
 
   @Get()
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'User'))
+  @RequirePermissions(['User:read'])
   async findAll() {
     const result = await this.userService.findAll()
     return {
@@ -79,7 +78,7 @@ export class UserController {
   }
 
   @Get(':id')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'User'))
+  @RequirePermissions(['User:read'])
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const result = await this.userService.findOne(id)
     return {
@@ -89,7 +88,7 @@ export class UserController {
   }
 
   @Patch(':id')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'User'))
+  @RequirePermissions(['User:update', 'User:update:own'], { condition: PermissionCondition.OR })
   async update(@Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
     const result = await this.userService.update(id, updateUserDto)
     return {
@@ -99,7 +98,7 @@ export class UserController {
   }
 
   @Delete(':id')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Delete, 'User'))
+  @RequirePermissions(['User:delete'])
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     await this.userService.remove(id)

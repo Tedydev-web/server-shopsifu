@@ -5,7 +5,7 @@ import { Response, Request } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 
 // Prisma Types
-import { User, Device, Role, UserProfile } from '@prisma/client'
+import { User, Device, Role, UserProfile, Permission } from '@prisma/client'
 
 // Internal Services
 import { HashingService } from 'src/shared/services/hashing.service'
@@ -17,6 +17,7 @@ import { OtpService } from './otp.service'
 import { DeviceService } from './device.service'
 import { SessionsService } from 'src/routes/auth/services/session.service'
 import { AuthVerificationService } from './auth-verification.service'
+import { UserService } from 'src/routes/user/user.service'
 
 // Repositories
 import { SessionRepository } from 'src/routes/auth/repositories'
@@ -90,10 +91,71 @@ export class CoreService implements ILoginFinalizerService {
     @Inject(SLT_SERVICE) private readonly sltService: ISLTService,
     @Inject(DEVICE_SERVICE) private readonly deviceService?: DeviceService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionsService?: SessionsService,
+    @Inject(forwardRef(() => UserService)) private readonly userService?: UserService,
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService?: AuthVerificationService,
     @Inject(EMAIL_SERVICE) private readonly emailService?: EmailService
   ) {}
+
+  /**
+   * Lấy cấu hình UI cho người dùng dựa trên quyền hạn của họ.
+   * API này thay thế việc gửi toàn bộ danh sách permissions xuống client.
+   * @param userId - ID của người dùng
+   * @returns Một object chứa cấu hình cho các thành phần UI (navigation, actions, features).
+   */
+  async getUserUICapabilities(userId: number): Promise<any> {
+    if (!this.userService) {
+      throw AuthError.ServiceNotAvailable('UserService')
+    }
+    const userPermissions = await this.userService.getUserPermissions(userId)
+    const userPermissionSet = new Set(userPermissions.map((p) => `${p.subject}:${p.action}`))
+
+    // Chuyển đổi permissions thành UI capabilities
+    const uiConfig = {
+      navigation: {
+        showDashboard: this.hasPermission(userPermissionSet, 'Dashboard:read'),
+        showCompanies: this.hasPermission(userPermissionSet, 'Company:read'),
+        showUsers: this.hasPermission(userPermissionSet, 'User:read'),
+        showRoles: this.hasPermission(userPermissionSet, 'Role:read'),
+        showPermissions: this.hasPermission(userPermissionSet, 'Permission:read'),
+        showSettings: this.hasPermission(userPermissionSet, 'System:manage')
+      },
+      actions: {
+        canCreateUser: this.hasPermission(userPermissionSet, 'User:create'),
+        canCreateRole: this.hasPermission(userPermissionSet, 'Role:create'),
+        canCreateCompany: this.hasPermission(userPermissionSet, 'Company:create'),
+        canEditCompany: this.hasPermission(userPermissionSet, 'Company:update'),
+        canDeleteCompany: this.hasPermission(userPermissionSet, 'Company:delete'),
+        canManageUsers: this.hasPermission(userPermissionSet, 'User:manage'),
+        canManageSystem: this.hasPermission(userPermissionSet, 'System:manage')
+      },
+      features: {
+        bulkOperations: this.hasPermission(userPermissionSet, 'System:bulk'),
+        advancedSearch: this.hasPermission(userPermissionSet, 'System:advanced'),
+        exportData: this.hasPermission(userPermissionSet, 'Data:export')
+      }
+    }
+
+    return {
+      message: 'auth.success.uiCapabilities',
+      data: { uiConfig }
+    }
+  }
+
+  /**
+   * Kiểm tra xem một tập hợp các quyền có chứa một quyền cụ thể hay không.
+   * Hỗ trợ kiểm tra wildcard 'manage' và 'all:manage'.
+   * @param permissionSet - Set các quyền của người dùng (định dạng 'Subject:action').
+   * @param requiredPermission - Quyền cần kiểm tra.
+   * @returns `true` nếu người dùng có quyền, ngược lại `false`.
+   */
+  private hasPermission(permissionSet: Set<string>, requiredPermission: string): boolean {
+    const [subject] = requiredPermission.split(':')
+    // Kiểm tra quyền cụ thể, quyền quản lý 'subject:manage', hoặc quyền quản lý toàn bộ 'all:manage'
+    return (
+      permissionSet.has(requiredPermission) || permissionSet.has(`${subject}:manage`) || permissionSet.has('all:manage')
+    )
+  }
 
   /**
    * Tạo username duy nhất từ chuỗi base
@@ -501,10 +563,9 @@ export class CoreService implements ILoginFinalizerService {
       // Tạo và thiết lập các token authentication
       this.generateAndSetAuthTokens(user, device.id, sessionId, effectiveIsTrustedSession, rememberMe, res)
 
+      // Chỉ trả về các thông tin an toàn, cần thiết cho client
       const userResponse = {
         id: user.id,
-        roleId: user.role.id,
-        roleName: user.role.name,
         email: user.email,
         username: user.userProfile?.username,
         avatar: user.userProfile?.avatar,

@@ -2,35 +2,32 @@ import {
   Controller,
   Post,
   Body,
-  HttpCode,
-  HttpStatus,
   Req,
   Res,
-  Ip,
+  HttpCode,
+  HttpStatus,
   Inject,
   forwardRef,
   Logger,
-  UseGuards
+  UseGuards,
+  Ip
 } from '@nestjs/common'
 import { Request, Response } from 'express'
-import { TwoFactorService } from '../services/two-factor.service'
-import { TWO_FACTOR_SERVICE } from 'src/shared/constants/injection.tokens'
-import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
+import { Auth } from 'src/shared/decorators/auth.decorator'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { AccessTokenPayload } from 'src/routes/auth/auth.types'
-import { TwoFactorVerifyDto } from '../dtos/two-factor.dto'
-import { CookieNames, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
-import { AuthError } from '../auth.error'
-import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
-import { AuthVerificationService } from '../services/auth-verification.service'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
-import { PoliciesGuard } from 'src/shared/guards/policies.guard'
-import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
-import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
+import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { ActiveUserData } from 'src/shared/types/active-user.type'
+import { TwoFactorVerifyDto } from '../dtos/two-factor.dto'
+import { AuthVerificationService } from '../services/auth-verification.service'
+import { TwoFactorService } from '../services/two-factor.service'
+import { CookieNames, TypeOfVerificationCode } from '../auth.constants'
+import { PermissionGuard } from 'src/shared/guards/permission.guard'
+import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
+import { TWO_FACTOR_SERVICE, COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
+import { CookieService } from 'src/shared/services/cookie.service'
 
 @Auth()
+@UseGuards(PermissionGuard)
 @Controller('auth/2fa')
 export class TwoFactorController {
   private readonly logger = new Logger(TwoFactorController.name)
@@ -39,12 +36,11 @@ export class TwoFactorController {
     @Inject(TWO_FACTOR_SERVICE) private readonly twoFactorService: TwoFactorService,
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService,
-    private readonly i18nService: I18nService<I18nTranslations>
+    @Inject(COOKIE_SERVICE) private readonly cookieService: CookieService
   ) {}
 
   @Post('setup')
-  @UseGuards(PoliciesGuard)
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
+  @RequirePermissions(['2FA:setup:own'])
   @HttpCode(HttpStatus.OK)
   async setupTwoFactor(
     @ActiveUser() activeUser: ActiveUserData,
@@ -52,40 +48,25 @@ export class TwoFactorController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[setupTwoFactor] Initiating 2FA setup for user: ${activeUser.id}`)
-    if (!activeUser.email) {
-      throw AuthError.InternalServerError('Email not found in access token payload.')
-    }
+    const sltToken = await this.twoFactorService.initiateTwoFactorActionWithSltCookie({
+      userId: activeUser.id,
+      deviceId: activeUser.deviceId,
+      ipAddress: ip,
+      userAgent,
+      purpose: TypeOfVerificationCode.SETUP_2FA
+    })
 
-    const setupResult = await this.twoFactorService.generateSetupDetails(activeUser.id)
+    this.cookieService.setSltCookie(res, sltToken)
 
-    const verificationResult = await this.authVerificationService.initiateVerification(
-      {
-        userId: activeUser.id,
-        deviceId: activeUser.deviceId,
-        email: activeUser.email,
-        ipAddress: ip,
-        userAgent: userAgent,
-        purpose: TypeOfVerificationCode.SETUP_2FA,
-        metadata: { twoFactorSecret: setupResult.data.secret }
-      },
-      res
-    )
-
+    const setupDetails = await this.twoFactorService.generateSetupDetails(activeUser.id)
     return {
-      message: verificationResult.message,
-      data: {
-        secret: setupResult.data.secret,
-        qrCode: setupResult.data.qrCode
-      }
+      message: '2FA setup initiated. Please scan the QR code and verify.',
+      data: setupDetails.data
     }
   }
 
-  /**
-   * Xác nhận thiết lập 2FA bằng cách gửi mã TOTP.
-   * Endpoint này sử dụng `verifyCode` của service trung tâm.
-   */
   @Post('confirm-setup')
+  @RequirePermissions(['2FA:setup:own'])
   @HttpCode(HttpStatus.OK)
   async confirmTwoFactorSetup(
     @Body() body: TwoFactorVerifyDto,
@@ -94,23 +75,19 @@ export class TwoFactorController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.log(`[confirmTwoFactorSetup] Confirming 2FA setup.`)
-    const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
-    if (!sltCookieValue) {
-      throw AuthError.SLTCookieMissing()
-    }
-
-    return this.authVerificationService.verifyCode(sltCookieValue, body.code, ip, userAgent, res, {
-      twoFactorMethod: body.method || 'TOTP'
-    })
+    return await this.authVerificationService.verifyCode(
+      req.cookies[CookieNames.SLT_TOKEN],
+      body.code,
+      ip,
+      userAgent,
+      res,
+      { twoFactorMethod: 'AUTHENTICATOR_APP' }
+    )
   }
 
-  /**
-   * Xác minh mã 2FA cho các hành động khác (đăng nhập, thu hồi session, etc.).
-   * Đây là một endpoint chung sử dụng SLT.
-   */
   @Post('verify')
-  @IsPublic() // Endpoint này có thể được gọi bởi người dùng chưa đăng nhập (luồng login)
+  @RequirePermissions(['2FA:verify:own'])
+  @HttpCode(HttpStatus.OK)
   async verifyTwoFactor(
     @Body() body: TwoFactorVerifyDto,
     @Ip() ip: string,
@@ -118,40 +95,27 @@ export class TwoFactorController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.debug(`[verifyTwoFactor] Verifying 2FA code with method: ${body.method}`)
-    const sltCookieValue = req.cookies[CookieNames.SLT_TOKEN]
-    if (!sltCookieValue) {
-      throw AuthError.SLTCookieMissing()
-    }
-    // Truyền thêm method vào metadata để service trung tâm biết cách xác thực
-    return this.authVerificationService.verifyCode(sltCookieValue, body.code, ip, userAgent, res, {
-      twoFactorMethod: body.method || 'TOTP'
-    })
+    return await this.authVerificationService.verifyCode(
+      req.cookies[CookieNames.SLT_TOKEN],
+      body.code,
+      ip,
+      userAgent,
+      res
+    )
   }
 
-  /**
-   * Bắt đầu quá trình vô hiệu hóa 2FA.
-   * Cần xác thực bổ sung.
-   */
   @Post('disable')
-  @UseGuards(PoliciesGuard)
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
+  @RequirePermissions(['2FA:disable:own'])
   @HttpCode(HttpStatus.OK)
   async disableTwoFactor(
     @ActiveUser() activeUser: ActiveUserData,
     @Body() body: TwoFactorVerifyDto
   ): Promise<{ message: string }> {
-    this.logger.log(`[disableTwoFactor] Attempting to disable 2FA for user: ${activeUser.id}`)
     return this.twoFactorService.disableVerification(activeUser.id, body.code, body.method)
   }
 
-  /**
-   * Tạo lại mã khôi phục.
-   * Yêu cầu xác thực bằng TOTP hoặc một mã khôi phục cũ.
-   */
   @Post('regenerate-recovery-codes')
-  @UseGuards(PoliciesGuard)
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
+  @RequirePermissions(['2FA:regenerate_codes:own'])
   @HttpCode(HttpStatus.OK)
   async regenerateRecoveryCodes(
     @ActiveUser() activeUser: ActiveUserData,
@@ -159,8 +123,6 @@ export class TwoFactorController {
     @Ip() ip: string,
     @UserAgent() userAgent: string
   ): Promise<{ message: string; data: { recoveryCodes: string[] } }> {
-    this.logger.log(`[regenerateRecoveryCodes] User ${activeUser.id} is attempting to regenerate recovery codes.`)
-
     return this.twoFactorService.regenerateRecoveryCodes(activeUser.id, body.code, body.method, ip, userAgent)
   }
 }

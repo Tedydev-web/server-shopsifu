@@ -1,27 +1,23 @@
-import { Controller, Post, Body, Res, Ip, Req, HttpCode, HttpStatus, UseGuards } from '@nestjs/common'
-import { Response, Request } from 'express'
+import { Controller, Post, Body, Res, Req, HttpCode, HttpStatus, UseGuards, Ip } from '@nestjs/common'
+import { Request, Response } from 'express'
 import { PasswordService } from '../services/password.service'
-import { InitiatePasswordResetDto, SetNewPasswordDto, ChangePasswordDto } from '../dtos/password.dto'
-import { IsPublic, Auth } from '../../../shared/decorators/auth.decorator'
+import { ChangePasswordDto, InitiatePasswordResetDto, SetNewPasswordDto } from '../dtos/password.dto'
+import { IsPublic, Auth } from 'src/shared/decorators/auth.decorator'
+import { ThrottlerGuard } from '@nestjs/throttler'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
+import { ActiveUserData } from 'src/shared/types/active-user.type'
 import { CookieNames } from '../auth.constants'
 import { AuthError } from '../auth.error'
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
-import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { ActiveUserData } from 'src/shared/types/active-user.type'
-import { PoliciesGuard } from 'src/shared/guards/policies.guard'
-import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
-import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
+import { Throttle } from '@nestjs/throttler'
 
-@UseGuards(ThrottlerGuard)
 @Auth()
+@UseGuards(ThrottlerGuard)
 @Controller('auth/password')
 export class PasswordController {
   constructor(private readonly passwordService: PasswordService) {}
 
   @Post('change')
-  @UseGuards(PoliciesGuard)
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
   async changePassword(
     @ActiveUser() activeUser: ActiveUserData,
     @Body() body: ChangePasswordDto,

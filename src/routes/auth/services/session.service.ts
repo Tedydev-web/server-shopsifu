@@ -208,8 +208,11 @@ export class SessionsService implements ISessionService {
   /**
    * Lấy thông tin địa lý từ địa chỉ IP
    */
-  private async getLocationFromIP(ip: string): Promise<GeoLocationResult> {
-    return this.geolocationService.getLocationFromIP(ip)
+  private async getLocationFromIP(ip: any): Promise<GeoLocationResult> {
+    // Chuyển đổi giá trị IP nhận được thành một chuỗi một cách an toàn.
+    // GeolocationService đã được thiết kế để xử lý các chuỗi rỗng, IP local hoặc không hợp lệ.
+    const ipString = String(ip || '')
+    return this.geolocationService.getLocationFromIP(ipString)
   }
 
   /**

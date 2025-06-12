@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Ip, Logger, Post, Req, Res, Inject } from '@nestjs/common'
+import { Body, Controller, HttpCode, HttpStatus, Ip, Logger, Post, Req, Res, Inject, Get } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { Throttle } from '@nestjs/throttler'
 
@@ -99,6 +99,14 @@ export class CoreController {
       userAgent
     }
     return this.coreService.refreshToken(req, deviceInfo, res)
+  }
+
+  @Auth()
+  @Get('ui-capabilities')
+  @HttpCode(HttpStatus.OK)
+  async getUICapabilities(@ActiveUser() user: ActiveUserData): Promise<any> {
+    this.logger.log(`[getUICapabilities] Fetching UI capabilities for user ${user.id}`)
+    return this.coreService.getUserUICapabilities(user.id)
   }
 
   @Auth()

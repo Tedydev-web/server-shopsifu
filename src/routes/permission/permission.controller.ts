@@ -13,27 +13,24 @@ import {
   Query
 } from '@nestjs/common'
 import { PermissionService } from './permission.service'
-import { CreatePermissionDto, UpdatePermissionDto, PermissionDto, GetPermissionsQueryDto } from './permission.dto'
+import { GetPermissionsQueryDto, CreatePermissionDto, UpdatePermissionDto, PermissionDto } from './permission.dto'
 import { Auth } from 'src/shared/decorators/auth.decorator'
-import { PoliciesGuard } from 'src/shared/guards/policies.guard'
-import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
-import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
-import { PermissionError } from './permission.error'
+import { PermissionGuard } from 'src/shared/guards/permission.guard'
+import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 
 @Auth()
-@UseGuards(PoliciesGuard)
+@UseGuards(PermissionGuard)
 @Controller('permissions')
 export class PermissionController {
   constructor(private readonly permissionService: PermissionService) {}
 
   @Post()
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Create, 'Permission'))
+  @RequirePermissions(['Permission:create'])
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createPermissionDto: CreatePermissionDto) {
     const permission = await this.permissionService.create(createPermissionDto)
     return {
-      status: HttpStatus.CREATED,
-      message: 'permission.success.create',
+      message: 'Permission created successfully',
       data: PermissionDto.fromEntity(permission)
     }
   }
@@ -42,51 +39,36 @@ export class PermissionController {
    * Get all permissions grouped by subject with pagination similar to Sessions module
    */
   @Get()
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'Permission'))
+  @RequirePermissions(['Permission:read'])
   async getPermissions(@Query() query: GetPermissionsQueryDto): Promise<any> {
-    if (query.page < 1 || query.limit < 1) {
-      throw PermissionError.InvalidPagination()
-    }
-
-    const result = await this.permissionService.getGroupedPermissions(query.page, query.limit)
-
-    return {
-      status: HttpStatus.OK,
-      message: result.message,
-      data: result.data
-    }
+    const { page, limit } = query
+    return await this.permissionService.getGroupedPermissions(page, limit)
   }
 
   @Get(':id')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'Permission'))
+  @RequirePermissions(['Permission:read'])
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const permission = await this.permissionService.findOne(id)
     return {
-      status: HttpStatus.OK,
-      message: 'permission.success.get',
+      message: 'Permission retrieved successfully',
       data: PermissionDto.fromEntity(permission)
     }
   }
 
   @Patch(':id')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'Permission'))
+  @RequirePermissions(['Permission:update'])
   async update(@Param('id', ParseIntPipe) id: number, @Body() updatePermissionDto: UpdatePermissionDto) {
     const permission = await this.permissionService.update(id, updatePermissionDto)
     return {
-      status: HttpStatus.OK,
-      message: 'permission.success.update',
+      message: 'Permission updated successfully',
       data: PermissionDto.fromEntity(permission)
     }
   }
 
   @Delete(':id')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Delete, 'Permission'))
-  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(['Permission:delete'])
+  @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.permissionService.remove(id)
-    return {
-      status: HttpStatus.OK,
-      message: 'permission.success.delete'
-    }
   }
 }

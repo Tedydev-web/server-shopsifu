@@ -1,7 +1,7 @@
 // ================================================================
 // NestJS Dependencies
 // ================================================================
-import { Injectable, Inject, forwardRef } from '@nestjs/common'
+import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { Response } from 'express'
 
@@ -21,6 +21,10 @@ import { I18nTranslations } from 'src/generated/i18n.generated'
 import { EmailService } from 'src/shared/services/email.service'
 import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
 import { TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
+import { RoleRepository } from 'src/routes/role/role.repository'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
+import { Permission } from 'src/routes/permission/permission.model'
 
 // ================================================================
 // Constants & Injection Tokens
@@ -48,14 +52,70 @@ export interface InitiateUserCreationResponse {
  */
 @Injectable()
 export class UserService {
+  private readonly logger = new Logger(UserService.name)
+
   constructor(
     private readonly userRepository: UserRepository,
+    private readonly roleRepository: RoleRepository,
+    private readonly redisService: RedisService,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
     private readonly i18nService: I18nService<I18nTranslations>,
     private readonly emailService: EmailService,
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService
   ) {}
+
+  // ================================================================
+  // Public Methods - Permissions
+  // ================================================================
+
+  /**
+   * Lấy danh sách permissions của user, có sử dụng cache
+   * @param userId - ID của user
+   * @returns Danh sách các permissions
+   */
+  async getUserPermissions(userId: number): Promise<Permission[]> {
+    const cacheKey = RedisKeyManager.getUserPermissionsCacheKey(userId)
+
+    try {
+      const cachedPermissions = await this.redisService.getJson<Permission[]>(cacheKey)
+      if (cachedPermissions) {
+        this.logger.debug(`[getUserPermissions] Cache hit for user ${userId}`)
+        return cachedPermissions
+      }
+    } catch (error) {
+      this.logger.error(`[getUserPermissions] Failed to get from Redis cache for user ${userId}:`, error)
+    }
+
+    this.logger.debug(`[getUserPermissions] Cache miss for user ${userId}, fetching from DB.`)
+    const user = await this.roleRepository.getUserWithRoleAndPermissions(userId)
+
+    const permissions = user?.role?.permissions || []
+
+    // Cache permissions trong 5 phút
+    try {
+      await this.redisService.setJson(cacheKey, permissions, 300)
+    } catch (error) {
+      this.logger.error(`[getUserPermissions] Failed to set Redis cache for user ${userId}:`, error)
+    }
+
+    return permissions
+  }
+
+  /**
+   * Xóa cache permissions của user.
+   * Gọi hàm này khi vai trò hoặc quyền của người dùng thay đổi.
+   * @param userId - ID của user
+   */
+  async invalidateUserPermissionsCache(userId: number): Promise<void> {
+    const cacheKey = RedisKeyManager.getUserPermissionsCacheKey(userId)
+    try {
+      await this.redisService.del(cacheKey)
+      this.logger.log(`[invalidateUserPermissionsCache] Invalidated permissions cache for user ${userId}`)
+    } catch (error) {
+      this.logger.error(`[invalidateUserPermissionsCache] Failed to invalidate cache for user ${userId}:`, error)
+    }
+  }
 
   // ================================================================
   // Public Methods - Main API endpoints
@@ -242,6 +302,12 @@ export class UserService {
       }
     }
 
+    // Nếu roleId thay đổi, xóa cache permission của user
+    if (updateUserDto.roleId && updateUserDto.roleId !== existingUser.roleId) {
+      this.logger.log(`Role changed for user ${id}, invalidating permissions cache.`)
+      await this.invalidateUserPermissionsCache(id)
+    }
+
     const updatedUser = await this.userRepository.update(id, dataToUpdate)
 
     // Gửi email thông báo cập nhật user
@@ -303,7 +369,7 @@ export class UserService {
     try {
       // Lấy email admin từ environment hoặc config
       const adminEmails = process.env.USER_MANAGEMENT_ADMIN_EMAIL?.split(',') || ['admin@shopsifu.com']
-      
+
       for (const adminEmail of adminEmails) {
         await this.emailService.sendUserCreatedAlert(adminEmail.trim(), {
           userName: 'Administrator',
@@ -339,9 +405,9 @@ export class UserService {
       // Lấy email security team và admin từ environment
       const securityEmails = process.env.USER_MANAGEMENT_SECURITY_EMAIL?.split(',') || ['security@shopsifu.com']
       const adminEmails = process.env.USER_MANAGEMENT_ADMIN_EMAIL?.split(',') || ['admin@shopsifu.com']
-      
+
       const allRecipients = [...securityEmails, ...adminEmails]
-      
+
       for (const recipientEmail of allRecipients) {
         await this.emailService.sendUserCreatedAlert(recipientEmail.trim(), {
           userName: 'Security Team',
@@ -377,14 +443,14 @@ export class UserService {
     try {
       // Xây dựng danh sách các thay đổi
       const changedFields = this.buildChangedFields(previousUser, updatedUser)
-      
+
       if (changedFields.length === 0) {
         return // Không có thay đổi nào, không cần gửi email
       }
 
       // Lấy email security team từ environment
       const securityEmails = process.env.USER_MANAGEMENT_SECURITY_EMAIL?.split(',') || ['security@shopsifu.com']
-      
+
       for (const securityEmail of securityEmails) {
         await this.emailService.sendUserUpdatedAlert(securityEmail.trim(), {
           userName: 'Security Team',
@@ -421,9 +487,9 @@ export class UserService {
       // Lấy email audit team và security team từ environment
       const auditEmails = process.env.USER_MANAGEMENT_AUDIT_EMAIL?.split(',') || ['audit@shopsifu.com']
       const securityEmails = process.env.USER_MANAGEMENT_SECURITY_EMAIL?.split(',') || ['security@shopsifu.com']
-      
+
       const allRecipients = [...auditEmails, ...securityEmails]
-      
+
       for (const recipientEmail of allRecipients) {
         await this.emailService.sendUserDeletedAlert(recipientEmail.trim(), {
           userName: 'Audit Team',

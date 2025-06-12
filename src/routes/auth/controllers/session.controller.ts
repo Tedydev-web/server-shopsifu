@@ -32,13 +32,11 @@ import { Response } from 'express'
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../services/auth-verification.service'
 import { AuthError } from '../auth.error'
-import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
-import { PoliciesGuard } from 'src/shared/guards/policies.guard'
-import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
 import { CurrentUserContext } from 'src/shared/types/current-user-context.type'
+import { GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
+import { z } from 'zod'
 
 @Auth()
-@UseGuards(PoliciesGuard)
 @Controller('sessions')
 export class SessionsController {
   private readonly logger = new Logger(SessionsController.name)
@@ -53,7 +51,6 @@ export class SessionsController {
    * Lấy tất cả sessions của người dùng, nhóm theo thiết bị
    */
   @Get()
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'Device'))
   async getSessions(@ActiveUser() activeUser: ActiveUserData, @Query() query: GetSessionsQueryDto): Promise<any> {
     if (query.page < 1 || query.limit < 1) {
       throw AuthError.InvalidPageOrLimit()
@@ -78,7 +75,6 @@ export class SessionsController {
    * Thu hồi một hoặc nhiều phiên đăng nhập hoặc thiết bị
    */
   @Post('revoke')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Delete, 'Device'))
   @HttpCode(HttpStatus.OK)
   async revokeSessions(
     @ActiveUser() activeUser: ActiveUserData,
@@ -145,7 +141,6 @@ export class SessionsController {
    * Thu hồi tất cả phiên đăng nhập
    */
   @Post('revoke-all')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Delete, 'Device'))
   @HttpCode(HttpStatus.OK)
   async revokeAllSessions(
     @ActiveUser() activeUser: ActiveUserData,
@@ -194,7 +189,6 @@ export class SessionsController {
    * Cập nhật tên thiết bị
    */
   @Patch('devices/:deviceId/name')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'Device'))
   @HttpCode(HttpStatus.OK)
   async updateDeviceName(
     @ActiveUser() activeUser: ActiveUserData,
@@ -219,7 +213,6 @@ export class SessionsController {
    * Đánh dấu thiết bị hiện tại là đáng tin cậy
    */
   @Post('devices/trust-current')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'Device'))
   @HttpCode(HttpStatus.OK)
   async trustCurrentDevice(@ActiveUser() activeUser: ActiveUserData): Promise<any> {
     this.logger.debug(`[trustCurrentDevice] User ${activeUser.id} trusting device ${activeUser.deviceId}`)
@@ -237,7 +230,6 @@ export class SessionsController {
    * Hủy bỏ trạng thái đáng tin cậy của thiết bị
    */
   @Delete('devices/:deviceId/untrust')
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'Device'))
   @HttpCode(HttpStatus.OK)
   async untrustDevice(@ActiveUser() activeUser: ActiveUserData, @Param() params: DeviceIdParamsDto): Promise<any> {
     if (isNaN(params.deviceId)) throw AuthError.InvalidDeviceId()

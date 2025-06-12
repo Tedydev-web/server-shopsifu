@@ -3,28 +3,28 @@ import { Auth } from '../../shared/decorators/auth.decorator'
 import { ActiveUser } from '../../shared/decorators/active-user.decorator'
 import { ProfileService } from './profile.service'
 import { UpdateProfileDto, ProfileResponseDto } from './profile.dto'
-import { PoliciesGuard } from 'src/shared/guards/policies.guard'
-import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
+import { PermissionGuard } from 'src/shared/guards/permission.guard'
+import { PermissionCondition, RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { ActiveUserData } from 'src/shared/types/active-user.type'
-import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
 
 @Auth()
-@UseGuards(PoliciesGuard)
+@UseGuards(PermissionGuard)
 @Controller('profile')
 export class ProfileController {
   private readonly logger = new Logger(ProfileController.name)
   constructor(private readonly profileService: ProfileService) {}
 
   @Get()
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'UserProfile'))
+  @RequirePermissions(['Profile:read:own'])
   @HttpCode(HttpStatus.OK)
   async getProfile(@ActiveUser() activeUser: ActiveUserData): Promise<ProfileResponseDto> {
     this.logger.debug(`[GET /profile] Called by user ${activeUser.id}`)
-    return this.profileService.getProfile(activeUser.id)
+    const profile = await this.profileService.getProfile(activeUser.id)
+    return profile
   }
 
   @Patch()
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
+  @RequirePermissions(['Profile:update:own'])
   @HttpCode(HttpStatus.OK)
   async updateProfile(
     @ActiveUser() activeUser: ActiveUserData,

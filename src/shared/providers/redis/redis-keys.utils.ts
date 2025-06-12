@@ -32,7 +32,8 @@ export enum RedisPrefix {
 
   CACHE = 'cache',
   CACHE_ROLE = 'cache:role',
-  CACHE_PERMISSION = 'cache:permission'
+  CACHE_PERMISSION = 'cache:permission',
+  CACHE_USER_PERMISSIONS = 'cache:user:permissions'
 }
 
 /**
@@ -299,5 +300,14 @@ export class RedisKeyManager {
    */
   public static getAllPermissionsCacheKey(): string {
     return this.a(RedisPrefix.CACHE_PERMISSION, 'all')
+  }
+
+  /**
+   * Key for caching a user's permissions.
+   * @type STRING (JSON)
+   * @example "cache:user:permissions:123"
+   */
+  public static getUserPermissionsCacheKey(userId: number): string {
+    return this.a(RedisPrefix.CACHE_USER_PERMISSIONS, userId)
   }
 }

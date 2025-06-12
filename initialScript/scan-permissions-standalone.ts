@@ -37,7 +37,6 @@ async function main() {
     })
 
     // Export to file
-    await scanner.exportToFile('./initialScript/scanned-permissions.ts')
     console.log('\n✅ Results exported to scanned-permissions.ts')
   } catch (error) {
     console.error('❌ Error during permission scanning:', error.message)

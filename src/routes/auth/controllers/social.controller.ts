@@ -6,19 +6,18 @@ import {
   Query,
   Req,
   Res,
-  Ip,
   HttpCode,
   HttpStatus,
   Logger,
   Inject,
   forwardRef,
-  UseGuards
+  Ip
 } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { ConfigService } from '@nestjs/config'
 
 import { SocialService } from '../services/social.service'
-import { CoreService } from 'src/routes/auth/services/core.service'
+import { CoreService } from '../services/core.service'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { ICookieService, ITokenService, PendingLinkTokenPayloadCreate } from 'src/routes/auth/auth.types'
@@ -36,10 +35,8 @@ import { AuthError } from 'src/routes/auth/auth.error'
 import { COOKIE_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 import * as crypto from 'crypto'
 import { ActiveUserData } from 'src/shared/types/active-user.type'
-import { PoliciesGuard } from 'src/shared/guards/policies.guard'
-import { CheckPolicies } from 'src/shared/decorators/check-policies.decorator'
-import { Action, AppAbility } from 'src/shared/providers/casl/casl-ability.factory'
 
+@IsPublic()
 @Controller('auth/social')
 export class SocialController {
   private readonly logger = new Logger(SocialController.name)
@@ -180,8 +177,6 @@ export class SocialController {
 
   @Auth()
   @Post('unlink/google')
-  @UseGuards(PoliciesGuard)
-  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'UserProfile'))
   @HttpCode(HttpStatus.OK)
   async initiateUnlinkGoogleAccount(
     @ActiveUser() activeUser: ActiveUserData,

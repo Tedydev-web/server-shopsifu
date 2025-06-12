@@ -14,10 +14,8 @@ import { TokenService } from './services/token.service'
 import { UserAgentService } from './services/user-agent.service'
 import { RedisService } from './providers/redis/redis.service'
 import { CryptoService } from './services/crypto.service'
-import { CaslAbilityFactory } from './providers/casl/casl-ability.factory'
 
 import { ApiKeyGuard } from './guards/api-key.guard'
-import { PoliciesGuard } from './guards/policies.guard'
 
 import {
   COOKIE_SERVICE,
@@ -40,11 +38,10 @@ const serviceClasses = [
   TokenService,
   UserAgentService,
   RedisService,
-  CryptoService,
-  CaslAbilityFactory
+  CryptoService
 ]
 
-const guardClasses = [ApiKeyGuard, PoliciesGuard]
+const guardClasses = [ApiKeyGuard]
 
 const tokenProviders = [
   { provide: COOKIE_SERVICE, useClass: CookieService },

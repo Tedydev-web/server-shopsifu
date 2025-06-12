@@ -22,6 +22,7 @@ import { TwoFactorController } from './controllers/two-factor.controller'
 import { AuthenticationGuard } from './guards/authentication.guard'
 import { BasicAuthGuard } from './guards/basic-auth.guard'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
+import { PermissionGuard } from 'src/shared/guards/permission.guard'
 
 // Repositories
 import { DeviceRepository } from '../../shared/repositories/device.repository'
@@ -64,6 +65,7 @@ import { RoleModule } from 'src/routes/role/role.module'
     AuthenticationGuard,
     BasicAuthGuard,
     JwtAuthGuard,
+    PermissionGuard,
 
     // Repositories
     DeviceRepository,
@@ -108,6 +110,7 @@ import { RoleModule } from 'src/routes/role/role.module'
     AuthenticationGuard,
     BasicAuthGuard,
     JwtAuthGuard,
+    PermissionGuard,
 
     // Repositories
     DeviceRepository,
