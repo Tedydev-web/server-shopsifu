@@ -42,12 +42,11 @@ async function scanAndSeedPermissions() {
     const permissionData = {
       action: p.action,
       subject: p.subject,
-      category: p.category,
       description: p.description
     }
 
     if (existing) {
-      if (existing.category !== permissionData.category || existing.description !== permissionData.description) {
+      if (existing.description !== permissionData.description) {
         await prisma.permission.update({ where: { id: existing.id }, data: permissionData })
         updatedCount++
         console.log(`  ✓ Updated: ${key}`)

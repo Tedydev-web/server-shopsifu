@@ -18,22 +18,11 @@ async function main() {
 
     console.log('\n📊 Permission Discovery Summary:')
     console.log(`Scanned permissions: ${permissions.length}`)
-    console.log(`Total to seed (including manage:all): ${permissionsToSeed.length}`)
-
-    // Group by category
-    const byCategory = new Map<string, number>()
-    permissions.forEach((permission) => {
-      byCategory.set(permission.category, (byCategory.get(permission.category) || 0) + 1)
-    })
-
-    console.log('\nBy category:')
-    byCategory.forEach((count, category) => {
-      console.log(`  ${category}: ${count} permissions`)
-    })
+    console.log(`Total to seed: ${permissionsToSeed.length}`)
 
     console.log('\n📋 Found Permissions:')
     permissions.forEach((permission) => {
-      console.log(`  🔐 ${permission.action}:${permission.subject} (${permission.category})`)
+      console.log(`  🔐 ${permission.action}:${permission.subject}`)
     })
 
     // Export to file

@@ -1,5 +1,5 @@
-import * as fs from 'fs'
 import * as path from 'path'
+import * as fs from 'fs'
 import { glob } from 'glob'
 import * as ts from 'typescript'
 
@@ -87,7 +87,6 @@ export class PermissionScanner {
           const permission: ScannedPermission = {
             action,
             subject,
-            category: this.inferCategory(subject, node.getSourceFile().fileName),
             description: this.generateDescription(action, subject),
             filePath: node.getSourceFile().fileName,
             lineNumber: this.getLineNumber(node)
@@ -132,25 +131,6 @@ export class PermissionScanner {
   }
 
   /**
-   * Suy luận category từ subject và file path.
-   */
-  private inferCategory(subject: string, filePath: string): string {
-    const pathSegment = filePath.split(path.sep).slice(-3).join(path.sep)
-
-    if (pathSegment.includes('auth')) return 'Authentication'
-    if (pathSegment.includes('user')) return 'User Management'
-    if (pathSegment.includes('role')) return 'Role Management'
-    if (pathSegment.includes('permission')) return 'Permission Management'
-    if (pathSegment.includes('profile')) return 'User Profile'
-    if (pathSegment.includes('session')) return 'Device & Session Management'
-
-    const ecomSubjects = ['Product', 'Category', 'Order', 'Brand', 'Variant', 'SKU', 'CartItem', 'Review']
-    if (ecomSubjects.includes(subject)) return 'E-commerce'
-
-    return 'General'
-  }
-
-  /**
    * Thêm quyền vào danh sách và tránh trùng lặp.
    */
   private addPermission(permission: ScannedPermission): void {
@@ -168,14 +148,12 @@ export class PermissionScanner {
   generatePermissionsForSeeding(): Array<{
     action: string
     subject: string
-    category: string
     description: string
   }> {
     const permissions = [
       {
         action: 'manage',
         subject: 'all',
-        category: 'System',
         description: 'Grants full access to all resources. For Admin role only.'
       }
     ]
@@ -184,7 +162,6 @@ export class PermissionScanner {
       permissions.push({
         action: p.action,
         subject: p.subject,
-        category: p.category || 'General',
         description: p.description
       })
     })
@@ -195,12 +172,10 @@ export class PermissionScanner {
       .map((p) => ({
         action: p.action,
         subject: p.subject,
-        category: p.category || 'General',
         description: p.description
       }))
 
     for (const op of ownershipPermissions) {
-      const key = `${op.subject}:${op.action}`
       if (!permissions.some((p) => p.subject === op.subject && p.action === op.action)) {
         permissions.push(op)
       }

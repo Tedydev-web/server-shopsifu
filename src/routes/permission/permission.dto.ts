@@ -30,7 +30,6 @@ export class PermissionDto implements Omit<Permission, 'createdById' | 'updatedB
   action: string
   subject: string
   description: string | null
-  category: string | null
   conditions: Record<string, any> | null
   uiMetadata: Record<string, any> | null
   createdAt: Date
@@ -47,7 +46,6 @@ export class PermissionDto implements Omit<Permission, 'createdById' | 'updatedB
       action: entity.action,
       subject: entity.subject,
       description: entity.description,
-      category: entity.category,
       conditions: entity.conditions as Record<string, any> | null,
       uiMetadata: entity.uiMetadata as Record<string, any> | null,
       createdAt: entity.createdAt,

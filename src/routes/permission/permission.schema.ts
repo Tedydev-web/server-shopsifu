@@ -16,7 +16,6 @@ export const PermissionSchema = z.object({
     .max(255, 'Subject must be less than 255 characters')
     .regex(/^[a-zA-Z0-9_]+$/, 'Subject can only contain letters, numbers, and underscores'),
   description: z.string().max(500, 'Description must be less than 500 characters').optional().nullable(),
-  category: z.string().max(100, 'Category must be less than 100 characters').optional().nullable(),
   conditions: z.record(z.any()).optional().nullable()
 })
 
@@ -31,7 +30,6 @@ export const PermissionItemSchema = z.object({
 // --- Schemas for Permission Group (by subject) (Optimized) ---
 export const PermissionGroupSchema = z.object({
   subject: z.string(),
-  displayName: z.string(),
   permissionsCount: z.number(),
   permissions: z.array(PermissionItemSchema)
 })

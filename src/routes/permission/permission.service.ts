@@ -25,7 +25,6 @@ export class PermissionService {
       action: createPermissionDto.action,
       subject: createPermissionDto.subject,
       description: createPermissionDto.description,
-      category: createPermissionDto.category,
       conditions: createPermissionDto.conditions
     }
     return this.permissionRepository.create(data)
@@ -82,7 +81,6 @@ export class PermissionService {
 
       groups.push({
         subject,
-        displayName: this.formatSubjectDisplayName(subject),
         permissionsCount: permissions.length,
         permissions: permissions.map((p) => ({
           id: p.id,
@@ -113,13 +111,6 @@ export class PermissionService {
         }
       }
     }
-  }
-
-  /**
-   * Format subject name for display (e.g., "User" -> "USERS")
-   */
-  private formatSubjectDisplayName(subject: string): string {
-    return subject.toUpperCase()
   }
 
   /**

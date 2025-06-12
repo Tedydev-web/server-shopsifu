@@ -21,7 +21,9 @@
     "check:deps": "depcheck --ignores=src,emails",
     "seed:permissions:auto": "tsx initialScript/auto-seed-permissions-final.ts",
     "scan:permissions": "tsx initialScript/scan-permissions-standalone.ts",
-    "scan:roles": "tsx initialScript/scan-roles-standalone.ts"
+    "scan:roles": "tsx initialScript/scan-roles-standalone.ts",
+    "set:permissions:metadata": "tsx scripts/set-permission-metadata.ts",
+    "seed:complete": "tsx seed-complete-roles-permissions.ts"
   },
   "dependencies": {
     "@casl/ability": "^6.7.3",
