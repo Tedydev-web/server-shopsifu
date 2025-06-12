@@ -10,6 +10,6 @@ import { AuthModule } from '../auth/auth.module'
   imports: [forwardRef(() => SharedModule), forwardRef(() => AuthModule), RoleModule],
   controllers: [UserController],
   providers: [UserService, UserRepository],
-  exports: [UserService]
+  exports: [UserService, UserRepository]
 })
 export class UserModule {}
