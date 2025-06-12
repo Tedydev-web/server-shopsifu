@@ -276,11 +276,6 @@ export class SLTService implements ISLTService {
   async updateSltContext(jti: string, updateData: Partial<SltContextData>): Promise<void> {
     const sltContextKey = this.getSltContextKey(jti)
 
-    if (!(await this.redisService.exists(sltContextKey))) {
-      this.logger.warn(`[updateSltContext] Attempted to update non-existent SLT context for jti: ${jti}`)
-      throw AuthError.SLTExpired()
-    }
-
     const updatePayload: Record<string, string> = {}
     for (const [key, value] of Object.entries(updateData)) {
       if (value !== undefined && value !== null) {
@@ -307,10 +302,10 @@ export class SLTService implements ISLTService {
     // Get the context to clean up active token tracking
     const sltContextKey = this.getSltContextKey(sltJti)
     const redisContext = await this.redisService.hgetall(sltContextKey)
-    
+
     if (redisContext && Object.keys(redisContext).length > 0) {
       const sltContext = this.parseSltContextFromRedis(redisContext)
-      
+
       // Clean up active token tracking (skip for registration flow with negative userIds)
       if (sltContext.userId > 0) {
         const activeTokenKey = this.getSltActiveTokenKey(sltContext.userId, sltContext.purpose)

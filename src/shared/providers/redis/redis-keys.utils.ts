@@ -150,7 +150,7 @@ export class RedisKeyManager {
    * @example "auth:slt:context:jti-jkl"
    */
   public static getSltContextKey(jti: string): string {
-    return `${RedisPrefix.AUTH}:slt-context:${jti}`
+    return this.a(RedisPrefix.SLT_CONTEXT, jti)
   }
 
   /**
@@ -168,7 +168,7 @@ export class RedisKeyManager {
    * @example "auth:slt:active:123:VERIFY_2FA"
    */
   public static getSltActiveTokenKey(userId: number, purpose: string): string {
-    return `${RedisPrefix.AUTH}:slt:active:${userId}:${purpose}`
+    return this.a(RedisPrefix.SLT_CONTEXT, userId, purpose)
   }
 
   /**
