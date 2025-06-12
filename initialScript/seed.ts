@@ -4,6 +4,7 @@ import * as path from 'path'
 import { Logger } from '@nestjs/common'
 import { ALL_PERMISSIONS } from '../src/shared/constants/permissions.constants'
 import { PermissionDefinition } from 'src/shared/constants/permissions.constants'
+import * as bcrypt from 'bcrypt'
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') })
@@ -34,6 +35,17 @@ const CORE_ROLES = [
   }
 ]
 
+/**
+ * Default admin user configuration
+ */
+const DEFAULT_ADMIN = {
+  email: process.env.ADMIN_EMAIL,
+  password: process.env.ADMIN_PASSWORD,
+  firstName: 'Admin',
+  lastName: 'User',
+  username: 'admin'
+}
+
 async function main() {
   logger.log('🚀 Starting database seeding process...')
 
@@ -41,6 +53,7 @@ async function main() {
     await seedPermissions()
     const roles = await seedRoles()
     await assignAllPermissionsToSuperAdmin(roles)
+    await createAdminUser(roles)
 
     logger.log('✅ Database seeding completed successfully!')
   } catch (error) {
@@ -199,7 +212,7 @@ async function seedRoles(): Promise<Role[]> {
  * @param roles - The list of roles, used to find the Super Admin role.
  */
 async function assignAllPermissionsToSuperAdmin(roles: Role[]) {
-  logger.log('\n[3/3] Assigning all permissions to Super Admin...')
+  logger.log('\n[3/4] Assigning all permissions to Super Admin...')
   const superAdminRole = roles.find((r) => r.name === 'Super Admin')
 
   if (!superAdminRole) {
@@ -235,4 +248,62 @@ async function assignAllPermissionsToSuperAdmin(roles: Role[]) {
   )
 }
 
-main()
+/**
+ * Creates an admin user if one doesn't already exist.
+ * @param roles - The list of roles, used to find the Admin role.
+ */
+async function createAdminUser(roles: Role[]) {
+  logger.log('\n[4/4] Creating default admin user...')
+
+  // Find the Admin role
+  const adminRole = roles.find((r) => r.name === 'Admin')
+  const superAdminRole = roles.find((r) => r.name === 'Super Admin')
+
+  if (!adminRole && !superAdminRole) {
+    logger.warn('⚠️ Neither Admin nor Super Admin role found. Skipping admin user creation.')
+    return
+  }
+
+  // Use Super Admin role if Admin role is not available
+  const roleToAssign = superAdminRole || adminRole
+
+  // Check if the admin user already exists
+  const existingAdmin = await prisma.user.findUnique({
+    where: { email: DEFAULT_ADMIN.email }
+  })
+
+  if (existingAdmin) {
+    logger.log(`ℹ️ Admin user with email ${DEFAULT_ADMIN.email} already exists. Skipping creation.`)
+    return
+  }
+
+  // Hash the password
+  const saltRounds = 10
+  const hashedPassword = await bcrypt.hash(DEFAULT_ADMIN.password, saltRounds)
+
+  // Create the admin user with profile
+  const adminUser = await prisma.user.create({
+    data: {
+      email: DEFAULT_ADMIN.email,
+      password: hashedPassword,
+      status: 'ACTIVE',
+      isEmailVerified: true,
+      roleId: roleToAssign.id,
+      userProfile: {
+        create: {
+          firstName: DEFAULT_ADMIN.firstName,
+          lastName: DEFAULT_ADMIN.lastName,
+          username: DEFAULT_ADMIN.username
+        }
+      }
+    }
+  })
+
+  logger.log(`✅ Created admin user with email: ${adminUser.email} and password: ${DEFAULT_ADMIN.password}`)
+  logger.log('   ⚠️ Please change the default password after first login!')
+}
+
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})
