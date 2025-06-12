@@ -167,7 +167,7 @@ export class PasswordService {
 
     try {
       const userAgentInfo = this.userAgentService.parse(userAgent)
-      const locationInfo = await this.geolocationService.getLocationFromIP(ipAddress)
+      const locationInfo = await this.geolocationService.getLocationFromIP(ipAddress || '')
       await this.emailService.sendPasswordChangedEmail(user.email, {
         userName: user.userProfile?.username || user.email.split('@')[0],
         details: [

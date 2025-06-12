@@ -36,4 +36,12 @@ export class PermissionError {
       'permission.error.deleteFailed'
     )
   }
+
+  public static InvalidPagination(): ApiException {
+    return new ApiException(
+      HttpStatus.BAD_REQUEST,
+      'PERMISSION_INVALID_PAGINATION',
+      'permission.error.invalidPagination'
+    )
+  }
 }

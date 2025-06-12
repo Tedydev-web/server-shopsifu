@@ -2,6 +2,10 @@ import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
 import { Permission } from '@prisma/client'
 
+// ===================================================================================
+//                                     SCHEMAS
+// ===================================================================================
+
 const PermissionSchema = z.object({
   action: z
     .string()
@@ -16,9 +20,52 @@ const PermissionSchema = z.object({
   conditions: z.record(z.any()).optional().nullable()
 })
 
-export class CreatePermissionDto extends createZodDto(PermissionSchema) {}
+// --- Schemas for Individual Permission Item (Optimized) ---
+const PermissionItemSchema = z.object({
+  id: z.number(),
+  action: z.string(),
+  httpMethod: z.string(), // GET, POST, PATCH, DELETE, etc.
+  endpoint: z.string() // API endpoint path
+})
 
+// --- Schemas for Permission Group (by subject) (Optimized) ---
+const PermissionGroupSchema = z.object({
+  subject: z.string(),
+  displayName: z.string(),
+  permissionsCount: z.number(),
+  permissions: z.array(PermissionItemSchema)
+})
+
+// --- Schemas for Get Permissions (Grouped Response) (Optimized) ---
+export const GetGroupedPermissionsResponseSchema = z.object({
+  groups: z.array(PermissionGroupSchema),
+  meta: z.object({
+    currentPage: z.number(),
+    totalPages: z.number(),
+    totalGroups: z.number()
+  })
+})
+
+export const GetPermissionsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().optional().default(10)
+})
+
+// ===================================================================================
+//                                       DTOs
+// ===================================================================================
+
+// --- Request DTOs ---
+export class GetPermissionsQueryDto extends createZodDto(GetPermissionsQuerySchema) {}
+export class CreatePermissionDto extends createZodDto(PermissionSchema) {}
 export class UpdatePermissionDto extends createZodDto(PermissionSchema.partial()) {}
+
+// --- Response DTOs ---
+export class GetGroupedPermissionsResponseDto extends createZodDto(GetGroupedPermissionsResponseSchema) {}
+
+// Infer and export types from Zod schemas
+export type PermissionGroup = z.infer<typeof PermissionGroupSchema>
+export type PermissionItem = z.infer<typeof PermissionItemSchema>
 
 export class PermissionDto implements Omit<Permission, 'createdById' | 'updatedById' | 'deletedById'> {
   id: number

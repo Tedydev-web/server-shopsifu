@@ -351,8 +351,8 @@ export class UserActivityService {
     }
 
     const [currentLocation, previousLocation] = await Promise.all([
-      this.geolocationService.getLocationFromIP(currentActivity.ipAddress),
-      this.geolocationService.getLocationFromIP(previousActivity.ipAddress)
+      this.geolocationService.getLocationFromIP(currentActivity.ipAddress || ''),
+      this.geolocationService.getLocationFromIP(previousActivity.ipAddress || '')
     ])
 
     if (!this.areCoordinatesValid(currentLocation) || !this.areCoordinatesValid(previousLocation)) {

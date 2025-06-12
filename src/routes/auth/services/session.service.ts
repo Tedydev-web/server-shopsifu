@@ -127,7 +127,7 @@ export class SessionsService implements ISessionService {
           const inactiveDuration = session.isActive
             ? null
             : this.calculateInactiveDuration(new Date(session.lastActive))
-          const sessionLocationResult = await this.getLocationFromIP(session.ipAddress)
+          const sessionLocationResult = await this.getLocationFromIP(session.ipAddress || '')
           const isCurrentSession = session.id === currentSessionIdFromToken
 
           return {

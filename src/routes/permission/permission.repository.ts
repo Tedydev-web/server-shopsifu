@@ -40,7 +40,20 @@ export class PermissionRepository {
     return newPermission
   }
 
-  async findAll(): Promise<Permission[]> {
+  async findAll(page?: number, limit?: number): Promise<Permission[]> {
+    // If pagination parameters are provided, don't use cache and return paginated results
+    if (page !== undefined && limit !== undefined) {
+      const offset = (page - 1) * limit
+      return this.prisma.permission.findMany({
+        skip: offset,
+        take: limit,
+        orderBy: {
+          id: 'desc'
+        }
+      })
+    }
+
+    // For non-paginated requests, use cache
     const cacheKey = RedisKeyManager.getAllPermissionsCacheKey()
     const cachedPermissions = await this.redisService.getJson<Permission[]>(cacheKey)
     if (cachedPermissions) {
@@ -48,9 +61,17 @@ export class PermissionRepository {
       return cachedPermissions
     }
 
-    const permissions = await this.prisma.permission.findMany()
+    const permissions = await this.prisma.permission.findMany({
+      orderBy: {
+        id: 'desc'
+      }
+    })
     await this.redisService.setJson(cacheKey, permissions, ALL_PERMISSIONS_CACHE_TTL)
     return permissions
+  }
+
+  async count(): Promise<number> {
+    return this.prisma.permission.count()
   }
 
   async findById(id: number): Promise<Permission | null> {

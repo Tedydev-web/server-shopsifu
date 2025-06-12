@@ -50,39 +50,44 @@ export class GeolocationService {
    * @param ip - IP address cần tra cứu
    * @returns Thông tin vị trí địa lý
    */
-  async getLocationFromIP(ip: string): Promise<GeoLocationResult> {
+  async getLocationFromIP(ip: string | null | undefined): Promise<GeoLocationResult> {
+    // Normalize IP - handle null, undefined, or empty string
+    const normalizedIp = ip || ''
+
     // Kiểm tra IP local/private - trả về location mặc định
-    if (!ip || this.isLocalIP(ip)) {
+    if (!normalizedIp || this.isLocalIP(normalizedIp)) {
       return this.DEFAULT_LOCATION
     }
 
     // Kiểm tra cache - tránh gọi API không cần thiết
-    const cachedResult = this.ipCache.get(ip)
+    const cachedResult = this.ipCache.get(normalizedIp)
     if (cachedResult && Date.now() - cachedResult.timestamp < this.CACHE_DURATION) {
-      this.logger.debug(`[getLocationFromIP] Trả về kết quả từ cache cho IP ${ip}: ${cachedResult.location.display}`)
+      this.logger.debug(
+        `[getLocationFromIP] Trả về kết quả từ cache cho IP ${normalizedIp}: ${cachedResult.location.display}`
+      )
       return cachedResult.location
     }
 
     try {
       // Development environment - trả về mock data để tránh gọi API quá nhiều
       if (this.isDevMode) {
-        const devLocation = this.getDevModeLocation(ip)
-        this.ipCache.set(ip, { location: devLocation, timestamp: Date.now() })
+        const devLocation = this.getDevModeLocation(normalizedIp)
+        this.ipCache.set(normalizedIp, { location: devLocation, timestamp: Date.now() })
         return devLocation
       }
 
       // Gọi API thực tế để lấy thông tin geolocation
-      const response = await this.callIPGeolocationAPI(ip)
+      const response = await this.callIPGeolocationAPI(normalizedIp)
 
       // Lưu kết quả vào cache
-      this.ipCache.set(ip, { location: response, timestamp: Date.now() })
+      this.ipCache.set(normalizedIp, { location: response, timestamp: Date.now() })
       return response
     } catch (error) {
-      this.logger.error(`Lỗi khi lấy thông tin location từ IP ${ip}: ${error.message}`)
+      this.logger.error(`Lỗi khi lấy thông tin location từ IP ${normalizedIp}: ${error.message}`)
 
       // Trả về fallback location phù hợp dựa trên IP
-      const fallbackLocation = this.getFallbackLocation(ip)
-      this.ipCache.set(ip, { location: fallbackLocation, timestamp: Date.now() })
+      const fallbackLocation = this.getFallbackLocation(normalizedIp)
+      this.ipCache.set(normalizedIp, { location: fallbackLocation, timestamp: Date.now() })
       return fallbackLocation
     }
   }
