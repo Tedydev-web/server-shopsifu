@@ -16,7 +16,7 @@ import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { PermissionGuard } from 'src/shared/guards/permission.guard'
 import { CreateRoleDto, RoleDto, UpdateRoleDto } from './role.dto'
 import { RoleService } from './role.service'
-import { Action, AppSubject } from 'src/shared/casl/casl-ability.factory'
+import { Action, AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
 import { Role } from './role.model'
 
 @Auth()
@@ -28,47 +28,47 @@ export class RoleController {
   @Post()
   @RequirePermissions({ action: Action.Create, subject: AppSubject.Role })
   async create(@Body() createRoleDto: CreateRoleDto) {
-    const role = await this.roleService.create(createRoleDto)
+    const data = await this.roleService.create(createRoleDto)
     return {
-      message: 'Role created successfully',
-      data: RoleDto.fromEntity(role)
+      message: 'role.success.create',
+      data
     }
   }
 
   @Get()
   @RequirePermissions({ action: Action.Read, subject: AppSubject.Role })
   async findAll() {
-    const roles = await this.roleService.findAll()
+    const data = await this.roleService.findAll()
     return {
-      message: 'Roles retrieved successfully',
-      data: roles.map((role) => RoleDto.fromEntity(role))
+      message: 'role.success.list',
+      data
     }
   }
 
   @Get(':id')
   @RequirePermissions({ action: Action.Read, subject: Role })
   async findOne(@Param('id', ParseIntPipe) id: number) {
-    const role = await this.roleService.findOne(id)
+    const data = await this.roleService.findOne(id)
     return {
-      message: 'Role retrieved successfully',
-      data: RoleDto.fromEntity(role)
+      message: 'role.success.get',
+      data
     }
   }
 
   @Patch(':id')
   @RequirePermissions({ action: Action.Update, subject: Role })
   async update(@Param('id', ParseIntPipe) id: number, @Body() updateRoleDto: UpdateRoleDto) {
-    const role = await this.roleService.update(id, updateRoleDto)
+    const data = await this.roleService.update(id, updateRoleDto)
     return {
-      message: 'Role updated successfully',
-      data: RoleDto.fromEntity(role)
+      message: 'role.success.update',
+      data
     }
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermissions({ action: Action.Delete, subject: Role })
-  async remove(@Param('id', ParseIntPipe) id: number): Promise<{ message: string }> {
+  async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     await this.roleService.remove(id)
-    return { message: 'Role deleted successfully' }
   }
 }

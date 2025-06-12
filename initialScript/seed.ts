@@ -4,7 +4,7 @@ import * as path from 'path'
 import { Logger } from '@nestjs/common'
 import { ALL_PERMISSIONS } from '../src/shared/constants/permissions.constants'
 import { PermissionDefinition } from 'src/shared/constants/permissions.constants'
-import { AppSubject } from '../src/shared/casl/casl-ability.factory'
+import { AppSubject } from '../src/shared/providers/casl/casl-ability.factory'
 import * as bcrypt from 'bcrypt'
 
 // Load environment variables
@@ -73,7 +73,7 @@ const PERMISSION_CATEGORIES = {
   },
   // Two-factor authentication
   TWO_FACTOR: {
-    subjects: [AppSubject.TwoFactor],
+    subjects: [AppSubject.TwoFactor, AppSubject.Password],
     actions: ['create', 'update', 'delete']
   },
   // Product catalog

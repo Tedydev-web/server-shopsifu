@@ -4,7 +4,7 @@ import { UserService } from 'src/routes/user/user.service'
 import { RequiredPermission, PERMISSIONS_KEY } from 'src/shared/decorators/permissions.decorator'
 import { ActiveUserData } from 'src/shared/types/active-user.type'
 import { GlobalError } from 'src/shared/global.error'
-import { Action, AppAbility, CaslAbilityFactory } from '../casl/casl-ability.factory'
+import { Action, AppAbility, CaslAbilityFactory } from '../providers/casl/casl-ability.factory'
 import { User } from 'src/routes/user/user.model'
 import { Role } from 'src/routes/role/role.model'
 import { Permission } from 'src/routes/permission/permission.model'
@@ -36,7 +36,7 @@ export class PermissionGuard implements CanActivate {
     }
 
     const userPermissions = await this.userService.getUserPermissions(user.id)
-    const ability = this.caslAbilityFactory.createForUser(userPermissions)
+    const ability = this.caslAbilityFactory.createForUser(user, userPermissions)
 
     const checkPromises = requiredPermissions.map((permission) => this.checkPermission(permission, ability, context))
 

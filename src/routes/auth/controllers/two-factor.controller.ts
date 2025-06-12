@@ -13,7 +13,7 @@ import {
   Ip
 } from '@nestjs/common'
 import { Request, Response } from 'express'
-import { Auth } from 'src/shared/decorators/auth.decorator'
+import { Auth, IsPublic } from 'src/shared/decorators/auth.decorator'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { ActiveUserData } from 'src/shared/types/active-user.type'
@@ -25,7 +25,7 @@ import { PermissionGuard } from 'src/shared/guards/permission.guard'
 import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { TWO_FACTOR_SERVICE, COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
 import { CookieService } from 'src/shared/services/cookie.service'
-import { Action, AppSubject } from 'src/shared/casl/casl-ability.factory'
+import { Action, AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
 
 @Auth()
 @UseGuards(PermissionGuard)
@@ -93,7 +93,11 @@ export class TwoFactorController {
   @HttpCode(HttpStatus.OK)
   async disableTwoFactor(
     @ActiveUser() activeUser: ActiveUserData,
-    @Body() body: TwoFactorVerifyDto
+    @Body() body: TwoFactorVerifyDto,
+    @Ip() ip: string,
+    @UserAgent() userAgent: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response
   ): Promise<{ message: string }> {
     return this.twoFactorService.disableVerification(activeUser.id, body.code)
   }

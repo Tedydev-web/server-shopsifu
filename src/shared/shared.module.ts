@@ -14,7 +14,7 @@ import { TokenService } from './services/token.service'
 import { UserAgentService } from './services/user-agent.service'
 import { RedisService } from './providers/redis/redis.service'
 import { CryptoService } from './services/crypto.service'
-import { CaslAbilityFactory } from './casl/casl-ability.factory'
+import { CaslAbilityFactory } from './providers/casl/casl-ability.factory'
 
 import { ApiKeyGuard } from './guards/api-key.guard'
 import { PermissionGuard } from './guards/permission.guard'

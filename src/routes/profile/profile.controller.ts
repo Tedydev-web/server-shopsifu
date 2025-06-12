@@ -6,7 +6,7 @@ import { UpdateProfileDto, ProfileResponseDto } from './profile.dto'
 import { PermissionGuard } from 'src/shared/guards/permission.guard'
 import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { ActiveUserData } from 'src/shared/types/active-user.type'
-import { Action, AppSubject } from 'src/shared/casl/casl-ability.factory'
+import { Action, AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
 
 @Auth()
 @UseGuards(PermissionGuard)

@@ -17,7 +17,7 @@ import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { PermissionGuard } from 'src/shared/guards/permission.guard'
 import { CreatePermissionDto, PermissionDto, UpdatePermissionDto } from './permission.dto'
 import { PermissionService } from './permission.service'
-import { Action, AppSubject } from 'src/shared/casl/casl-ability.factory'
+import { Action, AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
 import { Permission } from './permission.model'
 
 @Auth()
@@ -32,7 +32,7 @@ export class PermissionController {
   async create(@Body() createPermissionDto: CreatePermissionDto) {
     const permission = await this.permissionService.create(createPermissionDto)
     return {
-      message: 'Permission created successfully',
+      message: 'permission.success.create',
       data: PermissionDto.fromEntity(permission)
     }
   }
@@ -42,11 +42,11 @@ export class PermissionController {
    * This is not paginated as the UI typically needs all permissions at once for role assignment.
    */
   @Get()
-  @RequirePermissions({ action: Action.Read, subject: AppSubject.Role })
+  @RequirePermissions({ action: Action.Read, subject: AppSubject.Permission })
   async getAllGroupedPermissions() {
     const permissions = await this.permissionService.getAllGroupedPermissions()
     return {
-      message: 'Permissions retrieved successfully',
+      message: 'permission.success.list',
       data: permissions
     }
   }
@@ -56,7 +56,7 @@ export class PermissionController {
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const permission = await this.permissionService.findOne(id)
     return {
-      message: 'Permission retrieved successfully',
+      message: 'permission.success.get',
       data: PermissionDto.fromEntity(permission)
     }
   }
@@ -66,14 +66,14 @@ export class PermissionController {
   async update(@Param('id', ParseIntPipe) id: number, @Body() updatePermissionDto: UpdatePermissionDto) {
     const permission = await this.permissionService.update(id, updatePermissionDto)
     return {
-      message: 'Permission updated successfully',
+      message: 'permission.success.update',
       data: PermissionDto.fromEntity(permission)
     }
   }
 
   @Delete(':id')
-  @RequirePermissions({ action: Action.Delete, subject: Permission })
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermissions({ action: Action.Delete, subject: Permission })
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.permissionService.remove(id)
   }

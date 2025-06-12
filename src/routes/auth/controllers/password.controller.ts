@@ -10,6 +10,8 @@ import { ActiveUserData } from 'src/shared/types/active-user.type'
 import { CookieNames } from '../auth.constants'
 import { AuthError } from '../auth.error'
 import { Throttle } from '@nestjs/throttler'
+import { Action, AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
+import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 
 @Auth()
 @UseGuards(ThrottlerGuard)
@@ -18,6 +20,7 @@ export class PasswordController {
   constructor(private readonly passwordService: PasswordService) {}
 
   @Post('change')
+  @RequirePermissions({ action: Action.Update, subject: AppSubject.Password })
   async changePassword(
     @ActiveUser() activeUser: ActiveUserData,
     @Body() body: ChangePasswordDto,

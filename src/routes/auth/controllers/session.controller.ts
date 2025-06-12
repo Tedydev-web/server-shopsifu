@@ -34,8 +34,8 @@ import { AuthVerificationService } from '../services/auth-verification.service'
 import { AuthError } from '../auth.error'
 import { CurrentUserContext } from 'src/shared/types/current-user-context.type'
 import { GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
-import { AppSubject } from 'src/shared/casl/casl-ability.factory'
-import { Action } from 'src/shared/casl/casl-ability.factory'
+import { AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
+import { Action } from 'src/shared/providers/casl/casl-ability.factory'
 import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 
 @Auth()

@@ -1,5 +1,5 @@
 import { SetMetadata } from '@nestjs/common'
-import { Action, Subjects } from 'src/shared/casl/casl-ability.factory'
+import { Action, Subjects } from 'src/shared/providers/casl/casl-ability.factory'
 import { Type } from '@nestjs/common'
 
 export const PERMISSIONS_KEY = 'permissions'

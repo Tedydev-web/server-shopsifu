@@ -1,4 +1,4 @@
-import { AppSubject } from '../casl/casl-ability.factory'
+import { AppSubject } from '../providers/casl/casl-ability.factory'
 
 export interface PermissionDefinition {
   subject: AppSubject | string // Allow string for model classes
@@ -84,12 +84,18 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
   {
     subject: AppSubject.Profile,
     action: 'read:own',
-    description: 'Allow viewing own profile'
+    description: 'Allow viewing own profile',
+    conditions: {
+      userId: 'user.id'
+    }
   },
   {
     subject: AppSubject.Profile,
     action: 'update:own',
-    description: 'Allow updating own profile'
+    description: 'Allow updating own profile',
+    conditions: {
+      userId: 'user.id'
+    }
   },
 
   // --- Security (Personal) ---
@@ -107,6 +113,13 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
     subject: AppSubject.TwoFactor,
     action: 'delete', // Corresponds to disabling
     description: 'Allow disabling Two-Factor Authentication for own account'
+  },
+
+  // --- Password Management (Personal) ---
+  {
+    subject: AppSubject.Password,
+    action: 'update',
+    description: 'Allow changing own password'
   },
 
   // --- Session Management ---

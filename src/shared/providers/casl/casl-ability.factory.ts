@@ -56,9 +56,19 @@ export type Subjects = InferSubjects<typeof User | typeof Role | typeof Permissi
  */
 export type AppAbility = PureAbility<[Action, Subjects]>
 
+/**
+ * Utility function to safely access nested properties of an object.
+ * @param obj The object to access.
+ * @param path The path to the property (e.g., 'a.b.c').
+ * @returns The value at the specified path, or undefined if not found.
+ */
+function getNestedValue(obj: any, path: string): any {
+  return path.split('.').reduce((acc, part) => acc && acc[part], obj)
+}
+
 @Injectable()
 export class CaslAbilityFactory {
-  createForUser(permissions: Permission[]): AppAbility {
+  createForUser(user: ActiveUserData, permissions: Permission[]): AppAbility {
     const { can, cannot, build } = new AbilityBuilder<AppAbility>(PureAbility as AbilityClass<AppAbility>)
 
     // Grant manage all permission if user has the specific permission
@@ -76,10 +86,9 @@ export class CaslAbilityFactory {
       const subject = permission.subject
 
       if (permission.conditions) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        can(action, subject as any, permission.conditions)
+        const interpolatedConditions = this.interpolateConditions(permission.conditions, user)
+        can(action, subject as any, interpolatedConditions)
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         can(action, subject as any)
       }
     })
@@ -88,6 +97,23 @@ export class CaslAbilityFactory {
       detectSubjectType: (item) => item.constructor as ExtractSubjectType<Subjects>,
       conditionsMatcher: (conditions) => sift(conditions)
     })
+  }
+
+  /**
+   * Interpolates template variables in permission conditions with user data.
+   * @param conditions The conditions object from the permission.
+   * @param user The active user data.
+   * @returns A new conditions object with variables replaced by actual values.
+   */
+  private interpolateConditions(conditions: any, user: ActiveUserData): any {
+    const interpolated = { ...conditions }
+    for (const key in interpolated) {
+      const value = interpolated[key]
+      if (typeof value === 'string' && value.startsWith('user.')) {
+        interpolated[key] = getNestedValue(user, value.substring(5))
+      }
+    }
+    return interpolated
   }
 
   private mapAction(action: string): Action {

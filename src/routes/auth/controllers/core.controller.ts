@@ -23,7 +23,7 @@ import { Auth, IsPublic } from 'src/shared/decorators/auth.decorator'
 
 // Errors
 import { AuthError } from 'src/routes/auth/auth.error'
-import { Action, CaslAbilityFactory } from 'src/shared/casl/casl-ability.factory'
+import { Action, CaslAbilityFactory } from 'src/shared/providers/casl/casl-ability.factory'
 
 @Controller('auth')
 export class CoreController {
@@ -115,7 +115,7 @@ export class CoreController {
     this.logger.log(`[getUICapabilities] Fetching UI capabilities for user ${user.id}`)
 
     const userPermissions = await this.userService.getUserPermissions(user.id)
-    const ability = this.caslAbilityFactory.createForUser(userPermissions)
+    const ability = this.caslAbilityFactory.createForUser(user, userPermissions)
 
     const capabilities: Record<string, Record<string, boolean>> = {}
 

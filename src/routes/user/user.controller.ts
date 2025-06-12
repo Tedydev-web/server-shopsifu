@@ -31,7 +31,7 @@ import { Auth } from 'src/shared/decorators/auth.decorator'
 import { PermissionGuard } from 'src/shared/guards/permission.guard'
 import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
-import { Action, AppSubject } from 'src/shared/casl/casl-ability.factory'
+import { Action, AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
 import { User } from './user.model'
 
 /**
@@ -54,8 +54,8 @@ export class UserController {
    * Flow: Submit data → SLT token + OTP → Verify qua auth/otp/verify → User được tạo
    */
   @Post()
+  @HttpCode(HttpStatus.CREATED)
   @RequirePermissions({ action: Action.Create, subject: AppSubject.User })
-  @HttpCode(HttpStatus.ACCEPTED)
   async create(
     @Body() createUserDto: CreateUserDto,
     @Ip() ip: string,
@@ -100,8 +100,8 @@ export class UserController {
   }
 
   @Delete(':id')
-  @RequirePermissions({ action: Action.Delete, subject: User })
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermissions({ action: Action.Delete, subject: User })
   async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     await this.userService.remove(id)
   }
