@@ -252,7 +252,6 @@ export type I18nTranslations = {
             "passwordsNotMatch": string;
             "usernameExists": string;
             "emailExists": string;
-            "emailNotFound": string;
             "deviceProcessingFailed": string;
             "deviceNotFound": string;
             "invalidRefreshToken": string;
@@ -274,6 +273,8 @@ export type I18nTranslations = {
             "serverError": string;
             "sessionsNotFound": string;
             "invalidPageOrLimit": string;
+            "emailNotFound": string;
+            "incorrectPassword": string;
             "social": {
                 "googleCallbackError": string;
                 "pendingLinkTokenMissing": string;

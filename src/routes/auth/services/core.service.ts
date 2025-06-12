@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, forwardRef, InternalServerErrorException } from '@nestjs/common'
+import { Injectable, Logger, Inject, forwardRef, InternalServerErrorException, HttpStatus } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
 import { Response, Request } from 'express'
@@ -290,16 +290,24 @@ export class CoreService implements ILoginFinalizerService {
   async validateUser(
     emailOrUsername: string,
     password: string
-  ): Promise<Omit<UserWithProfileAndRole, 'password' | 'role.permissions'> | null> {
+  ): Promise<Omit<UserWithProfileAndRole, 'password' | 'role.permissions'>> {
     const user = await this.userRepository.findByEmailOrUsername(emailOrUsername)
 
+    // Nếu không tìm thấy user với email/username này
     if (!user || !user.password) {
-      return null
+      this.logger.warn(`[validateUser] User not found with email/username: ${emailOrUsername}`)
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AUTH_EMAIL_NOT_FOUND', 'auth.error.emailNotFound', {
+        emailOrUsername
+      })
     }
 
+    // Kiểm tra mật khẩu
     const isPasswordValid = await this.hashingService.compare(password, user.password)
     if (!isPasswordValid) {
-      return null
+      this.logger.warn(`[validateUser] Invalid password for user: ${user.email}`)
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AUTH_INCORRECT_PASSWORD', 'auth.error.incorrectPassword', {
+        email: user.email
+      })
     }
 
     // Loại bỏ password khỏi response để bảo mật
@@ -636,9 +644,6 @@ export class CoreService implements ILoginFinalizerService {
 
     // Xác thực thông tin đăng nhập cơ bản
     const user = await this.validateUser(loginDto.emailOrUsername, loginDto.password)
-    if (!user) {
-      throw AuthError.InvalidPassword()
-    }
 
     // Kiểm tra có yêu cầu xác minh lại từ hệ thống không
     const reverifyKey = RedisKeyManager.getUserReverifyNextLoginKey(user.id)

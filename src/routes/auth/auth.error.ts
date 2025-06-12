@@ -296,4 +296,21 @@ export class AuthError {
   public static Unauthorized(message?: string, details?: any): ApiException {
     return new ApiException(HttpStatus.UNAUTHORIZED, 'AUTH_UNAUTHORIZED', message || 'auth.error.unauthorized', details)
   }
+
+  public static InvalidCredentials(errorType: 'email' | 'password', details?: any): ApiException {
+    if (errorType === 'email') {
+      return new ApiException(HttpStatus.UNAUTHORIZED, 'AUTH_EMAIL_NOT_FOUND', 'auth.error.emailNotFound', details)
+    } else {
+      return new ApiException(
+        HttpStatus.UNAUTHORIZED,
+        'AUTH_INCORRECT_PASSWORD',
+        'auth.error.incorrectPassword',
+        details
+      )
+    }
+  }
+
+  public static AccountLocked(): ApiException {
+    return new ApiException(HttpStatus.UNAUTHORIZED, 'AUTH_ACCOUNT_LOCKED', 'auth.error.accountLocked')
+  }
 }
