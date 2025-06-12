@@ -21,7 +21,7 @@ import { Role } from './role.model'
 
 @Auth()
 @UseGuards(PermissionGuard)
-@Controller('role')
+@Controller('roles')
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}
 

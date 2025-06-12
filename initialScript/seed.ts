@@ -4,6 +4,7 @@ import * as path from 'path'
 import { Logger } from '@nestjs/common'
 import { ALL_PERMISSIONS } from '../src/shared/constants/permissions.constants'
 import { PermissionDefinition } from 'src/shared/constants/permissions.constants'
+import { AppSubject } from '../src/shared/casl/casl-ability.factory'
 import * as bcrypt from 'bcrypt'
 
 // Load environment variables
@@ -29,11 +30,101 @@ const CORE_ROLES = [
     isSystemRole: true
   },
   {
+    name: 'Seller',
+    description: 'Seller role with permissions to manage products and orders.',
+    isSystemRole: true
+  },
+  {
     name: 'Customer',
     description: 'Default role for new users who sign up.',
     isSystemRole: true
   }
 ]
+
+/**
+ * Permission categories that can be assigned to different roles.
+ * This approach allows for more flexible and maintainable permission assignment.
+ */
+const PERMISSION_CATEGORIES = {
+  // Authentication related permissions
+  AUTH: {
+    subjects: ['Auth'],
+    actions: ['login', 'register', 'refresh', 'logout', 'verify_otp', 'send_otp', 'reset_password', 'link_social']
+  },
+  // User management permissions
+  USER_MANAGEMENT: {
+    subjects: [AppSubject.User],
+    actions: ['create', 'read', 'update', 'delete']
+  },
+  // Role management permissions
+  ROLE_MANAGEMENT: {
+    subjects: [AppSubject.Role],
+    actions: ['create', 'read', 'update', 'delete']
+  },
+  // Permission management
+  PERMISSION_MANAGEMENT: {
+    subjects: [AppSubject.Permission],
+    actions: ['read']
+  },
+  // Profile management (personal)
+  PROFILE: {
+    subjects: [AppSubject.Profile],
+    actions: ['read:own', 'update:own']
+  },
+  // Two-factor authentication
+  TWO_FACTOR: {
+    subjects: [AppSubject.TwoFactor],
+    actions: ['create', 'update', 'delete']
+  },
+  // Product catalog
+  CATALOG: {
+    subjects: ['Product', 'Category', 'Brand'],
+    actions: ['read']
+  },
+  // Product management (for sellers)
+  PRODUCT_MANAGEMENT: {
+    subjects: ['Product', 'SKU'],
+    actions: ['create', 'update:own', 'delete:own']
+  },
+  // Order management
+  ORDER_CUSTOMER: {
+    subjects: ['Order'],
+    actions: ['create', 'read:own']
+  },
+  // Order management for sellers
+  ORDER_SELLER: {
+    subjects: ['Order'],
+    actions: ['read:seller', 'update:seller']
+  },
+  // System administration (full access)
+  SYSTEM_ADMIN: {
+    subjects: [AppSubject.All],
+    actions: ['manage']
+  }
+}
+
+/**
+ * Role to permission category mapping.
+ * This defines which permission categories each role should have.
+ */
+const ROLE_PERMISSION_MAPPING: Record<string, string[]> = {
+  'Super Admin': Object.keys(PERMISSION_CATEGORIES), // Super Admin gets all permission categories
+  Admin: [
+    'AUTH',
+    'USER_MANAGEMENT',
+    'ROLE_MANAGEMENT',
+    'PERMISSION_MANAGEMENT',
+    'PROFILE',
+    'TWO_FACTOR',
+    'CATALOG',
+    'PRODUCT_MANAGEMENT',
+    'ORDER_CUSTOMER',
+    'ORDER_SELLER'
+    // Exclude SYSTEM_ADMIN which is reserved for Super Admin
+  ],
+  Seller: ['AUTH', 'PROFILE', 'TWO_FACTOR', 'CATALOG', 'PRODUCT_MANAGEMENT', 'ORDER_CUSTOMER', 'ORDER_SELLER'],
+  Customer: ['AUTH', 'PROFILE', 'TWO_FACTOR', 'CATALOG', 'ORDER_CUSTOMER']
+}
 
 /**
  * Default admin user configuration
@@ -52,7 +143,7 @@ async function main() {
   try {
     await seedPermissions()
     const roles = await seedRoles()
-    await assignAllPermissionsToSuperAdmin(roles)
+    await assignPermissionsToRoles(roles)
     await createAdminUser(roles)
 
     logger.log('✅ Database seeding completed successfully!')
@@ -207,44 +298,121 @@ async function seedRoles(): Promise<Role[]> {
 }
 
 /**
- * Assigns all existing permissions to the "Super Admin" role.
- * This ensures the Super Admin always has full access.
- * @param roles - The list of roles, used to find the Super Admin role.
+ * Helper function to get permissions that match the given subjects and actions.
  */
-async function assignAllPermissionsToSuperAdmin(roles: Role[]) {
-  logger.log('\n[3/4] Assigning all permissions to Super Admin...')
-  const superAdminRole = roles.find((r) => r.name === 'Super Admin')
-
-  if (!superAdminRole) {
-    logger.warn('⚠️ Super Admin role not found. Skipping permission assignment.')
-    return
-  }
-
-  const allPermissions = await prisma.permission.findMany({
+async function getPermissionsByCategory(category: { subjects: string[]; actions: string[] }) {
+  return await prisma.permission.findMany({
+    where: {
+      AND: [
+        {
+          subject: {
+            in: category.subjects
+          }
+        },
+        {
+          action: {
+            in: category.actions
+          }
+        }
+      ]
+    },
     select: { id: true }
   })
+}
 
+/**
+ * Dynamically assigns permissions to roles based on the ROLE_PERMISSION_MAPPING.
+ */
+async function assignPermissionsToRoles(roles: Role[]) {
+  logger.log('\n[3/3] Assigning permissions to roles...')
+
+  for (const role of roles) {
+    const categoryNames = ROLE_PERMISSION_MAPPING[role.name as keyof typeof ROLE_PERMISSION_MAPPING]
+    if (!categoryNames) {
+      logger.warn(`⚠️ No permission categories defined for role '${role.name}'. Skipping permission assignment.`)
+      continue
+    }
+
+    logger.log(`   - Processing permissions for role '${role.name}'...`)
+
+    // For Super Admin, we directly assign all permissions
+    if (role.isSuperAdmin) {
+      await assignAllPermissionsToRole(role.id)
+      continue
+    }
+
+    // For other roles, assign permissions by category
+    let totalAssignedCount = 0
+
+    for (const categoryName of categoryNames) {
+      const category = PERMISSION_CATEGORIES[categoryName as keyof typeof PERMISSION_CATEGORIES]
+      if (!category) {
+        logger.warn(`⚠️ Permission category '${categoryName}' not found. Skipping.`)
+        continue
+      }
+
+      const permissions = await getPermissionsByCategory(category)
+      const newPermissionCount = await assignPermissionsToRole(
+        role.id,
+        permissions.map((p) => p.id)
+      )
+
+      if (newPermissionCount > 0) {
+        logger.log(`     - Assigned ${newPermissionCount} permissions from category '${categoryName}'`)
+        totalAssignedCount += newPermissionCount
+      }
+    }
+
+    logger.log(`   ✅ Assigned a total of ${totalAssignedCount} permissions to role '${role.name}'`)
+  }
+
+  logger.log('✅ Permission assignment completed.')
+}
+
+/**
+ * Assigns specific permissions to a role.
+ * Returns the number of new permissions assigned.
+ */
+async function assignPermissionsToRole(roleId: number, permissionIds: number[]): Promise<number> {
+  // Check which permissions are already assigned
   const existingAssignments = await prisma.rolePermission.findMany({
-    where: { roleId: superAdminRole.id },
+    where: { roleId },
     select: { permissionId: true }
   })
   const existingPermissionIds = new Set(existingAssignments.map((p) => p.permissionId))
 
-  const newAssignments = allPermissions
-    .filter((p) => !existingPermissionIds.has(p.id))
-    .map((p) => ({
-      roleId: superAdminRole.id,
-      permissionId: p.id
-    }))
+  // Filter out already assigned permissions
+  const newPermissions = permissionIds.filter((id) => !existingPermissionIds.has(id))
 
-  if (newAssignments.length > 0) {
+  if (newPermissions.length > 0) {
     await prisma.rolePermission.createMany({
-      data: newAssignments
+      data: newPermissions.map((permissionId) => ({
+        roleId,
+        permissionId
+      })),
+      skipDuplicates: true
     })
   }
 
+  return newPermissions.length
+}
+
+/**
+ * Assigns all existing permissions to a role.
+ * This is used specifically for the Super Admin role.
+ */
+async function assignAllPermissionsToRole(roleId: number) {
+  const allPermissions = await prisma.permission.findMany({
+    select: { id: true }
+  })
+
+  const newPermissionCount = await assignPermissionsToRole(
+    roleId,
+    allPermissions.map((p) => p.id)
+  )
+
   logger.log(
-    `✅ Assigned ${newAssignments.length} new permissions to Super Admin. Total permissions: ${allPermissions.length}.`
+    `   ✅ Assigned ${newPermissionCount} permissions to Super Admin role. Total permissions: ${allPermissions.length}.`
   )
 }
 
