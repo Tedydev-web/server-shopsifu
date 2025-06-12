@@ -15,7 +15,7 @@ import {
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { PermissionGuard } from 'src/shared/guards/permission.guard'
-import { CreatePermissionDto, GetPermissionsQueryDto, PermissionDto, UpdatePermissionDto } from './permission.dto'
+import { CreatePermissionDto, PermissionDto, UpdatePermissionDto } from './permission.dto'
 import { PermissionService } from './permission.service'
 import { Action, AppSubject } from 'src/shared/casl/casl-ability.factory'
 import { Permission } from './permission.model'
@@ -38,13 +38,17 @@ export class PermissionController {
   }
 
   /**
-   * Get all permissions grouped by subject with pagination similar to Sessions module
+   * Get all permissions grouped by subject for UI.
+   * This is not paginated as the UI typically needs all permissions at once for role assignment.
    */
   @Get()
-  @RequirePermissions({ action: Action.Read, subject: AppSubject.Permission })
-  async getPermissions(@Query() query: GetPermissionsQueryDto): Promise<any> {
-    const { page, limit } = query
-    return await this.permissionService.getGroupedPermissions(page, limit)
+  @RequirePermissions({ action: Action.Read, subject: AppSubject.Role })
+  async getAllGroupedPermissions() {
+    const permissions = await this.permissionService.getAllGroupedPermissions()
+    return {
+      message: 'Permissions retrieved successfully',
+      data: permissions
+    }
   }
 
   @Get(':id')

@@ -19,9 +19,11 @@ import { CsrfMiddleware, LoggerMiddleware, SecurityHeadersMiddleware } from './s
 import { MiddlewaresModule } from './shared/middleware/middlewares.module'
 import { SharedModule } from './shared/shared.module'
 import { AuthenticationGuard } from './routes/auth/guards/authentication.guard'
+import { EventEmitterModule } from '@nestjs/event-emitter'
 
 @Module({
   imports: [
+    EventEmitterModule.forRoot(),
     ClsModule,
     ConfigModule.forRoot({
       isGlobal: true,

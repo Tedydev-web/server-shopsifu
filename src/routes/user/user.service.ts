@@ -4,6 +4,7 @@
 import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { Response } from 'express'
+import { OnEvent } from '@nestjs/event-emitter'
 
 // ================================================================
 // External Libraries
@@ -30,6 +31,7 @@ import { Permission } from 'src/routes/permission/permission.model'
 // Constants & Injection Tokens
 // ================================================================
 import { HASHING_SERVICE } from 'src/shared/constants/injection.tokens'
+import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
 
 // ================================================================
 // Types & Interfaces
@@ -60,7 +62,7 @@ export class UserService {
     private readonly redisService: RedisService,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
     private readonly i18nService: I18nService<I18nTranslations>,
-    private readonly emailService: EmailService,
+    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService
   ) {}
@@ -583,5 +585,20 @@ export class UserService {
    */
   private async findUserById(id: number): Promise<User | null> {
     return this.userRepository.findById(id)
+  }
+
+  /**
+   * Handles the 'role.updated' event to invalidate user permissions cache.
+   * @param payload - The event payload containing the roleId.
+   */
+  @OnEvent('role.updated')
+  async handleRoleUpdated(payload: { roleId: number }) {
+    this.logger.debug(`Role with ID ${payload.roleId} updated, invalidating user permissions cache.`)
+    const userIds = await this.userRepository.findUserIdsByRoleId(payload.roleId)
+    if (userIds.length > 0) {
+      const promises = userIds.map((id) => this.invalidateUserPermissionsCache(id))
+      await Promise.all(promises)
+      this.logger.log(`Invalidated permissions cache for ${userIds.length} users.`)
+    }
   }
 }

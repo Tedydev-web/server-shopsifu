@@ -1,12 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { Permission } from '@prisma/client'
 import { z } from 'zod'
-import {
-  GetGroupedPermissionsResponseSchema,
-  GetPermissionsQuerySchema,
-  PermissionGroupSchema,
-  PermissionItemSchema
-} from './permission.schema'
 
 // ===================================================================================
 //                                Interface & Helper Types
@@ -30,8 +24,6 @@ const PermissionUiMetadataZodSchema = z.object({
 // ===================================================================================
 
 // --- Request DTOs ---
-export class GetPermissionsQueryDto extends createZodDto(GetPermissionsQuerySchema) {}
-
 const CreatePermissionZodSchema = z.object({
   action: z.string().min(1),
   subject: z.string().min(1),
@@ -50,13 +42,18 @@ const UpdatePermissionZodSchema = z.object({
 })
 export class UpdatePermissionDto extends createZodDto(UpdatePermissionZodSchema) {}
 
-// --- Response DTOs ---
-export class GetGroupedPermissionsResponseDto extends createZodDto(GetGroupedPermissionsResponseSchema) {}
+// ===================================================================================
+//                            SIMPLE DTOs FOR UI
+// ===================================================================================
+export class SimplePermissionItemDto {
+  id: number
+  action: string
+  description: string | null
+}
 
-// Infer and export types from Zod schemas
-export type PermissionGroup = z.infer<typeof PermissionGroupSchema>
-export type PermissionItem = z.infer<typeof PermissionItemSchema>
-
+// ===================================================================================
+//                                Full Entity DTOs
+// ===================================================================================
 export class PermissionDto implements Omit<Permission, 'createdById' | 'updatedById' | 'deletedById'> {
   id: number
   action: string

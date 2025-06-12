@@ -1,16 +1,18 @@
-import { Injectable, ForbiddenException } from '@nestjs/common'
+import { Injectable, ForbiddenException, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { RoleRepository, CreateRoleData, UpdateRoleData } from './role.repository'
 import { CreateRoleDto, UpdateRoleDto } from './role.dto'
 import { Role } from './role.model'
 import { RoleError } from './role.error'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 
 @Injectable()
 export class RoleService {
   constructor(
     private readonly roleRepository: RoleRepository,
-    private readonly i18n: I18nService<I18nTranslations>
+    private readonly i18n: I18nService<I18nTranslations>,
+    private readonly eventEmitter: EventEmitter2
   ) {}
 
   async create(createRoleDto: CreateRoleDto): Promise<Role> {
@@ -68,7 +70,12 @@ export class RoleService {
       }
     }
     const data: UpdateRoleData = { ...updateRoleDto }
-    return this.roleRepository.update(id, data)
+    const updatedRole = await this.roleRepository.update(id, data)
+
+    // Invalidate caches for all users in this role
+    this.eventEmitter.emit('role.updated', { roleId: updatedRole.id })
+
+    return updatedRole
   }
 
   async remove(id: number): Promise<Role> {

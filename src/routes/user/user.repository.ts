@@ -237,6 +237,19 @@ export class UserRepository {
     })
     return this.toUserWithPermissions(user as any)
   }
+
+  async findUserIdsByRoleId(roleId: number): Promise<number[]> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        roleId: roleId,
+        deletedAt: null
+      },
+      select: {
+        id: true
+      }
+    })
+    return users.map((user) => user.id)
+  }
 }
 
 export type CreateUserWithProfileData = {
