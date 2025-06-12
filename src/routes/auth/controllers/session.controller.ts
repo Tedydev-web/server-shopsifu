@@ -34,6 +34,9 @@ import { AuthVerificationService } from '../services/auth-verification.service'
 import { AuthError } from '../auth.error'
 import { CurrentUserContext } from 'src/shared/types/current-user-context.type'
 import { GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
+import { AppSubject } from 'src/shared/casl/casl-ability.factory'
+import { Action } from 'src/shared/casl/casl-ability.factory'
+import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 
 @Auth()
 @Controller('sessions')
@@ -50,6 +53,7 @@ export class SessionsController {
    * Lấy tất cả sessions của người dùng, nhóm theo thiết bị
    */
   @Get()
+  @RequirePermissions({ action: Action.Read, subject: AppSubject.Session })
   async getSessions(@ActiveUser() activeUser: ActiveUserData, @Query() query: GetSessionsQueryDto): Promise<any> {
     if (query.page < 1 || query.limit < 1) {
       throw AuthError.InvalidPageOrLimit()
@@ -74,6 +78,7 @@ export class SessionsController {
    * Thu hồi một hoặc nhiều phiên đăng nhập hoặc thiết bị
    */
   @Post('revoke')
+  @RequirePermissions({ action: Action.Delete, subject: AppSubject.Session })
   @HttpCode(HttpStatus.OK)
   async revokeSessions(
     @ActiveUser() activeUser: ActiveUserData,
@@ -140,6 +145,7 @@ export class SessionsController {
    * Thu hồi tất cả phiên đăng nhập
    */
   @Post('revoke-all')
+  @RequirePermissions({ action: Action.Delete, subject: AppSubject.Session })
   @HttpCode(HttpStatus.OK)
   async revokeAllSessions(
     @ActiveUser() activeUser: ActiveUserData,
@@ -188,6 +194,7 @@ export class SessionsController {
    * Cập nhật tên thiết bị
    */
   @Patch('devices/:deviceId/name')
+  @RequirePermissions({ action: Action.Update, subject: AppSubject.Session })
   @HttpCode(HttpStatus.OK)
   async updateDeviceName(
     @ActiveUser() activeUser: ActiveUserData,
@@ -212,6 +219,7 @@ export class SessionsController {
    * Đánh dấu thiết bị hiện tại là đáng tin cậy
    */
   @Post('devices/trust-current')
+  @RequirePermissions({ action: Action.Update, subject: AppSubject.Session })
   @HttpCode(HttpStatus.OK)
   async trustCurrentDevice(@ActiveUser() activeUser: ActiveUserData): Promise<any> {
     this.logger.debug(`[trustCurrentDevice] User ${activeUser.id} trusting device ${activeUser.deviceId}`)
@@ -229,6 +237,7 @@ export class SessionsController {
    * Hủy bỏ trạng thái đáng tin cậy của thiết bị
    */
   @Delete('devices/:deviceId/untrust')
+  @RequirePermissions({ action: Action.Delete, subject: AppSubject.Session })
   @HttpCode(HttpStatus.OK)
   async untrustDevice(@ActiveUser() activeUser: ActiveUserData, @Param() params: DeviceIdParamsDto): Promise<any> {
     if (isNaN(params.deviceId)) throw AuthError.InvalidDeviceId()

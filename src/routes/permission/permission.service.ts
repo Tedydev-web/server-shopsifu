@@ -25,8 +25,7 @@ export class PermissionService {
       action: createPermissionDto.action,
       subject: createPermissionDto.subject,
       description: createPermissionDto.description,
-      conditions: createPermissionDto.conditions,
-      uiMetadata: createPermissionDto.uiMetadata ? createPermissionDto.uiMetadata : undefined
+      conditions: createPermissionDto.conditions
     }
     return this.permissionRepository.create(data)
   }
@@ -78,8 +77,7 @@ export class PermissionService {
       }
     }
     const data: UpdatePermissionData = {
-      ...updatePermissionDto,
-      uiMetadata: updatePermissionDto.uiMetadata ? updatePermissionDto.uiMetadata : undefined
+      ...updatePermissionDto
     }
     return this.permissionRepository.update(id, data)
   }

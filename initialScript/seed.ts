@@ -185,9 +185,11 @@ async function seedPermissions() {
   for (const [key, codePerm] of codePermissionMap.entries()) {
     const dbPerm = dbPermissionMap.get(key)
     if (dbPerm) {
-      // If it exists, check if it needs an update
-      const uiMetadata = (dbPerm.uiMetadata as any) || {}
-      if (dbPerm.description !== codePerm.description || uiMetadata.uiPath !== codePerm.uiPath) {
+      // If it exists, check if it needs an update (description or conditions change)
+      if (
+        dbPerm.description !== codePerm.description ||
+        JSON.stringify(dbPerm.conditions) !== JSON.stringify(codePerm.conditions || null)
+      ) {
         toUpdate.push({ id: dbPerm.id, data: codePerm })
       }
     } else {
@@ -214,11 +216,8 @@ async function seedPermissions() {
         subject: p.subject,
         action: p.action,
         description: p.description,
-        isSystemPermission: p.isSystemPermission ?? false,
-        uiMetadata: {
-          uiPath: p.uiPath,
-          description: p.description
-        }
+        conditions: (p.conditions as any) || undefined,
+        isSystemPermission: p.isSystemPermission ?? false
       }))
     })
     logger.log(`   - Created ${toCreate.length} new permissions.`)
@@ -230,11 +229,8 @@ async function seedPermissions() {
         where: { id: update.id },
         data: {
           description: update.data.description,
-          isSystemPermission: update.data.isSystemPermission ?? false,
-          uiMetadata: {
-            uiPath: update.data.uiPath,
-            description: update.data.description
-          }
+          conditions: (update.data.conditions as any) || undefined,
+          isSystemPermission: update.data.isSystemPermission ?? false
         }
       })
     }

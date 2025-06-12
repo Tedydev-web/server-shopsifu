@@ -18,3 +18,12 @@ export const PermissionSchema = z.object({
   description: z.string().max(500, 'Description must be less than 500 characters').optional().nullable(),
   conditions: z.record(z.any()).optional().nullable()
 })
+
+export const CreatePermissionZodSchema = PermissionSchema.pick({
+  action: true,
+  subject: true,
+  description: true,
+  conditions: true
+})
+
+export const UpdatePermissionZodSchema = CreatePermissionZodSchema.partial()

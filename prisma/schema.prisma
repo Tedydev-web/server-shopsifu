@@ -219,7 +219,6 @@ model Permission {
   conditions         Json?            @db.Json
   createdAt          DateTime         @default(now()) @map("created_at")
   updatedAt          DateTime         @updatedAt @map("updated_at")
-  uiMetadata         Json?            @map("ui_metadata")
   isSystemPermission Boolean          @default(false) @map("is_system_permission")
   createdBy          User?            @relation("PermissionCreatedBy", fields: [createdById], references: [id], onUpdate: NoAction)
   deletedBy          User?            @relation("PermissionDeletedBy", fields: [deletedById], references: [id], onUpdate: NoAction)

@@ -9,7 +9,6 @@ export class Permission implements PrismaPermission {
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
-  uiMetadata: Prisma.JsonValue | null
   isSystemPermission: boolean
   createdById: number | null
   updatedById: number | null

@@ -134,14 +134,14 @@ const cookieDefinitions = {
   accessToken: {
     name: CookieNames.ACCESS_TOKEN,
     options: {
-      ...getCookieOptions(true), // httpOnly: true
-      maxAge: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('10m'))
+      ...getCookieOptions(false), // httpOnly: true
+      maxAge: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('1h'))
     }
   },
   refreshToken: {
     name: CookieNames.REFRESH_TOKEN,
     options: {
-      ...getCookieOptions(true), // httpOnly: true
+      ...getCookieOptions(false), // httpOnly: true
       maxAge: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d'))
     }
   },
