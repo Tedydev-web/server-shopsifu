@@ -1,39 +1,27 @@
-import { CanActivate, ExecutionContext, Inject, Injectable, Logger, OnModuleInit, forwardRef } from '@nestjs/common'
-import { Reflector, ModuleRef } from '@nestjs/core'
+import { CanActivate, ExecutionContext, Inject, Injectable, Logger, Type, forwardRef } from '@nestjs/common'
+import { ModuleRef, Reflector } from '@nestjs/core'
 import { UserService } from 'src/routes/user/user.service'
-import {
-  PERMISSIONS_KEY,
-  PERMISSIONS_OPTIONS_KEY,
-  PermissionCondition,
-  PermissionOptions
-} from 'src/shared/decorators/permissions.decorator'
+import { RequiredPermission, PERMISSIONS_KEY } from 'src/shared/decorators/permissions.decorator'
 import { ActiveUserData } from 'src/shared/types/active-user.type'
 import { GlobalError } from 'src/shared/global.error'
-import { Permission } from '@prisma/client'
-import * as jsonLogic from 'json-logic-js'
-
-type UserPermission = Pick<Permission, 'action' | 'subject' | 'conditions'>
+import { Action, AppAbility, CaslAbilityFactory } from '../casl/casl-ability.factory'
+import { User } from 'src/routes/user/user.model'
+import { Role } from 'src/routes/role/role.model'
+import { Permission } from 'src/routes/permission/permission.model'
 
 @Injectable()
-export class PermissionGuard implements CanActivate, OnModuleInit {
+export class PermissionGuard implements CanActivate {
   private readonly logger = new Logger(PermissionGuard.name)
-  private serviceMap: Map<string, any> = new Map()
 
   constructor(
     private readonly reflector: Reflector,
+    private readonly moduleRef: ModuleRef,
     @Inject(forwardRef(() => UserService)) private readonly userService: UserService,
-    private readonly moduleRef: ModuleRef
+    private readonly caslAbilityFactory: CaslAbilityFactory
   ) {}
 
-  onModuleInit() {
-    // We can pre-populate the service map for known subjects if needed,
-    // but dynamic resolution below is more flexible.
-    this.serviceMap.set('User', this.userService)
-  }
-
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requiredPermissions = this.reflector.get<string[]>(PERMISSIONS_KEY, context.getHandler())
-    const options = this.reflector.get<PermissionOptions>(PERMISSIONS_OPTIONS_KEY, context.getHandler()) || {}
+    const requiredPermissions = this.reflector.get<RequiredPermission[]>(PERMISSIONS_KEY, context.getHandler())
 
     if (!requiredPermissions || requiredPermissions.length === 0) {
       return true
@@ -44,135 +32,94 @@ export class PermissionGuard implements CanActivate, OnModuleInit {
 
     if (!user) {
       this.logger.warn('[canActivate] User object not found on request. Denying access.')
-      return false
+      throw GlobalError.Unauthorized()
     }
 
     const userPermissions = await this.userService.getUserPermissions(user.id)
+    const ability = this.caslAbilityFactory.createForUser(userPermissions)
 
-    const hasPermission = await this.checkPermissions(requiredPermissions, userPermissions, options, context)
+    const checkPromises = requiredPermissions.map((permission) => this.checkPermission(permission, ability, context))
+
+    const results = await Promise.all(checkPromises)
+    const hasPermission = results.every(Boolean)
 
     if (!hasPermission) {
-      this.logger.warn(`[canActivate] User ${user.id} lacks required permissions. Access denied.`)
+      this.logger.warn(
+        `[canActivate] User ${user.id} lacks required permissions for ${request.method} ${request.url}. Access denied.`
+      )
       throw GlobalError.Forbidden()
     }
 
     return true
   }
 
-  private async checkPermissions(
-    requiredPermissions: string[],
-    userPermissions: UserPermission[],
-    options: PermissionOptions,
+  private async checkPermission(
+    permission: RequiredPermission,
+    ability: AppAbility,
     context: ExecutionContext
   ): Promise<boolean> {
-    const checkPromises = requiredPermissions.map((required) =>
-      this.hasRequiredPermission(required, userPermissions, context)
-    )
+    const { action, subject } = permission
 
-    const results = await Promise.all(checkPromises)
-
-    if (options.condition === PermissionCondition.AND) {
-      return results.every((res) => res)
+    if (typeof subject === 'string') {
+      return ability.can(action, subject)
     }
-    return results.some((res) => res)
-  }
 
-  private async hasRequiredPermission(
-    requiredPermission: string,
-    userPermissions: UserPermission[],
-    context: ExecutionContext
-  ): Promise<boolean> {
-    for (const p of userPermissions) {
-      const userPermString = `${p.subject}:${p.action}`
-      if (this.isPermissionMatch(requiredPermission, userPermString)) {
-        if (p.conditions) {
-          this.logger.debug(`Found matching permission '${userPermString}' with conditions. Evaluating...`)
-          return await this.checkConditions(p.conditions, context)
-        }
-        this.logger.debug(`Found matching static permission '${userPermString}'. Access granted for this path.`)
-        return true // Permission matches and has no conditions
-      }
+    // If subject is a class, load the resource and check ability
+    const resource = await this.getResource(subject, context)
+    if (!resource) {
+      // If resource not found, deny access. This prevents leaking information
+      // about resource existence. A 404 would be handled by the controller/service.
+      this.logger.warn(`[checkPermission] Resource of type '${subject.name}' not found for checking permissions.`)
+      return false
     }
-    return false
+    return ability.can(action, resource)
   }
 
-  private isPermissionMatch(required: string, userPermission: string): boolean {
-    if (required === userPermission) return true
-
-    const [reqSubject, reqAction] = required.split(':')
-    const [userSubject, userAction] = userPermission.split(':')
-
-    if (reqSubject !== userSubject) return false
-
-    // Handle 'manage' wildcard for actions
-    if (userAction === 'manage') return true
-    // Handle ':own' suffix as a specific action
-    if (reqAction === userAction) return true
-
-    return false
-  }
-
-  private async checkConditions(conditions: any, context: ExecutionContext): Promise<boolean> {
+  private async getResource(subject: Type, context: ExecutionContext): Promise<any> {
     const request = context.switchToHttp().getRequest()
-    const user: ActiveUserData = request.user
     const resourceId = request.params.id
 
-    // Lazy load resource only if conditions require it
-    let resource: any = null
-    const conditionsString = JSON.stringify(conditions)
-    if (conditionsString.includes('resource.')) {
-      if (!resourceId) {
-        this.logger.warn('[checkConditions] Conditions require a resource, but no ID found in params.')
-        return false
-      }
-      const subject = this.getSubjectFromContext(context)
-      if (!subject) {
-        this.logger.warn('[checkConditions] Could not determine subject from context.')
-        return false
-      }
-      resource = await this.getResource(subject, resourceId)
-      if (!resource) {
-        this.logger.warn(`[checkConditions] Resource '${subject}' with ID '${resourceId}' not found.`)
-        return false
-      }
+    if (!resourceId) {
+      this.logger.warn(`[getResource] No 'id' parameter found in request params for subject '${subject.name}'.`)
+      return null
     }
 
-    const data = {
-      user: user,
-      resource: resource
-    }
+    // This service locator pattern is a point for future improvement.
+    // A dedicated factory or map would be more robust.
+    const serviceName = `${subject.name}Service`
 
-    this.logger.debug(`[checkConditions] Evaluating logic with data: ${JSON.stringify(data)}`)
-    return jsonLogic.apply(conditions, data)
-  }
-
-  private getSubjectFromContext(context: ExecutionContext): string | null {
-    const controllerClass = context.getClass()
-    const controllerName = controllerClass.name.replace('Controller', '')
-    // This is a simple convention. More robust mapping might be needed.
-    return controllerName
-  }
-
-  private async getResource(subject: string, id: number | string): Promise<any> {
     try {
-      let service = this.serviceMap.get(subject)
-      if (!service) {
-        // Dynamically resolve service from module reference
-        const serviceToken = `${subject}Service` // Convention: 'User' -> 'UserService'
-        service = this.moduleRef.get(serviceToken, { strict: false })
-        this.serviceMap.set(subject, service)
-      }
-
+      const service = await this.moduleRef.get(serviceName, { strict: false })
       if (service && typeof service.findOne === 'function') {
-        const resource = await service.findOne(Number(id))
-        // The service might return a { data, message } object
-        return resource?.data ? resource.data : resource
+        const result = await service.findOne(Number(resourceId))
+        // Handle services that return a { data, message } wrapper
+        return this.instantiateResource(subject, result?.data || result)
+      } else {
+        this.logger.error(`[getResource] Could not find a 'findOne' method on service '${serviceName}'.`)
       }
-      this.logger.warn(`[getResource] Could not find a 'findOne' method on the service for subject: ${subject}`)
-      return null
     } catch (e) {
-      this.logger.error(`[getResource] Error resolving service or fetching resource for subject: ${subject}`, e)
-      return null
+      this.logger.error(`[getResource] Error resolving service '${serviceName}' or fetching resource.`, e)
     }
+    return null
+  }
+
+  /**
+   * Instantiates the fetched plain data object into its class instance.
+   * This is crucial for CASL's `detectSubjectType` to work correctly.
+   */
+  private instantiateResource(subject: Type, data: any): any {
+    if (!data) return null
+    // A simple mapping to instantiate correct class
+    const subjectMap = {
+      User,
+      Role,
+      Permission
+      // Add other resource models here
+    }
+    const SubjectClass = subjectMap[subject.name as keyof typeof subjectMap]
+    if (SubjectClass) {
+      return Object.assign(new SubjectClass(), data)
+    }
+    return data // fallback for subjects not in the map
   }
 }

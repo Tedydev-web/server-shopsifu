@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler'
 
 // Services
 import { CoreService } from '../services/core.service'
+import { UserService } from 'src/routes/user/user.service'
 
 // DTOs & Types
 import { CompleteRegistrationDto, InitiateRegistrationDto, LoginDto } from '../dtos/core.dto'
@@ -13,6 +14,7 @@ import { ActiveUserData } from 'src/shared/types/active-user.type'
 // Constants & Enums
 import { CookieNames } from 'src/routes/auth/auth.constants'
 import { COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
+import { ALL_PERMISSIONS } from 'src/shared/constants/permissions.constants'
 
 // Decorators
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
@@ -21,6 +23,7 @@ import { Auth, IsPublic } from 'src/shared/decorators/auth.decorator'
 
 // Errors
 import { AuthError } from 'src/routes/auth/auth.error'
+import { Action, CaslAbilityFactory } from 'src/shared/casl/casl-ability.factory'
 
 @Controller('auth')
 export class CoreController {
@@ -28,6 +31,8 @@ export class CoreController {
 
   constructor(
     private readonly coreService: CoreService,
+    private readonly userService: UserService,
+    private readonly caslAbilityFactory: CaslAbilityFactory,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService
   ) {}
 
@@ -104,9 +109,52 @@ export class CoreController {
   @Auth()
   @Get('ui-capabilities')
   @HttpCode(HttpStatus.OK)
-  async getUICapabilities(@ActiveUser() user: ActiveUserData): Promise<any> {
+  async getUICapabilities(
+    @ActiveUser() user: ActiveUserData
+  ): Promise<{ message: string; data: { permissions: Record<string, Record<string, boolean>> } }> {
     this.logger.log(`[getUICapabilities] Fetching UI capabilities for user ${user.id}`)
-    return this.coreService.getUserUICapabilities(user.id)
+
+    const userPermissions = await this.userService.getUserPermissions(user.id)
+    const ability = this.caslAbilityFactory.createForUser(userPermissions)
+
+    const capabilities: Record<string, Record<string, boolean>> = {}
+
+    for (const permDef of ALL_PERMISSIONS) {
+      const { subject, action } = permDef
+      const actionEnum = this.mapToActionEnum(action)
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (ability.can(actionEnum, subject as any)) {
+        if (!capabilities[subject]) {
+          capabilities[subject] = {}
+        }
+        capabilities[subject][action] = true
+      }
+    }
+
+    return {
+      message: 'UI capabilities fetched successfully',
+      data: { permissions: capabilities }
+    }
+  }
+
+  private mapToActionEnum(action: string): Action {
+    // Direct mapping for custom actions
+    switch (action) {
+      case 'read:own':
+        return Action.ReadOwn
+      case 'update:own':
+        return Action.UpdateOwn
+      case 'delete:own':
+        return Action.DeleteOwn
+    }
+    // General mapping for standard CRUD
+    const actionKey = action.charAt(0).toUpperCase() + action.slice(1)
+    if (actionKey in Action) {
+      return Action[actionKey as keyof typeof Action]
+    }
+    // Fallback for actions like 'manage'
+    return action as Action
   }
 
   @Auth()

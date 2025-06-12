@@ -17,6 +17,8 @@ import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { PermissionGuard } from 'src/shared/guards/permission.guard'
 import { CreatePermissionDto, GetPermissionsQueryDto, PermissionDto, UpdatePermissionDto } from './permission.dto'
 import { PermissionService } from './permission.service'
+import { Action, AppSubject } from 'src/shared/casl/casl-ability.factory'
+import { Permission } from './permission.model'
 
 @Auth()
 @UseGuards(PermissionGuard)
@@ -25,7 +27,7 @@ export class PermissionController {
   constructor(private readonly permissionService: PermissionService) {}
 
   @Post()
-  @RequirePermissions(['Permission:create'])
+  @RequirePermissions({ action: Action.Create, subject: AppSubject.Permission })
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createPermissionDto: CreatePermissionDto) {
     const permission = await this.permissionService.create(createPermissionDto)
@@ -39,14 +41,14 @@ export class PermissionController {
    * Get all permissions grouped by subject with pagination similar to Sessions module
    */
   @Get()
-  @RequirePermissions(['Permission:read'])
+  @RequirePermissions({ action: Action.Read, subject: AppSubject.Permission })
   async getPermissions(@Query() query: GetPermissionsQueryDto): Promise<any> {
     const { page, limit } = query
     return await this.permissionService.getGroupedPermissions(page, limit)
   }
 
   @Get(':id')
-  @RequirePermissions(['Permission:read'])
+  @RequirePermissions({ action: Action.Read, subject: Permission })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const permission = await this.permissionService.findOne(id)
     return {
@@ -56,7 +58,7 @@ export class PermissionController {
   }
 
   @Patch(':id')
-  @RequirePermissions(['Permission:update'])
+  @RequirePermissions({ action: Action.Update, subject: Permission })
   async update(@Param('id', ParseIntPipe) id: number, @Body() updatePermissionDto: UpdatePermissionDto) {
     const permission = await this.permissionService.update(id, updatePermissionDto)
     return {
@@ -66,7 +68,7 @@ export class PermissionController {
   }
 
   @Delete(':id')
-  @RequirePermissions(['Permission:delete'])
+  @RequirePermissions({ action: Action.Delete, subject: Permission })
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.permissionService.remove(id)

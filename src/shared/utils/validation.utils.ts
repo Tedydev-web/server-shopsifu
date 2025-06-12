@@ -188,3 +188,15 @@ export function isValidEnum<T extends Record<string, string | number>>(value: an
 
   return Object.values(enumObject).includes(value)
 }
+
+export function safeJsonParse<T>(jsonString: string | null | undefined): T | null {
+  if (!jsonString) {
+    return null
+  }
+
+  try {
+    return JSON.parse(jsonString) as T
+  } catch {
+    return null
+  }
+}

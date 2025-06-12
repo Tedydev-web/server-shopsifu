@@ -2,10 +2,10 @@ import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus, Logge
 import { HttpAdapterHost } from '@nestjs/core'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { I18nService, I18nContext, Path } from 'nestjs-i18n'
-import { isObject } from '../utils/type-guards.utils'
 import { CookieService } from 'src/shared/services/cookie.service'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { Response, Request } from 'express'
+import { ZodError } from 'zod'
 
 /**
  * Một bộ lọc exception toàn cục để bắt tất cả các lỗi và định dạng chúng
@@ -37,14 +37,23 @@ export class AllExceptionsFilter implements ExceptionFilter {
       statusCode = exception.getStatus()
       errorCode = exception.code
       details = exception.details
+    } else if (exception instanceof ZodError) {
+      statusCode = HttpStatus.UNPROCESSABLE_ENTITY
+      errorCode = 'VALIDATION_FAILED'
+      const httpResponse = exception.flatten()
+      // Ensure details are captured correctly from Zod's flattened error structure
+      details = {
+        formErrors: httpResponse.formErrors,
+        fieldErrors: httpResponse.fieldErrors
+      }
     } else if (exception instanceof HttpException) {
       statusCode = exception.getStatus()
       const httpResponse = exception.getResponse()
-      if (isObject(httpResponse)) {
-        errorCode = httpResponse.error || 'VALIDATION_FAILED'
-        details = httpResponse.message
+      if (typeof httpResponse === 'object' && httpResponse !== null) {
+        errorCode = (httpResponse as any).code || 'UNKNOWN_ERROR'
+        details = (httpResponse as any).details || (httpResponse as any).message
       } else {
-        errorCode = 'UNHANDLED_HTTP_EXCEPTION'
+        errorCode = 'UNKNOWN_ERROR'
         details = httpResponse
       }
     } else {
@@ -61,7 +70,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       exception instanceof ApiException
         ? this.i18nService.t(exception.message as any, {
             lang,
-            args: isObject(details) ? details : { detail: details }
+            args: details
           })
         : this.i18nService.t(messageKey, { lang, defaultValue: 'An unexpected error occurred.' })
 

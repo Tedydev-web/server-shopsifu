@@ -25,6 +25,7 @@ import { PermissionGuard } from 'src/shared/guards/permission.guard'
 import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { TWO_FACTOR_SERVICE, COOKIE_SERVICE } from 'src/shared/constants/injection.tokens'
 import { CookieService } from 'src/shared/services/cookie.service'
+import { Action, AppSubject } from 'src/shared/casl/casl-ability.factory'
 
 @Auth()
 @UseGuards(PermissionGuard)
@@ -40,7 +41,7 @@ export class TwoFactorController {
   ) {}
 
   @Post('setup')
-  @RequirePermissions(['2FA:setup:own'])
+  @RequirePermissions({ action: Action.Create, subject: AppSubject.TwoFactor })
   @HttpCode(HttpStatus.OK)
   async setupTwoFactor(
     @ActiveUser() activeUser: ActiveUserData,
@@ -48,25 +49,21 @@ export class TwoFactorController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    const sltToken = await this.twoFactorService.initiateTwoFactorActionWithSltCookie({
-      userId: activeUser.id,
-      deviceId: activeUser.deviceId,
-      ipAddress: ip,
-      userAgent,
-      purpose: TypeOfVerificationCode.SETUP_2FA
-    })
-
-    this.cookieService.setSltCookie(res, sltToken)
-
-    const setupDetails = await this.twoFactorService.generateSetupDetails(activeUser.id)
-    return {
-      message: '2FA setup initiated. Please scan the QR code and verify.',
-      data: setupDetails.data
-    }
+    return this.authVerificationService.initiateVerification(
+      {
+        userId: activeUser.id,
+        deviceId: activeUser.deviceId,
+        email: activeUser.email,
+        ipAddress: ip,
+        userAgent: userAgent,
+        purpose: TypeOfVerificationCode.SETUP_2FA
+      },
+      res
+    )
   }
 
   @Post('confirm-setup')
-  @RequirePermissions(['2FA:setup:own'])
+  @RequirePermissions({ action: Action.Create, subject: AppSubject.TwoFactor })
   @HttpCode(HttpStatus.OK)
   async confirmTwoFactorSetup(
     @Body() body: TwoFactorVerifyDto,
@@ -75,18 +72,11 @@ export class TwoFactorController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    return await this.authVerificationService.verifyCode(
-      req.cookies[CookieNames.SLT_TOKEN],
-      body.code,
-      ip,
-      userAgent,
-      res,
-      { twoFactorMethod: 'AUTHENTICATOR_APP' }
-    )
+    return this.authVerificationService.verifyCode(req.cookies[CookieNames.SLT_TOKEN], body.code, ip, userAgent, res)
   }
 
   @Post('verify')
-  @RequirePermissions(['2FA:verify:own'])
+  @RequirePermissions({ action: Action.Update, subject: AppSubject.TwoFactor })
   @HttpCode(HttpStatus.OK)
   async verifyTwoFactor(
     @Body() body: TwoFactorVerifyDto,
@@ -95,27 +85,21 @@ export class TwoFactorController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    return await this.authVerificationService.verifyCode(
-      req.cookies[CookieNames.SLT_TOKEN],
-      body.code,
-      ip,
-      userAgent,
-      res
-    )
+    return this.authVerificationService.verifyCode(req.cookies[CookieNames.SLT_TOKEN], body.code, ip, userAgent, res)
   }
 
   @Post('disable')
-  @RequirePermissions(['2FA:disable:own'])
+  @RequirePermissions({ action: Action.Delete, subject: AppSubject.TwoFactor })
   @HttpCode(HttpStatus.OK)
   async disableTwoFactor(
     @ActiveUser() activeUser: ActiveUserData,
     @Body() body: TwoFactorVerifyDto
   ): Promise<{ message: string }> {
-    return this.twoFactorService.disableVerification(activeUser.id, body.code, body.method)
+    return this.twoFactorService.disableVerification(activeUser.id, body.code)
   }
 
   @Post('regenerate-recovery-codes')
-  @RequirePermissions(['2FA:regenerate_codes:own'])
+  @RequirePermissions({ action: Action.Update, subject: AppSubject.TwoFactor })
   @HttpCode(HttpStatus.OK)
   async regenerateRecoveryCodes(
     @ActiveUser() activeUser: ActiveUserData,
@@ -123,6 +107,6 @@ export class TwoFactorController {
     @Ip() ip: string,
     @UserAgent() userAgent: string
   ): Promise<{ message: string; data: { recoveryCodes: string[] } }> {
-    return this.twoFactorService.regenerateRecoveryCodes(activeUser.id, body.code, body.method, ip, userAgent)
+    return this.twoFactorService.regenerateRecoveryCodes(activeUser.id, body.code, 'RECOVERY_CODE', ip, userAgent)
   }
 }

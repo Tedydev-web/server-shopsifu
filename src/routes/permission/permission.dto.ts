@@ -5,9 +5,25 @@ import {
   GetGroupedPermissionsResponseSchema,
   GetPermissionsQuerySchema,
   PermissionGroupSchema,
-  PermissionItemSchema,
-  PermissionSchema
+  PermissionItemSchema
 } from './permission.schema'
+
+// ===================================================================================
+//                                Interface & Helper Types
+// ===================================================================================
+export interface PermissionUiMetadata {
+  uiPath?: string
+  httpMethod?: string
+  apiEndpoint?: string
+  description?: string
+}
+
+const PermissionUiMetadataZodSchema = z.object({
+  uiPath: z.string().optional(),
+  httpMethod: z.string().optional(),
+  apiEndpoint: z.string().optional(),
+  description: z.string().optional()
+})
 
 // ===================================================================================
 //                                       DTOs
@@ -15,8 +31,24 @@ import {
 
 // --- Request DTOs ---
 export class GetPermissionsQueryDto extends createZodDto(GetPermissionsQuerySchema) {}
-export class CreatePermissionDto extends createZodDto(PermissionSchema) {}
-export class UpdatePermissionDto extends createZodDto(PermissionSchema.partial()) {}
+
+const CreatePermissionZodSchema = z.object({
+  action: z.string().min(1),
+  subject: z.string().min(1),
+  description: z.string().optional(),
+  conditions: z.any().optional(),
+  uiMetadata: PermissionUiMetadataZodSchema.optional()
+})
+export class CreatePermissionDto extends createZodDto(CreatePermissionZodSchema) {}
+
+const UpdatePermissionZodSchema = z.object({
+  action: z.string().min(1).optional(),
+  subject: z.string().min(1).optional(),
+  description: z.string().optional(),
+  conditions: z.any().optional(),
+  uiMetadata: PermissionUiMetadataZodSchema.optional()
+})
+export class UpdatePermissionDto extends createZodDto(UpdatePermissionZodSchema) {}
 
 // --- Response DTOs ---
 export class GetGroupedPermissionsResponseDto extends createZodDto(GetGroupedPermissionsResponseSchema) {}
@@ -35,6 +67,7 @@ export class PermissionDto implements Omit<Permission, 'createdById' | 'updatedB
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
+  isSystemPermission: boolean
 
   constructor(partial: Partial<PermissionDto>) {
     Object.assign(this, partial)
@@ -50,7 +83,8 @@ export class PermissionDto implements Omit<Permission, 'createdById' | 'updatedB
       uiMetadata: entity.uiMetadata as Record<string, any> | null,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
-      deletedAt: entity.deletedAt
+      deletedAt: entity.deletedAt,
+      isSystemPermission: entity.isSystemPermission
     })
   }
 }

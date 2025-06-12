@@ -4,8 +4,9 @@ import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { ProfileService } from './profile.service'
 import { UpdateProfileDto, ProfileResponseDto } from './profile.dto'
 import { PermissionGuard } from 'src/shared/guards/permission.guard'
-import { PermissionCondition, RequirePermissions } from 'src/shared/decorators/permissions.decorator'
+import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { ActiveUserData } from 'src/shared/types/active-user.type'
+import { Action, AppSubject } from 'src/shared/casl/casl-ability.factory'
 
 @Auth()
 @UseGuards(PermissionGuard)
@@ -15,7 +16,7 @@ export class ProfileController {
   constructor(private readonly profileService: ProfileService) {}
 
   @Get()
-  @RequirePermissions(['Profile:read:own'])
+  @RequirePermissions({ action: Action.ReadOwn, subject: AppSubject.Profile })
   @HttpCode(HttpStatus.OK)
   async getProfile(@ActiveUser() activeUser: ActiveUserData): Promise<ProfileResponseDto> {
     this.logger.debug(`[GET /profile] Called by user ${activeUser.id}`)
@@ -24,7 +25,7 @@ export class ProfileController {
   }
 
   @Patch()
-  @RequirePermissions(['Profile:update:own'])
+  @RequirePermissions({ action: Action.UpdateOwn, subject: AppSubject.Profile })
   @HttpCode(HttpStatus.OK)
   async updateProfile(
     @ActiveUser() activeUser: ActiveUserData,

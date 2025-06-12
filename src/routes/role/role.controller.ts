@@ -16,15 +16,17 @@ import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { PermissionGuard } from 'src/shared/guards/permission.guard'
 import { CreateRoleDto, RoleDto, UpdateRoleDto } from './role.dto'
 import { RoleService } from './role.service'
+import { Action, AppSubject } from 'src/shared/casl/casl-ability.factory'
+import { Role } from './role.model'
 
 @Auth()
 @UseGuards(PermissionGuard)
-@Controller('roles')
+@Controller('role')
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}
 
   @Post()
-  @RequirePermissions(['Role:create'])
+  @RequirePermissions({ action: Action.Create, subject: AppSubject.Role })
   async create(@Body() createRoleDto: CreateRoleDto) {
     const role = await this.roleService.create(createRoleDto)
     return {
@@ -34,7 +36,7 @@ export class RoleController {
   }
 
   @Get()
-  @RequirePermissions(['Role:read'])
+  @RequirePermissions({ action: Action.Read, subject: AppSubject.Role })
   async findAll() {
     const roles = await this.roleService.findAll()
     return {
@@ -44,7 +46,7 @@ export class RoleController {
   }
 
   @Get(':id')
-  @RequirePermissions(['Role:read'])
+  @RequirePermissions({ action: Action.Read, subject: Role })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const role = await this.roleService.findOne(id)
     return {
@@ -54,7 +56,7 @@ export class RoleController {
   }
 
   @Patch(':id')
-  @RequirePermissions(['Role:update'])
+  @RequirePermissions({ action: Action.Update, subject: Role })
   async update(@Param('id', ParseIntPipe) id: number, @Body() updateRoleDto: UpdateRoleDto) {
     const role = await this.roleService.update(id, updateRoleDto)
     return {
@@ -64,7 +66,7 @@ export class RoleController {
   }
 
   @Delete(':id')
-  @RequirePermissions(['Role:delete'])
+  @RequirePermissions({ action: Action.Delete, subject: Role })
   async remove(@Param('id', ParseIntPipe) id: number): Promise<{ message: string }> {
     await this.roleService.remove(id)
     return { message: 'Role deleted successfully' }

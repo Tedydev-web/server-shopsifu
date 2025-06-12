@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
+import { Injectable, Logger, Inject, forwardRef, InternalServerErrorException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
 import { Response, Request } from 'express'
@@ -96,66 +96,6 @@ export class CoreService implements ILoginFinalizerService {
     private readonly authVerificationService?: AuthVerificationService,
     @Inject(EMAIL_SERVICE) private readonly emailService?: EmailService
   ) {}
-
-  /**
-   * Lấy cấu hình UI cho người dùng dựa trên quyền hạn của họ.
-   * API này thay thế việc gửi toàn bộ danh sách permissions xuống client.
-   * @param userId - ID của người dùng
-   * @returns Một object chứa cấu hình cho các thành phần UI (navigation, actions, features).
-   */
-  async getUserUICapabilities(userId: number): Promise<any> {
-    if (!this.userService) {
-      throw AuthError.ServiceNotAvailable('UserService')
-    }
-    const userPermissions = await this.userService.getUserPermissions(userId)
-    const userPermissionSet = new Set(userPermissions.map((p) => `${p.subject}:${p.action}`))
-
-    // Chuyển đổi permissions thành UI capabilities
-    const uiConfig = {
-      navigation: {
-        showDashboard: this.hasPermission(userPermissionSet, 'Dashboard:read'),
-        showCompanies: this.hasPermission(userPermissionSet, 'Company:read'),
-        showUsers: this.hasPermission(userPermissionSet, 'User:read'),
-        showRoles: this.hasPermission(userPermissionSet, 'Role:read'),
-        showPermissions: this.hasPermission(userPermissionSet, 'Permission:read'),
-        showSettings: this.hasPermission(userPermissionSet, 'System:manage')
-      },
-      actions: {
-        canCreateUser: this.hasPermission(userPermissionSet, 'User:create'),
-        canCreateRole: this.hasPermission(userPermissionSet, 'Role:create'),
-        canCreateCompany: this.hasPermission(userPermissionSet, 'Company:create'),
-        canEditCompany: this.hasPermission(userPermissionSet, 'Company:update'),
-        canDeleteCompany: this.hasPermission(userPermissionSet, 'Company:delete'),
-        canManageUsers: this.hasPermission(userPermissionSet, 'User:manage'),
-        canManageSystem: this.hasPermission(userPermissionSet, 'System:manage')
-      },
-      features: {
-        bulkOperations: this.hasPermission(userPermissionSet, 'System:bulk'),
-        advancedSearch: this.hasPermission(userPermissionSet, 'System:advanced'),
-        exportData: this.hasPermission(userPermissionSet, 'Data:export')
-      }
-    }
-
-    return {
-      message: 'auth.success.uiCapabilities',
-      data: { uiConfig }
-    }
-  }
-
-  /**
-   * Kiểm tra xem một tập hợp các quyền có chứa một quyền cụ thể hay không.
-   * Hỗ trợ kiểm tra wildcard 'manage' và 'all:manage'.
-   * @param permissionSet - Set các quyền của người dùng (định dạng 'Subject:action').
-   * @param requiredPermission - Quyền cần kiểm tra.
-   * @returns `true` nếu người dùng có quyền, ngược lại `false`.
-   */
-  private hasPermission(permissionSet: Set<string>, requiredPermission: string): boolean {
-    const [subject] = requiredPermission.split(':')
-    // Kiểm tra quyền cụ thể, quyền quản lý 'subject:manage', hoặc quyền quản lý toàn bộ 'all:manage'
-    return (
-      permissionSet.has(requiredPermission) || permissionSet.has(`${subject}:manage`) || permissionSet.has('all:manage')
-    )
-  }
 
   /**
    * Tạo username duy nhất từ chuỗi base

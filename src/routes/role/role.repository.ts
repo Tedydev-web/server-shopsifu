@@ -98,7 +98,13 @@ export class RoleRepository {
               }
             : undefined
       },
-      include: { permissions: { include: { permission: true } } }
+      include: {
+        permissions: {
+          include: {
+            permission: true
+          }
+        }
+      }
     })
 
     const role = this.mapToRole(createdRoleWithPermissions)
@@ -129,7 +135,13 @@ export class RoleRepository {
               }))
             }
           },
-          include: { permissions: { include: { permission: true } } }
+          include: {
+            permissions: {
+              include: {
+                permission: true
+              }
+            }
+          }
         })
       ])
       const role = this.mapToRole(updatedRoleWithPermissions)
@@ -139,7 +151,13 @@ export class RoleRepository {
       const updatedRoleWithPermissions = await this.prisma.role.update({
         where: { id },
         data: roleData,
-        include: { permissions: { include: { permission: true } } }
+        include: {
+          permissions: {
+            include: {
+              permission: true
+            }
+          }
+        }
       })
       const role = this.mapToRole(updatedRoleWithPermissions)
       await this.invalidateRoleCache(role)
@@ -156,7 +174,13 @@ export class RoleRepository {
     }
 
     const rolesWithPermissions = await this.prisma.role.findMany({
-      include: { permissions: { include: { permission: true } } }
+      include: {
+        permissions: {
+          include: {
+            permission: true
+          }
+        }
+      }
     })
     const roles = rolesWithPermissions.map((r) => this.mapToRole(r))
     await this.redisService.setJson(cacheKey, roles, ALL_ROLES_CACHE_TTL)
@@ -173,7 +197,13 @@ export class RoleRepository {
 
     const roleWithPermissions = await this.prisma.role.findUnique({
       where: { id },
-      include: { permissions: { include: { permission: true } } }
+      include: {
+        permissions: {
+          include: {
+            permission: true
+          }
+        }
+      }
     })
     const role = this.mapToRole(roleWithPermissions)
     if (role) {
@@ -192,7 +222,13 @@ export class RoleRepository {
 
     const roleWithPermissions = await this.prisma.role.findUnique({
       where: { name },
-      include: { permissions: { include: { permission: true } } }
+      include: {
+        permissions: {
+          include: {
+            permission: true
+          }
+        }
+      }
     })
 
     const role = this.mapToRole(roleWithPermissions)

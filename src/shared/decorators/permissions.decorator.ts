@@ -1,30 +1,34 @@
-import { applyDecorators, SetMetadata } from '@nestjs/common'
+import { SetMetadata } from '@nestjs/common'
+import { Action, Subjects } from 'src/shared/casl/casl-ability.factory'
+import { Type } from '@nestjs/common'
 
 export const PERMISSIONS_KEY = 'permissions'
-export const PERMISSIONS_OPTIONS_KEY = 'permissions_options'
 
-export enum PermissionCondition {
-  AND = 'AND',
-  OR = 'OR'
-}
-
-export interface PermissionOptions {
-  condition?: PermissionCondition
+/**
+ * @description Defines a single permission requirement for an endpoint.
+ */
+export interface RequiredPermission {
+  action: Action
+  /**
+   * @description The subject of the permission.
+   * Can be a string (e.g., 'Profile', 'all') for general permissions,
+   * or a Model class (e.g., User, Role) for permissions that require
+   * checking against a specific resource instance (for conditional permissions).
+   */
+  subject: Type<any> | Extract<Subjects, string>
 }
 
 /**
- * Decorator để định nghĩa các permission string cần thiết cho một endpoint.
+ * Decorator to specify the permissions required to access a route.
  *
- * Mặc định, user chỉ cần có MỘT trong các permission được liệt kê (OR).
+ * @example
+ * // Requires permission to create a user
+ * @RequirePermissions({ action: Action.Create, subject: 'User' })
  *
- * @param permissions - Danh sách các permission string yêu cầu (ví dụ: ['User:create', 'User:read']).
- * @param options - Tùy chọn cho việc kiểm tra permission.
- *   - `condition: PermissionCondition.AND` yêu cầu user phải có TẤT CẢ các permission.
- *   - `condition: PermissionCondition.OR` (mặc định) yêu cầu user chỉ cần có MỘT permission.
+ * @example
+ * // Requires permission to update a specific user, will trigger resource loading
+ * @RequirePermissions({ action: Action.Update, subject: User })
+ *
+ * @param permissions - A list of RequiredPermission objects.
  */
-export const RequirePermissions = (
-  permissions: string[],
-  options: PermissionOptions = { condition: PermissionCondition.OR }
-) => {
-  return applyDecorators(SetMetadata(PERMISSIONS_KEY, permissions), SetMetadata(PERMISSIONS_OPTIONS_KEY, options))
-}
+export const RequirePermissions = (...permissions: RequiredPermission[]) => SetMetadata(PERMISSIONS_KEY, permissions)

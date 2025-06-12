@@ -29,8 +29,10 @@ import { CreateUserDto, UpdateUserDto, UserDto } from './user.dto'
 // ================================================================
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { PermissionGuard } from 'src/shared/guards/permission.guard'
-import { RequirePermissions, PermissionCondition } from 'src/shared/decorators/permissions.decorator'
+import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
+import { Action, AppSubject } from 'src/shared/casl/casl-ability.factory'
+import { User } from './user.model'
 
 /**
  * Controller xử lý các API endpoints cho User management
@@ -52,8 +54,8 @@ export class UserController {
    * Flow: Submit data → SLT token + OTP → Verify qua auth/otp/verify → User được tạo
    */
   @Post()
-  @RequirePermissions(['User:create'])
-  @HttpCode(HttpStatus.OK)
+  @RequirePermissions({ action: Action.Create, subject: AppSubject.User })
+  @HttpCode(HttpStatus.ACCEPTED)
   async create(
     @Body() createUserDto: CreateUserDto,
     @Ip() ip: string,
@@ -68,7 +70,7 @@ export class UserController {
   // ================================================================
 
   @Get()
-  @RequirePermissions(['User:read'])
+  @RequirePermissions({ action: Action.Read, subject: AppSubject.User })
   async findAll() {
     const result = await this.userService.findAll()
     return {
@@ -78,7 +80,7 @@ export class UserController {
   }
 
   @Get(':id')
-  @RequirePermissions(['User:read'])
+  @RequirePermissions({ action: Action.Read, subject: User })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const { message, data } = await this.userService.findOne(id)
     return {
@@ -88,7 +90,7 @@ export class UserController {
   }
 
   @Patch(':id')
-  @RequirePermissions(['User:update'])
+  @RequirePermissions({ action: Action.Update, subject: User })
   async update(@Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
     const { message, data } = await this.userService.update(id, updateUserDto)
     return {
@@ -98,11 +100,9 @@ export class UserController {
   }
 
   @Delete(':id')
-  @RequirePermissions(['User:delete'])
+  @RequirePermissions({ action: Action.Delete, subject: User })
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     await this.userService.remove(id)
-    // DELETE endpoints typically return 204 No Content without response body
-    // The success message will be handled by the interceptor if needed
   }
 }

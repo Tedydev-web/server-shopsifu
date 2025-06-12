@@ -34,7 +34,6 @@ import { AuthVerificationService } from '../services/auth-verification.service'
 import { AuthError } from '../auth.error'
 import { CurrentUserContext } from 'src/shared/types/current-user-context.type'
 import { GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
-import { z } from 'zod'
 
 @Auth()
 @Controller('sessions')

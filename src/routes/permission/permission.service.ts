@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
-import { CreatePermissionDto, PermissionGroup, UpdatePermissionDto } from './permission.dto'
+import { CreatePermissionDto, PermissionGroup, UpdatePermissionDto, PermissionUiMetadata } from './permission.dto'
 import { PermissionError } from './permission.error'
 import { Permission } from './permission.model'
 import { CreatePermissionData, PermissionRepository, UpdatePermissionData } from './permission.repository'
@@ -25,7 +25,8 @@ export class PermissionService {
       action: createPermissionDto.action,
       subject: createPermissionDto.subject,
       description: createPermissionDto.description,
-      conditions: createPermissionDto.conditions
+      conditions: createPermissionDto.conditions,
+      uiMetadata: createPermissionDto.uiMetadata ? createPermissionDto.uiMetadata : undefined
     }
     return this.permissionRepository.create(data)
   }
@@ -34,12 +35,6 @@ export class PermissionService {
     return this.permissionRepository.findAll(page, limit)
   }
 
-  /**
-   * Get permissions grouped by subject (similar to sessions grouped by device)
-   * @param currentPage - Current page number (starts from 1)
-   * @param itemsPerPage - Number of groups per page
-   * @returns Grouped permissions with pagination metadata
-   */
   async getGroupedPermissions(
     currentPage: number = 1,
     itemsPerPage: number = 10
@@ -58,10 +53,7 @@ export class PermissionService {
       `[getGroupedPermissions] Getting grouped permissions for page: ${currentPage}, limit: ${itemsPerPage}`
     )
 
-    // Get all permissions without pagination first
     const allPermissions = await this.permissionRepository.findAll()
-
-    // Group permissions by subject
     const permissionGroups = new Map<string, Permission[]>()
 
     for (const permission of allPermissions) {
@@ -72,29 +64,29 @@ export class PermissionService {
       permissionGroups.get(subject)?.push(permission)
     }
 
-    // Convert to PermissionGroup objects and sort
     const groups: PermissionGroup[] = []
 
     for (const [subject, permissions] of permissionGroups.entries()) {
-      // Sort permissions within each group by action
       permissions.sort((a, b) => a.action.localeCompare(b.action))
 
       groups.push({
         subject,
         permissionsCount: permissions.length,
-        permissions: permissions.map((p) => ({
-          id: p.id,
-          action: p.action,
-          httpMethod: this.getHttpMethodFromAction(p.action),
-          endpoint: this.generateEndpointFromSubjectAndAction(p.subject, p.action)
-        }))
+        permissions: permissions.map((p) => {
+          const uiMetadata = p.uiMetadata as PermissionUiMetadata | null
+
+          return {
+            id: p.id,
+            action: p.action,
+            httpMethod: uiMetadata?.httpMethod || null,
+            endpoint: uiMetadata?.apiEndpoint || null
+          }
+        })
       })
     }
 
-    // Sort groups by subject name for consistency
     groups.sort((a, b) => a.subject.localeCompare(b.subject))
 
-    // Apply pagination to groups
     const totalGroups = groups.length
     const totalPages = Math.ceil(totalGroups / itemsPerPage)
     const startIndex = (currentPage - 1) * itemsPerPage
@@ -110,89 +102,6 @@ export class PermissionService {
           totalGroups
         }
       }
-    }
-  }
-
-  /**
-   * Get HTTP method from action name
-   */
-  private getHttpMethodFromAction(action: string): string {
-    const actionLower = action.toLowerCase()
-
-    if (actionLower.includes('create') || actionLower.includes('post')) {
-      return 'POST'
-    } else if (actionLower.includes('read') || actionLower.includes('get') || actionLower.includes('list')) {
-      return 'GET'
-    } else if (actionLower.includes('update') || actionLower.includes('patch') || actionLower.includes('edit')) {
-      return 'PATCH'
-    } else if (actionLower.includes('delete') || actionLower.includes('remove')) {
-      return 'DELETE'
-    }
-
-    return 'GET' // Default fallback
-  }
-
-  /**
-   * Generate API endpoint from subject and action
-   */
-  private generateEndpointFromSubjectAndAction(subject: string, action: string): string {
-    const subjectLower = subject.toLowerCase()
-    const actionLower = action.toLowerCase()
-
-    // Convert subject to plural form for REST API convention
-    const pluralSubject = this.pluralizeSubject(subjectLower)
-
-    if (actionLower.includes('create') || actionLower.includes('post')) {
-      return `/api/v1/${pluralSubject}`
-    } else if (actionLower.includes('read') || actionLower.includes('get')) {
-      if (actionLower.includes('list') || actionLower.includes('paginate')) {
-        return `/api/v1/${pluralSubject}`
-      } else {
-        return `/api/v1/${pluralSubject}/:id`
-      }
-    } else if (actionLower.includes('update') || actionLower.includes('patch') || actionLower.includes('edit')) {
-      return `/api/v1/${pluralSubject}/:id`
-    } else if (actionLower.includes('delete') || actionLower.includes('remove')) {
-      return `/api/v1/${pluralSubject}/:id`
-    }
-
-    return `/api/v1/${pluralSubject}` // Default fallback
-  }
-
-  /**
-   * Convert subject to plural form for API endpoints
-   */
-  private pluralizeSubject(subject: string): string {
-    const subjectLower = subject.toLowerCase()
-
-    // Handle common irregular plurals
-    const irregularPlurals: Record<string, string> = {
-      company: 'companies',
-      person: 'people',
-      child: 'children',
-      user: 'users',
-      file: 'files',
-      permission: 'permissions',
-      role: 'roles'
-    }
-
-    if (irregularPlurals[subjectLower]) {
-      return irregularPlurals[subjectLower]
-    }
-
-    // Handle regular plurals
-    if (subjectLower.endsWith('y')) {
-      return subjectLower.slice(0, -1) + 'ies'
-    } else if (
-      subjectLower.endsWith('s') ||
-      subjectLower.endsWith('sh') ||
-      subjectLower.endsWith('ch') ||
-      subjectLower.endsWith('x') ||
-      subjectLower.endsWith('z')
-    ) {
-      return subjectLower + 'es'
-    } else {
-      return subjectLower + 's'
     }
   }
 
@@ -214,7 +123,10 @@ export class PermissionService {
         throw PermissionError.AlreadyExists(action, subject)
       }
     }
-    const data: UpdatePermissionData = { ...updatePermissionDto }
+    const data: UpdatePermissionData = {
+      ...updatePermissionDto,
+      uiMetadata: updatePermissionDto.uiMetadata ? updatePermissionDto.uiMetadata : undefined
+    }
     return this.permissionRepository.update(id, data)
   }
 
