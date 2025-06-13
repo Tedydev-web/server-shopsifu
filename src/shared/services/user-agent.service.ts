@@ -26,8 +26,12 @@ export class UserAgentService {
     deviceModel: 'Unknown'
   }
 
-  parse(userAgentString?: string, appIdentifier?: string): ParsedUserAgent {
-    const ua = userAgentString || ''
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  parse(userAgentString?: string, appIdentifier?: string, enhancedHeaders?: Record<string, any>): ParsedUserAgent {
+    // Safely extract the original user agent string for parsing
+    const originalUA = this.getOriginalUserAgentString(userAgentString)
+    const ua = originalUA || ''
+
     const parser = new UAParser(ua)
     const result = parser.getResult()
 
@@ -69,7 +73,7 @@ export class UserAgentService {
       deviceVendor: deviceVendor || 'Unknown',
       deviceModel: deviceModel || 'Unknown',
       deviceName: getDeviceName(),
-      app: this.determineApp(ua, appIdentifier),
+      app: this.determineApp(originalUA, appIdentifier),
       raw: ua
     }
   }
@@ -77,7 +81,7 @@ export class UserAgentService {
   private determineApp(userAgent: string, appIdentifier?: string): string {
     if (appIdentifier) return appIdentifier
 
-    const ua = userAgent.toLowerCase()
+    const ua = this.sanitizeUserAgentString(userAgent)
     if (ua.includes('shopsifu-mobile-app')) {
       return 'MobileApp'
     }
@@ -85,5 +89,43 @@ export class UserAgentService {
       return 'DesktopApp'
     }
     return 'WebApp'
+  }
+
+  /**
+   * Safely sanitize and normalize user agent string
+   */
+  private sanitizeUserAgentString(userAgent?: any): string {
+    if (!userAgent) return ''
+
+    // Handle various types that might be passed
+    if (typeof userAgent === 'string') {
+      return userAgent.toLowerCase()
+    }
+
+    if (Array.isArray(userAgent)) {
+      return userAgent.length > 0 ? String(userAgent[0]).toLowerCase() : ''
+    }
+
+    // Convert any other type to string and then lowercase
+    return String(userAgent).toLowerCase()
+  }
+
+  /**
+   * Get the original user agent string without modification
+   */
+  private getOriginalUserAgentString(userAgent?: any): string {
+    if (!userAgent) return ''
+
+    // Handle various types that might be passed
+    if (typeof userAgent === 'string') {
+      return userAgent
+    }
+
+    if (Array.isArray(userAgent)) {
+      return userAgent.length > 0 ? String(userAgent[0]) : ''
+    }
+
+    // Convert any other type to string
+    return String(userAgent)
   }
 }

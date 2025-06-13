@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, forwardRef, HttpStatus } from '@nestjs/common'
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Response, Request } from 'express'
 import { v4 as uuidv4 } from 'uuid'
@@ -9,6 +9,7 @@ import { User, Device, Role, UserProfile } from '@prisma/client'
 // Internal Services
 import { HashingService } from 'src/shared/services/hashing.service'
 import { EmailService } from 'src/shared/services/email.service'
+import { DeviceFingerprintService } from 'src/shared/services/device-fingerprint.service'
 
 // Auth Services
 import { DeviceService } from './device.service'
@@ -41,7 +42,8 @@ import {
   SLT_SERVICE,
   TOKEN_SERVICE,
   EMAIL_SERVICE,
-  REDIS_SERVICE
+  REDIS_SERVICE,
+  DEVICE_FINGERPRINT_SERVICE
 } from 'src/shared/constants/injection.tokens'
 
 // Utils
@@ -67,6 +69,7 @@ interface RegisterUserParams {
   phoneNumber?: string
   ip?: string
   userAgent?: string
+  fingerprint?: string
 }
 
 @Injectable()
@@ -84,6 +87,7 @@ export class CoreService implements ILoginFinalizerService {
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     @Inject(SLT_SERVICE) private readonly sltService: ISLTService,
+    @Inject(DEVICE_FINGERPRINT_SERVICE) private readonly deviceFingerprintService: DeviceFingerprintService,
     @Inject(DEVICE_SERVICE) private readonly deviceService?: DeviceService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionsService?: SessionsService,
     @Inject(forwardRef(() => UserService)) private readonly userService?: UserService,
@@ -219,7 +223,7 @@ export class CoreService implements ILoginFinalizerService {
 
     // 3. Create device and session
     const device = await this.getOrCreateDevice(newUser.id, ipAddress, userAgent, params.fingerprint)
-    const sessionId = await this.createSessionForLogin(newUser.id, device.id, ipAddress, userAgent)
+    await this.createSessionForLogin(newUser.id, device.id, ipAddress, userAgent)
 
     // Kết thúc và xóa SLT token
     await this.sltService.finalizeSlt(sltContext.sltJti)
@@ -631,10 +635,8 @@ export class CoreService implements ILoginFinalizerService {
    * @returns Kết quả khởi tạo xác thực (SLT token hoặc login trực tiếp)
    */
   async initiateLogin(loginDto: LoginDto, ip: string, userAgent: string, res: Response) {
-    this.logger.log(`[initiateLogin] Starting login for user ${loginDto.emailOrUsername}`)
-
     // 1. Validate user credentials
-    const user = await this.validateUser(loginDto.emailOrUsername, loginDto.password)
+    const user = await this.validateUser(loginDto.email, loginDto.password)
 
     // 2. Get or create a device record for the user
     const device = await this.getOrCreateDevice(user.id, ip, userAgent, loginDto.fingerprint)
@@ -664,6 +666,66 @@ export class CoreService implements ILoginFinalizerService {
         purpose: TypeOfVerificationCode.LOGIN,
         rememberMe: loginDto.rememberMe,
         metadata: { from: 'login', forceVerification: !!needsReverification }
+      },
+      res
+    )
+
+    return verificationResult
+  }
+
+  /**
+   * Khởi tạo quá trình đăng nhập với enhanced device fingerprinting
+   * @param loginDto - Thông tin đăng nhập từ client
+   * @param req - Request object để extract device info
+   * @param res - Response object để set cookie
+   * @returns Kết quả khởi tạo xác thức (SLT token hoặc login trực tiếp)
+   */
+  async initiateLoginWithEnhancedDevice(loginDto: LoginDto, req: Request, res: Response) {
+    // 1. Validate user credentials
+    const user = await this.validateUser(loginDto.email, loginDto.password)
+
+    // 2. Extract enhanced device information
+    const enhancedDeviceInfo = await this.deviceFingerprintService.extractDeviceInfo(req)
+
+    // 3. Create or update device with enhanced fingerprinting
+    const device = await this.deviceRepository.upsertDevice(
+      user.id,
+      enhancedDeviceInfo.userAgent,
+      enhancedDeviceInfo.ipAddress,
+      enhancedDeviceInfo.fingerprint
+    )
+
+    // 4. Determine if the login requires further verification
+    const reverifyKey = RedisKeyManager.getUserReverifyNextLoginKey(user.id)
+    const needsReverification = await this.redisService.get(reverifyKey)
+
+    if (needsReverification) {
+      this.logger.log(
+        `[initiateLoginWithEnhancedDevice] User ${user.id} flagged for re-verification. Forcing verification flow.`
+      )
+      // Xóa flag sau khi đọc để chỉ có hiệu lực một lần
+      await this.redisService.del(reverifyKey)
+    }
+
+    if (!this.authVerificationService) {
+      throw AuthError.ServiceNotAvailable('AuthVerificationService')
+    }
+
+    // 5. Khởi tạo quá trình xác thực (OTP/2FA nếu cần)
+    const verificationResult = await this.authVerificationService.initiateVerification(
+      {
+        userId: user.id,
+        deviceId: device.id,
+        email: user.email,
+        ipAddress: enhancedDeviceInfo.ipAddress,
+        userAgent: enhancedDeviceInfo.userAgent,
+        purpose: TypeOfVerificationCode.LOGIN,
+        rememberMe: loginDto.rememberMe,
+        metadata: {
+          from: 'login',
+          forceVerification: !!needsReverification,
+          deviceInfo: enhancedDeviceInfo
+        }
       },
       res
     )

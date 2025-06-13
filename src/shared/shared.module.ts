@@ -13,6 +13,7 @@ import { PrismaService } from './providers/prisma/prisma.service'
 import { SLTService } from './services/slt.service'
 import { TokenService } from './services/token.service'
 import { UserAgentService } from './services/user-agent.service'
+import { DeviceFingerprintService } from './services/device-fingerprint.service'
 import { RedisService } from './providers/redis/redis.service'
 import { CryptoService } from './services/crypto.service'
 import { CaslAbilityFactory } from './providers/casl/casl-ability.factory'
@@ -28,7 +29,8 @@ import {
   SLT_SERVICE,
   TOKEN_SERVICE,
   USER_AGENT_SERVICE,
-  REDIS_SERVICE
+  REDIS_SERVICE,
+  DEVICE_FINGERPRINT_SERVICE
 } from './constants/injection.tokens'
 import { IORedisKey } from './providers/redis/redis.constants'
 import { UserModule } from 'src/routes/user/user.module'
@@ -42,6 +44,7 @@ const serviceClasses = [
   SLTService,
   TokenService,
   UserAgentService,
+  DeviceFingerprintService,
   RedisService,
   CryptoService,
   CaslAbilityFactory
@@ -57,6 +60,7 @@ const tokenProviders = [
   { provide: SLT_SERVICE, useClass: SLTService },
   { provide: TOKEN_SERVICE, useClass: TokenService },
   { provide: USER_AGENT_SERVICE, useClass: UserAgentService },
+  { provide: DEVICE_FINGERPRINT_SERVICE, useClass: DeviceFingerprintService },
   { provide: REDIS_SERVICE, useClass: RedisService }
 ]
 
