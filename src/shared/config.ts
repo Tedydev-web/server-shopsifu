@@ -105,7 +105,7 @@ const isDevlopment = parsedConfig.NODE_ENV === 'development'
  */
 const convertMs = (value: string, defaultValue: number): number => {
   try {
-    const calculatedMs = ms(value)
+    const calculatedMs = ms(value as any)
     if (typeof calculatedMs === 'number' && !isNaN(calculatedMs)) {
       return calculatedMs
     }

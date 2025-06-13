@@ -3,7 +3,6 @@ import { Response, Request } from 'express'
 import { TypeOfVerificationCodeType, TwoFactorMethodTypeType } from 'src/routes/auth/auth.constants'
 import { PrismaTransactionClient } from 'src/shared/providers/prisma/prisma.type'
 
-// Payload for login finalization
 export interface ILoginFinalizationPayload {
   userId: number
   deviceId: number
@@ -12,31 +11,18 @@ export interface ILoginFinalizationPayload {
   userAgent?: string
 }
 
-// Result from login finalization
-
-// Injection token for the login finalizer service
 export const LOGIN_FINALIZER_SERVICE = Symbol('ILoginFinalizerService')
 
-// Interface for the service that finalizes login after verification
 export interface ILoginFinalizerService {
-  finalizeLoginAfterVerification(
-    payload: ILoginFinalizationPayload,
-    res: any // Express Response object
-  ): Promise<any>
+  finalizeLoginAfterVerification(payload: ILoginFinalizationPayload, res: any): Promise<any>
 }
 
-/**
- * Auth Provider Interface - Định nghĩa các methods cho authentication provider
- */
 export interface IAuthProvider {
   verifyToken(token: string): Promise<any>
   createToken(payload: any): string
   extractTokenFromRequest(req: any): string | null
 }
 
-/**
- * User Auth Service Interface - Định nghĩa các methods chính cho user authentication
- */
 export interface IUserAuthService {
   validateUser(username: string, password: string): Promise<any>
   login(params: any, res: Response): Promise<any>
@@ -44,9 +30,6 @@ export interface IUserAuthService {
   logout(userId: number, sessionId: string, req?: Request, res?: Response): Promise<void>
 }
 
-/**
- * OTP Service Interface - Định nghĩa các methods cho OTP service
- */
 export interface IOTPService {
   generateOTP(length?: number): string
   sendOTP(
@@ -57,9 +40,6 @@ export interface IOTPService {
   verifyOTP(emailToVerifyAgainst: string, code: string, type: TypeOfVerificationCodeType): Promise<boolean>
 }
 
-/**
- * Short-Lived Token (SLT) Service Interface
- */
 export interface ISLTService {
   createAndStoreSltToken(payload: {
     userId: number
@@ -85,9 +65,6 @@ export interface ISLTService {
   incrementSltAttempts(sltJti: string): Promise<number>
 }
 
-/**
- * Interface cho Session Service
- */
 export interface ISessionService {
   getSessions(
     userId: number,
@@ -96,9 +73,6 @@ export interface ISessionService {
     currentSessionIdFromToken?: string
   ): Promise<any>
 
-  /**
-   * Thu hồi sessions/devices với smart logic
-   */
   revokeItems(
     userId: number,
     options: {
@@ -132,9 +106,6 @@ export interface ISessionService {
   ): Promise<{ deletedSessionsCount: number; untrustedDeviceIds: number[] }>
 }
 
-/**
- * Interface cho Device Service
- */
 export interface IDeviceService {
   findById(deviceId: number): Promise<any>
 
@@ -149,9 +120,6 @@ export interface IDeviceService {
   clearDeviceReverification(userId: number, deviceId: number): Promise<void>
 }
 
-/**
- * Cookie Service Interface
- */
 export interface ICookieService {
   setAccessTokenCookie(res: Response, accessToken: string): void
   setRefreshTokenCookie(res: Response, refreshToken: string, rememberMe?: boolean): void
@@ -161,7 +129,6 @@ export interface ICookieService {
   setSltCookie(res: Response, sltToken: string, purpose: TypeOfVerificationCodeType): void
   clearSltCookie(res: Response): void
 
-  // Các phương thức cần bổ sung
   setTokenCookies(res: Response, accessToken: string, refreshToken: string, rememberMe?: boolean): void
   clearTokenCookies(res: Response): void
   setOAuthNonceCookie(res: Response, nonce: string): void
@@ -170,9 +137,6 @@ export interface ICookieService {
   clearOAuthPendingLinkTokenCookie(res: Response): void
 }
 
-/**
- * Token Service Interface
- */
 export interface ITokenService {
   generateAccessToken(userId: number, expiresIn?: string): Promise<string>
   generateRefreshToken(userId: number, rememberMe?: boolean): Promise<string>
@@ -194,28 +158,17 @@ export interface ITokenService {
   markRefreshTokenJtiAsUsed(refreshTokenJti: string, sessionId: string, ttlSeconds?: number): Promise<boolean>
 }
 
-/**
- * Interface cho các service xác thực
- */
 export interface IVerificationService {
-  // Giai đoạn thiết lập và cấu hình
   generateSetupDetails?(userId: number, options?: any): Promise<{ message: string; data: any }>
 
-  // Xác minh mã đã nhập
   verifyCode(code: string, context: any): Promise<boolean>
 
-  // Tạo mã xác thực mới (nếu áp dụng)
   generateVerificationCode(options?: any): Promise<string>
 
-  // Vô hiệu hóa phương thức xác thực
   disableVerification(userId: number, code: string, method?: string): Promise<{ message: string }>
 }
 
-/**
- * Interface cho service xác thực hai yếu tố
- */
 export interface IMultiFactorService extends IVerificationService {
-  // Tạo lại các mã khôi phục
   regenerateRecoveryCodes(
     userId: number,
     code: string,
@@ -224,22 +177,15 @@ export interface IMultiFactorService extends IVerificationService {
     userAgent?: string
   ): Promise<{ message: string; data: { recoveryCodes: string[] } }>
 
-  // Xác minh mã thông qua phương thức cụ thể
   verifyByMethod(
     method: string,
     code: string,
     userId: number
   ): Promise<{ message: string; data: { success: boolean; method: string } }>
 
-  /**
-   * Disables two-factor authentication for a user after the verification code has already been confirmed.
-   * This method does not perform any verification itself.
-   * @param userId The ID of the user.
-   */
   disableVerificationAfterConfirm(userId: number): Promise<{ message: string }>
 }
 
-// OTP related
 export interface OtpData {
   code: string
   attempts: number
@@ -249,7 +195,6 @@ export interface OtpData {
   metadata?: Record<string, any>
 }
 
-// SLT Token related
 export interface SltJwtPayload {
   jti: string
   sub: number
@@ -272,7 +217,6 @@ export interface SltContextData {
   createdAt?: Date
 }
 
-// Google Auth related
 export interface GoogleCallbackSuccessResult {
   user: User & { role: Role; userProfile: UserProfile | null }
   device: Device
@@ -307,7 +251,6 @@ export type GoogleCallbackReturnType =
   | GoogleCallbackErrorResult
   | GoogleCallbackAccountExistsWithoutLinkResult
 
-// Authentication related
 export interface AuthResult {
   accessToken: string
   refreshToken: string
@@ -320,7 +263,6 @@ export interface AuthResult {
   }
 }
 
-// Session finalization
 export interface FinalizeAuthParams {
   user: User & { role: { id: number; name: string }; userProfile: UserProfile | null }
   device: Device
@@ -337,8 +279,6 @@ export interface FinalizeAuthParams {
   existingSessionId?: string
 }
 
-// Export các types từ model
-
 export interface CookieConfig {
   name: string
   path: string
@@ -349,11 +289,6 @@ export interface CookieConfig {
   sameSite: 'lax' | 'strict' | 'none' | boolean
 }
 
-// --- From jwt.type.ts ---
-
-/**
- * Định nghĩa payload của Access Token khi tạo mới
- */
 export interface AccessTokenPayloadCreate {
   userId: number
   deviceId?: number
@@ -369,9 +304,6 @@ export interface AccessTokenPayloadCreate {
   iat?: number
 }
 
-/**
- * Định nghĩa payload của Access Token khi đã được verify
- */
 export interface AccessTokenPayload extends Omit<AccessTokenPayloadCreate, 'exp' | 'iat'> {
   deviceId: number
   roleId: number
@@ -382,9 +314,6 @@ export interface AccessTokenPayload extends Omit<AccessTokenPayloadCreate, 'exp'
   iat: number
 }
 
-/**
- * Định nghĩa cho Pending Link Token
- */
 export interface PendingLinkTokenPayloadCreate {
   existingUserId: number
   googleId: string
@@ -397,4 +326,26 @@ export interface PendingLinkTokenPayload extends PendingLinkTokenPayloadCreate {
   jti: string
   exp: number
   iat: number
+}
+
+export interface BaseResponse {
+  status: 'success' | 'verification_required' | 'auto_protected' | 'confirmation_needed'
+  message: string
+}
+
+export interface VerificationRequiredResponse extends BaseResponse {
+  status: 'verification_required'
+  verificationType: 'OTP' | '2FA'
+}
+export interface AutoProtectedResponse extends BaseResponse {
+  status: 'auto_protected'
+}
+
+export interface ConfirmationNeededResponse extends BaseResponse {
+  status: 'confirmation_needed'
+}
+
+export interface SuccessResponse<T = any> extends BaseResponse {
+  status: 'success'
+  data?: T
 }

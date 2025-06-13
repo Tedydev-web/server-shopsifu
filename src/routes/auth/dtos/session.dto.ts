@@ -77,6 +77,22 @@ export const RevokeAllSessionsBodySchema = z.object({
   forceLogout: z.boolean().optional() // Explicit confirmation required for logout actions
 })
 
+// --- Minimal Response Schemas ---
+export const MinimalResponseSchema = z.object({
+  status: z.enum(['success', 'verification_required', 'auto_protected', 'confirmation_needed']),
+  message: z.string()
+})
+
+export const VerificationRequiredResponseSchema = MinimalResponseSchema.extend({
+  status: z.literal('verification_required'),
+  verificationType: z.enum(['OTP', '2FA'])
+})
+
+export const SuccessWithDataResponseSchema = MinimalResponseSchema.extend({
+  status: z.literal('success'),
+  data: z.record(z.any()).optional()
+})
+
 // --- Schemas for Revoke Response ---
 export const RevokeResponseSchema = z.object({
   revokedSessionsCount: z.number(),
@@ -108,5 +124,8 @@ export class DeviceIdParamsDto extends createZodDto(DeviceIdParamsSchema) {}
 export class UpdateDeviceNameBodyDto extends createZodDto(UpdateDeviceNameBodySchema) {}
 
 // --- Response DTOs ---
+export class MinimalResponseDto extends createZodDto(MinimalResponseSchema) {}
+export class VerificationRequiredResponseDto extends createZodDto(VerificationRequiredResponseSchema) {}
+export class SuccessWithDataResponseDto extends createZodDto(SuccessWithDataResponseSchema) {}
 export class GetGroupedSessionsResponseDto extends createZodDto(GetGroupedSessionsResponseSchema) {}
 export class RevokeResponseDto extends createZodDto(RevokeResponseSchema) {}

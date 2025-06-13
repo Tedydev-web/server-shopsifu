@@ -1,24 +1,12 @@
-// ================================================================
-// NestJS Dependencies
-// ================================================================
 import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common'
-import { I18nService } from 'nestjs-i18n'
 import { Response } from 'express'
 import { OnEvent } from '@nestjs/event-emitter'
-
-// ================================================================
-// External Libraries
-// ================================================================
 import { User } from '@prisma/client'
 
-// ================================================================
-// Internal Services & Types
-// ================================================================
 import { UserRepository } from './user.repository'
 import { CreateUserDto, UpdateUserDto } from './user.dto'
 import { UserError } from './user.error'
 import { HashingService } from 'src/shared/services/hashing.service'
-import { I18nTranslations } from 'src/generated/i18n.generated'
 import { EmailService } from 'src/shared/services/email.service'
 import { AuthVerificationService } from 'src/routes/auth/services/auth-verification.service'
 import { TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
@@ -27,15 +15,9 @@ import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { Permission } from 'src/routes/permission/permission.model'
 
-// ================================================================
-// Constants & Injection Tokens
-// ================================================================
 import { HASHING_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
 
-// ================================================================
-// Types & Interfaces
-// ================================================================
 export interface UserServiceResponse<T = any> {
   message: string
   data: T
@@ -46,12 +28,6 @@ export interface InitiateUserCreationResponse {
   verificationType: 'OTP'
   requiresVerification: boolean
 }
-
-/**
- * Service xử lý các thao tác CRUD và business logic cho User
- * Hỗ trợ hash password, validation, OTP verification và trả về custom i18n messages
- * Tích hợp email notifications cho tất cả các operations
- */
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name)
@@ -61,7 +37,6 @@ export class UserService {
     private readonly roleRepository: RoleRepository,
     @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
-    private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService: AuthVerificationService
@@ -119,36 +94,21 @@ export class UserService {
     }
   }
 
-  // ================================================================
-  // Public Methods - Main API endpoints
-  // ================================================================
-
-  /**
-   * Bước 1: Khởi tạo tạo user với OTP verification
-   * Gửi OTP đến email để verify trước khi tạo user thực sự
-   * @param createUserDto - Thông tin user cần tạo
-   * @param ip - Địa chỉ IP của request
-   * @param userAgent - User agent của request
-   * @param res - Response object để set SLT cookie
-   * @returns InitiateUserCreationResponse với thông tin OTP verification
-   */
   async initiateUserCreation(
     createUserDto: CreateUserDto,
     ip: string,
     userAgent: string,
     res: Response
   ): Promise<InitiateUserCreationResponse> {
-    // Kiểm tra email đã tồn tại chưa
     const existingUser = await this.userRepository.findByEmail(createUserDto.email)
     if (existingUser) {
       throw UserError.AlreadyExists(createUserDto.email)
     }
 
-    // Khởi tạo verification với AuthVerificationService
     const verificationResult = await this.authVerificationService.initiateVerification(
       {
-        userId: 0, // Temporary user ID
-        deviceId: 0, // Temporary device ID
+        userId: 0,
+        deviceId: 0,
         email: createUserDto.email,
         ipAddress: ip,
         userAgent,
@@ -165,12 +125,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Tạo user trực tiếp (admin only) - skip OTP verification
-   * @param createUserDto - Thông tin user cần tạo
-   * @returns UserServiceResponse với user object đã được tạo
-   * @throws UserError.AlreadyExists nếu email đã tồn tại
-   */
   async create(createUserDto: CreateUserDto): Promise<UserServiceResponse<User>> {
     // Kiểm tra email đã tồn tại chưa
     const existingUser = await this.userRepository.findByEmail(createUserDto.email)

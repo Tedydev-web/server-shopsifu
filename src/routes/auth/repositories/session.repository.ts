@@ -1,8 +1,6 @@
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common'
-import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
-import { CRYPTO_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
+import { Injectable, Logger, Inject } from '@nestjs/common'
+import { REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
-import { CryptoService } from 'src/shared/services/crypto.service'
 import { isObject } from 'src/shared/utils/type-guards.utils'
 import { safeNumber } from 'src/shared/utils/validation.utils'
 import { RedisService } from 'src/shared/services'
@@ -11,9 +9,9 @@ export interface Session {
   id: string
   userId: number
   deviceId: number
-  createdAt: number // Use timestamp for easier serialization
-  expiresAt: number // Use timestamp
-  lastActive: number // Use timestamp
+  createdAt: number
+  expiresAt: number
+  lastActive: number
   ipAddress: string
   userAgent: string
   isActive: boolean
@@ -40,20 +38,11 @@ export interface SessionPaginationResult {
 @Injectable()
 export class SessionRepository {
   private readonly logger = new Logger(SessionRepository.name)
-  // Các trường nhạy cảm cần được mã hóa trong Redis
+
   private readonly sensitiveFields = ['ipAddress', 'userAgent']
 
-  constructor(
-    private readonly prismaService: PrismaService,
-    @Inject(CRYPTO_SERVICE) @Optional() private readonly cryptoService?: CryptoService,
-    // Inject RedisService to interact with Redis
-    @Inject(REDIS_SERVICE) private readonly redisService?: RedisService
-  ) {}
+  constructor(@Inject(REDIS_SERVICE) private readonly redisService?: RedisService) {}
 
-  /**
-   * Finds a session by its ID from Redis.
-   * @returns The decrypted session object or null if not found.
-   */
   async findById(sessionId: string): Promise<Session | null> {
     const key = RedisKeyManager.getSessionKey(sessionId)
     this.logger.debug(`[findById] Looking for session with key: ${key}`)
@@ -65,13 +54,9 @@ export class SessionRepository {
       return null
     }
 
-    // Ensure correct types after retrieval from Redis (which stores everything as strings)
     return this.normalizeSessionTypes(sessionData)
   }
 
-  /**
-   * Finds all sessions for a given user with pagination.
-   */
   async findSessionsByUserId(userId: number, options: SessionPaginationOptions): Promise<SessionPaginationResult> {
     const { page = 1, limit = 10 } = options
     const userSessionIdsKey = RedisKeyManager.getUserSessionsKey(userId)
@@ -105,7 +90,7 @@ export class SessionRepository {
       }
     }
 
-    allSessions.sort((a, b) => b.lastActive - a.lastActive) // Sort by most recent
+    allSessions.sort((a, b) => b.lastActive - a.lastActive)
 
     const totalItems = allSessions.length
     const startIndex = (page - 1) * limit
@@ -120,10 +105,6 @@ export class SessionRepository {
     }
   }
 
-  /**
-   * Creates a new session in Redis.
-   * The session data is stored as an encrypted hash.
-   */
   async createSession(sessionData: Omit<Session, 'lastActive' | 'isActive'>): Promise<Session> {
     const now = Date.now()
     const newSession: Session = {
@@ -140,7 +121,6 @@ export class SessionRepository {
       await this.redisService.expire(key, ttlSeconds)
     }
 
-    // Add session to user and device indexes
     const pipeline = this.redisService.client.pipeline()
     pipeline.sadd(RedisKeyManager.getUserSessionsKey(newSession.userId), newSession.id)
     pipeline.sadd(RedisKeyManager.getDeviceSessionsKey(newSession.deviceId), newSession.id)
@@ -153,18 +133,12 @@ export class SessionRepository {
     return newSession
   }
 
-  /**
-   * Updates the last active timestamp for a session.
-   */
   async updateSessionActivity(sessionId: string): Promise<void> {
     const key = RedisKeyManager.getSessionKey(sessionId)
     await this.redisService.hset(key, 'lastActive', Date.now().toString())
     this.logger.debug(`Updated activity for session ${sessionId}`)
   }
 
-  /**
-   * Deletes a session from Redis and its indexes.
-   */
   async deleteSession(sessionId: string): Promise<void> {
     const session = await this.findById(sessionId)
     if (!session) {
@@ -181,10 +155,6 @@ export class SessionRepository {
     this.logger.debug(`Session ${sessionId} deleted and removed from indexes.`)
   }
 
-  /**
-   * Deletes all sessions for a user, with an option to exclude one.
-   * Also returns a list of trusted device IDs that became session-less.
-   */
   async deleteAllUserSessions(
     userId: number,
     excludeSessionId?: string
@@ -217,7 +187,6 @@ export class SessionRepository {
       pipeline.srem(RedisKeyManager.getDeviceSessionsKey(s.deviceId), s.id)
     })
 
-    // Remove the revoked sessions from the user's session index
     if (excludeSessionId) {
       pipeline.srem(userSessionIdsKey, ...sessionIds)
     } else {
@@ -232,12 +201,6 @@ export class SessionRepository {
     return { deletedSessionsCount: sessions.length, affectedDeviceIds: Array.from(deviceIdsWithDeletedSessions) }
   }
 
-  /**
-   * Deletes all sessions associated with a specific device.
-   * @param deviceId The ID of the device.
-   * @param excludeSessionId An optional session ID to exclude from deletion.
-   * @returns The number of sessions deleted.
-   */
   async deleteSessionsByDeviceId(deviceId: number, excludeSessionId?: string): Promise<{ count: number }> {
     const deviceSessionsKey = RedisKeyManager.getDeviceSessionsKey(deviceId)
     let sessionIds = await this.redisService.smembers(deviceSessionsKey)
@@ -267,17 +230,12 @@ export class SessionRepository {
       pipeline.del(RedisKeyManager.getSessionKey(s.id))
       pipeline.srem(RedisKeyManager.getUserSessionsKey(s.userId), s.id)
     })
-    pipeline.del(deviceSessionsKey) // Delete the whole set for the device
+    pipeline.del(deviceSessionsKey)
     await pipeline.exec()
 
     return { count: sessionIds.length }
   }
 
-  /**
-   * Counts the number of active sessions for a specific device.
-   * @param deviceId The ID of the device.
-   * @returns The number of sessions.
-   */
   async countSessionsByDeviceId(deviceId: number): Promise<number> {
     const deviceSessionsKey = RedisKeyManager.getDeviceSessionsKey(deviceId)
     return this.redisService.scard(deviceSessionsKey)

@@ -7,16 +7,11 @@ import { PermissionDefinition } from 'src/shared/constants/permissions.constants
 import { AppSubject } from '../src/shared/providers/casl/casl-ability.factory'
 import * as bcrypt from 'bcrypt'
 
-// Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') })
 
 const logger = new Logger('SeedScript')
 const prisma = new PrismaClient()
 
-/**
- * The single source of truth for core roles in the system.
- * These roles are essential for the application to function correctly.
- */
 const CORE_ROLES = [
   {
     name: 'Super Admin',
@@ -46,57 +41,56 @@ const CORE_ROLES = [
  * This approach allows for more flexible and maintainable permission assignment.
  */
 const PERMISSION_CATEGORIES = {
-  // Authentication related permissions
   AUTH: {
     subjects: ['Auth'],
     actions: ['login', 'register', 'refresh', 'logout', 'verify_otp', 'send_otp', 'reset_password', 'link_social']
   },
-  // User management permissions
+
   USER_MANAGEMENT: {
     subjects: [AppSubject.User],
     actions: ['create', 'read', 'update', 'delete']
   },
-  // Role management permissions
+
   ROLE_MANAGEMENT: {
     subjects: [AppSubject.Role],
     actions: ['create', 'read', 'update', 'delete']
   },
-  // Permission management
+
   PERMISSION_MANAGEMENT: {
     subjects: [AppSubject.Permission],
     actions: ['read']
   },
-  // Profile management (personal)
+
   PROFILE: {
     subjects: [AppSubject.Profile],
     actions: ['read:own', 'update:own']
   },
-  // Two-factor authentication
+
   TWO_FACTOR: {
     subjects: [AppSubject.TwoFactor, AppSubject.Password],
     actions: ['create', 'update', 'delete']
   },
-  // Product catalog
+
   CATALOG: {
     subjects: ['Product', 'Category', 'Brand'],
     actions: ['read']
   },
-  // Product management (for sellers)
+
   PRODUCT_MANAGEMENT: {
     subjects: ['Product', 'SKU'],
     actions: ['create', 'update:own', 'delete:own']
   },
-  // Order management
+
   ORDER_CUSTOMER: {
     subjects: ['Order'],
     actions: ['create', 'read:own']
   },
-  // Order management for sellers
+
   ORDER_SELLER: {
     subjects: ['Order'],
     actions: ['read:seller', 'update:seller']
   },
-  // System administration (full access)
+
   SYSTEM_ADMIN: {
     subjects: [AppSubject.All],
     actions: ['manage']
@@ -108,7 +102,7 @@ const PERMISSION_CATEGORIES = {
  * This defines which permission categories each role should have.
  */
 const ROLE_PERMISSION_MAPPING: Record<string, string[]> = {
-  'Super Admin': Object.keys(PERMISSION_CATEGORIES), // Super Admin gets all permission categories
+  'Super Admin': Object.keys(PERMISSION_CATEGORIES),
   Admin: [
     'AUTH',
     'USER_MANAGEMENT',
@@ -120,7 +114,6 @@ const ROLE_PERMISSION_MAPPING: Record<string, string[]> = {
     'PRODUCT_MANAGEMENT',
     'ORDER_CUSTOMER',
     'ORDER_SELLER'
-    // Exclude SYSTEM_ADMIN which is reserved for Super Admin
   ],
   Seller: ['AUTH', 'PROFILE', 'TWO_FACTOR', 'CATALOG', 'PRODUCT_MANAGEMENT', 'ORDER_CUSTOMER', 'ORDER_SELLER'],
   Customer: ['AUTH', 'PROFILE', 'TWO_FACTOR', 'CATALOG', 'ORDER_CUSTOMER']
@@ -162,30 +155,25 @@ async function main() {
 async function seedPermissions() {
   logger.log('\n[1/3] Synchronizing permissions...')
 
-  // 1. Get permissions from the source of truth (code)
   const codePermissions = ALL_PERMISSIONS
   const codePermissionMap = new Map<string, PermissionDefinition>()
   for (const p of codePermissions) {
     codePermissionMap.set(`${p.subject}:${p.action}`, p)
   }
 
-  // 2. Get permissions from the database
   const dbPermissions = await prisma.permission.findMany()
   const dbPermissionMap = new Map<string, (typeof dbPermissions)[0]>()
   for (const p of dbPermissions) {
     dbPermissionMap.set(`${p.subject}:${p.action}`, p)
   }
 
-  // 3. Determine what to create, update, or delete
   const toCreate: PermissionDefinition[] = []
   const toUpdate: { id: number; data: PermissionDefinition }[] = []
   const toDelete: number[] = []
 
-  // Check for permissions to create or update
   for (const [key, codePerm] of codePermissionMap.entries()) {
     const dbPerm = dbPermissionMap.get(key)
     if (dbPerm) {
-      // If it exists, check if it needs an update (description or conditions change)
       if (
         dbPerm.description !== codePerm.description ||
         JSON.stringify(dbPerm.conditions) !== JSON.stringify(codePerm.conditions || null)
@@ -193,23 +181,18 @@ async function seedPermissions() {
         toUpdate.push({ id: dbPerm.id, data: codePerm })
       }
     } else {
-      // If it doesn't exist, create it
       toCreate.push(codePerm)
     }
   }
 
-  // Check for permissions to delete
   for (const [key, dbPerm] of dbPermissionMap.entries()) {
     if (!codePermissionMap.has(key)) {
-      // If a DB permission is not in our code definition, delete it
-      // Add a safeguard to prevent deleting critical system permissions if needed
       if (!dbPerm.isSystemPermission) {
         toDelete.push(dbPerm.id)
       }
     }
   }
 
-  // 4. Execute database operations
   if (toCreate.length > 0) {
     await prisma.permission.createMany({
       data: toCreate.map((p) => ({
@@ -323,7 +306,7 @@ async function assignPermissionsToRoles(roles: Role[]) {
   logger.log('\n[3/3] Assigning permissions to roles...')
 
   for (const role of roles) {
-    const categoryNames = ROLE_PERMISSION_MAPPING[role.name as keyof typeof ROLE_PERMISSION_MAPPING]
+    const categoryNames = ROLE_PERMISSION_MAPPING[role.name]
     if (!categoryNames) {
       logger.warn(`⚠️ No permission categories defined for role '${role.name}'. Skipping permission assignment.`)
       continue
@@ -331,13 +314,11 @@ async function assignPermissionsToRoles(roles: Role[]) {
 
     logger.log(`   - Processing permissions for role '${role.name}'...`)
 
-    // For Super Admin, we directly assign all permissions
     if (role.isSuperAdmin) {
       await assignAllPermissionsToRole(role.id)
       continue
     }
 
-    // For other roles, assign permissions by category
     let totalAssignedCount = 0
 
     for (const categoryName of categoryNames) {
@@ -370,14 +351,12 @@ async function assignPermissionsToRoles(roles: Role[]) {
  * Returns the number of new permissions assigned.
  */
 async function assignPermissionsToRole(roleId: number, permissionIds: number[]): Promise<number> {
-  // Check which permissions are already assigned
   const existingAssignments = await prisma.rolePermission.findMany({
     where: { roleId },
     select: { permissionId: true }
   })
   const existingPermissionIds = new Set(existingAssignments.map((p) => p.permissionId))
 
-  // Filter out already assigned permissions
   const newPermissions = permissionIds.filter((id) => !existingPermissionIds.has(id))
 
   if (newPermissions.length > 0) {
@@ -419,7 +398,6 @@ async function assignAllPermissionsToRole(roleId: number) {
 async function createAdminUser(roles: Role[]) {
   logger.log('\n[4/4] Creating default admin user...')
 
-  // Find the Admin role
   const adminRole = roles.find((r) => r.name === 'Admin')
   const superAdminRole = roles.find((r) => r.name === 'Super Admin')
 
@@ -428,10 +406,8 @@ async function createAdminUser(roles: Role[]) {
     return
   }
 
-  // Use Super Admin role if Admin role is not available
   const roleToAssign = superAdminRole || adminRole
 
-  // Check if the admin user already exists
   const existingAdmin = await prisma.user.findUnique({
     where: { email: DEFAULT_ADMIN.email }
   })
@@ -441,11 +417,9 @@ async function createAdminUser(roles: Role[]) {
     return
   }
 
-  // Hash the password
   const saltRounds = 10
   const hashedPassword = await bcrypt.hash(DEFAULT_ADMIN.password, saltRounds)
 
-  // Create the admin user with profile
   const adminUser = await prisma.user.create({
     data: {
       email: DEFAULT_ADMIN.email,

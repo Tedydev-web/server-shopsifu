@@ -47,9 +47,6 @@ export class SessionsController {
     private readonly authVerificationService: AuthVerificationService
   ) {}
 
-  /**
-   * Lấy tất cả sessions của người dùng, nhóm theo thiết bị
-   */
   @Get()
   @RequirePermissions({ action: Action.Read, subject: AppSubject.Session })
   async getSessions(@ActiveUser() activeUser: ActiveUserData, @Query() query: GetSessionsQueryDto): Promise<any> {
@@ -67,14 +64,12 @@ export class SessionsController {
       throw AuthError.SessionsNotFound()
     }
     return {
+      status: 'success',
       message: 'auth.success.sessions.get',
       data: sessions.data
     }
   }
 
-  /**
-   * Thu hồi một hoặc nhiều phiên đăng nhập hoặc thiết bị
-   */
   @Post('revoke')
   @RequirePermissions({ action: Action.Delete, subject: AppSubject.Session })
   @HttpCode(HttpStatus.OK)
@@ -115,15 +110,10 @@ export class SessionsController {
       if (result.data.revokedSessionsCount === 0 && result.data.untrustedDevicesCount === 0) {
         // Check if this was due to auto-protection vs actually not found
         if (result.data.autoProtected === true || result.data.shouldExcludeCurrentSession === true) {
-          // This is auto-protection, return the result with explanation
+          // This is auto-protection, return minimal response
           return {
-            message: result.message,
-            data: {
-              revokedSessionsCount: result.data.revokedSessionsCount,
-              untrustedDevicesCount: result.data.untrustedDevicesCount,
-              willCauseLogout: result.data.willCauseLogout,
-              autoProtected: true
-            }
+            status: 'auto_protected',
+            message: result.message
           }
         } else {
           // Actually not found
@@ -132,11 +122,12 @@ export class SessionsController {
       }
 
       return {
+        status: 'success',
         message: result.message,
         data: {
           revokedSessionsCount: result.data.revokedSessionsCount,
           untrustedDevicesCount: result.data.untrustedDevicesCount,
-          willCauseLogout: result.data.willCauseLogout,
+          willCauseLogout: result.data.willCauseLogout
         }
       }
     } catch (error) {
@@ -163,9 +154,6 @@ export class SessionsController {
     }
   }
 
-  /**
-   * Thu hồi tất cả phiên đăng nhập
-   */
   @Post('revoke-all')
   @RequirePermissions({ action: Action.Delete, subject: AppSubject.Session })
   @HttpCode(HttpStatus.OK)
@@ -201,9 +189,6 @@ export class SessionsController {
     )
   }
 
-  /**
-   * Tạo đối tượng UserContext từ AccessTokenPayload
-   */
   private getUserContext(activeUser: ActiveUserData): CurrentUserContext {
     return {
       userId: activeUser.id,
@@ -213,9 +198,6 @@ export class SessionsController {
     }
   }
 
-  /**
-   * Cập nhật tên thiết bị
-   */
   @Patch('devices/:deviceId/name')
   @RequirePermissions({ action: Action.Update, subject: AppSubject.Session })
   @HttpCode(HttpStatus.OK)
@@ -230,6 +212,7 @@ export class SessionsController {
     await this.sessionsService.updateDeviceName(activeUser.id, params.deviceId, body.name)
 
     return {
+      status: 'success',
       message: 'auth.success.device.nameUpdated',
       data: {
         deviceId: params.deviceId,
@@ -238,9 +221,6 @@ export class SessionsController {
     }
   }
 
-  /**
-   * Đánh dấu thiết bị hiện tại là đáng tin cậy
-   */
   @Post('devices/trust-current')
   @RequirePermissions({ action: Action.Update, subject: AppSubject.Session })
   @HttpCode(HttpStatus.OK)
@@ -252,13 +232,11 @@ export class SessionsController {
     await this.sessionsService.trustCurrentDevice(activeUser.id, activeUser.deviceId)
 
     return {
+      status: 'success',
       message: 'auth.success.device.trusted'
     }
   }
 
-  /**
-   * Hủy bỏ trạng thái đáng tin cậy của thiết bị
-   */
   @Delete('devices/:deviceId/untrust')
   @RequirePermissions({ action: Action.Delete, subject: AppSubject.Session })
   @HttpCode(HttpStatus.OK)
@@ -269,6 +247,7 @@ export class SessionsController {
     await this.sessionsService.untrustDevice(activeUser.id, params.deviceId)
 
     return {
+      status: 'success',
       message: 'auth.success.device.untrusted',
       data: { deviceId: params.deviceId }
     }

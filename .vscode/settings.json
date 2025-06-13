@@ -5,5 +5,21 @@
     "markdown": false,
     "scminput": false,
     "json": true
+  },
+  "macros": {
+    "removeJSDoc": [
+      {
+        "command": "editor.action.find",
+        "args": {
+          "find": "/\\*\\*[\\s\\S]*?\\*/"
+        }
+      },
+      {
+        "command": "editor.action.replaceAll",
+        "args": {
+          "replace": ""
+        }
+      }
+    ]
   }
 }

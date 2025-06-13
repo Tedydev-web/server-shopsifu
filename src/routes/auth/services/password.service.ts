@@ -41,18 +41,6 @@ export class PasswordService {
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService
   ) {}
 
-  /**
-   * Khởi tạo quá trình reset mật khẩu cho người dùng đã quên
-   *
-   * Gửi OTP/2FA để xác thực trước khi cho phép đổi mật khẩu.
-   * Dù email không tồn tại vẫn trả về success để tránh email enumeration.
-   *
-   * @param email - Email của user cần reset password
-   * @param ipAddress - Địa chỉ IP của request
-   * @param userAgent - User Agent của browser
-   * @param res - Response object để set SLT cookie
-   * @returns Kết quả khởi tạo verification flow
-   */
   async initiatePasswordReset(email: string, ipAddress: string, userAgent: string, res: Response) {
     this.logger.log(`[initiatePasswordReset] Initiating password reset for email: ${email}`)
     const user = await this.userRepository.findByEmail(email)
@@ -60,7 +48,10 @@ export class PasswordService {
     if (!user) {
       // Không tiết lộ email không tồn tại để tránh email enumeration attack
       this.logger.warn(`[initiatePasswordReset] Password reset attempted for non-existent email: ${email}`)
-      return { message: 'auth.success.password.initiateReset' }
+      return {
+        status: 'success',
+        message: 'auth.success.password.initiateReset'
+      }
     }
 
     // Khởi tạo luồng xác thực (OTP/2FA) trước khi cho phép reset password
@@ -77,19 +68,6 @@ export class PasswordService {
     )
   }
 
-  /**
-   * Đặt mật khẩu mới sau khi user đã xác thực thành công (forgot password flow)
-   *
-   * Validate SLT token, kiểm tra OTP đã verified, hash password mới
-   * và có option revoke tất cả sessions khác.
-   *
-   * @param sltCookieValue - SLT token từ cookie
-   * @param dto - Data chứa password mới và các options
-   * @param ipAddress - Địa chỉ IP
-   * @param userAgent - User Agent
-   * @param res - Response object để clear cookies
-   * @returns Kết quả đổi password thành công
-   */
   async setNewPassword(
     sltCookieValue: string,
     dto: SetNewPasswordDto,
@@ -107,12 +85,10 @@ export class PasswordService {
       TypeOfVerificationCode.RESET_PASSWORD
     )
 
-    // Kiểm tra OTP/2FA đã được verify chưa
     if (sltContext.metadata?.otpVerified !== 'true') {
       throw AuthError.InsufficientPermissions()
     }
 
-    // Thực hiện update password và xử lý session
     const result = await this.performPasswordUpdate({
       userId: sltContext.userId,
       newPassword: dto.newPassword,
@@ -139,8 +115,8 @@ export class PasswordService {
     ipAddress: string
     userAgent: string
     currentSessionId?: string
-    isPasswordAlreadyHashed?: boolean // Add flag to indicate if password is already hashed
-  }): Promise<{ message: string; data?: { sessionsRevoked: boolean; revokedCount?: number } }> {
+    isPasswordAlreadyHashed?: boolean
+  }): Promise<{ status: string; message: string; data?: { sessionsRevoked: boolean; revokedCount?: number } }> {
     const {
       userId,
       newPassword,
@@ -201,6 +177,7 @@ export class PasswordService {
     }
 
     return {
+      status: 'success',
       message: 'auth.success.password.resetSuccess',
       data: {
         sessionsRevoked: revokeAllSessions,

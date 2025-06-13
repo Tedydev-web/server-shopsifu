@@ -1,30 +1,14 @@
-// ================================================================
-// NestJS Dependencies
-// ================================================================
 import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 
-// ================================================================
-// External Libraries
-// ================================================================
-
-// ================================================================
-// Internal Services & Types
-// ================================================================
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { EmailService, OtpEmailProps } from 'src/shared/services/email.service'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
 
-// ================================================================
-// Repositories
-// ================================================================
 import { UserRepository } from 'src/routes/user/user.repository'
 
-// ================================================================
-// Constants & Injection Tokens
-// ================================================================
 import { TypeOfVerificationCodeType, OTP_LENGTH, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
 import {
   EMAIL_SERVICE,
@@ -33,9 +17,6 @@ import {
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
 
-// ================================================================
-// Types & Interfaces
-// ================================================================
 import { OtpData, IOTPService } from 'src/routes/auth/auth.types'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { I18nContext } from 'nestjs-i18n'
@@ -62,10 +43,6 @@ export class OtpService implements IOTPService {
     @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
   ) {}
 
-  // ================================================================
-  // Public Methods - OTP Generation & Verification
-  // ================================================================
-
   /**
    * Tạo mã OTP ngẫu nhiên gồm các chữ số
    * Sử dụng thuật toán random để tạo chuỗi số ngẫu nhiên
@@ -81,10 +58,6 @@ export class OtpService implements IOTPService {
     return OTP
   }
 
-  // ================================================================
-  // Private Methods - Redis Key Management
-  // ================================================================
-
   /**
    * Tạo Redis key cho việc lưu trữ OTP data
    * Sử dụng pattern chuẩn để đảm bảo tính nhất quán
@@ -95,10 +68,6 @@ export class OtpService implements IOTPService {
   private getOtpKey(type: TypeOfVerificationCodeType, identifier: string): string {
     return RedisKeyManager.getOtpDataKey(type, identifier)
   }
-
-  // ================================================================
-  // Private Methods - Email Context Building
-  // ================================================================
 
   /**
    * Xây dựng context cho email OTP với thông tin chi tiết về device và location
@@ -117,7 +86,6 @@ export class OtpService implements IOTPService {
     lang: 'vi' | 'en',
     metadata?: Record<string, any>
   ): Promise<Omit<OtpEmailProps, 'headline' | 'content' | 'codeLabel' | 'validity' | 'disclaimer' | 'greeting'>> {
-    // Lấy username từ metadata hoặc database
     let userName = metadata?.userName
     if (!userName && type !== TypeOfVerificationCode.REGISTER) {
       const user = await this.userRepository.findByEmailWithDetails(targetEmail)
@@ -126,7 +94,6 @@ export class OtpService implements IOTPService {
       }
     }
 
-    // Xây dựng thông tin chi tiết về request (thời gian, IP, device)
     const details = []
     if (metadata?.ipAddress && metadata?.userAgent) {
       const locationResult = await this.geolocationService.getLocationFromIP(metadata.ipAddress)
@@ -172,7 +139,6 @@ export class OtpService implements IOTPService {
     metadata?: Record<string, any>
   ): Promise<{ message: string; data: { verificationType: string; otpCode?: string } }> {
     try {
-      // Tạo mã OTP và chuẩn bị lưu trữ Redis
       const otpCode = this.generateOTP()
       const otpKey = this.getOtpKey(type, targetEmail)
       const otpExpirySeconds = this.configService.get<number>('security.otpExpirySeconds', 300)
@@ -183,16 +149,13 @@ export class OtpService implements IOTPService {
         createdAt: Date.now()
       }
 
-      // Serialize metadata để lưu vào Redis
       if (metadata) {
         otpDataForRedis.metadata = typeof metadata === 'object' ? JSON.stringify(metadata) : String(metadata)
       }
 
-      // Lưu OTP vào Redis với thời gian hết hạn
       await this.redisService.hset(otpKey, otpDataForRedis)
       await this.redisService.expire(otpKey, otpExpirySeconds)
 
-      // Gửi email chứa mã OTP
       try {
         if (this.emailService) {
           const preferredLang = I18nContext.current()?.lang ?? metadata?.lang
@@ -212,7 +175,6 @@ export class OtpService implements IOTPService {
         verificationType: 'OTP'
       }
 
-      // Trả về OTP code ở development mode để dễ test
       if (this.configService.get('NODE_ENV') !== 'production') {
         responseData.otpCode = otpCode
       }
@@ -243,24 +205,19 @@ export class OtpService implements IOTPService {
     this.logger.debug(`[verifyOTP] Xác minh OTP cho key: ${otpKey}`)
 
     try {
-      // Lấy dữ liệu OTP từ Redis
       const otpData = await this.getOtpData(otpKey)
 
-      // Kiểm tra số lần thử tối đa
       await this.checkOtpMaxAttempts(otpKey)
 
-      // Kiểm tra thời gian hết hạn
       await this.checkOtpExpiry(otpKey, otpData.createdAt)
 
-      // So sánh mã OTP
       if (otpData.code !== code) {
         this.logger.warn(`[verifyOTP] Mã OTP không chính xác cho key ${otpKey}`)
-        // Ghi lại lần thử thất bại
+
         await this.redisService.hincrby(otpKey, 'attempts', 1)
         throw AuthError.InvalidOTP()
       }
 
-      // Xóa OTP sau khi xác minh thành công
       await this.redisService.del(otpKey)
       this.logger.log(`[verifyOTP] OTP cho key ${otpKey} đã được xác minh thành công và đã xóa`)
       return true
@@ -268,14 +225,10 @@ export class OtpService implements IOTPService {
       if (error instanceof HttpException) throw error
 
       this.logger.error(`[verifyOTP] Lỗi xác minh OTP cho key ${otpKey}: ${error.message}`, error.stack)
-      // Throw một lỗi chung để không tiết lộ chi tiết hệ thống
+
       throw AuthError.InvalidOTP()
     }
   }
-
-  // ================================================================
-  // Private Methods - OTP Data Management
-  // ================================================================
 
   /**
    * Lấy dữ liệu OTP từ Redis và parse thành object
@@ -291,14 +244,12 @@ export class OtpService implements IOTPService {
       throw AuthError.OTPExpired()
     }
 
-    // Parse rawOtpData thành OtpData structure
     const otpData: OtpData = {
       code: rawOtpData.code,
       attempts: parseInt(rawOtpData.attempts || '0', 10),
       createdAt: parseInt(rawOtpData.createdAt || '0', 10)
     }
 
-    // Parse optional fields
     if (rawOtpData.userId) {
       otpData.userId = parseInt(rawOtpData.userId, 10)
     }
@@ -307,7 +258,6 @@ export class OtpService implements IOTPService {
       otpData.deviceId = parseInt(rawOtpData.deviceId, 10)
     }
 
-    // Parse metadata JSON
     if (rawOtpData.metadata) {
       try {
         otpData.metadata = JSON.parse(rawOtpData.metadata)
@@ -321,10 +271,6 @@ export class OtpService implements IOTPService {
     return otpData
   }
 
-  // ================================================================
-  // Private Methods - Validation & Security Checks
-  // ================================================================
-
   /**
    * Kiểm tra số lần thử tối đa để ngăn chặn brute force attack
    * Tự động xóa OTP nếu vượt quá giới hạn
@@ -337,7 +283,7 @@ export class OtpService implements IOTPService {
 
     if (currentAttempts >= maxAttempts) {
       this.logger.warn(`[checkOtpMaxAttempts] Vượt quá số lần thử tối đa cho key: ${otpKey}. Đang xóa OTP`)
-      // Xóa OTP để ngăn chặn brute force attack
+
       await this.redisService.del(otpKey)
       throw AuthError.TooManyOTPAttempts()
     }
@@ -355,7 +301,7 @@ export class OtpService implements IOTPService {
 
     if (Date.now() > createdAtTimestamp + otpExpirySeconds * 1000) {
       this.logger.warn(`[checkOtpExpiry] OTP đã hết hạn cho key: ${otpKey}. Đang xóa`)
-      // Xóa OTP đã hết hạn khỏi Redis
+
       await this.redisService.del(otpKey)
       throw AuthError.OTPExpired()
     }

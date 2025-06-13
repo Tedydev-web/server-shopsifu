@@ -16,25 +16,17 @@ export const TwoFactorVerifySchema = z.object({
     .optional()
 })
 
-/**
- * Dữ liệu trả về khi bắt đầu thiết lập 2FA.
- */
 export const TwoFactorSetupDataSchema = z.object({
   secret: z.string(),
   uri: z.string()
 })
 
-/**
- * Dữ liệu trả về sau khi xác nhận 2FA thành công hoặc tạo lại mã.
- */
 export const TwoFactorRecoveryCodesDataSchema = z.object({
   recoveryCodes: z.array(z.string())
 })
 
-// --- Request DTOs ---
 export class TwoFactorVerifyDto extends createZodDto(TwoFactorVerifySchema) {}
 
-// --- Response DTOs ---
 export class TwoFactorSetupDataDto extends createZodDto(TwoFactorSetupDataSchema) {}
 export class TwoFactorRecoveryCodesDataDto extends createZodDto(TwoFactorRecoveryCodesDataSchema) {}
 export class VerificationNeededResponseDto extends createZodDto(VerificationNeededResponseSchema) {}
