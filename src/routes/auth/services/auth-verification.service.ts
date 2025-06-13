@@ -592,7 +592,8 @@ export class AuthVerificationService {
     res: Response
   ): Promise<VerificationResult> {
     const { userId, metadata, ipAddress, userAgent, email } = context
-    const { sessionIds, deviceIds, excludeCurrentSession, currentSessionId, currentDeviceId } = metadata || {}
+    const { sessionIds, deviceIds, excludeCurrentSession, forceLogout, currentSessionId, currentDeviceId } =
+      metadata || {}
 
     if (!sessionIds && !deviceIds) {
       throw GlobalError.BadRequest('auth.error.invalidRevokeParams')
@@ -600,7 +601,7 @@ export class AuthVerificationService {
 
     const revokeResult = await this.sessionsService.revokeItems(
       userId,
-      { sessionIds, deviceIds, excludeCurrentSession },
+      { sessionIds, deviceIds, excludeCurrentSession, forceLogout },
       { sessionId: currentSessionId, deviceId: currentDeviceId },
       res
     )
@@ -612,7 +613,10 @@ export class AuthVerificationService {
       message: revokeResult.message || 'auth.success.session.revoked',
       data: {
         revokedSessionsCount: revokeResult.data.revokedSessionsCount,
-        untrustedDevicesCount: revokeResult.data.untrustedDevicesCount
+        untrustedDevicesCount: revokeResult.data.untrustedDevicesCount,
+        willCauseLogout: revokeResult.data.willCauseLogout,
+        warningMessage: revokeResult.data.warningMessage,
+        requiresConfirmation: revokeResult.data.requiresConfirmation
       }
     }
   }
@@ -642,7 +646,10 @@ export class AuthVerificationService {
       message: revokeResult.message || 'auth.success.session.allRevoked',
       data: {
         revokedSessionsCount: revokeResult.data.revokedSessionsCount,
-        untrustedDevicesCount: revokeResult.data.untrustedDevicesCount
+        untrustedDevicesCount: revokeResult.data.untrustedDevicesCount,
+        willCauseLogout: revokeResult.data.willCauseLogout,
+        warningMessage: revokeResult.data.warningMessage,
+        requiresConfirmation: revokeResult.data.requiresConfirmation
       }
     }
   }
@@ -717,8 +724,12 @@ export class AuthVerificationService {
       metadata: { ...context.metadata, otpVerified: 'true' }
     })
     return {
-      message: 'auth.success.otp.verified',
-      data: { verificationType: 'OTP' }
+      message: 'auth.success.otp.verifiedResetPassword',
+      data: {
+        verificationType: 'OTP',
+        nextStep: 'SET_NEW_PASSWORD',
+        instruction: 'Please proceed to set your new password'
+      }
     }
   }
 
@@ -737,7 +748,8 @@ export class AuthVerificationService {
       revokeAllSessions: revokeAllSessions,
       ipAddress: context.ipAddress,
       userAgent: context.userAgent,
-      currentSessionId: context.metadata?.currentSessionId
+      currentSessionId: context.metadata?.currentSessionId,
+      isPasswordAlreadyHashed: true // Password is already hashed in changePassword method
     })
 
     // Override message cho change password

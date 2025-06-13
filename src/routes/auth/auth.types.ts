@@ -96,6 +96,9 @@ export interface ISessionService {
     currentSessionIdFromToken?: string
   ): Promise<any>
 
+  /**
+   * Thu hồi sessions/devices với smart logic
+   */
   revokeItems(
     userId: number,
     options: {
@@ -103,14 +106,20 @@ export interface ISessionService {
       deviceIds?: number[]
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
+      forceLogout?: boolean
     },
-    currentSessionDetails?: { sessionId?: string; deviceId?: number },
-    res?: Response,
-    verificationToken?: string,
-    otpCode?: string,
-    ipAddress?: string,
-    userAgent?: string
-  ): Promise<any>
+    currentSessionContext: { sessionId?: string; deviceId?: number },
+    res?: Response
+  ): Promise<{
+    message: string
+    data: {
+      revokedSessionsCount: number
+      untrustedDevicesCount: number
+      willCauseLogout: boolean
+      warningMessage?: string
+      requiresConfirmation?: boolean
+    }
+  }>
 
   invalidateSession(sessionId: string, reason?: string): Promise<void>
 

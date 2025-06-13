@@ -36,6 +36,7 @@ const DeviceSessionGroupSchema = z.object({
   lastActive: z.date(),
   location: z.string(),
   activeSessionsCount: z.number(),
+  totalSessionsCount: z.number(), // Thêm tổng số sessions
   isCurrentDevice: z.boolean(),
   sessions: z.array(SessionItemSchema)
 })
@@ -56,14 +57,34 @@ export const GetSessionsQuerySchema = z.object({
 })
 
 // --- Schemas for Revoke Sessions ---
-export const RevokeSessionsBodySchema = z.object({
-  sessionIds: z.array(z.string()).optional(),
-  deviceIds: z.array(z.number()).optional(),
-  excludeCurrentSession: z.boolean().optional().default(false)
-})
+export const RevokeSessionsBodySchema = z
+  .object({
+    // Target sessions to revoke (required at least one of sessionIds or deviceIds)
+    sessionIds: z.array(z.string()).optional(),
+    deviceIds: z.array(z.number()).optional(),
+
+    // Safety controls (optional - system will auto-decide if not specified)
+    excludeCurrentSession: z.boolean().optional(), // Auto-exclude current session to prevent unexpected logout
+    forceLogout: z.boolean().optional() // Explicit confirmation required for logout actions
+  })
+  .refine((data) => data.sessionIds?.length || data.deviceIds?.length, {
+    message: 'Must specify at least one of sessionIds or deviceIds'
+  })
 
 export const RevokeAllSessionsBodySchema = z.object({
-  excludeCurrentSession: z.boolean().optional().default(true)
+  // Safety controls (optional - system will auto-decide if not specified)
+  excludeCurrentSession: z.boolean().optional(), // Auto-exclude current session to prevent unexpected logout
+  forceLogout: z.boolean().optional() // Explicit confirmation required for logout actions
+})
+
+// --- Schemas for Revoke Response ---
+export const RevokeResponseSchema = z.object({
+  revokedSessionsCount: z.number(),
+  untrustedDevicesCount: z.number(),
+  willCauseLogout: z.boolean(),
+  warningMessage: z.string().optional(),
+  requiresConfirmation: z.boolean().optional(),
+  autoProtected: z.boolean().optional() // Indicates if sessions were auto-excluded for safety
 })
 
 // --- Schemas for Update Device ---
@@ -88,3 +109,4 @@ export class UpdateDeviceNameBodyDto extends createZodDto(UpdateDeviceNameBodySc
 
 // --- Response DTOs ---
 export class GetGroupedSessionsResponseDto extends createZodDto(GetGroupedSessionsResponseSchema) {}
+export class RevokeResponseDto extends createZodDto(RevokeResponseSchema) {}

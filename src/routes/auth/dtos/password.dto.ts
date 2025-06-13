@@ -32,11 +32,23 @@ export const SetNewPasswordSchema = z
     path: ['confirmPassword']
   })
 
-export const ChangePasswordSchema = z.object({
-  currentPassword: z.string(),
-  newPassword: z.string().min(8, 'Password must be at least 8 characters long'),
-  revokeOtherSessions: z.boolean().default(true)
-})
+export const ChangePasswordSchema = z
+  .object({
+    currentPassword: z.string({
+      required_error: validationMessages.required('Mật khẩu hiện tại')
+    }),
+    newPassword: passwordSchema,
+    confirmPassword: passwordSchema,
+    revokeOtherSessions: z.boolean().default(true)
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'Mật khẩu xác nhận không khớp.',
+    path: ['confirmPassword']
+  })
+  .refine((data) => data.newPassword !== data.currentPassword, {
+    message: 'Mật khẩu mới phải khác với mật khẩu hiện tại.',
+    path: ['newPassword']
+  })
 
 export class InitiatePasswordResetDto extends createZodDto(InitiatePasswordResetSchema) {}
 export class SetNewPasswordDto extends createZodDto(SetNewPasswordSchema) {}

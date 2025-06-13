@@ -97,45 +97,69 @@ export class SessionsController {
     const revocationOptions = {
       sessionIds: body.sessionIds,
       deviceIds: body.deviceIds,
-      excludeCurrentSession: body.excludeCurrentSession
+      excludeCurrentSession: body.excludeCurrentSession,
+      forceLogout: body.forceLogout
     }
 
-    const requiresVerification = await this.sessionsService.checkIfActionRequiresVerification(
-      userContext.userId,
-      revocationOptions
-    )
-
-    if (requiresVerification) {
-      return this.authVerificationService.initiateVerification(
+    try {
+      const result = await this.sessionsService.revokeItems(
+        userContext.userId,
+        revocationOptions,
         {
-          userId: userContext.userId,
-          deviceId: userContext.deviceId,
-          email: userContext.email,
-          ipAddress: ip,
-          userAgent,
-          purpose: TypeOfVerificationCode.REVOKE_SESSIONS,
-          metadata: {
-            ...revocationOptions,
-            currentSessionId: userContext.sessionId,
-            currentDeviceId: userContext.deviceId
-          }
+          sessionId: userContext.sessionId,
+          deviceId: userContext.deviceId
         },
         res
       )
-    }
 
-    const result = await this.sessionsService.revokeItems(userContext.userId, revocationOptions, userContext, res)
-
-    if (result.data.revokedSessionsCount === 0 && result.data.untrustedDevicesCount === 0) {
-      throw AuthError.SessionOrDeviceNotFound()
-    }
-
-    return {
-      message: result.message, // Service already returns an i18n key
-      data: {
-        revokedSessionsCount: result.data.revokedSessionsCount,
-        untrustedDevicesCount: result.data.untrustedDevicesCount
+      if (result.data.revokedSessionsCount === 0 && result.data.untrustedDevicesCount === 0) {
+        // Check if this was due to auto-protection vs actually not found
+        if (result.data.autoProtected === true || result.data.shouldExcludeCurrentSession === true) {
+          // This is auto-protection, return the result with explanation
+          return {
+            message: result.message,
+            data: {
+              revokedSessionsCount: result.data.revokedSessionsCount,
+              untrustedDevicesCount: result.data.untrustedDevicesCount,
+              willCauseLogout: result.data.willCauseLogout,
+              autoProtected: true
+            }
+          }
+        } else {
+          // Actually not found
+          throw AuthError.SessionOrDeviceNotFound()
+        }
       }
+
+      return {
+        message: result.message,
+        data: {
+          revokedSessionsCount: result.data.revokedSessionsCount,
+          untrustedDevicesCount: result.data.untrustedDevicesCount,
+          willCauseLogout: result.data.willCauseLogout,
+        }
+      }
+    } catch (error) {
+      // If action requires confirmation, initiate verification
+      if (error.code === 'AUTH_ACTION_REQUIRES_CONFIRMATION') {
+        return this.authVerificationService.initiateVerification(
+          {
+            userId: userContext.userId,
+            deviceId: userContext.deviceId,
+            email: userContext.email,
+            ipAddress: ip,
+            userAgent,
+            purpose: TypeOfVerificationCode.REVOKE_SESSIONS,
+            metadata: {
+              ...revocationOptions,
+              currentSessionId: userContext.sessionId,
+              currentDeviceId: userContext.deviceId
+            }
+          },
+          res
+        )
+      }
+      throw error
     }
   }
 
@@ -168,6 +192,7 @@ export class SessionsController {
         purpose: TypeOfVerificationCode.REVOKE_ALL_SESSIONS,
         metadata: {
           excludeCurrentSession: body.excludeCurrentSession,
+          forceLogout: body.forceLogout,
           currentSessionId: userContext.sessionId,
           currentDeviceId: userContext.deviceId
         }

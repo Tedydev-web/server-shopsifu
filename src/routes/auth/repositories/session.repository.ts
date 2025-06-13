@@ -242,17 +242,25 @@ export class SessionRepository {
     const deviceSessionsKey = RedisKeyManager.getDeviceSessionsKey(deviceId)
     let sessionIds = await this.redisService.smembers(deviceSessionsKey)
 
+    this.logger.debug(`[deleteSessionsByDeviceId] Device ${deviceId} has ${sessionIds.length} sessions in Redis`)
+
     if (excludeSessionId) {
       sessionIds = sessionIds.filter((id) => id !== excludeSessionId)
+      this.logger.debug(
+        `[deleteSessionsByDeviceId] After excluding ${excludeSessionId}, ${sessionIds.length} sessions to delete`
+      )
     }
 
     if (sessionIds.length === 0) {
+      this.logger.debug(`[deleteSessionsByDeviceId] No sessions to delete for device ${deviceId}`)
       return { count: 0 }
     }
 
     const sessions = (await Promise.all(sessionIds.map((id) => this.findById(id)))).filter(
       (s): s is Session => s !== null
     )
+
+    this.logger.log(`[deleteSessionsByDeviceId] Deleting ${sessions.length} sessions for device ${deviceId}`)
 
     const pipeline = this.redisService.client.pipeline()
     sessions.forEach((s) => {

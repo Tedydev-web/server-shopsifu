@@ -72,7 +72,7 @@ jobs:
             STATUS=$(pm2 jlist | jq -r '.[] | select(.name == "server-shopsifu") | .pm2_env.status')
             echo "$STATUS" > /tmp/app_status.txt
             pm2 jlist > /tmp/pm2_status.json
-            pm2 logs server-shopsifu --lines 50 --nostream > /tmp/pm2_logs.txt
+            pm2 logs server-shopsifu --lines 300 --nostream > /tmp/pm2_logs.txt
             [ "$STATUS" = "online" ] || exit 2
           EOF
         continue-on-error: true
@@ -87,8 +87,6 @@ jobs:
             cat /tmp/pm2_logs.txt > /tmp/pm2_logs.txt
           EOF
           # Xử lý dữ liệu trên runner
-          PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json 2>/dev/null || echo "Không tìm thấy process server-shopsifu")
-          echo "pm2_info=$PM2_INFO" >> $GITHUB_OUTPUT
           PM2_LOGS=$(grep -v '\[TAILING\]' /tmp/pm2_logs.txt | tail -n 50 || echo "Không có log ứng dụng")
           echo "pm2_logs=$PM2_LOGS" >> $GITHUB_OUTPUT
 
@@ -114,7 +112,6 @@ jobs:
           ACTOR: ${{ github.actor }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          PM2_INFO: ${{ steps.pm2_logs.outputs.pm2_info }}
           PM2_LOGS: ${{ steps.pm2_logs.outputs.pm2_logs }}
           COMMIT_SHA: ${{ steps.commit_info.outputs.commit_sha }}
           COMMIT_MESSAGE: ${{ steps.commit_info.outputs.commit_message }}
@@ -131,7 +128,6 @@ jobs:
             --arg commit_message "$COMMIT_MESSAGE" \
             --arg repo "$REPO" \
             --arg actor "$ACTOR" \
-            --arg pm2_info "$PM2_INFO" \
             --arg logs "${PM2_LOGS:0:1000}" \
             --arg run_id "$RUN_ID" \
             --arg color "$COLOR" \
@@ -146,8 +142,7 @@ jobs:
                   { name: "Commit SHA", value: "`\($commit_sha)`", inline: false },
                   { name: "Commit Message", value: $commit_message, inline: false },
                   { name: "Người thực hiện", value: "`\($actor)`", inline: true },
-                  { name: "Trạng thái PM2", value: "```\n\($pm2_info)\n```", inline: false }
-                ],
+                  { name: "Thời gian", value: "<t:\((github.run_started_at | fromdateiso8601) / 1000 | floor):R>", inline: true }],
                 description: "**50 dòng log cuối:**\n```\n\($logs)\n```",
                 url: "https://github.com/\($repo)/actions/runs/\($run_id)"
               }]

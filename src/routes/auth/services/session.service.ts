@@ -1,19 +1,9 @@
-// ================================================================
-// NestJS Dependencies
-// ================================================================
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
-
-// ================================================================
-// External Libraries
-// ================================================================
 import { Response } from 'express'
 import { z } from 'zod'
 
-// ================================================================
-// Internal Services & Types
-// ================================================================
 import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
@@ -21,15 +11,9 @@ import { GeolocationService, GeoLocationResult } from 'src/shared/services/geolo
 import { EmailService } from 'src/shared/services/email.service'
 import { UserAgentService } from '../../../shared/services/user-agent.service'
 
-// ================================================================
-// Repositories
-// ================================================================
 import { SessionRepository } from 'src/routes/auth/repositories'
 import { DeviceRepository } from 'src/shared/repositories/device.repository'
 
-// ================================================================
-// Constants & Injection Tokens
-// ================================================================
 import {
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
@@ -38,21 +22,23 @@ import {
   REDIS_SERVICE
 } from 'src/shared/constants/injection.tokens'
 
-// ================================================================
-// Types & Interfaces
-// ================================================================
 import { AuthError } from 'src/routes/auth/auth.error'
 import { ICookieService, ISessionService } from 'src/routes/auth/auth.types'
 import { GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { Device } from '@prisma/client'
 
-// Infer the type for a single device session group from the Zod schema
 type DeviceSessionGroup = z.infer<typeof GetGroupedSessionsResponseSchema.shape.devices.element>
 
+type SafetyAnalysis = {
+  shouldExcludeCurrentSession: boolean
+  willCauseLogout: boolean
+  warningMessage?: string
+  requiresConfirmation?: boolean
+}
+
 /**
- * Service quản lý sessions và devices của người dùng
- * Cung cấp các chức năng xem, thu hồi, và quản lý sessions/devices
+ * Enhanced Session Service with smart excludeCurrentSession logic
  */
 @Injectable()
 export class SessionsService implements ISessionService {
@@ -72,17 +58,11 @@ export class SessionsService implements ISessionService {
   ) {}
 
   // ================================================================
-  // Public Methods - Session Management
+  // Core Session Management
   // ================================================================
 
   /**
-   * Lấy danh sách sessions của user được nhóm theo device
-   * Bao gồm thông tin device, location, và các session đang hoạt động
-   * @param userId - ID của user
-   * @param currentPage - Trang hiện tại (pagination)
-   * @param itemsPerPage - Số item trên mỗi trang
-   * @param currentSessionIdFromToken - ID session hiện tại từ token
-   * @returns Danh sách sessions được nhóm theo device với pagination
+   * Get user sessions grouped by device with enhanced information
    */
   async getSessions(
     userId: number,
@@ -90,44 +70,39 @@ export class SessionsService implements ISessionService {
     itemsPerPage: number = 5,
     currentSessionIdFromToken: string
   ): Promise<any> {
-    this.logger.debug(
-      `[getSessions] Getting grouped sessions for userId: ${userId}, page: ${currentPage}, limit: ${itemsPerPage}`
-    )
+    this.logger.debug(`[getSessions] User ${userId}, page ${currentPage}, limit ${itemsPerPage}`)
 
-    // Lấy tất cả sessions và devices của user
+    // Lấy tất cả sessions và devices
     const sessionResult = await this.sessionRepository.findSessionsByUserId(userId, { page: 1, limit: 1000 })
     let devices = await this.deviceRepository.findDevicesByUserId(userId)
-
-    // Đảm bảo device hiện tại được include trong danh sách
     devices = await this.ensureCurrentDeviceIncluded(currentSessionIdFromToken, devices)
 
     const deviceGroups: DeviceSessionGroup[] = []
 
-    // Tạo group cho mỗi device
     for (const device of devices) {
-      const currentSessionDetails = await this.sessionRepository.findById(currentSessionIdFromToken)
-      const isCurrentDevice = currentSessionDetails?.deviceId === device.id
-
-      // Lọc sessions thuộc device này
       const deviceSessions = sessionResult.data.filter((session) => session.deviceId === device.id)
-
       if (deviceSessions.length === 0) continue
 
+      this.logger.debug(
+        `[getSessions] Device ${device.id}: ${deviceSessions.length} total sessions (${deviceSessions.filter((s) => s.isActive).length} active)`
+      )
+
+      const currentSessionDetails = await this.sessionRepository.findById(currentSessionIdFromToken)
+      const isCurrentDevice = currentSessionDetails?.deviceId === device.id
       const latestSession = deviceSessions[0]
       const deviceInfo = this.userAgentService.parse(latestSession?.userAgent)
       const activeSessionsCount = deviceSessions.filter((s) => s.isActive).length
-      const lastActive = new Date(latestSession.lastActive)
 
-      // Safe handling of location result với fallback
+      // Process location
       let locationResult: GeoLocationResult
       try {
         locationResult = await this.getLocationFromIP(latestSession.ipAddress || '')
       } catch (error) {
-        this.logger.error(`Failed to get location for latest session IP ${latestSession.ipAddress}: ${error.message}`)
+        this.logger.error(`Failed to get location for IP ${latestSession.ipAddress}: ${error.message}`)
         locationResult = { display: 'Unknown Location', timezone: 'Asia/Ho_Chi_Minh' }
       }
 
-      // Xử lý thông tin chi tiết cho từng session
+      // Process session items
       const sessionItems = await Promise.all(
         deviceSessions.map(async (session) => {
           const sessionInfo = this.userAgentService.parse(session.userAgent)
@@ -135,16 +110,12 @@ export class SessionsService implements ISessionService {
             ? null
             : this.calculateInactiveDuration(new Date(session.lastActive))
 
-          // Safe handling of location result với fallback
           let sessionLocationResult: GeoLocationResult
           try {
             sessionLocationResult = await this.getLocationFromIP(session.ipAddress || '')
-          } catch (error) {
-            this.logger.error(`Failed to get location for IP ${session.ipAddress}: ${error.message}`)
+          } catch {
             sessionLocationResult = { display: 'Unknown Location', timezone: 'Asia/Ho_Chi_Minh' }
           }
-
-          const isCurrentSession = session.id === currentSessionIdFromToken
 
           return {
             id: session.id,
@@ -160,7 +131,7 @@ export class SessionsService implements ISessionService {
             deviceType: sessionInfo.deviceType,
             isActive: session.isActive,
             inactiveDuration,
-            isCurrentSession
+            isCurrentSession: session.id === currentSessionIdFromToken
           }
         })
       )
@@ -175,18 +146,17 @@ export class SessionsService implements ISessionService {
         browserVersion: deviceInfo.browserVersion,
         isDeviceTrusted: device.isTrusted,
         deviceTrustExpiration: device.trustExpiration,
-        lastActive,
+        lastActive: new Date(latestSession.lastActive),
         location: locationResult?.display || 'Unknown Location',
         activeSessionsCount,
+        totalSessionsCount: deviceSessions.length,
         isCurrentDevice,
         sessions: sessionItems
       })
     }
 
-    // Sắp xếp theo thời gian active gần nhất
+    // Sort and paginate
     deviceGroups.sort((a, b) => (b.lastActive?.getTime() || 0) - (a.lastActive?.getTime() || 0))
-
-    // Áp dụng pagination
     const totalItems = deviceGroups.length
     const totalPages = Math.ceil(totalItems / itemsPerPage)
     const startIndex = (currentPage - 1) * itemsPerPage
@@ -202,8 +172,7 @@ export class SessionsService implements ISessionService {
   }
 
   /**
-   * Đảm bảo device hiện tại được bao gồm trong danh sách devices
-   * (có thể xảy ra trường hợp device không được trả về do phân quyền)
+   * Ensure current device is included in device list
    */
   private async ensureCurrentDeviceIncluded(currentSessionId: string, devices: Device[]): Promise<Device[]> {
     const currentSession = await this.sessionRepository.findById(currentSessionId)
@@ -222,48 +191,32 @@ export class SessionsService implements ISessionService {
   }
 
   /**
-   * Lấy thông tin địa lý từ địa chỉ IP
+   * Get geolocation from IP address
    */
   private async getLocationFromIP(ip: any): Promise<GeoLocationResult> {
-    // Chuyển đổi giá trị IP nhận được thành một chuỗi một cách an toàn.
-    // GeolocationService đã được thiết kế để xử lý các chuỗi rỗng, IP local hoặc không hợp lệ.
     const ipString = String(ip || '')
     return this.geolocationService.getLocationFromIP(ipString)
   }
 
   /**
-   * Tính toán thời gian inactive của session và format thành string hiển thị
-   * @param lastActiveDate - Thời điểm active cuối cùng
-   * @returns Chuỗi mô tả thời gian inactive (vd: "5 minutes ago", "2 hours ago")
+   * Calculate inactive duration and format as display string
    */
   private calculateInactiveDuration(lastActiveDate: Date): string {
-    const now = new Date()
-    const diffSeconds = Math.round((now.getTime() - lastActiveDate.getTime()) / 1000)
+    const diffSeconds = Math.round((Date.now() - lastActiveDate.getTime()) / 1000)
 
-    if (diffSeconds < 60) {
-      return 'global.error.duration.justNow'
-    }
+    if (diffSeconds < 60) return 'global.error.duration.justNow'
 
     const diffMinutes = Math.round(diffSeconds / 60)
-    if (diffMinutes === 1) {
-      return 'global.error.duration.aMinuteAgo'
-    }
-    if (diffMinutes < 60) {
-      return 'global.error.duration.minutesAgo'
-    }
+    if (diffMinutes === 1) return 'global.error.duration.aMinuteAgo'
+    if (diffMinutes < 60) return 'global.error.duration.minutesAgo'
 
     const diffHours = Math.round(diffMinutes / 60)
-    if (diffHours === 1) {
-      return (this.i18nService as any).t('global.error.duration.anHourAgo')
-    }
-    if (diffHours < 24) {
+    if (diffHours === 1) return (this.i18nService as any).t('global.error.duration.anHourAgo')
+    if (diffHours < 24)
       return (this.i18nService as any).t('global.error.duration.hoursAgo', { args: { count: diffHours } })
-    }
 
     const diffDays = Math.round(diffHours / 24)
-    if (diffDays === 1) {
-      return (this.i18nService as any).t('global.error.duration.aDayAgo')
-    }
+    if (diffDays === 1) return (this.i18nService as any).t('global.error.duration.aDayAgo')
     return (this.i18nService as any).t('global.error.duration.daysAgo', { args: { count: diffDays } })
   }
 
@@ -305,27 +258,13 @@ export class SessionsService implements ISessionService {
     }
   }
 
-  async checkIfActionRequiresVerification(
-    _userId: number,
-    options: { sessionIds?: string[]; deviceIds?: number[] }
-  ): Promise<boolean> {
-    // If multiple devices/sessions are involved, always require verification
-    if (options.deviceIds?.length) return true
-    if (options.sessionIds && options.sessionIds.length > 1) return true
+  // ================================================================
+  // Main Revoke Method with Smart Logic
+  // ================================================================
 
-    if (options.sessionIds?.length === 1) {
-      const session = await this.sessionRepository.findById(options.sessionIds[0])
-      if (!session) return true // No session found, require verification
-
-      const device = await this.deviceRepository.findById(session.deviceId)
-      // If device is NOT trusted, require verification
-      return !(device?.isTrusted ?? false)
-    }
-
-    // Default: require verification
-    return true
-  }
-
+  /**
+   * Revoke sessions/devices with enhanced smart logic and comprehensive safety analysis
+   */
   async revokeItems(
     userId: number,
     options: {
@@ -333,84 +272,226 @@ export class SessionsService implements ISessionService {
       deviceIds?: number[]
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
+      forceLogout?: boolean
     },
     currentSessionContext: { sessionId?: string; deviceId?: number },
     res?: Response
-  ): Promise<{ message: string; data: { revokedSessionsCount: number; untrustedDevicesCount: number } }> {
-    let revokedSessionsCount = 0
-    let untrustedDevicesCount = 0
-    const excludeSessionId = options.excludeCurrentSession ? currentSessionContext.sessionId : undefined
-
-    if (options.revokeAllUserSessions) {
-      const result = await this.invalidateAllUserSessions(userId, undefined, excludeSessionId)
-      revokedSessionsCount = result.deletedSessionsCount
-      if (result.untrustedDeviceIds.length > 0) {
-        untrustedDevicesCount = result.untrustedDeviceIds.length
-      }
-    } else {
-      const untrustedDeviceIds = new Set<number>()
-
-      if (options.sessionIds?.length) {
-        for (const sessionId of options.sessionIds) {
-          if (sessionId === excludeSessionId) continue
-          const untrustedDeviceId = await this.revokeSingleSession(sessionId, userId)
-          if (untrustedDeviceId) {
-            untrustedDeviceIds.add(untrustedDeviceId)
-          }
-          revokedSessionsCount++
-        }
-      }
-      if (options.deviceIds?.length) {
-        for (const deviceId of options.deviceIds) {
-          if (deviceId === currentSessionContext.deviceId && options.excludeCurrentSession) continue
-          const result = await this.revokeDevice(deviceId, userId, excludeSessionId)
-          revokedSessionsCount += result.revokedSessionsCount
-          if (result.untrusted) {
-            untrustedDeviceIds.add(deviceId)
-          }
-        }
-      }
-      untrustedDevicesCount = untrustedDeviceIds.size
+  ): Promise<{
+    message: string
+    data: {
+      revokedSessionsCount: number
+      untrustedDevicesCount: number
+      willCauseLogout: boolean
+      warningMessage?: string
+      requiresConfirmation?: boolean
+      autoProtected?: boolean
+      shouldExcludeCurrentSession?: boolean
+    }
+  }> {
+    // Step 1: Validate input
+    const validation = this.validateRevokeOptions(options)
+    if (!validation.isValid) {
+      this.logger.error(`[revokeItems] Validation failed: ${validation.errors.join(', ')}`)
+      throw AuthError.InvalidRevokeParams()
     }
 
-    // Sau khi thu hồi, đặt cờ yêu cầu xác minh lại cho người dùng
+    // Step 2: Smart analysis
+    const analysis = this.analyzeExcludeCurrentSessionLogic(options, currentSessionContext)
+
+    // Step 3: Safety check
+    if (analysis.requiresConfirmation) {
+      this.logger.warn(`[revokeItems] Action requires confirmation: ${analysis.warningMessage}`)
+      throw AuthError.ActionRequiresConfirmation(analysis.warningMessage || 'Action requires confirmation')
+    }
+
+    // Step 4: Execute revocation với smart logic
+    const finalOptions = { ...options, excludeCurrentSession: analysis.shouldExcludeCurrentSession }
+    const { revokedSessionsCount, untrustedDevicesCount } = await this.executeRevocation(
+      userId,
+      finalOptions,
+      currentSessionContext
+    )
+
+    // Step 5: Post-revocation cleanup
     if (revokedSessionsCount > 0) {
       await this.setReverifyFlagForUser(userId)
     }
 
-    // Kiểm tra xem có revoke phiên hiện tại hay không, nếu có thì clear cookies
-    const currentSessionRevoked = this.isCurrentSessionRevoked(options, currentSessionContext)
+    const currentSessionRevoked = this.isCurrentSessionRevoked(finalOptions, currentSessionContext)
     if (currentSessionRevoked && res) {
       this.clearCurrentSessionCookies(res)
     }
 
+    // Step 6: Generate response
     let message: string
     if (revokedSessionsCount > 0) {
-      message = this.i18nService.t('auth.success.session.revokedCount', {
-        args: { count: revokedSessionsCount }
-      })
+      message = this.i18nService.t('auth.success.session.revokedCount', { args: { count: revokedSessionsCount } })
     } else {
-      message = this.i18nService.t('auth.success.session.noSessionsToRevoke')
+      // Check if this was due to smart protection
+      if (analysis.autoProtected === true || analysis.shouldExcludeCurrentSession === true) {
+        message = this.i18nService.t('auth.success.session.autoProtected')
+      } else {
+        message = this.i18nService.t('auth.success.session.noSessionsToRevoke')
+      }
     }
 
     return {
       message,
       data: {
         revokedSessionsCount,
-        untrustedDevicesCount
+        untrustedDevicesCount,
+        willCauseLogout: analysis.willCauseLogout && currentSessionRevoked,
+        warningMessage: analysis.warningMessage,
+        requiresConfirmation: analysis.requiresConfirmation,
       }
     }
   }
 
+  /**
+   * Analyze and recommend excludeCurrentSession logic based on context
+   */
+  private analyzeExcludeCurrentSessionLogic(
+    options: {
+      sessionIds?: string[]
+      deviceIds?: number[]
+      revokeAllUserSessions?: boolean
+      excludeCurrentSession?: boolean
+      autoProtected?: boolean
+      forceLogout?: boolean
+    },
+    currentSessionContext: { sessionId?: string; deviceId?: number }
+  ): {
+    shouldExcludeCurrentSession: boolean
+    willCauseLogout: boolean
+    warningMessage?: string
+    requiresConfirmation?: boolean
+    autoProtected?: boolean
+  } {
+    const { sessionIds, deviceIds, revokeAllUserSessions, excludeCurrentSession, forceLogout } = options
+    const { sessionId: currentSessionId, deviceId: currentDeviceId } = currentSessionContext
+
+    // Determine analysis based on revocation type
+    if (revokeAllUserSessions) {
+      return this.analyzeRevokeAllSessions(excludeCurrentSession, forceLogout)
+    } else if (deviceIds?.length) {
+      return this.analyzeRevokeDevices(deviceIds, currentDeviceId, excludeCurrentSession, forceLogout)
+    } else if (sessionIds?.length) {
+      return this.analyzeRevokeSessions(sessionIds, currentSessionId, excludeCurrentSession, forceLogout)
+    } else {
+      return {
+        shouldExcludeCurrentSession: false,
+        willCauseLogout: false,
+      }
+    }
+  }
+
+  private analyzeRevokeAllSessions(excludeCurrentSession?: boolean, forceLogout?: boolean): SafetyAnalysis {
+    if (excludeCurrentSession !== undefined) {
+      return excludeCurrentSession
+        ? {
+            shouldExcludeCurrentSession: true,
+            willCauseLogout: false,
+          }
+        : {
+            shouldExcludeCurrentSession: false,
+            willCauseLogout: true,
+            warningMessage: forceLogout ? undefined : 'You will be logged out. Set forceLogout=true to confirm.',
+            requiresConfirmation: !forceLogout,
+          }
+    }
+    // Smart default: exclude current session
+    return {
+      shouldExcludeCurrentSession: true,
+      willCauseLogout: false,
+    }
+  }
+
+  private analyzeRevokeDevices(
+    deviceIds: number[],
+    currentDeviceId?: number,
+    excludeCurrentSession?: boolean,
+    forceLogout?: boolean
+  ): SafetyAnalysis {
+    const includesCurrentDevice = currentDeviceId && deviceIds.includes(currentDeviceId)
+
+    if (!includesCurrentDevice) {
+      return {
+        shouldExcludeCurrentSession: false,
+        willCauseLogout: false,
+      }
+    }
+
+    if (excludeCurrentSession !== undefined) {
+      return excludeCurrentSession
+        ? {
+            shouldExcludeCurrentSession: true,
+            willCauseLogout: false,
+          }
+        : {
+            shouldExcludeCurrentSession: false,
+            willCauseLogout: true,
+            warningMessage: forceLogout
+              ? undefined
+              : 'You will be logged out by revoking your current device. Set forceLogout=true to confirm.',
+            requiresConfirmation: !forceLogout,
+          }
+    }
+    // Smart default: exclude current device
+    return {
+      shouldExcludeCurrentSession: true,
+      willCauseLogout: false,
+    }
+  }
+
+  private analyzeRevokeSessions(
+    sessionIds: string[],
+    currentSessionId?: string,
+    excludeCurrentSession?: boolean,
+    forceLogout?: boolean
+  ): SafetyAnalysis {
+    const includesCurrentSession = currentSessionId && sessionIds.includes(currentSessionId)
+
+    if (!includesCurrentSession) {
+      return {
+        shouldExcludeCurrentSession: false,
+        willCauseLogout: false,
+      }
+    }
+
+    if (excludeCurrentSession !== undefined) {
+      return excludeCurrentSession
+        ? {
+            shouldExcludeCurrentSession: true,
+            willCauseLogout: false,
+          }
+        : {
+            shouldExcludeCurrentSession: false,
+            willCauseLogout: true,
+            warningMessage: forceLogout
+              ? undefined
+              : 'You will be logged out by revoking your current session. Set forceLogout=true to confirm.',
+            requiresConfirmation: !forceLogout,
+          }
+    }
+    // Smart default: exclude current session
+    return {
+      shouldExcludeCurrentSession: true,
+      willCauseLogout: false,
+    }
+  }
+
+  /**
+   * Set reverify flag for user
+   */
   private async setReverifyFlagForUser(userId: number): Promise<void> {
     const key = RedisKeyManager.getUserReverifyNextLoginKey(userId)
     const ttl = 24 * 60 * 60 // 24 giờ
     await this.redisService.set(key, '1', 'EX', ttl)
-    this.logger.log(`[setReverifyFlagForUser] Đã đặt cờ xác minh lại cho người dùng ${userId} với TTL ${ttl}s.`)
+    this.logger.log(`[setReverifyFlagForUser] Set reverify flag for user ${userId} with TTL ${ttl}s.`)
   }
 
   /**
-   * Kiểm tra xem phiên hiện tại có bị revoke hay không
+   * Check if current session would be revoked
    */
   private isCurrentSessionRevoked(
     options: {
@@ -424,44 +505,38 @@ export class SessionsService implements ISessionService {
     const { sessionIds, deviceIds, revokeAllUserSessions, excludeCurrentSession } = options
     const { sessionId: currentSessionId, deviceId: currentDeviceId } = currentSessionContext
 
-    // Nếu excludeCurrentSession = true, thì không revoke phiên hiện tại
-    if (excludeCurrentSession) {
-      return false
-    }
+    // If excludeCurrentSession = true, don't revoke current session
+    if (excludeCurrentSession) return false
 
-    // Nếu revokeAllUserSessions = true và không exclude current session
-    if (revokeAllUserSessions) {
-      return true
-    }
+    // If revokeAllUserSessions = true and not excluding current session
+    if (revokeAllUserSessions) return true
 
-    // Kiểm tra xem current session có trong danh sách sessionIds không
-    if (sessionIds?.length && currentSessionId && sessionIds.includes(currentSessionId)) {
-      return true
-    }
+    // Check if current session is in sessionIds list
+    if (sessionIds?.length && currentSessionId && sessionIds.includes(currentSessionId)) return true
 
-    // Kiểm tra xem current device có trong danh sách deviceIds không
-    if (deviceIds?.length && currentDeviceId && deviceIds.includes(currentDeviceId)) {
-      return true
-    }
+    // Check if current device is in deviceIds list
+    if (deviceIds?.length && currentDeviceId && deviceIds.includes(currentDeviceId)) return true
 
     return false
   }
 
   /**
-   * Clear cookies của phiên hiện tại (tương tự như logout)
+   * Clear cookies for current session (similar to logout)
    */
   private clearCurrentSessionCookies(res: Response): void {
     this.logger.log('[clearCurrentSessionCookies] Clearing cookies for current session due to revocation')
 
-    // Xóa các cookie liên quan đến đăng nhập
+    // Clear login-related cookies
     this.cookieService.clearTokenCookies(res)
-
-    // Xóa SLT cookie nếu có
+    // Clear SLT cookie if exists
     this.cookieService.clearSltCookie(res)
 
     this.logger.log('[clearCurrentSessionCookies] Cookies cleared successfully')
   }
 
+  /**
+   * Revoke a single session
+   */
   private async revokeSingleSession(
     sessionId: string,
     userId: number,
@@ -475,7 +550,7 @@ export class SessionsService implements ISessionService {
     const { deviceId } = session
     await this.sessionRepository.deleteSession(sessionId)
 
-    // Kiểm tra xem đó có phải là phiên cuối cùng trên thiết bị không
+    // Check if it's the last session on device
     const remainingSessions = await this.sessionRepository.countSessionsByDeviceId(deviceId)
     if (remainingSessions === 0 && !isLogout) {
       await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
@@ -485,6 +560,9 @@ export class SessionsService implements ISessionService {
     return null
   }
 
+  /**
+   * Revoke all sessions of a device
+   */
   private async revokeDevice(
     deviceId: number,
     userId: number,
@@ -495,71 +573,32 @@ export class SessionsService implements ISessionService {
       throw AuthError.DeviceNotFound()
     }
 
-    const { count } = await this.sessionRepository.deleteSessionsByDeviceId(deviceId, excludeSessionId)
-    await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+    this.logger.debug(
+      `[revokeDevice] Revoking all sessions for device ${deviceId}${excludeSessionId ? ` (excluding ${excludeSessionId})` : ''}`
+    )
 
-    // Notify user about the action
-    await this.notifyDeviceTrustChange(userId, deviceId, 'untrusted')
+    const { count } = await this.sessionRepository.deleteSessionsByDeviceId(deviceId, excludeSessionId)
+
+    this.logger.log(`[revokeDevice] Revoked ${count} sessions for device ${deviceId}`)
+
+    await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
 
     return { revokedSessionsCount: count, untrusted: true }
   }
 
-  async updateDeviceName(userId: number, deviceId: number, name: string): Promise<{ message: string }> {
-    const device = await this.deviceRepository.findById(deviceId)
-    if (!device || device.userId !== userId) {
-      throw AuthError.DeviceNotFound()
-    }
-    await this.deviceRepository.updateDeviceName(deviceId, name)
-    return {
-      message: 'auth.success.device.nameUpdated'
-    }
-  }
-
-  async trustCurrentDevice(userId: number, deviceId: number): Promise<{ message: string }> {
-    const device = await this.deviceRepository.findById(deviceId)
-    if (!device || device.userId !== userId) {
-      throw AuthError.DeviceNotFound()
-    }
-    await this.deviceRepository.updateDeviceTrustStatus(deviceId, true)
-    await this.notifyDeviceTrustChange(userId, deviceId, 'trusted')
-    return {
-      message: 'auth.success.device.trusted'
-    }
-  }
-
-  async untrustDevice(userId: number, deviceId: number): Promise<{ message: string }> {
-    const device = await this.deviceRepository.findById(deviceId)
-    if (!device || device.userId !== userId) {
-      throw AuthError.DeviceNotFound()
-    }
-    await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
-    await this.notifyDeviceTrustChange(userId, deviceId, 'untrusted')
-    return {
-      message: 'auth.success.device.untrusted'
-    }
-  }
-
-  async isSessionInvalidated(sessionId: string): Promise<boolean> {
-    const key = RedisKeyManager.getInvalidatedSessionsKey()
-    return (await this.redisService.sismember(key, sessionId)) === 1
-  }
-
+  /**
+   * Invalidate a specific session
+   */
   async invalidateSession(sessionId: string, reason?: string): Promise<void> {
     const key = RedisKeyManager.getInvalidatedSessionsKey()
-    const sessionTtl = this.configService.get<number>('ABSOLUTE_SESSION_LIFETIME_MS', 30 * 24 * 60 * 60 * 1000)
     await this.redisService.sadd(key, sessionId)
-    // It's good practice to set an expiration on the set itself,
-    // though managing individual session expirations within the set can be complex.
-    // For now, we rely on a global TTL for the whole set if it's created for the first time.
+
+    const sessionTtl = this.configService.get<number>('JWT_REFRESH_EXPIRATION_TIME', 604800) * 1000
     await this.redisService.expire(key, sessionTtl / 1000)
 
     this.logger.log(`Session ${sessionId} invalidated. Reason: ${reason || 'Not specified'}.`)
 
-    // To properly check permissions when revoking, we need the user ID.
-    // Fetch the session data to get the associated userId.
     const session = await this.sessionRepository.findById(sessionId)
-
-    // If the session doesn't exist (e.g., already deleted or invalid ID), we can't proceed.
     if (!session) {
       this.logger.warn(
         `[invalidateSession] Could not find session ${sessionId} to revoke. It might have been deleted already.`
@@ -567,20 +606,31 @@ export class SessionsService implements ISessionService {
       return
     }
 
-    // Now call revokeSingleSession with the correct userId.
     const deviceId = await this.revokeSingleSession(sessionId, session.userId, true)
     if (deviceId) {
       this.logger.log(`Session ${sessionId} was linked to device ${deviceId}.`)
     }
   }
 
+  /**
+   * Check if session is invalidated
+   */
+  async isSessionInvalidated(sessionId: string): Promise<boolean> {
+    const key = RedisKeyManager.getInvalidatedSessionsKey()
+    const result = await this.redisService.sismember(key, sessionId)
+    return result === 1
+  }
+
+  /**
+   * Invalidate all user sessions
+   */
   async invalidateAllUserSessions(
     userId: number,
-    _reason?: string,
+    reason?: string,
     sessionIdToExclude?: string
   ): Promise<{ deletedSessionsCount: number; untrustedDeviceIds: number[] }> {
     this.logger.warn(
-      `Vô hiệu hóa tất cả các phiên cho người dùng ${userId}, ngoại trừ ${sessionIdToExclude ?? 'không có'}. Lý do: ${_reason ?? 'không rõ'}`
+      `Invalidating all sessions for user ${userId}, excluding ${sessionIdToExclude ?? 'none'}. Reason: ${reason ?? 'unknown'}`
     )
     const { deletedSessionsCount, affectedDeviceIds } = await this.sessionRepository.deleteAllUserSessions(
       userId,
@@ -593,19 +643,143 @@ export class SessionsService implements ISessionService {
       for (const deviceId of affectedDeviceIds) {
         const remainingSessionsOnDevice = await this.sessionRepository.countSessionsByDeviceId(deviceId)
         if (remainingSessionsOnDevice === 0) {
-          // Giả sử deviceRepository.updateDeviceTrustStatus xử lý các trường hợp thiết bị không tồn tại
-          // hoặc đã được bỏ tin cậy một cách nhẹ nhàng
           await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
           newlyUntrustedDeviceIds.push(deviceId)
         }
       }
       if (newlyUntrustedDeviceIds.length > 0) {
         this.logger.log(
-          `[invalidateAllUserSessions] Đã bỏ tin cậy ${newlyUntrustedDeviceIds.length} thiết bị: ${newlyUntrustedDeviceIds.join(', ')}.`
+          `[invalidateAllUserSessions] Untrusted ${newlyUntrustedDeviceIds.length} devices: ${newlyUntrustedDeviceIds.join(', ')}.`
         )
       }
     }
 
     return { deletedSessionsCount, untrustedDeviceIds: newlyUntrustedDeviceIds }
+  }
+
+  // ================================================================
+  // Helper Methods - Core Operations
+  // ================================================================
+
+  /**
+   * Execute the actual revocation logic
+   */
+  private async executeRevocation(
+    userId: number,
+    options: {
+      sessionIds?: string[]
+      deviceIds?: number[]
+      revokeAllUserSessions?: boolean
+      excludeCurrentSession?: boolean
+    },
+    currentSessionContext: { sessionId?: string; deviceId?: number }
+  ): Promise<{ revokedSessionsCount: number; untrustedDevicesCount: number }> {
+    let revokedSessionsCount = 0
+    const excludeSessionId = options.excludeCurrentSession ? currentSessionContext.sessionId : undefined
+
+    if (options.revokeAllUserSessions) {
+      const result = await this.invalidateAllUserSessions(
+        userId,
+        'User requested revoke all sessions',
+        excludeSessionId
+      )
+      return {
+        revokedSessionsCount: result.deletedSessionsCount,
+        untrustedDevicesCount: result.untrustedDeviceIds.length
+      }
+    }
+
+    const untrustedDeviceIds = new Set<number>()
+
+    // Revoke specific sessions
+    if (options.sessionIds?.length) {
+      for (const sessionId of options.sessionIds) {
+        if (sessionId === excludeSessionId) continue
+        const untrustedDeviceId = await this.revokeSingleSession(sessionId, userId)
+        if (untrustedDeviceId) untrustedDeviceIds.add(untrustedDeviceId)
+        revokedSessionsCount++
+      }
+    }
+
+    // Revoke specific devices
+    if (options.deviceIds?.length) {
+      for (const deviceId of options.deviceIds) {
+        if (deviceId === currentSessionContext.deviceId && options.excludeCurrentSession) continue
+        const result = await this.revokeDevice(deviceId, userId, excludeSessionId)
+        revokedSessionsCount += result.revokedSessionsCount
+        if (result.untrusted) untrustedDeviceIds.add(deviceId)
+      }
+    }
+
+    return {
+      revokedSessionsCount,
+      untrustedDevicesCount: untrustedDeviceIds.size
+    }
+  }
+
+  /**
+   * Validation helper for revoke options
+   */
+  private validateRevokeOptions(options: {
+    sessionIds?: string[]
+    deviceIds?: number[]
+    revokeAllUserSessions?: boolean
+    excludeCurrentSession?: boolean
+    forceLogout?: boolean
+  }): { isValid: boolean; errors: string[] } {
+    const { sessionIds, deviceIds, revokeAllUserSessions } = options
+    const errors: string[] = []
+
+    // Must have at least one target
+    if (!revokeAllUserSessions && !sessionIds?.length && !deviceIds?.length) {
+      errors.push('Must specify at least one of: sessionIds, deviceIds, or revokeAllUserSessions')
+    }
+
+    // Cannot specify multiple targets simultaneously
+    const targets = [revokeAllUserSessions, sessionIds?.length, deviceIds?.length].filter(Boolean)
+    if (targets.length > 1) {
+      errors.push('Cannot specify multiple revoke targets simultaneously')
+    }
+
+    // Validate formats
+    if (sessionIds?.some((id) => !id || typeof id !== 'string' || !id.trim())) {
+      errors.push('Invalid session IDs provided')
+    }
+    if (deviceIds?.some((id) => !Number.isInteger(id) || id <= 0)) {
+      errors.push('Invalid device IDs provided')
+    }
+
+    return { isValid: errors.length === 0, errors }
+  }
+
+  /**
+   * Device management methods
+   */
+  async updateDeviceName(userId: number, deviceId: number, name: string): Promise<void> {
+    const device = await this.deviceRepository.findById(deviceId)
+    if (!device || device.userId !== userId) {
+      throw AuthError.DeviceNotFound()
+    }
+    await this.deviceRepository.updateDeviceName(deviceId, name)
+    this.logger.log(`[updateDeviceName] Device ${deviceId} name updated to: ${name}`)
+  }
+
+  async trustCurrentDevice(userId: number, deviceId: number): Promise<void> {
+    const device = await this.deviceRepository.findById(deviceId)
+    if (!device || device.userId !== userId) {
+      throw AuthError.DeviceNotFound()
+    }
+    await this.deviceRepository.updateDeviceTrustStatus(deviceId, true)
+    this.logger.log(`[trustCurrentDevice] Device ${deviceId} marked as trusted for user ${userId}`)
+  }
+
+  async untrustDevice(userId: number, deviceId: number): Promise<void> {
+    const device = await this.deviceRepository.findById(deviceId)
+    if (!device || device.userId !== userId) {
+      throw AuthError.DeviceNotFound()
+    }
+    await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+    await this.notifyDeviceTrustChange(userId, deviceId, 'untrusted')
+    this.logger.log(`[untrustDevice] Device ${deviceId} marked as untrusted for user ${userId}`)
   }
 }

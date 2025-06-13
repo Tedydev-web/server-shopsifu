@@ -25,6 +25,7 @@ export type I18nTranslations = {
             "otp": {
                 "sent": string;
                 "verified": string;
+                "verifiedResetPassword": string;
                 "resend": string;
             };
             "password": {
@@ -44,7 +45,9 @@ export type I18nTranslations = {
                 "verificationRequired": string;
                 "revokedCount": string;
                 "noSessionsToRevoke": string;
+                "autoProtected": string;
                 "retrieved": string;
+                "get": string;
             };
             "device": {
                 "nameUpdated": string;
@@ -65,6 +68,7 @@ export type I18nTranslations = {
             "sltCookieMissing": string;
             "invalidPassword": string;
             "passwordsNotMatch": string;
+            "samePassword": string;
             "usernameExists": string;
             "emailExists": string;
             "deviceProcessingFailed": string;

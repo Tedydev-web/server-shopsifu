@@ -307,8 +307,7 @@ export class CaslAbilityFactory {
     this.logWarn('UNKNOWN_SUBJECT', 'Unknown subject detected', {
       subject,
       validAppSubjects: Object.values(AppSubject),
-      validModelSubjects,
-      recommendation: 'Make sure this subject is defined in your system or add it to AppSubject enum'
+      validModelSubjects
     })
     return subject
   }

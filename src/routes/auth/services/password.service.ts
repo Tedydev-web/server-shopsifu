@@ -139,15 +139,25 @@ export class PasswordService {
     ipAddress: string
     userAgent: string
     currentSessionId?: string
+    isPasswordAlreadyHashed?: boolean // Add flag to indicate if password is already hashed
   }): Promise<{ message: string; data?: { sessionsRevoked: boolean; revokedCount?: number } }> {
-    const { userId, newPassword, revokeAllSessions, ipAddress, userAgent, currentSessionId } = params
+    const {
+      userId,
+      newPassword,
+      revokeAllSessions,
+      ipAddress,
+      userAgent,
+      currentSessionId,
+      isPasswordAlreadyHashed = false
+    } = params
 
     if (!newPassword) {
       this.logger.error(`Password update attempt for user ${userId} failed: New password was not provided.`)
       throw AuthError.MissingNewPasswordInContext()
     }
 
-    const hashedPassword = await this.hashingService.hash(newPassword)
+    // Only hash the password if it's not already hashed
+    const hashedPassword = isPasswordAlreadyHashed ? newPassword : await this.hashingService.hash(newPassword)
     // First, update the password
     await this.userRepository.updatePassword(userId, hashedPassword)
     // Then, fetch the user with the profile included to solve the type issue
@@ -222,6 +232,12 @@ export class PasswordService {
     const isPasswordValid = await this.hashingService.compare(currentPassword, user.password)
     if (!isPasswordValid) {
       throw AuthError.InvalidPassword()
+    }
+
+    // Validate that new password is different from current password
+    const isSamePassword = await this.hashingService.compare(newPassword, user.password)
+    if (isSamePassword) {
+      throw AuthError.SamePassword()
     }
 
     const hashedPassword = await this.hashingService.hash(newPassword)

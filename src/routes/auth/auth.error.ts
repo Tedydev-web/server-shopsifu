@@ -147,6 +147,10 @@ export class AuthError {
     )
   }
 
+  public static SamePassword(): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'AUTH_SAME_PASSWORD', 'auth.error.samePassword')
+  }
+
   // --- Social Login Errors ---
 
   public static GoogleCallbackError(details?: any): ApiException {
@@ -355,5 +359,9 @@ export class AuthError {
       'AUTH_VERIFICATION_SESSION_EXPIRED',
       'auth.error.verification.sessionExpired'
     )
+  }
+
+  public static ActionRequiresConfirmation(message: string): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'AUTH_ACTION_REQUIRES_CONFIRMATION', message)
   }
 }
