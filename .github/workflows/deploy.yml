@@ -81,12 +81,16 @@ jobs:
         if: always()
         id: pm2_logs
         run: |
+          # Lấy dữ liệu từ server và lưu vào file tạm trên runner
           sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} << 'EOF'
-            PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json 2>/dev/null || echo "Không tìm thấy process server-shopsifu")
-            echo "pm2_info=$PM2_INFO" >> $GITHUB_OUTPUT
-            PM2_LOGS=$(grep -v '\[TAILING\]' /tmp/pm2_logs.txt | tail -n 50 || echo "Không có log ứng dụng")
-            echo "pm2_logs=$PM2_LOGS" >> $GITHUB_OUTPUT
+            cat /tmp/pm2_status.json > /tmp/pm2_status.json
+            cat /tmp/pm2_logs.txt > /tmp/pm2_logs.txt
           EOF
+          # Xử lý dữ liệu trên runner
+          PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json 2>/dev/null || echo "Không tìm thấy process server-shopsifu")
+          echo "pm2_info=$PM2_INFO" >> $GITHUB_OUTPUT
+          PM2_LOGS=$(grep -v '\[TAILING\]' /tmp/pm2_logs.txt | tail -n 50 || echo "Không có log ứng dụng")
+          echo "pm2_logs=$PM2_LOGS" >> $GITHUB_OUTPUT
 
       - name: Tag Release
         if: success() && contains(github.event.head_commit.message, '[release]')
