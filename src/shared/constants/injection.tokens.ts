@@ -3,6 +3,7 @@
  */
 
 // Redis
+export const REDIS_SERVICE = 'REDIS_SERVICE'
 
 // Core Auth Services
 export const TOKEN_SERVICE = 'TOKEN_SERVICE'

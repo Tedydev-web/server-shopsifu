@@ -31,18 +31,18 @@ import { DeviceRepository } from 'src/shared/repositories/device.repository'
 // Constants & Injection Tokens
 // ================================================================
 import {
-  DEVICE_SERVICE,
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
   USER_AGENT_SERVICE,
-  COOKIE_SERVICE
+  COOKIE_SERVICE,
+  REDIS_SERVICE
 } from 'src/shared/constants/injection.tokens'
 
 // ================================================================
 // Types & Interfaces
 // ================================================================
 import { AuthError } from 'src/routes/auth/auth.error'
-import { ICookieService, IDeviceService, ISessionService } from 'src/routes/auth/auth.types'
+import { ICookieService, ISessionService } from 'src/routes/auth/auth.types'
 import { GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { Device } from '@prisma/client'
@@ -66,8 +66,7 @@ export class SessionsService implements ISessionService {
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     private readonly prismaService: PrismaService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
-    @Inject(DEVICE_SERVICE) private readonly deviceService: IDeviceService,
-    private readonly redisService: RedisService,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService
   ) {}
@@ -118,7 +117,7 @@ export class SessionsService implements ISessionService {
       const deviceInfo = this.userAgentService.parse(latestSession?.userAgent)
       const activeSessionsCount = deviceSessions.filter((s) => s.isActive).length
       const lastActive = new Date(latestSession.lastActive)
-      
+
       // Safe handling of location result với fallback
       let locationResult: GeoLocationResult
       try {
@@ -135,7 +134,7 @@ export class SessionsService implements ISessionService {
           const inactiveDuration = session.isActive
             ? null
             : this.calculateInactiveDuration(new Date(session.lastActive))
-          
+
           // Safe handling of location result với fallback
           let sessionLocationResult: GeoLocationResult
           try {
@@ -144,7 +143,7 @@ export class SessionsService implements ISessionService {
             this.logger.error(`Failed to get location for IP ${session.ipAddress}: ${error.message}`)
             sessionLocationResult = { display: 'Unknown Location', timezone: 'Asia/Ho_Chi_Minh' }
           }
-          
+
           const isCurrentSession = session.id === currentSessionIdFromToken
 
           return {

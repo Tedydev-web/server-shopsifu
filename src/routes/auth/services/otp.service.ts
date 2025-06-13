@@ -2,9 +2,7 @@
 // NestJS Dependencies
 // ================================================================
 import { Injectable, Logger, Inject, HttpException } from '@nestjs/common'
-import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
-import { I18nService, I18nContext } from 'nestjs-i18n'
 
 // ================================================================
 // External Libraries
@@ -28,14 +26,19 @@ import { UserRepository } from 'src/routes/user/user.repository'
 // Constants & Injection Tokens
 // ================================================================
 import { TypeOfVerificationCodeType, OTP_LENGTH, TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
-import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
+import {
+  EMAIL_SERVICE,
+  GEOLOCATION_SERVICE,
+  REDIS_SERVICE,
+  USER_AGENT_SERVICE
+} from 'src/shared/constants/injection.tokens'
 
 // ================================================================
 // Types & Interfaces
 // ================================================================
 import { OtpData, IOTPService } from 'src/routes/auth/auth.types'
 import { AuthError } from 'src/routes/auth/auth.error'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { I18nContext } from 'nestjs-i18n'
 
 /**
  * Service quản lý OTP (One-Time Password) cho các quy trình xác thực
@@ -50,14 +53,13 @@ export class OtpService implements IOTPService {
   private readonly logger = new Logger(OtpService.name)
 
   constructor(
-    private readonly redisService: RedisService,
-    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
-    private readonly jwtService: JwtService,
-    private readonly i18nService: I18nService<I18nTranslations>,
     private readonly configService: ConfigService,
+    private readonly userRepository: UserRepository,
+
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
+    @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
-    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
-    private readonly userRepository: UserRepository
+    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
   ) {}
 
   // ================================================================

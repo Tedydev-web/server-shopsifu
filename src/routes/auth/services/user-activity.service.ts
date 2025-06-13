@@ -27,7 +27,12 @@ import { UserRepository, UserWithProfileAndRole } from 'src/routes/user/user.rep
 // ================================================================
 // Constants & Injection Tokens
 // ================================================================
-import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
+import {
+  EMAIL_SERVICE,
+  GEOLOCATION_SERVICE,
+  REDIS_SERVICE,
+  USER_AGENT_SERVICE
+} from 'src/shared/constants/injection.tokens'
 
 // ================================================================
 // Types & Interfaces
@@ -106,7 +111,7 @@ export class UserActivityService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly redisService: RedisService,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
     private readonly i18nService: I18nService<I18nTranslations>,

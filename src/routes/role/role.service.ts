@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, Logger } from '@nestjs/common'
+import { Injectable, ForbiddenException } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { RoleRepository, CreateRoleData, UpdateRoleData } from './role.repository'

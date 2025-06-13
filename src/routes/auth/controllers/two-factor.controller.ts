@@ -13,6 +13,7 @@ import {
   Ip
 } from '@nestjs/common'
 import { Request, Response } from 'express'
+import { Throttle } from '@nestjs/throttler'
 import { Auth, IsPublic } from 'src/shared/decorators/auth.decorator'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
@@ -41,7 +42,7 @@ export class TwoFactorController {
   ) {}
 
   @Post('setup')
-  @RequirePermissions({ action: Action.Create, subject: AppSubject.TwoFactor })
+  @RequirePermissions({ action: Action.CreateOwn, subject: AppSubject.TwoFactor })
   @HttpCode(HttpStatus.OK)
   async setupTwoFactor(
     @ActiveUser() activeUser: ActiveUserData,
@@ -63,7 +64,8 @@ export class TwoFactorController {
   }
 
   @Post('confirm-setup')
-  @RequirePermissions({ action: Action.Create, subject: AppSubject.TwoFactor })
+  @RequirePermissions({ action: Action.CreateOwn, subject: AppSubject.TwoFactor })
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 attempts per minute
   @HttpCode(HttpStatus.OK)
   async confirmTwoFactorSetup(
     @Body() body: TwoFactorVerifyDto,
@@ -76,7 +78,8 @@ export class TwoFactorController {
   }
 
   @Post('verify')
-  @RequirePermissions({ action: Action.Update, subject: AppSubject.TwoFactor })
+  @IsPublic()
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 attempts per minute
   @HttpCode(HttpStatus.OK)
   async verifyTwoFactor(
     @Body() body: TwoFactorVerifyDto,
@@ -89,7 +92,7 @@ export class TwoFactorController {
   }
 
   @Post('disable')
-  @RequirePermissions({ action: Action.Delete, subject: AppSubject.TwoFactor })
+  @RequirePermissions({ action: Action.DeleteOwn, subject: AppSubject.TwoFactor })
   @HttpCode(HttpStatus.OK)
   async disableTwoFactor(
     @ActiveUser() activeUser: ActiveUserData,
@@ -103,7 +106,7 @@ export class TwoFactorController {
   }
 
   @Post('regenerate-recovery-codes')
-  @RequirePermissions({ action: Action.Update, subject: AppSubject.TwoFactor })
+  @RequirePermissions({ action: Action.UpdateOwn, subject: AppSubject.TwoFactor })
   @HttpCode(HttpStatus.OK)
   async regenerateRecoveryCodes(
     @ActiveUser() activeUser: ActiveUserData,

@@ -1,10 +1,8 @@
-/* eslint-disable @typescript-eslint/ban-types */
-
 export function isObject(value: unknown): value is object {
   return typeof value === 'object' && value !== null
 }
 
-export function isFunction(value: unknown): value is Function {
+export function isFunction(value: unknown): value is (...args: any[]) => any {
   return typeof value === 'function'
 }
 

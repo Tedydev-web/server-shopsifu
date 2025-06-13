@@ -1,17 +1,7 @@
-// ================================================================
-// NestJS Dependencies
-// ================================================================
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-
-// ================================================================
-// External Libraries
-// ================================================================
 import axios from 'axios'
 
-// ================================================================
-// Interfaces & Types
-// ================================================================
 export interface GeoLocationResult {
   country?: string
   city?: string
@@ -276,7 +266,7 @@ export class GeolocationService {
         }
       else if (firstOctet < 200) return { country: 'Singapore', display: 'Singapore', timezone: 'Asia/Singapore' }
       else return { country: 'Asia', display: 'Asia', timezone: 'Asia/Bangkok' }
-    } catch (error) {
+    } catch {
       return { display: 'Vietnam', timezone: 'Asia/Ho_Chi_Minh' } // Fallback cuối cùng
     }
   }

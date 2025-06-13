@@ -14,7 +14,6 @@ import { TwoFactorMethodType, User } from '@prisma/client'
 // ================================================================
 // Internal Services & Types
 // ================================================================
-import { RedisService } from '../../../shared/providers/redis/redis.service'
 import { SLTService } from '../../../shared/services/slt.service'
 import { EmailService } from '../../../shared/services/email.service'
 import { GeolocationService } from '../../../shared/services/geolocation.service'
@@ -149,7 +148,6 @@ export class AuthVerificationService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly redisService: RedisService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
     @Inject(OTP_SERVICE) private readonly otpService: IOTPService,
@@ -345,7 +343,21 @@ export class AuthVerificationService {
     // Ưu tiên 2FA nếu user đã enable
     if (user.twoFactorEnabled) {
       this.logger.debug(`[initiateOtpOr2faFlow] 2FA enabled for user ${userId}. Initiating 2FA flow.`)
-      const sltToken = await this.sltService.createAndStoreSltToken({ ...context })
+
+      // Include 2FA metadata for verification
+      const sltPayload = {
+        ...context,
+        metadata: {
+          ...context.metadata,
+          twoFactorEnabled: true,
+          twoFactorSecret: user.twoFactorSecret,
+          twoFactorMethod: user.twoFactorMethod || 'AUTHENTICATOR_APP'
+        }
+      }
+
+      this.logger.debug(`[initiateOtpOr2faFlow] SLT payload metadata: ${JSON.stringify(sltPayload.metadata)}`)
+
+      const sltToken = await this.sltService.createAndStoreSltToken(sltPayload)
       this.cookieService.setSltCookie(res, sltToken, purpose)
       return {
         message: 'auth.success.login.2faRequired',
@@ -493,21 +505,37 @@ export class AuthVerificationService {
    */
   private async verifyAuthenticationCode(sltContext: SltContextData & { sltJti: string }, code: string): Promise<void> {
     const { userId, purpose, metadata, sltJti } = sltContext
-    const { twoFactorMethod, totpSecret, twoFactorSecret } = metadata || {}
+    const { twoFactorMethod, totpSecret, twoFactorSecret, twoFactorEnabled } = metadata || {}
+
+    // Enhanced debug logging
+    this.logger.debug(`[verifyAuthenticationCode] UserID: ${userId}, Purpose: ${purpose}`)
+    this.logger.debug(`[verifyAuthenticationCode] Metadata: ${JSON.stringify(metadata)}`)
+    this.logger.debug(
+      `[verifyAuthenticationCode] twoFactorEnabled: ${twoFactorEnabled}, totpSecret: ${!!totpSecret}, twoFactorSecret: ${!!twoFactorSecret}`
+    )
 
     try {
-      // Xác định phương thức xác thực và thực hiện
+      // Xác định phương thức xác thực dựa trên metadata và purpose
       const has2FASecret = totpSecret || twoFactorSecret
-      const is2FAMethod = twoFactorMethod && (twoFactorMethod as string) !== 'EMAIL'
+      const isUserHas2FA = twoFactorEnabled || has2FASecret
       const isSetup2FA = purpose === TypeOfVerificationCode.SETUP_2FA
 
-      if (is2FAMethod || (isSetup2FA && has2FASecret)) {
+      // Với LOGIN purpose, ưu tiên 2FA nếu user có enable
+      // Với SETUP_2FA purpose, dùng 2FA nếu có secret (trong quá trình setup)
+      // Các purpose khác dùng OTP via email
+      const should2FA = (purpose === TypeOfVerificationCode.LOGIN && isUserHas2FA) || (isSetup2FA && has2FASecret)
+
+      this.logger.debug(
+        `[verifyAuthenticationCode] Decision: has2FASecret=${!!has2FASecret}, isUserHas2FA=${isUserHas2FA}, should2FA=${should2FA}`
+      )
+
+      if (should2FA) {
         this.logger.debug(
-          `Verifying with two-factor method: ${twoFactorMethod || 'AUTHENTICATOR_APP'} for purpose: ${purpose}`
+          `[verifyAuthenticationCode] Verifying with two-factor method: ${twoFactorMethod || 'AUTHENTICATOR_APP'} for purpose: ${purpose}`
         )
         await this.verifyWith2FA(code, userId, has2FASecret, twoFactorMethod, purpose)
       } else {
-        this.logger.debug(`Verifying with OTP method for purpose: ${purpose}`)
+        this.logger.debug(`[verifyAuthenticationCode] Verifying with OTP method for purpose: ${purpose}`)
         await this.verifyWithOtp(code, sltContext)
       }
     } catch (error) {

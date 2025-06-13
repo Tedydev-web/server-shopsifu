@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
-import { TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+import { REDIS_SERVICE, TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
 
 import { ITokenService, ISLTService, SltContextData, SltJwtPayload } from 'src/routes/auth/auth.types'
 import {
@@ -26,7 +26,7 @@ export class SLTService implements ISLTService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly redisService: RedisService,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
     private readonly jwtService: JwtService
   ) {}
@@ -166,13 +166,13 @@ export class SLTService implements ISLTService {
     try {
       // Get SLT context to extract userId and purpose for cleanup
       const sltContext = await this.getSltContext(sltJti)
-      
+
       // Atomic cleanup: finalize context and remove active mapping
       await Promise.all([
         this.updateSltContext(sltJti, { finalized: '1' }),
         this.cleanupActiveTokenMapping(sltContext.userId, sltContext.purpose)
       ])
-      
+
       this.logger.log(`[finalizeSlt] Finalized SLT for jti: ${sltJti}`)
     } catch (error) {
       // If context doesn't exist, just try to finalize what we can
@@ -409,7 +409,7 @@ export class SLTService implements ISLTService {
     try {
       // Get existing JTI to cleanup (if any)
       const existingJti = await this.redisService.get(activeTokenKey)
-      
+
       // Prepare context data for Redis
       const contextForRedis = this.prepareSltContextForRedis(sltContextData)
 
@@ -508,10 +508,12 @@ export class SLTService implements ISLTService {
       sltContextForRedis.email = sltContextData.email
     }
     if (sltContextData.metadata) {
-      sltContextForRedis.metadata =
+      const metadataString =
         typeof sltContextData.metadata === 'object'
           ? JSON.stringify(sltContextData.metadata)
           : String(sltContextData.metadata)
+      sltContextForRedis.metadata = metadataString
+      this.logger.debug(`[prepareSltContextForRedis] Storing metadata: ${metadataString}`)
     }
 
     return sltContextForRedis
@@ -546,6 +548,7 @@ export class SLTService implements ISLTService {
     if (redisContext.metadata) {
       try {
         parsedContext.metadata = JSON.parse(redisContext.metadata)
+        this.logger.debug(`[parseSltContextFromRedis] Retrieved metadata: ${redisContext.metadata}`)
       } catch {
         this.logger.warn(`[parseSltContextFromRedis] Failed to parse metadata: ${redisContext.metadata}`)
         parsedContext.metadata = { value: redisContext.metadata }

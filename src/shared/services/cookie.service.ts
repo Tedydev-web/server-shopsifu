@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Response } from 'express'
 import { ConfigService } from '@nestjs/config'
-import { CookieNames, TypeOfVerificationCodeType } from 'src/routes/auth/auth.constants'
 import { ICookieService, CookieConfig } from 'src/routes/auth/auth.types'
 import { GlobalError } from '../global.error'
 

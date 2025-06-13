@@ -3,7 +3,6 @@ import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
 import { User, Prisma, Role, UserProfile, Permission, TwoFactorMethodType } from '@prisma/client'
 import { UserError } from './user.error'
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
-import { Permission as PermissionModel } from 'src/routes/permission/permission.model'
 
 export interface TwoFactorSettings {
   secret: string | null

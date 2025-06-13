@@ -2,6 +2,7 @@ import { Global, Module, forwardRef } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { JwtModule } from '@nestjs/jwt'
 import { Logger } from '@nestjs/common'
+import { ClsModule } from 'nestjs-cls'
 import Redis from 'ioredis'
 
 import { CookieService } from './services/cookie.service'
@@ -26,7 +27,8 @@ import {
   HASHING_SERVICE,
   SLT_SERVICE,
   TOKEN_SERVICE,
-  USER_AGENT_SERVICE
+  USER_AGENT_SERVICE,
+  REDIS_SERVICE
 } from './constants/injection.tokens'
 import { IORedisKey } from './providers/redis/redis.constants'
 import { UserModule } from 'src/routes/user/user.module'
@@ -54,7 +56,8 @@ const tokenProviders = [
   { provide: HASHING_SERVICE, useClass: HashingService },
   { provide: SLT_SERVICE, useClass: SLTService },
   { provide: TOKEN_SERVICE, useClass: TokenService },
-  { provide: USER_AGENT_SERVICE, useClass: UserAgentService }
+  { provide: USER_AGENT_SERVICE, useClass: UserAgentService },
+  { provide: REDIS_SERVICE, useClass: RedisService }
 ]
 
 const redisClientProvider = {
@@ -96,7 +99,15 @@ const allExports = [...serviceClasses, ...guardClasses, ...tokenProviders, redis
 
 @Global()
 @Module({
-  imports: [ConfigModule, JwtModule, forwardRef(() => UserModule)],
+  imports: [
+    ConfigModule,
+    JwtModule,
+    ClsModule.forRoot({
+      global: true,
+      middleware: { mount: true }
+    }),
+    forwardRef(() => UserModule)
+  ],
   providers: allProviders,
   exports: allExports
 })

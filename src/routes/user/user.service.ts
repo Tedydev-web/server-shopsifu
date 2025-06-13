@@ -30,7 +30,7 @@ import { Permission } from 'src/routes/permission/permission.model'
 // ================================================================
 // Constants & Injection Tokens
 // ================================================================
-import { HASHING_SERVICE } from 'src/shared/constants/injection.tokens'
+import { HASHING_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { EMAIL_SERVICE } from 'src/shared/constants/injection.tokens'
 
 // ================================================================
@@ -59,7 +59,7 @@ export class UserService {
   constructor(
     private readonly userRepository: UserRepository,
     private readonly roleRepository: RoleRepository,
-    private readonly redisService: RedisService,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
     private readonly i18nService: I18nService<I18nTranslations>,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,

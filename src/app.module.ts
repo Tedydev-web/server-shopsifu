@@ -11,7 +11,6 @@ import { PermissionModule } from './routes/permission/permission.module'
 import { ProfileModule } from './routes/profile/profile.module'
 import { RoleModule } from './routes/role/role.module'
 import { UserModule } from './routes/user/user.module'
-import { ClsModule } from './shared/providers/cls/cls.module'
 import appConfig from './shared/config'
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
 import { ResponseInterceptor } from './shared/interceptors/response.interceptor'
@@ -24,7 +23,6 @@ import { EventEmitterModule } from '@nestjs/event-emitter'
 @Module({
   imports: [
     EventEmitterModule.forRoot(),
-    ClsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [appConfig]

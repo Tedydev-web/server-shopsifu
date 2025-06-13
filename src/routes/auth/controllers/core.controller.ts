@@ -115,7 +115,7 @@ export class CoreController {
     this.logger.log(`[getUICapabilities] Fetching UI capabilities for user ${user.id}`)
 
     const userPermissions = await this.userService.getUserPermissions(user.id)
-    const ability = this.caslAbilityFactory.createForUser(user, userPermissions)
+    const ability = await this.caslAbilityFactory.createForUser(user, userPermissions)
 
     const capabilities: Record<string, Record<string, boolean>> = {}
 
@@ -123,7 +123,6 @@ export class CoreController {
       const { subject, action } = permDef
       const actionEnum = this.mapToActionEnum(action)
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (ability.can(actionEnum, subject as any)) {
         if (!capabilities[subject]) {
           capabilities[subject] = {}

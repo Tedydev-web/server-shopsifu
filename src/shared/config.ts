@@ -98,7 +98,6 @@ if (!configServer.success) {
 }
 
 const parsedConfig = configServer.data
-const isProduction = parsedConfig.NODE_ENV === 'production'
 const isDevlopment = parsedConfig.NODE_ENV === 'development'
 
 /**
@@ -112,7 +111,7 @@ const convertMs = (value: string, defaultValue: number): number => {
     }
     console.warn(`[Config] Invalid time string: '${value}'. Using default: ${defaultValue}ms.`)
     return defaultValue
-  } catch (error) {
+  } catch {
     console.warn(`[Config] Error parsing time: '${value}'. Using default: ${defaultValue}ms.`)
     return defaultValue
   }

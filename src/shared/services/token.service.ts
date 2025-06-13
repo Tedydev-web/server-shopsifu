@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { Request } from 'express'
@@ -13,6 +13,7 @@ import {
 } from 'src/routes/auth/auth.types'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
+import { REDIS_SERVICE } from '../constants/injection.tokens'
 
 @Injectable()
 export class TokenService implements ITokenService {
@@ -20,7 +21,7 @@ export class TokenService implements ITokenService {
 
   constructor(
     private readonly jwtService: JwtService,
-    private readonly redisService: RedisService,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService,
     private readonly configService: ConfigService
   ) {}
 

@@ -103,7 +103,7 @@ export class CryptoService {
       if (asObject) {
         try {
           return JSON.parse(decrypted) as T
-        } catch (e) {
+        } catch {
           return decrypted as unknown as T
         }
       }

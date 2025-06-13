@@ -1,11 +1,11 @@
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common'
 import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { CRYPTO_SERVICE } from 'src/shared/constants/injection.tokens'
+import { CRYPTO_SERVICE, REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { CryptoService } from 'src/shared/services/crypto.service'
 import { isObject } from 'src/shared/utils/type-guards.utils'
 import { safeNumber } from 'src/shared/utils/validation.utils'
+import { RedisService } from 'src/shared/services'
 
 export interface Session {
   id: string
@@ -45,8 +45,9 @@ export class SessionRepository {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly redisService: RedisService,
-    @Inject(CRYPTO_SERVICE) @Optional() private readonly cryptoService?: CryptoService
+    @Inject(CRYPTO_SERVICE) @Optional() private readonly cryptoService?: CryptoService,
+    // Inject RedisService to interact with Redis
+    @Inject(REDIS_SERVICE) private readonly redisService?: RedisService
   ) {}
 
   /**

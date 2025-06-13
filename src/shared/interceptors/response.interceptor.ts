@@ -20,7 +20,6 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, SuccessRespons
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<SuccessResponse<T>> {
     const httpContext = context.switchToHttp()
-    const request = httpContext.getRequest()
     const response = httpContext.getResponse()
     const i18nContext = I18nContext.current()
 

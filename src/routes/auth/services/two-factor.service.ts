@@ -1,30 +1,24 @@
 // NestJS core modules
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { JwtService } from '@nestjs/jwt'
-import { I18nService, I18nContext } from 'nestjs-i18n'
 
 // External libraries
 import * as otplib from 'otplib'
 import { HashAlgorithms } from '@otplib/core'
 
 // Internal services
-import { OtpService } from './otp.service'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { SLTService } from 'src/shared/services/slt.service'
 import { EmailService } from 'src/shared/services/email.service'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
 
 // Repositories
 import { UserRepository } from 'src/routes/user/user.repository'
 import { RecoveryCodeRepository } from 'src/routes/auth/repositories'
-import { DeviceRepository } from 'src/shared/repositories/device.repository'
 
 // Types and interfaces
-import { ICookieService, ITokenService, IMultiFactorService } from 'src/routes/auth/auth.types'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { IMultiFactorService } from 'src/routes/auth/auth.types'
 
 // Constants and enums
 import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/routes/auth/auth.constants'
@@ -33,14 +27,13 @@ import { TypeOfVerificationCode, TwoFactorMethodType } from 'src/routes/auth/aut
 import { AuthError } from '../auth.error'
 import { GlobalError } from 'src/shared/global.error'
 import {
-  COOKIE_SERVICE,
   EMAIL_SERVICE,
   GEOLOCATION_SERVICE,
   HASHING_SERVICE,
   SLT_SERVICE,
-  TOKEN_SERVICE,
   USER_AGENT_SERVICE
 } from 'src/shared/constants/injection.tokens'
+import { I18nContext } from 'nestjs-i18n'
 
 /**
  * Cấu hình và hằng số
@@ -68,16 +61,9 @@ export class TwoFactorService implements IMultiFactorService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly i18nService: I18nService<I18nTranslations>,
-    @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
-    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
-    private readonly otpService: OtpService,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
     private readonly userRepository: UserRepository,
     private readonly recoveryCodeRepository: RecoveryCodeRepository,
-    private readonly deviceRepository: DeviceRepository,
-    private readonly redisService: RedisService,
-    private readonly jwtService: JwtService,
     @Inject(SLT_SERVICE) private readonly sltService: SLTService,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
@@ -189,6 +175,15 @@ export class TwoFactorService implements IMultiFactorService {
       }
 
       case TwoFactorMethodType.RECOVERY_CODE: {
+        // Kiểm tra user tồn tại và 2FA đã được enable
+        const user = await this.userRepository.findById(context.userId)
+        if (!user) {
+          throw GlobalError.NotFound('user')
+        }
+        if (!user.twoFactorEnabled) {
+          throw AuthError.TOTPNotEnabled()
+        }
+
         const isVerified = await this.verifyRecoveryCode(context.userId, code)
         if (!isVerified) {
           throw AuthError.InvalidRecoveryCode()
@@ -349,6 +344,12 @@ export class TwoFactorService implements IMultiFactorService {
     if (!user) {
       this.logger.error(`[verifyByMethod] Không tìm thấy người dùng với ID ${userId}`)
       throw GlobalError.NotFound('user')
+    }
+
+    // Kiểm tra trạng thái 2FA trước khi verify bất kỳ method nào
+    if (!user.twoFactorEnabled) {
+      this.logger.warn(`[verifyByMethod] 2FA is not enabled for user ${userId}. Cannot verify ${method} code.`)
+      throw AuthError.TOTPNotEnabled()
     }
 
     // Xác minh theo phương thức cụ thể

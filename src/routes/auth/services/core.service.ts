@@ -1,19 +1,16 @@
-import { Injectable, Logger, Inject, forwardRef, InternalServerErrorException, HttpStatus } from '@nestjs/common'
+import { Injectable, Logger, Inject, forwardRef, HttpStatus } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { I18nService } from 'nestjs-i18n'
 import { Response, Request } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 
 // Prisma Types
-import { User, Device, Role, UserProfile, Permission } from '@prisma/client'
+import { User, Device, Role, UserProfile } from '@prisma/client'
 
 // Internal Services
 import { HashingService } from 'src/shared/services/hashing.service'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { EmailService } from 'src/shared/services/email.service'
 
 // Auth Services
-import { OtpService } from './otp.service'
 import { DeviceService } from './device.service'
 import { SessionsService } from 'src/routes/auth/services/session.service'
 import { AuthVerificationService } from './auth-verification.service'
@@ -43,7 +40,8 @@ import {
   HASHING_SERVICE,
   SLT_SERVICE,
   TOKEN_SERVICE,
-  EMAIL_SERVICE
+  EMAIL_SERVICE,
+  REDIS_SERVICE
 } from 'src/shared/constants/injection.tokens'
 
 // Utils
@@ -53,11 +51,11 @@ import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 import { AuthError } from '../auth.error'
 import { ApiException } from 'src/shared/exceptions/api.exception'
 import { GlobalError } from 'src/shared/global.error'
-import { I18nTranslations } from 'src/generated/i18n.generated'
 import { DeviceRepository } from 'src/shared/repositories/device.repository'
 import { UserRepository, UserWithProfileAndRole } from 'src/routes/user/user.repository'
 import { ProfileRepository } from 'src/routes/profile/profile.repository'
 import { RoleRepository } from 'src/routes/role/role.repository'
+import { RedisService } from 'src/shared/providers/redis/redis.service'
 
 interface RegisterUserParams {
   userId: number
@@ -77,24 +75,22 @@ export class CoreService implements ILoginFinalizerService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly i18nService: I18nService<I18nTranslations>,
     private readonly userRepository: UserRepository,
     private readonly profileRepository: ProfileRepository,
     @Inject(forwardRef(() => RoleRepository)) private readonly roleRepository: RoleRepository,
     private readonly deviceRepository: DeviceRepository,
-    private readonly otpService: OtpService,
     private readonly sessionRepository: SessionRepository,
     @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService,
     @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
-    private readonly redisService: RedisService,
     @Inject(SLT_SERVICE) private readonly sltService: ISLTService,
     @Inject(DEVICE_SERVICE) private readonly deviceService?: DeviceService,
     @Inject(forwardRef(() => SessionsService)) private readonly sessionsService?: SessionsService,
     @Inject(forwardRef(() => UserService)) private readonly userService?: UserService,
     @Inject(forwardRef(() => AuthVerificationService))
     private readonly authVerificationService?: AuthVerificationService,
-    @Inject(EMAIL_SERVICE) private readonly emailService?: EmailService
+    @Inject(EMAIL_SERVICE) private readonly emailService?: EmailService,
+    @Inject(REDIS_SERVICE) private readonly redisService?: RedisService
   ) {}
 
   /**

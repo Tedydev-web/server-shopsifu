@@ -14,7 +14,7 @@ import {
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
 import { PermissionGuard } from 'src/shared/guards/permission.guard'
-import { CreateRoleDto, RoleDto, UpdateRoleDto } from './role.dto'
+import { CreateRoleDto, UpdateRoleDto } from './role.dto'
 import { RoleService } from './role.service'
 import { Action, AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
 import { Role } from './role.model'

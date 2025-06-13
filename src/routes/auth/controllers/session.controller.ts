@@ -13,8 +13,7 @@ import {
   Res,
   Inject,
   forwardRef,
-  Delete,
-  UseGuards
+  Delete
 } from '@nestjs/common'
 import { SessionsService } from '../services/session.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -33,7 +32,6 @@ import { Auth } from 'src/shared/decorators/auth.decorator'
 import { AuthVerificationService } from '../services/auth-verification.service'
 import { AuthError } from '../auth.error'
 import { CurrentUserContext } from 'src/shared/types/current-user-context.type'
-import { GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
 import { AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
 import { Action } from 'src/shared/providers/casl/casl-ability.factory'
 import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'

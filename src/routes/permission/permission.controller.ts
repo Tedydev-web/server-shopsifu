@@ -9,8 +9,7 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
-  UseGuards,
-  Query
+  UseGuards
 } from '@nestjs/common'
 import { Auth } from 'src/shared/decorators/auth.decorator'
 import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'

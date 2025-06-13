@@ -8,7 +8,6 @@ import { Device } from '@prisma/client'
 
 // Internal services
 import { PrismaService } from 'src/shared/providers/prisma/prisma.service'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
 import { GeolocationService } from 'src/shared/services/geolocation.service'
 import { EmailService } from 'src/shared/services/email.service'
 import { UserAgentService } from 'src/shared/services/user-agent.service'
@@ -22,12 +21,18 @@ import { I18nTranslations } from 'src/generated/i18n.generated'
 import { UserWithProfileAndRole } from 'src/routes/user/user.repository'
 
 // Constants and utilities
-import { EMAIL_SERVICE, GEOLOCATION_SERVICE, USER_AGENT_SERVICE } from 'src/shared/constants/injection.tokens'
+import {
+  EMAIL_SERVICE,
+  GEOLOCATION_SERVICE,
+  REDIS_SERVICE,
+  USER_AGENT_SERVICE
+} from 'src/shared/constants/injection.tokens'
 import { DEVICE_REVERIFICATION_TTL } from 'src/shared/providers/redis/redis.constants'
 import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 
 // Errors
 import { GlobalError } from 'src/shared/global.error'
+import { RedisService } from 'src/shared/services'
 
 /**
  * Kết quả đánh giá rủi ro thiết bị
@@ -72,14 +77,14 @@ export class DeviceService implements IDeviceService {
   private readonly deviceDataExpirationDays: number
 
   constructor(
-    private readonly redisService: RedisService,
     private readonly i18nService: I18nService<I18nTranslations>,
     private readonly configService: ConfigService,
     private readonly deviceRepository: DeviceRepository,
     @Inject(EMAIL_SERVICE) private readonly emailService: EmailService,
     @Inject(GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
     private readonly prisma: PrismaService,
-    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
+    @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
+    @Inject(REDIS_SERVICE) private readonly redisService: RedisService
   ) {
     this.maxAllowedDevices = this.configService.get<number>('MAX_DEVICES_PER_USER', 10)
     this.deviceTrustExpirationDays = this.configService.get<number>('DEVICE_TRUST_EXPIRATION_DAYS', 30)
@@ -241,8 +246,6 @@ export class DeviceService implements IDeviceService {
         const lastWarning = await this.redisService.get(warningKey)
 
         if (!lastWarning) {
-          const lang = I18nContext.current()?.lang ?? 'vi'
-          // Gửi email cảnh báo
           await this.emailService.sendDeviceLimitWarningEmail(user.email, {
             userName: user.userProfile?.username || user.email.split('@')[0],
             details: [
