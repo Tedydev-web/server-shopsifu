@@ -11,10 +11,6 @@ export interface GeoLocationResult {
   display: string
 }
 
-/**
- * Service quản lý việc xác định vị trí địa lý từ IP address
- * Hỗ trợ cache, fallback và development mode
- */
 @Injectable()
 export class GeolocationService {
   private readonly logger = new Logger(GeolocationService.name)
@@ -30,16 +26,6 @@ export class GeolocationService {
     this.isDevMode = this.configService.get('NODE_ENV') !== 'production'
   }
 
-  // ================================================================
-  // Public Methods - Geolocation API
-  // ================================================================
-
-  /**
-   * Lấy thông tin vị trí từ IP address với cache và xử lý lỗi
-   * Hỗ trợ các trường hợp: Local IP, Development mode, External API
-   * @param ip - IP address cần tra cứu
-   * @returns Thông tin vị trí địa lý
-   */
   async getLocationFromIP(ip: string | null | undefined): Promise<GeoLocationResult> {
     // Normalize IP - handle null, undefined, or empty string
     const normalizedIp = ip || ''
@@ -52,9 +38,6 @@ export class GeolocationService {
     // Kiểm tra cache - tránh gọi API không cần thiết
     const cachedResult = this.ipCache.get(normalizedIp)
     if (cachedResult && Date.now() - cachedResult.timestamp < this.CACHE_DURATION) {
-      this.logger.debug(
-        `[getLocationFromIP] Trả về kết quả từ cache cho IP ${normalizedIp}: ${cachedResult.location.display}`
-      )
       return cachedResult.location
     }
 
@@ -72,9 +55,7 @@ export class GeolocationService {
       // Lưu kết quả vào cache
       this.ipCache.set(normalizedIp, { location: response, timestamp: Date.now() })
       return response
-    } catch (error) {
-      this.logger.error(`Lỗi khi lấy thông tin location từ IP ${normalizedIp}: ${error.message}`)
-
+    } catch {
       // Trả về fallback location phù hợp dựa trên IP
       const fallbackLocation = this.getFallbackLocation(normalizedIp)
       this.ipCache.set(normalizedIp, { location: fallbackLocation, timestamp: Date.now() })
@@ -82,15 +63,6 @@ export class GeolocationService {
     }
   }
 
-  // ================================================================
-  // Private Methods - Utility & Helper Functions
-  // ================================================================
-
-  /**
-   * Kiểm tra xem IP có phải là local/private IP không
-   * @param ip - IP address cần kiểm tra
-   * @returns true nếu là local IP
-   */
   private isLocalIP(ip: string): boolean {
     // Kiểm tra type safety - đảm bảo ip là string hợp lệ
     if (!ip || typeof ip !== 'string') {
@@ -122,12 +94,6 @@ export class GeolocationService {
     )
   }
 
-  /**
-   * Tạo mock location cho development environment dựa trên IP
-   * Giúp tránh gọi API thực tế trong quá trình phát triển
-   * @param ip - IP address làm seed cho mock data
-   * @returns Mock location data
-   */
   private getDevModeLocation(ip: string): GeoLocationResult {
     // Tạo mock location đa dạng dựa trên phần cuối của IP
     const ipParts = ip.split('.')
@@ -189,16 +155,6 @@ export class GeolocationService {
     return locations[lastPart % locations.length]
   }
 
-  // ================================================================
-  // Private Methods - External API Integration
-  // ================================================================
-
-  /**
-   * Gọi API thực tế để lấy thông tin geolocation từ IP
-   * Sử dụng ip-api.com (miễn phí, giới hạn 45 requests/phút)
-   * @param ip - IP address cần tra cứu
-   * @returns Thông tin location từ API
-   */
   private async callIPGeolocationAPI(ip: string): Promise<GeoLocationResult> {
     // Timeout để tránh chờ quá lâu
     const timeoutMs = 2000
@@ -219,32 +175,18 @@ export class GeolocationService {
       throw new Error('Không thể xác định location từ dữ liệu API')
     } catch (error) {
       // Thử API backup nếu API chính bị lỗi
-      try {
-        const response = await axios.get(`https://ipapi.co/${ip}/json/`, { timeout: timeoutMs })
+      const response = await axios.get(`https://ipapi.co/${ip}/json/`, { timeout: timeoutMs })
 
-        if (response.data && !response.data.error) {
-          const { country_name, city, latitude, longitude, timezone } = response.data
-          const display = city && country_name ? `${city}, ${country_name}` : country_name || 'Unknown Location'
-          return { country: country_name, city, lat: latitude, lon: longitude, timezone, display }
-        }
-      } catch (innerError) {
-        this.logger.error(`Lỗi khi gọi backup API: ${innerError.message}`)
+      if (response.data && !response.data.error) {
+        const { country_name, city, latitude, longitude, timezone } = response.data
+        const display = city && country_name ? `${city}, ${country_name}` : country_name || 'Unknown Location'
+        return { country: country_name, city, lat: latitude, lon: longitude, timezone, display }
       }
 
       throw error // Re-throw lỗi để xử lý ở tầng cao hơn
     }
   }
 
-  // ================================================================
-  // Private Methods - Fallback & Default Logic
-  // ================================================================
-
-  /**
-   * Trả về fallback location dựa trên IP khi các API bị lỗi
-   * Sử dụng logic đơn giản dựa trên octet đầu của IP
-   * @param ip - IP address để tạo fallback
-   * @returns Fallback location data
-   */
   private getFallbackLocation(ip: string): GeoLocationResult {
     // Tạo location dựa trên octet đầu tiên của IP
     try {

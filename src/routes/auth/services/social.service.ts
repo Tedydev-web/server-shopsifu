@@ -48,9 +48,6 @@ import {
   GoogleCallbackAccountExistsWithoutLinkResult
 } from '../auth.types'
 
-/**
- * Interface để lưu thông tin state khi tạo URL xác thực Google
- */
 interface GoogleAuthStateType {
   nonce: string
   flow?: string
@@ -81,9 +78,6 @@ export class SocialService {
     this.initOAuth2Client()
   }
 
-  /**
-   * Khởi tạo OAuth2Client
-   */
   private initOAuth2Client(): void {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID')
     const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET')
@@ -106,11 +100,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Lấy URL xác thực Google
-   * @param stateParams Thông tin cần lưu trong state
-   * @returns URL xác thực và nonce
-   */
   getGoogleAuthUrl(stateParams: GoogleAuthStateType): { url: string; nonce: string } {
     const nonce = stateParams.nonce || crypto.randomBytes(16).toString('hex')
     this.logger.debug(`[getGoogleAuthUrl] Tạo URL xác thực Google với nonce: ${nonce}`)
@@ -167,10 +156,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Lấy tokens từ Google sau khi xác thực
-   * @param code Authorization code từ Google
-   */
   async getGoogleTokens(code: string) {
     try {
       const { tokens } = await this.oauth2Client.getToken(code)
@@ -181,10 +166,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Xác minh Google ID token
-   * @param idToken ID token cần xác minh
-   */
   async verifyGoogleIdToken(idToken: string): Promise<TokenPayload | undefined> {
     try {
       const ticket = await this.oauth2Client.verifyIdToken({
@@ -198,9 +179,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Xác thực và giải mã state từ Google callback
-   */
   private verifyAndDecodeState(
     state: string,
     originalNonceFromCookie?: string
@@ -276,9 +254,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Lấy và xác thực thông tin người dùng từ Google
-   */
   private async getAndVerifyGoogleUserInfo(code: string): Promise<
     | {
         googleId: string
@@ -374,9 +349,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Tạo đối tượng thông báo lỗi chuẩn
-   */
   private createErrorResponse(errorCode: string): GoogleCallbackErrorResult {
     const errorKeyMap: Record<string, string> = {
       MISSING_STATE: 'auth.error.social.googleCallbackError',
@@ -395,9 +367,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Tạo đối tượng yêu cầu liên kết tài khoản
-   */
   private createAccountLinkingResponse(
     existingUserId: number,
     existingUserEmail: string,
@@ -418,9 +387,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Tạo user từ thông tin Google
-   */
   private async createUserFromGoogle(googleId: string, email: string, name?: string | null, avatar?: string | null) {
     const nameParts = name ? name.split(' ') : ['', '']
     const lastName = nameParts.length > 1 ? nameParts.pop() || '' : ''
@@ -445,9 +411,6 @@ export class SocialService {
     })
   }
 
-  /**
-   * Xử lý callback từ Google OAuth
-   */
   async googleCallback({
     code,
     state,
@@ -574,9 +537,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Liên kết tài khoản Google
-   */
   async linkGoogleAccount(userId: number, googleIdToken: string): Promise<{ message: string }> {
     // Xác minh ID token
     const payload = await this.verifyGoogleIdToken(googleIdToken)
@@ -620,10 +580,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Hoàn tất hủy liên kết tài khoản Google sau khi đã xác thực.
-   * Hàm này không tự xác thực mà giả định việc xác thực đã được thực hiện bởi một service khác (VD: AuthVerificationService).
-   */
   async unlinkGoogleAccount(userId: number): Promise<{ message: string; data: { success: boolean } }> {
     // Lấy thông tin user
     const user = await this.userRepository.findByIdWithDetails(userId)
@@ -660,9 +616,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Lấy thông tin liên kết đang chờ
-   */
   async getPendingLinkDetails(req: Request): Promise<any> {
     const pendingLinkToken = req.cookies?.[CookieNames.OAUTH_PENDING_LINK]
 
@@ -687,9 +640,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Hoàn tất liên kết và đăng nhập
-   */
   async completeLinkAndLogin(
     pendingLinkToken: string,
     password: string,
@@ -743,9 +693,6 @@ export class SocialService {
     }
   }
 
-  /**
-   * Hủy liên kết đang chờ
-   */
   cancelPendingLink(req: Request, res: Response): { message: string } {
     try {
       // Xóa cookie liên kết

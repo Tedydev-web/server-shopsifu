@@ -21,14 +21,6 @@ import { OtpData, IOTPService } from 'src/routes/auth/auth.types'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { I18nContext } from 'nestjs-i18n'
 
-/**
- * Service quản lý OTP (One-Time Password) cho các quy trình xác thực
- * - Tạo và gửi mã OTP qua email
- * - Xác minh mã OTP từ người dùng
- * - Quản lý thời gian sống và giới hạn thử lại
- * - Hỗ trợ đa ngôn ngữ cho email OTP
- */
-
 @Injectable()
 export class OtpService implements IOTPService {
   private readonly logger = new Logger(OtpService.name)
@@ -43,12 +35,6 @@ export class OtpService implements IOTPService {
     @Inject(USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService
   ) {}
 
-  /**
-   * Tạo mã OTP ngẫu nhiên gồm các chữ số
-   * Sử dụng thuật toán random để tạo chuỗi số ngẫu nhiên
-   * @param length - Độ dài mã OTP (mặc định từ constants)
-   * @returns Chuỗi OTP gồm các chữ số
-   */
   generateOTP(length: number = OTP_LENGTH): string {
     const digits = '0123456789'
     let OTP = ''
@@ -58,27 +44,10 @@ export class OtpService implements IOTPService {
     return OTP
   }
 
-  /**
-   * Tạo Redis key cho việc lưu trữ OTP data
-   * Sử dụng pattern chuẩn để đảm bảo tính nhất quán
-   * @param type - Loại verification code
-   * @param identifier - Định danh (thường là email)
-   * @returns Redis key string
-   */
   private getOtpKey(type: TypeOfVerificationCodeType, identifier: string): string {
     return RedisKeyManager.getOtpDataKey(type, identifier)
   }
 
-  /**
-   * Xây dựng context cho email OTP với thông tin chi tiết về device và location
-   * Bao gồm thông tin về thiết bị, vị trí địa lý, và metadata khác
-   * @param targetEmail - Email đích
-   * @param type - Loại verification
-   * @param otpCode - Mã OTP
-   * @param lang - Ngôn ngữ email ('vi' | 'en')
-   * @param metadata - Metadata bổ sung (IP, userAgent, v.v.)
-   * @returns Context object cho email template
-   */
   private async _buildOtpEmailContext(
     targetEmail: string,
     type: TypeOfVerificationCodeType,
@@ -126,13 +95,6 @@ export class OtpService implements IOTPService {
     }
   }
 
-  /**
-   * Gửi mã OTP qua email
-   * @param targetEmail - Email đích nhận OTP
-   * @param type - Loại verification code
-   * @param metadata - Thông tin bổ sung (IP, userAgent, userName, v.v.)
-   * @returns Kết quả gửi OTP với verification type
-   */
   async sendOTP(
     targetEmail: string,
     type: TypeOfVerificationCodeType,
@@ -162,12 +124,8 @@ export class OtpService implements IOTPService {
           const safeLang: 'vi' | 'en' = preferredLang === 'en' || preferredLang === 'vi' ? preferredLang : 'vi'
           const emailContext = await this._buildOtpEmailContext(targetEmail, type, otpCode, safeLang, metadata)
           await this.emailService.sendOtpEmail(targetEmail, type, emailContext)
-          this.logger.log(`[sendOTP] OTP email sent to ${targetEmail} for purpose ${type}. Code: ${otpCode}`)
-        } else {
-          this.logger.warn('[sendOTP] EmailService not injected, cannot send OTP email.')
         }
-      } catch (error) {
-        this.logger.error(`[sendOTP] Error sending OTP email to ${targetEmail}: ${error.message}`, error.stack)
+      } catch {
         throw AuthError.OTPSendingFailed()
       }
 
@@ -184,7 +142,6 @@ export class OtpService implements IOTPService {
         data: responseData
       }
     } catch (error) {
-      this.logger.error(`[sendOTP] Lỗi gửi OTP: ${error.message}`, error.stack)
       if (error instanceof HttpException) {
         throw error
       }
@@ -192,17 +149,8 @@ export class OtpService implements IOTPService {
     }
   }
 
-  /**
-   * Xác minh mã OTP từ người dùng
-   * Thực hiện các bước kiểm tra: tồn tại, hết hạn, số lần thử, so sánh mã
-   * @param emailToVerifyAgainst - Email để xác minh OTP
-   * @param code - Mã OTP từ người dùng nhập
-   * @param type - Loại verification code
-   * @returns `true` nếu hợp lệ, ngược lại sẽ throw exception
-   */
   async verifyOTP(emailToVerifyAgainst: string, code: string, type: TypeOfVerificationCodeType): Promise<boolean> {
     const otpKey = this.getOtpKey(type, emailToVerifyAgainst)
-    this.logger.debug(`[verifyOTP] Xác minh OTP cho key: ${otpKey}`)
 
     try {
       const otpData = await this.getOtpData(otpKey)
@@ -212,35 +160,22 @@ export class OtpService implements IOTPService {
       await this.checkOtpExpiry(otpKey, otpData.createdAt)
 
       if (otpData.code !== code) {
-        this.logger.warn(`[verifyOTP] Mã OTP không chính xác cho key ${otpKey}`)
-
         await this.redisService.hincrby(otpKey, 'attempts', 1)
         throw AuthError.InvalidOTP()
       }
 
       await this.redisService.del(otpKey)
-      this.logger.log(`[verifyOTP] OTP cho key ${otpKey} đã được xác minh thành công và đã xóa`)
       return true
     } catch (error) {
       if (error instanceof HttpException) throw error
-
-      this.logger.error(`[verifyOTP] Lỗi xác minh OTP cho key ${otpKey}: ${error.message}`, error.stack)
 
       throw AuthError.InvalidOTP()
     }
   }
 
-  /**
-   * Lấy dữ liệu OTP từ Redis và parse thành object
-   * Xử lý deserialization của metadata và các trường số
-   * @param otpKey - Redis key chứa OTP data
-   * @returns Parsed OTP data object
-   * @throws AuthError.OTPExpired nếu không tìm thấy data
-   */
   private async getOtpData(otpKey: string): Promise<OtpData> {
     const rawOtpData = await this.redisService.hgetall(otpKey)
     if (!rawOtpData || Object.keys(rawOtpData).length === 0) {
-      this.logger.warn(`[getOtpData] Không tìm thấy dữ liệu OTP cho key: ${otpKey}`)
       throw AuthError.OTPExpired()
     }
 
@@ -263,7 +198,6 @@ export class OtpService implements IOTPService {
         otpData.metadata = JSON.parse(rawOtpData.metadata)
       } catch (_e) {
         void _e
-        this.logger.warn(`[getOtpData] Không thể parse OTP metadata: ${rawOtpData.metadata}`)
         otpData.metadata = { raw: rawOtpData.metadata }
       }
     }
@@ -271,37 +205,20 @@ export class OtpService implements IOTPService {
     return otpData
   }
 
-  /**
-   * Kiểm tra số lần thử tối đa để ngăn chặn brute force attack
-   * Tự động xóa OTP nếu vượt quá giới hạn
-   * @param otpKey - Redis key chứa OTP data
-   * @throws AuthError.TooManyOTPAttempts nếu vượt quá giới hạn
-   */
   private async checkOtpMaxAttempts(otpKey: string): Promise<void> {
     const maxAttempts = this.configService.get<number>('OTP_MAX_ATTEMPTS', 5)
     const currentAttempts = parseInt((await this.redisService.hget(otpKey, 'attempts')) || '0', 10)
 
     if (currentAttempts >= maxAttempts) {
-      this.logger.warn(`[checkOtpMaxAttempts] Vượt quá số lần thử tối đa cho key: ${otpKey}. Đang xóa OTP`)
-
       await this.redisService.del(otpKey)
       throw AuthError.TooManyOTPAttempts()
     }
   }
 
-  /**
-   * Kiểm tra OTP có hết hạn hay không dựa trên timestamp
-   * Tự động xóa OTP đã hết hạn khỏi Redis
-   * @param otpKey - Redis key chứa OTP data
-   * @param createdAtTimestamp - Timestamp khi OTP được tạo (milliseconds)
-   * @throws AuthError.OTPExpired nếu OTP đã hết hạn
-   */
   private async checkOtpExpiry(otpKey: string, createdAtTimestamp: number): Promise<void> {
     const otpExpirySeconds = this.configService.get<number>('OTP_EXPIRY_SECONDS', 300)
 
     if (Date.now() > createdAtTimestamp + otpExpirySeconds * 1000) {
-      this.logger.warn(`[checkOtpExpiry] OTP đã hết hạn cho key: ${otpKey}. Đang xóa`)
-
       await this.redisService.del(otpKey)
       throw AuthError.OTPExpired()
     }

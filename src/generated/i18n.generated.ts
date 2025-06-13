@@ -441,6 +441,8 @@ export type I18nTranslations = {
         "success": {
             "get": string;
             "update": string;
+            "retrieved": string;
+            "updated": string;
         };
     };
     "role": {

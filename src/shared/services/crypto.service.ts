@@ -17,21 +17,12 @@ export class CryptoService {
     const key = this.configService.get<string>('ENCRYPTION_KEY')
 
     if (!key) {
-      this.logger.warn(
-        'ENCRYPTION_KEY is not configured. Sensitive data will be stored unencrypted. ' +
-          'For production environments, please ensure ENCRYPTION_KEY is set.'
-      )
       this.encryptionKey = Buffer.from('default-key-please-change-in-production!', 'utf-8')
     } else {
       this.encryptionKey = Buffer.from(key, 'hex')
     }
   }
 
-  /**
-   * Mã hóa dữ liệu
-   * @param data Dữ liệu cần mã hóa
-   * @returns Chuỗi đã mã hóa dưới dạng base64
-   */
   encrypt(data: string | object): string {
     try {
       if (!data) return ''
@@ -63,18 +54,11 @@ export class CryptoService {
 
       // Trả về chuỗi base64
       return result.toString('base64')
-    } catch (error) {
-      this.logger.error(`Error during data encryption: ${error.message}`, error.stack)
+    } catch {
       return ''
     }
   }
 
-  /**
-   * Giải mã dữ liệu
-   * @param encryptedData Dữ liệu đã mã hóa dưới dạng base64
-   * @param asObject Có chuyển đổi kết quả thành object không
-   * @returns Dữ liệu đã được giải mã
-   */
   decrypt<T = any>(encryptedData: string, asObject: boolean = false): string | T {
     try {
       if (!encryptedData) return asObject ? ({} as T) : ''
@@ -109,17 +93,11 @@ export class CryptoService {
       }
 
       return decrypted
-    } catch (error) {
-      this.logger.error(`Error during data decryption: ${error.message}`, error.stack)
+    } catch {
       return asObject ? ({} as T) : ''
     }
   }
 
-  /**
-   * Tạo hash cho dữ liệu
-   * @param data Dữ liệu cần hash
-   * @returns Chuỗi hash
-   */
   createHash(data: string): string {
     return crypto.createHash('sha256').update(data).digest('hex')
   }

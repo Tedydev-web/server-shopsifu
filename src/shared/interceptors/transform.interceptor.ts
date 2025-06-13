@@ -8,9 +8,6 @@ import { Request, Response } from 'express'
 // Định nghĩa type cho hàm translate
 type TranslateFunction = (key: string, options?: Record<string, any>) => string
 
-/**
- * Interface cho một response thành công chuẩn hóa.
- */
 export interface SuccessResponse<T> {
   success: boolean
   statusCode: number
@@ -19,10 +16,6 @@ export interface SuccessResponse<T> {
   metadata?: Record<string, any>
 }
 
-/**
- * Interceptor này bắt tất cả các response thành công và định dạng chúng
- * theo một cấu trúc `SuccessResponse` nhất quán.
- */
 @Injectable()
 export class TransformInterceptor<T> implements NestInterceptor<T, SuccessResponse<T>> {
   private readonly logger = new Logger(TransformInterceptor.name)

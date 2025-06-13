@@ -33,19 +33,8 @@ import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
 // Errors
 import { GlobalError } from 'src/shared/global.error'
 import { RedisService } from 'src/shared/services'
+import { DeviceRiskLevel } from '../auth.constants'
 
-/**
- * Kết quả đánh giá rủi ro thiết bị
- */
-export enum DeviceRiskLevel {
-  LOW = 'LOW',
-  MEDIUM = 'MEDIUM',
-  HIGH = 'HIGH'
-}
-
-/**
- * Dữ liệu về vị trí thiết bị
- */
 export interface DeviceLocationData {
   city?: string
   country?: string
@@ -55,9 +44,6 @@ export interface DeviceLocationData {
   timestamp: number
 }
 
-/**
- * Thông tin bất thường về thiết bị
- */
 export interface DeviceAnomalyData {
   deviceId: number
   userId: number
@@ -105,11 +91,6 @@ export class DeviceService implements IDeviceService {
     return this.deviceRepository.isDeviceTrustValid(deviceId)
   }
 
-  /**
-   * Gửi email thông báo cho người dùng về việc đăng nhập thành công
-   * trên một thiết bị chưa được tin cậy.
-   * Phương thức này được gọi sau khi quá trình xác thực hoàn tất.
-   */
   async notifyLoginOnUntrustedDevice(
     user: UserWithProfileAndRole,
     deviceId: number,
@@ -118,7 +99,6 @@ export class DeviceService implements IDeviceService {
   ): Promise<void> {
     try {
       if (!user) {
-        this.logger.warn(`[notifyLoginOnUntrustedDevice] User not found`)
         return
       }
 
@@ -128,9 +108,6 @@ export class DeviceService implements IDeviceService {
       if (device && device.lastNotificationSentAt) {
         const lastSent = new Date(device.lastNotificationSentAt).getTime()
         if (Date.now() - lastSent < 5 * 60 * 1000) {
-          this.logger.debug(
-            `[notifyLoginOnUntrustedDevice] Notification sent recently for device ${deviceId}. Skipping.`
-          )
           return
         }
       }
@@ -194,9 +171,6 @@ export class DeviceService implements IDeviceService {
     }
   }
 
-  /**
-   * Lấy danh sách thiết bị đáng ngờ của người dùng
-   */
   async getUserSuspiciousDevices(userId: number): Promise<Device[]> {
     // Lấy danh sách thiết bị của người dùng
     const userDevices = await this.deviceRepository.findDevicesByUserId(userId)
@@ -215,9 +189,6 @@ export class DeviceService implements IDeviceService {
     return suspiciousDevices
   }
 
-  /**
-   * Đánh dấu thiết bị là an toàn (bỏ đánh dấu đáng ngờ)
-   */
   async markDeviceAsSafe(deviceId: number, userId: number): Promise<void> {
     const device = await this.deviceRepository.findById(deviceId)
 
@@ -228,13 +199,8 @@ export class DeviceService implements IDeviceService {
     // Xóa đánh dấu đáng ngờ
     const suspiciousKey = RedisKeyManager.getDeviceSuspiciousKey(deviceId)
     await this.redisService.del(suspiciousKey)
-
-    this.logger.debug(`[markDeviceAsSafe] Đã đánh dấu thiết bị ${deviceId} là an toàn`)
   }
 
-  /**
-   * Cảnh báo về thiết bị khi số lượng thiết bị của người dùng gần đạt giới hạn
-   */
   async warnAboutDeviceLimit(user: UserWithProfileAndRole): Promise<boolean> {
     const userDevices = await this.deviceRepository.findDevicesByUserId(user.id)
 
@@ -263,7 +229,6 @@ export class DeviceService implements IDeviceService {
           // Đánh dấu đã cảnh báo (trong 7 ngày)
           await this.redisService.set(warningKey, Date.now().toString(), 'EX', 60 * 60 * 24 * 7)
 
-          this.logger.debug(`[warnAboutDeviceLimit] Đã cảnh báo userId ${user.id} về giới hạn thiết bị`)
           return true
         }
       }
@@ -272,30 +237,19 @@ export class DeviceService implements IDeviceService {
     return false
   }
 
-  /**
-   * Đánh dấu một thiết bị cần xác minh lại
-   */
   async markDeviceForReverification(userId: number, deviceId: number, reasonInput: string): Promise<void> {
     const reverificationKey = RedisKeyManager.getDeviceReverificationKey(deviceId)
     await this.redisService.set(reverificationKey, reasonInput, 'EX', DEVICE_REVERIFICATION_TTL)
-    this.logger.log(`Device ${deviceId} for user ${userId} marked for reverification. Reason: ${reasonInput}`)
   }
 
-  /**
-   * Kiểm tra xem một thiết bị có cần xác minh lại không
-   */
   async checkDeviceNeedsReverification(userId: number, deviceId: number): Promise<boolean> {
     const reverificationKey = RedisKeyManager.getDeviceReverificationKey(deviceId)
     const needsReverification = await this.redisService.exists(reverificationKey)
     return needsReverification > 0
   }
 
-  /**
-   * Xóa cờ đánh dấu cần xác minh lại cho thiết bị
-   */
   async clearDeviceReverification(userId: number, deviceId: number): Promise<void> {
     const reverificationKey = RedisKeyManager.getDeviceReverificationKey(deviceId)
     await this.redisService.del(reverificationKey)
-    this.logger.log(`Cleared reverification flag for device ${deviceId} of user ${userId}.`)
   }
 }

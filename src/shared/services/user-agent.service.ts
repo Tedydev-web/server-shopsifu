@@ -91,9 +91,6 @@ export class UserAgentService {
     return 'WebApp'
   }
 
-  /**
-   * Safely sanitize and normalize user agent string
-   */
   private sanitizeUserAgentString(userAgent?: any): string {
     if (!userAgent) return ''
 
@@ -110,9 +107,6 @@ export class UserAgentService {
     return String(userAgent).toLowerCase()
   }
 
-  /**
-   * Get the original user agent string without modification
-   */
   private getOriginalUserAgentString(userAgent?: any): string {
     if (!userAgent) return ''
 

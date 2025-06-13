@@ -9,11 +9,6 @@ export class ApiKeyGuard implements CanActivate {
 
   constructor(private readonly configService: ConfigService) {
     this.apiKey = this.configService.get<string>('SECRET_API_KEY', '') // Default to empty if not found
-    if (!this.apiKey) {
-      this.logger.warn(
-        'CRITICAL: SECRET_API_KEY is not configured or is empty. API key authentication will fail for all requests using this guard.'
-      )
-    }
   }
 
   canActivate(context: ExecutionContext): boolean {
@@ -21,10 +16,7 @@ export class ApiKeyGuard implements CanActivate {
     const providedApiKey = request.headers['x-api-key'] || request.query.apiKey
 
     // Case 1: Server is not configured with an API key (this.apiKey is empty).
-    // The constructor already logs a warning for this. All such requests should fail.
     if (!this.apiKey) {
-      // This log is optional as the constructor already warns. Kept for clarity during request processing if needed.
-      // this.logger.error('API key authentication failed: Service is not configured with an API key.');
       throw new UnauthorizedException('API key authentication failed: Service configuration error.')
     }
 

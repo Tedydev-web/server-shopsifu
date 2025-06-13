@@ -42,12 +42,10 @@ export class PasswordService {
   ) {}
 
   async initiatePasswordReset(email: string, ipAddress: string, userAgent: string, res: Response) {
-    this.logger.log(`[initiatePasswordReset] Initiating password reset for email: ${email}`)
     const user = await this.userRepository.findByEmail(email)
 
     if (!user) {
       // Không tiết lộ email không tồn tại để tránh email enumeration attack
-      this.logger.warn(`[initiatePasswordReset] Password reset attempted for non-existent email: ${email}`)
       return {
         status: 'success',
         message: 'auth.success.password.initiateReset'
@@ -75,8 +73,6 @@ export class PasswordService {
     userAgent: string,
     res: Response
   ) {
-    this.logger.log(`[setNewPassword] Setting new password from reset flow.`)
-
     // Validate SLT token và lấy context
     const sltContext = await this.sltService.validateSltFromCookieAndGetContext(
       sltCookieValue,
@@ -104,10 +100,6 @@ export class PasswordService {
     return result
   }
 
-  /**
-   * Phương thức tập trung để cập nhật mật khẩu, thu hồi phiên và gửi thông báo.
-   * Có thể được gọi từ nhiều luồng khác nhau (đặt lại mật khẩu, thay đổi mật khẩu).
-   */
   async performPasswordUpdate(params: {
     userId: number
     newPassword?: string
@@ -128,7 +120,6 @@ export class PasswordService {
     } = params
 
     if (!newPassword) {
-      this.logger.error(`Password update attempt for user ${userId} failed: New password was not provided.`)
       throw AuthError.MissingNewPasswordInContext()
     }
 
@@ -140,7 +131,6 @@ export class PasswordService {
     const user = await this.userRepository.findByIdWithDetails(userId)
     if (!user) {
       // This should theoretically not be reached if the update was successful
-      this.logger.error(`User with ID ${userId} not found after password update.`)
       throw AuthError.InternalServerError()
     }
 
@@ -148,33 +138,27 @@ export class PasswordService {
     if (revokeAllSessions) {
       const result = await this.sessionsService.invalidateAllUserSessions(userId, 'password_change', currentSessionId)
       revokedCount = result.deletedSessionsCount
-      this.logger.log(`All sessions for user ${userId} have been revoked due to password change.`)
     }
 
-    try {
-      const userAgentInfo = this.userAgentService.parse(userAgent)
-      const locationInfo = await this.geolocationService.getLocationFromIP(ipAddress || '')
-      await this.emailService.sendPasswordChangedEmail(user.email, {
-        userName: user.userProfile?.username || user.email.split('@')[0],
-        details: [
-          {
-            label: 'email.Email.common.details.ipAddress',
-            value: ipAddress
-          },
-          {
-            label: 'email.Email.common.details.location',
-            value: locationInfo.display
-          },
-          {
-            label: 'email.Email.common.details.device',
-            value: `${userAgentInfo.browser || 'Unknown'} on ${userAgentInfo.os || 'Unknown'}`
-          }
-        ]
-      })
-    } catch (emailError) {
-      this.logger.error(`Failed to send password change notification email to user ${userId}: ${emailError.message}`)
-      // Do not throw error to the client as the password update was successful
-    }
+    const userAgentInfo = this.userAgentService.parse(userAgent)
+    const locationInfo = await this.geolocationService.getLocationFromIP(ipAddress || '')
+    await this.emailService.sendPasswordChangedEmail(user.email, {
+      userName: user.userProfile?.username || user.email.split('@')[0],
+      details: [
+        {
+          label: 'email.Email.common.details.ipAddress',
+          value: ipAddress
+        },
+        {
+          label: 'email.Email.common.details.location',
+          value: locationInfo.display
+        },
+        {
+          label: 'email.Email.common.details.device',
+          value: `${userAgentInfo.browser || 'Unknown'} on ${userAgentInfo.os || 'Unknown'}`
+        }
+      ]
+    })
 
     return {
       status: 'success',
@@ -195,7 +179,6 @@ export class PasswordService {
   ): Promise<any> {
     const { id: userId, sessionId, deviceId } = activeUser
     const { currentPassword, newPassword, revokeOtherSessions } = dto
-    this.logger.debug(`[changePassword] User ${userId} attempting to change password.`)
 
     const user = await this.userRepository.findByIdWithDetails(userId)
     if (!user) {
@@ -219,7 +202,6 @@ export class PasswordService {
 
     const hashedPassword = await this.hashingService.hash(newPassword)
 
-    this.logger.debug(`[changePassword] Current password is valid. Initiating verification flow for user ${userId}.`)
     return this.authVerificationService.initiateVerification(
       {
         userId,

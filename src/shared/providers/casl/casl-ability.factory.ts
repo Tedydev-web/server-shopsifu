@@ -8,11 +8,6 @@ import { ActiveUserData } from 'src/shared/types/active-user.type'
 import { RedisService } from '../redis/redis.service'
 import { REDIS_SERVICE } from 'src/shared/constants/injection.tokens'
 
-/**
- * @description
- * Defines all possible actions a user can perform on a subject.
- * 'manage' is a special keyword in CASL that represents "any action".
- */
 export enum Action {
   Manage = 'manage', // wildcard for any action
   Create = 'create',
@@ -27,11 +22,6 @@ export enum Action {
   CreateOwn = 'create:own'
 }
 
-/**
- * @description
- * Defines all subjects (entities) that can be permissioned.
- * This enum is the single source of truth for subject names.
- */
 export enum AppSubject {
   User = 'User',
   Role = 'Role',
@@ -45,33 +35,14 @@ export enum AppSubject {
   All = 'all' // Represents "any subject"
 }
 
-/**
- * @description
- * Defines all subjects (entities) that can have permissions.
- * 'all' is a special keyword in CASL that represents "any subject".
- */
 export type Subjects = InferSubjects<typeof User | typeof Role | typeof Permission, true> | AppSubject
 
-/**
- * @description
- * Defines the application's ability type using CASL's PureAbility.
- * This provides strong typing for actions and subjects.
- */
 export type AppAbility = PureAbility<[Action, Subjects]>
 
-/**
- * Utility function to safely access nested properties of an object.
- * @param obj The object to access.
- * @param path The path to the property (e.g., 'a.b.c').
- * @returns The value at the specified path, or undefined if not found.
- */
 function getNestedValue(obj: any, path: string): any {
   return path.split('.').reduce((acc, part) => acc && acc[part], obj)
 }
 
-/**
- * Logging context for structured logging
- */
 interface LogContext {
   userId?: number
   action?: string
@@ -190,12 +161,6 @@ export class CaslAbilityFactory {
     })
   }
 
-  /**
-   * Interpolates template variables in permission conditions with user data.
-   * @param conditions The conditions object from the permission.
-   * @param user The active user data.
-   * @returns A new conditions object with variables replaced by actual values.
-   */
   private interpolateConditions(conditions: any, user: ActiveUserData): any {
     if (!conditions || typeof conditions !== 'object') {
       return conditions
@@ -286,11 +251,6 @@ export class CaslAbilityFactory {
     }
   }
 
-  /**
-   * Validates that a subject string is valid
-   * @param subject The subject string from the database
-   * @returns The validated subject string
-   */
   private validateSubject(subject: string): string {
     // Check if it's a valid AppSubject enum value
     if (Object.values(AppSubject).includes(subject as AppSubject)) {
@@ -311,12 +271,6 @@ export class CaslAbilityFactory {
     })
     return subject
   }
-
-  /**
-   * =============================================================================
-   * REDIS CACHING METHODS
-   * =============================================================================
-   */
 
   private async getCachedAbility(cacheKey: string): Promise<AppAbility | null> {
     try {
@@ -403,9 +357,6 @@ export class CaslAbilityFactory {
     }
   }
 
-  /**
-   * Clear ability cache for a specific user or all users
-   */
   public async clearCache(userId?: number): Promise<void> {
     try {
       if (userId) {
@@ -436,9 +387,6 @@ export class CaslAbilityFactory {
     }
   }
 
-  /**
-   * Get cache statistics
-   */
   public async getCacheStats(): Promise<{
     totalKeys: number
     keysByUser: Record<string, number>
@@ -495,12 +443,6 @@ export class CaslAbilityFactory {
     }
   }
 
-  /**
-   * =============================================================================
-   * LOGGING METHODS
-   * =============================================================================
-   */
-
   private logInfo(event: string, message: string, context: LogContext = {}): void {
     this.logger.log({
       event,
@@ -551,7 +493,6 @@ export class CaslAbilityFactory {
             try {
               updatedAtTime = p.updatedAt instanceof Date ? p.updatedAt.getTime() : new Date(p.updatedAt).getTime()
             } catch {
-              this.logger.warn(`Invalid date format for permission ${p.id}: ${String(p.updatedAt)}`)
               updatedAtTime = 0
             }
           }
@@ -569,7 +510,6 @@ export class CaslAbilityFactory {
       }
       return Math.abs(hash).toString(36)
     } catch (error) {
-      this.logger.error(`Error generating permissions hash: ${error.message}`)
       // Fallback to a simple hash based on permission IDs only
       return permissions
         .map((p) => p.id)

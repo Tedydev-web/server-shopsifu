@@ -1,7 +1,3 @@
-/**
- * Định nghĩa các token injection chung cho toàn ứng dụng
- */
-
 // Redis
 export const REDIS_SERVICE = 'REDIS_SERVICE'
 

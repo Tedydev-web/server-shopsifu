@@ -37,9 +37,6 @@ type SafetyAnalysis = {
   requiresConfirmation?: boolean
 }
 
-/**
- * Enhanced Session Service with smart excludeCurrentSession logic
- */
 @Injectable()
 export class SessionsService implements ISessionService {
   private readonly logger = new Logger(SessionsService.name)
@@ -57,21 +54,12 @@ export class SessionsService implements ISessionService {
     @Inject(COOKIE_SERVICE) private readonly cookieService: ICookieService
   ) {}
 
-  // ================================================================
-  // Core Session Management
-  // ================================================================
-
-  /**
-   * Get user sessions grouped by device with enhanced information
-   */
   async getSessions(
     userId: number,
     currentPage: number = 1,
     itemsPerPage: number = 5,
     currentSessionIdFromToken: string
   ): Promise<any> {
-    this.logger.debug(`[getSessions] User ${userId}, page ${currentPage}, limit ${itemsPerPage}`)
-
     // Lấy tất cả sessions và devices
     const sessionResult = await this.sessionRepository.findSessionsByUserId(userId, { page: 1, limit: 1000 })
     let devices = await this.deviceRepository.findDevicesByUserId(userId)
@@ -83,10 +71,6 @@ export class SessionsService implements ISessionService {
       const deviceSessions = sessionResult.data.filter((session) => session.deviceId === device.id)
       if (deviceSessions.length === 0) continue
 
-      this.logger.debug(
-        `[getSessions] Device ${device.id}: ${deviceSessions.length} total sessions (${deviceSessions.filter((s) => s.isActive).length} active)`
-      )
-
       const currentSessionDetails = await this.sessionRepository.findById(currentSessionIdFromToken)
       const isCurrentDevice = currentSessionDetails?.deviceId === device.id
       const latestSession = deviceSessions[0]
@@ -97,8 +81,7 @@ export class SessionsService implements ISessionService {
       let locationResult: GeoLocationResult
       try {
         locationResult = await this.getLocationFromIP(latestSession.ipAddress || '')
-      } catch (error) {
-        this.logger.error(`Failed to get location for IP ${latestSession.ipAddress}: ${error.message}`)
+      } catch {
         locationResult = { display: 'Unknown Location', timezone: 'Asia/Ho_Chi_Minh' }
       }
 
@@ -171,9 +154,6 @@ export class SessionsService implements ISessionService {
     }
   }
 
-  /**
-   * Ensure current device is included in device list
-   */
   private async ensureCurrentDeviceIncluded(currentSessionId: string, devices: Device[]): Promise<Device[]> {
     const currentSession = await this.sessionRepository.findById(currentSessionId)
     if (!currentSession) return devices
@@ -190,17 +170,11 @@ export class SessionsService implements ISessionService {
     return devices
   }
 
-  /**
-   * Get geolocation from IP address
-   */
   private async getLocationFromIP(ip: any): Promise<GeoLocationResult> {
     const ipString = String(ip || '')
     return this.geolocationService.getLocationFromIP(ipString)
   }
 
-  /**
-   * Calculate inactive duration and format as display string
-   */
   private calculateInactiveDuration(lastActiveDate: Date): string {
     const diffSeconds = Math.round((Date.now() - lastActiveDate.getTime()) / 1000)
 
@@ -253,18 +227,9 @@ export class SessionsService implements ISessionService {
         action,
         details
       })
-    } else {
-      this.logger.warn(`Could not send ${action} device trust email. User or device not found.`)
     }
   }
 
-  // ================================================================
-  // Main Revoke Method with Smart Logic
-  // ================================================================
-
-  /**
-   * Revoke sessions/devices with enhanced smart logic and comprehensive safety analysis
-   */
   async revokeItems(
     userId: number,
     options: {
@@ -291,7 +256,6 @@ export class SessionsService implements ISessionService {
     // Step 1: Validate input
     const validation = this.validateRevokeOptions(options)
     if (!validation.isValid) {
-      this.logger.error(`[revokeItems] Validation failed: ${validation.errors.join(', ')}`)
       throw AuthError.InvalidRevokeParams()
     }
 
@@ -300,7 +264,6 @@ export class SessionsService implements ISessionService {
 
     // Step 3: Safety check
     if (analysis.requiresConfirmation) {
-      this.logger.warn(`[revokeItems] Action requires confirmation: ${analysis.warningMessage}`)
       throw AuthError.ActionRequiresConfirmation(analysis.warningMessage || 'Action requires confirmation')
     }
 
@@ -342,14 +305,11 @@ export class SessionsService implements ISessionService {
         untrustedDevicesCount,
         willCauseLogout: analysis.willCauseLogout && currentSessionRevoked,
         warningMessage: analysis.warningMessage,
-        requiresConfirmation: analysis.requiresConfirmation,
+        requiresConfirmation: analysis.requiresConfirmation
       }
     }
   }
 
-  /**
-   * Analyze and recommend excludeCurrentSession logic based on context
-   */
   private analyzeExcludeCurrentSessionLogic(
     options: {
       sessionIds?: string[]
@@ -380,7 +340,7 @@ export class SessionsService implements ISessionService {
     } else {
       return {
         shouldExcludeCurrentSession: false,
-        willCauseLogout: false,
+        willCauseLogout: false
       }
     }
   }
@@ -390,19 +350,19 @@ export class SessionsService implements ISessionService {
       return excludeCurrentSession
         ? {
             shouldExcludeCurrentSession: true,
-            willCauseLogout: false,
+            willCauseLogout: false
           }
         : {
             shouldExcludeCurrentSession: false,
             willCauseLogout: true,
             warningMessage: forceLogout ? undefined : 'You will be logged out. Set forceLogout=true to confirm.',
-            requiresConfirmation: !forceLogout,
+            requiresConfirmation: !forceLogout
           }
     }
     // Smart default: exclude current session
     return {
       shouldExcludeCurrentSession: true,
-      willCauseLogout: false,
+      willCauseLogout: false
     }
   }
 
@@ -417,7 +377,7 @@ export class SessionsService implements ISessionService {
     if (!includesCurrentDevice) {
       return {
         shouldExcludeCurrentSession: false,
-        willCauseLogout: false,
+        willCauseLogout: false
       }
     }
 
@@ -425,7 +385,7 @@ export class SessionsService implements ISessionService {
       return excludeCurrentSession
         ? {
             shouldExcludeCurrentSession: true,
-            willCauseLogout: false,
+            willCauseLogout: false
           }
         : {
             shouldExcludeCurrentSession: false,
@@ -433,13 +393,13 @@ export class SessionsService implements ISessionService {
             warningMessage: forceLogout
               ? undefined
               : 'You will be logged out by revoking your current device. Set forceLogout=true to confirm.',
-            requiresConfirmation: !forceLogout,
+            requiresConfirmation: !forceLogout
           }
     }
     // Smart default: exclude current device
     return {
       shouldExcludeCurrentSession: true,
-      willCauseLogout: false,
+      willCauseLogout: false
     }
   }
 
@@ -454,7 +414,7 @@ export class SessionsService implements ISessionService {
     if (!includesCurrentSession) {
       return {
         shouldExcludeCurrentSession: false,
-        willCauseLogout: false,
+        willCauseLogout: false
       }
     }
 
@@ -462,7 +422,7 @@ export class SessionsService implements ISessionService {
       return excludeCurrentSession
         ? {
             shouldExcludeCurrentSession: true,
-            willCauseLogout: false,
+            willCauseLogout: false
           }
         : {
             shouldExcludeCurrentSession: false,
@@ -470,29 +430,22 @@ export class SessionsService implements ISessionService {
             warningMessage: forceLogout
               ? undefined
               : 'You will be logged out by revoking your current session. Set forceLogout=true to confirm.',
-            requiresConfirmation: !forceLogout,
+            requiresConfirmation: !forceLogout
           }
     }
     // Smart default: exclude current session
     return {
       shouldExcludeCurrentSession: true,
-      willCauseLogout: false,
+      willCauseLogout: false
     }
   }
 
-  /**
-   * Set reverify flag for user
-   */
   private async setReverifyFlagForUser(userId: number): Promise<void> {
     const key = RedisKeyManager.getUserReverifyNextLoginKey(userId)
     const ttl = 24 * 60 * 60 // 24 giờ
     await this.redisService.set(key, '1', 'EX', ttl)
-    this.logger.log(`[setReverifyFlagForUser] Set reverify flag for user ${userId} with TTL ${ttl}s.`)
   }
 
-  /**
-   * Check if current session would be revoked
-   */
   private isCurrentSessionRevoked(
     options: {
       sessionIds?: string[]
@@ -520,23 +473,13 @@ export class SessionsService implements ISessionService {
     return false
   }
 
-  /**
-   * Clear cookies for current session (similar to logout)
-   */
   private clearCurrentSessionCookies(res: Response): void {
-    this.logger.log('[clearCurrentSessionCookies] Clearing cookies for current session due to revocation')
-
     // Clear login-related cookies
     this.cookieService.clearTokenCookies(res)
     // Clear SLT cookie if exists
     this.cookieService.clearSltCookie(res)
-
-    this.logger.log('[clearCurrentSessionCookies] Cookies cleared successfully')
   }
 
-  /**
-   * Revoke a single session
-   */
   private async revokeSingleSession(
     sessionId: string,
     userId: number,
@@ -560,9 +503,6 @@ export class SessionsService implements ISessionService {
     return null
   }
 
-  /**
-   * Revoke all sessions of a device
-   */
   private async revokeDevice(
     deviceId: number,
     userId: number,
@@ -573,22 +513,13 @@ export class SessionsService implements ISessionService {
       throw AuthError.DeviceNotFound()
     }
 
-    this.logger.debug(
-      `[revokeDevice] Revoking all sessions for device ${deviceId}${excludeSessionId ? ` (excluding ${excludeSessionId})` : ''}`
-    )
-
     const { count } = await this.sessionRepository.deleteSessionsByDeviceId(deviceId, excludeSessionId)
-
-    this.logger.log(`[revokeDevice] Revoked ${count} sessions for device ${deviceId}`)
 
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
 
     return { revokedSessionsCount: count, untrusted: true }
   }
 
-  /**
-   * Invalidate a specific session
-   */
   async invalidateSession(sessionId: string, reason?: string): Promise<void> {
     const key = RedisKeyManager.getInvalidatedSessionsKey()
     await this.redisService.sadd(key, sessionId)
@@ -596,42 +527,23 @@ export class SessionsService implements ISessionService {
     const sessionTtl = this.configService.get<number>('JWT_REFRESH_EXPIRATION_TIME', 604800) * 1000
     await this.redisService.expire(key, sessionTtl / 1000)
 
-    this.logger.log(`Session ${sessionId} invalidated. Reason: ${reason || 'Not specified'}.`)
-
     const session = await this.sessionRepository.findById(sessionId)
     if (!session) {
-      this.logger.warn(
-        `[invalidateSession] Could not find session ${sessionId} to revoke. It might have been deleted already.`
-      )
       return
-    }
-
-    const deviceId = await this.revokeSingleSession(sessionId, session.userId, true)
-    if (deviceId) {
-      this.logger.log(`Session ${sessionId} was linked to device ${deviceId}.`)
     }
   }
 
-  /**
-   * Check if session is invalidated
-   */
   async isSessionInvalidated(sessionId: string): Promise<boolean> {
     const key = RedisKeyManager.getInvalidatedSessionsKey()
     const result = await this.redisService.sismember(key, sessionId)
     return result === 1
   }
 
-  /**
-   * Invalidate all user sessions
-   */
   async invalidateAllUserSessions(
     userId: number,
     reason?: string,
     sessionIdToExclude?: string
   ): Promise<{ deletedSessionsCount: number; untrustedDeviceIds: number[] }> {
-    this.logger.warn(
-      `Invalidating all sessions for user ${userId}, excluding ${sessionIdToExclude ?? 'none'}. Reason: ${reason ?? 'unknown'}`
-    )
     const { deletedSessionsCount, affectedDeviceIds } = await this.sessionRepository.deleteAllUserSessions(
       userId,
       sessionIdToExclude
@@ -647,23 +559,11 @@ export class SessionsService implements ISessionService {
           newlyUntrustedDeviceIds.push(deviceId)
         }
       }
-      if (newlyUntrustedDeviceIds.length > 0) {
-        this.logger.log(
-          `[invalidateAllUserSessions] Untrusted ${newlyUntrustedDeviceIds.length} devices: ${newlyUntrustedDeviceIds.join(', ')}.`
-        )
-      }
     }
 
     return { deletedSessionsCount, untrustedDeviceIds: newlyUntrustedDeviceIds }
   }
 
-  // ================================================================
-  // Helper Methods - Core Operations
-  // ================================================================
-
-  /**
-   * Execute the actual revocation logic
-   */
   private async executeRevocation(
     userId: number,
     options: {
@@ -717,9 +617,6 @@ export class SessionsService implements ISessionService {
     }
   }
 
-  /**
-   * Validation helper for revoke options
-   */
   private validateRevokeOptions(options: {
     sessionIds?: string[]
     deviceIds?: number[]
@@ -752,16 +649,12 @@ export class SessionsService implements ISessionService {
     return { isValid: errors.length === 0, errors }
   }
 
-  /**
-   * Device management methods
-   */
   async updateDeviceName(userId: number, deviceId: number, name: string): Promise<void> {
     const device = await this.deviceRepository.findById(deviceId)
     if (!device || device.userId !== userId) {
       throw AuthError.DeviceNotFound()
     }
     await this.deviceRepository.updateDeviceName(deviceId, name)
-    this.logger.log(`[updateDeviceName] Device ${deviceId} name updated to: ${name}`)
   }
 
   async trustCurrentDevice(userId: number, deviceId: number): Promise<void> {
@@ -770,7 +663,6 @@ export class SessionsService implements ISessionService {
       throw AuthError.DeviceNotFound()
     }
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, true)
-    this.logger.log(`[trustCurrentDevice] Device ${deviceId} marked as trusted for user ${userId}`)
   }
 
   async untrustDevice(userId: number, deviceId: number): Promise<void> {
@@ -780,6 +672,5 @@ export class SessionsService implements ISessionService {
     }
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
     await this.notifyDeviceTrustChange(userId, deviceId, 'untrusted')
-    this.logger.log(`[untrustDevice] Device ${deviceId} marked as untrusted for user ${userId}`)
   }
 }

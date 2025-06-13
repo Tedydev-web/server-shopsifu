@@ -68,10 +68,6 @@ type PostVerificationHandler = (
   sltCookieValue?: string
 ) => Promise<VerificationResult>
 
-/**
- * Service handles all authentication verification flows (OTP/2FA) in the system.
- * Main functions: initiate verification, verify codes, handle post-verification actions, manage SLT tokens.
- */
 @Injectable()
 export class AuthVerificationService {
   private readonly logger = new Logger(AuthVerificationService.name)
@@ -128,13 +124,8 @@ export class AuthVerificationService {
     }
   }
 
-  /**
-   * Main entry point for all verification flows in the system.
-   * Analyzes context and decides whether verification is needed.
-   */
   async initiateVerification(context: VerificationContext, res: Response): Promise<VerificationResult> {
     const { userId, purpose } = context
-    this.logger.debug(`[initiateVerification] UserID: ${userId}, Purpose: ${purpose}`)
 
     if (purpose === TypeOfVerificationCode.REGISTER || purpose === TypeOfVerificationCode.CREATE_USER) {
       return this.handleRegistrationInitiation(context, res)
@@ -153,18 +144,13 @@ export class AuthVerificationService {
       return this.handleLoginOrSensitiveActionInitiation(context, res, user)
     }
 
-    this.logger.warn(`[initiateVerification] No defined action for purpose: ${purpose}`)
     return {
       status: 'success',
       message: 'global.general.success.default'
     }
   }
 
-  /**
-   * Handle 2FA setup initiation - create QR code and secret
-   */
   private async handleSetup2FAInitiation(context: VerificationContext, res: Response): Promise<VerificationResult> {
-    this.logger.debug(`[handleSetup2FAInitiation] Starting 2FA setup flow. Creating SLT`)
     const sltToken = await this.sltService.createAndStoreSltToken(context)
     this.cookieService.setSltCookie(res, sltToken, context.purpose)
     const result = await this.twoFactorService.generateSetupDetails(context.userId)
@@ -184,22 +170,10 @@ export class AuthVerificationService {
     }
   }
 
-  /**
-   * Handle registration initiation - send OTP via email
-   */
   private handleRegistrationInitiation(context: VerificationContext, res: Response): Promise<VerificationResult> {
-    this.logger.debug(`[handleRegistrationInitiation] Initiating registration flow for email ${context.email}`)
     return this.initiateOtpFlow(context, res)
   }
 
-  /**
-   * Xử lý đăng nhập hoặc các hành động nhạy cảm cần bảo mật cao
-   *
-   * Quyết định có cần xác thực bổ sung hay không dựa trên:
-   * - Tính nhạy cảm của hành động
-   * - Trạng thái trusted của thiết bị
-   * - Có force verification hay không
-   */
   private async handleLoginOrSensitiveActionInitiation(
     context: VerificationContext,
     res: Response,
@@ -208,7 +182,6 @@ export class AuthVerificationService {
     const { purpose } = context
 
     if (this.SENSITIVE_PURPOSES.includes(purpose)) {
-      this.logger.debug(`[handleLoginOrSensitiveAction] Sensitive action (${purpose}) requires verification.`)
       return this.initiateOtpOr2faFlow(context, res, user)
     }
 
@@ -216,13 +189,9 @@ export class AuthVerificationService {
       return this.handleLoginSpecificLogic(context, res, user)
     }
 
-    this.logger.warn(`[handleLoginOrSensitiveAction] No defined action for purpose: ${purpose}.`)
     return { message: 'global.general.success.default' }
   }
 
-  /**
-   * Xử lý logic riêng cho đăng nhập - kiểm tra trusted device
-   */
   private async handleLoginSpecificLogic(
     context: VerificationContext,
     res: Response,
@@ -233,32 +202,20 @@ export class AuthVerificationService {
     const forceVerification = metadata?.forceVerification === true
 
     if (forceVerification || !isDeviceTrusted) {
-      this.logger.log(
-        `[handleLoginSpecificLogic] Verification required for UserID: ${user.id}. Force: ${forceVerification}, Trusted: ${isDeviceTrusted}`
-      )
       return this.initiateOtpOr2faFlow(context, res, user)
     }
 
-    this.logger.debug(`[handleLoginSpecificLogic] Trusted device login for UserID: ${user.id}. Skipping OTP/2FA.`)
     return this.handleLoginVerification(userId, deviceId, rememberMe ?? false, ipAddress, userAgent, res)
   }
 
-  /**
-   * Khởi tạo luồng OTP hoặc 2FA dựa trên cài đặt của user
-   *
-   * Ưu tiên 2FA nếu user đã enable, ngược lại dùng OTP qua email
-   */
   private async initiateOtpOr2faFlow(
     context: VerificationContext,
     res: Response,
     user: User
   ): Promise<VerificationResult> {
     const { purpose } = context
-    const { id: userId } = user
 
     if (user.twoFactorEnabled) {
-      this.logger.debug(`[initiateOtpOr2faFlow] 2FA enabled for user ${userId}. Initiating 2FA flow.`)
-
       const sltPayload = {
         ...context,
         metadata: {
@@ -269,8 +226,6 @@ export class AuthVerificationService {
         }
       }
 
-      this.logger.debug(`[initiateOtpOr2faFlow] SLT payload metadata: ${JSON.stringify(sltPayload.metadata)}`)
-
       const sltToken = await this.sltService.createAndStoreSltToken(sltPayload)
       this.cookieService.setSltCookie(res, sltToken, purpose)
       return {
@@ -280,33 +235,18 @@ export class AuthVerificationService {
       }
     }
 
-    this.logger.debug(`[initiateOtpOr2faFlow] 2FA not enabled for user ${userId}. Initiating OTP flow.`)
     return this.initiateOtpFlow(context, res)
   }
 
-  /**
-   * Gửi lại mã xác thực cho user
-   *
-   * Xử lý yêu cầu resend OTP/2FA code. Validate SLT token hiện có
-   * và khởi tạo lại luồng gửi mã mà không tạo SLT mới.
-   *
-   * @param sltCookieValue - SLT token từ cookie
-   * @param ipAddress - Địa chỉ IP của user
-   * @param userAgent - User agent của browser
-   * @param res - Response object để reset SLT cookie
-   * @returns Kết quả resend code
-   */
   async reInitiateVerification(
     sltCookieValue: string,
     ipAddress: string,
     userAgent: string,
     res: Response
   ): Promise<VerificationResult> {
-    this.logger.debug(`[reInitiateVerification] Re-initiating verification from SLT.`)
     const sltContext = await this.sltService.validateSltFromCookieAndGetContext(sltCookieValue, ipAddress, userAgent)
 
     if (sltContext.metadata?.twoFactorMethod) {
-      this.logger.debug('[reInitiateVerification] Context is 2FA. No email will be sent.')
       return {
         status: 'verification_required',
         message: 'auth.success.login.2faRequired',
@@ -329,20 +269,6 @@ export class AuthVerificationService {
     }
   }
 
-  /**
-   * Xác minh mã OTP/2FA do người dùng cung cấp
-   *
-   * Entry point chính cho xác minh mã. Bao bọc toàn bộ flow trong try-catch
-   * để đảm bảo cleanup (xóa cookie) khi có lỗi.
-   *
-   * @param sltCookieValue - SLT token từ cookie
-   * @param code - Mã xác thực do người dùng nhập
-   * @param ipAddress - Địa chỉ IP của người dùng
-   * @param userAgent - User agent của người dùng
-   * @param res - Response object để quản lý cookie
-   * @param additionalMetadata - Metadata bổ sung
-   * @returns Kết quả cuối cùng sau khi xác minh thành công
-   */
   async verifyCode(
     sltCookieValue: string,
     code: string,
@@ -351,12 +277,9 @@ export class AuthVerificationService {
     res: Response,
     additionalMetadata?: Record<string, any>
   ): Promise<VerificationResult> {
-    this.logger.debug(`[verifyCode] Starting verification process.`)
     try {
       return await this._verificationFlow(sltCookieValue, code, ipAddress, userAgent, res, additionalMetadata)
     } catch (error) {
-      this.logger.error(`[verifyCode] Flow failed: ${error.message}`, error.stack)
-
       if (error instanceof ApiException) {
         const terminalSltErrorCodes = [
           'AUTH_SLT_EXPIRED',
@@ -379,9 +302,6 @@ export class AuthVerificationService {
     }
   }
 
-  /**
-   * Xử lý luồng chính của verification
-   */
   private async _verificationFlow(
     sltCookieValue: string,
     code: string,
@@ -406,24 +326,13 @@ export class AuthVerificationService {
     return result
   }
 
-  /**
-   * Kiểm tra có nên giữ SLT cookie hay không
-   */
   private shouldKeepSltCookie(purpose: TypeOfVerificationCodeType): boolean {
     return purpose === TypeOfVerificationCode.REGISTER || purpose === TypeOfVerificationCode.RESET_PASSWORD
   }
 
-  /**
-   * Verify authentication code (OTP or 2FA)
-   */
   private async verifyAuthenticationCode(sltContext: SltContextData & { sltJti: string }, code: string): Promise<void> {
     const { userId, purpose, metadata } = sltContext
     const { twoFactorMethod, totpSecret, twoFactorSecret, twoFactorEnabled, requestMethod } = metadata || {}
-
-    this.logger.debug(`[verifyAuthenticationCode] UserID: ${userId}, Purpose: ${purpose}`)
-    this.logger.debug(
-      `[verifyAuthenticationCode] SLT twoFactorMethod: ${twoFactorMethod}, Request method: ${requestMethod}`
-    )
 
     try {
       const has2FASecret = totpSecret || twoFactorSecret
@@ -433,24 +342,15 @@ export class AuthVerificationService {
 
       if (should2FA) {
         const effectiveMethod = requestMethod || twoFactorMethod
-        this.logger.debug(
-          `[verifyAuthenticationCode] Using effective method: ${effectiveMethod} (request: ${requestMethod}, slt: ${twoFactorMethod})`
-        )
 
         await this.verifyWith2FA(code, userId, has2FASecret, effectiveMethod, purpose)
       } else {
         await this.verifyWithOtp(code, sltContext)
       }
     } catch (error) {
-      try {
-        const newAttemptCount = await this.sltService.incrementSltAttempts(sltContext.sltJti)
-        this.logger.warn(`Verification failed for SLT ${sltContext.sltJti}. Attempt count: ${newAttemptCount}`)
-
-        if (newAttemptCount >= 5 && (error.code === 'AUTH_INVALID_OTP' || error.code === 'AUTH_2FA_INVALID_TOTP')) {
-          throw AuthError.VerificationSessionExpired()
-        }
-      } catch (incrementError) {
-        this.logger.error(`Failed to increment SLT attempts: ${incrementError.message}`)
+      const newAttemptCount = await this.sltService.incrementSltAttempts(sltContext.sltJti)
+      if (newAttemptCount >= 5 && (error.code === 'AUTH_INVALID_OTP' || error.code === 'AUTH_2FA_INVALID_TOTP')) {
+        throw AuthError.VerificationSessionExpired()
       }
       throw error
     }
@@ -458,7 +358,6 @@ export class AuthVerificationService {
 
   private async verifyWithOtp(code: string, sltContext: SltContextData): Promise<void> {
     if (!sltContext.email) {
-      this.logger.error(`Email is missing in SLT context for OTP verification. UserID: ${sltContext.userId}`)
       throw AuthError.EmailMissingInSltContext()
     }
     await this.otpService.verifyOTP(sltContext.email, code, sltContext.purpose)
@@ -471,20 +370,10 @@ export class AuthVerificationService {
     method?: string,
     purpose?: TypeOfVerificationCodeType
   ): Promise<void> {
-    this.logger.debug(`[verifyWith2FA] Input method: "${method}", typeof: ${typeof method}`)
-    this.logger.debug(
-      `[verifyWith2FA] TwoFactorMethodType values: ${JSON.stringify(Object.values(TwoFactorMethodType))}`
-    )
-    this.logger.debug(
-      `[verifyWith2FA] Method is included: ${method && Object.values(TwoFactorMethodType).includes(method as TwoFactorMethodType)}`
-    )
-
     const effectiveMethod: TwoFactorMethodType =
       method && Object.values(TwoFactorMethodType).includes(method as TwoFactorMethodType)
         ? (method as TwoFactorMethodType)
         : TwoFactorMethodType.TOTP
-
-    this.logger.debug(`verifyWith2FA for user ${userId}, method: ${effectiveMethod}, purpose: ${purpose || 'N/A'}`)
 
     const isValid = await this.twoFactorService.verifyCode(code, {
       userId: userId,
@@ -493,16 +382,10 @@ export class AuthVerificationService {
     })
 
     if (!isValid) {
-      this.logger.warn(`2FA verification failed for user ${userId} with method ${effectiveMethod}`)
       throw AuthError.InvalidOTP()
     }
-
-    this.logger.log(`2FA verification successful for user ${userId} with method ${effectiveMethod}`)
   }
 
-  /**
-   * Xử lý các actions sau khi xác thực thành công
-   */
   private async handlePostVerificationActions(
     sltContext: SltContextData & { sltJti: string },
     code: string,
@@ -510,7 +393,6 @@ export class AuthVerificationService {
     sltCookieValue?: string
   ): Promise<VerificationResult> {
     const { purpose } = sltContext
-    this.logger.debug(`[handlePostActions] Executing action for purpose: ${purpose}`)
 
     if (!this.shouldKeepSltCookie(sltContext.purpose)) {
       await this.sltService.finalizeSlt(sltContext.sltJti)
@@ -521,15 +403,10 @@ export class AuthVerificationService {
       return handler(sltContext, code, res, sltCookieValue)
     }
 
-    this.logger.warn(`No post-verification handler found for purpose: ${sltContext.purpose}`)
     await this.sltService.finalizeSlt(sltContext.sltJti)
     return { message: 'auth.success.otp.verified' }
   }
 
-  /**
-   * Xử lý đăng nhập sau khi xác thực thành công
-   * Hoàn tất quá trình đăng nhập và tạo session
-   */
   private async handleLoginVerification(
     userId: number,
     deviceId: number,
@@ -633,11 +510,9 @@ export class AuthVerificationService {
   }
 
   private async handleSetup2FAVerification(context: SltContextData, code: string): Promise<VerificationResult> {
-    this.logger.log(`Handling post-verification for purpose: SETUP_2FA for user ${context.userId}`)
     const { twoFactorSecret } = context.metadata || {}
 
     if (!twoFactorSecret) {
-      this.logger.error(`2FA secret missing from SLT context for user ${context.userId} during setup confirmation`)
       throw GlobalError.InternalServerError('auth.error.twoFactorSetupMissingSecret')
     }
 
@@ -697,8 +572,6 @@ export class AuthVerificationService {
   }
 
   private async handleChangePasswordVerification(context: SltContextData): Promise<VerificationResult> {
-    this.logger.log(`Handling post-verification for purpose: CHANGE_PASSWORD for user ${context.userId}`)
-
     const { newPassword, revokeAllSessions } = context.metadata || {}
 
     await this.passwordService.performPasswordUpdate({
@@ -715,53 +588,43 @@ export class AuthVerificationService {
   }
 
   private async handleCreateUserVerification(context: SltContextData): Promise<VerificationResult> {
-    this.logger.log(`Handling post-verification for purpose: CREATE_USER`)
-
     const { metadata } = context
 
     if (!metadata) {
-      this.logger.error('No metadata found in SLT context for user creation')
       throw AuthError.InternalServerError('Missing user creation data')
     }
 
-    try {
-      const createUserDto: CreateUserDto = {
-        email: metadata.email,
-        password: metadata.password,
-        roleId: metadata.roleId,
-        firstName: metadata.firstName,
-        lastName: metadata.lastName,
-        username: metadata.username,
-        phoneNumber: metadata.phoneNumber,
-        bio: metadata.bio,
-        avatar: metadata.avatar,
-        countryCode: metadata.countryCode || 'VN',
-        isEmailVerified: metadata.isEmailVerified || false,
-        requireEmailVerification: metadata.requireEmailVerification || true
-      }
+    const createUserDto: CreateUserDto = {
+      email: metadata.email,
+      password: metadata.password,
+      roleId: metadata.roleId,
+      firstName: metadata.firstName,
+      lastName: metadata.lastName,
+      username: metadata.username,
+      phoneNumber: metadata.phoneNumber,
+      bio: metadata.bio,
+      avatar: metadata.avatar,
+      countryCode: metadata.countryCode || 'VN',
+      isEmailVerified: metadata.isEmailVerified || false,
+      requireEmailVerification: metadata.requireEmailVerification || true
+    }
 
-      const result = await this.userService.createFromOtpVerification(createUserDto)
+    const result = await this.userService.createFromOtpVerification(createUserDto)
 
-      this.logger.log(`User created successfully: ${result.data.email}`)
+    const userData = result.data as any
 
-      const userData = result.data as any
-
-      return {
-        message: result.message,
-        data: {
-          user: {
-            id: userData.id,
-            email: userData.email,
-            role: userData.role?.name,
-            username: userData.userProfile?.username,
-            firstName: userData.userProfile?.firstName,
-            lastName: userData.userProfile?.lastName
-          }
+    return {
+      message: result.message,
+      data: {
+        user: {
+          id: userData.id,
+          email: userData.email,
+          role: userData.role?.name,
+          username: userData.userProfile?.username,
+          firstName: userData.userProfile?.firstName,
+          lastName: userData.userProfile?.lastName
         }
       }
-    } catch (error) {
-      this.logger.error(`Failed to create user: ${error.message}`, error.stack)
-      throw error
     }
   }
 
@@ -785,35 +648,30 @@ export class AuthVerificationService {
     ipAddress?: string,
     userAgent?: string
   ): Promise<void> {
-    try {
-      const user = await this.userRepository.findByIdWithDetails(userId)
-      if (!user?.email) {
-        this.logger.warn(`Cannot send session revocation email, user ${userId} not found or has no email`)
-        return
-      }
-
-      const userAgentInfo = this.userAgentService.parse(userAgent)
-      const locationInfo = ipAddress ? await this.geolocationService.getLocationFromIP(ipAddress) : null
-
-      await this.emailService.sendSessionRevokeEmail(user.email, {
-        userName: user.userProfile?.username ?? user.email.split('@')[0],
-        details: [
-          {
-            label: 'email.Email.common.details.ipAddress',
-            value: ipAddress ?? 'N/A'
-          },
-          {
-            label: 'email.Email.common.details.location',
-            value: locationInfo?.display ?? 'N/A'
-          },
-          {
-            label: 'email.Email.common.details.device',
-            value: `${userAgentInfo.browser || 'Unknown'} on ${userAgentInfo.os || 'Unknown'}`
-          }
-        ]
-      })
-    } catch (error) {
-      this.logger.error(`Failed to send session revocation email to user ${userId}: ${error.message}`)
+    const user = await this.userRepository.findByIdWithDetails(userId)
+    if (!user?.email) {
+      return
     }
+
+    const userAgentInfo = this.userAgentService.parse(userAgent)
+    const locationInfo = ipAddress ? await this.geolocationService.getLocationFromIP(ipAddress) : null
+
+    await this.emailService.sendSessionRevokeEmail(user.email, {
+      userName: user.userProfile?.username ?? user.email.split('@')[0],
+      details: [
+        {
+          label: 'email.Email.common.details.ipAddress',
+          value: ipAddress ?? 'N/A'
+        },
+        {
+          label: 'email.Email.common.details.location',
+          value: locationInfo?.display ?? 'N/A'
+        },
+        {
+          label: 'email.Email.common.details.device',
+          value: `${userAgentInfo.browser || 'Unknown'} on ${userAgentInfo.os || 'Unknown'}`
+        }
+      ]
+    })
   }
 }

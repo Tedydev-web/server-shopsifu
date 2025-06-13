@@ -67,10 +67,6 @@ interface BaseEmailPayload<T> {
   from?: string
 }
 
-/**
- * Service quản lý việc gửi email với hỗ trợ đa ngôn ngữ và template
- * Sử dụng Resend API để gửi email và React components làm template
- */
 @Injectable()
 export class EmailService {
   private resend: Resend | undefined
@@ -87,9 +83,6 @@ export class EmailService {
     const apiKey = this.configService.get<string>('RESEND_API_KEY')
     if (apiKey) {
       this.resend = new Resend(apiKey)
-      this.logger.log('Resend API client khởi tạo thành công.')
-    } else {
-      this.logger.warn('RESEND_API_KEY chưa được cấu hình. Dịch vụ email sẽ bị vô hiệu hóa.')
     }
 
     // Cấu hình các địa chỉ email gửi
@@ -99,15 +92,6 @@ export class EmailService {
     this.frontendUrl = this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:8000'
   }
 
-  // ================================================================
-  // Private Methods - Utility & Helper Functions
-  // ================================================================
-
-  /**
-   * Đảm bảo ngôn ngữ hợp lệ, fallback về 'vi' nếu không hợp lệ
-   * @param preferredLang - Ngôn ngữ ưa thích
-   * @returns Ngôn ngữ hợp lệ ('vi' hoặc 'en')
-   */
   private getSafeLang(preferredLang?: 'vi' | 'en'): 'vi' | 'en' {
     if (preferredLang && ['vi', 'en'].includes(preferredLang)) {
       return preferredLang
@@ -119,14 +103,8 @@ export class EmailService {
     return 'vi' // Mặc định tiếng Việt
   }
 
-  /**
-   * Phương thức core để gửi email với React component template
-   * Xử lý việc render component, dịch subject và gửi qua Resend API
-   * @param payload - Thông tin email và component để render
-   */
   private async send<T>(payload: BaseEmailPayload<T>): Promise<void> {
     if (!this.resend) {
-      this.logger.warn(`Gửi email bị vô hiệu hóa. Đã bỏ qua email gửi tới ${payload.to}.`)
       return
     }
 
@@ -134,36 +112,18 @@ export class EmailService {
     const t: TranslateFunction = (key, options) => this.i18nService.t(key, { lang, ...options })
     const subject = t(payload.subjectKey, payload.subjectArgs)
 
-    try {
-      const { data, error } = await this.resend.emails.send({
-        from: payload.from || this.notificationEmailFrom,
-        to: payload.to,
-        subject,
-        react: React.createElement(payload.component, payload.props)
-      })
+    const { error } = await this.resend.emails.send({
+      from: payload.from || this.notificationEmailFrom,
+      to: payload.to,
+      subject,
+      react: React.createElement(payload.component, payload.props)
+    })
 
-      if (error) {
-        this.logger.error(`Resend API trả về lỗi cho người nhận ${payload.to}`, error)
-        return
-      }
-
-      this.logger.log(`Email gửi thành công tới ${payload.to} với subject: ${subject}, ID: ${data?.id}`)
-    } catch (error) {
-      this.logger.error(`Gửi email thất bại tới ${payload.to}. Subject: ${subject}`, error.stack)
-      // Không re-throw để tránh làm crash caller
+    if (error) {
+      return
     }
   }
 
-  // ================================================================
-  // Public Methods - Email Sending API
-  // ================================================================
-
-  /**
-   * Gửi email OTP cho xác thực đa yếu tố hoặc xác minh tài khoản
-   * @param to - Địa chỉ email người nhận
-   * @param otpType - Loại OTP (LOGIN, REGISTER, RECOVERY, v.v.)
-   * @param props - Thông tin cần thiết cho email (code, userName, etc.)
-   */
   async sendOtpEmail(
     to: string,
     otpType: TypeOfVerificationCodeType,
@@ -193,11 +153,6 @@ export class EmailService {
     })
   }
 
-  /**
-   * Gửi email chứa mã recovery codes cho 2FA
-   * @param to - Địa chỉ email người nhận
-   * @param props - Thông tin recovery codes và user
-   */
   async sendRecoveryCodesEmail(
     to: string,
     props: Omit<
@@ -232,18 +187,6 @@ export class EmailService {
     })
   }
 
-  // ================================================================
-  // Private Methods - Security Alert Helper
-  // ================================================================
-
-  /**
-   * Helper method để gửi các loại security alert email
-   * Tự động điền các field title, greeting, message và buttonText từ i18n
-   * @param to - Địa chỉ email người nhận
-   * @param alertType - Loại alert (DEVICE_TRUSTED, PASSWORD_CHANGED, etc.)
-   * @param component - React component để render email
-   * @param props - Props cho component (không bao gồm các field tự động điền)
-   */
   private async sendSecurityAlert<T extends { lang?: 'vi' | 'en'; userName: string; greeting?: string }>(
     to: string,
     alertType: string,
@@ -272,15 +215,6 @@ export class EmailService {
     })
   }
 
-  // ================================================================
-  // Public Methods - Security Alert Emails
-  // ================================================================
-
-  /**
-   * Gửi email thông báo đăng nhập từ thiết bị mới chưa được tin cậy
-   * @param to - Địa chỉ email người nhận
-   * @param props - Thông tin về thiết bị và vị trí đăng nhập
-   */
   async sendNewDeviceLoginEmail(
     to: string,
     props: Omit<
@@ -294,11 +228,6 @@ export class EmailService {
     })
   }
 
-  /**
-   * Gửi email thông báo thay đổi trạng thái tin cậy của thiết bị
-   * @param to - Địa chỉ email người nhận
-   * @param props - Thông tin về thiết bị và action (trusted/untrusted)
-   */
   async sendDeviceTrustChangeEmail(
     to: string,
     props: Omit<
@@ -313,11 +242,6 @@ export class EmailService {
     })
   }
 
-  /**
-   * Gửi email thông báo mật khẩu đã được thay đổi
-   * @param to - Địa chỉ email người nhận
-   * @param props - Thông tin về việc đổi mật khẩu
-   */
   async sendPasswordChangedEmail(
     to: string,
     props: Omit<
@@ -331,11 +255,6 @@ export class EmailService {
     })
   }
 
-  /**
-   * Gửi email thông báo thay đổi trạng thái 2FA (bật/tắt)
-   * @param to - Địa chỉ email người nhận
-   * @param props - Thông tin về action 2FA (enabled/disabled)
-   */
   async sendTwoFactorStatusChangedEmail(
     to: string,
     props: Omit<
@@ -443,15 +362,6 @@ export class EmailService {
     })
   }
 
-  // ================================================================
-  // Public Methods - User Management Alert Emails
-  // ================================================================
-
-  /**
-   * Gửi email thông báo tạo user mới cho admin và các stakeholder
-   * @param to - Địa chỉ email người nhận
-   * @param props - Thông tin về user được tạo và admin thực hiện
-   */
   async sendUserCreatedAlert(
     to: string,
     props: Omit<
@@ -484,11 +394,6 @@ export class EmailService {
     })
   }
 
-  /**
-   * Gửi email thông báo cập nhật thông tin user
-   * @param to - Địa chỉ email người nhận
-   * @param props - Thông tin về user được cập nhật và các thay đổi
-   */
   async sendUserUpdatedAlert(
     to: string,
     props: Omit<
@@ -521,11 +426,6 @@ export class EmailService {
     })
   }
 
-  /**
-   * Gửi email cảnh báo xóa user - hành động quan trọng
-   * @param to - Địa chỉ email người nhận
-   * @param props - Thông tin về user bị xóa và admin thực hiện
-   */
   async sendUserDeletedAlert(
     to: string,
     props: Omit<

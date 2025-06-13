@@ -1,18 +1,8 @@
-/**
- * Các tiện ích liên quan đến địa lý
- */
-
 export interface Coordinates {
   lat: number
   lon: number
 }
 
-/**
- * Tính khoảng cách giữa hai tọa độ bằng công thức Haversine.
- * @param coord1 Tọa độ điểm 1
- * @param coord2 Tọa độ điểm 2
- * @returns Khoảng cách giữa hai điểm (tính bằng km)
- */
 export function calculateDistance(coord1: Coordinates, coord2: Coordinates): number {
   const R = 6371 // Bán kính Trái Đất (km)
   const dLat = toRad(coord2.lat - coord1.lat)

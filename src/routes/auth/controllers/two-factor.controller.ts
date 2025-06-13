@@ -105,11 +105,7 @@ export class TwoFactorController {
   @HttpCode(HttpStatus.OK)
   async disableTwoFactor(
     @ActiveUser() activeUser: ActiveUserData,
-    @Body() body: TwoFactorVerifyDto,
-    @Ip() ip: string,
-    @UserAgent() userAgent: string,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response
+    @Body() body: TwoFactorVerifyDto
   ): Promise<{ message: string }> {
     return this.twoFactorService.disableVerification(activeUser.id, body.code)
   }

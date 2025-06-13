@@ -225,7 +225,6 @@ export class SessionsController {
   @RequirePermissions({ action: Action.Update, subject: AppSubject.Session })
   @HttpCode(HttpStatus.OK)
   async trustCurrentDevice(@ActiveUser() activeUser: ActiveUserData): Promise<any> {
-    this.logger.debug(`[trustCurrentDevice] User ${activeUser.id} trusting device ${activeUser.deviceId}`)
     if (!activeUser.id || !activeUser.deviceId) {
       throw AuthError.Unauthorized()
     }
@@ -243,7 +242,6 @@ export class SessionsController {
   async untrustDevice(@ActiveUser() activeUser: ActiveUserData, @Param() params: DeviceIdParamsDto): Promise<any> {
     if (isNaN(params.deviceId)) throw AuthError.InvalidDeviceId()
 
-    this.logger.debug(`[untrustDevice] User ${activeUser.id} untrusting device ${params.deviceId}`)
     await this.sessionsService.untrustDevice(activeUser.id, params.deviceId)
 
     return {

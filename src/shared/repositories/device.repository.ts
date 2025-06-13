@@ -23,21 +23,13 @@ export class DeviceRepository {
     private readonly userAgentService: UserAgentService
   ) {}
 
-  /**
-   * Tìm thiết bị theo ID
-   */
   async findById(deviceId: number): Promise<Device | null> {
-    this.logger.debug(`[findById] Finding device with id: ${deviceId}`)
     return this.prismaService.device.findUnique({
       where: { id: deviceId }
     })
   }
 
-  /**
-   * Tìm thiết bị của user
-   */
   async findDevicesByUserId(userId: number): Promise<Device[]> {
-    this.logger.debug(`[findDevicesByUserId] Finding devices for user ${userId}`)
     return this.prismaService.device.findMany({
       where: { userId },
       orderBy: {
@@ -46,9 +38,6 @@ export class DeviceRepository {
     })
   }
 
-  /**
-   * Tìm hoặc tạo thiết bị, ưu tiên sử dụng fingerprint
-   */
   async upsertDevice(
     userId: number,
     userAgent: string,
@@ -56,13 +45,10 @@ export class DeviceRepository {
     fingerprint?: string,
     name?: string
   ): Promise<Device> {
-    this.logger.debug(`[upsertDevice] Upserting device for user ${userId} with fingerprint: ${fingerprint ?? 'N/A'}`)
-
     // 1. Cố gắng tìm bằng fingerprint (chính xác nhất)
     if (fingerprint) {
       const existingDevice = await this.findDeviceByFingerprint(fingerprint)
       if (existingDevice) {
-        this.logger.debug(`[upsertDevice] Found existing device ${existingDevice.id} by fingerprint.`)
         return this.prismaService.device.update({
           where: { id: existingDevice.id },
           data: { ip: ipAddress, lastActive: new Date() }
@@ -73,7 +59,6 @@ export class DeviceRepository {
     // 2. Nếu không có fingerprint hoặc không tìm thấy, thử tìm bằng User Agent (dự phòng)
     const existingDeviceByUA = await this.findByUserIdAndUserAgent(userId, userAgent)
     if (existingDeviceByUA) {
-      this.logger.debug(`[upsertDevice] Found existing device ${existingDeviceByUA.id} by User Agent.`)
       // Cập nhật fingerprint nếu có và thiết bị chưa có
       const dataToUpdate: Prisma.DeviceUpdateInput = { ip: ipAddress, lastActive: new Date() }
       if (fingerprint && !existingDeviceByUA.fingerprint) {
@@ -86,17 +71,10 @@ export class DeviceRepository {
     }
 
     // 3. Nếu không tìm thấy, tạo mới
-    this.logger.debug(`[upsertDevice] No existing device found, creating a new one.`)
     return this.createDevice({ userId, userAgent, ipAddress, name, fingerprint })
   }
 
-  /**
-   * Cập nhật trạng thái tin cậy của thiết bị
-   */
   async updateDeviceTrustStatus(deviceId: number, isTrusted: boolean, trustExpirationDate?: Date): Promise<Device> {
-    this.logger.debug(
-      `[updateDeviceTrustStatus] Updating trust status for device ${deviceId} to ${isTrusted ? 'trusted' : 'untrusted'}`
-    )
     const trustExpiration =
       isTrusted === false ? null : (trustExpirationDate ?? this.getTrustExpirationDate(isTrusted ? undefined : 0))
 
@@ -105,83 +83,52 @@ export class DeviceRepository {
       data: { isTrusted, trustExpiration }
     })
 
-    if (!updatedDevice) {
-      this.logger.warn(`[updateDeviceTrustStatus] Device with ID ${deviceId} not found.`)
-    }
-
     return updatedDevice
   }
 
-  /**
-   * Kiểm tra xem thiết bị có còn trong thời gian tin cậy hay không
-   */
   async isDeviceTrustValid(deviceId: number): Promise<boolean> {
-    this.logger.debug(`[isDeviceTrustValid] Checking trust validity for device ${deviceId}`)
     const device = await this.findById(deviceId)
     if (!device || !device.isTrusted) {
       return false
     }
 
     if (device.trustExpiration && device.trustExpiration.getTime() < Date.now()) {
-      this.logger.log(`[isDeviceTrustValid] Device ${deviceId} trust has expired. Untrusting...`)
       // Asynchronously untrust the device
-      this.updateDeviceTrustStatus(deviceId, false).catch((err) => {
-        this.logger.error(`Failed to untrust expired device ${deviceId}`, err)
-      })
+      this.updateDeviceTrustStatus(deviceId, false).catch(() => {})
       return false
     }
 
     return true
   }
 
-  /**
-   * Cập nhật fingerprint của thiết bị
-   */
   async updateDeviceFingerprint(deviceId: number, fingerprint: string): Promise<Device> {
-    this.logger.debug(`[updateDeviceFingerprint] Updating fingerprint for device ${deviceId}`)
     return this.prismaService.device.update({
       where: { id: deviceId },
       data: { fingerprint }
     })
   }
 
-  /**
-   * Cập nhật tên thiết bị
-   */
   async updateDeviceName(deviceId: number, name: string): Promise<Device> {
-    this.logger.debug(`[updateDeviceName] Updating name for device ${deviceId} to "${name}"`)
     return this.prismaService.device.update({
       where: { id: deviceId },
       data: { name }
     })
   }
 
-  /**
-   * Cập nhật thời gian thông báo cuối
-   */
   async updateLastNotificationSent(deviceId: number): Promise<Device> {
-    this.logger.debug(`[updateLastNotificationSent] Updating last notification sent time for device ${deviceId}`)
     return this.prismaService.device.update({
       where: { id: deviceId },
       data: { lastNotificationSentAt: new Date() }
     })
   }
 
-  /**
-   * Đánh dấu thiết bị là không còn hoạt động
-   */
   async markDeviceAsInactive(deviceId: number): Promise<Device> {
-    this.logger.debug(`[markDeviceAsInactive] Marking device ${deviceId} as inactive`)
     return this.prismaService.device.update({
       where: { id: deviceId },
       data: { isActive: false }
     })
   }
 
-  /**
-   * Tìm thiết bị dựa trên userId và userAgent
-   * Phương thức này được sử dụng để xác định xem người dùng đang sử dụng thiết bị cũ hay mới
-   */
   async findByUserIdAndUserAgent(userId: number, userAgent: string): Promise<Device | null> {
     const uaInfo = this.userAgentService.parse(userAgent)
 
@@ -198,19 +145,12 @@ export class DeviceRepository {
     })
 
     if (device) {
-      this.logger.debug(
-        `[findByUserIdAndUserAgent] Found matching device ${device.id} for user ${userId} based on browser/OS.`
-      )
       return device
     }
 
-    this.logger.debug(`[findByUserIdAndUserAgent] No matching device found for user ${userId}`)
     return null
   }
 
-  /**
-   * Tạo thiết bị mới
-   */
   async createDevice(data: DeviceCreateData): Promise<Device> {
     const { userId, userAgent, ipAddress, name, isTrusted = false, fingerprint } = data
     const uaInfo = this.userAgentService.parse(userAgent)
@@ -240,9 +180,6 @@ export class DeviceRepository {
     })
   }
 
-  /**
-   * Tính ngày hết hạn tin cậy
-   */
   private getTrustExpirationDate(customExpiryDays?: number): Date {
     const expiryDays = customExpiryDays ?? this.configService.get<number>('auth.deviceTrust.expiresInDays', 90)
     const date = new Date()
@@ -250,9 +187,6 @@ export class DeviceRepository {
     return date
   }
 
-  /**
-   * Cập nhật thông tin vị trí của thiết bị
-   */
   async updateDeviceLocation(
     deviceId: number,
     locationData: {
@@ -261,16 +195,12 @@ export class DeviceRepository {
       lastKnownCity?: string
     }
   ): Promise<Device> {
-    this.logger.debug(`[updateDeviceLocation] Updating location for device ${deviceId}`)
     return this.prismaService.device.update({
       where: { id: deviceId },
       data: locationData
     })
   }
 
-  /**
-   * Tìm thiết bị bằng fingerprint
-   */
   async findDeviceByFingerprint(fingerprint: string): Promise<Device | null> {
     if (!fingerprint) return null
     return this.prismaService.device.findUnique({

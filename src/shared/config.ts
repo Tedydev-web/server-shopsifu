@@ -13,9 +13,6 @@ if (!fs.existsSync(path.resolve('.env'))) {
   process.exit(1)
 }
 
-/**
- * Schema validation cho biến môi trường
- */
 const configSchema = z.object({
   // Server & môi trường
   NODE_ENV: z.enum(['development', 'production', 'test', 'staging']).default('development'),
@@ -100,9 +97,6 @@ if (!configServer.success) {
 const parsedConfig = configServer.data
 const isDevlopment = parsedConfig.NODE_ENV === 'development'
 
-/**
- * Chuyển đổi chuỗi thời gian sang milliseconds
- */
 const convertMs = (value: string, defaultValue: number): number => {
   try {
     const calculatedMs = ms(value as any)
@@ -126,9 +120,6 @@ const getCookieOptions = (httpOnly: boolean) => {
   }
 }
 
-/**
- * Định nghĩa cấu hình chi tiết cho từng loại cookie.
- */
 const cookieDefinitions = {
   accessToken: {
     name: CookieNames.ACCESS_TOKEN,

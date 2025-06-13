@@ -23,7 +23,6 @@ export class PermissionRepository {
       keysToDel.push(RedisKeyManager.getPermissionByActionAndSubjectCacheKey(permission.action, permission.subject))
     }
     await this.redisService.del(keysToDel)
-    this.logger.debug(`Invalidated permission cache for keys: ${keysToDel.join(', ')}`)
   }
 
   async create(data: CreatePermissionData): Promise<Permission> {
@@ -53,7 +52,6 @@ export class PermissionRepository {
     const cacheKey = RedisKeyManager.getAllPermissionsCacheKey()
     const cachedPermissions = await this.redisService.getJson<Permission[]>(cacheKey)
     if (cachedPermissions) {
-      this.logger.debug('findAll permissions from cache')
       return cachedPermissions
     }
 
@@ -74,7 +72,6 @@ export class PermissionRepository {
     const cacheKey = RedisKeyManager.getPermissionCacheKey(id)
     const cachedPermission = await this.redisService.getJson<Permission>(cacheKey)
     if (cachedPermission) {
-      this.logger.debug(`findById permission ${id} from cache`)
       return cachedPermission
     }
     const permission = await this.prisma.permission.findUnique({
@@ -90,7 +87,6 @@ export class PermissionRepository {
     const cacheKey = RedisKeyManager.getPermissionByActionAndSubjectCacheKey(action, subject)
     const cachedPermission = await this.redisService.getJson<Permission>(cacheKey)
     if (cachedPermission) {
-      this.logger.debug(`findByActionAndSubject permission ${action}/${subject} from cache`)
       return cachedPermission
     }
     const permission = await this.prisma.permission.findUnique({

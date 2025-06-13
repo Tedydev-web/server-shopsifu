@@ -35,7 +35,6 @@ export class AuthenticationGuard implements CanActivate {
     ])
 
     if (isPublic) {
-      this.logger.verbose(`Public route detected: ${context.getClass().name}.${context.getHandler().name}`)
       return true
     }
 
@@ -49,12 +48,10 @@ export class AuthenticationGuard implements CanActivate {
     for (const type of authTypes) {
       const guard = this.authTypeGuardMap[type]
       if (guard) {
-        this.logger.verbose(`Activating guard for auth type: ${type}`)
         return guard.canActivate(context)
       }
     }
 
-    this.logger.warn(`No valid guard found for auth types: ${authTypes.join(', ')}. Access granted by default.`)
     return true
   }
 }

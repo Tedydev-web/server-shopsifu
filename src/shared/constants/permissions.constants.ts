@@ -8,26 +8,6 @@ export interface PermissionDefinition {
   conditions?: Record<string, any>
 }
 
-/**
- * =============================================================================
- * ALL PERMISSIONS
- * =============================================================================
- * This is the single source of truth for all permissions in the system.
- *
- * It is used to:
- * - Seed the database with permissions.
- * - Provide a list of available permissions for the frontend.
- * - Ensure consistency between the code and the database.
- *
- * @see initialScript/seed.ts to see how this is used.
- *
- * @guidelines
- * - `subject` should be in PascalCase (e.g., 'User', 'Role').
- * - `action` should be in lowercase (e.g., 'create', 'read', 'update', 'delete').
- * - `description` should be a clear and concise explanation of the permission.
- * - `isSystemPermission` should be true for critical permissions that should not be deleted.
- * =============================================================================
- */
 export const ALL_PERMISSIONS: PermissionDefinition[] = [
   // --- User Management ---
   {

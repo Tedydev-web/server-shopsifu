@@ -38,45 +38,8 @@ import {
 // Types & Interfaces
 // ================================================================
 import { I18nTranslations } from 'src/generated/i18n.generated'
+import { ActivitySeverity, UserActivityType } from '../auth.constants'
 
-/**
- * Service theo dõi và phân tích hoạt động người dùng
- * - Ghi lại các hoạt động quan trọng của user (login, thay đổi mật khẩu, v.v.)
- * - Phát hiện hoạt động đáng ngờ dựa trên location và device fingerprint
- * - Gửi cảnh báo bảo mật qua email khi cần thiết
- * - Quản lý lịch sử hoạt động với Redis cache
- */
-
-/**
- * Các loại hoạt động người dùng được theo dõi
- */
-export enum UserActivityType {
-  LOGIN_ATTEMPT = 'LOGIN_ATTEMPT',
-  LOGIN_SUCCESS = 'LOGIN_SUCCESS',
-  LOGIN_FAILURE = 'LOGIN_FAILURE',
-  PASSWORD_CHANGED = 'PASSWORD_CHANGED',
-  EMAIL_CHANGED = 'EMAIL_CHANGED',
-  PROFILE_UPDATED = 'PROFILE_UPDATED',
-  TWO_FACTOR_ENABLED = 'TWO_FACTOR_ENABLED',
-  TWO_FACTOR_DISABLED = 'TWO_FACTOR_DISABLED',
-  RECOVERY_ATTEMPT = 'RECOVERY_ATTEMPT',
-  SUSPICIOUS_ACTIVITY = 'SUSPICIOUS_ACTIVITY',
-  ACCOUNT_LOCKED = 'ACCOUNT_LOCKED',
-  ACCOUNT_UNLOCKED = 'ACCOUNT_UNLOCKED'
-}
-
-/**
- * Các mức độ nghiêm trọng
- */
-export enum ActivitySeverity {
-  INFO = 'INFO',
-  WARNING = 'WARNING',
-  CRITICAL = 'CRITICAL'
-}
-
-/**
- * Thông tin hoạt động người dùng
- */
 export interface UserActivity {
   userId: number
   type: UserActivityType
@@ -89,9 +52,6 @@ export interface UserActivity {
   details?: Record<string, any>
 }
 
-/**
- * Quy tắc phát hiện hoạt động đáng ngờ
- */
 export interface DetectionRule {
   name: string
   type: UserActivityType
@@ -164,91 +124,60 @@ export class UserActivityService {
     ]
   }
 
-  // ================================================================
-  // Public Methods - Activity Logging & Management
-  // ================================================================
-
-  /**
-   * Ghi lại hoạt động của người dùng vào Redis và xử lý theo quy tắc bảo mật
-   * Tự động kiểm tra vi phạm các rule để phát hiện hoạt động đáng ngờ
-   * @param activity - Thông tin chi tiết về hoạt động
-   */
   async logActivity(activity: UserActivity): Promise<void> {
-    this.logger.debug(`[logActivity] Ghi nhận hoạt động: ${activity.type} cho user ${activity.userId}`)
+    // Lưu vào Redis danh sách hoạt động với timestamp
+    const activityKey = RedisKeyManager.getUserActivityKey(activity.userId)
+    const activityJson = JSON.stringify({
+      ...activity,
+      timestamp: activity.timestamp || Date.now()
+    })
 
-    try {
-      // Lưu vào Redis danh sách hoạt động với timestamp
-      const activityKey = RedisKeyManager.getUserActivityKey(activity.userId)
-      const activityJson = JSON.stringify({
-        ...activity,
-        timestamp: activity.timestamp || Date.now()
-      })
+    // Thêm vào đầu danh sách (FIFO)
+    await this.redisService.lpush(activityKey, activityJson)
 
-      // Thêm vào đầu danh sách (FIFO)
-      await this.redisService.lpush(activityKey, activityJson)
+    // Giữ danh sách trong giới hạn để tiết kiệm memory
+    await this.redisService.ltrim(activityKey, 0, 99) // Giữ 100 hoạt động gần nhất
 
-      // Giữ danh sách trong giới hạn để tiết kiệm memory
-      await this.redisService.ltrim(activityKey, 0, 99) // Giữ 100 hoạt động gần nhất
-
-      // Thiết lập thời gian hết hạn cho data retention
-      const ttl = await this.redisService.ttl(activityKey)
-      if (ttl < 0) {
-        await this.redisService.expire(activityKey, 60 * 60 * 24 * this.activityRetentionDays)
-      }
-
-      // Xử lý business logic theo loại hoạt động
-      await this.processActivity(activity)
-
-      // Kiểm tra vi phạm các quy tắc bảo mật
-      await this.checkRuleViolations(activity)
-    } catch (error) {
-      this.logger.error(`[logActivity] Lỗi ghi nhận hoạt động: ${error.message}`, error.stack)
+    // Thiết lập thời gian hết hạn cho data retention
+    const ttl = await this.redisService.ttl(activityKey)
+    if (ttl < 0) {
+      await this.redisService.expire(activityKey, 60 * 60 * 24 * this.activityRetentionDays)
     }
+
+    // Xử lý business logic theo loại hoạt động
+    await this.processActivity(activity)
+
+    // Kiểm tra vi phạm các quy tắc bảo mật
+    await this.checkRuleViolations(activity)
   }
 
-  // ================================================================
-  // Private Methods - Activity Processing
-  // ================================================================
-
-  /**
-   * Xử lý logic nghiệp vụ cụ thể cho từng loại hoạt động
-   * Ví dụ: đếm số lần đăng nhập thất bại, cập nhật last login, etc.
-   * @param activity - Hoạt động cần xử lý
-   */
   private async processActivity(activity: UserActivity): Promise<void> {
-    try {
-      const userForPasswordChange = await this.userRepository.findByIdWithDetails(activity.userId)
-      switch (activity.type) {
-        case UserActivityType.LOGIN_FAILURE:
-          await this.handleLoginFailure(activity)
-          break
-        case UserActivityType.LOGIN_SUCCESS:
-          await this.handleLoginSuccess(activity)
-          break
-        case UserActivityType.PASSWORD_CHANGED:
-          if (userForPasswordChange) {
-            await this.handlePasswordChanged(activity, userForPasswordChange)
-          }
-          break
-        case UserActivityType.EMAIL_CHANGED:
-          await this.handleEmailChanged(activity)
-          break
-        case UserActivityType.TWO_FACTOR_ENABLED:
-        case UserActivityType.TWO_FACTOR_DISABLED:
-          await this.handleTwoFactorChange(activity)
-          break
-        default:
-          // Không có xử lý đặc biệt
-          break
-      }
-    } catch (error) {
-      this.logger.error(`[processActivity] Error processing activity ${activity.type}: ${error.message}`)
+    const userForPasswordChange = await this.userRepository.findByIdWithDetails(activity.userId)
+    switch (activity.type) {
+      case UserActivityType.LOGIN_FAILURE:
+        await this.handleLoginFailure(activity)
+        break
+      case UserActivityType.LOGIN_SUCCESS:
+        await this.handleLoginSuccess(activity)
+        break
+      case UserActivityType.PASSWORD_CHANGED:
+        if (userForPasswordChange) {
+          await this.handlePasswordChanged(activity, userForPasswordChange)
+        }
+        break
+      case UserActivityType.EMAIL_CHANGED:
+        await this.handleEmailChanged(activity)
+        break
+      case UserActivityType.TWO_FACTOR_ENABLED:
+      case UserActivityType.TWO_FACTOR_DISABLED:
+        await this.handleTwoFactorChange(activity)
+        break
+      default:
+        // Không có xử lý đặc biệt
+        break
     }
   }
 
-  /**
-   * Kiểm tra vi phạm quy tắc
-   */
   private async checkRuleViolations(activity: UserActivity): Promise<void> {
     const applicableRules = this.rules.filter((rule) => rule.type === activity.type)
 
@@ -256,8 +185,6 @@ export class UserActivityService {
       const isViolated = await this.checkRule(activity.userId, rule)
 
       if (isViolated) {
-        this.logger.warn(`[checkRuleViolations] Rule "${rule.name}" violated by user ${activity.userId}`)
-
         // Ghi lại vi phạm
         await this.logActivity({
           userId: activity.userId,
@@ -276,9 +203,6 @@ export class UserActivityService {
 
         const user = await this.userRepository.findByIdWithDetails(activity.userId)
         if (!user) {
-          this.logger.warn(
-            `[checkRuleViolations] User not found for ID ${activity.userId}, cannot proceed with notifications or actions.`
-          )
           return
         }
 
@@ -301,9 +225,6 @@ export class UserActivityService {
     }
   }
 
-  /**
-   * Kiểm tra một quy tắc cụ thể
-   */
   private async checkRule(userId: number, rule: DetectionRule): Promise<boolean> {
     // Xử lý riêng cho quy tắc di chuyển phi thực tế
     if (rule.name === 'Di chuyển phi thực tế') {
@@ -321,18 +242,14 @@ export class UserActivityService {
     const relevantActivities: UserActivity[] = []
 
     for (const activityJson of activities) {
-      try {
-        const activity = JSON.parse(activityJson)
+      const activity = JSON.parse(activityJson)
 
-        if (activity.type === rule.type) {
-          const activityTime = activity.timestamp || 0
+      if (activity.type === rule.type) {
+        const activityTime = activity.timestamp || 0
 
-          if (now - activityTime <= timeWindowMs) {
-            relevantActivities.push(activity)
-          }
+        if (now - activityTime <= timeWindowMs) {
+          relevantActivities.push(activity)
         }
-      } catch (error) {
-        this.logger.error(`[checkRule] Error parsing activity: ${error.message}`)
       }
     }
 
@@ -378,9 +295,6 @@ export class UserActivityService {
     return speedKph > this.impossibleTravelSpeedKph
   }
 
-  /**
-   * Xử lý đăng nhập thất bại
-   */
   private async handleLoginFailure(activity: UserActivity): Promise<void> {
     const failureKey = RedisKeyManager.getLoginFailuresKey(activity.userId)
     await this.redisService.lpush(failureKey, JSON.stringify({ timestamp: activity.timestamp }))
@@ -388,9 +302,6 @@ export class UserActivityService {
     await this.redisService.expire(failureKey, this.loginLockoutMinutes * 60)
   }
 
-  /**
-   * Xử lý đăng nhập thành công
-   */
   private async handleLoginSuccess(activity: UserActivity): Promise<void> {
     const failureKey = RedisKeyManager.getLoginFailuresKey(activity.userId)
     await this.redisService.del(failureKey)
@@ -399,9 +310,6 @@ export class UserActivityService {
     await this.redisService.set(lastLoginKey, activity.timestamp.toString())
   }
 
-  /**
-   * Xử lý thay đổi mật khẩu
-   */
   private async handlePasswordChanged(activity: UserActivity, user: UserWithProfileAndRole): Promise<void> {
     if (!user) return
 
@@ -422,9 +330,6 @@ export class UserActivityService {
     })
   }
 
-  /**
-   * Xử lý thay đổi email
-   */
   private async handleEmailChanged(activity: UserActivity): Promise<void> {
     const emailChangeKey = RedisKeyManager.getEmailChangesKey(activity.userId)
     await this.redisService.lpush(
@@ -435,9 +340,6 @@ export class UserActivityService {
     await this.redisService.expire(emailChangeKey, 60 * 60 * 24 * 90) // 90 ngày
   }
 
-  /**
-   * Xử lý thay đổi xác thực hai yếu tố
-   */
   private async handleTwoFactorChange(activity: UserActivity): Promise<void> {
     const twoFactorChangeKey = RedisKeyManager.getTwoFactorChangesKey(activity.userId)
     await this.redisService.lpush(
@@ -451,11 +353,7 @@ export class UserActivityService {
     await this.redisService.expire(twoFactorChangeKey, 60 * 60 * 24 * 365) // 1 năm
   }
 
-  /**
-   * Khóa tài khoản người dùng
-   */
   private async lockAccount(user: UserWithProfileAndRole, activity: UserActivity): Promise<void> {
-    this.logger.warn(`[lockAccount] Locking account for userId: ${user.id} due to suspicious activity.`)
     const lockKey = RedisKeyManager.getAccountLockKey(user.id)
     await this.redisService.set(lockKey, 'locked', 'EX', this.loginLockoutMinutes * 60)
 
@@ -489,17 +387,11 @@ export class UserActivityService {
     })
   }
 
-  /**
-   * Kiểm tra xem tài khoản có bị khóa không
-   */
   async isAccountLocked(userId: number): Promise<boolean> {
     const lockKey = RedisKeyManager.getAccountLockKey(userId)
     return (await this.redisService.exists(lockKey)) > 0
   }
 
-  /**
-   * Mở khóa tài khoản người dùng
-   */
   async unlockAccount(userId: number, adminId?: number): Promise<void> {
     const lockKey = RedisKeyManager.getAccountLockKey(userId)
     const result = await this.redisService.del(lockKey)
@@ -516,26 +408,15 @@ export class UserActivityService {
           previousLockData: null
         }
       })
-
-      this.logger.log(`[unlockAccount] Account unlocked for user ${userId}`)
-    } else {
-      this.logger.warn(`[unlockAccount] Account already unlocked for user ${userId}`)
     }
   }
 
-  /**
-   * Đặt cờ yêu cầu xác minh lại cho người dùng vào lần đăng nhập tiếp theo
-   */
   private async setReverifyFlagForUser(userId: number): Promise<void> {
     const key = RedisKeyManager.getUserReverifyNextLoginKey(userId)
     const ttl = 24 * 60 * 60 // 24 giờ
     await this.redisService.set(key, '1', 'EX', ttl)
-    this.logger.log(`[setReverifyFlagForUser] Đã đặt cờ xác minh lại cho người dùng ${userId} với TTL ${ttl}s.`)
   }
 
-  /**
-   * Thông báo cho người dùng về hoạt động đáng ngờ
-   */
   private async notifyUserAboutSuspiciousActivity(
     user: UserWithProfileAndRole,
     rule: DetectionRule,
@@ -546,7 +427,6 @@ export class UserActivityService {
     const alreadyNotified = await this.redisService.get(notificationKey)
 
     if (alreadyNotified) {
-      this.logger.debug(`[notifyUser] User ${user.id} already notified for ${rule.name}. Skipping.`)
       return
     }
 
@@ -607,9 +487,6 @@ export class UserActivityService {
     await this.redisService.set(notificationKey, 'sent', 'EX', notificationTtl)
   }
 
-  /**
-   * Chuyển đổi loại hoạt động thành tên thân thiện với người dùng
-   */
   private getUserFriendlyActivityName(activityType: UserActivityType): string {
     switch (activityType) {
       case UserActivityType.LOGIN_ATTEMPT:
@@ -641,9 +518,6 @@ export class UserActivityService {
     }
   }
 
-  /**
-   * Lấy lịch sử hoạt động của người dùng
-   */
   async getUserActivityHistory(
     userId: number,
     limit: number = 20,
@@ -660,25 +534,20 @@ export class UserActivityService {
       const result: UserActivity[] = []
 
       for (const activityJson of activitiesJson) {
-        try {
-          const activity = JSON.parse(activityJson) as UserActivity
+        const activity = JSON.parse(activityJson) as UserActivity
 
-          // Lọc theo loại hoạt động nếu có
-          if (activityTypes && activityTypes.length > 0) {
-            if (!activityTypes.includes(activity.type)) {
-              continue
-            }
+        // Lọc theo loại hoạt động nếu có
+        if (activityTypes && activityTypes.length > 0) {
+          if (!activityTypes.includes(activity.type)) {
+            continue
           }
-
-          result.push(activity)
-        } catch (error) {
-          this.logger.error(`[getUserActivityHistory] Error parsing activity: ${error.message}`)
         }
+
+        result.push(activity)
       }
 
       return result
-    } catch (error) {
-      this.logger.error(`[getUserActivityHistory] Error: ${error.message}`)
+    } catch {
       return []
     }
   }
@@ -687,9 +556,6 @@ export class UserActivityService {
     return typeof location.lat === 'number' && typeof location.lon === 'number'
   }
 
-  /**
-   * Lấy thêm chi tiết cho một quy tắc vi phạm (nếu cần)
-   */
   private async getExtraDetailsForRule(rule: DetectionRule, userId: number): Promise<Record<string, any> | undefined> {
     if (rule.name === 'Di chuyển phi thực tế') {
       const activities = await this.getUserActivityHistory(userId, 2, [UserActivityType.LOGIN_SUCCESS])

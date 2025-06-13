@@ -75,7 +75,6 @@ export class RoleRepository {
     }
     if (keysToDel.length > 0) {
       await this.redisService.del(keysToDel)
-      this.logger.debug(`Invalidated role cache for keys: ${keysToDel.join(', ')}`)
     }
   }
 
@@ -169,7 +168,6 @@ export class RoleRepository {
     const cacheKey = RedisKeyManager.getAllRolesCacheKey()
     const cachedRoles = await this.redisService.getJson<Role[]>(cacheKey)
     if (cachedRoles) {
-      this.logger.debug('findAll roles from cache')
       return cachedRoles
     }
 
@@ -191,7 +189,6 @@ export class RoleRepository {
     const cacheKey = RedisKeyManager.getRoleCacheKey(id)
     const cachedRole = await this.redisService.getJson<Role>(cacheKey)
     if (cachedRole) {
-      this.logger.debug(`findById role ${id} from cache`)
       return cachedRole
     }
 
@@ -216,7 +213,6 @@ export class RoleRepository {
     const cacheKey = RedisKeyManager.getRoleByNameCacheKey(name)
     const cachedRole = await this.redisService.getJson<Role>(cacheKey)
     if (cachedRole) {
-      this.logger.debug(`findByName role ${name} from cache`)
       return cachedRole
     }
 

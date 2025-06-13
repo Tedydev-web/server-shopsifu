@@ -36,10 +36,6 @@ const CORE_ROLES = [
   }
 ]
 
-/**
- * Permission categories that can be assigned to different roles.
- * This approach allows for more flexible and maintainable permission assignment.
- */
 const PERMISSION_CATEGORIES = {
   AUTH: {
     subjects: ['Auth'],
@@ -97,10 +93,6 @@ const PERMISSION_CATEGORIES = {
   }
 }
 
-/**
- * Role to permission category mapping.
- * This defines which permission categories each role should have.
- */
 const ROLE_PERMISSION_MAPPING: Record<string, string[]> = {
   'Super Admin': Object.keys(PERMISSION_CATEGORIES),
   Admin: [
@@ -119,9 +111,6 @@ const ROLE_PERMISSION_MAPPING: Record<string, string[]> = {
   Customer: ['AUTH', 'PROFILE', 'TWO_FACTOR', 'CATALOG', 'ORDER_CUSTOMER']
 }
 
-/**
- * Default admin user configuration
- */
 const DEFAULT_ADMIN = {
   email: process.env.ADMIN_EMAIL,
   password: process.env.ADMIN_PASSWORD,
@@ -148,10 +137,6 @@ async function main() {
   }
 }
 
-/**
- * Seeds all permissions from the single source of truth (`ALL_PERMISSIONS`) into the database.
- * It uses `upsert` to create new permissions or update existing ones.
- */
 async function seedPermissions() {
   logger.log('\n[1/3] Synchronizing permissions...')
 
@@ -238,10 +223,6 @@ async function seedPermissions() {
   }
 }
 
-/**
- * Seeds the core roles (`Super Admin`, `Admin`, `Customer`) into the database.
- * Ensures that these essential roles exist.
- */
 async function seedRoles(): Promise<Role[]> {
   logger.log('\n[2/3] Seeding core roles...')
   const seededRoles: Role[] = []
@@ -276,9 +257,6 @@ async function seedRoles(): Promise<Role[]> {
   return seededRoles
 }
 
-/**
- * Helper function to get permissions that match the given subjects and actions.
- */
 async function getPermissionsByCategory(category: { subjects: string[]; actions: string[] }) {
   return await prisma.permission.findMany({
     where: {
@@ -299,9 +277,6 @@ async function getPermissionsByCategory(category: { subjects: string[]; actions:
   })
 }
 
-/**
- * Dynamically assigns permissions to roles based on the ROLE_PERMISSION_MAPPING.
- */
 async function assignPermissionsToRoles(roles: Role[]) {
   logger.log('\n[3/3] Assigning permissions to roles...')
 
@@ -346,10 +321,6 @@ async function assignPermissionsToRoles(roles: Role[]) {
   logger.log('✅ Permission assignment completed.')
 }
 
-/**
- * Assigns specific permissions to a role.
- * Returns the number of new permissions assigned.
- */
 async function assignPermissionsToRole(roleId: number, permissionIds: number[]): Promise<number> {
   const existingAssignments = await prisma.rolePermission.findMany({
     where: { roleId },
@@ -372,10 +343,6 @@ async function assignPermissionsToRole(roleId: number, permissionIds: number[]):
   return newPermissions.length
 }
 
-/**
- * Assigns all existing permissions to a role.
- * This is used specifically for the Super Admin role.
- */
 async function assignAllPermissionsToRole(roleId: number) {
   const allPermissions = await prisma.permission.findMany({
     select: { id: true }
@@ -391,10 +358,6 @@ async function assignAllPermissionsToRole(roleId: number) {
   )
 }
 
-/**
- * Creates an admin user if one doesn't already exist.
- * @param roles - The list of roles, used to find the Admin role.
- */
 async function createAdminUser(roles: Role[]) {
   logger.log('\n[4/4] Creating default admin user...')
 

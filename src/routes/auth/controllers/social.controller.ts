@@ -59,7 +59,6 @@ export class SocialController {
     @Res({ passthrough: true }) res: Response,
     @ActiveUser() activeUser?: ActiveUserData
   ): GoogleAuthUrlDataDto {
-    this.logger.debug(`[getGoogleAuthUrl] Getting Google auth URL for action: ${query.action}`)
     const nonce = crypto.randomBytes(16).toString('hex')
     const { url } = this.socialService.getGoogleAuthUrl({
       action: query.action,
@@ -83,7 +82,6 @@ export class SocialController {
   ): Promise<any> {
     const { code, state, error } = query
     const originalNonce = req.cookies?.[CookieNames.OAUTH_NONCE]
-    this.logger.debug(`[googleCallback] Received callback from Google.`)
     this.cookieService.clearOAuthNonceCookie(res)
 
     if (error) {
@@ -103,7 +101,6 @@ export class SocialController {
     }
 
     if ('needsLinking' in result && result.needsLinking) {
-      this.logger.debug(`[googleCallback] Account needs linking for Google email: ${result.googleEmail}`)
       const payload: PendingLinkTokenPayloadCreate = {
         existingUserId: result.existingUserId,
         googleId: result.googleId,
@@ -129,7 +126,6 @@ export class SocialController {
     }
 
     if ('user' in result && 'device' in result) {
-      this.logger.debug(`[googleCallback] Google auth successful for user ${result.user.id}. Initiating verification.`)
       return this.authVerificationService.initiateVerification(
         {
           userId: result.user.id,
@@ -145,7 +141,6 @@ export class SocialController {
       )
     }
 
-    this.logger.error('[googleCallback] Unexpected result from socialService.googleCallback', result)
     throw AuthError.InternalServerError('auth.error.social.googleCallbackError')
   }
 
@@ -164,14 +159,11 @@ export class SocialController {
       throw AuthError.PendingSocialLinkTokenMissing()
     }
 
-    this.logger.debug(`[completeLink] Attempting to complete social account linking.`)
-
     const result = await this.socialService.completeLinkAndLogin(pendingLinkToken, body.password || '', userAgent, ip)
     const { user, device } = result.data
 
     this.cookieService.clearOAuthPendingLinkTokenCookie(res)
 
-    this.logger.log(`[completeLink] Social account linked successfully for user ${user.id}. Finalizing login.`)
     return this.coreService.finalizeLoginAndCreateTokens(user, device, true, res, ip, userAgent)
   }
 
@@ -184,7 +176,6 @@ export class SocialController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    this.logger.debug(`[initiateUnlinkGoogleAccount] User ${activeUser.id} initiating Google account unlinking.`)
     if (!activeUser.email) {
       throw AuthError.InternalServerError('User email not found in token payload.')
     }

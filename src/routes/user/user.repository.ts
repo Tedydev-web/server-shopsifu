@@ -111,7 +111,6 @@ export class UserRepository {
           }
         }
       }
-      this.logger.error('Failed to create user with profile:', error)
       throw UserError.CreateFailed()
     }
   }
@@ -183,7 +182,6 @@ export class UserRepository {
   }
 
   async enableTwoFactor(userId: number, secret: string, method: TwoFactorMethodType): Promise<User> {
-    this.logger.debug(`Enabling 2FA for user ${userId} with method ${method}`)
     return this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -196,7 +194,6 @@ export class UserRepository {
   }
 
   async disableTwoFactor(userId: number): Promise<User> {
-    this.logger.debug(`Disabling 2FA for user ${userId}`)
     return this.prisma.user.update({
       where: { id: userId },
       data: {

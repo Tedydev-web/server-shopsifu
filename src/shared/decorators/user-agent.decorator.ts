@@ -4,7 +4,7 @@ import { HttpHeader } from 'src/shared/constants/http.constants'
 
 export const UserAgent = createParamDecorator((_: unknown, ctx: ExecutionContext): string | undefined => {
   const request = ctx.switchToHttp().getRequest<Request>()
-  
+
   // Try both case variants as headers can be normalized differently
   const userAgentValue =
     request.headers[HttpHeader.USER_AGENT] || request.headers['user-agent'] || request.get('user-agent')

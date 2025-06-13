@@ -31,7 +31,6 @@ export class PermissionService {
   }
 
   async getAllGroupedPermissions(): Promise<Record<string, SimplePermissionItemDto[]>> {
-    this.logger.debug(`[getAllGroupedPermissions] Getting all grouped permissions`)
     const allPermissions = await this.permissionRepository.findAll()
     const groupedPermissions: Record<string, SimplePermissionItemDto[]> = {}
 

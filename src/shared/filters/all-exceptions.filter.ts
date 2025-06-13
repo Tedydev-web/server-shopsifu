@@ -7,10 +7,6 @@ import { I18nTranslations } from 'src/generated/i18n.generated'
 import { Response, Request } from 'express'
 import { ZodError } from 'zod'
 
-/**
- * Một bộ lọc exception toàn cục để bắt tất cả các lỗi và định dạng chúng
- * thành một response JSON nhất quán theo `ErrorResponseSchema`.
- */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name)

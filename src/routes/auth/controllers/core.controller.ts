@@ -114,8 +114,6 @@ export class CoreController {
   async getUICapabilities(
     @ActiveUser() user: ActiveUserData
   ): Promise<{ message: string; data: { permissions: Record<string, Record<string, boolean>> } }> {
-    this.logger.log(`[getUICapabilities] Fetching UI capabilities for user ${user.id}`)
-
     const userPermissions = await this.userService.getUserPermissions(user.id)
     const ability = await this.caslAbilityFactory.createForUser(user, userPermissions)
 

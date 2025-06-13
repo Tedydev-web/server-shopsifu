@@ -36,10 +36,6 @@ export class PermissionController {
     }
   }
 
-  /**
-   * Get all permissions grouped by subject for UI.
-   * This is not paginated as the UI typically needs all permissions at once for role assignment.
-   */
   @Get()
   @RequirePermissions({ action: Action.Read, subject: AppSubject.Permission })
   async getAllGroupedPermissions() {

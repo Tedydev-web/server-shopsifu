@@ -42,15 +42,6 @@ export class UserService {
     private readonly authVerificationService: AuthVerificationService
   ) {}
 
-  // ================================================================
-  // Public Methods - Permissions
-  // ================================================================
-
-  /**
-   * Lấy danh sách permissions của user, có sử dụng cache
-   * @param userId - ID của user
-   * @returns Danh sách các permissions
-   */
   async getUserPermissions(userId: number): Promise<Permission[]> {
     const cacheKey = RedisKeyManager.getUserPermissionsCacheKey(userId)
 
@@ -79,11 +70,6 @@ export class UserService {
     return permissions
   }
 
-  /**
-   * Xóa cache permissions của user.
-   * Gọi hàm này khi vai trò hoặc quyền của người dùng thay đổi.
-   * @param userId - ID của user
-   */
   async invalidateUserPermissionsCache(userId: number): Promise<void> {
     const cacheKey = RedisKeyManager.getUserPermissionsCacheKey(userId)
     try {
@@ -158,12 +144,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Tạo user qua OTP verification flow
-   * @param createUserDto - Thông tin user cần tạo (đã verify qua OTP)
-   * @returns UserServiceResponse với user object đã được tạo
-   * @throws UserError.AlreadyExists nếu email đã tồn tại
-   */
   async createFromOtpVerification(createUserDto: CreateUserDto): Promise<UserServiceResponse<User>> {
     // Kiểm tra email đã tồn tại chưa
     const existingUser = await this.userRepository.findByEmail(createUserDto.email)
@@ -200,10 +180,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Lấy danh sách tất cả users
-   * @returns UserServiceResponse với mảng tất cả users
-   */
   async findAll(): Promise<UserServiceResponse<User[]>> {
     const users = await this.userRepository.findAll()
 
@@ -213,12 +189,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Tìm user theo ID
-   * @param id - ID của user
-   * @returns UserServiceResponse với user object
-   * @throws UserError.NotFound nếu không tìm thấy user
-   */
   async findOne(id: number): Promise<UserServiceResponse<User>> {
     const user = await this.userRepository.findById(id)
     if (!user) {
@@ -231,13 +201,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Cập nhật thông tin user
-   * @param id - ID của user cần cập nhật
-   * @param updateUserDto - Dữ liệu cập nhật
-   * @returns UserServiceResponse với user object đã được cập nhật
-   * @throws UserError.NotFound nếu user không tồn tại
-   */
   async update(id: number, updateUserDto: UpdateUserDto): Promise<UserServiceResponse<User>> {
     // Kiểm tra user tồn tại
     const existingUserResponse = await this.findOne(id)
@@ -275,12 +238,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Xóa user theo ID
-   * @param id - ID của user cần xóa
-   * @returns UserServiceResponse với user object đã bị xóa
-   * @throws UserError.NotFound nếu user không tồn tại
-   */
   async remove(id: number): Promise<UserServiceResponse<User>> {
     // Kiểm tra user tồn tại trước khi xóa
     const existingUserResponse = await this.findOne(id)
@@ -297,14 +254,6 @@ export class UserService {
     }
   }
 
-  // ================================================================
-  // Private Methods - Email Notification Helper Functions
-  // ================================================================
-
-  /**
-   * Gửi email chào mừng cho user mới
-   * @param user - User object
-   */
   private async sendWelcomeEmail(user: any): Promise<void> {
     try {
       await this.emailService.sendWelcomeEmail(user.email, {
@@ -317,10 +266,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Gửi email thông báo admin về user mới được tạo qua OTP flow
-   * @param user - User object với thông tin profile
-   */
   private async sendUserCreatedNotificationToAdmin(user: any): Promise<void> {
     try {
       // Lấy email admin từ environment hoặc config
@@ -352,10 +297,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Gửi email thông báo user được tạo bởi admin
-   * @param user - User object với thông tin profile
-   */
   private async sendUserCreatedByAdminEmail(user: any): Promise<void> {
     try {
       // Lấy email security team và admin từ environment
@@ -390,11 +331,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Gửi email thông báo user được cập nhật
-   * @param updatedUser - User object sau khi cập nhật
-   * @param previousUser - User object trước khi cập nhật
-   */
   private async sendUserUpdatedEmail(updatedUser: any, previousUser: any): Promise<void> {
     try {
       // Xây dựng danh sách các thay đổi
@@ -434,10 +370,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Gửi email thông báo user bị xóa
-   * @param deletedUser - User object đã bị xóa
-   */
   private async sendUserDeletedEmail(deletedUser: any): Promise<void> {
     try {
       // Lấy email audit team và security team từ environment
@@ -479,12 +411,6 @@ export class UserService {
   // Private Methods - Utility & Helper Functions
   // ================================================================
 
-  /**
-   * Xây dựng danh sách các field đã thay đổi giữa user cũ và mới
-   * @param oldUser - User object trước khi cập nhật
-   * @param newUser - User object sau khi cập nhật
-   * @returns Array các thay đổi với format { field, oldValue, newValue }
-   */
   private buildChangedFields(oldUser: any, newUser: any): Array<{ field: string; oldValue: string; newValue: string }> {
     const changes: Array<{ field: string; oldValue: string; newValue: string }> = []
 
@@ -532,19 +458,10 @@ export class UserService {
     return changes
   }
 
-  /**
-   * Tìm user theo ID mà không trả về response wrapper (để sử dụng internal)
-   * @param id - ID của user
-   * @returns User object hoặc null nếu không tìm thấy
-   */
   private async findUserById(id: number): Promise<User | null> {
     return this.userRepository.findById(id)
   }
 
-  /**
-   * Handles the 'role.updated' event to invalidate user permissions cache.
-   * @param payload - The event payload containing the roleId.
-   */
   @OnEvent('role.updated')
   async handleRoleUpdated(payload: { roleId: number }) {
     this.logger.debug(`Role with ID ${payload.roleId} updated, invalidating user permissions cache.`)

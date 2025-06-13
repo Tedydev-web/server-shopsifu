@@ -45,12 +45,10 @@ export class SessionRepository {
 
   async findById(sessionId: string): Promise<Session | null> {
     const key = RedisKeyManager.getSessionKey(sessionId)
-    this.logger.debug(`[findById] Looking for session with key: ${key}`)
 
     const sessionData = await this.redisService.hgetallDecrypted<Session>(key, this.sensitiveFields)
 
     if (!sessionData || !isObject(sessionData)) {
-      this.logger.debug(`[findById] No session found for key ${key}`)
       return null
     }
 
@@ -126,23 +124,17 @@ export class SessionRepository {
     pipeline.sadd(RedisKeyManager.getDeviceSessionsKey(newSession.deviceId), newSession.id)
     await pipeline.exec()
 
-    this.logger.debug(
-      `Session created: ${newSession.id} for user ${newSession.userId}, expires in ${ttlSeconds} seconds`
-    )
-
     return newSession
   }
 
   async updateSessionActivity(sessionId: string): Promise<void> {
     const key = RedisKeyManager.getSessionKey(sessionId)
     await this.redisService.hset(key, 'lastActive', Date.now().toString())
-    this.logger.debug(`Updated activity for session ${sessionId}`)
   }
 
   async deleteSession(sessionId: string): Promise<void> {
     const session = await this.findById(sessionId)
     if (!session) {
-      this.logger.warn(`[deleteSession] Session ${sessionId} not found for deletion.`)
       return
     }
 
@@ -151,8 +143,6 @@ export class SessionRepository {
     pipeline.srem(RedisKeyManager.getUserSessionsKey(session.userId), sessionId)
     pipeline.srem(RedisKeyManager.getDeviceSessionsKey(session.deviceId), sessionId)
     await pipeline.exec()
-
-    this.logger.debug(`Session ${sessionId} deleted and removed from indexes.`)
   }
 
   async deleteAllUserSessions(
@@ -194,10 +184,6 @@ export class SessionRepository {
     }
     await pipeline.exec()
 
-    this.logger.debug(
-      `Deleted ${sessions.length} sessions for user ${userId}. 
-      Affected device IDs: ${Array.from(deviceIdsWithDeletedSessions).join(', ')}`
-    )
     return { deletedSessionsCount: sessions.length, affectedDeviceIds: Array.from(deviceIdsWithDeletedSessions) }
   }
 
@@ -205,25 +191,17 @@ export class SessionRepository {
     const deviceSessionsKey = RedisKeyManager.getDeviceSessionsKey(deviceId)
     let sessionIds = await this.redisService.smembers(deviceSessionsKey)
 
-    this.logger.debug(`[deleteSessionsByDeviceId] Device ${deviceId} has ${sessionIds.length} sessions in Redis`)
-
     if (excludeSessionId) {
       sessionIds = sessionIds.filter((id) => id !== excludeSessionId)
-      this.logger.debug(
-        `[deleteSessionsByDeviceId] After excluding ${excludeSessionId}, ${sessionIds.length} sessions to delete`
-      )
     }
 
     if (sessionIds.length === 0) {
-      this.logger.debug(`[deleteSessionsByDeviceId] No sessions to delete for device ${deviceId}`)
       return { count: 0 }
     }
 
     const sessions = (await Promise.all(sessionIds.map((id) => this.findById(id)))).filter(
       (s): s is Session => s !== null
     )
-
-    this.logger.log(`[deleteSessionsByDeviceId] Deleting ${sessions.length} sessions for device ${deviceId}`)
 
     const pipeline = this.redisService.client.pipeline()
     sessions.forEach((s) => {
@@ -241,18 +219,11 @@ export class SessionRepository {
     return this.redisService.scard(deviceSessionsKey)
   }
 
-  /**
-   * Marks a session as inactive in Redis.
-   */
   async deactivateSession(sessionId: string): Promise<void> {
     const key = RedisKeyManager.getSessionKey(sessionId)
     await this.redisService.hset(key, 'isActive', 'false')
-    this.logger.debug(`Session ${sessionId} has been deactivated.`)
   }
 
-  /**
-   * Converts fields of a session object from string to their correct types.
-   */
   private normalizeSessionTypes(sessionData: Record<string, any>): Session {
     return {
       id: sessionData.id,

@@ -34,25 +34,12 @@ import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { Action, AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
 import { User } from './user.model'
 
-/**
- * Controller xử lý các API endpoints cho User management
- * Sử dụng flow OTP verification thống nhất cho tạo user và CRUD operations
- */
-
 @Auth()
 @UseGuards(PermissionGuard)
 @Controller('users')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  // ================================================================
-  // User Creation with OTP Verification Flow
-  // ================================================================
-
-  /**
-   * Tạo user mới với OTP verification
-   * Flow: Submit data → SLT token + OTP → Verify qua auth/otp/verify → User được tạo
-   */
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @RequirePermissions({ action: Action.Create, subject: AppSubject.User })

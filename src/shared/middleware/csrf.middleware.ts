@@ -2,7 +2,6 @@ import { Injectable, NestMiddleware, Logger, HttpStatus } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
 import csurf from 'csurf'
 import { ConfigService } from '@nestjs/config'
-import { v4 as uuidv4 } from 'uuid'
 import { HttpHeader } from 'src/shared/constants/http.constants'
 import { CookieConfig } from 'src/routes/auth/auth.types'
 
@@ -16,9 +15,6 @@ export class CsrfMiddleware implements NestMiddleware {
     const csrfTokenCookieOptions = this.configService.get<CookieConfig>('cookie.csrfToken.options')
 
     if (!csrfSecretCookieOptions || !csrfTokenCookieOptions) {
-      this.logger.error(
-        'Cấu hình cho cookie CSRF (csrfSecret hoặc csrfToken) không được định nghĩa đầy đủ trong config.ts.'
-      )
       // Trong môi trường production, nên chặn request thay vì tiếp tục
       if (this.configService.get('isProduction')) {
         return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: 'Lỗi cấu hình máy chủ.' })
@@ -37,14 +33,7 @@ export class CsrfMiddleware implements NestMiddleware {
       }
     })
 
-    void csurfProtection(req, res, (err: any) => {
-      if (err) {
-        this.logger.warn(`CSRF Error: ${err.code} for request to ${req.originalUrl}`)
-        return res
-          .status(HttpStatus.FORBIDDEN)
-          .json({ message: 'Invalid CSRF token', code: err.code, errorId: uuidv4() })
-      }
-
+    void csurfProtection(req, res, () => {
       const token = req.csrfToken()
       // Set cookie XSRF-TOKEN cho client đọc
       res.cookie(this.configService.get<string>('cookie.csrfToken.name'), token, {

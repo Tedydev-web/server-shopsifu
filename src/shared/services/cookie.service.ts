@@ -10,51 +10,29 @@ export class CookieService implements ICookieService {
 
   constructor(private readonly configService: ConfigService) {}
 
-  /**
-   * Set cookie chung
-   */
   private setCookie(res: Response, name: string, value: string, config: Omit<CookieConfig, 'name'>): void {
     const { path, domain, maxAge, httpOnly, secure, sameSite } = config
 
-    this.logger.debug(
-      `Setting cookie ${name} with maxAge ${maxAge}, path: ${path}, domain: ${domain || 'undefined'}, httpOnly: ${httpOnly}, secure: ${secure}, sameSite: ${sameSite}`
-    )
-
-    try {
-      res.cookie(name, value, {
-        path,
-        domain,
-        maxAge,
-        httpOnly,
-        secure,
-        sameSite
-      })
-      this.logger.debug(`Cookie ${name} set successfully.`)
-    } catch (error) {
-      this.logger.error(`Error setting cookie ${name}: ${error.message}`, error.stack)
-    }
+    res.cookie(name, value, {
+      path,
+      domain,
+      maxAge,
+      httpOnly,
+      secure,
+      sameSite
+    })
   }
 
-  /**
-   * Clear cookie
-   */
   private clearCookie(res: Response, name: string, path?: string, domain?: string): void {
     const baseOptions = this.getBaseCookieOptions(name)
-    this.logger.debug(
-      `Clearing cookie ${name} with path: ${path || baseOptions.path}, domain: ${domain || baseOptions.domain}`
-    )
-    try {
-      res.clearCookie(name, {
-        path: path || baseOptions.path,
-        domain: domain || baseOptions.domain,
-        httpOnly: baseOptions.httpOnly,
-        secure: baseOptions.secure,
-        sameSite: baseOptions.sameSite
-      })
-      this.logger.debug(`Cookie ${name} cleared successfully.`)
-    } catch (error) {
-      this.logger.error(`Error clearing cookie ${name}: ${error.message}`, error.stack)
-    }
+
+    res.clearCookie(name, {
+      path: path || baseOptions.path,
+      domain: domain || baseOptions.domain,
+      httpOnly: baseOptions.httpOnly,
+      secure: baseOptions.secure,
+      sameSite: baseOptions.sameSite
+    })
   }
 
   setAccessTokenCookie(res: Response, accessToken: string): void {
@@ -103,10 +81,8 @@ export class CookieService implements ICookieService {
 
   setSltCookie(res: Response, sltToken: string): void {
     const config = this.getCookieConfig('slt')
-    this.logger.debug(`[setSltCookie] Setting SLT cookie with config: ${JSON.stringify(config)}`)
 
     if (!sltToken || sltToken.trim() === '') {
-      this.logger.error('[setSltCookie] SLT token is empty or invalid!')
       return
     }
 
@@ -115,7 +91,6 @@ export class CookieService implements ICookieService {
 
   clearSltCookie(res: Response): void {
     const config = this.getCookieConfig('slt')
-    this.logger.debug(`[clearSltCookie] Clearing SLT cookie.`)
     this.clearCookie(res, config.name, config.options.path, config.options.domain)
   }
 
@@ -142,11 +117,8 @@ export class CookieService implements ICookieService {
   private getCookieConfig(cookieKey: string): { name: string; options: CookieConfig } {
     const config = this.configService.get<{ name: string; options: CookieConfig }>(`cookie.${cookieKey}`)
     if (!config || !config.name || !config.options) {
-      const errorMessage = `Configuration for cookie '${cookieKey}' is missing or invalid in config.ts. Please check.`
-      this.logger.error(`[getCookieConfig] ${errorMessage}`)
       throw GlobalError.InternalServerError('auth.error.cookieConfigMissing', { cookieKey })
     }
-    this.logger.debug(`[getCookieConfig] Using config for ${cookieKey}: ${JSON.stringify(config)}`)
     return { name: config.name, options: { ...config.options, path: config.options.path || '/' } }
   }
 

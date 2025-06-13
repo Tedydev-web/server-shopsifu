@@ -55,10 +55,6 @@ export interface ConnectionInfo {
   dnt?: string
 }
 
-/**
- * Service for advanced device fingerprinting and context extraction
- * Combines multiple data sources for robust device identification
- */
 @Injectable()
 export class DeviceFingerprintService {
   private readonly logger = new Logger(DeviceFingerprintService.name)
@@ -68,12 +64,7 @@ export class DeviceFingerprintService {
     private readonly geolocationService: GeolocationService
   ) {}
 
-  /**
-   * Extract comprehensive device information from request
-   */
   async extractDeviceInfo(req: Request): Promise<EnhancedDeviceInfo> {
-    const startTime = Date.now()
-
     try {
       // Extract basic info
       const userAgent = this.extractUserAgent(req)
@@ -120,27 +111,13 @@ export class DeviceFingerprintService {
         timestamp: Date.now()
       }
 
-      const processingTime = Date.now() - startTime
-      this.logger.debug(`[extractDeviceInfo] Processed in ${processingTime}ms`)
-      this.logger.debug(
-        `[extractDeviceInfo] Result: ${JSON.stringify({
-          ...deviceInfo,
-          userAgent: userAgent?.substring(0, 50) + '...'
-        })}`
-      )
-
       return deviceInfo
-    } catch (error) {
-      this.logger.error(`[extractDeviceInfo] Error: ${error.message}`, error.stack)
-
+    } catch {
       // Return fallback info
       return this.createFallbackDeviceInfo(req)
     }
   }
 
-  /**
-   * Extract real IP address with proxy support
-   */
   private extractRealIP(req: Request): string {
     // Try multiple headers in order of preference
     const candidates = [
@@ -169,9 +146,6 @@ export class DeviceFingerprintService {
     return 'Unknown'
   }
 
-  /**
-   * Extract user agent with fallbacks
-   */
   private extractUserAgent(req: Request): string {
     const userAgent = req.headers['user-agent'] || req.headers['User-Agent'] || req.get('User-Agent') || ''
 
@@ -182,9 +156,6 @@ export class DeviceFingerprintService {
     return userAgent
   }
 
-  /**
-   * Extract Client Hints headers
-   */
   private extractClientHints(req: Request): ClientHints {
     const parseUaBrands = (header?: string) => {
       if (!header) return undefined
@@ -213,9 +184,6 @@ export class DeviceFingerprintService {
     }
   }
 
-  /**
-   * Extract security-related headers
-   */
   private extractSecurityHeaders(req: Request): SecurityHeaders {
     return {
       secFetchSite: this.getHeader(req, 'sec-fetch-site'),
@@ -232,9 +200,6 @@ export class DeviceFingerprintService {
     }
   }
 
-  /**
-   * Extract accept-related headers
-   */
   private extractAcceptHeaders(req: Request): AcceptHeaders {
     return {
       accept: this.getHeader(req, 'accept'),
@@ -244,9 +209,6 @@ export class DeviceFingerprintService {
     }
   }
 
-  /**
-   * Extract connection-related headers
-   */
   private extractConnectionInfo(req: Request): ConnectionInfo {
     return {
       connection: this.getHeader(req, 'connection'),
@@ -257,9 +219,6 @@ export class DeviceFingerprintService {
     }
   }
 
-  /**
-   * Generate advanced device fingerprint
-   */
   private generateAdvancedFingerprint(data: {
     userAgent: string
     clientHints: ClientHints
@@ -299,9 +258,6 @@ export class DeviceFingerprintService {
       .substring(0, 32)
   }
 
-  /**
-   * Validate IP address
-   */
   private isValidIP(ip: string): boolean {
     // Basic IP validation (IPv4 and IPv6)
     const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
@@ -310,9 +266,6 @@ export class DeviceFingerprintService {
     return ipv4Regex.test(ip) || ipv6Regex.test(ip)
   }
 
-  /**
-   * Safe header extraction
-   */
   private getHeader(req: Request, name: string): string | undefined {
     const header = req.headers[name.toLowerCase()]
     if (Array.isArray(header)) {
@@ -321,9 +274,6 @@ export class DeviceFingerprintService {
     return header
   }
 
-  /**
-   * Flatten client hints for UA service
-   */
   private flattenClientHints(hints: ClientHints): Record<string, string> {
     return {
       'sec-ch-ua-platform': hints.platform || '',
@@ -333,9 +283,6 @@ export class DeviceFingerprintService {
     }
   }
 
-  /**
-   * Flatten security headers for UA service
-   */
   private flattenSecurityHeaders(headers: SecurityHeaders): Record<string, string> {
     return Object.fromEntries(
       Object.entries(headers)
@@ -344,9 +291,6 @@ export class DeviceFingerprintService {
     )
   }
 
-  /**
-   * Flatten accept headers for UA service
-   */
   private flattenAcceptHeaders(headers: AcceptHeaders): Record<string, string> {
     return Object.fromEntries(
       Object.entries(headers)
@@ -355,9 +299,6 @@ export class DeviceFingerprintService {
     )
   }
 
-  /**
-   * Create fallback device info when extraction fails
-   */
   private createFallbackDeviceInfo(req: Request): EnhancedDeviceInfo {
     const userAgent = this.extractUserAgent(req)
     const ipAddress = this.extractRealIP(req)

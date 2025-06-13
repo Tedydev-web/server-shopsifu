@@ -31,7 +31,6 @@ export class PermissionGuard implements CanActivate {
     const user: ActiveUserData | undefined = request.user
 
     if (!user) {
-      this.logger.warn('[canActivate] User object not found on request. Denying access.')
       throw GlobalError.Unauthorized()
     }
 
@@ -44,9 +43,6 @@ export class PermissionGuard implements CanActivate {
     const hasPermission = results.every(Boolean)
 
     if (!hasPermission) {
-      this.logger.warn(
-        `[canActivate] User ${user.id} lacks required permissions for ${request.method} ${request.url}. Access denied.`
-      )
       throw GlobalError.Forbidden()
     }
 
@@ -67,9 +63,6 @@ export class PermissionGuard implements CanActivate {
     // If subject is a class, load the resource and check ability
     const resource = await this.getResource(subject, context)
     if (!resource) {
-      // If resource not found, deny access. This prevents leaking information
-      // about resource existence. A 404 would be handled by the controller/service.
-      this.logger.warn(`[checkPermission] Resource of type '${subject.name}' not found for checking permissions.`)
       return false
     }
     return ability.can(action, resource)
@@ -80,7 +73,6 @@ export class PermissionGuard implements CanActivate {
     const resourceId = request.params.id
 
     if (!resourceId) {
-      this.logger.warn(`[getResource] No 'id' parameter found in request params for subject '${subject.name}'.`)
       return null
     }
 
@@ -88,25 +80,16 @@ export class PermissionGuard implements CanActivate {
     // A dedicated factory or map would be more robust.
     const serviceName = `${subject.name}Service`
 
-    try {
-      const service = await this.moduleRef.get(serviceName, { strict: false })
-      if (service && typeof service.findOne === 'function') {
-        const result = await service.findOne(Number(resourceId))
-        // Handle services that return a { data, message } wrapper
-        return this.instantiateResource(subject, result?.data || result)
-      } else {
-        this.logger.error(`[getResource] Could not find a 'findOne' method on service '${serviceName}'.`)
-      }
-    } catch (e) {
-      this.logger.error(`[getResource] Error resolving service '${serviceName}' or fetching resource.`, e)
+    const service = await this.moduleRef.get(serviceName, { strict: false })
+    if (service && typeof service.findOne === 'function') {
+      const result = await service.findOne(Number(resourceId))
+      // Handle services that return a { data, message } wrapper
+      return this.instantiateResource(subject, result?.data || result)
     }
+
     return null
   }
 
-  /**
-   * Instantiates the fetched plain data object into its class instance.
-   * This is crucial for CASL's `detectSubjectType` to work correctly.
-   */
   private instantiateResource(subject: Type, data: any): any {
     if (!data) return null
     // A simple mapping to instantiate correct class

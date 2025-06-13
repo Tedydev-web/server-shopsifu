@@ -105,8 +105,7 @@ export class RecoveryCodeRepository {
           used: false
         }
       })
-    } catch (error) {
-      this.logger.error(`Lỗi khi tìm recovery code: ${error.message}`, error.stack)
+    } catch {
       return null
     }
   }

@@ -20,11 +20,8 @@ export class ProfileService {
   ) {}
 
   async getProfile(userId: number): Promise<ProfileResponseDto> {
-    this.logger.debug(`Fetching profile for user ID: ${userId}`)
-
     const user = await this.userRepository.findByIdWithDetails(userId)
     if (!user) {
-      this.logger.warn(`[getProfile] User with ID ${userId} not found.`)
       throw ProfileError.NotFound()
     }
 
@@ -53,8 +50,6 @@ export class ProfileService {
   }
 
   async updateProfile(userId: number, dto: UpdateProfileDto): Promise<ProfileResponseDto> {
-    this.logger.debug(`Updating profile for user ID: ${userId}`)
-
     const { username, phoneNumber, ...rest } = dto
 
     if (username) {

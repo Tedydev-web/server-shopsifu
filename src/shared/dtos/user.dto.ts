@@ -24,10 +24,6 @@ export type UserProfileType = z.infer<typeof UserProfileSchema>
 
 export class UserProfileDto extends createZodDto(UserProfileSchema) {}
 
-/**
- * Schema for user profile data included in various responses.
- * Picks only the essential, publicly safe fields.
- */
 export const PickedUserProfileResponseSchema = UserProfileSchema.pick({
   firstName: true,
   lastName: true,
