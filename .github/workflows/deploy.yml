@@ -87,6 +87,8 @@ jobs:
             cat /tmp/pm2_logs.txt > /tmp/pm2_logs.txt
           EOF
           # Xử lý dữ liệu trên runner
+          PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json 2>/dev/null || echo "Không tìm thấy process server-shopsifu")
+          echo "pm2_info=$PM2_INFO" >> $GITHUB_OUTPUT
           PM2_LOGS=$(grep -v '\[TAILING\]' /tmp/pm2_logs.txt | tail -n 50 || echo "Không có log ứng dụng")
           echo "pm2_logs=$PM2_LOGS" >> $GITHUB_OUTPUT
 
@@ -100,7 +102,8 @@ jobs:
         id: commit_info
         run: |
           echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          echo "commit_message=$(git log -1 --pretty=%B)" >> $GITHUB_OUTPUT
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B | grep -v '^-')
+          echo "commit_message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
 
       - name: Send Discord Notification
         if: always()
@@ -112,6 +115,7 @@ jobs:
           ACTOR: ${{ github.actor }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
+          PM2_INFO: ${{ steps.pm2_logs.outputs.pm2_info }}
           PM2_LOGS: ${{ steps.pm2_logs.outputs.pm2_logs }}
           COMMIT_SHA: ${{ steps.commit_info.outputs.commit_sha }}
           COMMIT_MESSAGE: ${{ steps.commit_info.outputs.commit_message }}
@@ -119,6 +123,8 @@ jobs:
           sudo apt-get update && sudo apt-get install -y jq
           COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
           ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
+          # Chuyển đổi github.run_started_at thành epoch time
+          RUN_STARTED_AT=$(date -d "${{ github.run_started_at }}" +%s)
           JSON_PAYLOAD=$(jq -n \
             --arg status "$STATUS" \
             --arg icon "$ICON" \
@@ -128,9 +134,11 @@ jobs:
             --arg commit_message "$COMMIT_MESSAGE" \
             --arg repo "$REPO" \
             --arg actor "$ACTOR" \
+            --arg pm2_info "$PM2_INFO" \
             --arg logs "${PM2_LOGS:0:1000}" \
             --arg run_id "$RUN_ID" \
             --arg color "$COLOR" \
+            --arg started_at "$RUN_STARTED_AT" \
             '{
               embeds: [{
                 title: "🚀 SERVER - Thông báo triển khai ✨",
@@ -142,7 +150,8 @@ jobs:
                   { name: "Commit SHA", value: "`\($commit_sha)`", inline: false },
                   { name: "Commit Message", value: $commit_message, inline: false },
                   { name: "Người thực hiện", value: "`\($actor)`", inline: true },
-                  { name: "Thời gian", value: "<t:\((github.run_started_at | fromdateiso8601) / 1000 | floor):R>", inline: true }],
+                  { name: "Thời gian bắt đầu", value: "<t:\($started_at):R>", inline: true }
+                ],
                 description: "**50 dòng log cuối:**\n```\n\($logs)\n```",
                 url: "https://github.com/\($repo)/actions/runs/\($run_id)"
               }]

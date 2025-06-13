@@ -25,7 +25,7 @@ export class AuthError {
   }
 
   public static InvalidPassword(): ApiException {
-    return new ApiException(HttpStatus.UNAUTHORIZED, 'AUTH_INVALID_PASSWORD', 'auth.error.invalidPassword')
+    return new ApiException(HttpStatus.BAD_REQUEST, 'AUTH_INVALID_PASSWORD', 'auth.error.invalidPassword')
   }
 
   public static PasswordsNotMatch(): ApiException {
