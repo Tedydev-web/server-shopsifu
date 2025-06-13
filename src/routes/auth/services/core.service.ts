@@ -326,10 +326,22 @@ export class CoreService implements ILoginFinalizerService {
    * @returns Device object đã được tạo hoặc cập nhật
    */
   async getOrCreateDevice(userId: number, ip?: string, userAgent?: string, fingerprint?: string): Promise<Device> {
-    if (!ip || !userAgent) {
-      this.logger.error('[getOrCreateDevice] IP address and user agent are required.')
+    this.logger.debug(
+      `[getOrCreateDevice] Called with userId: ${userId}, ip: "${ip}", userAgent: "${userAgent}", fingerprint: "${fingerprint}"`
+    )
+    
+    // More specific validation with better error messages
+    if (!ip || ip.trim() === '') {
+      this.logger.error(`[getOrCreateDevice] Invalid IP address: "${ip}"`)
       throw AuthError.DeviceProcessingFailed()
     }
+    
+    if (!userAgent || userAgent.trim() === '') {
+      this.logger.error(`[getOrCreateDevice] Invalid User Agent: "${userAgent}"`)
+      throw AuthError.DeviceProcessingFailed()
+    }
+    
+    this.logger.debug(`[getOrCreateDevice] Valid parameters received, proceeding with device creation/update`)
     return this.deviceRepository.upsertDevice(userId, userAgent, ip, fingerprint)
   }
 
@@ -635,6 +647,8 @@ export class CoreService implements ILoginFinalizerService {
    * @returns Kết quả khởi tạo xác thực (SLT token hoặc login trực tiếp)
    */
   async initiateLogin(loginDto: LoginDto, ip: string, userAgent: string, res: Response) {
+    this.logger.debug(`[initiateLogin] Called with ip: "${ip}", userAgent: "${userAgent}"`)
+    
     // 1. Validate user credentials
     const user = await this.validateUser(loginDto.email, loginDto.password)
 

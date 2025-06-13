@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Ip, Logger, Post, Req, Res, Inject, Get } from '@nestjs/common'
+import { Body, Controller, HttpCode, HttpStatus, Logger, Post, Req, Res, Inject, Get } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { Throttle } from '@nestjs/throttler'
 
@@ -18,6 +18,7 @@ import { ALL_PERMISSIONS } from 'src/shared/constants/permissions.constants'
 
 // Decorators
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
+import { Ip } from 'src/shared/decorators/ip.decorator'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { Auth, IsPublic } from 'src/shared/decorators/auth.decorator'
 
@@ -86,6 +87,7 @@ export class CoreController {
     @UserAgent() userAgent: string,
     @Res({ passthrough: true }) res: Response
   ) {
+    console.log(`[CoreController.login] IP: "${ip}", UserAgent: "${userAgent}", Body:`, body)
     return this.coreService.initiateLogin(body, ip, userAgent, res)
   }
 
