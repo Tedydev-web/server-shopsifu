@@ -142,21 +142,21 @@ export class TwoFactorService implements IMultiFactorService {
       `[verifyCode] Verifying 2FA code for userId: ${context.userId}, method: ${context.method || 'Not specified'}`
     )
 
-    // Nếu context cung cấp secret trực tiếp (chỉ xảy ra trong quá trình thiết lập),
-    // phương thức luôn là AUTHENTICATOR_APP.
-    if (context.secret) {
+    // Xác định phương thức xác minh sẽ sử dụng
+    const verificationMethod = context.method ?? TwoFactorMethodType.TOTP
+
+    // Nếu context cung cấp secret trực tiếp và method là TOTP (trong quá trình thiết lập),
+    // sử dụng secret đó trực tiếp.
+    if (context.secret && verificationMethod === 'TOTP') {
       if (this.verifyTOTP(context.secret, code)) {
         return true
       }
       throw AuthError.InvalidTOTP()
     }
 
-    // Xác định phương thức xác minh sẽ sử dụng
-    const verificationMethod = context.method ?? TwoFactorMethodType.AUTHENTICATOR_APP
-
     // Xử lý dựa trên phương thức
     switch (verificationMethod as TwoFactorMethodType) {
-      case TwoFactorMethodType.AUTHENTICATOR_APP: {
+      case TwoFactorMethodType.TOTP: {
         const user = await this.userRepository.findById(context.userId)
         if (!user?.twoFactorEnabled || !user.twoFactorSecret) {
           throw AuthError.TOTPNotEnabled()
@@ -175,19 +175,27 @@ export class TwoFactorService implements IMultiFactorService {
       }
 
       case TwoFactorMethodType.RECOVERY_CODE: {
+        this.logger.debug(`[verifyCode] Processing RECOVERY_CODE method for userId: ${context.userId}`)
+
         // Kiểm tra user tồn tại và 2FA đã được enable
         const user = await this.userRepository.findById(context.userId)
         if (!user) {
+          this.logger.error(`[verifyCode] User ${context.userId} not found`)
           throw GlobalError.NotFound('user')
         }
         if (!user.twoFactorEnabled) {
+          this.logger.error(`[verifyCode] 2FA not enabled for user ${context.userId}`)
           throw AuthError.TOTPNotEnabled()
         }
 
+        this.logger.debug(`[verifyCode] User ${context.userId} found with 2FA enabled, verifying recovery code`)
         const isVerified = await this.verifyRecoveryCode(context.userId, code)
         if (!isVerified) {
+          this.logger.warn(`[verifyCode] Recovery code verification failed for user ${context.userId}`)
           throw AuthError.InvalidRecoveryCode()
         }
+
+        this.logger.log(`[verifyCode] Recovery code verification successful for user ${context.userId}`)
         return true
       }
 
@@ -232,15 +240,27 @@ export class TwoFactorService implements IMultiFactorService {
 
   private async _performDisable(userId: number): Promise<void> {
     this.logger.debug(`[_performDisable] Performing 2FA disable logic for userId ${userId}`)
+
     // 1. Get user information
     const user = await this.userRepository.findByIdWithDetails(userId)
     if (!user) throw GlobalError.NotFound('user')
 
+    this.logger.debug(`[_performDisable] User ${userId} found, twoFactorEnabled: ${user.twoFactorEnabled}`)
+
     // 2. Disable 2FA and delete recovery codes
+    this.logger.debug(`[_performDisable] Disabling 2FA for user ${userId}`)
     await this.userRepository.disableTwoFactor(userId)
+
+    this.logger.debug(`[_performDisable] Deleting recovery codes for user ${userId}`)
     await this.recoveryCodeRepository.deleteRecoveryCodes(userId)
 
-    // 3. Send notification email
+    // 3. Verify disable was successful
+    const updatedUser = await this.userRepository.findById(userId)
+    this.logger.log(
+      `[_performDisable] 2FA disable completed for user ${userId}. twoFactorEnabled: ${updatedUser?.twoFactorEnabled}`
+    )
+
+    // 4. Send notification email
     await this.emailService.sendTwoFactorStatusChangedEmail(user.email, {
       userName: user.userProfile?.username ?? user.email,
       action: 'disabled',
@@ -277,7 +297,19 @@ export class TwoFactorService implements IMultiFactorService {
     await this.verifyCode(code, { userId, method })
 
     const plainRecoveryCodes = this.generateRecoveryCodes()
+    this.logger.debug(`[regenerateRecoveryCodes] Generated plain recovery codes: ${JSON.stringify(plainRecoveryCodes)}`)
+
     const hashedRecoveryCodes = await Promise.all(plainRecoveryCodes.map((code) => this.hashingService.hash(code)))
+    this.logger.debug(
+      `[regenerateRecoveryCodes] Generated ${hashedRecoveryCodes.length} hashed recovery codes for user ${userId}`
+    )
+
+    // Log first few characters of each hash for debugging
+    hashedRecoveryCodes.forEach((hash, index) => {
+      this.logger.debug(
+        `[regenerateRecoveryCodes] Code ${index + 1}: "${plainRecoveryCodes[index]}" -> hash "${hash.substring(0, 30)}..."`
+      )
+    })
 
     await this.recoveryCodeRepository.tx(async (tx) => {
       await this.recoveryCodeRepository.deleteRecoveryCodes(userId, tx)
@@ -418,13 +450,13 @@ export class TwoFactorService implements IMultiFactorService {
 
     if (!this.verifyTOTP(secret, totpCode)) throw AuthError.InvalidTOTP()
 
-    await this.userRepository.enableTwoFactor(userId, secret, TwoFactorMethodType.AUTHENTICATOR_APP)
+    await this.userRepository.enableTwoFactor(userId, secret, TwoFactorMethodType.TOTP)
 
     // This call now also sends an email with the codes
     const result = await this.regenerateRecoveryCodes(
       userId,
       totpCode, // Dùng lại totpCode để xác thực vì nó vẫn hợp lệ
-      TwoFactorMethodType.AUTHENTICATOR_APP,
+      TwoFactorMethodType.TOTP,
       ipAddress,
       userAgent
     )
@@ -490,17 +522,61 @@ export class TwoFactorService implements IMultiFactorService {
    * Xác minh mã khôi phục
    */
   private async verifyRecoveryCode(userId: number, code: string): Promise<boolean> {
+    this.logger.debug(`[verifyRecoveryCode] Starting verification for userId: ${userId}`)
+    this.logger.debug(`[verifyRecoveryCode] Raw input code: "${code}" (length: ${code.length})`)
+
+    // Normalize input code - ensure uppercase and proper format
+    const normalizedCode = code.toUpperCase().trim()
+    this.logger.debug(
+      `[verifyRecoveryCode] Normalized input code: "${normalizedCode}" (length: ${normalizedCode.length})`
+    )
+
     const recoveryCodes = await this.recoveryCodeRepository.findByUserId(userId)
-    if (!recoveryCodes.length) return false
+    this.logger.debug(`[verifyRecoveryCode] Found ${recoveryCodes.length} unused recovery codes for user ${userId}`)
+
+    if (!recoveryCodes.length) {
+      this.logger.warn(`[verifyRecoveryCode] No unused recovery codes found for user ${userId}`)
+      return false
+    }
+
+    // Log all stored code hashes for debugging
+    recoveryCodes.forEach((storedCode, index) => {
+      this.logger.debug(
+        `[verifyRecoveryCode] Code ${index + 1} (ID: ${storedCode.id}): used=${storedCode.used}, hash="${storedCode.code.substring(0, 30)}..."`
+      )
+    })
 
     for (const storedCode of recoveryCodes) {
-      if (storedCode.used) continue
-      const codeMatches = await this.hashingService.compare(code, storedCode.code)
-      if (codeMatches) {
-        await this.recoveryCodeRepository.markRecoveryCodeAsUsed(storedCode.id)
-        return true
+      if (storedCode.used) {
+        this.logger.debug(`[verifyRecoveryCode] Skipping used recovery code ${storedCode.id}`)
+        continue
+      }
+
+      this.logger.debug(`[verifyRecoveryCode] Testing recovery code ${storedCode.id}`)
+      this.logger.debug(
+        `[verifyRecoveryCode] Comparing: "${normalizedCode}" vs hash "${storedCode.code.substring(0, 30)}..."`
+      )
+
+      try {
+        const codeMatches = await this.hashingService.compare(normalizedCode, storedCode.code)
+        this.logger.debug(`[verifyRecoveryCode] Hash comparison result for code ${storedCode.id}: ${codeMatches}`)
+
+        if (codeMatches) {
+          this.logger.log(`[verifyRecoveryCode] ✅ Recovery code ${storedCode.id} matched! Marking as used.`)
+          await this.recoveryCodeRepository.markRecoveryCodeAsUsed(storedCode.id)
+          return true
+        } else {
+          this.logger.debug(`[verifyRecoveryCode] ❌ Recovery code ${storedCode.id} did not match`)
+        }
+      } catch (error) {
+        this.logger.error(
+          `[verifyRecoveryCode] Error comparing recovery code ${storedCode.id}: ${error.message}`,
+          error.stack
+        )
       }
     }
+
+    this.logger.warn(`[verifyRecoveryCode] ❌ No matching recovery code found for user ${userId}`)
     return false
   }
 

@@ -2,7 +2,7 @@ import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
 import { Response } from 'express'
-import { TwoFactorMethodType, User } from '@prisma/client'
+import { User } from '@prisma/client'
 
 import { SLTService } from '../../../shared/services/slt.service'
 import { EmailService } from '../../../shared/services/email.service'
@@ -28,7 +28,7 @@ import {
   GEOLOCATION_SERVICE,
   USER_AGENT_SERVICE
 } from '../../../shared/constants/injection.tokens'
-import { TypeOfVerificationCode, TypeOfVerificationCodeType } from '../auth.constants'
+import { TypeOfVerificationCode, TypeOfVerificationCodeType, TwoFactorMethodType } from '../auth.constants'
 
 import {
   ICookieService,
@@ -279,7 +279,7 @@ export class AuthVerificationService {
           ...context.metadata,
           twoFactorEnabled: true,
           twoFactorSecret: user.twoFactorSecret,
-          twoFactorMethod: user.twoFactorMethod || 'AUTHENTICATOR_APP'
+          twoFactorMethod: user.twoFactorMethod || 'TOTP'
         }
       }
 
@@ -433,9 +433,12 @@ export class AuthVerificationService {
    */
   private async verifyAuthenticationCode(sltContext: SltContextData & { sltJti: string }, code: string): Promise<void> {
     const { userId, purpose, metadata } = sltContext
-    const { twoFactorMethod, totpSecret, twoFactorSecret, twoFactorEnabled } = metadata || {}
+    const { twoFactorMethod, totpSecret, twoFactorSecret, twoFactorEnabled, requestMethod } = metadata || {}
 
     this.logger.debug(`[verifyAuthenticationCode] UserID: ${userId}, Purpose: ${purpose}`)
+    this.logger.debug(
+      `[verifyAuthenticationCode] SLT twoFactorMethod: ${twoFactorMethod}, Request method: ${requestMethod}`
+    )
 
     try {
       const has2FASecret = totpSecret || twoFactorSecret
@@ -444,7 +447,13 @@ export class AuthVerificationService {
       const should2FA = (purpose === TypeOfVerificationCode.LOGIN && isUserHas2FA) || (isSetup2FA && has2FASecret)
 
       if (should2FA) {
-        await this.verifyWith2FA(code, userId, has2FASecret, twoFactorMethod, purpose)
+        // Prioritize the method from the request payload over SLT metadata
+        const effectiveMethod = requestMethod || twoFactorMethod
+        this.logger.debug(
+          `[verifyAuthenticationCode] Using effective method: ${effectiveMethod} (request: ${requestMethod}, slt: ${twoFactorMethod})`
+        )
+
+        await this.verifyWith2FA(code, userId, has2FASecret, effectiveMethod, purpose)
       } else {
         await this.verifyWithOtp(code, sltContext)
       }
@@ -452,6 +461,11 @@ export class AuthVerificationService {
       try {
         const newAttemptCount = await this.sltService.incrementSltAttempts(sltContext.sltJti)
         this.logger.warn(`Verification failed for SLT ${sltContext.sltJti}. Attempt count: ${newAttemptCount}`)
+
+        // Nếu quá 5 lần thử và là lỗi verification, chuyển thành 401 để force re-login
+        if (newAttemptCount >= 5 && (error.code === 'AUTH_INVALID_OTP' || error.code === 'AUTH_2FA_INVALID_TOTP')) {
+          throw AuthError.VerificationSessionExpired()
+        }
       } catch (incrementError) {
         this.logger.error(`Failed to increment SLT attempts: ${incrementError.message}`)
       }
@@ -474,10 +488,18 @@ export class AuthVerificationService {
     method?: string,
     purpose?: TypeOfVerificationCodeType
   ): Promise<void> {
+    this.logger.debug(`[verifyWith2FA] Input method: "${method}", typeof: ${typeof method}`)
+    this.logger.debug(
+      `[verifyWith2FA] TwoFactorMethodType values: ${JSON.stringify(Object.values(TwoFactorMethodType))}`
+    )
+    this.logger.debug(
+      `[verifyWith2FA] Method is included: ${method && Object.values(TwoFactorMethodType).includes(method as TwoFactorMethodType)}`
+    )
+
     const effectiveMethod: TwoFactorMethodType =
       method && Object.values(TwoFactorMethodType).includes(method as TwoFactorMethodType)
         ? (method as TwoFactorMethodType)
-        : TwoFactorMethodType.AUTHENTICATOR_APP
+        : TwoFactorMethodType.TOTP
 
     this.logger.debug(`verifyWith2FA for user ${userId}, method: ${effectiveMethod}, purpose: ${purpose || 'N/A'}`)
 

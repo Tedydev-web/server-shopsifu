@@ -88,7 +88,16 @@ export class TwoFactorController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<any> {
-    return this.authVerificationService.verifyCode(req.cookies[CookieNames.SLT_TOKEN], body.code, ip, userAgent, res)
+    // Pass the method from the request body as additional metadata
+    const additionalMetadata = body.method ? { requestMethod: body.method } : undefined
+    return this.authVerificationService.verifyCode(
+      req.cookies[CookieNames.SLT_TOKEN],
+      body.code,
+      ip,
+      userAgent,
+      res,
+      additionalMetadata
+    )
   }
 
   @Post('disable')

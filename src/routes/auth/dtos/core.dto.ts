@@ -23,8 +23,26 @@ export const CompleteRegistrationSchema = z.object({
 
 // --- Login ---
 export const LoginSchema = z.object({
-  emailOrUsername: z.string(),
-  password: z.string(),
+  emailOrUsername: z
+    .string()
+    .min(1, 'auth.error.validation.emailOrUsernameRequired')
+    .max(255, 'auth.error.validation.emailOrUsernameTooLong')
+    .refine(
+      (val) => {
+        // Kiểm tra email format hoặc username format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        const usernameRegex = /^[a-zA-Z0-9_.-]{3,50}$/
+        return emailRegex.test(val) || usernameRegex.test(val)
+      },
+      {
+        message: 'auth.error.validation.invalidEmailOrUsername'
+      }
+    ),
+  password: z
+    .string()
+    .min(1, 'auth.error.validation.passwordRequired')
+    .min(8, 'auth.error.validation.passwordTooShort')
+    .max(100, 'auth.error.validation.passwordTooLong'),
   rememberMe: z.boolean().optional()
 })
 

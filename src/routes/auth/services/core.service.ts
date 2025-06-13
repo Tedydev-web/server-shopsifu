@@ -292,18 +292,14 @@ export class CoreService implements ILoginFinalizerService {
     // Nếu không tìm thấy user với email/username này
     if (!user || !user.password) {
       this.logger.warn(`[validateUser] User not found with email/username: ${emailOrUsername}`)
-      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AUTH_EMAIL_NOT_FOUND', 'auth.error.emailNotFound', {
-        emailOrUsername
-      })
+      throw AuthError.InvalidLoginCredentials()
     }
 
     // Kiểm tra mật khẩu
     const isPasswordValid = await this.hashingService.compare(password, user.password)
     if (!isPasswordValid) {
       this.logger.warn(`[validateUser] Invalid password for user: ${user.email}`)
-      throw new ApiException(HttpStatus.UNAUTHORIZED, 'AUTH_INCORRECT_PASSWORD', 'auth.error.incorrectPassword', {
-        email: user.email
-      })
+      throw AuthError.InvalidLoginCredentials()
     }
 
     // Loại bỏ password khỏi response để bảo mật

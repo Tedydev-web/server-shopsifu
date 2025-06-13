@@ -79,26 +79,50 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     let structuredErrors: Array<{ field: string; description: string }> | undefined
 
+    // List of login-related error codes that should not return field details
+    const loginErrorCodes = ['AUTH_INVALID_LOGIN_CREDENTIALS', 'AUTH_INVALID_EMAIL_FORMAT', 'AUTH_PASSWORD_TOO_SHORT']
+
+    // Handle different types of validation errors
     if (errorCode === 'VALIDATION_FAILED' && Array.isArray(details)) {
-      structuredErrors = details.map((err: any) => ({
-        field: err.path?.join('.') || err.property || 'general',
-        description: err.message
-      }))
+      // Check if this is from login endpoint - don't return field details for login validation
+      const isLoginEndpoint = request.url?.includes('/auth/login')
+      if (isLoginEndpoint) {
+        // For login validation, don't return field-specific errors
+        structuredErrors = undefined
+      } else {
+        structuredErrors = details.map((err: any) => ({
+          field: err.path?.join('.') || err.property || 'general',
+          description: err.message
+        }))
+      }
+    } else if (exception instanceof ApiException && details?.field && !loginErrorCodes.includes(errorCode)) {
+      // Handle single field errors from ApiException, but exclude login-related errors
+      structuredErrors = [
+        {
+          field: details.field,
+          description: typeof message === 'string' ? message : 'Validation error'
+        }
+      ]
     }
 
-    const responseBody = {
+    const responseBody: any = {
       status: statusCode,
       message,
       errors: structuredErrors
     }
 
+    // Add canRetry flag for verification errors
+    if (details?.canRetry !== undefined) {
+      responseBody.canRetry = details.canRetry
+    }
+
     // Only add details for debugging in non-production, but preserve the translated message
     if (process.env.NODE_ENV !== 'production') {
       if (details && !structuredErrors) {
-        ;(responseBody as any).details = details
+        responseBody.details = details
       }
     } else if (statusCode >= 500 && !structuredErrors) {
-      delete (responseBody as any).errors
+      delete responseBody.errors
     }
 
     httpAdapter.reply(ctx.getResponse(), responseBody, statusCode)
@@ -123,9 +147,25 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private handleAuthCookies(statusCode: number, request: Request, response: Response) {
+    // Chỉ xóa auth cookies khi thực sự là lỗi authentication nghiêm trọng
     if (statusCode === 401) {
+      const url = request.url
+      const isVerificationEndpoint =
+        url?.includes('/auth/2fa/verify') ||
+        url?.includes('/auth/otp/verify') ||
+        url?.includes('/auth/2fa/setup') ||
+        url?.includes('/auth/2fa/confirm-setup')
+
+      // Nếu là endpoint verification, chỉ xóa access/refresh tokens, giữ lại SLT
+      if (isVerificationEndpoint) {
+        this.cookieService.clearTokenCookies(response)
+        return
+      }
+
+      // Các trường hợp khác: xóa tất cả auth cookies
       this.cookieService.clearTokenCookies(response)
       this.cookieService.clearSltCookie(response)
+
       const cookies = (request as any).cookies
       if (cookies) {
         Object.keys(cookies).forEach((cookieName) => {

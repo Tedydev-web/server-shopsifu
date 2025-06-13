@@ -6,6 +6,12 @@ export enum AuthType {
   None = 'None'
 }
 
+export enum TwoFactorMethodType {
+  EMAIL = 'EMAIL',
+  TOTP = 'TOTP',
+  RECOVERY_CODE = 'RECOVERY_CODE'
+}
+
 export const OTP_LENGTH = 6 // OTP length
 export const SLT_EXPIRY_SECONDS = 300 // SLT expiry time in seconds
 export const SLT_MAX_ATTEMPTS = 5 // Maximum attempts for SLT
@@ -54,12 +60,6 @@ export enum TypeOfVerificationCode {
 }
 
 export type TypeOfVerificationCodeType = (typeof TypeOfVerificationCode)[keyof typeof TypeOfVerificationCode]
-
-export enum TwoFactorMethodType {
-  EMAIL = 'EMAIL',
-  AUTHENTICATOR_APP = 'AUTHENTICATOR_APP',
-  RECOVERY_CODE = 'RECOVERY_CODE'
-}
 
 export type TwoFactorMethodTypeType = (typeof TwoFactorMethodType)[keyof typeof TwoFactorMethodType]
 

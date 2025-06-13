@@ -9,12 +9,9 @@ export const TwoFactorVerifySchema = z.object({
     .preprocess((val) => {
       const upperVal = typeof val === 'string' ? val.toUpperCase() : val
       if (upperVal === 'TOTP') {
-        return TwoFactorMethodType.AUTHENTICATOR_APP
+        return TwoFactorMethodType.TOTP
       }
-      if (upperVal === 'RECOVERY') {
-        return TwoFactorMethodType.RECOVERY_CODE
-      }
-      return val
+      return TwoFactorMethodType.RECOVERY_CODE
     }, z.nativeEnum(TwoFactorMethodType))
     .optional()
 })

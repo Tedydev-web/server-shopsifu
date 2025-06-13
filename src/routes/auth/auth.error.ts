@@ -80,8 +80,11 @@ export class AuthError {
     )
   }
 
-  public static InvalidOTP(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'AUTH_INVALID_OTP', 'auth.error.invalidOtp')
+  public static InvalidOTP(canRetry: boolean = true): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'AUTH_INVALID_OTP', 'auth.error.invalidOtp', {
+      canRetry,
+      field: 'code'
+    })
   }
 
   public static OTPSendingFailed(): ApiException {
@@ -213,8 +216,11 @@ export class AuthError {
     return new ApiException(HttpStatus.CONFLICT, 'AUTH_2FA_ALREADY_ENABLED', 'auth.error.2fa.alreadyEnabled')
   }
 
-  public static InvalidTOTP(): ApiException {
-    return new ApiException(HttpStatus.BAD_REQUEST, 'AUTH_2FA_INVALID_TOTP', 'auth.error.2fa.invalidOtp')
+  public static InvalidTOTP(canRetry: boolean = true): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'AUTH_2FA_INVALID_TOTP', 'auth.error.2fa.invalidOtp', {
+      canRetry,
+      field: 'code'
+    })
   }
 
   public static TOTPNotEnabled(): ApiException {
@@ -244,7 +250,7 @@ export class AuthError {
   }
 
   public static SLTExpired(): ApiException {
-    return new ApiException(HttpStatus.UNAUTHORIZED, 'AUTH_SLT_EXPIRED', 'auth.error.slt.expired')
+    return new ApiException(HttpStatus.BAD_REQUEST, 'AUTH_SLT_EXPIRED', 'auth.error.slt.expired')
   }
 
   public static SLTAlreadyUsed(): ApiException {
@@ -312,5 +318,42 @@ export class AuthError {
 
   public static AccountLocked(): ApiException {
     return new ApiException(HttpStatus.UNAUTHORIZED, 'AUTH_ACCOUNT_LOCKED', 'auth.error.accountLocked')
+  }
+
+  // --- Login Validation Errors (400) ---
+
+  public static InvalidLoginCredentials(): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'AUTH_INVALID_LOGIN_CREDENTIALS', 'auth.error.invalidCredentials')
+  }
+
+  public static InvalidEmailFormat(): ApiException {
+    return new ApiException(
+      HttpStatus.BAD_REQUEST,
+      'AUTH_INVALID_EMAIL_FORMAT',
+      'auth.error.validation.invalidEmailFormat'
+    )
+  }
+
+  public static PasswordTooShort(): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'AUTH_PASSWORD_TOO_SHORT', 'auth.error.validation.passwordTooShort')
+  }
+
+  // --- Verification Errors (400 vs 401) ---
+
+  public static InvalidVerificationCode(canRetry: boolean = true): ApiException {
+    return new ApiException(
+      canRetry ? HttpStatus.BAD_REQUEST : HttpStatus.UNAUTHORIZED,
+      'AUTH_INVALID_VERIFICATION_CODE',
+      'auth.error.verification.invalidCode',
+      { canRetry, field: 'code' }
+    )
+  }
+
+  public static VerificationSessionExpired(): ApiException {
+    return new ApiException(
+      HttpStatus.UNAUTHORIZED,
+      'AUTH_VERIFICATION_SESSION_EXPIRED',
+      'auth.error.verification.sessionExpired'
+    )
   }
 }
