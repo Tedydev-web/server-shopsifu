@@ -542,19 +542,40 @@ export class CaslAbilityFactory {
   }
 
   private generatePermissionsHash(permissions: Permission[]): string {
-    // Create a deterministic hash based on permission IDs and update timestamps
-    const sortedPermissions = permissions
-      .map((p) => `${p.id}:${p.updatedAt?.getTime() || 0}`)
-      .sort()
-      .join('|')
+    try {
+      // Create a deterministic hash based on permission IDs and update timestamps
+      const sortedPermissions = permissions
+        .map((p) => {
+          // Ensure updatedAt is properly converted to Date if it's a string
+          let updatedAtTime = 0
+          if (p.updatedAt) {
+            try {
+              updatedAtTime = p.updatedAt instanceof Date ? p.updatedAt.getTime() : new Date(p.updatedAt).getTime()
+            } catch {
+              this.logger.warn(`Invalid date format for permission ${p.id}: ${String(p.updatedAt)}`)
+              updatedAtTime = 0
+            }
+          }
+          return `${p.id}:${updatedAtTime}`
+        })
+        .sort()
+        .join('|')
 
-    // Simple hash function (you might want to use a proper hash library in production)
-    let hash = 0
-    for (let i = 0; i < sortedPermissions.length; i++) {
-      const char = sortedPermissions.charCodeAt(i)
-      hash = (hash << 5) - hash + char
-      hash = hash & hash // Convert to 32bit integer
+      // Simple hash function (you might want to use a proper hash library in production)
+      let hash = 0
+      for (let i = 0; i < sortedPermissions.length; i++) {
+        const char = sortedPermissions.charCodeAt(i)
+        hash = (hash << 5) - hash + char
+        hash = hash & hash // Convert to 32bit integer
+      }
+      return Math.abs(hash).toString(36)
+    } catch (error) {
+      this.logger.error(`Error generating permissions hash: ${error.message}`)
+      // Fallback to a simple hash based on permission IDs only
+      return permissions
+        .map((p) => p.id)
+        .sort()
+        .join('|')
     }
-    return Math.abs(hash).toString(36)
   }
 }
