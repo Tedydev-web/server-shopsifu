@@ -592,9 +592,9 @@ enum UserStatus {
 }
 
 enum TwoFactorMethodType {
-  EMAIL          // OTP qua email
-  TOTP           // Time-based OTP từ authenticator app
-  RECOVERY_CODE  // Mã khôi phục
+  OTP          
+  TOTP           
+  RECOVERY_CODE  
 }
 
 enum OrderStatus {
