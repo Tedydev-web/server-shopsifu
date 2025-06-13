@@ -1,15 +1,25 @@
 import { Injectable, Logger, Inject } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
-import { RedisService } from 'src/shared/providers/redis/redis.service'
-import { TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
-import { ITokenService, ISLTService, SltContextData, SltJwtPayload } from 'src/routes/auth/auth.types'
-import { TypeOfVerificationCodeType, SLT_EXPIRY_SECONDS, SLT_MAX_ATTEMPTS } from 'src/routes/auth/auth.constants'
-import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
-import { AuthError } from 'src/routes/auth/auth.error'
 import { v4 as uuidv4 } from 'uuid'
-import { TypeOfVerificationCode } from 'src/routes/auth/auth.constants'
 
+import { RedisService } from 'src/shared/providers/redis/redis.service'
+import { RedisKeyManager } from 'src/shared/providers/redis/redis-keys.utils'
+import { TOKEN_SERVICE } from 'src/shared/constants/injection.tokens'
+
+import { ITokenService, ISLTService, SltContextData, SltJwtPayload } from 'src/routes/auth/auth.types'
+import {
+  TypeOfVerificationCode,
+  TypeOfVerificationCodeType,
+  SLT_EXPIRY_SECONDS,
+  SLT_MAX_ATTEMPTS
+} from 'src/routes/auth/auth.constants'
+import { AuthError } from 'src/routes/auth/auth.error'
+
+/**
+ * Service for managing Short-Lived Tokens (SLT) used in authentication flows.
+ * Ensures each user can only have one active SLT token per purpose at any given time.
+ */
 @Injectable()
 export class SLTService implements ISLTService {
   private readonly logger = new Logger(SLTService.name)
@@ -21,8 +31,13 @@ export class SLTService implements ISLTService {
     private readonly jwtService: JwtService
   ) {}
 
+  // ================================================================
+  // PUBLIC INTERFACE METHODS
+  // ================================================================
+
   /**
    * Creates and stores a Short-Lived Token (SLT).
+   * Uses Redis transactions to ensure atomic operations and prevent race conditions.
    */
   async createAndStoreSltToken(payload: {
     userId: number
@@ -37,57 +52,26 @@ export class SLTService implements ISLTService {
     const { ipAddress, userAgent, purpose, email } = payload
     let { metadata } = payload
 
-    // Create temporary userId and deviceId for registration flow if values are 0
+    // Handle registration flow with temporary IDs
     const isRegistrationFlow = purpose === TypeOfVerificationCode.REGISTER && userId === 0 && deviceId === 0
     if (isRegistrationFlow) {
-      // Create a temporary negative userId to avoid conflicts with real userIds
-      userId = -Math.floor(Math.random() * 1000000) - 1
-      deviceId = -Math.floor(Math.random() * 1000000) - 1
+      userId = this.generateTemporaryId()
+      deviceId = this.generateTemporaryId()
 
       this.logger.debug(
         `[createAndStoreSltToken] Created temporary userId (${userId}) and deviceId (${deviceId}) for registration.`
       )
 
-      // Ensure email is stored in metadata for the registration process
+      // Ensure email is stored in metadata for registration
       if (email && (!metadata || !metadata.pendingEmail)) {
         metadata = { ...metadata, pendingEmail: email }
       }
     }
 
-    // Check for existing SLT token for the same user and purpose
-    // Skip for registration flow with temporary user IDs
-    if (!isRegistrationFlow) {
-      const existingJti = await this.findExistingSltToken(userId, purpose)
-      if (existingJti) {
-        this.logger.debug(
-          `[createAndStoreSltToken] Found existing SLT token ${existingJti} for userId ${userId}, purpose ${purpose}. Deleting it.`
-        )
-        await this.deleteExistingSltToken(userId, purpose, existingJti)
-      }
-    }
+    // Create new SLT token first
+    const { sltToken, jti, exp, iat } = this.createSltToken(userId, purpose)
 
-    const jti = uuidv4()
-    const sltPayload: SltJwtPayload = {
-      jti,
-      sub: userId,
-      pur: purpose
-    }
-
-    const sltToken = this.tokenService.signShortLivedToken(sltPayload)
-
-    const decodedTokenPayload = this.jwtService.decode(sltToken)
-    if (
-      !decodedTokenPayload ||
-      typeof decodedTokenPayload === 'string' ||
-      typeof decodedTokenPayload.exp !== 'number' ||
-      typeof decodedTokenPayload.iat !== 'number'
-    ) {
-      this.logger.error('[createAndStoreSltToken] Invalid SLT token payload after decoding.')
-      throw AuthError.InternalServerError('Failed to decode SLT token for context.')
-    }
-    const exp = decodedTokenPayload.exp
-    const iat = decodedTokenPayload.iat
-
+    // Prepare SLT context data
     const sltContextData: SltContextData = {
       userId,
       deviceId,
@@ -103,13 +87,8 @@ export class SLTService implements ISLTService {
       createdAt: new Date()
     }
 
-    await this.storeSltContext(jti, sltContextData)
-
-    // Track the active token for duplicate prevention (skip for registration flow)
-    if (!isRegistrationFlow) {
-      const sltExpiry = this.configService.get<number>('security.sltExpirySeconds', SLT_EXPIRY_SECONDS)
-      await this.trackActiveSltToken(userId, purpose, jti, sltExpiry)
-    }
+    // Atomic operation: cleanup old + store new
+    await this.atomicReplaceActiveSltToken(userId, purpose, jti, sltContextData)
 
     this.logger.log(
       `[createAndStoreSltToken] Created SLT for ${isRegistrationFlow ? 'registration with email ' + email : 'user ID ' + userId}, device ID ${deviceId}, purpose ${purpose}`
@@ -119,12 +98,395 @@ export class SLTService implements ISLTService {
   }
 
   /**
-   * Stores the SLT context in Redis.
+   * Validates SLT from cookie and retrieves its context.
+   */
+  async validateSltFromCookieAndGetContext(
+    sltCookieValue: string,
+    currentIpAddress: string,
+    currentUserAgent: string,
+    expectedPurpose?: TypeOfVerificationCodeType
+  ): Promise<SltContextData & { sltJti: string }> {
+    try {
+      const decodedToken = await this.verifyAndDecodeSltToken(sltCookieValue)
+      const { jti, pur: purpose } = decodedToken
+
+      if (expectedPurpose && purpose !== expectedPurpose) {
+        this.logger.warn(
+          `[validateSltFromCookieAndGetContext] SLT purpose mismatch: expected ${expectedPurpose}, got ${purpose}`
+        )
+        throw AuthError.SLTInvalidPurpose()
+      }
+
+      const sltContext = await this.getSltContext(jti)
+      await this.validateSltConstraints(sltContext, jti, currentIpAddress, currentUserAgent)
+
+      return {
+        ...sltContext,
+        sltJti: jti
+      }
+    } catch (error) {
+      if (error instanceof AuthError) {
+        throw error
+      }
+      this.logger.error(`[validateSltFromCookieAndGetContext] Error: ${error.message}`, error.stack)
+      throw AuthError.SLTExpired()
+    }
+  }
+
+  /**
+   * Extracts JTI from JWT token without validation.
+   */
+  extractJtiFromToken(sltToken: string): string {
+    const decodedToken = this.jwtService.decode(sltToken)
+    if (!decodedToken || typeof decodedToken === 'string' || !decodedToken.jti) {
+      throw AuthError.SLTExpired()
+    }
+    return decodedToken.jti
+  }
+
+  /**
+   * Updates SLT context with new data.
+   */
+  async updateSltContext(jti: string, updateData: Partial<SltContextData>): Promise<void> {
+    const sltContextKey = this.getSltContextKey(jti)
+    const updatePayload = this.prepareRedisUpdatePayload(updateData)
+
+    if (Object.keys(updatePayload).length > 0) {
+      await this.redisService.hset(sltContextKey, updatePayload)
+      this.logger.debug(
+        `[updateSltContext] Updated SLT context for jti: ${jti} with keys: ${Object.keys(updatePayload).join(', ')}`
+      )
+    }
+  }
+
+  /**
+   * Finalizes SLT and atomically cleans up active token mapping.
+   */
+  async finalizeSlt(sltJti: string): Promise<void> {
+    try {
+      // Get SLT context to extract userId and purpose for cleanup
+      const sltContext = await this.getSltContext(sltJti)
+      
+      // Atomic cleanup: finalize context and remove active mapping
+      await Promise.all([
+        this.updateSltContext(sltJti, { finalized: '1' }),
+        this.cleanupActiveTokenMapping(sltContext.userId, sltContext.purpose)
+      ])
+      
+      this.logger.log(`[finalizeSlt] Finalized SLT for jti: ${sltJti}`)
+    } catch (error) {
+      // If context doesn't exist, just try to finalize what we can
+      this.logger.warn(`[finalizeSlt] Context not found for ${sltJti}, attempting partial cleanup: ${error.message}`)
+      try {
+        await this.updateSltContext(sltJti, { finalized: '1' })
+      } catch (finalizeError) {
+        this.logger.error(`[finalizeSlt] Failed to finalize ${sltJti}: ${finalizeError.message}`)
+      }
+    }
+  }
+
+  /**
+   * Increments SLT attempt count.
+   */
+  async incrementSltAttempts(sltJti: string): Promise<number> {
+    const sltContextKey = this.getSltContextKey(sltJti)
+    const newAttemptCount = await this.redisService.hincrby(sltContextKey, 'attempts', 1)
+    this.logger.debug(`[incrementSltAttempts] Incrementing attempt count for jti ${sltJti} to ${newAttemptCount}`)
+    return newAttemptCount
+  }
+
+  /**
+   * Checks if user has an active SLT token for the given purpose.
+   */
+  async hasActiveSltToken(userId: number, purpose: TypeOfVerificationCodeType): Promise<string | null> {
+    const activeTokenKey = RedisKeyManager.getSltActiveTokenKey(userId, purpose)
+    const activeJti = await this.redisService.get(activeTokenKey)
+
+    if (activeJti) {
+      const sltContextKey = this.getSltContextKey(activeJti)
+      const exists = await this.redisService.exists(sltContextKey)
+
+      if (exists) {
+        return activeJti
+      } else {
+        // Context doesn't exist, cleanup stale mapping
+        await this.redisService.del(activeTokenKey)
+        return null
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Initiates OTP flow with SLT cookie.
+   */
+  async initiateOtpWithSltCookie(payload: {
+    email: string
+    userId: number
+    deviceId: number
+    ipAddress: string
+    userAgent: string
+    purpose: TypeOfVerificationCodeType
+    metadata?: Record<string, any>
+  }): Promise<string> {
+    const { email, userId, deviceId, ipAddress, userAgent, purpose, metadata } = payload
+
+    const sltToken = await this.createAndStoreSltToken({
+      userId,
+      deviceId,
+      ipAddress,
+      userAgent,
+      purpose,
+      email,
+      metadata
+    })
+
+    this.logger.log(`[initiateOtpWithSltCookie] Initiated OTP flow with SLT for ${email}, purpose: ${purpose}`)
+    return sltToken
+  }
+
+  // ================================================================
+  // PRIVATE HELPER METHODS - SLT TOKEN OPERATIONS
+  // ================================================================
+
+  /**
+   * Creates SLT JWT token and returns token with decoded payload info.
+   */
+  private createSltToken(
+    userId: number,
+    purpose: TypeOfVerificationCodeType
+  ): {
+    sltToken: string
+    jti: string
+    exp: number
+    iat: number
+  } {
+    const jti = uuidv4()
+    const sltPayload: SltJwtPayload = {
+      jti,
+      sub: userId,
+      pur: purpose
+    }
+
+    const sltToken = this.tokenService.signShortLivedToken(sltPayload)
+    const decodedTokenPayload = this.jwtService.decode(sltToken)
+
+    if (
+      !decodedTokenPayload ||
+      typeof decodedTokenPayload === 'string' ||
+      typeof decodedTokenPayload.exp !== 'number' ||
+      typeof decodedTokenPayload.iat !== 'number'
+    ) {
+      this.logger.error('[createSltToken] Invalid SLT token payload after decoding.')
+      throw AuthError.InternalServerError('Failed to decode SLT token for context.')
+    }
+
+    return {
+      sltToken,
+      jti,
+      exp: decodedTokenPayload.exp,
+      iat: decodedTokenPayload.iat
+    }
+  }
+
+  /**
+   * Verifies and decodes SLT token.
+   */
+  private async verifyAndDecodeSltToken(sltToken: string): Promise<SltJwtPayload> {
+    return await this.jwtService.verifyAsync<SltJwtPayload>(sltToken, {
+      secret: this.configService.get('SLT_JWT_SECRET')
+    })
+  }
+
+  /**
+   * Stores SLT context in Redis.
    */
   private async storeSltContext(sltJti: string, sltContextData: SltContextData): Promise<void> {
     const sltContextKey = this.getSltContextKey(sltJti)
-    const sltExpiry = this.configService.get<number>('security.sltExpirySeconds', SLT_EXPIRY_SECONDS)
+    const sltExpiry = this.getSltExpirySeconds()
+    const sltContextForRedis = this.prepareSltContextForRedis(sltContextData)
 
+    await this.redisService.hset(sltContextKey, sltContextForRedis)
+    await this.redisService.expire(sltContextKey, sltExpiry)
+  }
+
+  /**
+   * Retrieves and parses SLT context from Redis.
+   */
+  private async getSltContext(jti: string): Promise<SltContextData> {
+    const sltContextKey = this.getSltContextKey(jti)
+    const redisContext = await this.redisService.hgetall(sltContextKey)
+
+    if (!redisContext || Object.keys(redisContext).length === 0) {
+      this.logger.warn(`[getSltContext] SLT context not found for jti: ${jti}`)
+      throw AuthError.SLTExpired()
+    }
+
+    return this.parseSltContextFromRedis(redisContext)
+  }
+
+  /**
+   * Validates SLT constraints (attempts, finalized status, IP/UserAgent).
+   */
+  private async validateSltConstraints(
+    sltContext: SltContextData,
+    jti: string,
+    currentIpAddress: string,
+    currentUserAgent: string
+  ): Promise<void> {
+    // Check attempt count
+    const currentAttempts = sltContext.attempts || 0
+    const maxAttempts = this.configService.get('security.sltMaxAttempts', SLT_MAX_ATTEMPTS)
+    if (currentAttempts >= maxAttempts) {
+      this.logger.warn(`[validateSltConstraints] SLT max attempts exceeded for jti: ${jti}`)
+      const sltContextKey = this.getSltContextKey(jti)
+      await this.redisService.del(sltContextKey)
+      throw AuthError.SLTMaxAttemptsExceeded()
+    }
+
+    // Check finalized status
+    if (sltContext.finalized === '1') {
+      if (sltContext.purpose === TypeOfVerificationCode.REGISTER && sltContext.metadata?.otpVerified === 'true') {
+        this.logger.log(`[validateSltConstraints] Allowing reuse of finalized SLT for registration completion: ${jti}`)
+      } else {
+        this.logger.warn(`[validateSltConstraints] SLT already used for jti: ${jti}`)
+        throw AuthError.SLTAlreadyUsed()
+      }
+    }
+
+    // Check IP/UserAgent (warning only)
+    if (sltContext.ipAddress !== currentIpAddress || sltContext.userAgent !== currentUserAgent) {
+      this.logger.warn(
+        `[validateSltConstraints] IP or UserAgent mismatch for jti: ${jti}, userId: ${sltContext.userId}`
+      )
+    }
+  }
+
+  // ================================================================
+  // PRIVATE HELPER METHODS - ACTIVE TOKEN MANAGEMENT
+  // ================================================================
+
+  /**
+   * Stores active SLT token mapping for user + purpose.
+   */
+  private async storeActiveTokenMapping(
+    userId: number,
+    purpose: TypeOfVerificationCodeType,
+    jti: string,
+    ttlSeconds: number
+  ): Promise<void> {
+    const activeTokenKey = RedisKeyManager.getSltActiveTokenKey(userId, purpose)
+    await this.redisService.set(activeTokenKey, jti, 'EX', ttlSeconds)
+    this.logger.debug(
+      `[storeActiveTokenMapping] Stored active SLT mapping for user ${userId}, purpose ${purpose} → ${jti}`
+    )
+  }
+
+  /**
+   * Cleans up active SLT token mapping for user + purpose.
+   */
+  private async cleanupActiveTokenMapping(userId: number, purpose: TypeOfVerificationCodeType): Promise<void> {
+    const activeTokenKey = RedisKeyManager.getSltActiveTokenKey(userId, purpose)
+    await this.redisService.del(activeTokenKey)
+    this.logger.debug(`[cleanupActiveTokenMapping] Cleaned up active mapping for user ${userId}, purpose ${purpose}`)
+  }
+
+  /**
+   * Atomically replaces active SLT token with proper cleanup.
+   * Uses sequential operations with rollback on failure.
+   */
+  private async atomicReplaceActiveSltToken(
+    userId: number,
+    purpose: TypeOfVerificationCodeType,
+    newJti: string,
+    sltContextData: SltContextData
+  ): Promise<void> {
+    const activeTokenKey = RedisKeyManager.getSltActiveTokenKey(userId, purpose)
+    const newContextKey = this.getSltContextKey(newJti)
+    const sltExpiry = this.getSltExpirySeconds()
+
+    try {
+      // Get existing JTI to cleanup (if any)
+      const existingJti = await this.redisService.get(activeTokenKey)
+      
+      // Prepare context data for Redis
+      const contextForRedis = this.prepareSltContextForRedis(sltContextData)
+
+      if (existingJti) {
+        this.logger.debug(
+          `[atomicReplaceActiveSltToken] Replacing existing SLT ${existingJti} with ${newJti} for user ${userId}, purpose ${purpose}`
+        )
+
+        // Step 1: Store new context first
+        await this.redisService.hset(newContextKey, contextForRedis)
+        await this.redisService.expire(newContextKey, sltExpiry)
+
+        // Step 2: Update active mapping to point to new token
+        await this.redisService.set(activeTokenKey, newJti, 'EX', sltExpiry)
+
+        // Step 3: Clean up old context (safe to do after mapping is updated)
+        const existingContextKey = this.getSltContextKey(existingJti)
+        await this.redisService.del(existingContextKey)
+      } else {
+        this.logger.debug(
+          `[atomicReplaceActiveSltToken] Creating new SLT ${newJti} for user ${userId}, purpose ${purpose}`
+        )
+
+        // No existing token, just create new one
+        await this.redisService.hset(newContextKey, contextForRedis)
+        await this.redisService.expire(newContextKey, sltExpiry)
+        await this.redisService.set(activeTokenKey, newJti, 'EX', sltExpiry)
+      }
+
+      this.logger.debug(
+        `[atomicReplaceActiveSltToken] Successfully stored SLT mapping: user ${userId}, purpose ${purpose} → ${newJti}`
+      )
+    } catch (error) {
+      // Rollback: Clean up any partially created data
+      try {
+        await this.redisService.del(newContextKey)
+      } catch (rollbackError) {
+        this.logger.warn(`[atomicReplaceActiveSltToken] Rollback failed: ${rollbackError.message}`)
+      }
+
+      this.logger.error(
+        `[atomicReplaceActiveSltToken] Failed to replace SLT token for user ${userId}, purpose ${purpose}: ${error.message}`,
+        error.stack
+      )
+      throw AuthError.InternalServerError('Failed to store SLT token')
+    }
+  }
+
+  // ================================================================
+  // PRIVATE UTILITY METHODS
+  // ================================================================
+
+  /**
+   * Generates temporary negative ID for registration flow.
+   */
+  private generateTemporaryId(): number {
+    return -Math.floor(Math.random() * 1000000) - 1
+  }
+
+  /**
+   * Gets SLT expiry seconds from config.
+   */
+  private getSltExpirySeconds(): number {
+    return this.configService.get<number>('security.sltExpirySeconds', SLT_EXPIRY_SECONDS)
+  }
+
+  /**
+   * Creates Redis key for SLT context.
+   */
+  private getSltContextKey(jti: string): string {
+    return RedisKeyManager.getSltContextKey(jti)
+  }
+
+  /**
+   * Prepares SLT context data for Redis storage.
+   */
+  private prepareSltContextForRedis(sltContextData: SltContextData): Record<string, string> {
     const sltContextForRedis: Record<string, string> = {
       userId: String(sltContextData.userId),
       deviceId: String(sltContextData.deviceId),
@@ -152,89 +514,11 @@ export class SLTService implements ISLTService {
           : String(sltContextData.metadata)
     }
 
-    await this.redisService.hset(sltContextKey, sltContextForRedis)
-    await this.redisService.expire(sltContextKey, sltExpiry)
+    return sltContextForRedis
   }
 
   /**
-   * Validates the SLT from a cookie and retrieves its context.
-   */
-  async validateSltFromCookieAndGetContext(
-    sltCookieValue: string,
-    currentIpAddress: string,
-    currentUserAgent: string,
-    expectedPurpose?: TypeOfVerificationCodeType
-  ): Promise<SltContextData & { sltJti: string }> {
-    try {
-      const decodedToken = await this.jwtService.verifyAsync<SltJwtPayload>(sltCookieValue, {
-        secret: this.configService.get('SLT_JWT_SECRET')
-      })
-
-      const { jti, sub: userId, pur: purpose } = decodedToken
-
-      if (expectedPurpose && purpose !== expectedPurpose) {
-        this.logger.warn(
-          `[validateSltFromCookieAndGetContext] SLT purpose mismatch: expected ${expectedPurpose}, got ${purpose}`
-        )
-        throw AuthError.SLTInvalidPurpose()
-      }
-
-      const sltContextKey = this.getSltContextKey(jti)
-      const redisContext = await this.redisService.hgetall(sltContextKey)
-
-      if (!redisContext || Object.keys(redisContext).length === 0) {
-        this.logger.warn(`[validateSltFromCookieAndGetContext] SLT context not found for jti: ${jti}`)
-        throw AuthError.SLTExpired()
-      }
-
-      // Special handling for the registration process
-      // If the SLT is finalized but it's a registration flow and OTP has been verified,
-      // allow its use to complete the registration.
-      const sltContext = this.parseSltContextFromRedis(redisContext)
-
-      // Check attempt count before doing anything else
-      const currentAttempts = sltContext.attempts || 0
-      const maxAttempts = this.configService.get('security.sltMaxAttempts', SLT_MAX_ATTEMPTS)
-      if (currentAttempts >= maxAttempts) {
-        this.logger.warn(`[validateSltFromCookieAndGetContext] SLT max attempts exceeded for jti: ${jti}`)
-        // Delete both the context and active token tracking to prevent further attempts
-        const activeTokenKey = this.getSltActiveTokenKey(sltContext.userId, sltContext.purpose)
-        await Promise.all([this.redisService.del(sltContextKey), this.redisService.del(activeTokenKey)])
-        throw AuthError.SLTMaxAttemptsExceeded()
-      }
-
-      if (redisContext.finalized === '1') {
-        if (purpose === TypeOfVerificationCode.REGISTER && sltContext.metadata?.otpVerified === 'true') {
-          this.logger.log(
-            `[validateSltFromCookieAndGetContext] Allowing reuse of finalized SLT for registration completion: ${jti}`
-          )
-        } else {
-          this.logger.warn(`[validateSltFromCookieAndGetContext] SLT already used for jti: ${jti}`)
-          throw AuthError.SLTAlreadyUsed()
-        }
-      }
-
-      if (sltContext.ipAddress !== currentIpAddress || sltContext.userAgent !== currentUserAgent) {
-        this.logger.warn(
-          `[validateSltFromCookieAndGetContext] IP or UserAgent mismatch for jti: ${jti}, userId: ${userId}`
-        )
-      }
-
-      return {
-        ...sltContext,
-        sltJti: jti
-      }
-    } catch (error) {
-      if (error instanceof AuthError) {
-        throw error
-      }
-      this.logger.error(`[validateSltFromCookieAndGetContext] Error: ${error.message}`, error.stack)
-      throw AuthError.SLTExpired()
-    }
-  }
-
-  /**
-   * Parses SLT context from a Redis hash.
+   * Parses SLT context from Redis hash.
    */
   private parseSltContextFromRedis(redisContext: Record<string, string>): SltContextData {
     const parsedContext: SltContextData = {
@@ -267,16 +551,16 @@ export class SLTService implements ISLTService {
         parsedContext.metadata = { value: redisContext.metadata }
       }
     }
+
     return parsedContext
   }
 
   /**
-   * Updates the SLT context
+   * Prepares update payload for Redis.
    */
-  async updateSltContext(jti: string, updateData: Partial<SltContextData>): Promise<void> {
-    const sltContextKey = this.getSltContextKey(jti)
-
+  private prepareRedisUpdatePayload(updateData: Partial<SltContextData>): Record<string, string> {
     const updatePayload: Record<string, string> = {}
+
     for (const [key, value] of Object.entries(updateData)) {
       if (value !== undefined && value !== null) {
         if (typeof value === 'object') {
@@ -287,129 +571,6 @@ export class SLTService implements ISLTService {
       }
     }
 
-    if (Object.keys(updatePayload).length > 0) {
-      await this.redisService.hset(sltContextKey, updatePayload)
-      this.logger.debug(
-        `[updateSltContext] Updated SLT context for jti: ${jti} with keys: ${Object.keys(updatePayload).join(', ')}`
-      )
-    }
-  }
-
-  /**
-   * Finalizes the SLT
-   */
-  async finalizeSlt(sltJti: string): Promise<void> {
-    // Get the context to clean up active token tracking
-    const sltContextKey = this.getSltContextKey(sltJti)
-    const redisContext = await this.redisService.hgetall(sltContextKey)
-
-    if (redisContext && Object.keys(redisContext).length > 0) {
-      const sltContext = this.parseSltContextFromRedis(redisContext)
-
-      // Clean up active token tracking (skip for registration flow with negative userIds)
-      if (sltContext.userId > 0) {
-        const activeTokenKey = this.getSltActiveTokenKey(sltContext.userId, sltContext.purpose)
-        await this.redisService.del(activeTokenKey)
-        this.logger.debug(
-          `[finalizeSlt] Cleaned up active token tracking for userId ${sltContext.userId}, purpose ${sltContext.purpose}`
-        )
-      }
-    }
-
-    await this.updateSltContext(sltJti, { finalized: '1' })
-    this.logger.log(`[finalizeSlt] Finalized SLT for jti: ${sltJti}`)
-  }
-
-  /**
-   * Increments the SLT attempt count
-   */
-  async incrementSltAttempts(sltJti: string): Promise<number> {
-    const sltContextKey = this.getSltContextKey(sltJti)
-    const newAttemptCount = await this.redisService.hincrby(sltContextKey, 'attempts', 1)
-    this.logger.debug(`[incrementSltAttempts] Incrementing attempt count for jti ${sltJti} to ${newAttemptCount}`)
-    return newAttemptCount
-  }
-
-  /**
-   * Creates a key for Redis SLT context
-   */
-  private getSltContextKey(jti: string): string {
-    return RedisKeyManager.getSltContextKey(jti)
-  }
-
-  /**
-   * Creates a key for tracking active SLT tokens by user and purpose
-   */
-  private getSltActiveTokenKey(userId: number, purpose: TypeOfVerificationCodeType): string {
-    return RedisKeyManager.getSltActiveTokenKey(userId, purpose)
-  }
-
-  /**
-   * Finds existing SLT token JTI for a user and purpose
-   */
-  private async findExistingSltToken(userId: number, purpose: TypeOfVerificationCodeType): Promise<string | null> {
-    const activeTokenKey = this.getSltActiveTokenKey(userId, purpose)
-    return await this.redisService.get(activeTokenKey)
-  }
-
-  /**
-   * Deletes an existing SLT token and its tracking
-   */
-  private async deleteExistingSltToken(
-    userId: number,
-    purpose: TypeOfVerificationCodeType,
-    jti: string
-  ): Promise<void> {
-    const sltContextKey = this.getSltContextKey(jti)
-    const activeTokenKey = this.getSltActiveTokenKey(userId, purpose)
-
-    // Delete both the context and the active token tracking
-    await Promise.all([this.redisService.del(sltContextKey), this.redisService.del(activeTokenKey)])
-
-    this.logger.debug(
-      `[deleteExistingSltToken] Deleted existing SLT token ${jti} for userId ${userId}, purpose ${purpose}`
-    )
-  }
-
-  /**
-   * Tracks an active SLT token for a user and purpose
-   */
-  private async trackActiveSltToken(
-    userId: number,
-    purpose: TypeOfVerificationCodeType,
-    jti: string,
-    expiry: number
-  ): Promise<void> {
-    const activeTokenKey = this.getSltActiveTokenKey(userId, purpose)
-    await this.redisService.set(activeTokenKey, jti, 'EX', expiry)
-  }
-
-  /**
-   * Initiates OTP and stores it in the SLT Cookie
-   */
-  async initiateOtpWithSltCookie(payload: {
-    email: string
-    userId: number
-    deviceId: number
-    ipAddress: string
-    userAgent: string
-    purpose: TypeOfVerificationCodeType
-    metadata?: Record<string, any>
-  }): Promise<string> {
-    const { email, userId, deviceId, ipAddress, userAgent, purpose, metadata } = payload
-
-    // Create and store SLT token
-    const sltToken = await this.createAndStoreSltToken({
-      userId,
-      deviceId,
-      ipAddress,
-      userAgent,
-      purpose,
-      email,
-      metadata
-    })
-
-    this.logger.log(`[initiateOtpWithSltCookie] Initiated OTP flow with SLT for ${email}, purpose: ${purpose}`)
-    return sltToken
+    return updatePayload
   }
 }

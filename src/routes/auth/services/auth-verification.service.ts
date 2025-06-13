@@ -235,7 +235,8 @@ export class AuthVerificationService {
       const result = await this.twoFactorService.generateSetupDetails(context.userId)
 
       // Lưu secret vào SLT context để verify ở bước tiếp theo
-      await this.sltService.updateSltContext(sltToken, {
+      const sltJti = this.sltService.extractJtiFromToken(sltToken)
+      await this.sltService.updateSltContext(sltJti, {
         metadata: { ...context.metadata, twoFactorSecret: result.data.secret }
       })
 
@@ -492,13 +493,19 @@ export class AuthVerificationService {
    */
   private async verifyAuthenticationCode(sltContext: SltContextData & { sltJti: string }, code: string): Promise<void> {
     const { userId, purpose, metadata, sltJti } = sltContext
-    const { twoFactorMethod, totpSecret } = metadata || {}
+    const { twoFactorMethod, totpSecret, twoFactorSecret } = metadata || {}
 
     try {
       // Xác định phương thức xác thực và thực hiện
-      if (twoFactorMethod && (twoFactorMethod as string) !== 'EMAIL') {
-        this.logger.debug(`Verifying with two-factor method: ${twoFactorMethod}`)
-        await this.verifyWith2FA(code, userId, totpSecret, twoFactorMethod, purpose)
+      const has2FASecret = totpSecret || twoFactorSecret
+      const is2FAMethod = twoFactorMethod && (twoFactorMethod as string) !== 'EMAIL'
+      const isSetup2FA = purpose === TypeOfVerificationCode.SETUP_2FA
+
+      if (is2FAMethod || (isSetup2FA && has2FASecret)) {
+        this.logger.debug(
+          `Verifying with two-factor method: ${twoFactorMethod || 'AUTHENTICATOR_APP'} for purpose: ${purpose}`
+        )
+        await this.verifyWith2FA(code, userId, has2FASecret, twoFactorMethod, purpose)
       } else {
         this.logger.debug(`Verifying with OTP method for purpose: ${purpose}`)
         await this.verifyWithOtp(code, sltContext)

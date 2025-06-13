@@ -22,6 +22,7 @@ export enum RedisPrefix {
 
   SLT_CONTEXT = 'auth:slt:context',
   SLT_BLACKLIST = 'auth:slt:blacklist',
+  SLT_ACTIVE = 'auth:slt:active',
 
   USER_LOGIN_HISTORY = 'auth:user:login_history',
   USER_LOGIN_FAILURES = 'auth:user:login_failures',
@@ -150,7 +151,7 @@ export class RedisKeyManager {
    * @example "auth:slt:context:jti-jkl"
    */
   public static getSltContextKey(jti: string): string {
-    return this.a(RedisPrefix.SLT_CONTEXT, jti)
+    return `${RedisPrefix.AUTH}:slt-context:${jti}`
   }
 
   /**
@@ -161,14 +162,13 @@ export class RedisKeyManager {
   public static getSltBlacklistKey(jti: string): string {
     return this.a(RedisPrefix.SLT_BLACKLIST, jti)
   }
-
   /**
    * Key for tracking active SLT token by user and purpose.
    * @type STRING
    * @example "auth:slt:active:123:VERIFY_2FA"
    */
   public static getSltActiveTokenKey(userId: number, purpose: string): string {
-    return this.a(RedisPrefix.SLT_CONTEXT, userId, purpose)
+    return this.a(RedisPrefix.SLT_ACTIVE, userId, purpose)
   }
 
   /**
@@ -301,7 +301,6 @@ export class RedisKeyManager {
   public static getAllPermissionsCacheKey(): string {
     return this.a(RedisPrefix.CACHE_PERMISSION, 'all')
   }
-
   /**
    * Key for caching a user's permissions.
    * @type STRING (JSON)
