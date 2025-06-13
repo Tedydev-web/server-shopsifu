@@ -178,9 +178,18 @@ model Device {
   trustExpiration        DateTime? @map("trust_expiration")
   user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  browser                String?   @db.VarChar(100)
+  browserVersion         String?   @db.VarChar(50) @map("browser_version")
+  os                     String?   @db.VarChar(100)
+  osVersion              String?   @db.VarChar(50) @map("os_version")
+  deviceType             String?   @db.VarChar(50) @map("device_type")
+  deviceVendor           String?   @db.VarChar(100) @map("device_vendor")
+  deviceModel            String?   @db.VarChar(100) @map("device_model")
+
   @@map("devices")
   @@index([userId, fingerprint])
   @@index([userId, lastActive])
+  @@index([userId, browser, os])
 }
 
 model Role {

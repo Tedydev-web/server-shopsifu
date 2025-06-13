@@ -8,42 +8,32 @@ import { VerificationNeededResponseSchema } from './auth-verification.dto'
 
 // --- Initiate Registration ---
 export const InitiateRegistrationSchema = z.object({
-  email: z.string().email()
+  email: z.string().email('auth.error.validation.invalidEmailFormat')
 })
 
 // --- Complete Registration ---
 export const CompleteRegistrationSchema = z.object({
-  password: z.string().min(8),
-  confirmPassword: z.string().min(8),
-  firstName: z.string().optional(),
-  lastName: z.string().optional(),
-  username: z.string().optional(),
-  phoneNumber: z.string().optional()
+  password: z
+    .string()
+    .min(8, 'auth.error.validation.passwordTooShort')
+    .max(100, 'auth.error.validation.passwordTooLong'),
+  confirmPassword: z.string(),
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().min(1).max(100),
+  username: z.string().min(3).max(100),
+  phoneNumber: z.string().optional(),
+  fingerprint: z.string().optional()
 })
 
 // --- Login ---
 export const LoginSchema = z.object({
-  emailOrUsername: z
-    .string()
-    .min(1, 'auth.error.validation.emailOrUsernameRequired')
-    .max(255, 'auth.error.validation.emailOrUsernameTooLong')
-    .refine(
-      (val) => {
-        // Kiểm tra email format hoặc username format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-        const usernameRegex = /^[a-zA-Z0-9_.-]{3,50}$/
-        return emailRegex.test(val) || usernameRegex.test(val)
-      },
-      {
-        message: 'auth.error.validation.invalidEmailOrUsername'
-      }
-    ),
+  email: z.string().email('auth.error.validation.invalidEmailFormat'),
   password: z
     .string()
-    .min(1, 'auth.error.validation.passwordRequired')
-    .min(8, 'auth.error.validation.passwordTooShort')
+    .min(1, 'auth.error.validation.passwordRequired') // Cannot be empty
     .max(100, 'auth.error.validation.passwordTooLong'),
-  rememberMe: z.boolean().optional()
+  rememberMe: z.boolean().optional(),
+  fingerprint: z.string().optional()
 })
 
 // --- Refresh Token ---
@@ -52,7 +42,7 @@ export const RefreshTokenSchema = z.object({
 })
 
 // --- Logout ---
-export const LogoutSchema = z.object({}).optional()
+export const LogoutSchema = z.object({})
 
 // ===================================================================================
 // Schemas for Response Data

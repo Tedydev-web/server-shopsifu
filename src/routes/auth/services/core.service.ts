@@ -206,7 +206,8 @@ export class CoreService implements ILoginFinalizerService {
       username: params.username,
       phoneNumber: params.phoneNumber,
       ip: ipAddress,
-      userAgent: userAgent
+      userAgent: userAgent,
+      fingerprint: params.fingerprint
     })
 
     // Gửi email chào mừng (async, không block response)
@@ -215,6 +216,10 @@ export class CoreService implements ILoginFinalizerService {
         userName: newUser.userProfile?.username || email.split('@')[0]
       })
     }
+
+    // 3. Create device and session
+    const device = await this.getOrCreateDevice(newUser.id, ipAddress, userAgent, params.fingerprint)
+    const sessionId = await this.createSessionForLogin(newUser.id, device.id, ipAddress, userAgent)
 
     // Kết thúc và xóa SLT token
     await this.sltService.finalizeSlt(sltContext.sltJti)
@@ -313,21 +318,15 @@ export class CoreService implements ILoginFinalizerService {
    * @param userId - ID của người dùng
    * @param ip - Địa chỉ IP (optional)
    * @param userAgent - Thông tin User Agent (optional)
+   * @param fingerprint - Fingerprint của thiết bị (optional)
    * @returns Device object đã được tạo hoặc cập nhật
    */
-  async getOrCreateDevice(userId: number, ip?: string, userAgent?: string): Promise<Device> {
-    try {
-      const device = await this.deviceRepository.upsertDevice(
-        userId,
-        userAgent || 'Unknown',
-        ip || 'Unknown',
-        `Device from ${userAgent?.substring(0, 20) || 'Unknown UA'} at ${new Date().toLocaleDateString()}`
-      )
-      return device
-    } catch (error) {
-      this.logger.error(`[getOrCreateDevice] Error upserting device for user ${userId}: ${error.message}`, error.stack)
+  async getOrCreateDevice(userId: number, ip?: string, userAgent?: string, fingerprint?: string): Promise<Device> {
+    if (!ip || !userAgent) {
+      this.logger.error('[getOrCreateDevice] IP address and user agent are required.')
       throw AuthError.DeviceProcessingFailed()
     }
+    return this.deviceRepository.upsertDevice(userId, userAgent, ip, fingerprint)
   }
 
   /**
@@ -634,14 +633,15 @@ export class CoreService implements ILoginFinalizerService {
   async initiateLogin(loginDto: LoginDto, ip: string, userAgent: string, res: Response) {
     this.logger.log(`[initiateLogin] Starting login for user ${loginDto.emailOrUsername}`)
 
-    // Xác thực thông tin đăng nhập cơ bản
+    // 1. Validate user credentials
     const user = await this.validateUser(loginDto.emailOrUsername, loginDto.password)
 
-    // Kiểm tra có yêu cầu xác minh lại từ hệ thống không
+    // 2. Get or create a device record for the user
+    const device = await this.getOrCreateDevice(user.id, ip, userAgent, loginDto.fingerprint)
+
+    // 3. Determine if the login requires further verification
     const reverifyKey = RedisKeyManager.getUserReverifyNextLoginKey(user.id)
     const needsReverification = await this.redisService.get(reverifyKey)
-
-    const device = await this.getOrCreateDevice(user.id, ip, userAgent)
 
     if (needsReverification) {
       this.logger.log(`[initiateLogin] User ${user.id} flagged for re-verification. Forcing verification flow.`)
@@ -653,7 +653,7 @@ export class CoreService implements ILoginFinalizerService {
       throw AuthError.ServiceNotAvailable('AuthVerificationService')
     }
 
-    // Khởi tạo quá trình xác thực (OTP/2FA nếu cần)
+    // 4. Khởi tạo quá trình xác thực (OTP/2FA nếu cần)
     const verificationResult = await this.authVerificationService.initiateVerification(
       {
         userId: user.id,

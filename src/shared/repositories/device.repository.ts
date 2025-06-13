@@ -10,6 +10,7 @@ export type DeviceCreateData = {
   ipAddress: string
   name?: string
   isTrusted?: boolean
+  fingerprint?: string
 }
 
 @Injectable()
@@ -46,37 +47,47 @@ export class DeviceRepository {
   }
 
   /**
-   * Tìm hoặc tạo thiết bị
+   * Tìm hoặc tạo thiết bị, ưu tiên sử dụng fingerprint
    */
-  async upsertDevice(userId: number, userAgent: string, ipAddress: string, name?: string): Promise<Device> {
-    this.logger.debug(`[upsertDevice] Upserting device for user ${userId} with user agent ${userAgent}`)
-    const existingDevice = await this.findByUserIdAndUserAgent(userId, userAgent)
+  async upsertDevice(
+    userId: number,
+    userAgent: string,
+    ipAddress: string,
+    fingerprint?: string,
+    name?: string
+  ): Promise<Device> {
+    this.logger.debug(`[upsertDevice] Upserting device for user ${userId} with fingerprint: ${fingerprint ?? 'N/A'}`)
 
-    if (existingDevice) {
-      this.logger.debug(`[upsertDevice] Found existing device with id: ${existingDevice.id}`)
+    // 1. Cố gắng tìm bằng fingerprint (chính xác nhất)
+    if (fingerprint) {
+      const existingDevice = await this.findDeviceByFingerprint(fingerprint)
+      if (existingDevice) {
+        this.logger.debug(`[upsertDevice] Found existing device ${existingDevice.id} by fingerprint.`)
+        return this.prismaService.device.update({
+          where: { id: existingDevice.id },
+          data: { ip: ipAddress, lastActive: new Date() }
+        })
+      }
+    }
+
+    // 2. Nếu không có fingerprint hoặc không tìm thấy, thử tìm bằng User Agent (dự phòng)
+    const existingDeviceByUA = await this.findByUserIdAndUserAgent(userId, userAgent)
+    if (existingDeviceByUA) {
+      this.logger.debug(`[upsertDevice] Found existing device ${existingDeviceByUA.id} by User Agent.`)
+      // Cập nhật fingerprint nếu có và thiết bị chưa có
+      const dataToUpdate: Prisma.DeviceUpdateInput = { ip: ipAddress, lastActive: new Date() }
+      if (fingerprint && !existingDeviceByUA.fingerprint) {
+        dataToUpdate.fingerprint = fingerprint
+      }
       return this.prismaService.device.update({
-        where: { id: existingDevice.id },
-        data: { ip: ipAddress, lastActive: new Date() }
+        where: { id: existingDeviceByUA.id },
+        data: dataToUpdate
       })
     }
 
+    // 3. Nếu không tìm thấy, tạo mới
     this.logger.debug(`[upsertDevice] No existing device found, creating a new one.`)
-    const uaInfo = this.userAgentService.parse(userAgent)
-    const defaultDeviceName = name ?? uaInfo.deviceName
-
-    const deviceData: Prisma.DeviceCreateInput = {
-      user: { connect: { id: userId } },
-      name: defaultDeviceName,
-      userAgent,
-      ip: ipAddress,
-      isTrusted: false,
-      trustExpiration: null,
-      lastActive: new Date()
-    }
-
-    return this.prismaService.device.create({
-      data: deviceData
-    })
+    return this.createDevice({ userId, userAgent, ipAddress, name, fingerprint })
   }
 
   /**
@@ -172,21 +183,25 @@ export class DeviceRepository {
    * Phương thức này được sử dụng để xác định xem người dùng đang sử dụng thiết bị cũ hay mới
    */
   async findByUserIdAndUserAgent(userId: number, userAgent: string): Promise<Device | null> {
-    const devices = await this.prismaService.device.findMany({
-      where: { userId }
-    })
-    const currentUserAgentInfo = this.userAgentService.parse(userAgent)
+    const uaInfo = this.userAgentService.parse(userAgent)
 
-    for (const device of devices) {
-      const storedUserAgentInfo = this.userAgentService.parse(device.userAgent)
-
-      const isSameBrowser = storedUserAgentInfo.browser === currentUserAgentInfo.browser
-      const isSameOS = storedUserAgentInfo.os === currentUserAgentInfo.os
-
-      if (isSameBrowser && isSameOS) {
-        this.logger.debug(`[findByUserIdAndUserAgent] Found matching device ${device.id}`)
-        return device
+    // Find a device that matches the key characteristics
+    const device = await this.prismaService.device.findFirst({
+      where: {
+        userId,
+        // We consider it the "same" device if browser and OS match.
+        // This avoids creating new devices for minor browser patch versions.
+        browser: uaInfo.browser,
+        os: uaInfo.os,
+        deviceType: uaInfo.deviceType
       }
+    })
+
+    if (device) {
+      this.logger.debug(
+        `[findByUserIdAndUserAgent] Found matching device ${device.id} for user ${userId} based on browser/OS.`
+      )
+      return device
     }
 
     this.logger.debug(`[findByUserIdAndUserAgent] No matching device found for user ${userId}`)
@@ -197,7 +212,7 @@ export class DeviceRepository {
    * Tạo thiết bị mới
    */
   async createDevice(data: DeviceCreateData): Promise<Device> {
-    const { userId, userAgent, ipAddress, name, isTrusted = false } = data
+    const { userId, userAgent, ipAddress, name, isTrusted = false, fingerprint } = data
     const uaInfo = this.userAgentService.parse(userAgent)
 
     const trustExpiration = isTrusted ? this.getTrustExpirationDate() : null
@@ -207,11 +222,20 @@ export class DeviceRepository {
       data: {
         user: { connect: { id: userId } },
         name: defaultDeviceName,
+        fingerprint,
         userAgent,
         ip: ipAddress,
         isTrusted,
         trustExpiration,
-        lastActive: new Date()
+        lastActive: new Date(),
+        // Store parsed information
+        browser: uaInfo.browser,
+        browserVersion: uaInfo.browserVersion,
+        os: uaInfo.os,
+        osVersion: uaInfo.osVersion,
+        deviceType: uaInfo.deviceType,
+        deviceVendor: uaInfo.deviceVendor,
+        deviceModel: uaInfo.deviceModel
       }
     })
   }
@@ -241,6 +265,16 @@ export class DeviceRepository {
     return this.prismaService.device.update({
       where: { id: deviceId },
       data: locationData
+    })
+  }
+
+  /**
+   * Tìm thiết bị bằng fingerprint
+   */
+  async findDeviceByFingerprint(fingerprint: string): Promise<Device | null> {
+    if (!fingerprint) return null
+    return this.prismaService.device.findUnique({
+      where: { fingerprint }
     })
   }
 }

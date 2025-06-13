@@ -27,47 +27,50 @@ export class UserAgentService {
   }
 
   parse(userAgentString?: string, appIdentifier?: string): ParsedUserAgent {
-    if (!userAgentString || typeof userAgentString !== 'string') {
-      return {
-        ...this.defaultResult,
-        deviceName: 'Unknown Device',
-        app: this.determineApp('', appIdentifier),
-        raw: ''
-      }
-    }
-
-    const parser = new UAParser(userAgentString)
+    const ua = userAgentString || ''
+    const parser = new UAParser(ua)
     const result = parser.getResult()
 
-    const deviceType = result.device.type ?? 'desktop'
-    let deviceName: string
+    const { browser, os, device } = result
 
-    if (result.device.vendor && result.device.model) {
-      deviceName = `${result.device.vendor} ${result.device.model}`
-    } else if (result.os.name) {
-      deviceName = `${result.browser.name ?? 'Unknown Browser'} on ${result.os.name}`
-    } else {
-      deviceName = result.browser.name ? `${result.browser.name} on Unknown OS` : 'Unknown Device'
-    }
+    const browserName = browser.name
+    const browserVersion = browser.version
+    const osName = os.name
+    const osVersion = os.version
+    const deviceVendor = device.vendor
+    const deviceModel = device.model
+    const deviceType = device.type || 'desktop' // Default to desktop for web traffic
 
-    // Refine names for better user experience
-    if (result.os.name === 'Mac OS') {
-      deviceName = 'Mac'
-    } else if (result.os.name === 'iOS') {
-      deviceName = deviceType === 'mobile' ? 'iPhone' : 'iPad'
+    const getDeviceName = (): string => {
+      if (deviceVendor && deviceModel) {
+        // Avoid redundant names like "Apple iPhone" if model is already "iPhone"
+        if (deviceModel.toLowerCase().includes(deviceVendor.toLowerCase())) {
+          return deviceModel
+        }
+        return `${deviceVendor} ${deviceModel}`
+      }
+
+      const browserPart = browserName || 'Trình duyệt không rõ'
+      const osPart = osName || 'HĐH không rõ'
+
+      if (osPart !== 'HĐH không rõ') {
+        return `${browserPart} trên ${osPart}`
+      }
+
+      return browserPart
     }
 
     return {
-      browser: result.browser.name ?? 'Unknown',
-      browserVersion: result.browser.version ?? 'Unknown',
-      os: result.os.name ?? 'Unknown',
-      osVersion: result.os.version ?? 'Unknown',
-      deviceType: result.device.type ?? 'Desktop',
-      deviceVendor: result.device.vendor ?? 'Unknown',
-      deviceModel: result.device.model ?? 'Unknown',
-      deviceName: deviceName.replace('undefined on ', ''),
-      app: this.determineApp(userAgentString, appIdentifier),
-      raw: userAgentString
+      browser: browserName || 'Unknown',
+      browserVersion: browserVersion || 'Unknown',
+      os: osName || 'Unknown',
+      osVersion: osVersion || 'Unknown',
+      deviceType: deviceType,
+      deviceVendor: deviceVendor || 'Unknown',
+      deviceModel: deviceModel || 'Unknown',
+      deviceName: getDeviceName(),
+      app: this.determineApp(ua, appIdentifier),
+      raw: ua
     }
   }
 
