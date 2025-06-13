@@ -266,10 +266,7 @@ export class TwoFactorService implements IMultiFactorService {
   ): Promise<{ message: string; data: { recoveryCodes: string[] } }> {
     this.logger.debug(`[regenerateRecoveryCodes] Regenerating recovery codes for user ${userId}`)
 
-    // 1. Xác thực người dùng
-    await this.verifyCode(code, { userId, method })
-
-    // 2. Lấy thông tin người dùng
+    // 1. Check user exists and 2FA is enabled FIRST
     const user = await this.userRepository.findByIdWithDetails(userId)
     if (!user) {
       this.logger.warn(`[regenerateRecoveryCodes] User not found: ${userId}`)
@@ -280,6 +277,9 @@ export class TwoFactorService implements IMultiFactorService {
       this.logger.warn(`[regenerateRecoveryCodes] 2FA is not enabled for user ${userId}. Cannot regenerate codes.`)
       throw AuthError.TOTPNotEnabled()
     }
+
+    // 2. Then verify the provided code
+    await this.verifyCode(code, { userId, method })
 
     const plainRecoveryCodes = this.generateRecoveryCodes()
     const hashedRecoveryCodes = await Promise.all(plainRecoveryCodes.map((code) => this.hashingService.hash(code)))

@@ -111,6 +111,6 @@ export class TwoFactorController {
     @Ip() ip: string,
     @UserAgent() userAgent: string
   ): Promise<{ message: string; data: { recoveryCodes: string[] } }> {
-    return this.twoFactorService.regenerateRecoveryCodes(activeUser.id, body.code, 'RECOVERY_CODE', ip, userAgent)
+    return this.twoFactorService.regenerateRecoveryCodes(activeUser.id, body.code, body.method, ip, userAgent)
   }
 }
