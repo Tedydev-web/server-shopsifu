@@ -8,7 +8,9 @@ import { I18nTranslations } from 'src/generated/i18n.generated'
 export interface SuccessResponse<T> {
   status: number
   message: string
-  data: T | null
+  data?: T
+  verificationType?: 'OTP' | '2FA'
+  [key: string]: any // Allow other fields to pass through
 }
 
 @Injectable()
@@ -38,9 +40,23 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, SuccessRespons
           message: message
         }
 
-        if (data && typeof data === 'object' && 'data' in data) {
-          finalResponse.data = data.data
-        } else if (data && !data.message) {
+        // Preserve important fields like verificationType, status (string), etc.
+        if (data && typeof data === 'object') {
+          // Copy all fields except message (already translated) and data (handled separately)
+          Object.keys(data).forEach((key) => {
+            if (key !== 'message' && key !== 'data') {
+              finalResponse[key] = data[key]
+            }
+          })
+
+          // Handle data field separately
+          if ('data' in data) {
+            finalResponse.data = data.data
+          } else if (!data.message) {
+            // If no explicit data field and no message, treat entire object as data
+            finalResponse.data = data
+          }
+        } else if (data && !data?.message) {
           finalResponse.data = data
         }
 
