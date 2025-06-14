@@ -7,7 +7,7 @@ import { UserRepository } from './user.repository'
 import { UserService } from './user.service'
 
 @Module({
-  imports: [SharedModule, forwardRef(() => AuthModule), RoleModule],
+  imports: [SharedModule, forwardRef(() => AuthModule), forwardRef(() => RoleModule)],
   controllers: [UserController],
   providers: [UserService, UserRepository],
   exports: [UserService, UserRepository]

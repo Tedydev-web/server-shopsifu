@@ -357,7 +357,7 @@ export class UserActivityService {
     const lockKey = RedisKeyManager.getAccountLockKey(user.id)
     await this.redisService.set(lockKey, 'locked', 'EX', this.loginLockoutMinutes * 60)
 
-    await this.userRepository.update(user.id, { status: 'SUSPENDED' })
+    await this.userRepository.update(user.id, {})
 
     await this.emailService.sendAccountLockedEmail(user.email, {
       userName: user.userProfile?.username ?? user.email,

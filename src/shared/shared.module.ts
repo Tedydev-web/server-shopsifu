@@ -1,4 +1,4 @@
-import { Global, Module, forwardRef } from '@nestjs/common'
+import { Global, Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { JwtModule } from '@nestjs/jwt'
 import { Logger } from '@nestjs/common'
@@ -19,7 +19,6 @@ import { CryptoService } from './services/crypto.service'
 import { CaslAbilityFactory } from './providers/casl/casl-ability.factory'
 
 import { ApiKeyGuard } from './guards/api-key.guard'
-import { PermissionGuard } from './guards/permission.guard'
 
 import {
   COOKIE_SERVICE,
@@ -33,7 +32,6 @@ import {
   DEVICE_FINGERPRINT_SERVICE
 } from './constants/injection.tokens'
 import { IORedisKey } from './providers/redis/redis.constants'
-import { UserModule } from 'src/routes/user/user.module'
 
 const serviceClasses = [
   PrismaService,
@@ -50,7 +48,7 @@ const serviceClasses = [
   CaslAbilityFactory
 ]
 
-const guardClasses = [ApiKeyGuard, PermissionGuard]
+const guardClasses = [ApiKeyGuard]
 
 const tokenProviders = [
   { provide: COOKIE_SERVICE, useClass: CookieService },
@@ -109,8 +107,7 @@ const allExports = [...serviceClasses, ...guardClasses, ...tokenProviders, redis
     ClsModule.forRoot({
       global: true,
       middleware: { mount: true }
-    }),
-    forwardRef(() => UserModule)
+    })
   ],
   providers: allProviders,
   exports: allExports

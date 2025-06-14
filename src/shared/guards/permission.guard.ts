@@ -79,12 +79,26 @@ export class PermissionGuard implements CanActivate {
     // This service locator pattern is a point for future improvement.
     // A dedicated factory or map would be more robust.
     const serviceName = `${subject.name}Service`
+    this.logger.debug(`Attempting to resolve service: ${serviceName}`)
 
-    const service = await this.moduleRef.get(serviceName, { strict: false })
-    if (service && typeof service.findOne === 'function') {
-      const result = await service.findOne(Number(resourceId))
-      // Handle services that return a { data, message } wrapper
-      return this.instantiateResource(subject, result?.data || result)
+    try {
+      const service = await this.moduleRef.get(serviceName, { strict: false })
+      if (!service) {
+        this.logger.warn(`Service ${serviceName} not found in module context`)
+        return null
+      }
+      
+      if (typeof service.findOne === 'function') {
+        const result = await service.findOne(Number(resourceId))
+        // Handle services that return a { data, message } wrapper
+        return this.instantiateResource(subject, result?.data || result)
+      } else {
+        this.logger.warn(`Service ${serviceName} does not have findOne method`)
+        return null
+      }
+    } catch (error) {
+      this.logger.error(`Error resolving service ${serviceName}:`, error.message)
+      return null
     }
 
     return null

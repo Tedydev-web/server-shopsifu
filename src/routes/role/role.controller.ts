@@ -17,7 +17,6 @@ import { PermissionGuard } from 'src/shared/guards/permission.guard'
 import { CreateRoleDto, UpdateRoleDto } from './role.dto'
 import { RoleService } from './role.service'
 import { Action, AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
-import { Role } from './role.model'
 
 @Auth()
 @UseGuards(PermissionGuard)
@@ -46,7 +45,7 @@ export class RoleController {
   }
 
   @Get(':id')
-  @RequirePermissions({ action: Action.Read, subject: Role })
+  @RequirePermissions({ action: Action.Read, subject: AppSubject.Role })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const data = await this.roleService.findOne(id)
     return {
@@ -56,7 +55,7 @@ export class RoleController {
   }
 
   @Patch(':id')
-  @RequirePermissions({ action: Action.Update, subject: Role })
+  @RequirePermissions({ action: Action.Update, subject: AppSubject.Role })
   async update(@Param('id', ParseIntPipe) id: number, @Body() updateRoleDto: UpdateRoleDto) {
     const data = await this.roleService.update(id, updateRoleDto)
     return {
@@ -66,9 +65,12 @@ export class RoleController {
   }
 
   @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermissions({ action: Action.Delete, subject: Role })
-  async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions({ action: Action.Delete, subject: AppSubject.Role })
+  async remove(@Param('id', ParseIntPipe) id: number) {
     await this.roleService.remove(id)
+    return {
+      message: 'role.success.delete'
+    }
   }
 }

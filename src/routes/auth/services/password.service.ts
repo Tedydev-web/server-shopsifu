@@ -47,7 +47,6 @@ export class PasswordService {
     if (!user) {
       // Không tiết lộ email không tồn tại để tránh email enumeration attack
       return {
-        status: 'success',
         message: 'auth.success.password.initiateReset'
       }
     }
@@ -108,7 +107,7 @@ export class PasswordService {
     userAgent: string
     currentSessionId?: string
     isPasswordAlreadyHashed?: boolean
-  }): Promise<{ status: string; message: string; data?: { sessionsRevoked: boolean; revokedCount?: number } }> {
+  }): Promise<{ message: string; data?: { sessionsRevoked: boolean; revokedCount?: number } }> {
     const {
       userId,
       newPassword,
@@ -161,7 +160,6 @@ export class PasswordService {
     })
 
     return {
-      status: 'success',
       message: 'auth.success.password.resetSuccess',
       data: {
         sessionsRevoked: revokeAllSessions,

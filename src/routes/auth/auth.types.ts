@@ -2,6 +2,7 @@ import { Device, Role, User, UserProfile } from '@prisma/client'
 import { Response, Request } from 'express'
 import { TypeOfVerificationCodeType, TwoFactorMethodTypeType } from 'src/routes/auth/auth.constants'
 import { PrismaTransactionClient } from 'src/shared/providers/prisma/prisma.type'
+import { BasePaginationQueryType, PaginatedResponseType } from 'src/shared/dtos/pagination.dto'
 
 export interface ILoginFinalizationPayload {
   userId: number
@@ -68,10 +69,9 @@ export interface ISLTService {
 export interface ISessionService {
   getSessions(
     userId: number,
-    currentPage?: number,
-    itemsPerPage?: number,
-    currentSessionIdFromToken?: string
-  ): Promise<any>
+    paginationQuery: BasePaginationQueryType,
+    currentSessionIdFromToken: string
+  ): Promise<PaginatedResponseType<any>>
 
   revokeItems(
     userId: number,
@@ -80,6 +80,7 @@ export interface ISessionService {
       deviceIds?: number[]
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
+      untrustAllDevices?: boolean
     },
     currentSessionContext: { sessionId?: string; deviceId?: number },
     res?: Response

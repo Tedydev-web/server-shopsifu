@@ -50,24 +50,15 @@ export class SessionsController {
   @Get()
   @RequirePermissions({ action: Action.Read, subject: AppSubject.Session })
   async getSessions(@ActiveUser() activeUser: ActiveUserData, @Query() query: GetSessionsQueryDto): Promise<any> {
-    if (query.page < 1 || query.limit < 1) {
-      throw AuthError.InvalidPageOrLimit()
-    }
     const userContext = this.getUserContext(activeUser)
-    const sessions = await this.sessionsService.getSessions(
-      userContext.userId,
-      query.page,
-      query.limit,
-      userContext.sessionId
-    )
-    if (!sessions || !sessions.data || sessions.data.devices.length === 0) {
-      throw AuthError.SessionsNotFound()
-    }
-    return {
-      status: 'success',
-      message: 'auth.success.sessions.get',
-      data: sessions.data
-    }
+    const sessions = await this.sessionsService.getSessions(userContext.userId, query, userContext.sessionId)
+    // Tạo response với thứ tự đúng: status, message, data, metadata
+    const orderedResponse: any = {}
+    orderedResponse.status = 200
+    orderedResponse.message = 'auth.success.sessions.get'
+    orderedResponse.data = sessions.data
+    orderedResponse.metadata = sessions.metadata
+    return orderedResponse
   }
 
   @Post('revoke')
@@ -106,28 +97,12 @@ export class SessionsController {
         res
       )
 
-      if (result.data.revokedSessionsCount === 0 && result.data.untrustedDevicesCount === 0) {
-        // Check if this was due to auto-protection vs actually not found
-        if (result.data.autoProtected === true || result.data.shouldExcludeCurrentSession === true) {
-          // This is auto-protection, return minimal response
-          return {
-            status: 'auto_protected',
-            message: result.message
-          }
-        } else {
-          // Actually not found
-          throw AuthError.SessionOrDeviceNotFound()
-        }
-      }
-
+      // Always return success response - no need to throw errors for revocation
       return {
-        status: 'success',
         message: result.message,
-        data: {
-          revokedSessionsCount: result.data.revokedSessionsCount,
-          untrustedDevicesCount: result.data.untrustedDevicesCount,
-          willCauseLogout: result.data.willCauseLogout
-        }
+        success: result.data.revokedSessionsCount > 0 || result.data.untrustedDevicesCount > 0,
+        revokedCount: result.data.revokedSessionsCount,
+        untrustedDevicesCount: result.data.untrustedDevicesCount
       }
     } catch (error) {
       // If action requires confirmation, initiate verification
@@ -179,6 +154,7 @@ export class SessionsController {
         purpose: TypeOfVerificationCode.REVOKE_ALL_SESSIONS,
         metadata: {
           excludeCurrentSession: body.excludeCurrentSession,
+          untrustAllDevices: body.untrustAllDevices ?? true, // Default to true for security
           currentSessionId: userContext.sessionId,
           currentDeviceId: userContext.deviceId
         }
@@ -210,12 +186,9 @@ export class SessionsController {
     await this.sessionsService.updateDeviceName(activeUser.id, params.deviceId, body.name)
 
     return {
-      status: 'success',
       message: 'auth.success.device.nameUpdated',
-      data: {
-        deviceId: params.deviceId,
-        name: body.name
-      }
+      deviceId: params.deviceId,
+      name: body.name
     }
   }
 
@@ -229,7 +202,6 @@ export class SessionsController {
     await this.sessionsService.trustCurrentDevice(activeUser.id, activeUser.deviceId)
 
     return {
-      status: 'success',
       message: 'auth.success.device.trusted'
     }
   }
@@ -243,9 +215,8 @@ export class SessionsController {
     await this.sessionsService.untrustDevice(activeUser.id, params.deviceId)
 
     return {
-      status: 'success',
       message: 'auth.success.device.untrusted',
-      data: { deviceId: params.deviceId }
+      deviceId: params.deviceId
     }
   }
 }

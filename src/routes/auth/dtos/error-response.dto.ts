@@ -7,7 +7,6 @@ export interface ErrorResponseDto {
   status: number
   message: string
   errors?: FieldError[]
-  canRetry?: boolean
   details?: any
 }
 

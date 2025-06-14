@@ -469,11 +469,15 @@ export class AuthVerificationService {
     res: Response
   ): Promise<VerificationResult> {
     const { userId, metadata, ipAddress, userAgent, email } = context
-    const { excludeCurrentSession, currentSessionId, currentDeviceId } = metadata || {}
+    const { excludeCurrentSession, untrustAllDevices, currentSessionId, currentDeviceId } = metadata || {}
 
     const revokeResult = await this.sessionsService.revokeItems(
       userId,
-      { revokeAllUserSessions: true, excludeCurrentSession },
+      {
+        revokeAllUserSessions: true,
+        excludeCurrentSession,
+        untrustAllDevices: untrustAllDevices ?? true // Default to true for security
+      },
       { sessionId: currentSessionId, deviceId: currentDeviceId },
       res
     )

@@ -12,10 +12,12 @@ export const BasePaginationQuerySchema = z.object({
 
 export const PaginatedResponseSchema = z.object({
   data: z.array(z.any()),
-  totalItems: z.number(),
-  page: z.number(),
-  limit: z.number(),
-  totalPages: z.number()
+  metadata: z.object({
+    totalItems: z.number(),
+    page: z.number(),
+    limit: z.number(),
+    totalPages: z.number()
+  })
 })
 
 export const createPaginatedResponseSchema = <T extends z.ZodType>(itemSchema: T) =>
@@ -25,14 +27,16 @@ export const createPaginatedResponseSchema = <T extends z.ZodType>(itemSchema: T
 
 export type BasePaginationQueryType = z.infer<typeof BasePaginationQuerySchema>
 
-// PaginationOptions interface removed as its fields are now covered by BasePaginationQueryType.
-
-export interface PaginatedResponseType<T> {
-  data: T[]
+export interface PaginationMetadata {
   totalItems: number
   page: number
   limit: number
   totalPages: number
+}
+
+export interface PaginatedResponseType<T> {
+  data: T[]
+  metadata: PaginationMetadata
 }
 
 export function createPaginatedResponse<T>(
@@ -41,13 +45,18 @@ export function createPaginatedResponse<T>(
   options: BasePaginationQueryType // Updated to use BasePaginationQueryType
 ): PaginatedResponseType<T> {
   const { page = 1, limit = 10 } = options
-  return {
-    data,
+  // Tạo object theo thứ tự chính xác
+  const orderedResult: any = {}
+  // Data trước
+  orderedResult.data = data
+  // Metadata sau
+  orderedResult.metadata = {
     totalItems,
     page,
     limit,
     totalPages: Math.ceil(totalItems / limit)
   }
+  return orderedResult
 }
 
 export class BasePaginationQueryDTO extends createZodDto(BasePaginationQuerySchema) {}

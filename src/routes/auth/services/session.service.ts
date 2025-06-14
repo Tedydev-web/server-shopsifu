@@ -27,6 +27,7 @@ import { ICookieService, ISessionService } from 'src/routes/auth/auth.types'
 import { GetGroupedSessionsResponseSchema } from '../dtos/session.dto'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { Device } from '@prisma/client'
+import { BasePaginationQueryType, createPaginatedResponse, PaginatedResponseType } from 'src/shared/dtos/pagination.dto'
 
 type DeviceSessionGroup = z.infer<typeof GetGroupedSessionsResponseSchema.shape.devices.element>
 
@@ -57,22 +58,84 @@ export class SessionsService implements ISessionService {
 
   async getSessions(
     userId: number,
-    currentPage: number = 1,
-    itemsPerPage: number = 5,
+    paginationQuery: BasePaginationQueryType,
     currentSessionIdFromToken: string
-  ): Promise<any> {
+  ): Promise<PaginatedResponseType<DeviceSessionGroup>> {
+    const { page, limit } = paginationQuery
+    this.logger.debug(`Getting sessions for user ${userId}, page ${page}, limit ${limit}`)
+
     // Lấy tất cả sessions và devices
     const sessionResult = await this.sessionRepository.findSessionsByUserId(userId, { page: 1, limit: 1000 })
     let devices = await this.deviceRepository.findDevicesByUserId(userId)
+
+    this.logger.debug(`Found ${sessionResult.data.length} sessions and ${devices.length} devices`)
+
+    // Log để debug
+    sessionResult.data.forEach((session) => {
+      this.logger.debug(`Session ${session.id} - deviceId: ${session.deviceId}`)
+    })
+
+    devices.forEach((device) => {
+      this.logger.debug(`Device ${device.id} - userId: ${device.userId}`)
+    })
+
     devices = await this.ensureCurrentDeviceIncluded(currentSessionIdFromToken, devices)
 
     const deviceGroups: DeviceSessionGroup[] = []
+    const currentSessionDetails = await this.sessionRepository.findById(currentSessionIdFromToken)
 
     for (const device of devices) {
-      const deviceSessions = sessionResult.data.filter((session) => session.deviceId === device.id)
-      if (deviceSessions.length === 0) continue
+      const deviceSessions = sessionResult.data.filter((session) => {
+        // Convert both to number for comparison
+        const sessionDeviceId = Number(session.deviceId)
+        const deviceId = Number(device.id)
+        return sessionDeviceId === deviceId
+      })
+      this.logger.debug(`Device ${device.id} has ${deviceSessions.length} sessions after filtering`)
 
-      const currentSessionDetails = await this.sessionRepository.findById(currentSessionIdFromToken)
+      // Nếu không có session nào cho device này, tạo một entry trống
+      if (deviceSessions.length === 0) {
+        this.logger.debug(`No sessions found for device ${device.id}, creating empty entry`)
+
+        const deviceInfo = this.userAgentService.parse(device.userAgent || '')
+        const isCurrentDevice = currentSessionDetails?.deviceId === device.id
+
+        // Tạo location từ device IP nếu có
+        let locationResult: GeoLocationResult
+        try {
+          locationResult = await this.getLocationFromIP(device.lastKnownIp || device.ip || '')
+        } catch {
+          locationResult = { display: 'Unknown Location', timezone: 'Asia/Ho_Chi_Minh' }
+        }
+
+        // Calculate enhanced security fields
+        const daysSinceLastUse = Math.floor((Date.now() - device.lastActive.getTime()) / (1000 * 60 * 60 * 24))
+        const deviceStatus = this.calculateDeviceStatus(device, daysSinceLastUse)
+        const riskLevel = this.calculateRiskLevel(device, locationResult, daysSinceLastUse)
+
+        deviceGroups.push({
+          deviceId: device.id,
+          name: device.name || deviceInfo.deviceName, // Optimized from deviceName
+          type: deviceInfo.deviceType, // Optimized from deviceType
+          os: deviceInfo.os,
+          osVer: deviceInfo.osVersion, // Optimized from osVersion
+          browser: deviceInfo.browser,
+          browserVer: deviceInfo.browserVersion, // Optimized from browserVersion
+          trusted: device.isTrusted, // Optimized from isDeviceTrusted
+          trustExp: device.trustExpiration, // Optimized from deviceTrustExpiration
+          lastActive: device.lastActive,
+          location: locationResult?.display || 'Unknown Location',
+          activeSessions: 0, // Optimized from activeSessionsCount
+          totalSessions: 0, // Optimized from totalSessionsCount
+          isCurrent: isCurrentDevice, // Optimized from isCurrentDevice
+          status: deviceStatus,
+          riskLevel: riskLevel,
+          daysSinceLastUse: daysSinceLastUse,
+          sessions: []
+        })
+        continue
+      }
+
       const isCurrentDevice = currentSessionDetails?.deviceId === device.id
       const latestSession = deviceSessions[0]
       const deviceInfo = this.userAgentService.parse(latestSession?.userAgent)
@@ -105,54 +168,67 @@ export class SessionsService implements ISessionService {
             id: session.id,
             createdAt: new Date(session.createdAt),
             lastActive: new Date(session.lastActive),
-            ipAddress: session.ipAddress,
+            ip: session.ipAddress, // Optimized from ipAddress
             location: sessionLocationResult?.display || 'Unknown Location',
             browser: sessionInfo.browser,
-            browserVersion: sessionInfo.browserVersion,
+            browserVer: sessionInfo.browserVersion, // Optimized from browserVersion
             app: sessionInfo.app,
             os: sessionInfo.os,
-            osVersion: sessionInfo.osVersion,
-            deviceType: sessionInfo.deviceType,
-            isActive: session.isActive,
+            osVer: sessionInfo.osVersion, // Optimized from osVersion
+            type: sessionInfo.deviceType, // Optimized from deviceType
+            active: session.isActive, // Optimized from isActive
             inactiveDuration,
-            isCurrentSession: session.id === currentSessionIdFromToken
+            isCurrent: session.id === currentSessionIdFromToken // Optimized from isCurrentSession
           }
         })
       )
 
+      // Calculate enhanced security fields for devices with sessions
+      const daysSinceLastUse = Math.floor((Date.now() - latestSession.lastActive) / (1000 * 60 * 60 * 24))
+      const deviceStatus = this.calculateDeviceStatus(device, daysSinceLastUse)
+      const riskLevel = this.calculateRiskLevel(device, locationResult, daysSinceLastUse)
+
       deviceGroups.push({
         deviceId: device.id,
-        deviceName: deviceInfo.deviceName,
-        deviceType: deviceInfo.deviceType,
+        name: deviceInfo.deviceName, // Optimized from deviceName
+        type: deviceInfo.deviceType, // Optimized from deviceType
         os: deviceInfo.os,
-        osVersion: deviceInfo.osVersion,
+        osVer: deviceInfo.osVersion, // Optimized from osVersion
         browser: deviceInfo.browser,
-        browserVersion: deviceInfo.browserVersion,
-        isDeviceTrusted: device.isTrusted,
-        deviceTrustExpiration: device.trustExpiration,
+        browserVer: deviceInfo.browserVersion, // Optimized from browserVersion
+        trusted: device.isTrusted, // Optimized from isDeviceTrusted
+        trustExp: device.trustExpiration, // Optimized from deviceTrustExpiration
         lastActive: new Date(latestSession.lastActive),
         location: locationResult?.display || 'Unknown Location',
-        activeSessionsCount,
-        totalSessionsCount: deviceSessions.length,
-        isCurrentDevice,
+        activeSessions: activeSessionsCount, // Optimized from activeSessionsCount
+        totalSessions: deviceSessions.length, // Optimized from totalSessionsCount
+        isCurrent: isCurrentDevice, // Optimized from isCurrentDevice
+        status: deviceStatus,
+        riskLevel: riskLevel,
+        daysSinceLastUse: daysSinceLastUse,
         sessions: sessionItems
       })
     }
 
-    // Sort and paginate
-    deviceGroups.sort((a, b) => (b.lastActive?.getTime() || 0) - (a.lastActive?.getTime() || 0))
-    const totalItems = deviceGroups.length
-    const totalPages = Math.ceil(totalItems / itemsPerPage)
-    const startIndex = (currentPage - 1) * itemsPerPage
-    const paginatedDeviceGroups = deviceGroups.slice(startIndex, startIndex + itemsPerPage)
+    // Sort: current device first, then by last active time
+    deviceGroups.sort((a, b) => {
+      // Current device luôn đầu tiên
+      if (a.isCurrent && !b.isCurrent) return -1
+      if (!a.isCurrent && b.isCurrent) return 1
 
-    return {
-      message: 'auth.success.session.retrieved',
-      data: {
-        devices: paginatedDeviceGroups,
-        meta: { currentPage, itemsPerPage, totalItems, totalPages }
-      }
-    }
+      // Nếu cả hai đều là current device hoặc không phải, sort theo lastActive
+      return (b.lastActive?.getTime() || 0) - (a.lastActive?.getTime() || 0)
+    })
+
+    this.logger.debug(`Total device groups found: ${deviceGroups.length}`)
+
+    // Thực hiện pagination thủ công
+    const totalItems = deviceGroups.length
+    const startIndex = (page - 1) * limit
+    const paginatedDeviceGroups = deviceGroups.slice(startIndex, startIndex + limit)
+
+    // Sử dụng createPaginatedResponse từ pagination.dto
+    return createPaginatedResponse<DeviceSessionGroup>(paginatedDeviceGroups, totalItems, paginationQuery)
   }
 
   private async ensureCurrentDeviceIncluded(currentSessionId: string, devices: Device[]): Promise<Device[]> {
@@ -238,6 +314,7 @@ export class SessionsService implements ISessionService {
       deviceIds?: number[]
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
+      untrustAllDevices?: boolean
     },
     currentSessionContext: { sessionId?: string; deviceId?: number },
     res?: Response
@@ -305,7 +382,9 @@ export class SessionsService implements ISessionService {
         untrustedDevicesCount,
         willCauseLogout: analysis.willCauseLogout && currentSessionRevoked,
         warningMessage: analysis.warningMessage,
-        requiresConfirmation: analysis.requiresConfirmation
+        requiresConfirmation: analysis.requiresConfirmation,
+        autoProtected: analysis.autoProtected,
+        shouldExcludeCurrentSession: analysis.shouldExcludeCurrentSession
       }
     }
   }
@@ -316,6 +395,7 @@ export class SessionsService implements ISessionService {
       deviceIds?: number[]
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
+      untrustAllDevices?: boolean
       autoProtected?: boolean
     },
     currentSessionContext: { sessionId?: string; deviceId?: number }
@@ -447,6 +527,7 @@ export class SessionsService implements ISessionService {
       deviceIds?: number[]
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
+      untrustAllDevices?: boolean
     },
     currentSessionContext: { sessionId?: string; deviceId?: number }
   ): boolean {
@@ -537,7 +618,8 @@ export class SessionsService implements ISessionService {
   async invalidateAllUserSessions(
     userId: number,
     reason?: string,
-    sessionIdToExclude?: string
+    sessionIdToExclude?: string,
+    untrustAllDevices: boolean = false
   ): Promise<{ deletedSessionsCount: number; untrustedDeviceIds: number[] }> {
     const { deletedSessionsCount, affectedDeviceIds } = await this.sessionRepository.deleteAllUserSessions(
       userId,
@@ -546,12 +628,24 @@ export class SessionsService implements ISessionService {
 
     const newlyUntrustedDeviceIds: number[] = []
 
-    if (affectedDeviceIds.length > 0) {
-      for (const deviceId of affectedDeviceIds) {
-        const remainingSessionsOnDevice = await this.sessionRepository.countSessionsByDeviceId(deviceId)
-        if (remainingSessionsOnDevice === 0) {
-          await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
-          newlyUntrustedDeviceIds.push(deviceId)
+    if (untrustAllDevices) {
+      // Untrust ALL user devices (for revoke all scenarios)
+      const allUserDevices = await this.deviceRepository.findDevicesByUserId(userId)
+      for (const device of allUserDevices) {
+        if (device.isTrusted) {
+          await this.deviceRepository.updateDeviceTrustStatus(device.id, false)
+          newlyUntrustedDeviceIds.push(device.id)
+        }
+      }
+    } else {
+      // Original logic: only untrust devices with no remaining sessions
+      if (affectedDeviceIds.length > 0) {
+        for (const deviceId of affectedDeviceIds) {
+          const remainingSessionsOnDevice = await this.sessionRepository.countSessionsByDeviceId(deviceId)
+          if (remainingSessionsOnDevice === 0) {
+            await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
+            newlyUntrustedDeviceIds.push(deviceId)
+          }
         }
       }
     }
@@ -566,6 +660,7 @@ export class SessionsService implements ISessionService {
       deviceIds?: number[]
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
+      untrustAllDevices?: boolean
     },
     currentSessionContext: { sessionId?: string; deviceId?: number }
   ): Promise<{ revokedSessionsCount: number; untrustedDevicesCount: number }> {
@@ -576,7 +671,8 @@ export class SessionsService implements ISessionService {
       const result = await this.invalidateAllUserSessions(
         userId,
         'User requested revoke all sessions',
-        excludeSessionId
+        excludeSessionId,
+        options.untrustAllDevices ?? true // Default to true for revoke all
       )
       return {
         revokedSessionsCount: result.deletedSessionsCount,
@@ -617,6 +713,7 @@ export class SessionsService implements ISessionService {
     deviceIds?: number[]
     revokeAllUserSessions?: boolean
     excludeCurrentSession?: boolean
+    untrustAllDevices?: boolean
   }): { isValid: boolean; errors: string[] } {
     const { sessionIds, deviceIds, revokeAllUserSessions } = options
     const errors: string[] = []
@@ -666,5 +763,55 @@ export class SessionsService implements ISessionService {
     }
     await this.deviceRepository.updateDeviceTrustStatus(deviceId, false)
     await this.notifyDeviceTrustChange(userId, deviceId, 'untrusted')
+  }
+
+  /**
+   * Calculate device status based on session activity and last usage
+   */
+  private calculateDeviceStatus(device: Device, daysSinceLastUse: number): 'active' | 'inactive' | 'expired' {
+    // If device has been inactive for more than 90 days, consider it expired
+    if (daysSinceLastUse > 90) {
+      return 'expired'
+    }
+    
+    // If device has been inactive for more than 7 days, consider it inactive
+    if (daysSinceLastUse > 7) {
+      return 'inactive'
+    }
+    
+    // Otherwise, it's considered active
+    return 'active'
+  }
+
+  /**
+   * Calculate risk level based on device trust, location, and usage patterns
+   */
+  private calculateRiskLevel(device: Device, location: any, daysSinceLastUse: number): 'low' | 'medium' | 'high' {
+    let riskScore = 0
+    
+    // Trust status (lower risk if trusted)
+    if (!device.isTrusted) {
+      riskScore += 3
+    }
+    
+    // Location risk (higher risk for unknown locations)
+    if (location?.display === 'Unknown Location') {
+      riskScore += 2
+    }
+    
+    // Usage pattern (higher risk for unused devices that are still trusted)
+    if (daysSinceLastUse > 30 && device.isTrusted) {
+      riskScore += 2
+    }
+    
+    // Device age (higher risk for very old devices)
+    if (daysSinceLastUse > 365) {
+      riskScore += 1
+    }
+    
+    // Return risk level based on score
+    if (riskScore >= 5) return 'high'
+    if (riskScore >= 3) return 'medium'
+    return 'low'
   }
 }

@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod'
 import { z } from 'zod'
+import { BasePaginationQueryDTO } from 'src/shared/dtos/pagination.dto'
 
 // ===================================================================================
 //                                     SCHEMAS
@@ -10,51 +11,52 @@ const SessionItemSchema = z.object({
   id: z.string(),
   createdAt: z.date(),
   lastActive: z.date(),
-  ipAddress: z.string(),
+  ip: z.string(), // Optimized from ipAddress
   location: z.string(),
   browser: z.string().optional(),
-  browserVersion: z.string().optional(),
+  browserVer: z.string().optional(), // Optimized from browserVersion
   os: z.string().optional(),
-  osVersion: z.string().optional(),
-  deviceType: z.string().optional(),
+  osVer: z.string().optional(), // Optimized from osVersion
+  type: z.string().optional(), // Optimized from deviceType
   app: z.string().optional(),
-  isActive: z.boolean(),
+  active: z.boolean(), // Optimized from isActive
   inactiveDuration: z.string().nullable(),
-  isCurrentSession: z.boolean()
+  isCurrent: z.boolean() // Optimized from isCurrentSession
 })
 
 const DeviceSessionGroupSchema = z.object({
   deviceId: z.number(),
-  deviceName: z.string(),
-  deviceType: z.string().optional(),
+  name: z.string(), // Optimized from deviceName
+  type: z.string().optional(), // Optimized from deviceType
   os: z.string().optional(),
-  osVersion: z.string().optional(),
+  osVer: z.string().optional(), // Optimized from osVersion
   browser: z.string().optional(),
-  browserVersion: z.string().optional(),
-  isDeviceTrusted: z.boolean(),
-  deviceTrustExpiration: z.date().nullable(),
+  browserVer: z.string().optional(), // Optimized from browserVersion
+  trusted: z.boolean(), // Optimized from isDeviceTrusted
+  trustExp: z.date().nullable(), // Optimized from deviceTrustExpiration
   lastActive: z.date(),
   location: z.string(),
-  activeSessionsCount: z.number(),
-  totalSessionsCount: z.number(), // Thêm tổng số sessions
-  isCurrentDevice: z.boolean(),
+  activeSessions: z.number(), // Optimized from activeSessionsCount
+  totalSessions: z.number(), // Optimized from totalSessionsCount
+  isCurrent: z.boolean(), // Optimized from isCurrentDevice
+  status: z.enum(['active', 'inactive', 'expired']).optional(), // Device status
+  riskLevel: z.enum(['low', 'medium', 'high']).optional(), // Security risk level
+  daysSinceLastUse: z.number().optional(), // Days since last activity
   sessions: z.array(SessionItemSchema)
 })
 
 export const GetGroupedSessionsResponseSchema = z.object({
   devices: z.array(DeviceSessionGroupSchema),
-  meta: z.object({
-    currentPage: z.number(),
-    itemsPerPage: z.number(),
+  metadata: z.object({
+    page: z.number(),
+    limit: z.number(),
     totalItems: z.number(),
     totalPages: z.number()
   })
 })
 
-export const GetSessionsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional().default(1),
-  limit: z.coerce.number().int().positive().optional().default(5)
-})
+// --- Request DTOs ---
+export class GetSessionsQueryDto extends BasePaginationQueryDTO {}
 
 // --- Schemas for Revoke Sessions ---
 export const RevokeSessionsBodySchema = z
@@ -72,7 +74,8 @@ export const RevokeSessionsBodySchema = z
 
 export const RevokeAllSessionsBodySchema = z.object({
   // Safety controls (optional - system will auto-decide if not specified)
-  excludeCurrentSession: z.boolean().optional() // Auto-exclude current session to prevent unexpected logout
+  excludeCurrentSession: z.boolean().optional(), // Auto-exclude current session to prevent unexpected logout
+  untrustAllDevices: z.boolean().optional().default(true) // Untrust all devices for maximum security
 })
 
 // --- Minimal Response Schemas ---
@@ -85,7 +88,6 @@ export const VerificationRequiredResponseSchema = MinimalResponseSchema.extend({
 })
 
 export const SuccessWithDataResponseSchema = MinimalResponseSchema.extend({
-  status: z.literal('success'),
   data: z.record(z.any()).optional()
 })
 
@@ -113,7 +115,6 @@ export const UpdateDeviceNameBodySchema = z.object({
 // ===================================================================================
 
 // --- Request DTOs ---
-export class GetSessionsQueryDto extends createZodDto(GetSessionsQuerySchema) {}
 export class RevokeSessionsBodyDto extends createZodDto(RevokeSessionsBodySchema) {}
 export class RevokeAllSessionsBodyDto extends createZodDto(RevokeAllSessionsBodySchema) {}
 export class DeviceIdParamsDto extends createZodDto(DeviceIdParamsSchema) {}
