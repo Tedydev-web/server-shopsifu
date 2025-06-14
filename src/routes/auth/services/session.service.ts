@@ -35,6 +35,7 @@ type SafetyAnalysis = {
   willCauseLogout: boolean
   warningMessage?: string
   requiresConfirmation?: boolean
+  autoProtected?: boolean
 }
 
 @Injectable()
@@ -237,7 +238,6 @@ export class SessionsService implements ISessionService {
       deviceIds?: number[]
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
-      forceLogout?: boolean
     },
     currentSessionContext: { sessionId?: string; deviceId?: number },
     res?: Response
@@ -317,7 +317,6 @@ export class SessionsService implements ISessionService {
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
       autoProtected?: boolean
-      forceLogout?: boolean
     },
     currentSessionContext: { sessionId?: string; deviceId?: number }
   ): {
@@ -327,16 +326,16 @@ export class SessionsService implements ISessionService {
     requiresConfirmation?: boolean
     autoProtected?: boolean
   } {
-    const { sessionIds, deviceIds, revokeAllUserSessions, excludeCurrentSession, forceLogout } = options
+    const { sessionIds, deviceIds, revokeAllUserSessions, excludeCurrentSession } = options
     const { sessionId: currentSessionId, deviceId: currentDeviceId } = currentSessionContext
 
     // Determine analysis based on revocation type
     if (revokeAllUserSessions) {
-      return this.analyzeRevokeAllSessions(excludeCurrentSession, forceLogout)
+      return this.analyzeRevokeAllSessions(excludeCurrentSession)
     } else if (deviceIds?.length) {
-      return this.analyzeRevokeDevices(deviceIds, currentDeviceId, excludeCurrentSession, forceLogout)
+      return this.analyzeRevokeDevices(deviceIds, currentDeviceId, excludeCurrentSession)
     } else if (sessionIds?.length) {
-      return this.analyzeRevokeSessions(sessionIds, currentSessionId, excludeCurrentSession, forceLogout)
+      return this.analyzeRevokeSessions(sessionIds, currentSessionId, excludeCurrentSession)
     } else {
       return {
         shouldExcludeCurrentSession: false,
@@ -345,7 +344,7 @@ export class SessionsService implements ISessionService {
     }
   }
 
-  private analyzeRevokeAllSessions(excludeCurrentSession?: boolean, forceLogout?: boolean): SafetyAnalysis {
+  private analyzeRevokeAllSessions(excludeCurrentSession?: boolean): SafetyAnalysis {
     if (excludeCurrentSession !== undefined) {
       return excludeCurrentSession
         ? {
@@ -355,22 +354,22 @@ export class SessionsService implements ISessionService {
         : {
             shouldExcludeCurrentSession: false,
             willCauseLogout: true,
-            warningMessage: forceLogout ? undefined : 'You will be logged out. Set forceLogout=true to confirm.',
-            requiresConfirmation: !forceLogout
+            warningMessage: 'You will be logged out from all sessions including current one.',
+            requiresConfirmation: true
           }
     }
-    // Smart default: exclude current session
+    // Smart default: exclude current session for safety
     return {
       shouldExcludeCurrentSession: true,
-      willCauseLogout: false
+      willCauseLogout: false,
+      autoProtected: true
     }
   }
 
   private analyzeRevokeDevices(
     deviceIds: number[],
     currentDeviceId?: number,
-    excludeCurrentSession?: boolean,
-    forceLogout?: boolean
+    excludeCurrentSession?: boolean
   ): SafetyAnalysis {
     const includesCurrentDevice = currentDeviceId && deviceIds.includes(currentDeviceId)
 
@@ -390,13 +389,11 @@ export class SessionsService implements ISessionService {
         : {
             shouldExcludeCurrentSession: false,
             willCauseLogout: true,
-            warningMessage: forceLogout
-              ? undefined
-              : 'You will be logged out by revoking your current device. Set forceLogout=true to confirm.',
-            requiresConfirmation: !forceLogout
+            warningMessage: 'You will be logged out by revoking your current device.',
+            requiresConfirmation: true
           }
     }
-    // Smart default: exclude current device
+    // Smart default: exclude current device for safety
     return {
       shouldExcludeCurrentSession: true,
       willCauseLogout: false
@@ -406,8 +403,7 @@ export class SessionsService implements ISessionService {
   private analyzeRevokeSessions(
     sessionIds: string[],
     currentSessionId?: string,
-    excludeCurrentSession?: boolean,
-    forceLogout?: boolean
+    excludeCurrentSession?: boolean
   ): SafetyAnalysis {
     const includesCurrentSession = currentSessionId && sessionIds.includes(currentSessionId)
 
@@ -427,16 +423,15 @@ export class SessionsService implements ISessionService {
         : {
             shouldExcludeCurrentSession: false,
             willCauseLogout: true,
-            warningMessage: forceLogout
-              ? undefined
-              : 'You will be logged out by revoking your current session. Set forceLogout=true to confirm.',
-            requiresConfirmation: !forceLogout
+            warningMessage: 'You will be logged out by revoking your current session.',
+            requiresConfirmation: true
           }
     }
-    // Smart default: exclude current session
+    // Smart default: exclude current session for safety
     return {
       shouldExcludeCurrentSession: true,
-      willCauseLogout: false
+      willCauseLogout: false,
+      autoProtected: true
     }
   }
 
@@ -520,7 +515,7 @@ export class SessionsService implements ISessionService {
     return { revokedSessionsCount: count, untrusted: true }
   }
 
-  async invalidateSession(sessionId: string, reason?: string): Promise<void> {
+  async invalidateSession(sessionId: string): Promise<void> {
     const key = RedisKeyManager.getInvalidatedSessionsKey()
     await this.redisService.sadd(key, sessionId)
 
@@ -622,7 +617,6 @@ export class SessionsService implements ISessionService {
     deviceIds?: number[]
     revokeAllUserSessions?: boolean
     excludeCurrentSession?: boolean
-    forceLogout?: boolean
   }): { isValid: boolean; errors: string[] } {
     const { sessionIds, deviceIds, revokeAllUserSessions } = options
     const errors: string[] = []

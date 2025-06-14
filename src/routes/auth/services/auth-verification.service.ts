@@ -442,8 +442,7 @@ export class AuthVerificationService {
     res: Response
   ): Promise<VerificationResult> {
     const { userId, metadata, ipAddress, userAgent, email } = context
-    const { sessionIds, deviceIds, excludeCurrentSession, forceLogout, currentSessionId, currentDeviceId } =
-      metadata || {}
+    const { sessionIds, deviceIds, excludeCurrentSession, currentSessionId, currentDeviceId } = metadata || {}
 
     if (!sessionIds && !deviceIds) {
       throw GlobalError.BadRequest('auth.error.invalidRevokeParams')
@@ -451,7 +450,7 @@ export class AuthVerificationService {
 
     const revokeResult = await this.sessionsService.revokeItems(
       userId,
-      { sessionIds, deviceIds, excludeCurrentSession, forceLogout },
+      { sessionIds, deviceIds, excludeCurrentSession },
       { sessionId: currentSessionId, deviceId: currentDeviceId },
       res
     )

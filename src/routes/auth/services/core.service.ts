@@ -366,7 +366,7 @@ export class CoreService implements ILoginFinalizerService {
       }
 
       if (this.sessionsService) {
-        await this.sessionsService.invalidateSession(sessionId, 'logout')
+        await this.sessionsService.invalidateSession(sessionId)
       }
 
       // Vô hiệu hóa access token hiện tại

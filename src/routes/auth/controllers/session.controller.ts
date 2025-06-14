@@ -92,8 +92,7 @@ export class SessionsController {
     const revocationOptions = {
       sessionIds: body.sessionIds,
       deviceIds: body.deviceIds,
-      excludeCurrentSession: body.excludeCurrentSession,
-      forceLogout: body.forceLogout
+      excludeCurrentSession: body.excludeCurrentSession
     }
 
     try {
@@ -180,7 +179,6 @@ export class SessionsController {
         purpose: TypeOfVerificationCode.REVOKE_ALL_SESSIONS,
         metadata: {
           excludeCurrentSession: body.excludeCurrentSession,
-          forceLogout: body.forceLogout,
           currentSessionId: userContext.sessionId,
           currentDeviceId: userContext.deviceId
         }

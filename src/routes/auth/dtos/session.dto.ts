@@ -64,8 +64,7 @@ export const RevokeSessionsBodySchema = z
     deviceIds: z.array(z.number()).optional(),
 
     // Safety controls (optional - system will auto-decide if not specified)
-    excludeCurrentSession: z.boolean().optional(), // Auto-exclude current session to prevent unexpected logout
-    forceLogout: z.boolean().optional() // Explicit confirmation required for logout actions
+    excludeCurrentSession: z.boolean().optional() // Auto-exclude current session to prevent unexpected logout
   })
   .refine((data) => data.sessionIds?.length || data.deviceIds?.length, {
     message: 'Must specify at least one of sessionIds or deviceIds'
@@ -73,8 +72,7 @@ export const RevokeSessionsBodySchema = z
 
 export const RevokeAllSessionsBodySchema = z.object({
   // Safety controls (optional - system will auto-decide if not specified)
-  excludeCurrentSession: z.boolean().optional(), // Auto-exclude current session to prevent unexpected logout
-  forceLogout: z.boolean().optional() // Explicit confirmation required for logout actions
+  excludeCurrentSession: z.boolean().optional() // Auto-exclude current session to prevent unexpected logout
 })
 
 // --- Minimal Response Schemas ---

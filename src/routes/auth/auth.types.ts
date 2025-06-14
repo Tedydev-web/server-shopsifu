@@ -80,7 +80,6 @@ export interface ISessionService {
       deviceIds?: number[]
       revokeAllUserSessions?: boolean
       excludeCurrentSession?: boolean
-      forceLogout?: boolean
     },
     currentSessionContext: { sessionId?: string; deviceId?: number },
     res?: Response
