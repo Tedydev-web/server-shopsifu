@@ -55,7 +55,6 @@ export interface VerificationContext {
 }
 
 export interface VerificationResult {
-  status?: 'success' | 'verification_required' | 'auto_protected' | 'confirmation_needed'
   message: string
   verificationType?: 'OTP' | '2FA'
   data?: Record<string, any>
@@ -145,7 +144,6 @@ export class AuthVerificationService {
     }
 
     return {
-      status: 'success',
       message: 'global.general.success.default'
     }
   }
@@ -161,7 +159,6 @@ export class AuthVerificationService {
     })
 
     return {
-      status: 'success',
       message: 'auth.success.2fa.setupInitiated',
       data: {
         qrCode: result.data.qrCode,
@@ -229,7 +226,6 @@ export class AuthVerificationService {
       const sltToken = await this.sltService.createAndStoreSltToken(sltPayload)
       this.cookieService.setSltCookie(res, sltToken, purpose)
       return {
-        status: 'verification_required',
         message: 'auth.success.login.2faRequired',
         verificationType: '2FA'
       }
@@ -248,7 +244,6 @@ export class AuthVerificationService {
 
     if (sltContext.metadata?.twoFactorMethod) {
       return {
-        status: 'verification_required',
         message: 'auth.success.login.2faRequired',
         verificationType: '2FA'
       }
@@ -263,7 +258,6 @@ export class AuthVerificationService {
     this.cookieService.setSltCookie(res, newSltToken, sltContext.purpose)
 
     return {
-      status: 'verification_required',
       message: 'auth.success.otp.resent',
       verificationType: 'OTP'
     }
@@ -635,7 +629,6 @@ export class AuthVerificationService {
     await this.otpService.sendOTP(email, purpose, { ...metadata, ipAddress, userAgent })
 
     return {
-      status: 'verification_required',
       message: 'auth.success.otp.sent',
       verificationType: 'OTP'
     }

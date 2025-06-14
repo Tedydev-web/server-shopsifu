@@ -77,12 +77,10 @@ export const RevokeAllSessionsBodySchema = z.object({
 
 // --- Minimal Response Schemas ---
 export const MinimalResponseSchema = z.object({
-  status: z.enum(['success', 'verification_required', 'auto_protected', 'confirmation_needed']),
   message: z.string()
 })
 
 export const VerificationRequiredResponseSchema = MinimalResponseSchema.extend({
-  status: z.literal('verification_required'),
   verificationType: z.enum(['OTP', '2FA'])
 })
 

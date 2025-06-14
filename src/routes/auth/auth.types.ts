@@ -251,8 +251,6 @@ export type GoogleCallbackReturnType =
   | GoogleCallbackAccountExistsWithoutLinkResult
 
 export interface AuthResult {
-  accessToken: string
-  refreshToken: string
   user: {
     id: number
     email: string
@@ -327,24 +325,6 @@ export interface PendingLinkTokenPayload extends PendingLinkTokenPayloadCreate {
   iat: number
 }
 
-export interface BaseResponse {
-  status: 'success' | 'verification_required' | 'auto_protected' | 'confirmation_needed'
-  message: string
-}
-
-export interface VerificationRequiredResponse extends BaseResponse {
-  status: 'verification_required'
+export interface VerificationRequiredResponse {
   verificationType: 'OTP' | '2FA'
-}
-export interface AutoProtectedResponse extends BaseResponse {
-  status: 'auto_protected'
-}
-
-export interface ConfirmationNeededResponse extends BaseResponse {
-  status: 'confirmation_needed'
-}
-
-export interface SuccessResponse<T = any> extends BaseResponse {
-  status: 'success'
-  data?: T
 }
