@@ -26,7 +26,7 @@ export class PermissionController {
   constructor(private readonly permissionService: PermissionService) {}
 
   @Post()
-  @RequirePermissions({ action: Action.Create, subject: AppSubject.Permission })
+  // @RequirePermissions({ action: Action.Create, subject: AppSubject.Permission })
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createPermissionDto: CreatePermissionDto) {
     const permission = await this.permissionService.create(createPermissionDto)
@@ -37,7 +37,7 @@ export class PermissionController {
   }
 
   @Get()
-  @RequirePermissions({ action: Action.Read, subject: AppSubject.Permission })
+  // @RequirePermissions({ action: Action.Read, subject: AppSubject.Permission })
   async getAllGroupedPermissions() {
     const permissions = await this.permissionService.getAllGroupedPermissions()
     return {
@@ -47,7 +47,7 @@ export class PermissionController {
   }
 
   @Get(':id')
-  @RequirePermissions({ action: Action.Read, subject: Permission })
+  // @RequirePermissions({ action: Action.Read, subject: Permission })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const permission = await this.permissionService.findOne(id)
     return {
@@ -57,7 +57,7 @@ export class PermissionController {
   }
 
   @Patch(':id')
-  @RequirePermissions({ action: Action.Update, subject: Permission })
+  //  @RequirePermissions({ action: Action.Update, subject: Permission })
   async update(@Param('id', ParseIntPipe) id: number, @Body() updatePermissionDto: UpdatePermissionDto) {
     const permission = await this.permissionService.update(id, updatePermissionDto)
     return {
@@ -68,7 +68,7 @@ export class PermissionController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermissions({ action: Action.Delete, subject: Permission })
+  // @RequirePermissions({ action: Action.Delete, subject: Permission })
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.permissionService.remove(id)
   }
