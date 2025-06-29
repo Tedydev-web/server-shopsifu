@@ -10,8 +10,6 @@ export interface StandardResponse {
   message: string
   data?: any
   metadata?: Record<string, any>
-  timestamp: string
-  path: string
   requestId?: string
 }
 
@@ -92,8 +90,6 @@ export class TransformInterceptor implements NestInterceptor {
       success: true,
       statusCode,
       message: translatedMessage as string,
-      timestamp: new Date().toISOString(),
-      path: request.url,
       requestId: request.headers['x-request-id'] as string,
     }
 

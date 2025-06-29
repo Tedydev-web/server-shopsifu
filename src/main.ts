@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
 import helmet from 'helmet'
-import { Logger } from '@nestjs/common'
+import { Logger, VersioningType } from '@nestjs/common'
 import { AllExceptionsFilter } from 'src/shared/filters/all-exceptions.filter'
 import { I18nService, I18nValidationExceptionFilter } from 'nestjs-i18n'
 import { useContainer } from 'class-validator'
@@ -82,6 +82,14 @@ async function bootstrap() {
     new AllExceptionsFilter(i18nService),
     new I18nValidationExceptionFilter({ detailedErrors: false }),
   )
+
+  app.setGlobalPrefix('api/v1', {
+    exclude: ['/'],
+  })
+
+  app.enableVersioning({
+    type: VersioningType.URI,
+  })
 
   app.useGlobalPipes(new CustomZodValidationPipe())
 

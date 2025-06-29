@@ -11,8 +11,6 @@ export interface StandardErrorResponse {
     message: string
     details?: any
   }
-  timestamp: string
-  path: string
   requestId?: string
 }
 
@@ -73,15 +71,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message,
         ...(details && { details }),
       },
-      timestamp: new Date().toISOString(),
-      path: request.url,
       requestId: request.headers['x-request-id'] as string,
     }
 
     // Log error for monitoring (exclude 4xx client errors from error logs)
     if (statusCode >= 500) {
       this.logger.error(`HTTP ${statusCode} Error - ${errorCode}: ${message}`, {
-        path: request.url,
         method: request.method,
         statusCode,
         errorCode,

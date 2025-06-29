@@ -10,6 +10,8 @@
     "NOT_FOUND": "Không tìm thấy vai trò",
     "ALREADY_EXISTS": "Vai trò đã tồn tại",
     "DELETED_PERMISSION_INCLUDED": "Không thể cập nhật vai trò vì có quyền đã bị xóa",
-    "OPERATION_FAILED": "Thao tác thất bại"
+    "OPERATION_FAILED": "Thao tác thất bại",
+    "CANNOT_UPDATE_DEFAULT_ROLE": "Không thể cập nhật vai trò mặc định",
+    "CANNOT_DELETE_DEFAULT_ROLE": "Không thể xóa vai trò mặc định"
   }
 }

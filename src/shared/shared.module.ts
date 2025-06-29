@@ -105,6 +105,10 @@ const allProviders = [
     provide: APP_GUARD,
     useClass: AuthenticationGuard,
   },
+  {
+    provide: APP_GUARD,
+    useClass: PermissionGuard,
+  },
   { provide: tokens.ACCESS_TOKEN_GUARD, useClass: AccessTokenGuard },
   { provide: tokens.API_KEY_GUARD, useClass: APIKeyGuard },
 ]

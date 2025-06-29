@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
   CreateRoleBodyDTO,
@@ -13,17 +13,9 @@ import {
 } from './role.dto'
 import { RoleService } from 'src/routes/role/role.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import {
-  RequirePermissions,
-  RequireRead,
-  RequireCreate,
-  RequireUpdate,
-  RequireDelete,
-} from 'src/shared/decorators/permission.decorator'
-import { PermissionGuard } from 'src/shared/guards/permission.guard'
+import { RequireRead, RequireCreate, RequireUpdate, RequireDelete } from 'src/shared/decorators/permission.decorator'
 
 @Controller('roles')
-@UseGuards(PermissionGuard)
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}
 

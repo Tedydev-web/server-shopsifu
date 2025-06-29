@@ -36,8 +36,6 @@ export const ErrorResponseSchema = z.object({
   code: z.string(),
   message: z.string(),
   details: z.any().optional().nullable(),
-  timestamp: z.string().datetime(),
-  path: z.string(),
 })
 
 // Helper function to create typed success response schema

@@ -29,6 +29,39 @@ export class RoleRepo extends BaseRepository<RoleType> {
     return this.paginate(query, { deletedAt: null })
   }
 
+  async findByName(name: string, prismaClient?: PrismaTransactionClient): Promise<RoleType | null> {
+    const client = this.getClient(prismaClient)
+    return client.role.findFirst({
+      where: {
+        name: {
+          equals: name,
+          mode: 'insensitive',
+        },
+        deletedAt: null,
+      },
+    })
+  }
+
+  async findByNameExcludingId(
+    name: string,
+    excludeId: number,
+    prismaClient?: PrismaTransactionClient,
+  ): Promise<RoleType | null> {
+    const client = this.getClient(prismaClient)
+    return client.role.findFirst({
+      where: {
+        name: {
+          equals: name,
+          mode: 'insensitive',
+        },
+        id: {
+          not: excludeId,
+        },
+        deletedAt: null,
+      },
+    })
+  }
+
   async findById(id: number, prismaClient?: PrismaTransactionClient): Promise<RoleWithPermissionsType | null> {
     const client = this.getClient(prismaClient)
     return client.role.findUnique({

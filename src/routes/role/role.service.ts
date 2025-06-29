@@ -23,7 +23,7 @@ export class RoleService {
     const baseRoles: string[] = [RoleName.Admin, RoleName.Client, RoleName.Seller]
 
     if (baseRoles.includes(role.name)) {
-      throw RoleError.CANNOT_DELETE_DEFAULT_ROLE
+      throw RoleError.CANNOT_UPDATE_DEFAULT_ROLE
     }
   }
 
@@ -41,6 +41,11 @@ export class RoleService {
   }
 
   async create({ data, createdById }: { data: CreateRoleBodyType; createdById: number }): Promise<RoleType> {
+    const existingRole = await this.roleRepo.findByName(data.name)
+    if (existingRole) {
+      throw RoleError.ALREADY_EXISTS
+    }
+
     try {
       const role = await this.roleRepo.create({
         createdById,
@@ -64,8 +69,14 @@ export class RoleService {
     data: UpdateRoleBodyType
     updatedById: number
   }): Promise<RoleType> {
+    await this.verifyRole(id)
+
+    const existingRole = await this.roleRepo.findByNameExcludingId(data.name, id)
+    if (existingRole) {
+      throw RoleError.ALREADY_EXISTS
+    }
+
     try {
-      await this.verifyRole(id)
       const role = await this.roleRepo.updateRoleWithPermissions(id, updatedById, data)
       return role
     } catch (error) {

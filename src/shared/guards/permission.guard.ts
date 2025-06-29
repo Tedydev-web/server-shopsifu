@@ -169,8 +169,8 @@ export class PermissionGuard implements CanActivate {
     return permissions
   }
 
-  private async getResourcePathMapping(resource: string): Promise<string> {
-    const cacheKey = RedisKeyManager.getResourcePathMappingKey(resource)
+  private async getResourcePathMapping(resource: string, method: string): Promise<string> {
+    const cacheKey = RedisKeyManager.getResourcePathMappingKey(`${resource}-${method}`)
 
     // Try to get from cache first
     const cachedPath = await this.redisService.get<string>(cacheKey)
@@ -178,11 +178,11 @@ export class PermissionGuard implements CanActivate {
       return cachedPath
     }
 
-    // Query database to find the actual path for this resource
-    // We'll look for a permission that matches the resource pattern
+    // Query database to find the actual path for this resource and method combination
     const permission = await this.prismaService.permission.findFirst({
       where: {
         deletedAt: null,
+        method: method as any,
         OR: [
           // Try exact match first
           { path: `/${resource}s` },
@@ -193,14 +193,14 @@ export class PermissionGuard implements CanActivate {
       },
       select: { path: true },
       orderBy: [
-        // Prioritize exact matches
-        { path: 'asc' },
+        // Prioritize paths with parameters for non-GET methods
+        method !== 'GET' ? { path: 'desc' } : { path: 'asc' },
       ],
     })
 
     if (!permission) {
       // Fallback to default pattern if no match found
-      const defaultPath = `/${resource}s`
+      const defaultPath = method === 'GET' || method === 'POST' ? `/${resource}s` : `/${resource}s/:${resource}Id`
 
       // Cache the fallback to avoid repeated DB queries
       await this.redisService.set(cacheKey, defaultPath, this.CACHE_TTL)
@@ -227,10 +227,10 @@ export class PermissionGuard implements CanActivate {
     userPermission: { path: string; method: string },
     requiredPermission: RequiredPermission,
   ): Promise<boolean> {
-    // Get the actual path from database/cache
-    const permissionPath = await this.getResourcePathMapping(requiredPermission.resource)
-    // Get the HTTP method from action
+    // Get the HTTP method from action first
     const requiredMethod = this.getMethodFromAction(requiredPermission.action)
+    // Get the actual path from database/cache
+    const permissionPath = await this.getResourcePathMapping(requiredPermission.resource, requiredMethod)
 
     // Debug logging
     this.logger.debug(
@@ -253,16 +253,19 @@ export class PermissionGuard implements CanActivate {
     const resourceMappings = new Map<string, string>()
 
     for (const required of requiredPermissions) {
-      if (!resourceMappings.has(required.resource)) {
-        const path = await this.getResourcePathMapping(required.resource)
-        resourceMappings.set(required.resource, path)
+      const requiredMethod = this.getMethodFromAction(required.action)
+      const resourceKey = `${required.resource}-${requiredMethod}`
+      if (!resourceMappings.has(resourceKey)) {
+        const path = await this.getResourcePathMapping(required.resource, requiredMethod)
+        resourceMappings.set(resourceKey, path)
       }
     }
 
     // Check each required permission
     for (const required of requiredPermissions) {
-      const permissionPath = resourceMappings.get(required.resource)!
       const requiredMethod = this.getMethodFromAction(required.action)
+      const resourceKey = `${required.resource}-${requiredMethod}`
+      const permissionPath = resourceMappings.get(resourceKey)!
 
       const hasThisPermission = userPermissions.some(
         (permission) => permission.path === permissionPath && permission.method === requiredMethod,

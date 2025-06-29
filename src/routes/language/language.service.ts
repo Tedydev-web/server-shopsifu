@@ -39,6 +39,12 @@ export class LanguageService {
   }
 
   async create(body: CreateLanguageBodyType, userId: number): Promise<LanguageType> {
+    // Kiểm tra language đã tồn tại chưa (theo id hoặc name)
+    const existingLanguage = await this.languageRepo.findByIdOrName(body.id, body.name)
+    if (existingLanguage) {
+      throw LanguageError.AlreadyExists
+    }
+
     try {
       const language = await this.languageRepo.create({
         data: body,
@@ -54,6 +60,12 @@ export class LanguageService {
   }
 
   async update(id: string, body: UpdateLanguageBodyType, userId: number): Promise<LanguageType> {
+    // Kiểm tra tên language đã tồn tại chưa (loại trừ chính nó)
+    const existingLanguage = await this.languageRepo.findNameExcludingCurrent(body.name, id)
+    if (existingLanguage) {
+      throw LanguageError.AlreadyExists
+    }
+
     try {
       const language = await this.languageRepo.update(id, { ...body, updatedById: userId })
       return language

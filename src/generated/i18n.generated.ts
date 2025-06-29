@@ -297,6 +297,8 @@ export type I18nTranslations = {
             "ALREADY_EXISTS": string;
             "DELETED_PERMISSION_INCLUDED": string;
             "OPERATION_FAILED": string;
+            "CANNOT_UPDATE_DEFAULT_ROLE": string;
+            "CANNOT_DELETE_DEFAULT_ROLE": string;
         };
     };
 };

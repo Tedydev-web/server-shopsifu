@@ -13,7 +13,12 @@ export const RoleError = {
   INVALID_IMPORT_DATA: new ApiException(HttpStatus.BAD_REQUEST, 'E0509', 'role.error.INVALID_IMPORT_DATA'),
   IMPORT_FAILED: new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'E0510', 'role.error.IMPORT_FAILED'),
   EXPORT_FAILED: new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'E0511', 'role.error.EXPORT_FAILED'),
-  DELETED_PERMISSION_INCLUDED: new ApiException(HttpStatus.BAD_REQUEST, 'E0512', 'role.error.DELETED_PERMISSION_INCLUDED'),
+  DELETED_PERMISSION_INCLUDED: new ApiException(
+    HttpStatus.BAD_REQUEST,
+    'E0512',
+    'role.error.DELETED_PERMISSION_INCLUDED',
+  ),
+  CANNOT_UPDATE_DEFAULT_ROLE: new ApiException(HttpStatus.FORBIDDEN, 'E0513', 'role.error.CANNOT_UPDATE_DEFAULT_ROLE'),
 } as const
 
 export type RoleErrorKey = keyof typeof RoleError

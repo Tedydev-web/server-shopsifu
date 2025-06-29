@@ -1,24 +1,8 @@
-/* eslint-disable @typescript-eslint/require-await */
 import { Injectable } from '@nestjs/common'
-import { z } from 'zod'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { BasePaginationQueryType, PaginatedResponseType } from 'src/shared/models/pagination.model'
 import { CreateLanguageBodyType, LanguageType } from './language.model'
 import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
-
-// Validation schema cho import data
-const LanguageImportSchema = z.object({
-  id: z.string().min(1).max(10),
-  name: z.string().min(1).max(500),
-})
-
-type LanguageImportType = z.infer<typeof LanguageImportSchema> & { __rowNumber?: number }
-
-interface ImportErrorType {
-  row: number
-  message: string
-  value: unknown
-}
 
 @Injectable()
 export class LanguageRepo extends BaseRepository<LanguageType> {
@@ -95,6 +79,70 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
       data: {
         deletedAt: new Date(),
         deletedById: data.deletedById,
+      },
+    })
+  }
+
+  async findByIdOrName(id: string, name: string, prismaClient?: PrismaTransactionClient): Promise<LanguageType | null> {
+    const client = this.getClient(prismaClient)
+    return client.language.findFirst({
+      where: {
+        OR: [
+          { id: id },
+          {
+            name: {
+              equals: name,
+              mode: 'insensitive',
+            },
+          },
+        ],
+        deletedAt: null,
+      },
+    })
+  }
+
+  async findByIdOrNameExcludingCurrent(
+    id: string,
+    name: string,
+    currentId: string,
+    prismaClient?: PrismaTransactionClient,
+  ): Promise<LanguageType | null> {
+    const client = this.getClient(prismaClient)
+    return client.language.findFirst({
+      where: {
+        OR: [
+          { id: id },
+          {
+            name: {
+              equals: name,
+              mode: 'insensitive',
+            },
+          },
+        ],
+        id: {
+          not: currentId,
+        },
+        deletedAt: null,
+      },
+    })
+  }
+
+  async findNameExcludingCurrent(
+    name: string,
+    currentId: string,
+    prismaClient?: PrismaTransactionClient,
+  ): Promise<LanguageType | null> {
+    const client = this.getClient(prismaClient)
+    return client.language.findFirst({
+      where: {
+        name: {
+          equals: name,
+          mode: 'insensitive',
+        },
+        id: {
+          not: currentId,
+        },
+        deletedAt: null,
       },
     })
   }
