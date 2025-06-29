@@ -1,0 +1,31 @@
+{
+  "success": {
+    "DEVICE_RENAMED": "Đổi tên thiết bị thành công",
+    "DEVICE_REVOKED": "Thu hồi thiết bị thành công",
+    "DEVICE_TRUSTED": "Thiết bị đã được tin tưởng",
+    "DEVICE_UNTRUSTED": "Thiết bị đã được bỏ tin tưởng",
+    "DEVICE_UPDATED": "Cập nhật thiết bị thành công"
+  },
+  "error": {
+    "DEVICE_NOT_FOUND": "Không tìm thấy thiết bị",
+    "DEVICE_NOT_BELONG_TO_USER": "Thiết bị không thuộc về người dùng này",
+    "DEVICE_NOT_TRUSTED": "Thiết bị chưa được tin tưởng",
+    "DEVICE_TRUST_EXPIRED": "Thời gian tin tưởng thiết bị đã hết hạn",
+    "DEVICE_ALREADY_TRUSTED": "Thiết bị đã được tin tưởng",
+    "DEVICE_INACTIVE": "Thiết bị không hoạt động",
+    "DEVICE_REVOKED": "Thiết bị đã bị thu hồi",
+    "DEVICE_LIMIT_EXCEEDED": "Đã vượt quá giới hạn số lượng thiết bị",
+    "DEVICE_NAME_REQUIRED": "Tên thiết bị là bắt buộc",
+    "DEVICE_NAME_TOO_LONG": "Tên thiết bị quá dài",
+    "DEVICE_NAME_INVALID": "Tên thiết bị không hợp lệ",
+    "INVALID_DEVICE_FINGERPRINT": "Fingerprint thiết bị không hợp lệ",
+    "DEVICE_FINGERPRINT_REQUIRED": "Fingerprint thiết bị là bắt buộc",
+    "DEVICE_SESSION_NOT_FOUND": "Không tìm thấy phiên đăng nhập của thiết bị",
+    "DEVICE_SESSION_EXPIRED": "Phiên đăng nhập của thiết bị đã hết hạn",
+    "DEVICE_SESSION_REVOKED": "Phiên đăng nhập của thiết bị đã bị thu hồi",
+    "DEVICE_CREATION_FAILED": "Tạo thiết bị thất bại",
+    "DEVICE_UPDATE_FAILED": "Cập nhật thiết bị thất bại",
+    "DEVICE_DELETION_FAILED": "Xóa thiết bị thất bại",
+    "DEVICE_REVOKE_FAILED": "Thu hồi thiết bị thất bại"
+  }
+}

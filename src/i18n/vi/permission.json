@@ -1,16 +1,14 @@
 {
-  "error": {
-    "notFound": "Quyền không được tìm thấy",
-    "alreadyExists": "Quyền với hành động '{action}' trên đối tượng '{subject}' đã tồn tại",
-    "createFailed": "Tạo quyền thất bại",
-    "updateFailed": "Cập nhật quyền thất bại",
-    "deleteFailed": "Xóa quyền thất bại"
-  },
   "success": {
-    "create": "Tạo quyền thành công",
-    "update": "Cập nhật quyền thành công",
-    "delete": "Xóa quyền thành công",
-    "get": "Lấy quyền thành công",
-    "list": "Lấy danh sách quyền thành công"
+    "CREATE_SUCCESS": "Tạo quyền thành công",
+    "UPDATE_SUCCESS": "Cập nhật quyền thành công",
+    "DELETE_SUCCESS": "Xóa quyền thành công",
+    "GET_PERMISSIONS": "Lấy danh sách quyền thành công",
+    "GET_PERMISSION_DETAIL": "Lấy chi tiết quyền thành công"
+  },
+  "error": {
+    "NOT_FOUND": "Không tìm thấy quyền",
+    "ALREADY_EXISTS": "Quyền đã tồn tại",
+    "OPERATION_FAILED": "Thao tác thất bại"
   }
 }

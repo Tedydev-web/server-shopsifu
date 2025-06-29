@@ -1,6 +1,4 @@
 import { createZodDto } from 'nestjs-zod'
-import { z } from 'zod'
-
-export const EmptyBodySchema = z.object({})
+import { EmptyBodySchema } from 'src/shared/models/request.model'
 
 export class EmptyBodyDTO extends createZodDto(EmptyBodySchema) {}

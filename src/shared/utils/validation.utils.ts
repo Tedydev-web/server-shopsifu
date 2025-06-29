@@ -1,56 +1,56 @@
 import { z } from 'zod'
-import { isNonEmptyArray, isNonEmptyString, isNullOrUndefined, isObject } from './type-guards.utils'
-import { ApiException } from '../exceptions/api.exception'
 
 export function safeString(value: any, defaultValue: string = ''): string {
-  if (isNullOrUndefined(value)) {
-    return defaultValue
+  if (typeof value === 'string') {
+    return value
   }
-
-  return String(value)
+  if (typeof value === 'number') {
+    return String(value)
+  }
+  return defaultValue
 }
 
 export function safeNumber(value: any, defaultValue: number = 0): number {
-  if (isNullOrUndefined(value)) {
-    return defaultValue
+  if (typeof value === 'number' && !isNaN(value)) {
+    return value
   }
-
-  const num = Number(value)
-  return isNaN(num) ? defaultValue : num
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return isNaN(parsed) ? defaultValue : parsed
+  }
+  return defaultValue
 }
 
 export function safeBoolean(value: any, defaultValue: boolean = false): boolean {
-  if (isNullOrUndefined(value)) {
-    return defaultValue
-  }
-
   if (typeof value === 'boolean') {
     return value
   }
-
   if (typeof value === 'string') {
-    const lowercaseValue = value.toLowerCase().trim()
-    return lowercaseValue === 'true' || lowercaseValue === '1' || lowercaseValue === 'yes'
+    const lower = value.toLowerCase()
+    if (lower === 'true' || lower === '1' || lower === 'yes') {
+      return true
+    }
+    if (lower === 'false' || lower === '0' || lower === 'no') {
+      return false
+    }
   }
-
   if (typeof value === 'number') {
     return value !== 0
   }
-
-  return Boolean(value)
+  return defaultValue
 }
 
 export function safeDate(value: any, defaultValue: Date | null = null): Date | null {
-  if (isNullOrUndefined(value)) {
-    return defaultValue
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return value
   }
-
-  if (value instanceof Date) {
-    return isNaN(value.getTime()) ? defaultValue : value
+  if (typeof value === 'string' || typeof value === 'number') {
+    const date = new Date(value)
+    if (!isNaN(date.getTime())) {
+      return date
+    }
   }
-
-  const date = new Date(value)
-  return isNaN(date.getTime()) ? defaultValue : date
+  return defaultValue
 }
 
 export function safeStringify(obj: any, defaultValue: string = '{}'): string {
@@ -62,37 +62,33 @@ export function safeStringify(obj: any, defaultValue: string = '{}'): string {
 }
 
 export function safeParse<T = any>(jsonString: string, defaultValue: T): T {
-  if (!isNonEmptyString(jsonString)) {
-    return defaultValue
-  }
-
   try {
-    return JSON.parse(jsonString) as T
+    return JSON.parse(jsonString)
   } catch {
     return defaultValue
   }
 }
 
 export function getNestedValue<T = any>(obj: any, path: string, defaultValue: T): T {
-  if (!isObject(obj) || !isNonEmptyString(path)) {
+  if (!obj || typeof obj !== 'object') {
     return defaultValue
   }
 
-  const properties = path.split('.')
-  let value: any = obj
+  const keys = path.split('.')
+  let current = obj
 
-  for (const prop of properties) {
-    if (!isObject(value) || !(prop in value)) {
+  for (const key of keys) {
+    if (current == null || typeof current !== 'object' || !(key in current)) {
       return defaultValue
     }
-    value = value[prop]
+    current = current[key]
   }
 
-  return isNullOrUndefined(value) ? defaultValue : value
+  return current !== undefined ? current : defaultValue
 }
 
 export function filterNullish<T>(array: (T | null | undefined)[]): T[] {
-  return array.filter((item): item is T => !isNullOrUndefined(item))
+  return array.filter((item): item is T => item != null)
 }
 
 export function validateWithZod<T>(schema: z.ZodType<T>, data: unknown, errorMessage?: string): T {
@@ -100,100 +96,63 @@ export function validateWithZod<T>(schema: z.ZodType<T>, data: unknown, errorMes
     return schema.parse(data)
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new ApiException(
-        400,
-        'VALIDATION_ERROR',
-        errorMessage || 'Invalid input data',
-        error.errors.map((err) => ({
-          code: 'VALIDATION_ERROR',
-          path: err.path.join('.')
-        }))
-      )
+      const firstError = error.errors[0]
+      const message = errorMessage || `Validation failed: ${firstError.message} at ${firstError.path.join('.')}`
+      throw new Error(message)
     }
     throw error
   }
 }
 
 export function isValidJson(value: any): boolean {
-  if (!isNonEmptyString(value)) {
+  if (typeof value !== 'string') {
     return false
   }
-
   try {
-    const result = JSON.parse(value)
-    return isObject(result) || Array.isArray(result)
+    JSON.parse(value)
+    return true
   } catch {
     return false
   }
 }
 
 export function normalizeString(text: string): string {
-  if (!isNonEmptyString(text)) {
-    return ''
-  }
-
   return text
     .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
 }
 
 export function pick<T extends Record<string, any>, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
-  if (!isObject(obj) || !isNonEmptyArray(keys)) {
-    return {} as Pick<T, K>
+  const result = {} as Pick<T, K>
+  for (const key of keys) {
+    if (key in obj) {
+      result[key] = obj[key]
+    }
   }
-
-  return keys.reduce(
-    (result, key) => {
-      if (key in obj) {
-        result[key] = obj[key]
-      }
-      return result
-    },
-    {} as Pick<T, K>
-  )
+  return result
 }
 
 export function omit<T extends Record<string, any>, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
-  if (!isObject(obj)) {
-    return {} as Omit<T, K>
-  }
-
-  if (!isNonEmptyArray(keys)) {
-    return { ...obj }
-  }
-
-  const result = { ...obj }
+  const result = { ...obj } as any
   for (const key of keys) {
     delete result[key]
   }
-
   return result
 }
 
 export function getRandomElement<T>(array: T[]): T | undefined {
-  if (!isNonEmptyArray(array)) {
+  if (array.length === 0) {
     return undefined
   }
-
   const randomIndex = Math.floor(Math.random() * array.length)
   return array[randomIndex]
 }
 
-export function isValidEnum<T extends Record<string, string | number>>(value: any, enumObject: T): value is T[keyof T] {
-  if (isNullOrUndefined(value)) {
-    return false
-  }
-
-  return Object.values(enumObject).includes(value)
-}
-
 export function safeJsonParse<T>(jsonString: string | null | undefined): T | null {
-  if (!jsonString) {
-    return null
-  }
-
+  if (!jsonString) return null
   try {
     return JSON.parse(jsonString) as T
   } catch {

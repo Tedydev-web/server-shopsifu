@@ -1,193 +1,208 @@
-import z from 'zod'
-import fs from 'fs'
-import path from 'path'
-import { config } from 'dotenv'
+import { z } from 'zod'
 import ms from 'ms'
-import { CookieNames } from 'src/routes/auth/auth.constants'
+import { config } from 'dotenv'
+import { CookieNames } from './constants/cookie.constant'
 
-// Load và kiểm tra file .env
+// Tải biến môi trường từ file .env
 config({ path: '.env' })
 
-if (!fs.existsSync(path.resolve('.env'))) {
-  console.log('Không tìm thấy file .env')
-  process.exit(1)
-}
-
-const configSchema = z.object({
-  // Server & môi trường
-  NODE_ENV: z.enum(['development', 'production', 'test', 'staging']).default('development'),
-  PORT: z.string().default('3000'),
-  API_URL: z.string(),
-  FRONTEND_URL: z.string(),
+// --- Zod Schemas for Validation ---
+const AppConfigSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  PORT: z.coerce.number().int().positive().default(3000),
   APP_NAME: z.string().default('Shopsifu'),
-
-  // Database
-  DATABASE_URL: z.string(),
-
-  // Cookie & Security
-  COOKIE_SECRET: z.string(),
-  CSRF_SECRET: z.string(),
-  COOKIE_DOMAIN: z.string().optional(),
-
-  // Access & Refresh Token
-  ACCESS_TOKEN_SECRET: z.string(),
-  ACCESS_TOKEN_EXPIRES_IN: z.string().default('10m'),
-  REFRESH_TOKEN_SECRET: z.string(),
-  REFRESH_TOKEN_EXPIRES_IN: z.string().default('1d'),
-  REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN: z.string().default('14d'),
-  ABSOLUTE_SESSION_LIFETIME: z.string().default('30d'),
-
-  // OTP & Verification
-  OTP_EXPIRES_IN: z.string().default('5m'),
-  OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
-  OTP_EXPIRY_SECONDS: z.coerce.number().int().positive().default(300), // 5 minutes
-
-  // SLT (State-Linking Token)
-  SLT_JWT_SECRET: z.string(),
-  SLT_JWT_EXPIRES_IN: z.string().default('5m'),
-
-  // Auth - Pending link
-  PENDING_LINK_TOKEN_SECRET: z.string(),
-  PENDING_LINK_TOKEN_EXPIRES_IN: z.string().default('15m'),
-  NONCE_COOKIE_MAX_AGE: z.string().optional(),
-
-  // OAuth
-  GOOGLE_CLIENT_ID: z.string(),
-  GOOGLE_CLIENT_SECRET: z.string(),
-  GOOGLE_REDIRECT_URI: z.string(),
-
-  // Redis
-  REDIS_HOST: z.string().default('redis-18980.c1.ap-southeast-1-1.ec2.redns.redis-cloud.com'),
-  REDIS_PORT: z.coerce.number().default(18980),
-  REDIS_PASSWORD: z.string().optional().default(''),
-  REDIS_DB: z.coerce.number().default(0),
-  REDIS_KEY_PREFIX: z.string().default('shopsifu:'),
-  REDIS_DEFAULT_TTL_MS: z.coerce.number().default(60000),
-
-  // Session & Device
-  MAX_ACTIVE_SESSIONS_PER_USER: z.coerce.number().int().positive().optional().default(10),
-  MAX_DEVICES_PER_USER: z.coerce.number().int().positive().optional().default(5),
-  DEVICE_TRUST_EXPIRATION_DAYS: z.coerce.number().int().positive().optional().default(30),
-
-  // Email
-  RESEND_API_KEY: z.string(),
-  NOTI_MAIL_FROM_ADDRESS: z.string().default('no-reply@shopsifu.live'),
-  SEC_MAIL_FROM_ADDRESS: z.string().default('security@shopsifu.live'),
-
-  // Admin
-  ADMIN_NAME: z.string(),
-  ADMIN_PASSWORD: z.string(),
-  ADMIN_EMAIL: z.string(),
-  ADMIN_PHONE_NUMBER: z.string(),
-  SECRET_API_KEY: z.string(),
-
-  // Session Durations
-  SESSION_DEFAULT_DURATION_MS: z.coerce.number().int().positive().default(86400000), // 1 day
-  SESSION_REMEMBER_ME_DURATION_MS: z.coerce.number().int().positive().default(2592000000) // 30 days
+  API_KEY: z.string(),
+  CLIENT_URL: z.string().url(),
+  EMAIL_FROM: z.string().email().default('noreply@shopsifu.com'),
 })
 
-// Xác thực cấu hình
-const configServer = configSchema.safeParse(process.env)
-if (!configServer.success) {
-  console.log('Các giá trị khai báo trong file .env không hợp lệ')
-  console.error(configServer.error.format())
-  process.exit(1)
-}
+const CsrfConfigSchema = z.object({
+  CSRF_SECRET_LENGTH: z.coerce.number().int().positive().default(32),
+  CSRF_HEADER_NAME: z.string().default('x-csrf-token'),
+})
 
-const parsedConfig = configServer.data
-const isDevlopment = parsedConfig.NODE_ENV === 'development'
+const JWTConfigSchema = z.object({
+  ACCESS_TOKEN_SECRET: z.string(),
+  ACCESS_TOKEN_EXPIRES_IN: z.string().default('15m'),
+  REFRESH_TOKEN_SECRET: z.string(),
+  REFRESH_TOKEN_EXPIRES_IN: z.string().default('7d'),
+})
 
-const convertMs = (value: string, defaultValue: number): number => {
-  try {
-    const calculatedMs = ms(value as any)
-    if (typeof calculatedMs === 'number' && !isNaN(calculatedMs)) {
-      return calculatedMs
-    }
-    console.warn(`[Config] Invalid time string: '${value}'. Using default: ${defaultValue}ms.`)
-    return defaultValue
-  } catch {
-    console.warn(`[Config] Error parsing time: '${value}'. Using default: ${defaultValue}ms.`)
-    return defaultValue
-  }
-}
+const CookieConfigSchema = z.object({
+  COOKIE_SECRET: z.string(),
+})
 
-const getCookieOptions = (httpOnly: boolean) => {
-  return {
-    httpOnly,
-    secure: true, // Luôn là true cho cả dev và prod
-    domain: parsedConfig.COOKIE_DOMAIN,
-    sameSite: isDevlopment ? 'none' : 'lax' // 'none' cho dev để dễ test, 'lax' cho prod để cho phép cross-site với navigation
-  }
-}
+const DatabaseConfigSchema = z.object({
+  DATABASE_URL: z.string(),
+})
 
-const cookieDefinitions = {
-  accessToken: {
-    name: CookieNames.ACCESS_TOKEN,
-    options: {
-      ...getCookieOptions(false), // httpOnly: true
-      maxAge: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('1h'))
-    }
-  },
-  refreshToken: {
-    name: CookieNames.REFRESH_TOKEN,
-    options: {
-      ...getCookieOptions(false), // httpOnly: true
-      maxAge: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d'))
-    }
-  },
-  slt: {
-    name: CookieNames.SLT_TOKEN,
-    options: {
-      ...getCookieOptions(true), // httpOnly: true
-      maxAge: convertMs(parsedConfig.SLT_JWT_EXPIRES_IN, ms('5m'))
-    }
-  },
-  oauthNonce: {
-    name: CookieNames.OAUTH_NONCE,
-    options: {
-      ...getCookieOptions(true), // httpOnly: true
-      maxAge: convertMs(parsedConfig.NONCE_COOKIE_MAX_AGE || '5m', ms('5m'))
-    }
-  },
-  oauthPendingLink: {
-    name: CookieNames.OAUTH_PENDING_LINK,
-    options: {
-      ...getCookieOptions(true), // httpOnly: true
-      maxAge: convertMs(parsedConfig.PENDING_LINK_TOKEN_EXPIRES_IN, ms('15m'))
-    }
-  },
-  csrfToken: {
-    name: CookieNames.XSRF_TOKEN,
-    options: {
-      ...getCookieOptions(false), // httpOnly: false - Client cần đọc được để set header
-      secure: true
-    }
-  },
-  csrfSecret: {
-    name: '_csrf',
-    options: {
-      ...getCookieOptions(true) // httpOnly: true
-    }
-  }
-}
+const GoogleConfigSchema = z.object({
+  GOOGLE_CLIENT_ID: z.string(),
+  GOOGLE_CLIENT_SECRET: z.string(),
+  GOOGLE_REDIRECT_URI: z.string().url(),
+})
 
-// Cấu hình chung đã chuyển đổi và tổng hợp
+const OTPConfigSchema = z.object({
+  OTP_EXPIRES_IN: z.string().default('5m'),
+})
+
+const AdminConfigSchema = z.object({
+  ADMIN_NAME: z.string(),
+  ADMIN_PASSWORD: z.string(),
+  ADMIN_EMAIL: z.string().email(),
+  ADMIN_PHONE_NUMBER: z.string(),
+})
+
+const ResendConfigSchema = z.object({
+  RESEND_API_KEY: z.string(),
+})
+
+const RedisConfigSchema = z.object({
+  REDIS_HOST: z.string().default('localhost'),
+  REDIS_PORT: z.coerce.number().int().positive().default(6379),
+  REDIS_PASSWORD: z.string().optional(),
+  REDIS_DB: z.coerce.number().int().default(0),
+})
+
+const DeviceConfigSchema = z.object({
+  DEVICE_TRUST_EXPIRATION_DAYS: z.coerce.number().int().positive().default(30),
+})
+
+// --- Root Schema ---
+const RootConfigSchema = AppConfigSchema.merge(JWTConfigSchema)
+  .merge(CookieConfigSchema)
+  .merge(DatabaseConfigSchema)
+  .merge(GoogleConfigSchema)
+  .merge(OTPConfigSchema)
+  .merge(AdminConfigSchema)
+  .merge(ResendConfigSchema)
+  .merge(CsrfConfigSchema)
+  .merge(RedisConfigSchema)
+  .merge(DeviceConfigSchema)
+
+// --- Validation and Parsing ---
+const validatedConfig = RootConfigSchema.parse(process.env)
+
+// --- Structured and Typed Config Object ---
+const isProd = validatedConfig.NODE_ENV === 'production'
+
 const envConfig = {
-  ...parsedConfig,
-  isDevlopment,
-
-  // Thời gian đã chuyển đổi sang milliseconds
-  timeInMs: {
-    accessToken: convertMs(parsedConfig.ACCESS_TOKEN_EXPIRES_IN, ms('10m')),
-    refreshToken: convertMs(parsedConfig.REFRESH_TOKEN_EXPIRES_IN, ms('1d')),
-    rememberMeRefreshToken: convertMs(parsedConfig.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN, ms('14d')),
-    absoluteSession: convertMs(parsedConfig.ABSOLUTE_SESSION_LIFETIME, ms('30d')),
-    slt: convertMs(parsedConfig.SLT_JWT_EXPIRES_IN, ms('5m')),
-    otp: convertMs(parsedConfig.OTP_EXPIRES_IN, ms('5m'))
+  isProd,
+  app: {
+    env: validatedConfig.NODE_ENV,
+    port: validatedConfig.PORT,
+    name: validatedConfig.APP_NAME,
+    apiKey: validatedConfig.API_KEY,
+    clientUrl: validatedConfig.CLIENT_URL,
+    emailFrom: validatedConfig.EMAIL_FROM,
   },
+  csrf: {
+    secretLength: validatedConfig.CSRF_SECRET_LENGTH,
+    headerName: validatedConfig.CSRF_HEADER_NAME,
+  },
+  jwt: {
+    accessToken: {
+      secret: validatedConfig.ACCESS_TOKEN_SECRET,
+      expiresIn: validatedConfig.ACCESS_TOKEN_EXPIRES_IN,
+    },
+    refreshToken: {
+      secret: validatedConfig.REFRESH_TOKEN_SECRET,
+      expiresIn: validatedConfig.REFRESH_TOKEN_EXPIRES_IN,
+    },
+  },
+  cookie: (() => {
+    const getBaseOptions = (prefix: '' | '__Host-', httpOnly: boolean) => {
+      const base = {
+        secure: true,
+        sameSite: 'lax' as const,
+        httpOnly,
+      }
+      if (prefix === '__Host-') {
+        return { ...base, path: '/', domain: undefined }
+      }
+      return { ...base, path: '/' }
+    }
 
-  // Cấu hình chi tiết cho từng loại cookie
-  cookie: cookieDefinitions
+    return {
+      secret: validatedConfig.COOKIE_SECRET,
+      definitions: {
+        accessToken: {
+          name: CookieNames.ACCESS_TOKEN,
+          prefix: '',
+          options: {
+            ...getBaseOptions('', true),
+            maxAge: ms(validatedConfig.ACCESS_TOKEN_EXPIRES_IN),
+          },
+        },
+        refreshToken: {
+          name: CookieNames.REFRESH_TOKEN,
+          prefix: isProd ? '__Host-' : '',
+          options: getBaseOptions(isProd ? '__Host-' : '', true),
+        },
+        csrfSecret: {
+          name: CookieNames.CSRF_SECRET,
+          prefix: isProd ? '__Host-' : '',
+          options: {
+            ...getBaseOptions(isProd ? '__Host-' : '', true),
+            // Session cookie, no maxAge
+          },
+        },
+        csrfToken: {
+          name: CookieNames.CSRF_TOKEN,
+          prefix: '',
+          options: {
+            ...getBaseOptions('', false), // Client-side script needs to read this
+            // Session cookie, no maxAge
+          },
+        },
+        slt: {
+          name: CookieNames.SLT,
+          prefix: isProd ? '__Host-' : '',
+          options: {
+            ...getBaseOptions(isProd ? '__Host-' : '', true),
+            maxAge: ms('15m'), // State-Linking Token should have a short lifespan
+          },
+        },
+      },
+    }
+  })(),
+  timeInMs: {
+    accessToken: ms(validatedConfig.ACCESS_TOKEN_EXPIRES_IN),
+    refreshToken: ms(validatedConfig.REFRESH_TOKEN_EXPIRES_IN),
+    otp: ms(validatedConfig.OTP_EXPIRES_IN),
+    rememberMe: ms('30d'),
+  },
+  database: {
+    url: validatedConfig.DATABASE_URL,
+  },
+  google: {
+    clientId: validatedConfig.GOOGLE_CLIENT_ID,
+    clientSecret: validatedConfig.GOOGLE_CLIENT_SECRET,
+    redirectUri: validatedConfig.GOOGLE_REDIRECT_URI,
+  },
+  otp: {
+    expiresIn: validatedConfig.OTP_EXPIRES_IN,
+  },
+  resend: {
+    apiKey: validatedConfig.RESEND_API_KEY,
+  },
+  redis: {
+    host: validatedConfig.REDIS_HOST,
+    port: validatedConfig.REDIS_PORT,
+    password: validatedConfig.REDIS_PASSWORD,
+    db: validatedConfig.REDIS_DB,
+  },
+  device: {
+    trustExpirationDays: validatedConfig.DEVICE_TRUST_EXPIRATION_DAYS,
+  },
+  admin: {
+    name: validatedConfig.ADMIN_NAME,
+    password: validatedConfig.ADMIN_PASSWORD,
+    email: validatedConfig.ADMIN_EMAIL,
+    phoneNumber: validatedConfig.ADMIN_PHONE_NUMBER,
+  },
 }
 
+// --- Export for NestJS ConfigModule ---
 export default () => envConfig
+export type EnvConfigType = typeof envConfig

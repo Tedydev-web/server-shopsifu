@@ -1,122 +1,300 @@
-import { CanActivate, ExecutionContext, Inject, Injectable, Logger, Type, forwardRef } from '@nestjs/common'
-import { ModuleRef, Reflector } from '@nestjs/core'
-import { UserService } from 'src/routes/user/user.service'
-import { RequiredPermission, PERMISSIONS_KEY } from 'src/shared/decorators/permissions.decorator'
-import { ActiveUserData } from 'src/shared/types/active-user.type'
-import { GlobalError } from 'src/shared/global.error'
-import { AppAbility, CaslAbilityFactory } from '../providers/casl/casl-ability.factory'
-import { User } from 'src/routes/user/user.model'
-import { Role } from 'src/routes/role/role.model'
-import { Permission } from 'src/routes/permission/permission.model'
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Inject, Logger } from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
+import { Request } from 'express'
+import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
+import { AuthError } from 'src/routes/auth/auth.error'
+import * as tokens from 'src/shared/constants/injection.tokens'
+import { PrismaService } from '../services/prisma.service'
+import { IRedisService } from '../providers/redis/redis.interface'
+import { RedisKeyManager } from '../providers/redis/redis-key.manager'
+import { GlobalError } from '../global.error'
+
+export interface RequiredPermission {
+  resource: string
+  action: string
+}
+
+export const PERMISSIONS_KEY = 'permissions'
 
 @Injectable()
 export class PermissionGuard implements CanActivate {
+  private readonly CACHE_TTL = 5 * 60 // 5 minutes
+  private readonly DEVICE_CACHE_TTL = 10 * 60 // 10 minutes
   private readonly logger = new Logger(PermissionGuard.name)
+
+  // Mapping từ action sang HTTP method
+  private readonly actionToMethodMap: Record<string, string> = {
+    read: 'GET',
+    create: 'POST',
+    update: 'PUT',
+    delete: 'DELETE',
+    manage: 'GET', // manage có thể truy cập tất cả methods
+  }
 
   constructor(
     private readonly reflector: Reflector,
-    private readonly moduleRef: ModuleRef,
-    @Inject(forwardRef(() => UserService)) private readonly userService: UserService,
-    private readonly caslAbilityFactory: CaslAbilityFactory
+    @Inject(tokens.PRISMA_SERVICE) private readonly prismaService: PrismaService,
+    @Inject(tokens.REDIS_SERVICE) private readonly redisService: IRedisService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredPermissions = this.reflector.get<RequiredPermission[]>(PERMISSIONS_KEY, context.getHandler())
 
+    // If no permissions required, allow access
     if (!requiredPermissions || requiredPermissions.length === 0) {
       return true
     }
 
-    const request = context.switchToHttp().getRequest()
-    const user: ActiveUserData | undefined = request.user
+    const request = context.switchToHttp().getRequest<Request>()
+    const user = request[REQUEST_USER_KEY]
 
     if (!user) {
-      throw GlobalError.Unauthorized()
+      this.logDenied(request, 'NO_USER_IN_REQUEST', null)
+      throw AuthError.AccessTokenRequired
     }
 
-    const userPermissions = await this.userService.getUserPermissions(user.id)
-    const ability = await this.caslAbilityFactory.createForUser(user, userPermissions)
+    // 1. Kiểm tra trạng thái user và role (có thể cache nếu cần)
+    const dbUser = await this.prismaService.user.findUnique({
+      where: { id: user.userId },
+      select: { status: true, role: { select: { isActive: true } } },
+    })
+    if (!dbUser) {
+      this.logDenied(request, 'USER_NOT_FOUND', user)
+      throw AuthError.UserNotFound
+    }
+    if (!dbUser.role || !dbUser.role.isActive) {
+      this.logDenied(request, 'ROLE_NOT_ACTIVE', user)
+      throw GlobalError.Forbidden('auth.error.ROLE_NOT_ACTIVE')
+    }
+    if (dbUser.status !== 'ACTIVE') {
+      this.logDenied(request, `USER_STATUS_${dbUser.status}`, user)
+      throw dbUser.status === 'BLOCKED' ? AuthError.UserBlocked : AuthError.UserNotActive
+    }
 
-    const checkPromises = requiredPermissions.map((permission) => this.checkPermission(permission, ability, context))
+    // 2. Validate device (with caching)
+    try {
+      await this.validateDevice(user.deviceId)
+    } catch (err) {
+      this.logDenied(request, 'DEVICE_INVALID', user, err)
+      throw err
+    }
 
-    const results = await Promise.all(checkPromises)
-    const hasPermission = results.every(Boolean)
+    // 3. Get user permissions (with caching)
+    let userPermissions: Array<{ path: string; method: string }>
+    try {
+      userPermissions = await this.getUserPermissions(user.roleId)
+    } catch (err) {
+      this.logDenied(request, 'ROLE_OR_PERMISSION_INVALID', user, err)
+      throw err
+    }
+
+    // 4. Check if user has required permissions
+    this.logger.debug(`User permissions: ${JSON.stringify(userPermissions)}`)
+    this.logger.debug(`Required permissions: ${JSON.stringify(requiredPermissions)}`)
+
+    const hasPermission = await this.checkPermissions(userPermissions, requiredPermissions)
 
     if (!hasPermission) {
-      throw GlobalError.Forbidden()
+      this.logDenied(request, 'INSUFFICIENT_PERMISSIONS', user)
+      throw GlobalError.Forbidden('auth.error.INSUFFICIENT_PERMISSIONS')
     }
 
     return true
   }
 
-  private async checkPermission(
-    permission: RequiredPermission,
-    ability: AppAbility,
-    context: ExecutionContext
+  private async validateDevice(deviceId: number): Promise<void> {
+    const cacheKey = RedisKeyManager.getDeviceStatusKey(deviceId)
+
+    // Try to get from cache first
+    const cachedStatus = await this.redisService.get<{ isActive: boolean }>(cacheKey)
+
+    if (cachedStatus) {
+      if (!cachedStatus.isActive) {
+        throw GlobalError.Forbidden('auth.error.DEVICE_INACTIVE')
+      }
+      return
+    }
+
+    // Query database if not in cache
+    const device = await this.prismaService.device.findUnique({
+      where: { id: deviceId },
+      select: { isActive: true },
+    })
+
+    if (!device) {
+      throw GlobalError.Forbidden('auth.error.DEVICE_NOT_FOUND')
+    }
+
+    if (!device.isActive) {
+      throw GlobalError.Forbidden('auth.error.DEVICE_INACTIVE')
+    }
+
+    // Cache the result
+    await this.redisService.set(cacheKey, { isActive: device.isActive }, this.DEVICE_CACHE_TTL)
+  }
+
+  private async getUserPermissions(roleId: number): Promise<Array<{ path: string; method: string }>> {
+    const cacheKey = RedisKeyManager.getRolePermissionsKey(roleId)
+
+    // Try to get from cache first
+    const cachedPermissions = await this.redisService.get<Array<{ path: string; method: string }>>(cacheKey)
+
+    if (cachedPermissions) {
+      return cachedPermissions
+    }
+
+    // Query database if not in cache
+    const roleWithPermissions = await this.prismaService.role.findUnique({
+      where: { id: roleId },
+      include: {
+        permissions: {
+          where: { deletedAt: null },
+          select: { path: true, method: true },
+        },
+      },
+    })
+
+    if (!roleWithPermissions) {
+      throw GlobalError.Forbidden('auth.error.ROLE_NOT_FOUND')
+    }
+
+    const permissions = roleWithPermissions.permissions.map((p) => ({
+      path: p.path,
+      method: p.method,
+    }))
+
+    // Cache the result
+    await this.redisService.set(cacheKey, permissions, this.CACHE_TTL)
+
+    return permissions
+  }
+
+  private async getResourcePathMapping(resource: string): Promise<string> {
+    const cacheKey = RedisKeyManager.getResourcePathMappingKey(resource)
+
+    // Try to get from cache first
+    const cachedPath = await this.redisService.get<string>(cacheKey)
+    if (cachedPath) {
+      return cachedPath
+    }
+
+    // Query database to find the actual path for this resource
+    // We'll look for a permission that matches the resource pattern
+    const permission = await this.prismaService.permission.findFirst({
+      where: {
+        deletedAt: null,
+        OR: [
+          // Try exact match first
+          { path: `/${resource}s` },
+          { path: `/${resource}` },
+          // Try with common patterns
+          { path: { contains: resource, mode: 'insensitive' } },
+        ],
+      },
+      select: { path: true },
+      orderBy: [
+        // Prioritize exact matches
+        { path: 'asc' },
+      ],
+    })
+
+    if (!permission) {
+      // Fallback to default pattern if no match found
+      const defaultPath = `/${resource}s`
+
+      // Cache the fallback to avoid repeated DB queries
+      await this.redisService.set(cacheKey, defaultPath, this.CACHE_TTL)
+
+      return defaultPath
+    }
+
+    // Cache the found path
+    await this.redisService.set(cacheKey, permission.path, this.CACHE_TTL)
+
+    return permission.path
+  }
+
+  private getMethodFromAction(action: string): string {
+    const method = this.actionToMethodMap[action.toLowerCase()]
+    if (!method) {
+      this.logger.warn(`Unknown action: ${action}, defaulting to GET`)
+      return 'GET'
+    }
+    return method
+  }
+
+  private async matchesPermission(
+    userPermission: { path: string; method: string },
+    requiredPermission: RequiredPermission,
   ): Promise<boolean> {
-    const { action, subject } = permission
+    // Get the actual path from database/cache
+    const permissionPath = await this.getResourcePathMapping(requiredPermission.resource)
+    // Get the HTTP method from action
+    const requiredMethod = this.getMethodFromAction(requiredPermission.action)
 
-    if (typeof subject === 'string') {
-      return ability.can(action, subject)
-    }
+    // Debug logging
+    this.logger.debug(
+      `Permission check: userPermission=${JSON.stringify(userPermission)}, requiredPermission=${JSON.stringify(requiredPermission)}, permissionPath=${permissionPath}, requiredMethod=${requiredMethod}`,
+    )
 
-    // If subject is a class, load the resource and check ability
-    const resource = await this.getResource(subject, context)
-    if (!resource) {
-      return false
-    }
-    return ability.can(action, resource)
+    // Check if path and method match
+    const matches = userPermission.path === permissionPath && userPermission.method === requiredMethod
+
+    this.logger.debug(`Permission match result: ${matches}`)
+
+    return matches
   }
 
-  private async getResource(subject: Type, context: ExecutionContext): Promise<any> {
-    const request = context.switchToHttp().getRequest()
-    const resourceId = request.params.id
+  private async checkPermissions(
+    userPermissions: Array<{ path: string; method: string }>,
+    requiredPermissions: RequiredPermission[],
+  ): Promise<boolean> {
+    // Pre-load all resource mappings to avoid multiple DB queries
+    const resourceMappings = new Map<string, string>()
 
-    if (!resourceId) {
-      return null
+    for (const required of requiredPermissions) {
+      if (!resourceMappings.has(required.resource)) {
+        const path = await this.getResourcePathMapping(required.resource)
+        resourceMappings.set(required.resource, path)
+      }
     }
 
-    // This service locator pattern is a point for future improvement.
-    // A dedicated factory or map would be more robust.
-    const serviceName = `${subject.name}Service`
-    this.logger.debug(`Attempting to resolve service: ${serviceName}`)
+    // Check each required permission
+    for (const required of requiredPermissions) {
+      const permissionPath = resourceMappings.get(required.resource)!
+      const requiredMethod = this.getMethodFromAction(required.action)
 
-    try {
-      const service = await this.moduleRef.get(serviceName, { strict: false })
-      if (!service) {
-        this.logger.warn(`Service ${serviceName} not found in module context`)
-        return null
+      const hasThisPermission = userPermissions.some(
+        (permission) => permission.path === permissionPath && permission.method === requiredMethod,
+      )
+
+      if (!hasThisPermission) {
+        this.logger.debug(
+          `Missing permission: required=${JSON.stringify(required)}, path=${permissionPath}, method=${requiredMethod}`,
+        )
+        return false
       }
-      
-      if (typeof service.findOne === 'function') {
-        const result = await service.findOne(Number(resourceId))
-        // Handle services that return a { data, message } wrapper
-        return this.instantiateResource(subject, result?.data || result)
-      } else {
-        this.logger.warn(`Service ${serviceName} does not have findOne method`)
-        return null
-      }
-    } catch (error) {
-      this.logger.error(`Error resolving service ${serviceName}:`, error.message)
-      return null
     }
 
-    return null
+    return true
   }
 
-  private instantiateResource(subject: Type, data: any): any {
-    if (!data) return null
-    // A simple mapping to instantiate correct class
-    const subjectMap = {
-      User,
-      Role,
-      Permission
-      // Add other resource models here
+  private logDenied(request: Request, reason: string, user: any, error?: any) {
+    const userId = user?.userId || 'unknown'
+    const roleId = user?.roleId || 'unknown'
+    const deviceId = user?.deviceId || 'unknown'
+    let ip = request.ip
+    const xff = request.headers['x-forwarded-for']
+    if (Array.isArray(xff)) {
+      ip = xff[0] || ip || 'unknown'
+    } else if (typeof xff === 'string') {
+      ip = xff.split(',')[0].trim() || ip || 'unknown'
+    } else {
+      ip = ip || 'unknown'
     }
-    const SubjectClass = subjectMap[subject.name as keyof typeof subjectMap]
-    if (SubjectClass) {
-      return Object.assign(new SubjectClass(), data)
-    }
-    return data // fallback for subjects not in the map
+    const endpoint = `${request.method} ${request.originalUrl}`
+    this.logger.warn(
+      `Access denied: userId=${userId}, roleId=${roleId}, deviceId=${deviceId}, ip=${ip}, endpoint=${endpoint}, reason=${reason}, error=${error?.message || ''}`,
+    )
   }
 }

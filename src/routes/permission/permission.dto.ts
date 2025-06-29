@@ -1,43 +1,25 @@
 import { createZodDto } from 'nestjs-zod'
-import { Permission } from './permission.model'
-import { CreatePermissionZodSchema, UpdatePermissionZodSchema } from './permission.schema'
+import {
+  CreatePermissionBodySchema,
+  GetPermissionDetailResSchema,
+  GetPermissionParamsSchema,
+  GetPermissionsResSchema,
+  UpdatePermissionBodySchema,
+  CreatePermissionResSchema,
+  UpdatePermissionResSchema,
+  DeletePermissionResSchema,
+  PermissionPaginationQuerySchema,
+} from 'src/routes/permission/permission.model'
 
-export class CreatePermissionDto extends createZodDto(CreatePermissionZodSchema) {}
+// Request DTOs
+export class GetPermissionParamsDTO extends createZodDto(GetPermissionParamsSchema) {}
+export class CreatePermissionBodyDTO extends createZodDto(CreatePermissionBodySchema) {}
+export class UpdatePermissionBodyDTO extends createZodDto(UpdatePermissionBodySchema) {}
+export class PermissionPaginationQueryDTO extends createZodDto(PermissionPaginationQuerySchema) {}
 
-export class UpdatePermissionDto extends createZodDto(UpdatePermissionZodSchema) {}
-
-export class SimplePermissionItemDto {
-  id: number
-  action: string
-  description: string | null
-}
-
-export class PermissionDto implements Omit<Permission, 'createdById' | 'updatedById' | 'deletedById' | 'uiMetadata'> {
-  id: number
-  action: string
-  subject: string
-  description: string | null
-  conditions: Record<string, any> | null
-  createdAt: Date
-  updatedAt: Date
-  deletedAt: Date | null
-  isSystemPermission: boolean
-
-  constructor(partial: Partial<PermissionDto>) {
-    Object.assign(this, partial)
-  }
-
-  static fromEntity(entity: Permission): PermissionDto {
-    return new PermissionDto({
-      id: entity.id,
-      action: entity.action,
-      subject: entity.subject,
-      description: entity.description,
-      conditions: entity.conditions as Record<string, any> | null,
-      createdAt: entity.createdAt,
-      updatedAt: entity.updatedAt,
-      deletedAt: entity.deletedAt,
-      isSystemPermission: entity.isSystemPermission
-    })
-  }
-}
+// Response DTOs
+export class GetPermissionsResDTO extends createZodDto(GetPermissionsResSchema) {}
+export class GetPermissionDetailResDTO extends createZodDto(GetPermissionDetailResSchema) {}
+export class CreatePermissionResDTO extends createZodDto(CreatePermissionResSchema) {}
+export class UpdatePermissionResDTO extends createZodDto(UpdatePermissionResSchema) {}
+export class DeletePermissionResDTO extends createZodDto(DeletePermissionResSchema) {}

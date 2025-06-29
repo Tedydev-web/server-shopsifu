@@ -1,75 +1,68 @@
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common'
+import { ZodSerializerDto } from 'nestjs-zod'
 import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  ParseIntPipe,
-  HttpCode,
-  HttpStatus,
-  UseGuards
-} from '@nestjs/common'
-import { Auth } from 'src/shared/decorators/auth.decorator'
-import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
-import { PermissionGuard } from 'src/shared/guards/permission.guard'
-import { CreatePermissionDto, PermissionDto, UpdatePermissionDto } from './permission.dto'
-import { PermissionService } from './permission.service'
-import { Action, AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
-import { Permission } from './permission.model'
+  CreatePermissionBodyDTO,
+  GetPermissionDetailResDTO,
+  GetPermissionParamsDTO,
+  PermissionPaginationQueryDTO,
+  GetPermissionsResDTO,
+  UpdatePermissionBodyDTO,
+} from 'src/routes/permission/permission.dto'
+import { PermissionService } from 'src/routes/permission/permission.service'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { MessageResDTO } from 'src/shared/dtos/response.dto'
 
-@Auth()
-@UseGuards(PermissionGuard)
 @Controller('permissions')
 export class PermissionController {
   constructor(private readonly permissionService: PermissionService) {}
 
-  @Post()
-  // @RequirePermissions({ action: Action.Create, subject: AppSubject.Permission })
-  @HttpCode(HttpStatus.CREATED)
-  async create(@Body() createPermissionDto: CreatePermissionDto) {
-    const permission = await this.permissionService.create(createPermissionDto)
-    return {
-      message: 'permission.success.create',
-      data: PermissionDto.fromEntity(permission)
-    }
-  }
-
   @Get()
-  // @RequirePermissions({ action: Action.Read, subject: AppSubject.Permission })
-  async getAllGroupedPermissions() {
-    const permissions = await this.permissionService.getAllGroupedPermissions()
-    return {
-      message: 'permission.success.list',
-      data: permissions
-    }
+  @ZodSerializerDto(GetPermissionsResDTO)
+  list(@Query() query: PermissionPaginationQueryDTO) {
+    return this.permissionService.list({
+      page: query.page,
+      limit: query.limit,
+      sortOrder: query.sortOrder,
+      sortBy: query.sortBy,
+      search: query.search,
+    })
   }
 
-  @Get(':id')
-  // @RequirePermissions({ action: Action.Read, subject: Permission })
-  async findOne(@Param('id', ParseIntPipe) id: number) {
-    const permission = await this.permissionService.findOne(id)
-    return {
-      message: 'permission.success.get',
-      data: PermissionDto.fromEntity(permission)
-    }
+  @Get(':permissionId')
+  @ZodSerializerDto(GetPermissionDetailResDTO)
+  findById(@Param() params: GetPermissionParamsDTO) {
+    return this.permissionService.findById(params.permissionId)
   }
 
-  @Patch(':id')
-  //  @RequirePermissions({ action: Action.Update, subject: Permission })
-  async update(@Param('id', ParseIntPipe) id: number, @Body() updatePermissionDto: UpdatePermissionDto) {
-    const permission = await this.permissionService.update(id, updatePermissionDto)
-    return {
-      message: 'permission.success.update',
-      data: PermissionDto.fromEntity(permission)
-    }
+  @Post()
+  @ZodSerializerDto(GetPermissionDetailResDTO)
+  create(@Body() body: CreatePermissionBodyDTO, @ActiveUser('userId') userId: number) {
+    return this.permissionService.create({
+      data: body,
+      createdById: userId,
+    })
   }
 
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  // @RequirePermissions({ action: Action.Delete, subject: Permission })
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    await this.permissionService.remove(id)
+  @Put(':permissionId')
+  @ZodSerializerDto(GetPermissionDetailResDTO)
+  update(
+    @Body() body: UpdatePermissionBodyDTO,
+    @Param() params: GetPermissionParamsDTO,
+    @ActiveUser('userId') userId: number,
+  ) {
+    return this.permissionService.update({
+      data: body,
+      id: params.permissionId,
+      updatedById: userId,
+    })
+  }
+
+  @Delete(':permissionId')
+  @ZodSerializerDto(MessageResDTO)
+  delete(@Param() params: GetPermissionParamsDTO, @ActiveUser('userId') userId: number) {
+    return this.permissionService.delete({
+      id: params.permissionId,
+      deletedById: userId,
+    })
   }
 }

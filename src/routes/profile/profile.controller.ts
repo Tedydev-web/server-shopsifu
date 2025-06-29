@@ -1,39 +1,36 @@
-import { Controller, Get, Logger, Body, HttpCode, HttpStatus, UseGuards, Patch } from '@nestjs/common'
-import { Auth } from 'src/shared/decorators/auth.decorator'
-import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { Body, Controller, Get, Put } from '@nestjs/common'
+import { ZodSerializerDto } from 'nestjs-zod'
 import { ProfileService } from './profile.service'
-import { UpdateProfileDto } from './profile.dto'
-import { PermissionGuard } from 'src/shared/guards/permission.guard'
-import { RequirePermissions } from 'src/shared/decorators/permissions.decorator'
-import { ActiveUserData } from 'src/shared/types/active-user.type'
-import { Action, AppSubject } from 'src/shared/providers/casl/casl-ability.factory'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { GetUserProfileResDTO, UpdateProfileResDTO } from 'src/shared/dtos/shared-user.dto'
+import { ChangePasswordBodyDTO, UpdateMeBodyDTO } from 'src/routes/profile/profile.dto'
+import { MessageResDTO } from 'src/shared/dtos/response.dto'
 
-@Auth()
-@UseGuards(PermissionGuard)
 @Controller('profile')
 export class ProfileController {
-  private readonly logger = new Logger(ProfileController.name)
   constructor(private readonly profileService: ProfileService) {}
 
   @Get()
-  @RequirePermissions({ action: Action.ReadOwn, subject: AppSubject.Profile })
-  @HttpCode(HttpStatus.OK)
-  async getProfile(@ActiveUser() activeUser: ActiveUserData) {
-    const profile = await this.profileService.getProfile(activeUser.id)
-    return {
-      message: 'profile.success.retrieved',
-      data: profile
-    }
+  @ZodSerializerDto(GetUserProfileResDTO)
+  getProfile(@ActiveUser('userId') userId: number) {
+    return this.profileService.getProfile(userId)
   }
 
-  @Patch()
-  @RequirePermissions({ action: Action.UpdateOwn, subject: AppSubject.Profile })
-  @HttpCode(HttpStatus.OK)
-  async updateProfile(@ActiveUser() activeUser: ActiveUserData, @Body() body: UpdateProfileDto) {
-    const updatedProfile = await this.profileService.updateProfile(activeUser.id, body)
-    return {
-      message: 'profile.success.updated',
-      data: updatedProfile
-    }
+  @Put()
+  @ZodSerializerDto(UpdateProfileResDTO)
+  updateProfile(@Body() body: UpdateMeBodyDTO, @ActiveUser('userId') userId: number) {
+    return this.profileService.updateProfile({
+      userId,
+      body,
+    })
+  }
+
+  @Put('change-password')
+  @ZodSerializerDto(MessageResDTO)
+  changePassword(@Body() body: ChangePasswordBodyDTO, @ActiveUser('userId') userId: number) {
+    return this.profileService.changePassword({
+      userId,
+      body,
+    })
   }
 }

@@ -1,115 +1,126 @@
 import { Global, Module } from '@nestjs/common'
-import { ConfigModule, ConfigService } from '@nestjs/config'
-import { JwtModule } from '@nestjs/jwt'
-import { Logger } from '@nestjs/common'
-import { ClsModule } from 'nestjs-cls'
-import Redis from 'ioredis'
-
-import { CookieService } from './services/cookie.service'
-import { EmailService } from './services/email.service'
-import { GeolocationService } from './services/geolocation.service'
+import { PrismaService } from 'src/shared/services/prisma.service'
 import { HashingService } from './services/hashing.service'
-import { PrismaService } from './providers/prisma/prisma.service'
-import { SLTService } from './services/slt.service'
 import { TokenService } from './services/token.service'
-import { UserAgentService } from './services/user-agent.service'
-import { DeviceFingerprintService } from './services/device-fingerprint.service'
+import { JwtModule } from '@nestjs/jwt'
+import { AccessTokenGuard } from 'src/shared/guards/access-token.guard'
+import { APIKeyGuard } from 'src/shared/guards/api-key.guard'
+import { PermissionGuard } from 'src/shared/guards/permission.guard'
+import { APP_GUARD } from '@nestjs/core'
+import { AuthenticationGuard } from 'src/shared/guards/authentication.guard'
+import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
+import { EmailService } from 'src/shared/services/email.service'
+import { TwoFactorService } from 'src/shared/services/2fa.service'
+import { CookieService } from './services/cookie.service'
+import { ConfigModule, ConfigService } from '@nestjs/config'
 import { RedisService } from './providers/redis/redis.service'
-import { CryptoService } from './services/crypto.service'
-import { CaslAbilityFactory } from './providers/casl/casl-ability.factory'
-
-import { ApiKeyGuard } from './guards/api-key.guard'
-
-import {
-  COOKIE_SERVICE,
-  EMAIL_SERVICE,
-  GEOLOCATION_SERVICE,
-  HASHING_SERVICE,
-  SLT_SERVICE,
-  TOKEN_SERVICE,
-  USER_AGENT_SERVICE,
-  REDIS_SERVICE,
-  DEVICE_FINGERPRINT_SERVICE
-} from './constants/injection.tokens'
 import { IORedisKey } from './providers/redis/redis.constants'
-
-const serviceClasses = [
-  PrismaService,
-  CookieService,
-  EmailService,
-  GeolocationService,
-  HashingService,
-  SLTService,
-  TokenService,
-  UserAgentService,
-  DeviceFingerprintService,
-  RedisService,
-  CryptoService,
-  CaslAbilityFactory
-]
-
-const guardClasses = [ApiKeyGuard]
-
-const tokenProviders = [
-  { provide: COOKIE_SERVICE, useClass: CookieService },
-  { provide: EMAIL_SERVICE, useClass: EmailService },
-  { provide: GEOLOCATION_SERVICE, useClass: GeolocationService },
-  { provide: HASHING_SERVICE, useClass: HashingService },
-  { provide: SLT_SERVICE, useClass: SLTService },
-  { provide: TOKEN_SERVICE, useClass: TokenService },
-  { provide: USER_AGENT_SERVICE, useClass: UserAgentService },
-  { provide: DEVICE_FINGERPRINT_SERVICE, useClass: DeviceFingerprintService },
-  { provide: REDIS_SERVICE, useClass: RedisService }
-]
+import Redis from 'ioredis'
+import { Logger } from '@nestjs/common'
+import { CryptoService } from './services/crypto.service'
+import { UserAgentService } from './services/user-agent.service'
+import * as tokens from './constants/injection.tokens'
+import { SecurityHeadersMiddleware } from './middleware/security-headers.middleware'
+import { CsrfProtectionMiddleware } from './middleware/csrf.middleware'
+import { EnvConfigType } from './config'
+import { GeolocationService } from './services/geolocation.service'
+import { DeviceFingerprintService } from './services/device-fingerprint.service'
+import { SessionService } from './services/session.service'
+import { SltService } from './services/slt.service'
 
 const redisClientProvider = {
   provide: IORedisKey,
-  useFactory: (configService: ConfigService) => {
+  useFactory: (configService: ConfigService<EnvConfigType>) => {
     const logger = new Logger('RedisProviderFactory')
+    const redisConfig = configService.get('redis')
     const client = new Redis({
-      host: configService.get<string>('REDIS_HOST', 'localhost'),
-      port: configService.get<number>('REDIS_PORT', 6379),
-      password: configService.get<string>('REDIS_PASSWORD'),
-      db: configService.get<number>('REDIS_DB', 0),
+      host: redisConfig.host,
+      port: redisConfig.port,
+      password: redisConfig.password,
+      db: redisConfig.db,
       retryStrategy: (times: number) => {
-        const delay = Math.min(times * 100, 3000) // Exponential backoff, max 3s
-        logger.warn(`Redis: Retrying connection (attempt ${times}), next attempt in ${delay}ms.`)
+        const delay = Math.min(times * 100, 3000) // Tối đa 3s
+        logger.warn(`Redis: Đang thử kết nối lại (lần ${times}), thử lại sau ${delay}ms.`)
         return delay
       },
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      connectTimeout: 10000
     })
 
     client.on('error', (err) => {
       logger.error('Redis Client Error:', err)
     })
-    client.on('connect', () => {
-      logger.log('Redis Client: Successfully connected.')
-    })
-    client.on('ready', () => {
-      logger.log('Redis Client: Ready.')
-    })
 
     return client
   },
-  inject: [ConfigService]
+  inject: [ConfigService],
 }
 
-const allProviders = [...serviceClasses, ...guardClasses, ...tokenProviders, redisClientProvider]
-const allExports = [...serviceClasses, ...guardClasses, ...tokenProviders, redisClientProvider]
+// Danh sách các class service để NestJS có thể khởi tạo chúng
+const serviceClasses = [
+  PrismaService,
+  HashingService,
+  TokenService,
+  EmailService,
+  SharedUserRepository,
+  TwoFactorService,
+  CookieService,
+  CryptoService,
+  UserAgentService,
+  RedisService,
+  GeolocationService,
+  DeviceFingerprintService,
+  SessionService,
+  SltService,
+]
+
+// Thêm middleware vào danh sách các class để NestJS quản lý
+const middlewareClasses = [CsrfProtectionMiddleware, SecurityHeadersMiddleware]
+
+// Danh sách các providers sử dụng token, tuân thủ nguyên tắc Dependency Inversion
+const tokenProviders = [
+  { provide: tokens.PRISMA_SERVICE, useClass: PrismaService },
+  { provide: tokens.HASHING_SERVICE, useClass: HashingService },
+  { provide: tokens.TOKEN_SERVICE, useClass: TokenService },
+  { provide: tokens.EMAIL_SERVICE, useClass: EmailService },
+  { provide: tokens.SHARED_USER_REPOSITORY, useClass: SharedUserRepository },
+  { provide: tokens.TWO_FACTOR_SERVICE, useClass: TwoFactorService },
+  { provide: tokens.COOKIE_SERVICE, useClass: CookieService },
+  { provide: tokens.CRYPTO_SERVICE, useClass: CryptoService },
+  { provide: tokens.USER_AGENT_SERVICE, useClass: UserAgentService },
+  { provide: tokens.REDIS_SERVICE, useClass: RedisService },
+  { provide: tokens.GEOLOCATION_SERVICE, useClass: GeolocationService },
+  { provide: tokens.DEVICE_FINGERPRINT_SERVICE, useClass: DeviceFingerprintService },
+  { provide: tokens.SESSION_SERVICE, useClass: SessionService },
+  { provide: tokens.SLT_SERVICE, useClass: SltService },
+]
+
+const guardClasses = [AccessTokenGuard, APIKeyGuard, AuthenticationGuard, PermissionGuard]
+
+const allProviders = [
+  ...serviceClasses,
+  ...middlewareClasses,
+  ...tokenProviders,
+  ...guardClasses,
+  redisClientProvider,
+  {
+    provide: APP_GUARD,
+    useClass: AuthenticationGuard,
+  },
+  { provide: tokens.ACCESS_TOKEN_GUARD, useClass: AccessTokenGuard },
+  { provide: tokens.API_KEY_GUARD, useClass: APIKeyGuard },
+]
 
 @Global()
 @Module({
-  imports: [
-    ConfigModule,
-    JwtModule,
-    ClsModule.forRoot({
-      global: true,
-      middleware: { mount: true }
-    })
-  ],
+  imports: [JwtModule, ConfigModule],
   providers: allProviders,
-  exports: allExports
+  exports: [
+    ...serviceClasses,
+    ...middlewareClasses,
+    ...tokenProviders,
+    ...guardClasses,
+    tokens.ACCESS_TOKEN_GUARD,
+    tokens.API_KEY_GUARD,
+    tokens.PRISMA_SERVICE,
+  ],
 })
 export class SharedModule {}

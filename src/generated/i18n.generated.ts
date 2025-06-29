@@ -7,488 +7,296 @@ import { Path } from "nestjs-i18n";
 export type I18nTranslations = {
     "auth": {
         "success": {
-            "register": {
-                "initiate": string;
-                "complete": string;
-            };
-            "login": {
-                "success": string;
-                "2faRequired": string;
-                "otpRequired": string;
-            };
-            "logout": {
-                "success": string;
-            };
-            "token": {
-                "refreshed": string;
-            };
-            "otp": {
-                "sent": string;
-                "verified": string;
-                "verifiedResetPassword": string;
-                "resend": string;
-            };
-            "password": {
-                "initiateReset": string;
-                "resetSuccess": string;
-                "changeSuccess": string;
-            };
-            "2fa": {
-                "setupInitiated": string;
-                "setupConfirmed": string;
-                "disabled": string;
-                "recoveryCodesRegenerated": string;
-            };
-            "session": {
-                "revoked": string;
-                "allRevoked": string;
-                "verificationRequired": string;
-                "revokedCount": string;
-                "noSessionsToRevoke": string;
-                "autoProtected": string;
-                "retrieved": string;
-                "get": string;
-            };
-            "device": {
-                "nameUpdated": string;
-                "trusted": string;
-                "untrusted": string;
-            };
-            "social": {
-                "googleUnlinked": string;
-                "accountNeedsLinking": string;
-                "successProceedToSecurityChecks": string;
-                "linkSuccess": string;
-                "unlinkSuccess": string;
-                "linkCancelled": string;
-            };
+            "REGISTER_SUCCESS": string;
+            "SEND_OTP_SUCCESS": string;
+            "LOGIN_SUCCESS": string;
+            "REFRESH_TOKEN_SUCCESS": string;
+            "LOGOUT_SUCCESS": string;
+            "FORGOT_PASSWORD_SUCCESS": string;
+            "SETUP_2FA_SUCCESS": string;
+            "DISABLE_2FA_SUCCESS": string;
+            "CSRF_TOKEN_SUCCESS": string;
+            "PASSWORD_RESET_SUCCESS": string;
+            "PASSWORD_CHANGE_SUCCESS": string;
+            "GOOGLE_AUTH_SUCCESS": string;
+            "GOOGLE_UNLINK_SUCCESS": string;
+            "EMAIL_VERIFICATION_SUCCESS": string;
+            "ACCOUNT_ACTIVATION_SUCCESS": string;
+            "OTP_SENT_SUCCESS": string;
+            "VERIFICATION_SUCCESS": string;
+            "TWO_FACTOR_SETUP_SUCCESS": string;
+            "TWO_FACTOR_DISABLE_SUCCESS": string;
+            "DEVICE_TRUSTED_SUCCESS": string;
+            "SESSION_REVOKED_SUCCESS": string;
         };
         "error": {
-            "serviceUnavailable": string;
-            "sltCookieMissing": string;
-            "invalidPassword": string;
-            "passwordsNotMatch": string;
-            "samePassword": string;
-            "usernameExists": string;
-            "emailExists": string;
-            "deviceProcessingFailed": string;
-            "deviceNotFound": string;
-            "invalidRefreshToken": string;
-            "missingRefreshToken": string;
-            "insufficientPermissions": string;
-            "emailMissingInSltContext": string;
-            "invalidOtp": string;
-            "otpSendingFailed": string;
-            "tooManyOtpAttempts": string;
-            "otpExpired": string;
-            "missingNewPasswordInContext": string;
-            "passwordProcessingFailed": string;
-            "roleConfigurationError": string;
-            "sessionOrDeviceNotFound": string;
-            "invalidRevokeParams": string;
-            "emailRequired": string;
-            "invalidDeviceId": string;
-            "invalidDeviceName": string;
-            "serverError": string;
-            "sessionsNotFound": string;
-            "invalidPageOrLimit": string;
-            "emailNotFound": string;
-            "incorrectPassword": string;
-            "invalidCredentials": string;
-            "social": {
-                "googleCallbackError": string;
-                "pendingLinkTokenMissing": string;
-                "googleLinkFailed": string;
-                "googleAccountAlreadyLinked": string;
-                "invalidSocialToken": string;
-                "googleMissingCode": string;
-                "googleInvalidPayload": string;
-                "googleUserInfoFailed": string;
-                "notLinked": string;
-            };
-            "2fa": {
-                "alreadyEnabled": string;
-                "invalidOtp": string;
-                "notEnabled": string;
-                "invalidRecoveryCode": string;
-                "invalidVerificationMethod": string;
-            };
-            "cookieConfigMissing": string;
-            "slt": {
-                "invalidPurpose": string;
-                "expired": string;
-                "alreadyUsed": string;
-                "maxAttemptsExceeded": string;
-            };
-            "pendingLink": {
-                "invalid": string;
-            };
-            "token": {
-                "invalidAccessToken": string;
-                "refreshTokenExpired": string;
-                "accessTokenExpired": string;
-                "missingAccessToken": string;
-                "missingSessionId": string;
-            };
-            "session": {
-                "revoked": string;
-            };
-            "passwordChangeNotAllowed": string;
-            "unauthorized": string;
+            "EMAIL_ALREADY_EXISTS": string;
+            "EMAIL_NOT_FOUND": string;
+            "INVALID_PASSWORD": string;
+            "PASSWORDS_NOT_MATCH": string;
+            "SAME_PASSWORD": string;
+            "WEAK_PASSWORD": string;
+            "INVALID_CREDENTIALS": string;
+            "USER_NOT_FOUND": string;
+            "USER_NOT_ACTIVE": string;
+            "USER_BLOCKED": string;
+            "ACCOUNT_LOCKED": string;
+            "ROLE_NOT_FOUND": string;
+            "INSUFFICIENT_PERMISSIONS": string;
+            "INVALID_OTP": string;
+            "OTP_EXPIRED": string;
+            "OTP_SENDING_FAILED": string;
+            "OTP_MAX_ATTEMPTS": string;
+            "OTP_REQUIRED": string;
+            "INVALID_TOTP": string;
+            "TOTP_REQUIRED": string;
+            "TOTP_ALREADY_ENABLED": string;
+            "TOTP_NOT_ENABLED": string;
+            "INVALID_TOTP_AND_CODE": string;
+            "DISABLE_2FA_REQUIRES_CODE": string;
+            "INVALID_RECOVERY_CODE": string;
+            "REFRESH_TOKEN_REQUIRED": string;
+            "INVALID_REFRESH_TOKEN": string;
+            "REFRESH_TOKEN_REUSED": string;
+            "ACCESS_TOKEN_EXPIRED": string;
+            "INVALID_ACCESS_TOKEN": string;
+            "TOKEN_BLACKLISTED": string;
+            "SESSION_NOT_FOUND": string;
+            "SESSION_EXPIRED": string;
+            "SESSION_REVOKED": string;
+            "SESSION_USER_MISMATCH": string;
+            "INVALID_SESSION": string;
+            "DEVICE_NOT_FOUND": string;
+            "DEVICE_NOT_TRUSTED": string;
+            "DEVICE_INACTIVE": string;
+            "SUSPICIOUS_DEVICE": string;
+            "GOOGLE_AUTH_ERROR": string;
+            "GOOGLE_USER_INFO_ERROR": string;
+            "GOOGLE_CALLBACK_ERROR": string;
+            "GOOGLE_ACCOUNT_LINKED": string;
+            "GOOGLE_NOT_LINKED": string;
+            "INVALID_OAUTH_STATE": string;
+            "OAUTH_CANCELLED": string;
+            "INVALID_CSRF_TOKEN": string;
+            "CSRF_TOKEN_MISSING": string;
+            "VERIFICATION_CODE_INVALID": string;
+            "VERIFICATION_CODE_NOT_FOUND": string;
+            "VERIFICATION_REQUIRED": string;
+            "EMAIL_NOT_VERIFIED": string;
+            "RATE_LIMIT_EXCEEDED": string;
+            "SERVICE_UNAVAILABLE": string;
+            "MAINTENANCE_MODE": string;
+            "ACCESS_TOKEN_REQUIRED": string;
+        };
+        "messages": {
+            "LOGIN_2FA_REQUIRED": string;
+            "LOGIN_OTP_REQUIRED": string;
+            "DEVICE_NEW_LOGIN": string;
+            "ACCOUNT_SECURITY_CHECK": string;
+            "PASSWORD_WILL_EXPIRE": string;
+            "SUSPICIOUS_ACTIVITY": string;
         };
     };
-    "email": {
-        "Email": {
-            "otp": {
-                "default": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "REGISTER": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "RESET_PASSWORD": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "LOGIN": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "DISABLE_2FA": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "SETUP_2FA": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "REGENERATE_2FA_CODES": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "VERIFY_NEW_EMAIL": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "UNLINK_GOOGLE_ACCOUNT": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "REVOKE_SESSIONS": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "REVOKE_ALL_SESSIONS": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "CREATE_USER": {
-                    "subject": string;
-                    "headline": string;
-                };
-                "common": {
-                    "content": string;
-                    "codeLabel": string;
-                    "validity": string;
-                    "disclaimer": string;
-                };
-            };
-            "securityAlert": {
-                "default": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "buttonText": string;
-                };
-                "PASSWORD_CHANGED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-                "NEW_DEVICE_LOGIN": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-                "DEVICE_TRUSTED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-                "DEVICE_UNTRUSTED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-                "TWO_FACTOR_ENABLED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-                "TWO_FACTOR_DISABLED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-                "SESSIONS_REVOKED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-                "ACCOUNT_LOCKED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                    "details": {
-                        "lockoutDuration": string;
-                    };
-                };
-                "SUSPICIOUS_ACTIVITY": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                    "details": {
-                        "activityDetected": string;
-                        "reason": string;
-                    };
-                };
-                "ACCOUNT_LINKED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-                "ACCOUNT_UNLINKED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-                "DEVICE_LIMIT_WARNING": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-            };
-            "welcome": {
-                "subject": string;
-                "headline": string;
-                "content": string;
-                "buttonText": string;
-            };
-            "recoveryCodes": {
-                "subject": string;
-                "headline": string;
-                "content": string;
-                "codesLabel": string;
-                "warning": string;
-                "buttonText": string;
-            };
-            "userManagement": {
-                "USER_CREATED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-                "USER_UPDATED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-                "USER_DELETED": {
-                    "subject": string;
-                    "title": string;
-                    "mainMessage": string;
-                    "secondaryMessage": string;
-                    "buttonText": string;
-                };
-            };
-            "common": {
-                "greeting": string;
-                "contactUs": string;
-                "copyright": string;
-                "locationUnknown": string;
-                "details": {
-                    "time": string;
-                    "ipAddress": string;
-                    "device": string;
-                    "browser": string;
-                    "os": string;
-                    "location": string;
-                    "currentDevices": string;
-                    "deviceLimit": string;
-                    "status": string;
-                };
-                "closing": string;
-            };
+    "device": {
+        "success": {
+            "DEVICE_RENAMED": string;
+            "DEVICE_REVOKED": string;
+            "DEVICE_TRUSTED": string;
+            "DEVICE_UNTRUSTED": string;
+            "DEVICE_UPDATED": string;
+        };
+        "error": {
+            "DEVICE_NOT_FOUND": string;
+            "DEVICE_NOT_BELONG_TO_USER": string;
+            "DEVICE_NOT_TRUSTED": string;
+            "DEVICE_TRUST_EXPIRED": string;
+            "DEVICE_ALREADY_TRUSTED": string;
+            "DEVICE_INACTIVE": string;
+            "DEVICE_REVOKED": string;
+            "DEVICE_LIMIT_EXCEEDED": string;
+            "DEVICE_NAME_REQUIRED": string;
+            "DEVICE_NAME_TOO_LONG": string;
+            "DEVICE_NAME_INVALID": string;
+            "INVALID_DEVICE_FINGERPRINT": string;
+            "DEVICE_FINGERPRINT_REQUIRED": string;
+            "DEVICE_SESSION_NOT_FOUND": string;
+            "DEVICE_SESSION_EXPIRED": string;
+            "DEVICE_SESSION_REVOKED": string;
+            "DEVICE_CREATION_FAILED": string;
+            "DEVICE_UPDATE_FAILED": string;
+            "DEVICE_DELETION_FAILED": string;
+            "DEVICE_REVOKE_FAILED": string;
         };
     };
     "global": {
-        "general": {
-            "error": {
-                "internalServerError": {
-                    "title": string;
-                    "message": string;
-                };
-                "default": {
-                    "title": string;
-                    "message": string;
-                };
-                "validationFailed": {
-                    "title": string;
-                    "message": string;
-                };
-            };
-            "success": {
-                "default": string;
-                "updated": string;
-                "created": string;
-                "deleted": string;
-            };
+        "success": {
+            "GENERAL": string;
+            "CREATED": string;
+            "UPDATED": string;
+            "DELETED": string;
+            "RETRIEVED": string;
+            "PROCESSED": string;
         };
-        "http": {
-            "BAD_REQUEST": {
-                "title": string;
-                "message": string;
-            };
-            "UNAUTHORIZED": {
-                "title": string;
-                "message": string;
-            };
-            "FORBIDDEN": {
-                "title": string;
-                "message": string;
-            };
-            "NOT_FOUND": {
-                "title": string;
-                "message": string;
-            };
-            "HTTP_EXCEPTION": {
-                "title": string;
-                "message": string;
-            };
-            "UNHANDLED_HTTP_EXCEPTION": {
-                "title": string;
-                "message": string;
-            };
+        "error": {
+            "INTERNAL_SERVER_ERROR": string;
+            "BAD_REQUEST": string;
+            "UNAUTHORIZED": string;
+            "FORBIDDEN": string;
+            "NOT_FOUND": string;
+            "METHOD_NOT_ALLOWED": string;
+            "NOT_ACCEPTABLE": string;
+            "REQUEST_TIMEOUT": string;
+            "CONFLICT": string;
+            "GONE": string;
+            "LENGTH_REQUIRED": string;
+            "PRECONDITION_FAILED": string;
+            "PAYLOAD_TOO_LARGE": string;
+            "URI_TOO_LONG": string;
+            "UNSUPPORTED_MEDIA_TYPE": string;
+            "RANGE_NOT_SATISFIABLE": string;
+            "EXPECTATION_FAILED": string;
+            "UNPROCESSABLE_ENTITY": string;
+            "VALIDATION_FAILED": string;
+            "LOCKED": string;
+            "FAILED_DEPENDENCY": string;
+            "TOO_EARLY": string;
+            "UPGRADE_REQUIRED": string;
+            "PRECONDITION_REQUIRED": string;
+            "TOO_MANY_REQUESTS": string;
+            "REQUEST_HEADER_FIELDS_TOO_LARGE": string;
+            "UNAVAILABLE_FOR_LEGAL_REASONS": string;
+            "INTERNAL_SERVER_ERROR_DETAILED": string;
+            "NOT_IMPLEMENTED": string;
+            "BAD_GATEWAY": string;
+            "SERVICE_UNAVAILABLE": string;
+            "GATEWAY_TIMEOUT": string;
+            "HTTP_VERSION_NOT_SUPPORTED": string;
+            "VARIANT_ALSO_NEGOTIATES": string;
+            "INSUFFICIENT_STORAGE": string;
+            "LOOP_DETECTED": string;
+            "NOT_EXTENDED": string;
+            "NETWORK_AUTHENTICATION_REQUIRED": string;
+            "RESOURCE_NOT_FOUND": string;
+            "USER_NOT_FOUND": string;
+            "ROLE_NOT_FOUND": string;
+            "PERMISSION_NOT_FOUND": string;
+            "FILE_NOT_FOUND": string;
+            "IMAGE_NOT_FOUND": string;
+            "DOCUMENT_NOT_FOUND": string;
+            "DATABASE_ERROR": string;
+            "CONNECTION_ERROR": string;
+            "NETWORK_ERROR": string;
+            "EXTERNAL_SERVICE_ERROR": string;
+            "FILE_SYSTEM_ERROR": string;
+            "CACHE_ERROR": string;
+            "QUEUE_ERROR": string;
+            "EMAIL_ERROR": string;
+            "SMS_ERROR": string;
+            "PAYMENT_ERROR": string;
+            "DUPLICATE_ENTRY": string;
+            "FOREIGN_KEY_CONSTRAINT": string;
+            "UNIQUE_CONSTRAINT": string;
+            "CHECK_CONSTRAINT": string;
+            "NOT_NULL_CONSTRAINT": string;
+            "CONCURRENT_MODIFICATION": string;
+            "OPTIMISTIC_LOCK": string;
+            "DEADLOCK": string;
+            "TRANSACTION_ROLLBACK": string;
         };
-        "notFound": {
+        "entities": {
             "user": string;
-            "device": string;
+            "role": string;
+            "permission": string;
             "session": string;
+            "device": string;
+            "file": string;
+            "image": string;
+            "document": string;
             "resource": string;
+            "record": string;
+            "data": string;
+            "information": string;
+            "content": string;
+            "item": string;
+            "entry": string;
+            "object": string;
+            "entity": string;
+        };
+        "validation": {
+            "REQUIRED": string;
+            "INVALID_FORMAT": string;
+            "INVALID_EMAIL": string;
+            "INVALID_PHONE": string;
+            "INVALID_URL": string;
+            "INVALID_DATE": string;
+            "INVALID_NUMBER": string;
+            "INVALID_UUID": string;
+            "TOO_SHORT": string;
+            "TOO_LONG": string;
+            "TOO_SMALL": string;
+            "TOO_LARGE": string;
+            "INVALID_CHOICE": string;
+            "PASSWORDS_NOT_MATCH": string;
         };
         "duration": {
             "justNow": string;
-            "minutesAgo": string;
-            "hoursAgo": string;
-            "daysAgo": string;
             "aMinuteAgo": string;
+            "minutesAgo": string;
             "anHourAgo": string;
+            "hoursAgo": string;
             "aDayAgo": string;
+            "daysAgo": string;
+            "aWeekAgo": string;
+            "weeksAgo": string;
+            "aMonthAgo": string;
+            "monthsAgo": string;
+            "aYearAgo": string;
+            "yearsAgo": string;
+        };
+    };
+    "language": {
+        "success": {
+            "CREATE_SUCCESS": string;
+            "UPDATE_SUCCESS": string;
+            "DELETE_SUCCESS": string;
+            "GET_LANGUAGES": string;
+            "GET_LANGUAGE_DETAIL": string;
+            "IMPORT_SUCCESS": string;
+        };
+        "error": {
+            "NotFound": string;
+            "AlreadyExists": string;
+            "OperationFailed": string;
+            "ImportFailed": string;
         };
     };
     "permission": {
-        "error": {
-            "notFound": string;
-            "alreadyExists": string;
-            "createFailed": string;
-            "updateFailed": string;
-            "deleteFailed": string;
-        };
         "success": {
-            "create": string;
-            "update": string;
-            "delete": string;
-            "get": string;
-            "list": string;
+            "CREATE_SUCCESS": string;
+            "UPDATE_SUCCESS": string;
+            "DELETE_SUCCESS": string;
+            "GET_PERMISSIONS": string;
+            "GET_PERMISSION_DETAIL": string;
         };
-    };
-    "profile": {
         "error": {
-            "notFound": string;
-            "updateFailed": string;
-            "alreadyExists": string;
-        };
-        "success": {
-            "get": string;
-            "update": string;
-            "retrieved": string;
-            "updated": string;
+            "NOT_FOUND": string;
+            "ALREADY_EXISTS": string;
+            "OPERATION_FAILED": string;
         };
     };
     "role": {
-        "error": {
-            "notFound": string;
-            "alreadyExists": string;
-            "createFailed": string;
-            "updateFailed": string;
-            "deleteFailed": string;
-            "cannotDeleteSystemRole": string;
-            "cannotUpdateSystemRole": string;
-        };
         "success": {
-            "create": string;
-            "update": string;
-            "delete": string;
-            "get": string;
-            "list": string;
+            "CREATE_SUCCESS": string;
+            "UPDATE_SUCCESS": string;
+            "DELETE_SUCCESS": string;
+            "GET_ROLES": string;
+            "GET_ROLE_DETAIL": string;
         };
-    };
-    "user": {
         "error": {
-            "notFound": string;
-            "alreadyExists": string;
-            "usernameAlreadyExists": string;
-            "createFailed": string;
-            "updateFailed": string;
-            "deleteFailed": string;
-            "invalidData": string;
-            "passwordRequired": string;
-            "emailRequired": string;
-            "weakPassword": string;
-            "cannotDeleteSelf": string;
-            "cannotDeleteSystemUser": string;
-            "invalidVerificationData": string;
-        };
-        "success": {
-            "create": string;
-            "update": string;
-            "delete": string;
-            "get": string;
-            "list": string;
-            "passwordChanged": string;
-            "profileUpdated": string;
-            "statusChanged": string;
-            "verificationSent": string;
+            "NOT_FOUND": string;
+            "ALREADY_EXISTS": string;
+            "DELETED_PERMISSION_INCLUDED": string;
+            "OPERATION_FAILED": string;
         };
     };
 };

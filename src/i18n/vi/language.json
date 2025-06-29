@@ -1,0 +1,16 @@
+{
+  "success": {
+    "CREATE_SUCCESS": "Tạo ngôn ngữ thành công",
+    "UPDATE_SUCCESS": "Cập nhật ngôn ngữ thành công",
+    "DELETE_SUCCESS": "Xóa ngôn ngữ thành công",
+    "GET_LANGUAGES": "Lấy danh sách ngôn ngữ thành công",
+    "GET_LANGUAGE_DETAIL": "Lấy chi tiết ngôn ngữ thành công",
+    "IMPORT_SUCCESS": "Import ngôn ngữ thành công"
+  },
+  "error": {
+    "NotFound": "Không tìm thấy ngôn ngữ",
+    "AlreadyExists": "Ngôn ngữ đã tồn tại",
+    "OperationFailed": "Thao tác thất bại",
+    "ImportFailed": "Import thất bại"
+  }
+}

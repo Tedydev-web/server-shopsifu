@@ -1,37 +1,25 @@
 import { createZodDto } from 'nestjs-zod'
-import { Role } from '@prisma/client'
-import { RoleSchema } from './role.schema'
+import {
+  CreateRoleBodySchema,
+  CreateRoleResSchema,
+  GetRoleDetailResSchema,
+  GetRoleParamsSchema,
+  GetRolesResSchema,
+  UpdateRoleBodySchema,
+  UpdateRoleResSchema,
+  DeleteRoleResSchema,
+  RolePaginationQuerySchema,
+} from 'src/routes/role/role.model'
 
-export class CreateRoleDto extends createZodDto(RoleSchema) {}
+// Request DTOs
+export class GetRoleParamsDTO extends createZodDto(GetRoleParamsSchema) {}
+export class CreateRoleBodyDTO extends createZodDto(CreateRoleBodySchema) {}
+export class UpdateRoleBodyDTO extends createZodDto(UpdateRoleBodySchema) {}
+export class RolePaginationQueryDTO extends createZodDto(RolePaginationQuerySchema) {}
 
-export class UpdateRoleDto extends createZodDto(RoleSchema.partial()) {}
-
-export class RoleDto
-  implements Omit<Role, 'createdById' | 'updatedById' | 'deletedById' | 'createdBy' | 'updatedBy' | 'deletedBy'>
-{
-  id: number
-  name: string
-  description: string | null
-  isSystemRole: boolean
-  isSuperAdmin: boolean
-  createdAt: Date
-  updatedAt: Date
-  deletedAt: Date | null
-
-  constructor(partial: Partial<RoleDto>) {
-    Object.assign(this, partial)
-  }
-
-  static fromEntity(entity: Role): RoleDto {
-    return new RoleDto({
-      id: entity.id,
-      name: entity.name,
-      description: entity.description,
-      isSystemRole: entity.isSystemRole,
-      isSuperAdmin: entity.isSuperAdmin,
-      createdAt: entity.createdAt,
-      updatedAt: entity.updatedAt,
-      deletedAt: entity.deletedAt
-    })
-  }
-}
+// Response DTOs
+export class GetRolesResDTO extends createZodDto(GetRolesResSchema) {}
+export class GetRoleDetailResDTO extends createZodDto(GetRoleDetailResSchema) {}
+export class CreateRoleResDTO extends createZodDto(CreateRoleResSchema) {}
+export class UpdateRoleResDTO extends createZodDto(UpdateRoleResSchema) {}
+export class DeleteRoleResDTO extends createZodDto(DeleteRoleResSchema) {}

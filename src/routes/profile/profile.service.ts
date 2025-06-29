@@ -1,79 +1,79 @@
-import { Inject, Injectable, Logger } from '@nestjs/common'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
-import { UserRepository } from 'src/routes/user/user.repository'
-import { HASHING_SERVICE } from 'src/shared/constants/injection.tokens'
+import { Injectable } from '@nestjs/common'
+import { ChangePasswordBodyType, UpdateMeBodyType } from './profile.model'
+import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
-import { ProfileResponseDto, UpdateProfileDto } from './profile.dto'
-import { ProfileError } from './profile.error'
-import { ProfileRepository } from './profile.repository'
+import { isUniqueConstraintPrismaError } from 'src/shared/utils/prisma.utils'
+import { GlobalError } from 'src/shared/global.error'
 
 @Injectable()
 export class ProfileService {
-  private readonly logger = new Logger(ProfileService.name)
-
   constructor(
-    private readonly userRepository: UserRepository,
-    private readonly profileRepository: ProfileRepository,
-    @Inject(HASHING_SERVICE) private readonly hashingService: HashingService,
-    private readonly i18nService: I18nService<I18nTranslations>
+    private readonly sharedUserRepository: SharedUserRepository,
+    private readonly hashingService: HashingService,
   ) {}
 
-  async getProfile(userId: number): Promise<ProfileResponseDto> {
-    const user = await this.userRepository.findByIdWithDetails(userId)
-    if (!user) {
-      throw ProfileError.NotFound()
+  async getProfile(userId: number) {
+    const user = await this.sharedUserRepository.findUniqueIncludeRolePermissions({
+      id: userId,
+      deletedAt: null,
+    })
+
+    if (!user || !user.role || user.role.deletedAt !== null) {
+      throw GlobalError.Forbidden('profile.error.ROLE_NOT_FOUND_OR_INACTIVE')
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password, ...userWithoutPassword } = user
+    if (!user.role.permissions) {
+      user.role.permissions = []
+    }
 
-    return {
-      id: userWithoutPassword.id,
-      email: userWithoutPassword.email,
-      role: userWithoutPassword.role.name,
-      status: userWithoutPassword.status,
-      twoFactorEnabled: userWithoutPassword.twoFactorEnabled,
-      googleId: userWithoutPassword.googleId,
-      createdAt: userWithoutPassword.createdAt,
-      updatedAt: userWithoutPassword.updatedAt,
-      userProfile: userWithoutPassword.userProfile
-        ? {
-            firstName: userWithoutPassword.userProfile.firstName,
-            lastName: userWithoutPassword.userProfile.lastName,
-            username: userWithoutPassword.userProfile.username,
-            phoneNumber: userWithoutPassword.userProfile.phoneNumber,
-            avatar: userWithoutPassword.userProfile.avatar
-          }
-        : null
+    return user
+  }
+
+  async updateProfile({ userId, body }: { userId: number; body: UpdateMeBodyType }) {
+    try {
+      return await this.sharedUserRepository.updateByCondition(
+        { id: userId },
+        {
+          ...body,
+          updatedById: userId,
+        },
+      )
+    } catch (error) {
+      if (isUniqueConstraintPrismaError(error)) {
+        throw GlobalError.NotFound('profile.error.NOT_FOUND')
+      }
+      throw error
     }
   }
 
-  async updateProfile(userId: number, dto: UpdateProfileDto): Promise<ProfileResponseDto> {
-    const { username, phoneNumber, ...rest } = dto
-
-    if (username) {
-      const existing = await this.profileRepository.doesUsernameExist(username)
-      if (existing) {
-        // You should create a specific error for this
-        throw ProfileError.AlreadyExists()
+  async changePassword({ userId, body }: { userId: number; body: Omit<ChangePasswordBodyType, 'confirmNewPassword'> }) {
+    try {
+      const { password, newPassword } = body
+      const user = await this.sharedUserRepository.findById(userId)
+      if (!user) {
+        throw GlobalError.NotFound('profile.error.NOT_FOUND')
       }
-    }
-
-    if (phoneNumber) {
-      const existing = await this.profileRepository.doesPhoneNumberExist(phoneNumber)
-      if (existing) {
-        // You should create a specific error for this
-        throw ProfileError.AlreadyExists()
+      const isPasswordMatch = await this.hashingService.compare(password, user.password)
+      if (!isPasswordMatch) {
+        throw GlobalError.InvalidPassword('profile.error.INVALID_PASSWORD')
       }
+      const hashedPassword = await this.hashingService.hash(newPassword)
+
+      await this.sharedUserRepository.updateByCondition(
+        { id: userId },
+        {
+          password: hashedPassword,
+          updatedById: userId,
+        },
+      )
+      return {
+        message: 'Password changed successfully',
+      }
+    } catch (error) {
+      if (isUniqueConstraintPrismaError(error)) {
+        throw GlobalError.NotFound('profile.error.NOT_FOUND')
+      }
+      throw error
     }
-
-    await this.profileRepository.updateByUserId(userId, {
-      username,
-      phoneNumber,
-      ...rest
-    })
-
-    return this.getProfile(userId)
   }
 }

@@ -1,10 +1,7 @@
 import { createZodDto } from 'nestjs-zod'
-import { ChangePasswordSchema, ProfileResponseSchema, UpdateProfileSchema } from './profile.schema'
 
-// ===================================================================================
-// DTOs
-// ===================================================================================
+import { ChangePasswordBodySchema, UpdateMeBodySchema } from './profile.model'
 
-export class ProfileResponseDto extends createZodDto(ProfileResponseSchema) {}
-export class ChangePasswordDto extends createZodDto(ChangePasswordSchema) {}
-export class UpdateProfileDto extends createZodDto(UpdateProfileSchema) {}
+export class UpdateMeBodyDTO extends createZodDto(UpdateMeBodySchema) {}
+
+export class ChangePasswordBodyDTO extends createZodDto(ChangePasswordBodySchema) {}

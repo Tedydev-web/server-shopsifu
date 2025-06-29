@@ -1,88 +1,86 @@
-import { Injectable, Logger } from '@nestjs/common'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
-import { CreatePermissionDto, UpdatePermissionDto, SimplePermissionItemDto } from './permission.dto'
-import { PermissionError } from './permission.error'
-import { Permission } from './permission.model'
-import { CreatePermissionData, PermissionRepository, UpdatePermissionData } from './permission.repository'
+import { Injectable } from '@nestjs/common'
+import { PermissionRepo } from 'src/routes/permission/permission.repo'
+import {
+  CreatePermissionBodyType,
+  UpdatePermissionBodyType,
+  PermissionPaginationQueryType,
+  PermissionType,
+  PaginatedResponseType,
+} from 'src/routes/permission/permission.model'
+import { PermissionError } from 'src/routes/permission/permission.error'
+import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/utils/prisma.utils'
 
 @Injectable()
 export class PermissionService {
-  private readonly logger = new Logger(PermissionService.name)
+  constructor(private permissionRepo: PermissionRepo) {}
 
-  constructor(
-    private readonly permissionRepository: PermissionRepository,
-    private readonly i18n: I18nService<I18nTranslations>
-  ) {}
-
-  async create(createPermissionDto: CreatePermissionDto): Promise<Permission> {
-    const { action, subject } = createPermissionDto
-    const existingPermission = await this.permissionRepository.findByActionAndSubject(action, subject)
-    if (existingPermission) {
-      throw PermissionError.AlreadyExists(action, subject)
-    }
-    const data: CreatePermissionData = {
-      action: createPermissionDto.action,
-      subject: createPermissionDto.subject,
-      description: createPermissionDto.description,
-      conditions: createPermissionDto.conditions
-    }
-    return this.permissionRepository.create(data)
+  async list(pagination: PermissionPaginationQueryType): Promise<PaginatedResponseType<PermissionType>> {
+    const data = await this.permissionRepo.findAllWithPagination(pagination)
+    return data
   }
 
-  async getAllGroupedPermissions(): Promise<Record<string, SimplePermissionItemDto[]>> {
-    const allPermissions = await this.permissionRepository.findAll()
-    const groupedPermissions: Record<string, SimplePermissionItemDto[]> = {}
-
-    for (const permission of allPermissions) {
-      if (!groupedPermissions[permission.subject]) {
-        groupedPermissions[permission.subject] = []
-      }
-      groupedPermissions[permission.subject].push({
-        id: permission.id,
-        action: permission.action,
-        description: permission.description
-      })
-    }
-
-    // Sort subjects alphabetically
-    const sortedGroupedPermissions: Record<string, SimplePermissionItemDto[]> = {}
-    Object.keys(groupedPermissions)
-      .sort()
-      .forEach((subject) => {
-        // Sort permissions within each subject alphabetically by action
-        sortedGroupedPermissions[subject] = groupedPermissions[subject].sort((a, b) => a.action.localeCompare(b.action))
-      })
-
-    return sortedGroupedPermissions
-  }
-
-  async findOne(id: number): Promise<Permission> {
-    const permission = await this.permissionRepository.findById(id)
+  async findById(id: number): Promise<PermissionType> {
+    const permission = await this.permissionRepo.findById(id)
     if (!permission) {
-      throw PermissionError.NotFound()
+      throw PermissionError.NOT_FOUND
     }
     return permission
   }
 
-  async update(id: number, updatePermissionDto: UpdatePermissionDto): Promise<Permission> {
-    await this.findOne(id) // Ensure permission exists
-
-    const { action, subject } = updatePermissionDto
-    if (action && subject) {
-      const conflictingPermission = await this.permissionRepository.findByActionAndSubject(action, subject)
-      if (conflictingPermission && conflictingPermission.id !== id) {
-        throw PermissionError.AlreadyExists(action, subject)
+  async create({
+    data,
+    createdById,
+  }: {
+    data: CreatePermissionBodyType
+    createdById: number
+  }): Promise<PermissionType> {
+    try {
+      return await this.permissionRepo.create({
+        createdById,
+        data,
+      })
+    } catch (error) {
+      if (isUniqueConstraintPrismaError(error)) {
+        throw PermissionError.ALREADY_EXISTS
       }
+      throw error
     }
-    const data: UpdatePermissionData = {
-      ...updatePermissionDto
-    }
-    return this.permissionRepository.update(id, data)
   }
 
-  async remove(id: number): Promise<Permission> {
-    await this.findOne(id) // Ensure permission exists
-    return this.permissionRepository.remove(id)
+  async update({
+    id,
+    data,
+    updatedById,
+  }: {
+    id: number
+    data: UpdatePermissionBodyType
+    updatedById: number
+  }): Promise<PermissionType> {
+    try {
+      const permission = await this.permissionRepo.updatePermission(id, updatedById, data)
+      return permission
+    } catch (error) {
+      if (isNotFoundPrismaError(error)) {
+        throw PermissionError.NOT_FOUND
+      }
+      if (isUniqueConstraintPrismaError(error)) {
+        throw PermissionError.ALREADY_EXISTS
+      }
+      throw error
+    }
+  }
+
+  async delete({ id, deletedById }: { id: number; deletedById: number }): Promise<{ message: string }> {
+    try {
+      await this.permissionRepo.softDeletePermission(id, deletedById)
+      return {
+        message: 'permission.success.DELETE_SUCCESS',
+      }
+    } catch (error) {
+      if (isNotFoundPrismaError(error)) {
+        throw PermissionError.NOT_FOUND
+      }
+      throw error
+    }
   }
 }

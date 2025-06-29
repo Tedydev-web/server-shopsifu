@@ -1,19 +1,12 @@
-import { SetMetadata, UseGuards, applyDecorators } from '@nestjs/common'
-import { AuthType, AuthTypeType, ConditionGuardType } from '../../routes/auth/auth.constants'
-import { AuthenticationGuard } from '../../routes/auth/guards/authentication.guard'
+import { SetMetadata } from '@nestjs/common'
+import { AuthType, AuthTypeType, ConditionGuard, ConditionGuardType } from 'src/shared/constants/auth.constant'
 
-export const IS_PUBLIC_KEY = 'isPublic'
-export const ROLES_KEY = 'roles'
 export const AUTH_TYPE_KEY = 'authType'
 
-export const Auth = (
-  authTypes: AuthTypeType[] = [AuthType.JWT],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  options?: { condition: ConditionGuardType }
-) => {
-  const authGuards = authTypes.map(() => AuthenticationGuard)
-  return applyDecorators(SetMetadata(AUTH_TYPE_KEY, authTypes), UseGuards(...authGuards))
+export type AuthTypeDecoratorPayload = { authTypes: AuthTypeType[]; options: { condition: ConditionGuardType } }
+
+export const Auth = (authTypes: AuthTypeType[], options?: { condition: ConditionGuardType }) => {
+  return SetMetadata(AUTH_TYPE_KEY, { authTypes, options: options ?? { condition: ConditionGuard.And } })
 }
 
-export const IsPublic = () => SetMetadata(IS_PUBLIC_KEY, true)
-export const RolesAllowed = (...roles: string[]) => SetMetadata(ROLES_KEY, roles)
+export const IsPublic = () => Auth([AuthType.None])

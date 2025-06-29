@@ -1,80 +1,73 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common'
+import { SharedModule } from './shared/shared.module'
+import { AuthModule } from './routes/auth/auth.module'
+import { APP_FILTER, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core'
+import ZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
+import { ZodSerializerInterceptor } from 'nestjs-zod'
+import { AllExceptionsFilter } from 'src/shared/filters/all-exceptions.filter'
+import { LanguageModule } from 'src/routes/language/language.module'
 import { ConfigModule } from '@nestjs/config'
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { CsrfProtectionMiddleware } from 'src/shared/middleware/csrf.middleware'
 import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
 import path from 'path'
-import { AppController } from './app.controller'
-import { AppService } from './app.service'
-import { AuthModule } from './routes/auth/auth.module'
+import { TransformInterceptor } from './shared/interceptor/transform.interceptor'
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { APP_GUARD } from '@nestjs/core'
 import { PermissionModule } from './routes/permission/permission.module'
-import { ProfileModule } from './routes/profile/profile.module'
 import { RoleModule } from './routes/role/role.module'
-import { UserModule } from './routes/user/user.module'
-import appConfig from './shared/config'
-import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter'
-import { ResponseInterceptor } from './shared/interceptors/response.interceptor'
-import { CsrfMiddleware, LoggerMiddleware, SecurityHeadersMiddleware } from './shared/middleware'
-import { MiddlewaresModule } from './shared/middleware/middlewares.module'
-import { SharedModule } from './shared/shared.module'
-import { AuthenticationGuard } from './routes/auth/guards/authentication.guard'
-import { EventEmitterModule } from '@nestjs/event-emitter'
+import envConfig from 'src/shared/config'
+import { ProfileModule } from './routes/profile/profile.module'
 
 @Module({
   imports: [
-    EventEmitterModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig]
+      load: [envConfig],
     }),
     I18nModule.forRoot({
-      fallbackLanguage: 'en',
+      fallbackLanguage: 'vi',
       loaderOptions: {
         path: path.resolve('src/i18n'),
-        watch: true
+        watch: true,
       },
       resolvers: [AcceptLanguageResolver, new QueryResolver(['lang'])],
-      typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
+      typesOutputPath: path.resolve('src/generated/i18n.generated.ts'),
     }),
+    SharedModule,
+    AuthModule,
+    LanguageModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
-        limit: 10
-      }
+        limit: 10,
+      },
     ]),
-    SharedModule,
-    AuthModule,
     PermissionModule,
-    UserModule,
     RoleModule,
     ProfileModule,
-    MiddlewaresModule
   ],
-  controllers: [AppController],
   providers: [
-    AppService,
     {
-      provide: APP_FILTER,
-      useClass: AllExceptionsFilter
+      provide: APP_PIPE,
+      useClass: ZodValidationPipe,
     },
+    { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
     {
       provide: APP_INTERCEPTOR,
-      useClass: ResponseInterceptor
+      useClass: TransformInterceptor,
+    },
+    {
+      provide: APP_FILTER,
+      useClass: AllExceptionsFilter,
     },
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard
+      useClass: ThrottlerGuard,
     },
-    {
-      provide: APP_GUARD,
-      useClass: AuthenticationGuard
-    }
-  ]
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(LoggerMiddleware).forRoutes('*')
-    consumer.apply(SecurityHeadersMiddleware).forRoutes('*')
-    consumer.apply(CsrfMiddleware).forRoutes('*')
+    consumer.apply(CsrfProtectionMiddleware).forRoutes('*')
   }
 }

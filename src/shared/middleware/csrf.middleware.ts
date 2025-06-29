@@ -1,49 +1,48 @@
-import { Injectable, NestMiddleware, Logger, HttpStatus } from '@nestjs/common'
-import { Request, Response, NextFunction } from 'express'
+import { Injectable, NestMiddleware, Logger, Inject } from '@nestjs/common'
+import { Request, Response, NextFunction, RequestHandler } from 'express'
 import csurf from 'csurf'
 import { ConfigService } from '@nestjs/config'
-import { HttpHeader } from 'src/shared/constants/http.constants'
-import { CookieConfig } from 'src/routes/auth/auth.types'
+import * as tokens from 'src/shared/constants/injection.tokens'
+import { CookieService } from '../services/cookie.service'
+import { EnvConfigType } from 'src/shared/config'
 
 @Injectable()
-export class CsrfMiddleware implements NestMiddleware {
-  private readonly logger = new Logger(CsrfMiddleware.name)
-  constructor(private readonly configService: ConfigService) {}
+export class CsrfProtectionMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(CsrfProtectionMiddleware.name)
+  private readonly csurfProtection: RequestHandler
 
-  use(req: Request, res: Response, next: NextFunction) {
-    const csrfSecretCookieOptions = this.configService.get<CookieConfig>('cookie.csrfSecret.options')
-    const csrfTokenCookieOptions = this.configService.get<CookieConfig>('cookie.csrfToken.options')
+  constructor(
+    private readonly configService: ConfigService<EnvConfigType>,
+    @Inject(tokens.COOKIE_SERVICE) private readonly cookieService: CookieService,
+  ) {
+    // Lấy cấu hình chi tiết cho cookie bí mật (_csrf) từ config trung tâm
+    const cookieConfig = this.configService.get('cookie')
+    const csrfSecretConfig = cookieConfig.definitions.csrfSecret
 
-    if (!csrfSecretCookieOptions || !csrfTokenCookieOptions) {
-      // Trong môi trường production, nên chặn request thay vì tiếp tục
-      if (this.configService.get('isProduction')) {
-        return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: 'Lỗi cấu hình máy chủ.' })
-      }
-    }
-
-    const csurfProtection = csurf({
+    this.csurfProtection = csurf({
       cookie: {
-        ...csrfSecretCookieOptions,
-        key: this.configService.get<string>('cookie.csrfSecret.name'),
-        signed: true // _csrf cookie luôn phải được signed
+        ...csrfSecretConfig.options,
+        // Cấu hình của csurf yêu cầu `signed` và `key` phải được đặt ở đây
+        signed: true,
+        key: csrfSecretConfig.name,
       },
       value: (req: Request) => {
-        // Hỗ trợ cả hai header phổ biến
+        // Hỗ trợ cả hai header phổ biến mà các framework frontend hay dùng
         return (req.headers['x-csrf-token'] || req.headers['x-xsrf-token']) as string
-      }
+      },
     })
+  }
 
-    void csurfProtection(req, res, () => {
+  use(req: Request, res: Response, next: NextFunction) {
+    void this.csurfProtection(req, res, (err: any) => {
+      if (err) {
+        this.logger.warn(`Invalid CSRF token: ${err.code}`, { url: req.originalUrl })
+        // Để cho AllExceptionsFilter xử lý lỗi một cách nhất quán
+        return next(err)
+      }
       const token = req.csrfToken()
-      // Set cookie XSRF-TOKEN cho client đọc
-      res.cookie(this.configService.get<string>('cookie.csrfToken.name'), token, {
-        ...csrfTokenCookieOptions,
-        maxAge: undefined // Đây là session cookie, không cần maxAge
-      })
-
-      // Đặt cả hai header để client dễ dàng lấy
-      res.header(HttpHeader.XSRF_TOKEN_HEADER, token)
-      res.header(HttpHeader.CSRF_TOKEN_HEADER, token)
+      // Sử dụng CookieService để set cookie XSRF-TOKEN cho client
+      this.cookieService.set(res, 'csrfToken', token)
 
       next()
     })

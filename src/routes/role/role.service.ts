@@ -1,94 +1,99 @@
-import { Injectable, ForbiddenException } from '@nestjs/common'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
-import { RoleRepository, CreateRoleData, UpdateRoleData } from './role.repository'
-import { CreateRoleDto, UpdateRoleDto } from './role.dto'
-import { Role } from './role.model'
-import { RoleError } from './role.error'
-import { EventEmitter2 } from '@nestjs/event-emitter'
+import { Injectable } from '@nestjs/common'
+import { RoleRepo } from 'src/routes/role/role.repo'
+import {
+  CreateRoleBodyType,
+  UpdateRoleBodyType,
+  RoleType,
+  PaginatedResponseType,
+  RolePaginationQueryType,
+} from 'src/routes/role/role.model'
+import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/utils/prisma.utils'
+import { RoleError } from 'src/routes/role/role.error'
+import { RoleName } from 'src/shared/constants/role.constant'
 
 @Injectable()
 export class RoleService {
-  constructor(
-    private readonly roleRepository: RoleRepository,
-    private readonly i18n: I18nService<I18nTranslations>,
-    private readonly eventEmitter: EventEmitter2
-  ) {}
+  constructor(private roleRepo: RoleRepo) {}
 
-  async create(createRoleDto: CreateRoleDto): Promise<Role> {
-    const existingRole = await this.roleRepository.findByName(createRoleDto.name)
-    if (existingRole) {
-      throw RoleError.AlreadyExists(createRoleDto.name)
-    }
-    // For now, we allow creating system/superadmin roles via API,
-    // but this could be restricted to specific users (e.g., only super admins) in the controller layer using policies.
-    const data: CreateRoleData = {
-      name: createRoleDto.name,
-      description: createRoleDto.description,
-      isSystemRole: createRoleDto.isSystemRole,
-      isSuperAdmin: createRoleDto.isSuperAdmin,
-      permissionIds: createRoleDto.permissionIds
-    }
-    return this.roleRepository.create(data)
-  }
-
-  async findAll(): Promise<Role[]> {
-    return this.roleRepository.findAll()
-  }
-
-  async findOne(id: number): Promise<Role> {
-    const role = await this.roleRepository.findById(id)
+  private async verifyRole(roleId: number) {
+    const role = await this.roleRepo.findById(roleId)
     if (!role) {
-      throw RoleError.NotFound()
+      throw RoleError.NOT_FOUND
+    }
+    const baseRoles: string[] = [RoleName.Admin, RoleName.Client, RoleName.Seller]
+
+    if (baseRoles.includes(role.name)) {
+      throw RoleError.CANNOT_DELETE_DEFAULT_ROLE
+    }
+  }
+
+  async list(pagination: RolePaginationQueryType): Promise<PaginatedResponseType<RoleType>> {
+    const data = await this.roleRepo.findAllWithPagination(pagination)
+    return data
+  }
+
+  async findById(id: number): Promise<RoleType> {
+    const role = await this.roleRepo.findById(id)
+    if (!role) {
+      throw RoleError.NOT_FOUND
     }
     return role
   }
 
-  async update(id: number, updateRoleDto: UpdateRoleDto): Promise<Role> {
-    const role = await this.findOne(id) // uses findOne to ensure role exists
-
-    if (role.isSystemRole) {
-      // Prevent key attributes from being changed on system roles
-      if (
-        updateRoleDto.isSystemRole === false ||
-        updateRoleDto.isSuperAdmin === false ||
-        (updateRoleDto.name && updateRoleDto.name !== role.name)
-      ) {
-        throw new ForbiddenException(this.i18n.t('role.error.cannotUpdateSystemRole'))
+  async create({ data, createdById }: { data: CreateRoleBodyType; createdById: number }): Promise<RoleType> {
+    try {
+      const role = await this.roleRepo.create({
+        createdById,
+        data,
+      })
+      return role
+    } catch (error) {
+      if (isUniqueConstraintPrismaError(error)) {
+        throw RoleError.ALREADY_EXISTS
       }
+      throw error
     }
-
-    // Prevent changing a role's name if it's a super admin role (to avoid breaking hard-coded logic if any remains)
-    if (role.isSuperAdmin && updateRoleDto.name && updateRoleDto.name !== role.name) {
-      throw new ForbiddenException('Cannot change the name of a super admin role.')
-    }
-
-    if (updateRoleDto.name && updateRoleDto.name !== role.name) {
-      const existingRole = await this.roleRepository.findByName(updateRoleDto.name)
-      if (existingRole && existingRole.id !== id) {
-        throw RoleError.AlreadyExists(updateRoleDto.name)
-      }
-    }
-    const data: UpdateRoleData = { ...updateRoleDto }
-    const updatedRole = await this.roleRepository.update(id, data)
-
-    // Invalidate caches for all users in this role
-    this.eventEmitter.emit('role.updated', { roleId: updatedRole.id })
-
-    return updatedRole
   }
 
-  async remove(id: number): Promise<Role> {
-    const role = await this.findOne(id) // uses findOne to ensure role exists
-
-    if (role.isSystemRole) {
-      throw RoleError.CannotDeleteSystemRole()
+  async update({
+    id,
+    data,
+    updatedById,
+  }: {
+    id: number
+    data: UpdateRoleBodyType
+    updatedById: number
+  }): Promise<RoleType> {
+    try {
+      await this.verifyRole(id)
+      const role = await this.roleRepo.updateRoleWithPermissions(id, updatedById, data)
+      return role
+    } catch (error) {
+      if (isNotFoundPrismaError(error)) {
+        throw RoleError.NOT_FOUND
+      }
+      if (isUniqueConstraintPrismaError(error)) {
+        throw RoleError.ALREADY_EXISTS
+      }
+      if (error instanceof Error && error.message.includes('Permission with id has been deleted')) {
+        throw RoleError.DELETED_PERMISSION_INCLUDED
+      }
+      throw error
     }
+  }
 
-    if (role.isSuperAdmin) {
-      throw new ForbiddenException('Cannot delete a super admin role.')
+  async delete({ id, deletedById }: { id: number; deletedById: number }): Promise<{ message: string }> {
+    try {
+      await this.verifyRole(id)
+      await this.roleRepo.softDeleteRole(id, deletedById)
+      return {
+        message: 'role.success.DELETE_SUCCESS',
+      }
+    } catch (error) {
+      if (isNotFoundPrismaError(error)) {
+        throw RoleError.NOT_FOUND
+      }
+      throw error
     }
-
-    return this.roleRepository.deleteById(id)
   }
 }
