@@ -1,7 +1,6 @@
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { createHash } from 'crypto'
 import { Request } from 'express'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { GeolocationService, GeoLocationResult } from './geolocation.service'
 import { ParsedUserAgent, UserAgentService } from './user-agent.service'
 import { extractRealIpFromRequest } from '../utils/http.utils'
@@ -24,8 +23,8 @@ export class DeviceFingerprintService {
   private readonly logger = new Logger(DeviceFingerprintService.name)
 
   constructor(
-    @Inject(tokens.USER_AGENT_SERVICE) private readonly userAgentService: UserAgentService,
-    @Inject(tokens.GEOLOCATION_SERVICE) private readonly geolocationService: GeolocationService,
+    private readonly userAgentService: UserAgentService,
+    private readonly geolocationService: GeolocationService,
   ) {}
 
   async extractInfo(req: Request): Promise<EnhancedDeviceInfo> {

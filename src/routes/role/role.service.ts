@@ -1,51 +1,28 @@
 import { Injectable } from '@nestjs/common'
 import { RoleRepo } from 'src/routes/role/role.repo'
-import {
-  CreateRoleBodyType,
-  UpdateRoleBodyType,
-  RoleType,
-  PaginatedResponseType,
-  RolePaginationQueryType,
-} from 'src/routes/role/role.model'
+import { CreateRoleBodyType, GetRolesQueryType, UpdateRoleBodyType } from 'src/routes/role/role.model'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/utils/prisma.utils'
-import { RoleError } from 'src/routes/role/role.error'
 import { RoleName } from 'src/shared/constants/role.constant'
+import { GlobalError } from 'src/shared/global.error'
 
 @Injectable()
 export class RoleService {
   constructor(private roleRepo: RoleRepo) {}
 
-  private async verifyRole(roleId: number) {
-    const role = await this.roleRepo.findById(roleId)
-    if (!role) {
-      throw RoleError.NOT_FOUND
-    }
-    const baseRoles: string[] = [RoleName.Admin, RoleName.Client, RoleName.Seller]
-
-    if (baseRoles.includes(role.name)) {
-      throw RoleError.CANNOT_UPDATE_DEFAULT_ROLE
-    }
-  }
-
-  async list(pagination: RolePaginationQueryType): Promise<PaginatedResponseType<RoleType>> {
-    const data = await this.roleRepo.findAllWithPagination(pagination)
+  async list(pagination: GetRolesQueryType) {
+    const data = await this.roleRepo.list(pagination)
     return data
   }
 
-  async findById(id: number): Promise<RoleType> {
+  async findById(id: number) {
     const role = await this.roleRepo.findById(id)
     if (!role) {
-      throw RoleError.NOT_FOUND
+      throw GlobalError.NotFoundRecordException()
     }
     return role
   }
 
-  async create({ data, createdById }: { data: CreateRoleBodyType; createdById: number }): Promise<RoleType> {
-    const existingRole = await this.roleRepo.findByName(data.name)
-    if (existingRole) {
-      throw RoleError.ALREADY_EXISTS
-    }
-
+  async create({ data, createdById }: { data: CreateRoleBodyType; createdById: number }) {
     try {
       const role = await this.roleRepo.create({
         createdById,
@@ -54,55 +31,60 @@ export class RoleService {
       return role
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw RoleError.ALREADY_EXISTS
+        throw GlobalError.Conflict()
       }
-      throw error
+      throw GlobalError.InternalServerError()
     }
   }
 
-  async update({
-    id,
-    data,
-    updatedById,
-  }: {
-    id: number
-    data: UpdateRoleBodyType
-    updatedById: number
-  }): Promise<RoleType> {
-    await this.verifyRole(id)
-
-    const existingRole = await this.roleRepo.findByNameExcludingId(data.name, id)
-    if (existingRole) {
-      throw RoleError.ALREADY_EXISTS
+  /**
+   * Kiểm tra xem role có phải là 1 trong 3 role cơ bản không
+   */
+  private async verifyRole(roleId: number) {
+    const role = await this.roleRepo.findById(roleId)
+    if (!role) {
+      throw GlobalError.NotFoundRecordException()
     }
+    const baseRoles: string[] = [RoleName.Admin, RoleName.Client, RoleName.Seller]
 
-    try {
-      const role = await this.roleRepo.updateRoleWithPermissions(id, updatedById, data)
-      return role
-    } catch (error) {
-      if (isNotFoundPrismaError(error)) {
-        throw RoleError.NOT_FOUND
-      }
-      if (isUniqueConstraintPrismaError(error)) {
-        throw RoleError.ALREADY_EXISTS
-      }
-      if (error instanceof Error && error.message.includes('Permission with id has been deleted')) {
-        throw RoleError.DELETED_PERMISSION_INCLUDED
-      }
-      throw error
+    if (baseRoles.includes(role.name)) {
+      throw GlobalError.Forbidden()
     }
   }
 
-  async delete({ id, deletedById }: { id: number; deletedById: number }): Promise<{ message: string }> {
+  async update({ id, data, updatedById }: { id: number; data: UpdateRoleBodyType; updatedById: number }) {
     try {
       await this.verifyRole(id)
-      await this.roleRepo.softDeleteRole(id, deletedById)
+      const updatedRole = await this.roleRepo.update({
+        id,
+        updatedById,
+        data,
+      })
+      return updatedRole
+    } catch (error) {
+      if (isNotFoundPrismaError(error)) {
+        throw GlobalError.NotFoundRecordException()
+      }
+      if (isUniqueConstraintPrismaError(error)) {
+        throw GlobalError.Conflict()
+      }
+      throw error
+    }
+  }
+
+  async delete({ id, deletedById }: { id: number; deletedById: number }) {
+    try {
+      await this.verifyRole(id)
+      await this.roleRepo.delete({
+        id,
+        deletedById,
+      })
       return {
-        message: 'role.success.DELETE_SUCCESS',
+        message: 'Delete successfully',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw RoleError.NOT_FOUND
+        throw GlobalError.NotFoundRecordException()
       }
       throw error
     }

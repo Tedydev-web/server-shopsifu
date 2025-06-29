@@ -32,17 +32,15 @@ export type I18nTranslations = {
         "error": {
             "EMAIL_ALREADY_EXISTS": string;
             "EMAIL_NOT_FOUND": string;
-            "INVALID_PASSWORD": string;
-            "PASSWORDS_NOT_MATCH": string;
-            "SAME_PASSWORD": string;
-            "WEAK_PASSWORD": string;
-            "INVALID_CREDENTIALS": string;
             "USER_NOT_FOUND": string;
             "USER_NOT_ACTIVE": string;
             "USER_BLOCKED": string;
             "ACCOUNT_LOCKED": string;
-            "ROLE_NOT_FOUND": string;
-            "INSUFFICIENT_PERMISSIONS": string;
+            "INVALID_PASSWORD": string;
+            "INVALID_CREDENTIALS": string;
+            "PASSWORDS_NOT_MATCH": string;
+            "SAME_PASSWORD": string;
+            "WEAK_PASSWORD": string;
             "INVALID_OTP": string;
             "OTP_EXPIRED": string;
             "OTP_SENDING_FAILED": string;
@@ -55,6 +53,7 @@ export type I18nTranslations = {
             "INVALID_TOTP_AND_CODE": string;
             "DISABLE_2FA_REQUIRES_CODE": string;
             "INVALID_RECOVERY_CODE": string;
+            "STATE_TOKEN_MISSING": string;
             "REFRESH_TOKEN_REQUIRED": string;
             "INVALID_REFRESH_TOKEN": string;
             "REFRESH_TOKEN_REUSED": string;
@@ -83,6 +82,8 @@ export type I18nTranslations = {
             "VERIFICATION_CODE_NOT_FOUND": string;
             "VERIFICATION_REQUIRED": string;
             "EMAIL_NOT_VERIFIED": string;
+            "ROLE_NOT_FOUND": string;
+            "INSUFFICIENT_PERMISSIONS": string;
             "RATE_LIMIT_EXCEEDED": string;
             "SERVICE_UNAVAILABLE": string;
             "MAINTENANCE_MODE": string;
@@ -264,10 +265,9 @@ export type I18nTranslations = {
             "IMPORT_SUCCESS": string;
         };
         "error": {
-            "NotFound": string;
-            "AlreadyExists": string;
-            "OperationFailed": string;
-            "ImportFailed": string;
+            "NOT_FOUND": string;
+            "ALREADY_EXISTS": string;
+            "CANNOT_DELETE": string;
         };
     };
     "permission": {
@@ -281,7 +281,19 @@ export type I18nTranslations = {
         "error": {
             "NOT_FOUND": string;
             "ALREADY_EXISTS": string;
-            "OPERATION_FAILED": string;
+        };
+    };
+    "profile": {
+        "success": {
+            "GET_PROFILE": string;
+            "UPDATE_PROFILE": string;
+            "CHANGE_PASSWORD": string;
+        };
+        "error": {
+            "NOT_FOUND": string;
+            "INVALID_PASSWORD": string;
+            "UPDATE_FAILED": string;
+            "CHANGE_PASSWORD_FAILED": string;
         };
     };
     "role": {

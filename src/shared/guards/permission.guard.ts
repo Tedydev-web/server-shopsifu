@@ -1,13 +1,11 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Inject, Logger } from '@nestjs/common'
+import { Injectable, CanActivate, ExecutionContext, Logger } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { Request } from 'express'
 import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
 import { AuthError } from 'src/routes/auth/auth.error'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { PrismaService } from '../services/prisma.service'
-import { IRedisService } from '../providers/redis/redis.interface'
+import { RedisService } from '../providers/redis/redis.service'
 import { RedisKeyManager } from '../providers/redis/redis-key.manager'
-import { GlobalError } from '../global.error'
 
 export interface RequiredPermission {
   resource: string
@@ -33,8 +31,8 @@ export class PermissionGuard implements CanActivate {
 
   constructor(
     private readonly reflector: Reflector,
-    @Inject(tokens.PRISMA_SERVICE) private readonly prismaService: PrismaService,
-    @Inject(tokens.REDIS_SERVICE) private readonly redisService: IRedisService,
+    private readonly prismaService: PrismaService,
+    private readonly redisService: RedisService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -64,11 +62,11 @@ export class PermissionGuard implements CanActivate {
     }
     if (!dbUser.role || !dbUser.role.isActive) {
       this.logDenied(request, 'ROLE_NOT_ACTIVE', user)
-      throw GlobalError.Forbidden('auth.error.ROLE_NOT_ACTIVE')
+      throw AuthError.UserNotActive
     }
     if (dbUser.status !== 'ACTIVE') {
       this.logDenied(request, `USER_STATUS_${dbUser.status}`, user)
-      throw dbUser.status === 'BLOCKED' ? AuthError.UserBlocked : AuthError.UserNotActive
+      throw AuthError.UserNotActive
     }
 
     // 2. Validate device (with caching)
@@ -96,7 +94,7 @@ export class PermissionGuard implements CanActivate {
 
     if (!hasPermission) {
       this.logDenied(request, 'INSUFFICIENT_PERMISSIONS', user)
-      throw GlobalError.Forbidden('auth.error.INSUFFICIENT_PERMISSIONS')
+      throw AuthError.InsufficientPermissions
     }
 
     return true
@@ -110,7 +108,7 @@ export class PermissionGuard implements CanActivate {
 
     if (cachedStatus) {
       if (!cachedStatus.isActive) {
-        throw GlobalError.Forbidden('auth.error.DEVICE_INACTIVE')
+        throw AuthError.UserNotActive
       }
       return
     }
@@ -122,11 +120,11 @@ export class PermissionGuard implements CanActivate {
     })
 
     if (!device) {
-      throw GlobalError.Forbidden('auth.error.DEVICE_NOT_FOUND')
+      throw AuthError.SessionNotFound
     }
 
     if (!device.isActive) {
-      throw GlobalError.Forbidden('auth.error.DEVICE_INACTIVE')
+      throw AuthError.UserNotActive
     }
 
     // Cache the result
@@ -155,7 +153,7 @@ export class PermissionGuard implements CanActivate {
     })
 
     if (!roleWithPermissions) {
-      throw GlobalError.Forbidden('auth.error.ROLE_NOT_FOUND')
+      throw AuthError.RoleNotFound
     }
 
     const permissions = roleWithPermissions.permissions.map((p) => ({

@@ -1,10 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Session } from '@prisma/client'
 import { EnvConfigType } from 'src/shared/config'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { RedisKeyManager } from '../providers/redis/redis-key.manager'
-import { IRedisService } from '../providers/redis/redis.interface'
+import { RedisService } from '../providers/redis/redis.service'
 
 @Injectable()
 export class SessionService {
@@ -12,7 +11,7 @@ export class SessionService {
   private readonly sessionTtlSeconds: number
 
   constructor(
-    @Inject(tokens.REDIS_SERVICE) private readonly redis: IRedisService,
+    private readonly redis: RedisService,
     private readonly configService: ConfigService<EnvConfigType>,
   ) {
     // Cache TTL cho session bằng với thời gian hết hạn của Refresh Token

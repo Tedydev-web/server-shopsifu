@@ -10,8 +10,7 @@ import { RequiredPermission, PERMISSIONS_KEY } from '../guards/permission.guard'
  *   { resource: 'role', action: 'create' }
  * )
  */
-export const RequirePermissions = (...permissions: RequiredPermission[]) =>
-  SetMetadata(PERMISSIONS_KEY, permissions)
+export const RequirePermissions = (...permissions: RequiredPermission[]) => SetMetadata(PERMISSIONS_KEY, permissions)
 
 /**
  * Shorthand decorators for common operations
@@ -20,4 +19,4 @@ export const RequireRead = (resource: string) => RequirePermissions({ resource, 
 export const RequireCreate = (resource: string) => RequirePermissions({ resource, action: 'create' })
 export const RequireUpdate = (resource: string) => RequirePermissions({ resource, action: 'update' })
 export const RequireDelete = (resource: string) => RequirePermissions({ resource, action: 'delete' })
-export const RequireManage = (resource: string) => RequirePermissions({ resource, action: 'manage' }) 
+export const RequireManage = (resource: string) => RequirePermissions({ resource, action: 'manage' })

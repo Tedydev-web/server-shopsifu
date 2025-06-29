@@ -7,8 +7,7 @@
     "GET_PERMISSION_DETAIL": "Lấy chi tiết quyền thành công"
   },
   "error": {
-    "NOT_FOUND": "Không tìm thấy quyền",
-    "ALREADY_EXISTS": "Quyền đã tồn tại",
-    "OPERATION_FAILED": "Thao tác thất bại"
+    "NOT_FOUND": "Quyền không tồn tại.",
+    "ALREADY_EXISTS": "Quyền với đường dẫn và phương thức này đã tồn tại."
   }
 }

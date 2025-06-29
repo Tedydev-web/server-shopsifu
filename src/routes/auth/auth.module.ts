@@ -10,6 +10,7 @@ import { OtpService } from './services/otp.service'
 import { VerificationCodeRepository } from './repositories/verification-code.repository'
 import { PasswordService } from './services/password.service'
 import { SessionService } from './services/session.service'
+import { AuthRepository } from './repositories/auth.repo'
 
 @Module({
   imports: [DeviceModule],
@@ -24,6 +25,7 @@ import { SessionService } from './services/session.service'
     VerificationCodeRepository,
     PasswordService,
     SessionService,
+    AuthRepository,
   ],
   exports: [CoreAuthService, SessionService],
 })

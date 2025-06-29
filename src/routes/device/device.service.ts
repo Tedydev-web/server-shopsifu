@@ -1,7 +1,6 @@
-import { Inject, Injectable, Logger, Req } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { Device } from '@prisma/client'
 import { Request } from 'express'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { DeviceFingerprintService } from 'src/shared/services/device-fingerprint.service'
 import { DeviceRepository } from './device.repository'
 import { DeviceError } from './device.error'
@@ -11,7 +10,6 @@ export class DeviceService {
   private readonly logger = new Logger(DeviceService.name)
 
   constructor(
-    @Inject(tokens.DEVICE_FINGERPRINT_SERVICE)
     private readonly deviceFingerprintService: DeviceFingerprintService,
     private readonly deviceRepository: DeviceRepository,
   ) {}

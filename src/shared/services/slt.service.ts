@@ -1,12 +1,11 @@
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import { Request } from 'express'
 import { TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import { EnvConfigType } from 'src/shared/config'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { RedisKeyManager } from '../providers/redis/redis-key.manager'
-import { IRedisService } from '../providers/redis/redis.interface'
+import { RedisService } from '../providers/redis/redis.service'
 import { v4 as uuidv4 } from 'uuid'
 import { GlobalError } from 'src/shared/global.error'
 import { extractRealIpFromRequest } from '../utils/http.utils'
@@ -35,7 +34,7 @@ export class SltService {
   constructor(
     private readonly configService: ConfigService<EnvConfigType>,
     private readonly jwtService: JwtService,
-    @Inject(tokens.REDIS_SERVICE) private readonly redisService: IRedisService,
+    private readonly redisService: RedisService,
   ) {}
 
   /**

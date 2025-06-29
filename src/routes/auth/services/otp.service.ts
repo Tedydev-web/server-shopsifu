@@ -1,11 +1,10 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { addMilliseconds } from 'date-fns'
 import { AuthError } from '../auth.error'
 import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import { CryptoService } from 'src/shared/services/crypto.service'
 import { EmailService } from 'src/shared/services/email.service'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { VerificationCodeRepository } from '../repositories/verification-code.repository'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { SendOTPBodyDTO } from '../dtos/auth.dto'
@@ -18,17 +17,17 @@ import { CookieNames } from 'src/shared/constants/cookie.constant'
 @Injectable()
 export class OtpService {
   constructor(
-    @Inject(tokens.SHARED_USER_REPOSITORY) private readonly userRepository: SharedUserRepository,
-    @Inject(tokens.CRYPTO_SERVICE) private readonly cryptoService: CryptoService,
-    @Inject(tokens.EMAIL_SERVICE) private readonly emailService: EmailService,
+    private readonly userRepository: SharedUserRepository,
+    private readonly cryptoService: CryptoService,
+    private readonly emailService: EmailService,
     private readonly verificationCodeRepository: VerificationCodeRepository,
     private readonly configService: ConfigService<EnvConfigType>,
-    @Inject(tokens.SLT_SERVICE) private readonly sltService: SltService,
-    @Inject(tokens.COOKIE_SERVICE) private readonly cookieService: CookieService,
+    private readonly sltService: SltService,
+    private readonly cookieService: CookieService,
   ) {}
 
   async sendOTP(body: SendOTPBodyDTO, req: Request, res: Response) {
-    const user = await this.userRepository.findUnique(body.email)
+    const user = await this.userRepository.findUnique({ email: body.email })
     if (body.type === TypeOfVerificationCode.REGISTER && user) {
       throw AuthError.EmailAlreadyExists
     }

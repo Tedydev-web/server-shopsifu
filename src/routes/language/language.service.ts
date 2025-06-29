@@ -9,6 +9,7 @@ import {
 } from 'src/routes/language/language.model'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/utils/prisma.utils'
 import { LanguageError } from 'src/routes/language/language.error'
+import { GlobalError } from 'src/shared/global.error'
 
 @Injectable()
 export class LanguageService {
@@ -16,26 +17,15 @@ export class LanguageService {
 
   // Standard offset-based pagination for admin/management UI
   async findAll(query: LanguagePaginationQueryType): Promise<PaginatedResponseType<LanguageType>> {
-    try {
-      return await this.languageRepo.findAllWithPagination(query)
-    } catch (error) {
-      throw LanguageError.OperationFailed
-    }
+    return await this.languageRepo.findAllWithPagination(query)
   }
 
   async findById(id: string): Promise<LanguageType> {
-    try {
-      const language = await this.languageRepo.findById(id)
-      if (!language) {
-        throw LanguageError.NotFound
-      }
-      return language
-    } catch (error) {
-      if (error === LanguageError.NotFound) {
-        throw error
-      }
-      throw LanguageError.OperationFailed
+    const language = await this.languageRepo.findById(id)
+    if (!language) {
+      throw LanguageError.NotFound
     }
+    return language
   }
 
   async create(body: CreateLanguageBodyType, userId: number): Promise<LanguageType> {
@@ -55,7 +45,7 @@ export class LanguageService {
       if (isUniqueConstraintPrismaError(error)) {
         throw LanguageError.AlreadyExists
       }
-      throw LanguageError.OperationFailed
+      throw GlobalError.InternalServerError()
     }
   }
 
@@ -76,11 +66,17 @@ export class LanguageService {
       if (isUniqueConstraintPrismaError(error)) {
         throw LanguageError.AlreadyExists
       }
-      throw LanguageError.OperationFailed
+      throw GlobalError.InternalServerError()
     }
   }
 
   async delete(id: string, userId: number): Promise<LanguageType> {
+    // Check if language exists first
+    const existingLanguage = await this.languageRepo.findById(id)
+    if (!existingLanguage) {
+      throw LanguageError.NotFound
+    }
+
     try {
       const language = await this.languageRepo.delete(id, { deletedById: userId })
       return language
@@ -88,7 +84,11 @@ export class LanguageService {
       if (isNotFoundPrismaError(error)) {
         throw LanguageError.NotFound
       }
-      throw LanguageError.OperationFailed
+      // Could be a foreign key constraint violation
+      if (error.code === 'P2003') {
+        throw LanguageError.CannotDelete
+      }
+      throw GlobalError.InternalServerError()
     }
   }
 }

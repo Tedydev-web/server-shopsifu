@@ -7,7 +7,7 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 export class RolesService {
   private clientRoleId: number | null = null
 
-  constructor(private readonly prismaService: PrismaService) { }
+  constructor(private readonly prismaService: PrismaService) {}
 
   async getRoleById(id: number) {
     return this.prismaService.role.findUnique({

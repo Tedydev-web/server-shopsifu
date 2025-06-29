@@ -12,5 +12,4 @@ export const RoleSchema = z.object({
   createdAt: z.date(),
   updatedAt: z.date(),
 })
-
 export type RoleType = z.infer<typeof RoleSchema>

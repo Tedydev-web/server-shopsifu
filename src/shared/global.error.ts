@@ -6,13 +6,6 @@ import { ApiException } from './exceptions/api.exception'
  * Follows HTTP status code conventions for consistent error handling.
  */
 export class GlobalError {
-  public static InternalServerError(
-    message: string = 'global.error.INTERNAL_SERVER_ERROR',
-    details?: any,
-  ): ApiException {
-    return new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'E0001', message, details)
-  }
-
   public static BadRequest(message: string = 'global.error.BAD_REQUEST', details?: any): ApiException {
     return new ApiException(HttpStatus.BAD_REQUEST, 'E0002', message, details)
   }
@@ -29,6 +22,10 @@ export class GlobalError {
     return new ApiException(HttpStatus.NOT_FOUND, 'E0005', message, details)
   }
 
+  public static Conflict(message: string = 'global.error.CONFLICT', details?: any): ApiException {
+    return new ApiException(HttpStatus.CONFLICT, 'E0007', message, details)
+  }
+
   public static UnprocessableEntity(
     message: string = 'global.error.UNPROCESSABLE_ENTITY',
     details?: any,
@@ -36,8 +33,11 @@ export class GlobalError {
     return new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, 'E0006', message, details)
   }
 
-  public static Conflict(message: string = 'global.error.CONFLICT', details?: any): ApiException {
-    return new ApiException(HttpStatus.CONFLICT, 'E0007', message, details)
+  public static InternalServerError(
+    message: string = 'global.error.INTERNAL_SERVER_ERROR',
+    details?: any,
+  ): ApiException {
+    return new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 'E0001', message, details)
   }
 
   public static TooManyRequests(message: string = 'global.error.TOO_MANY_REQUESTS', details?: any): ApiException {
@@ -77,5 +77,23 @@ export class GlobalError {
 
   public static InvalidPassword(message: string = 'global.error.INVALID_PASSWORD', details?: any): ApiException {
     return new ApiException(HttpStatus.BAD_REQUEST, 'E0016', message, details)
+  }
+
+  public static NotFoundRecordException(
+    message: string = 'global.error.NOT_FOUND_RECORD',
+    details?: any,
+  ): ApiException {
+    return new ApiException(HttpStatus.NOT_FOUND, 'E0015', message, details)
+  }
+
+  public static InvalidPasswordException(
+    message: string = 'global.error.INVALID_PASSWORD',
+    details?: any,
+  ): ApiException {
+    return new ApiException(HttpStatus.BAD_REQUEST, 'E0016', message, details)
+  }
+
+  public static VersionConflict(message: string = 'global.error.VERSION_CONFLICT', details?: any): ApiException {
+    return new ApiException(HttpStatus.CONFLICT, 'E0017', message, details)
   }
 }

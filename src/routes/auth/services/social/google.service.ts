@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, ForbiddenException } from '@nestjs/common'
+import { Injectable, Logger, ForbiddenException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Response, Request } from 'express'
 import { OAuth2Client } from 'google-auth-library'
@@ -10,7 +10,6 @@ import { CookieService } from 'src/shared/services/cookie.service'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { v4 as uuidv4 } from 'uuid'
 import { addMilliseconds } from 'date-fns'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { DeviceService } from 'src/routes/device/device.service'
 import { EnvConfigType } from 'src/shared/config'
@@ -18,6 +17,7 @@ import { randomBytes } from 'crypto'
 import ms from 'ms'
 import { SessionService } from 'src/shared/services/session.service'
 import { SessionRepository } from '../../repositories/session.repository'
+import { AuthRepository } from '../../repositories/auth.repo'
 
 const GOOGLE_OAUTH_NONCE_COOKIE = 'google_oauth_nonce'
 
@@ -28,15 +28,16 @@ export class GoogleService {
   private readonly clientUrl: string
 
   constructor(
-    @Inject(tokens.HASHING_SERVICE) private readonly hashingService: HashingService,
+    private readonly hashingService: HashingService,
     private readonly rolesService: RolesService,
     private readonly authService: CoreAuthService,
     private readonly configService: ConfigService<EnvConfigType>,
-    @Inject(tokens.COOKIE_SERVICE) private readonly cookieService: CookieService,
-    @Inject(tokens.SHARED_USER_REPOSITORY) private readonly sharedUserRepository: SharedUserRepository,
+    private readonly cookieService: CookieService,
+    private readonly sharedUserRepository: SharedUserRepository,
     private readonly deviceService: DeviceService,
     private readonly sessionService: SessionService,
     private readonly sessionRepository: SessionRepository,
+    private readonly authRepository: AuthRepository,
   ) {
     const googleConfig = this.configService.get('google')
     const appConfig = this.configService.get('app')
@@ -98,13 +99,13 @@ export class GoogleService {
       }
 
       // 4. Tìm hoặc tạo user
-      let user = await this.sharedUserRepository.findUnique(googleUser.email)
+      let user = await this.sharedUserRepository.findUnique({ email: googleUser.email })
 
       if (!user) {
         const clientRoleId = await this.rolesService.getClientRoleId()
         const randomPassword = uuidv4()
         const hashedPassword = await this.hashingService.hash(randomPassword)
-        user = await this.sharedUserRepository.create({
+        user = await this.authRepository.createUserInclueRole({
           email: googleUser.email,
           name: googleUser.name ?? '',
           password: hashedPassword,

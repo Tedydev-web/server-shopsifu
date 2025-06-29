@@ -19,7 +19,6 @@ import Redis from 'ioredis'
 import { Logger } from '@nestjs/common'
 import { CryptoService } from './services/crypto.service'
 import { UserAgentService } from './services/user-agent.service'
-import * as tokens from './constants/injection.tokens'
 import { SecurityHeadersMiddleware } from './middleware/security-headers.middleware'
 import { CsrfProtectionMiddleware } from './middleware/csrf.middleware'
 import { EnvConfigType } from './config'
@@ -54,8 +53,7 @@ const redisClientProvider = {
   inject: [ConfigService],
 }
 
-// Danh sách các class service để NestJS có thể khởi tạo chúng
-const serviceClasses = [
+const sharedServices = [
   PrismaService,
   HashingService,
   TokenService,
@@ -72,34 +70,14 @@ const serviceClasses = [
   SltService,
 ]
 
-// Thêm middleware vào danh sách các class để NestJS quản lý
-const middlewareClasses = [CsrfProtectionMiddleware, SecurityHeadersMiddleware]
+const sharedMiddlewares = [CsrfProtectionMiddleware, SecurityHeadersMiddleware]
 
-// Danh sách các providers sử dụng token, tuân thủ nguyên tắc Dependency Inversion
-const tokenProviders = [
-  { provide: tokens.PRISMA_SERVICE, useClass: PrismaService },
-  { provide: tokens.HASHING_SERVICE, useClass: HashingService },
-  { provide: tokens.TOKEN_SERVICE, useClass: TokenService },
-  { provide: tokens.EMAIL_SERVICE, useClass: EmailService },
-  { provide: tokens.SHARED_USER_REPOSITORY, useClass: SharedUserRepository },
-  { provide: tokens.TWO_FACTOR_SERVICE, useClass: TwoFactorService },
-  { provide: tokens.COOKIE_SERVICE, useClass: CookieService },
-  { provide: tokens.CRYPTO_SERVICE, useClass: CryptoService },
-  { provide: tokens.USER_AGENT_SERVICE, useClass: UserAgentService },
-  { provide: tokens.REDIS_SERVICE, useClass: RedisService },
-  { provide: tokens.GEOLOCATION_SERVICE, useClass: GeolocationService },
-  { provide: tokens.DEVICE_FINGERPRINT_SERVICE, useClass: DeviceFingerprintService },
-  { provide: tokens.SESSION_SERVICE, useClass: SessionService },
-  { provide: tokens.SLT_SERVICE, useClass: SltService },
-]
-
-const guardClasses = [AccessTokenGuard, APIKeyGuard, AuthenticationGuard, PermissionGuard]
+const sharedGuards = [AccessTokenGuard, APIKeyGuard, AuthenticationGuard, PermissionGuard]
 
 const allProviders = [
-  ...serviceClasses,
-  ...middlewareClasses,
-  ...tokenProviders,
-  ...guardClasses,
+  ...sharedServices,
+  ...sharedMiddlewares,
+  ...sharedGuards,
   redisClientProvider,
   {
     provide: APP_GUARD,
@@ -109,22 +87,12 @@ const allProviders = [
     provide: APP_GUARD,
     useClass: PermissionGuard,
   },
-  { provide: tokens.ACCESS_TOKEN_GUARD, useClass: AccessTokenGuard },
-  { provide: tokens.API_KEY_GUARD, useClass: APIKeyGuard },
 ]
 
 @Global()
 @Module({
   imports: [JwtModule, ConfigModule],
   providers: allProviders,
-  exports: [
-    ...serviceClasses,
-    ...middlewareClasses,
-    ...tokenProviders,
-    ...guardClasses,
-    tokens.ACCESS_TOKEN_GUARD,
-    tokens.API_KEY_GUARD,
-    tokens.PRISMA_SERVICE,
-  ],
+  exports: [...sharedServices, ...sharedMiddlewares, ...sharedGuards],
 })
 export class SharedModule {}

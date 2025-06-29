@@ -1,88 +1,62 @@
-import { HttpStatus, Injectable } from '@nestjs/common'
-import { PrismaService } from 'src/shared/services/prisma.service'
+import { Injectable } from '@nestjs/common'
 import {
   CreateRoleBodyType,
+  GetRolesQueryType,
+  GetRolesResType,
+  RoleType,
   RoleWithPermissionsType,
   UpdateRoleBodyType,
-  RoleType,
-  PaginatedResponseType,
-  RolePaginationQueryType,
 } from 'src/routes/role/role.model'
-import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
-import { ApiException } from 'src/shared/exceptions/api.exception'
+import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
-export class RoleRepo extends BaseRepository<RoleType> {
-  constructor(prismaService: PrismaService) {
-    super(prismaService, 'role')
-  }
+export class RoleRepo {
+  constructor(private prismaService: PrismaService) {}
 
-  protected getSearchableFields(): string[] {
-    return ['name', 'description']
-  }
-
-  protected getSortableFields(): string[] {
-    return ['id', 'name', 'description', 'isActive', 'createdAt', 'updatedAt']
-  }
-
-  async findAllWithPagination(query: RolePaginationQueryType): Promise<PaginatedResponseType<RoleType>> {
-    return this.paginate(query, { deletedAt: null })
-  }
-
-  async findByName(name: string, prismaClient?: PrismaTransactionClient): Promise<RoleType | null> {
-    const client = this.getClient(prismaClient)
-    return client.role.findFirst({
-      where: {
-        name: {
-          equals: name,
-          mode: 'insensitive',
+  async list(pagination: GetRolesQueryType): Promise<GetRolesResType> {
+    const skip = (pagination.page - 1) * pagination.limit
+    const take = pagination.limit
+    const [totalItems, data] = await Promise.all([
+      this.prismaService.role.count({
+        where: {
+          deletedAt: null,
         },
-        deletedAt: null,
-      },
-    })
+      }),
+      this.prismaService.role.findMany({
+        where: {
+          deletedAt: null,
+        },
+        skip,
+        take,
+      }),
+    ])
+    return {
+      data,
+      totalItems,
+      page: pagination.page,
+      limit: pagination.limit,
+      totalPages: Math.ceil(totalItems / pagination.limit),
+    }
   }
 
-  async findByNameExcludingId(
-    name: string,
-    excludeId: number,
-    prismaClient?: PrismaTransactionClient,
-  ): Promise<RoleType | null> {
-    const client = this.getClient(prismaClient)
-    return client.role.findFirst({
-      where: {
-        name: {
-          equals: name,
-          mode: 'insensitive',
-        },
-        id: {
-          not: excludeId,
-        },
-        deletedAt: null,
-      },
-    })
-  }
-
-  async findById(id: number, prismaClient?: PrismaTransactionClient): Promise<RoleWithPermissionsType | null> {
-    const client = this.getClient(prismaClient)
-    return client.role.findUnique({
+  findById(id: number): Promise<RoleWithPermissionsType | null> {
+    return this.prismaService.role.findUnique({
       where: {
         id,
         deletedAt: null,
       },
       include: {
         permissions: {
-          where: { deletedAt: null },
+          where: {
+            deletedAt: null,
+          },
         },
       },
     })
   }
 
-  async create(
-    { createdById, data }: { createdById: number | null; data: CreateRoleBodyType },
-    prismaClient?: PrismaTransactionClient,
-  ): Promise<RoleType> {
-    const client = this.getClient(prismaClient)
-    return client.role.create({
+  create({ createdById, data }: { createdById: number | null; data: CreateRoleBodyType }): Promise<RoleType> {
+    return this.prismaService.role.create({
       data: {
         ...data,
         createdById,
@@ -90,12 +64,18 @@ export class RoleRepo extends BaseRepository<RoleType> {
     })
   }
 
-  async update(id: string | number, data: any, prismaClient?: PrismaTransactionClient): Promise<RoleType> {
-    const client = this.getClient(prismaClient)
-
+  async update({
+    id,
+    updatedById,
+    data,
+  }: {
+    id: number
+    updatedById: number
+    data: UpdateRoleBodyType
+  }): Promise<RoleType> {
     // Kiểm tra nếu có bất cứ permissionId nào mà đã soft delete thì không cho phép cập nhật
-    if (data.permissionIds && data.permissionIds.length > 0) {
-      const permissions = await client.permission.findMany({
+    if (data.permissionIds.length > 0) {
+      const permissions = await this.prismaService.permission.findMany({
         where: {
           id: {
             in: data.permissionIds,
@@ -109,21 +89,19 @@ export class RoleRepo extends BaseRepository<RoleType> {
       }
     }
 
-    return client.role.update({
+    return this.prismaService.role.update({
       where: {
-        id: Number(id),
+        id,
         deletedAt: null,
       },
       data: {
         name: data.name,
         description: data.description,
         isActive: data.isActive,
-        permissions: data.permissionIds
-          ? {
-              set: data.permissionIds.map((id: number) => ({ id })),
-            }
-          : undefined,
-        updatedById: data.updatedById,
+        permissions: {
+          set: data.permissionIds.map((id) => ({ id })),
+        },
+        updatedById,
       },
       include: {
         permissions: {
@@ -135,47 +113,31 @@ export class RoleRepo extends BaseRepository<RoleType> {
     })
   }
 
-  async delete(id: string | number, data: any, prismaClient?: PrismaTransactionClient): Promise<RoleType> {
-    const client = this.getClient(prismaClient)
-    return client.role.update({
-      where: {
-        id: Number(id),
-        deletedAt: null,
-      },
-      data: {
-        deletedAt: new Date(),
-        deletedById: data.deletedById,
-      },
-    })
-  }
-
-  async updateRoleWithPermissions(
-    id: number,
-    updatedById: number,
-    data: UpdateRoleBodyType,
-    prismaClient?: PrismaTransactionClient,
+  delete(
+    {
+      id,
+      deletedById,
+    }: {
+      id: number
+      deletedById: number
+    },
+    isHard?: boolean,
   ): Promise<RoleType> {
-    return this.update(id, { ...data, updatedById }, prismaClient)
-  }
-
-  async softDeleteRole(id: number, deletedById: number, prismaClient?: PrismaTransactionClient): Promise<RoleType> {
-    const client = this.getClient(prismaClient)
-    return client.role.update({
-      where: {
-        id,
-        deletedAt: null,
-      },
-      data: {
-        deletedAt: new Date(),
-        deletedById,
-      },
-    })
-  }
-
-  async hardDeleteRole(id: number, prismaClient?: PrismaTransactionClient): Promise<RoleType> {
-    const client = this.getClient(prismaClient)
-    return client.role.delete({
-      where: { id },
-    })
+    return isHard
+      ? this.prismaService.role.delete({
+          where: {
+            id,
+          },
+        })
+      : this.prismaService.role.update({
+          where: {
+            id,
+            deletedAt: null,
+          },
+          data: {
+            deletedAt: new Date(),
+            deletedById,
+          },
+        })
   }
 }

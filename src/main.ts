@@ -2,17 +2,13 @@ import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
 import helmet from 'helmet'
 import { Logger, VersioningType } from '@nestjs/common'
-import { AllExceptionsFilter } from 'src/shared/filters/all-exceptions.filter'
-import { I18nService, I18nValidationExceptionFilter } from 'nestjs-i18n'
 import { useContainer } from 'class-validator'
-import { TransformInterceptor } from 'src/shared/interceptor/transform.interceptor'
 import { CsrfProtectionMiddleware } from './shared/middleware/csrf.middleware'
 import { SecurityHeadersMiddleware } from './shared/middleware/security-headers.middleware'
 import { ConfigService } from '@nestjs/config'
 import cookieParser from 'cookie-parser'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import compression from 'compression'
-import CustomZodValidationPipe from './shared/pipes/custom-zod-validation.pipe'
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule)
@@ -20,8 +16,6 @@ async function bootstrap() {
   app.set('trust proxy', 1)
 
   const configService = app.get(ConfigService)
-
-  const i18nService = app.get<I18nService<Record<string, unknown>>>(I18nService)
 
   useContainer(app.select(AppModule), { fallbackOnErrors: true })
 
@@ -66,22 +60,11 @@ async function bootstrap() {
     }),
   )
 
-  // app.setGlobalPrefix('api/v1', {
-  //   exclude: ['/'],
-  // })
-
   const csrfMiddleware = app.get(CsrfProtectionMiddleware)
   app.use(csrfMiddleware.use.bind(csrfMiddleware))
 
   const securityHeadersMiddleware = app.get(SecurityHeadersMiddleware)
   app.use(securityHeadersMiddleware.use.bind(securityHeadersMiddleware))
-
-  app.useGlobalInterceptors(new TransformInterceptor(i18nService))
-
-  app.useGlobalFilters(
-    new AllExceptionsFilter(i18nService),
-    new I18nValidationExceptionFilter({ detailedErrors: false }),
-  )
 
   app.setGlobalPrefix('api/v1', {
     exclude: ['/'],
@@ -91,10 +74,8 @@ async function bootstrap() {
     type: VersioningType.URI,
   })
 
-  app.useGlobalPipes(new CustomZodValidationPipe())
+  await app.listen(3000)
 
-  const port = configService.get<number>('app.port') || 3000
-  await app.listen(port)
-  logger.log(`🚀 Application is running on: http://localhost:${port}`)
+  logger.log(`🚀 Application is running on: http://localhost:3000`)
 }
 void bootstrap()

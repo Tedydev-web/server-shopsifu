@@ -1,8 +1,7 @@
-import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { Response } from 'express'
 import { CoreAuthService } from './core.service'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { TokenService } from 'src/shared/services/token.service'
 import { CookieService } from 'src/shared/services/cookie.service'
 import { AuthError } from '../auth.error'
@@ -27,10 +26,10 @@ export class SessionService {
   private readonly logger = new Logger(SessionService.name)
 
   constructor(
-    @Inject(forwardRef(() => CoreAuthService)) private readonly coreAuthService: CoreAuthService,
-    @Inject(tokens.SHARED_USER_REPOSITORY) private readonly userRepository: SharedUserRepository,
-    @Inject(tokens.TOKEN_SERVICE) private readonly tokenService: TokenService,
-    @Inject(tokens.COOKIE_SERVICE) private readonly cookieService: CookieService,
+    private readonly coreAuthService: CoreAuthService,
+    private readonly userRepository: SharedUserRepository,
+    private readonly tokenService: TokenService,
+    private readonly cookieService: CookieService,
     private readonly sessionRepository: SessionRepository,
     private readonly sharedSessionService: SharedSessionService,
     private readonly rolesService: RolesService,
@@ -53,7 +52,7 @@ export class SessionService {
     ])
 
     if (isUsed || isBlacklisted) {
-      await this.revokeAllUserSessions(userId)
+      await this.sharedSessionService.revokeAllUserSessions(userId)
       throw AuthError.RefreshTokenReused
     }
 
@@ -64,15 +63,10 @@ export class SessionService {
       this.cookieService.clearTokenCookies(res)
       throw AuthError.InvalidRefreshToken
     }
-    const user = await this.userRepository.findById(session.userId)
+    const user = await this.userRepository.findUnique({ id: session.userId })
     if (!user) {
       this.cookieService.clearTokenCookies(res)
       throw AuthError.UserNotFound
-    }
-
-    if (user.revokedAllSessionsBefore && session.createdAt < user.revokedAllSessionsBefore) {
-      this.cookieService.clearTokenCookies(res)
-      throw AuthError.SessionRevoked
     }
 
     if (user.status !== 'ACTIVE') {
@@ -129,16 +123,5 @@ export class SessionService {
     this.cookieService.clearTokenCookies(res)
     await Promise.allSettled(promises)
     return { message: 'auth.success.LOGOUT_SUCCESS' }
-  }
-
-  async revokeAllUserSessions(userId: number): Promise<void> {
-    try {
-      await this.userRepository.updateByCondition({ id: userId }, { revokedAllSessionsBefore: new Date() })
-      await this.sharedSessionService.revokeAllUserSessions(userId)
-      this.logger.log(`Revoked all sessions for user ${userId} as security measure`)
-    } catch (error) {
-      this.logger.error(`Failed to revoke sessions for user ${userId}:`, error)
-      throw GlobalError.InternalServerError('auth.error.SESSION_REVOKE_FAILED')
-    }
   }
 }

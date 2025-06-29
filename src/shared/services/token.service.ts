@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import {
@@ -10,14 +10,13 @@ import {
 import { v4 as uuidv4 } from 'uuid'
 import { EnvConfigType } from 'src/shared/config'
 import { SessionService } from './session.service'
-import * as tokens from 'src/shared/constants/injection.tokens'
 
 @Injectable()
 export class TokenService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService<EnvConfigType>,
-    @Inject(tokens.SESSION_SERVICE) private readonly sessionService: SessionService,
+    private readonly sessionService: SessionService,
   ) {}
 
   signAccessToken(payload: AccessTokenPayloadCreate) {

@@ -1,17 +1,19 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { SessionType } from '../dtos/session.model'
+import { SessionType } from '../model/session.model'
 import { UserType } from 'src/shared/models/shared-user.model'
 import { RoleType } from 'src/shared/models/shared-role.model'
+import { PermissionType } from 'src/shared/models/shared-permission.model'
 
 export type CreateSessionData = Pick<SessionType, 'userId' | 'deviceId' | 'ipAddress' | 'userAgent' | 'expiresAt'>
-export type ValidSessionWithUser = SessionType & { user: UserType & { role: RoleType } }
+export type ValidSessionWithUser = SessionType & {
+  user: UserType & { role: RoleType & { permissions: PermissionType[] } }
+}
 
 @Injectable()
 export class SessionRepository extends BaseRepository<SessionType> {
-  constructor(@Inject(tokens.PRISMA_SERVICE) private readonly prisma: PrismaService) {
+  constructor(private readonly prisma: PrismaService) {
     super(prisma, 'session')
   }
 
@@ -40,7 +42,15 @@ export class SessionRepository extends BaseRepository<SessionType> {
       include: {
         user: {
           include: {
-            role: true,
+            role: {
+              include: {
+                permissions: {
+                  where: {
+                    deletedAt: null,
+                  },
+                },
+              },
+            },
           },
         },
       },

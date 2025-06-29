@@ -1,8 +1,7 @@
-import { Injectable, NestMiddleware, Logger, Inject } from '@nestjs/common'
+import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
 import { Request, Response, NextFunction, RequestHandler } from 'express'
 import csurf from 'csurf'
 import { ConfigService } from '@nestjs/config'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { CookieService } from '../services/cookie.service'
 import { EnvConfigType } from 'src/shared/config'
 
@@ -13,7 +12,7 @@ export class CsrfProtectionMiddleware implements NestMiddleware {
 
   constructor(
     private readonly configService: ConfigService<EnvConfigType>,
-    @Inject(tokens.COOKIE_SERVICE) private readonly cookieService: CookieService,
+    private readonly cookieService: CookieService,
   ) {
     // Lấy cấu hình chi tiết cho cookie bí mật (_csrf) từ config trung tâm
     const cookieConfig = this.configService.get('cookie')

@@ -35,7 +35,9 @@ export class GeolocationService {
     }
 
     try {
-      const response = await axios.get(`http://ip-api.com/json/${ip}?fields=status,message,country,city,lat,lon,timezone,query`)
+      const response = await axios.get(
+        `http://ip-api.com/json/${ip}?fields=status,message,country,city,lat,lon,timezone,query`,
+      )
 
       if (response.data.status !== 'success') {
         this.logger.warn(`Failed to geolocate IP ${ip}: ${response.data.message}`)
@@ -86,4 +88,4 @@ export class GeolocationService {
       display: this.isDev ? 'Local Development' : 'Unknown Location',
     }
   }
-} 
+}

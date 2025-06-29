@@ -1,12 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common'
-import { VerificationCodeType } from '../dtos/auth.model'
+import { Injectable } from '@nestjs/common'
+import { VerificationCodeType } from '../model/auth.model'
 import { TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class VerificationCodeRepository {
-  constructor(@Inject(tokens.PRISMA_SERVICE) private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(
     payload: Pick<VerificationCodeType, 'email' | 'type' | 'code' | 'expiresAt'>,

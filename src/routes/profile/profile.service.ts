@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { ChangePasswordBodyType, UpdateMeBodyType } from './profile.model'
+import { ChangePasswordBodyType, UpdateMeBodySchema, UpdateMeBodyType } from './profile.model'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { isUniqueConstraintPrismaError } from 'src/shared/utils/prisma.utils'
@@ -18,12 +18,8 @@ export class ProfileService {
       deletedAt: null,
     })
 
-    if (!user || !user.role || user.role.deletedAt !== null) {
-      throw GlobalError.Forbidden('profile.error.ROLE_NOT_FOUND_OR_INACTIVE')
-    }
-
-    if (!user.role.permissions) {
-      user.role.permissions = []
+    if (!user) {
+      throw GlobalError.NotFoundRecordException()
     }
 
     return user
@@ -31,8 +27,8 @@ export class ProfileService {
 
   async updateProfile({ userId, body }: { userId: number; body: UpdateMeBodyType }) {
     try {
-      return await this.sharedUserRepository.updateByCondition(
-        { id: userId },
+      return await this.sharedUserRepository.update(
+        { id: userId, deletedAt: null },
         {
           ...body,
           updatedById: userId,
@@ -40,7 +36,7 @@ export class ProfileService {
       )
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw GlobalError.NotFound('profile.error.NOT_FOUND')
+        throw GlobalError.NotFoundRecordException()
       }
       throw error
     }
@@ -49,18 +45,21 @@ export class ProfileService {
   async changePassword({ userId, body }: { userId: number; body: Omit<ChangePasswordBodyType, 'confirmNewPassword'> }) {
     try {
       const { password, newPassword } = body
-      const user = await this.sharedUserRepository.findById(userId)
+      const user = await this.sharedUserRepository.findUnique({
+        id: userId,
+        deletedAt: null,
+      })
       if (!user) {
-        throw GlobalError.NotFound('profile.error.NOT_FOUND')
+        throw GlobalError.NotFoundRecordException()
       }
       const isPasswordMatch = await this.hashingService.compare(password, user.password)
       if (!isPasswordMatch) {
-        throw GlobalError.InvalidPassword('profile.error.INVALID_PASSWORD')
+        throw GlobalError.InvalidPasswordException()
       }
       const hashedPassword = await this.hashingService.hash(newPassword)
 
-      await this.sharedUserRepository.updateByCondition(
-        { id: userId },
+      await this.sharedUserRepository.update(
+        { id: userId, deletedAt: null },
         {
           password: hashedPassword,
           updatedById: userId,
@@ -71,7 +70,7 @@ export class ProfileService {
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw GlobalError.NotFound('profile.error.NOT_FOUND')
+        throw GlobalError.NotFoundRecordException()
       }
       throw error
     }

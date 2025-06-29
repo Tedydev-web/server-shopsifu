@@ -1,17 +1,16 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Inject, HttpException } from '@nestjs/common'
+import { Injectable, CanActivate, ExecutionContext, HttpException } from '@nestjs/common'
 import { Request } from 'express'
 import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
 import { CookieNames } from 'src/shared/constants/cookie.constant'
 import { TokenService } from 'src/shared/services/token.service'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { SessionService } from '../services/session.service'
 import { AuthError } from 'src/routes/auth/auth.error'
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
   constructor(
-    @Inject(tokens.TOKEN_SERVICE) private readonly tokenService: TokenService,
-    @Inject(tokens.SESSION_SERVICE) private readonly sessionService: SessionService,
+    private readonly tokenService: TokenService,
+    private readonly sessionService: SessionService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -26,14 +25,18 @@ export class AccessTokenGuard implements CanActivate {
       // 1. Verify access token
       const payload = await this.tokenService.verifyAccessToken(accessToken)
 
-      // 2. Check if token is blacklisted
+      // 2. Check if token is blacklisted or session is invalid
       const [isBlacklisted, session] = await Promise.all([
         this.sessionService.isBlacklisted(payload.jti),
         this.sessionService.getSession(payload.sessionId),
       ])
 
-      if (isBlacklisted || !session) {
-        throw AuthError.InvalidAccessToken
+      if (isBlacklisted) {
+        throw AuthError.TokenBlacklisted
+      }
+
+      if (!session) {
+        throw AuthError.SessionNotFound
       }
 
       // 3. Store user info in request for downstream use
@@ -48,10 +51,11 @@ export class AccessTokenGuard implements CanActivate {
 
       return true
     } catch (error) {
-      // Ensure standardized errors are thrown
+      // Ensure only our standardized errors are thrown
       if (error instanceof HttpException) {
         throw error
       }
+      // Fallback for unexpected JWT errors (e.g., malformed token)
       throw AuthError.InvalidAccessToken
     }
   }

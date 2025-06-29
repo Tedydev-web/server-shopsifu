@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+  import { Injectable } from '@nestjs/common'
 import { PermissionRepo } from 'src/routes/permission/permission.repo'
 import {
   CreatePermissionBodyType,
@@ -22,7 +22,7 @@ export class PermissionService {
   async findById(id: number): Promise<PermissionType> {
     const permission = await this.permissionRepo.findById(id)
     if (!permission) {
-      throw PermissionError.NOT_FOUND
+      throw PermissionError.NotFound
     }
     return permission
   }
@@ -41,7 +41,7 @@ export class PermissionService {
       })
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw PermissionError.ALREADY_EXISTS
+        throw PermissionError.AlreadyExists
       }
       throw error
     }
@@ -61,10 +61,10 @@ export class PermissionService {
       return permission
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw PermissionError.NOT_FOUND
+        throw PermissionError.NotFound
       }
       if (isUniqueConstraintPrismaError(error)) {
-        throw PermissionError.ALREADY_EXISTS
+        throw PermissionError.AlreadyExists
       }
       throw error
     }
@@ -78,7 +78,7 @@ export class PermissionService {
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw PermissionError.NOT_FOUND
+        throw PermissionError.NotFound
       }
       throw error
     }

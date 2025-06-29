@@ -1,13 +1,7 @@
-import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { addMilliseconds } from 'date-fns'
-import {
-  DisableTwoFactorBodyDTO,
-  ForgotPasswordBodyDTO,
-  LoginBodyDTO,
-  RegisterBodyDTO,
-  SendOTPBodyDTO,
-} from '../dtos/auth.dto'
+import { DisableTwoFactorBodyDTO, LoginBodyDTO, RegisterBodyDTO, SendOTPBodyDTO } from '../dtos/auth.dto'
 import { VerificationCodeRepository } from '../repositories/verification-code.repository'
 import { RolesService } from './roles.service'
 import { isUniqueConstraintPrismaError } from 'src/shared/utils/prisma.utils'
@@ -24,11 +18,11 @@ import { Response, Request } from 'express'
 import { GlobalError } from 'src/shared/global.error'
 import { SessionService } from 'src/shared/services/session.service'
 import { DeviceService } from 'src/routes/device/device.service'
-import * as tokens from 'src/shared/constants/injection.tokens'
 import { CryptoService } from 'src/shared/services/crypto.service'
 import { EnvConfigType } from 'src/shared/config'
 import { SessionRepository } from '../repositories/session.repository'
 import { OtpService } from './otp.service'
+import { AuthRepository } from '../repositories/auth.repo'
 
 interface RefreshTokenInput {
   refreshToken: string | undefined
@@ -46,20 +40,21 @@ export class CoreAuthService {
   private readonly logger = new Logger(CoreAuthService.name)
 
   constructor(
-    @Inject(tokens.HASHING_SERVICE) private readonly hashingService: HashingService,
+    private readonly hashingService: HashingService,
     private readonly rolesService: RolesService,
     private readonly verificationCodeRepository: VerificationCodeRepository,
-    @Inject(tokens.SHARED_USER_REPOSITORY) private readonly sharedUserRepository: SharedUserRepository,
-    @Inject(tokens.EMAIL_SERVICE) private readonly emailService: EmailService,
-    @Inject(tokens.TOKEN_SERVICE) private readonly tokenService: TokenService,
-    @Inject(tokens.TWO_FACTOR_SERVICE) private readonly twoFactorService: TwoFactorService,
-    @Inject(tokens.COOKIE_SERVICE) private readonly cookieService: CookieService,
+    private readonly sharedUserRepository: SharedUserRepository,
+    private readonly emailService: EmailService,
+    private readonly tokenService: TokenService,
+    private readonly twoFactorService: TwoFactorService,
+    private readonly cookieService: CookieService,
     private readonly configService: ConfigService<EnvConfigType>,
-    @Inject(tokens.CRYPTO_SERVICE) private readonly cryptoService: CryptoService,
+    private readonly cryptoService: CryptoService,
     private readonly deviceService: DeviceService,
-    @Inject(tokens.SESSION_SERVICE) private readonly sessionService: SessionService,
+    private readonly sessionService: SessionService,
     private readonly sessionRepository: SessionRepository,
     private readonly otpService: OtpService,
+    private readonly authRepository: AuthRepository,
   ) {}
 
   async register(body: RegisterBodyDTO, req: Request) {
@@ -73,7 +68,7 @@ export class CoreAuthService {
       const clientRoleId = await this.rolesService.getClientRoleId()
       const hashedPassword = await this.hashingService.hash(body.password)
 
-      await this.sharedUserRepository.create({
+      await this.authRepository.createUser({
         ...body,
         password: hashedPassword,
         roleId: clientRoleId,
@@ -95,7 +90,7 @@ export class CoreAuthService {
   }
 
   async sendOTP(body: SendOTPBodyDTO) {
-    const user = await this.sharedUserRepository.findUnique(body.email)
+    const user = await this.sharedUserRepository.findUnique({ email: body.email })
     if (body.type === TypeOfVerificationCode.REGISTER && user) {
       throw AuthError.EmailAlreadyExists
     }
@@ -117,7 +112,7 @@ export class CoreAuthService {
   }
 
   async login(body: LoginBodyDTO, req: Request, res: Response) {
-    const user = await this.sharedUserRepository.findActiveUserByEmail(body.email)
+    const user = await this.authRepository.findUniqueUserIncludeRole({ email: body.email })
     if (!user) {
       throw AuthError.InvalidCredentials
     }
@@ -153,7 +148,7 @@ export class CoreAuthService {
       roleName: userRole.name,
     })
 
-    this.cookieService.setTokenCookies(res, accessToken, refreshToken, body.rememberMe)
+    this.cookieService.setTokenCookies(res, accessToken, refreshToken)
 
     return { message: 'auth.success.LOGIN_SUCCESS' }
   }
@@ -175,7 +170,7 @@ export class CoreAuthService {
   }
 
   async setupTwoFactorAuth(userId: number) {
-    const user = await this.sharedUserRepository.findById(userId)
+    const user = await this.sharedUserRepository.findUnique({ id: userId })
     if (!user) {
       throw AuthError.UserNotFound
     }
@@ -187,7 +182,7 @@ export class CoreAuthService {
   }
 
   async disableTwoFactorAuth(data: DisableTwoFactorBodyDTO & { userId: number }) {
-    const user = await this.sharedUserRepository.findById(data.userId)
+    const user = await this.sharedUserRepository.findUnique({ id: data.userId })
     if (!user || !user.totpSecret) {
       throw AuthError.UserNotFound
     }
@@ -198,7 +193,7 @@ export class CoreAuthService {
     if (!isValid) {
       throw AuthError.InvalidOTP
     }
-    await this.sharedUserRepository.updateByCondition({ id: data.userId }, { totpSecret: null })
+    await this.sharedUserRepository.update({ id: data.userId }, { totpSecret: null })
     return { message: 'auth.success.DISABLE_2FA_SUCCESS' }
   }
 }

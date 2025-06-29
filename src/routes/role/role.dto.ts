@@ -4,22 +4,21 @@ import {
   CreateRoleResSchema,
   GetRoleDetailResSchema,
   GetRoleParamsSchema,
+  GetRolesQuerySchema,
   GetRolesResSchema,
   UpdateRoleBodySchema,
-  UpdateRoleResSchema,
-  DeleteRoleResSchema,
-  RolePaginationQuerySchema,
 } from 'src/routes/role/role.model'
 
-// Request DTOs
-export class GetRoleParamsDTO extends createZodDto(GetRoleParamsSchema) {}
-export class CreateRoleBodyDTO extends createZodDto(CreateRoleBodySchema) {}
-export class UpdateRoleBodyDTO extends createZodDto(UpdateRoleBodySchema) {}
-export class RolePaginationQueryDTO extends createZodDto(RolePaginationQuerySchema) {}
-
-// Response DTOs
 export class GetRolesResDTO extends createZodDto(GetRolesResSchema) {}
+
+export class GetRoleParamsDTO extends createZodDto(GetRoleParamsSchema) {}
+
 export class GetRoleDetailResDTO extends createZodDto(GetRoleDetailResSchema) {}
+
+export class CreateRoleBodyDTO extends createZodDto(CreateRoleBodySchema) {}
+
 export class CreateRoleResDTO extends createZodDto(CreateRoleResSchema) {}
-export class UpdateRoleResDTO extends createZodDto(UpdateRoleResSchema) {}
-export class DeleteRoleResDTO extends createZodDto(DeleteRoleResSchema) {}
+
+export class UpdateRoleBodyDTO extends createZodDto(UpdateRoleBodySchema) {}
+
+export class GetRolesQueryDTO extends createZodDto(GetRolesQuerySchema) {}

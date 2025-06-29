@@ -1,7 +1,8 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common'
 import { Request, Response } from 'express'
-import { I18nService } from 'nestjs-i18n'
+import { I18nService, I18nValidationException } from 'nestjs-i18n'
 import { ApiException } from 'src/shared/exceptions/api.exception'
+import { isObject, isString } from '../utils/type-guards.utils'
 
 export interface StandardErrorResponse {
   success: false
@@ -24,6 +25,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp()
     const request = ctx.getRequest<Request>()
     const response = ctx.getResponse<Response>()
+    const lang = request.acceptsLanguages(['vi', 'en']) || 'vi'
 
     let statusCode: number
     let errorCode: string
@@ -32,31 +34,42 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     // Handle different types of exceptions
     if (exception instanceof ApiException) {
-      // Custom ApiException (our primary exception type)
       statusCode = exception.getStatus()
       errorCode = exception.code
-      message = await this.translateMessage(exception.message, request)
-      details = exception.details
+      message = await this.translate(exception.message, lang)
+      details = await this.translateDetails(exception.details, lang)
+    } else if (exception instanceof I18nValidationException) {
+      statusCode = exception.getStatus()
+      errorCode = this.getErrorCodeFromStatus(statusCode)
+      message = await this.translate('global.error.VALIDATION_FAILED', lang)
+      // The details (errors) are already translated by nestjs-i18n
+      details = exception.errors
     } else if (exception instanceof HttpException) {
-      // Built-in NestJS HttpException
       statusCode = exception.getStatus()
       errorCode = this.getErrorCodeFromStatus(statusCode)
       const exceptionResponse = exception.getResponse()
 
-      if (typeof exceptionResponse === 'string') {
-        message = await this.translateMessage(exceptionResponse, request)
-      } else if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
+      if (isString(exceptionResponse)) {
+        message = await this.translate(exceptionResponse, lang)
+      } else if (isObject(exceptionResponse)) {
         const errorObj = exceptionResponse as any
-        message = await this.translateMessage(errorObj.message || errorObj.error || 'global.error.BAD_REQUEST', request)
-        details = errorObj.details || null
+        message = await this.translate(errorObj.message || errorObj.error || 'global.error.BAD_REQUEST', lang)
+        // Handle cases where validation errors are in the 'message' property
+        if (Array.isArray(errorObj.message)) {
+          details = await this.translateDetails(errorObj.message, lang)
+          // Use a more generic message for the top level
+          message = await this.translate(errorObj.error || 'global.error.VALIDATION_FAILED', lang)
+        } else {
+          details = await this.translateDetails(errorObj.details, lang)
+        }
       } else {
-        message = await this.translateMessage('global.error.BAD_REQUEST', request)
+        message = await this.translate('global.error.BAD_REQUEST', lang)
       }
     } else {
       // Unknown exceptions (fallback)
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR
       errorCode = 'E0001'
-      message = await this.translateMessage('global.error.INTERNAL_SERVER_ERROR', request)
+      message = await this.translate('global.error.INTERNAL_SERVER_ERROR', lang)
 
       // Log unknown exceptions for debugging
       this.logger.error('Unknown exception occurred:', exception)
@@ -97,19 +110,50 @@ export class AllExceptionsFilter implements ExceptionFilter {
     response.status(statusCode).json(errorResponse)
   }
 
-  private async translateMessage(messageKey: string, request: Request): Promise<string> {
-    try {
-      // Check if it's a translation key (contains dots)
-      if (messageKey.includes('.')) {
-        const lang = request.acceptsLanguages(['vi', 'en']) || 'vi'
-        return await this.i18n.translate(messageKey, { lang })
-      }
-      // Return as-is if it's not a translation key
-      return messageKey
-    } catch (error) {
-      this.logger.warn(`Failed to translate message: ${messageKey}`, error)
-      return messageKey
+  private async translate(key: string, lang: string): Promise<string> {
+    if (!isString(key) || !key.includes('.')) {
+      return key
     }
+    try {
+      return await this.i18n.translate(key, { lang })
+    } catch (error) {
+      this.logger.warn(`Failed to translate message key: ${key} for lang: ${lang}`, error)
+      return key // Return the key itself if translation fails
+    }
+  }
+
+  private async translateDetails(details: any, lang: string): Promise<any> {
+    if (!details) {
+      return null
+    }
+
+    if (Array.isArray(details)) {
+      return Promise.all(
+        details.map(async (error) => {
+          if (isObject(error) && 'message' in error && isString(error.message)) {
+            return {
+              ...error,
+              message: await this.translate(error.message, lang),
+            }
+          }
+          return error
+        }),
+      )
+    }
+
+    if (isObject(details)) {
+      const translatedDetails = {}
+      for (const key in details) {
+        if (isString(details[key])) {
+          translatedDetails[key] = await this.translate(details[key], lang)
+        } else {
+          translatedDetails[key] = details[key]
+        }
+      }
+      return translatedDetails
+    }
+
+    return details
   }
 
   private getErrorCodeFromStatus(statusCode: number): string {
