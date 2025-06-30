@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { PaginatedResponseType, BasePaginationQueryType } from 'src/shared/models/pagination.model'
+import { PaginatedResponseType, BasePaginationQueryType, PaginationMetadata } from 'src/shared/models/core.model'
 import { PrismaService } from '../services/prisma.service'
 
 export type PrismaTransactionClient = Omit<
@@ -110,6 +110,9 @@ export abstract class BaseRepository<T> {
     const totalPages = Math.ceil(totalItems / limit)
 
     return {
+      success: true as const,
+      statusCode: 200,
+      message: '',
       data: items,
       metadata: {
         totalItems,

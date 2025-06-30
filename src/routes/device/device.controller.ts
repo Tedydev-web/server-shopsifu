@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { MessageResponseDTO } from 'src/shared/dtos/core.dto'
 import { AccessTokenGuard } from 'src/shared/guards/access-token.guard'
 import { DeviceResponseDto, RenameDeviceDto } from './device.dto'
 import { DeviceService } from './device.service'
@@ -39,9 +39,8 @@ export class DeviceController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(MessageResDTO)
+  @ZodSerializerDto(MessageResponseDTO)
   async revokeDevice(@ActiveUser('userId') userId: number, @Param('id', ParseIntPipe) deviceId: number) {
-    await this.deviceService.revokeDevice(userId, deviceId)
-    return { message: 'device.success.REVOKE_SUCCESS' }
+    return this.deviceService.revokeDevice(userId, deviceId)
   }
 }

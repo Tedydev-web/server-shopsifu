@@ -2,9 +2,10 @@ import { z } from 'zod'
 import {
   createTypedSuccessResponseSchema,
   createTypedPaginatedResponseSchema,
-  MessageResSchema,
-} from 'src/shared/models/response.model'
-import { BasePaginationQuerySchema, PaginatedResponseType } from 'src/shared/models/pagination.model'
+  BaseResponseSchema,
+  BasePaginationQuerySchema,
+  PaginatedResponseType,
+} from 'src/shared/models/core.model'
 
 export const LanguageSchema = z.object({
   id: z.string().max(10),
@@ -21,7 +22,7 @@ export const GetLanguagesResSchema = createTypedPaginatedResponseSchema(Language
 export const GetLanguageDetailResSchema = createTypedSuccessResponseSchema(LanguageSchema)
 export const CreateLanguageResSchema = createTypedSuccessResponseSchema(LanguageSchema)
 export const UpdateLanguageResSchema = createTypedSuccessResponseSchema(LanguageSchema)
-export const DeleteLanguageResSchema = MessageResSchema
+export const DeleteLanguageResSchema = BaseResponseSchema
 
 // Request Schemas
 export const GetLanguageParamsSchema = z

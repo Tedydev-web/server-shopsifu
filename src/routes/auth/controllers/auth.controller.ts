@@ -14,7 +14,7 @@ import { CoreAuthService } from '../services/core.service'
 import { GoogleService } from '../services/social/google.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
-import { MessageResDTO, createTypedSuccessResponseDTO } from 'src/shared/dtos/response.dto'
+import { MessageResponseDTO, createTypedSuccessResponseDTO } from 'src/shared/dtos/core.dto'
 import { AccessTokenGuard } from 'src/shared/guards/access-token.guard'
 import { CookieNames } from 'src/shared/constants/cookie.constant'
 import { OtpService } from '../services/otp.service'
@@ -43,21 +43,21 @@ export class AuthController {
 
   @Post('register')
   @IsPublic()
-  @ZodSerializerDto(MessageResDTO)
+  @ZodSerializerDto(MessageResponseDTO)
   register(@Body() body: RegisterBodyDTO, @Req() req: Request) {
     return this.coreAuthService.register(body, req)
   }
 
   @Post('send-otp')
   @IsPublic()
-  @ZodSerializerDto(MessageResDTO)
+  @ZodSerializerDto(MessageResponseDTO)
   sendOTP(@Body() body: SendOTPBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.otpService.sendOTP(body, req, res)
   }
 
   @Post('login')
   @IsPublic()
-  @ZodSerializerDto(MessageResDTO)
+  @ZodSerializerDto(MessageResponseDTO)
   login(@Body() body: LoginBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.coreAuthService.login(body, req, res)
   }
@@ -101,7 +101,7 @@ export class AuthController {
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @IsPublic()
-  @ZodSerializerDto(MessageResDTO)
+  @ZodSerializerDto(MessageResponseDTO)
   forgotPassword(@Body() body: ForgotPasswordBodyDTO) {
     return this.passwordService.forgotPassword(body)
   }
@@ -115,7 +115,7 @@ export class AuthController {
 
   @Post('disable-2fa')
   @UseGuards(AccessTokenGuard)
-  @ZodSerializerDto(MessageResDTO)
+  @ZodSerializerDto(MessageResponseDTO)
   disableTwoFactorAuth(@Body() body: DisableTwoFactorBodyDTO, @ActiveUser('userId') userId: number) {
     return this.coreAuthService.disableTwoFactorAuth({ ...body, userId })
   }

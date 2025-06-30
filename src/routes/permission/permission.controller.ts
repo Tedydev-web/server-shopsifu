@@ -11,7 +11,7 @@ import {
 import { PermissionService } from 'src/routes/permission/permission.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { RequireCreate, RequireDelete, RequireRead, RequireUpdate } from 'src/shared/decorators/permission.decorator'
-import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { MessageResponseDTO } from 'src/shared/dtos/core.dto'
 
 @Controller('permissions')
 export class PermissionController {
@@ -64,7 +64,7 @@ export class PermissionController {
 
   @Delete(':permissionId')
   @RequireDelete('permission')
-  @ZodSerializerDto(MessageResDTO)
+  @ZodSerializerDto(MessageResponseDTO)
   delete(@Param() params: GetPermissionParamsDTO, @ActiveUser('userId') userId: number) {
     return this.permissionService.delete({
       id: params.permissionId,

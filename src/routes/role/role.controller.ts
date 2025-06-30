@@ -11,7 +11,7 @@ import {
 } from 'src/routes/role/role.dto'
 import { RoleService } from 'src/routes/role/role.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { MessageResponseDTO } from 'src/shared/dtos/core.dto'
 
 @Controller('roles')
 export class RoleController {
@@ -52,7 +52,7 @@ export class RoleController {
   }
 
   @Delete(':roleId')
-  @ZodSerializerDto(MessageResDTO)
+  @ZodSerializerDto(MessageResponseDTO)
   delete(@Param() params: GetRoleParamsDTO, @ActiveUser('userId') userId: number) {
     return this.roleService.delete({
       id: params.roleId,

@@ -4,7 +4,7 @@ import { ProfileService } from './profile.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { GetUserProfileResDTO, UpdateProfileResDTO } from 'src/shared/dtos/shared-user.dto'
 import { ChangePasswordBodyDTO, UpdateMeBodyDTO } from 'src/routes/profile/profile.dto'
-import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { MessageResponseDTO } from 'src/shared/dtos/core.dto'
 
 @Controller('profile')
 export class ProfileController {
@@ -26,7 +26,7 @@ export class ProfileController {
   }
 
   @Put('change-password')
-  @ZodSerializerDto(MessageResDTO)
+  @ZodSerializerDto(MessageResponseDTO)
   changePassword(@Body() body: ChangePasswordBodyDTO, @ActiveUser('userId') userId: number) {
     return this.profileService.changePassword({
       userId,

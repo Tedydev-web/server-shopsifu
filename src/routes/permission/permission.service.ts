@@ -1,4 +1,4 @@
-  import { Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { PermissionRepo } from 'src/routes/permission/permission.repo'
 import {
   CreatePermissionBodyType,
@@ -70,10 +70,18 @@ export class PermissionService {
     }
   }
 
-  async delete({ id, deletedById }: { id: number; deletedById: number }): Promise<{ message: string }> {
+  async delete({
+    id,
+    deletedById,
+  }: {
+    id: number
+    deletedById: number
+  }): Promise<{ success: boolean; statusCode: number; message: string }> {
     try {
       await this.permissionRepo.softDeletePermission(id, deletedById)
       return {
+        success: true,
+        statusCode: 200,
         message: 'permission.success.DELETE_SUCCESS',
       }
     } catch (error) {

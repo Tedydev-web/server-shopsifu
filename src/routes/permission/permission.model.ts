@@ -1,10 +1,11 @@
 import {
   createTypedSuccessResponseSchema,
   createTypedPaginatedResponseSchema,
-  MessageResSchema,
-} from 'src/shared/models/response.model'
+  BaseResponseSchema,
+  BasePaginationQuerySchema,
+  PaginatedResponseType,
+} from 'src/shared/models/core.model'
 import { PermissionSchema } from 'src/shared/models/shared-permission.model'
-import { BasePaginationQuerySchema, PaginatedResponseType } from 'src/shared/models/pagination.model'
 import { z } from 'zod'
 
 // Response Schemas
@@ -12,7 +13,7 @@ export const GetPermissionsResSchema = createTypedPaginatedResponseSchema(Permis
 export const GetPermissionDetailResSchema = createTypedSuccessResponseSchema(PermissionSchema)
 export const CreatePermissionResSchema = createTypedSuccessResponseSchema(PermissionSchema)
 export const UpdatePermissionResSchema = createTypedSuccessResponseSchema(PermissionSchema)
-export const DeletePermissionResSchema = MessageResSchema
+export const DeletePermissionResSchema = BaseResponseSchema
 
 // Request Schemas
 export const GetPermissionParamsSchema = z

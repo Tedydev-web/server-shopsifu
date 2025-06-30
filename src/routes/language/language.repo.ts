@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { BasePaginationQueryType, PaginatedResponseType } from 'src/shared/models/pagination.model'
+import { BasePaginationQueryType, PaginatedResponseType } from 'src/shared/models/core.model'
 import { CreateLanguageBodyType, LanguageType } from './language.model'
 import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 

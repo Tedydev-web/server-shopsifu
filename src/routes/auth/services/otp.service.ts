@@ -55,7 +55,11 @@ export class OtpService {
       email: body.email,
       code,
     })
-    return { message: 'auth.success.SEND_OTP_SUCCESS' }
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'auth.success.SEND_OTP_SUCCESS',
+    }
   }
 
   async validateVerificationCode({

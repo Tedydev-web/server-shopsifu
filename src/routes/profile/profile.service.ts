@@ -66,7 +66,9 @@ export class ProfileService {
         },
       )
       return {
-        message: 'Password changed successfully',
+        success: true,
+        statusCode: 200,
+        message: 'profile.success.CHANGE_PASSWORD',
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {

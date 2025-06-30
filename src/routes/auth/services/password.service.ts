@@ -38,7 +38,11 @@ export class PasswordService {
         expiresAt: addMilliseconds(new Date(), this.configService.get('timeInMs').otp),
       })
     }
-    return { message: 'auth.success.FORGOT_PASSWORD_SUCCESS' }
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'auth.success.FORGOT_PASSWORD_SUCCESS',
+    }
   }
 
   // TODO: Add resetPassword method

@@ -79,7 +79,10 @@ export class DeviceService {
     return this.deviceRepository.update(deviceId, { name })
   }
 
-  async revokeDevice(userId: number, deviceId: number): Promise<void> {
+  async revokeDevice(
+    userId: number,
+    deviceId: number,
+  ): Promise<{ success: boolean; statusCode: number; message: string }> {
     const device = await this.deviceRepository.findById(deviceId)
     if (!device) {
       throw DeviceError.DeviceNotFound
@@ -90,6 +93,12 @@ export class DeviceService {
 
     // Đánh dấu thiết bị là không hoạt động
     await this.deviceRepository.update(deviceId, { isActive: false })
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'device.success.DEVICE_REVOKED',
+    }
   }
 
   /**

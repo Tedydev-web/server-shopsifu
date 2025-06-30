@@ -93,7 +93,11 @@ export class SessionService {
 
     this.cookieService.setTokenCookies(res, tokens.accessToken, tokens.refreshToken, true)
 
-    return { message: 'auth.success.REFRESH_TOKEN_SUCCESS' }
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'auth.success.REFRESH_TOKEN_SUCCESS',
+    }
   }
 
   async logout({ accessToken, refreshToken, res }: LogoutInput) {
@@ -122,6 +126,10 @@ export class SessionService {
 
     this.cookieService.clearTokenCookies(res)
     await Promise.allSettled(promises)
-    return { message: 'auth.success.LOGOUT_SUCCESS' }
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'auth.success.LOGOUT_SUCCESS',
+    }
   }
 }

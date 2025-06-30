@@ -80,7 +80,11 @@ export class CoreAuthService {
         type: TypeOfVerificationCode.REGISTER,
       })
 
-      return { message: 'auth.success.REGISTER_SUCCESS' }
+      return {
+        success: true,
+        statusCode: 201,
+        message: 'auth.success.REGISTER_SUCCESS',
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw AuthError.EmailAlreadyExists
@@ -108,7 +112,11 @@ export class CoreAuthService {
       email: body.email,
       code,
     })
-    return { message: 'auth.success.SEND_OTP_SUCCESS' }
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'auth.success.SEND_OTP_SUCCESS',
+    }
   }
 
   async login(body: LoginBodyDTO, req: Request, res: Response) {
@@ -150,7 +158,11 @@ export class CoreAuthService {
 
     this.cookieService.setTokenCookies(res, accessToken, refreshToken)
 
-    return { message: 'auth.success.LOGIN_SUCCESS' }
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'auth.success.LOGIN_SUCCESS',
+    }
   }
 
   async generateTokens({ userId, sessionId, roleId, roleName }: AccessTokenPayloadCreate) {
@@ -194,6 +206,10 @@ export class CoreAuthService {
       throw AuthError.InvalidOTP
     }
     await this.sharedUserRepository.update({ id: data.userId }, { totpSecret: null })
-    return { message: 'auth.success.DISABLE_2FA_SUCCESS' }
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'auth.success.DISABLE_2FA_SUCCESS',
+    }
   }
 }

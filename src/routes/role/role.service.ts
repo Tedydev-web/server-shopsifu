@@ -80,7 +80,9 @@ export class RoleService {
         deletedById,
       })
       return {
-        message: 'Delete successfully',
+        success: true,
+        statusCode: 200,
+        message: 'role.success.DELETE_SUCCESS',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
