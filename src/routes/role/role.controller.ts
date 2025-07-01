@@ -20,13 +20,7 @@ export class RoleController {
   @Get()
   @ZodSerializerDto(GetRolesResDTO)
   list(@Query() query: GetRolesQueryDTO) {
-    return this.roleService.list({
-      page: query.page,
-      limit: query.limit,
-      sortOrder: query.sortOrder,
-      sortBy: query.sortBy,
-      search: query.search,
-    })
+    return this.roleService.list(query)
   }
 
   @Get(':roleId')

@@ -19,13 +19,7 @@ export class PermissionController {
   @Get()
   @ZodSerializerDto(GetPermissionsResDTO)
   list(@Query() query: GetPermissionsQueryDTO) {
-    return this.permissionService.list({
-      page: query.page,
-      limit: query.limit,
-      sortOrder: query.sortOrder,
-      sortBy: query.sortBy,
-      search: query.search,
-    })
+    return this.permissionService.list(query)
   }
 
   @Get(':permissionId')

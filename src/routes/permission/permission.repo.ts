@@ -17,12 +17,13 @@ export class PermissionRepo {
   ) {}
 
   async list(pagination: GetPermissionsQueryType): Promise<PaginatedResult<PermissionType>> {
-    return this.paginationService.paginate<PermissionType>(
+    return this.paginationService.paginate(
       'permission',
       pagination,
       { deletedAt: null },
-      {},
-      { searchableFields: ['id', 'name', 'path', 'method'] },
+      {
+        searchableFields: ['id', 'name', 'path', 'method'],
+      },
     )
   }
 

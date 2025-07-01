@@ -1,16 +1,18 @@
 import { Injectable, CanActivate, ExecutionContext, HttpException } from '@nestjs/common'
 import { Request } from 'express'
-import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
+import { REQUEST_USER_KEY, REQUEST_ROLE_PERMISSIONS } from 'src/shared/constants/auth.constant'
 import { CookieNames } from 'src/shared/constants/cookie.constant'
 import { TokenService } from 'src/shared/services/token.service'
 import { SessionService } from '../services/session.service'
 import { AuthError } from 'src/routes/auth/auth.error'
+import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
   constructor(
     private readonly tokenService: TokenService,
     private readonly sessionService: SessionService,
+    private readonly sharedRoleRepository: SharedRoleRepository,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -39,7 +41,23 @@ export class AccessTokenGuard implements CanActivate {
         throw AuthError.SessionNotFound
       }
 
-      // 3. Store user info in request for downstream use
+      // 3. Lấy role (kèm permissions) từ DB
+      const role = await this.sharedRoleRepository.getRoleByIdIncludePermissions(payload.roleId)
+      if (!role) {
+        throw AuthError.RoleNotFound
+      }
+
+      // 4. Kiểm tra quyền truy cập route/method hiện tại
+      const path = request.route?.path || request.path
+      const method = request.method
+      const canAccess = role.permissions.some(
+        (permission) => permission.path === path && permission.method === method && !permission.deletedAt,
+      )
+      if (!canAccess) {
+        throw AuthError.InsufficientPermissions
+      }
+
+      // 5. Store user info và role permissions vào request
       request[REQUEST_USER_KEY] = {
         userId: payload.userId,
         sessionId: payload.sessionId,
@@ -48,6 +66,7 @@ export class AccessTokenGuard implements CanActivate {
         deviceId: session.deviceId,
         jti: payload.jti,
       }
+      request[REQUEST_ROLE_PERMISSIONS] = role
 
       return true
     } catch (error) {

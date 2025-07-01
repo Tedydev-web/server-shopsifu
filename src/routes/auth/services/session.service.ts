@@ -7,7 +7,7 @@ import { CookieService } from 'src/shared/services/cookie.service'
 import { AuthError } from '../auth.error'
 import { SessionRepository } from '../repositories/session.repository'
 import { SessionService as SharedSessionService } from 'src/shared/services/session.service'
-import { RolesService } from './roles.service'
+import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 
 interface RefreshTokenInput {
   refreshToken: string | undefined
@@ -31,7 +31,7 @@ export class SessionService {
     private readonly cookieService: CookieService,
     private readonly sessionRepository: SessionRepository,
     private readonly sharedSessionService: SharedSessionService,
-    private readonly rolesService: RolesService,
+    private readonly sharedRoleRepository: SharedRoleRepository,
   ) {}
 
   async refreshToken({ refreshToken, res }: RefreshTokenInput) {
@@ -73,7 +73,7 @@ export class SessionService {
       throw AuthError.UserNotActive
     }
 
-    const userRole = await this.rolesService.getRoleById(user.roleId)
+    const userRole = await this.sharedRoleRepository.getRoleById(user.roleId)
     if (!userRole) {
       this.cookieService.clearTokenCookies(res)
       throw AuthError.RoleNotFound

@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config'
 import { addMilliseconds } from 'date-fns'
 import { DisableTwoFactorBodyDTO, LoginBodyDTO, RegisterBodyDTO, SendOTPBodyDTO } from '../dtos/auth.dto'
 import { VerificationCodeRepository } from '../repositories/verification-code.repository'
-import { RolesService } from './roles.service'
 import { isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
@@ -22,6 +21,7 @@ import { EnvConfigType } from 'src/shared/config'
 import { SessionRepository } from '../repositories/session.repository'
 import { OtpService } from './otp.service'
 import { AuthRepository } from '../repositories/auth.repo'
+import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 
 interface RefreshTokenInput {
   refreshToken: string | undefined
@@ -40,7 +40,7 @@ export class CoreAuthService {
 
   constructor(
     private readonly hashingService: HashingService,
-    private readonly rolesService: RolesService,
+    private readonly sharedRoleRepository: SharedRoleRepository,
     private readonly verificationCodeRepository: VerificationCodeRepository,
     private readonly sharedUserRepository: SharedUserRepository,
     private readonly emailService: EmailService,
@@ -64,7 +64,7 @@ export class CoreAuthService {
         type: TypeOfVerificationCode.REGISTER,
         req,
       })
-      const clientRoleId = await this.rolesService.getClientRoleId()
+      const clientRoleId = await this.sharedRoleRepository.getClientRoleId()
       const hashedPassword = await this.hashingService.hash(body.password)
 
       await this.authRepository.createUser({
@@ -144,7 +144,7 @@ export class CoreAuthService {
 
     await this.sessionService.createSession(session)
 
-    const userRole = await this.rolesService.getRoleById(user.roleId)
+    const userRole = await this.sharedRoleRepository.getRoleById(user.roleId)
     if (!userRole) {
       throw AuthError.RoleNotFound
     }

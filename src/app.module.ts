@@ -16,6 +16,7 @@ import envConfig from 'src/shared/config'
 import { ProfileModule } from './routes/profile/profile.module'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
+import { UserModule } from './routes/user/user.module'
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe
     PermissionModule,
     RoleModule,
     ProfileModule,
+    UserModule,
   ],
   providers: [
     {

@@ -81,12 +81,13 @@ export class LanguageRepo {
   }
 
   findAllWithPagination(query: LanguagePaginationQueryType): Promise<PaginatedResult<LanguageType>> {
-    return this.paginationService.paginate<LanguageType>(
+    return this.paginationService.paginate(
       'language',
       query,
       { deletedAt: null },
-      {},
-      { searchableFields: ['id', 'name'] },
+      {
+        searchableFields: ['id', 'name'],
+      },
     )
   }
 }

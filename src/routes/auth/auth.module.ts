@@ -1,7 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common'
 import { AuthController } from './controllers/auth.controller'
 import { CoreAuthService } from './services/core.service'
-import { RolesService } from './services/roles.service'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { GoogleService } from './services/social/google.service'
 import { DeviceModule } from '../device/device.module'
@@ -17,7 +16,6 @@ import { AuthRepository } from './repositories/auth.repo'
   controllers: [AuthController],
   providers: [
     CoreAuthService,
-    RolesService,
     SharedRoleRepository,
     GoogleService,
     SessionRepository,

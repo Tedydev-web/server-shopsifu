@@ -5,7 +5,6 @@ import { OAuth2Client } from 'google-auth-library'
 import { google } from 'googleapis'
 import { AuthError } from '../../auth.error'
 import { CoreAuthService } from '../core.service'
-import { RolesService } from '../roles.service'
 import { CookieService } from 'src/shared/services/cookie.service'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { v4 as uuidv4 } from 'uuid'
@@ -18,6 +17,7 @@ import ms from 'ms'
 import { SessionService } from 'src/shared/services/session.service'
 import { SessionRepository } from '../../repositories/session.repository'
 import { AuthRepository } from '../../repositories/auth.repo'
+import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 
 const GOOGLE_OAUTH_NONCE_COOKIE = 'google_oauth_nonce'
 
@@ -29,7 +29,7 @@ export class GoogleService {
 
   constructor(
     private readonly hashingService: HashingService,
-    private readonly rolesService: RolesService,
+    private readonly sharedRoleRepository: SharedRoleRepository,
     private readonly authService: CoreAuthService,
     private readonly configService: ConfigService<EnvConfigType>,
     private readonly cookieService: CookieService,
@@ -102,7 +102,7 @@ export class GoogleService {
       let user = await this.sharedUserRepository.findUnique({ email: googleUser.email })
 
       if (!user) {
-        const clientRoleId = await this.rolesService.getClientRoleId()
+        const clientRoleId = await this.sharedRoleRepository.getClientRoleId()
         const randomPassword = uuidv4()
         const hashedPassword = await this.hashingService.hash(randomPassword)
         user = await this.authRepository.createUserInclueRole({
@@ -139,7 +139,7 @@ export class GoogleService {
       await this.sessionService.createSession(session)
 
       // 8. Tạo mới accessToken và refreshToken với sessionId
-      const userRole = await this.rolesService.getRoleById(user.roleId)
+      const userRole = await this.sharedRoleRepository.getRoleById(user.roleId)
       const { accessToken, refreshToken } = await this.authService.generateTokens({
         userId: user.id,
         sessionId: session.id,

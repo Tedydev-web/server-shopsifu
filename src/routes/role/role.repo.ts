@@ -18,12 +18,13 @@ export class RoleRepo {
   ) {}
 
   async list(pagination: GetRolesQueryType): Promise<PaginatedResult<RoleType>> {
-    return this.paginationService.paginate<RoleType>(
+    return this.paginationService.paginate(
       'role',
       pagination,
       { deletedAt: null },
-      {},
-      { searchableFields: ['id', 'name', 'description'] },
+      {
+        searchableFields: ['id', 'name', 'description'],
+      },
     )
   }
 
