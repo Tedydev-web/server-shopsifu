@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
-import { BasePaginationQueryType, PaginationMetadata } from '../models/core.model'
+import { BasePaginationQueryType, PaginationMetadata } from '../models/pagination.model'
 
 export interface PaginatedResult<T> {
   data: T[]

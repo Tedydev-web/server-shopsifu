@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { BasePaginationQuerySchema } from 'src/shared/models/core.model'
+import { BasePaginationQuerySchema } from 'src/shared/models/pagination.model'
 
 export const LanguageSchema = z.object({
   id: z.string().max(10),

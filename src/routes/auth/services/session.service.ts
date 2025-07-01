@@ -6,7 +6,6 @@ import { TokenService } from 'src/shared/services/token.service'
 import { CookieService } from 'src/shared/services/cookie.service'
 import { AuthError } from '../auth.error'
 import { SessionRepository } from '../repositories/session.repository'
-import { GlobalError } from 'src/shared/global.error'
 import { SessionService as SharedSessionService } from 'src/shared/services/session.service'
 import { RolesService } from './roles.service'
 

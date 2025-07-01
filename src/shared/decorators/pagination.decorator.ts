@@ -1,5 +1,5 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common'
-import { BasePaginationQueryType } from '../models/core.model'
+import { BasePaginationQueryType } from '../models/pagination.model'
 
 /**
  * Decorator để extract pagination query từ request

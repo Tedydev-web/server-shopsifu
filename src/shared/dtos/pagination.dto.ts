@@ -1,5 +1,5 @@
 import { createZodDto } from 'nestjs-zod'
-import { BasePaginationQuerySchema } from 'src/shared/models/core.model'
+import { BasePaginationQuerySchema } from 'src/shared/models/pagination.model'
 
 // ==================== PAGINATION DTOs ====================
 
