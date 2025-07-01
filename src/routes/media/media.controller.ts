@@ -1,11 +1,11 @@
 import {
+  Body,
   Controller,
   FileTypeValidator,
   Get,
   MaxFileSizeValidator,
   NotFoundException,
   Param,
-  ParseFilePipe,
   Post,
   Res,
   UploadedFiles,
@@ -15,10 +15,9 @@ import { FilesInterceptor } from '@nestjs/platform-express'
 import { Response } from 'express'
 import path from 'path'
 import { MediaService } from 'src/routes/media/media.service'
-import envConfig from 'src/shared/config'
+import { ParseFilePipeWithUnlink } from 'src/routes/media/parse-file-pipe-with-unlink.pipe'
 import { UPLOAD_DIR } from 'src/shared/constants/other.constant'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
-import { S3Service } from 'src/shared/services/s3.service'
 
 @Controller('media')
 export class MediaController {
@@ -27,15 +26,15 @@ export class MediaController {
   @UseInterceptors(
     FilesInterceptor('files', 100, {
       limits: {
-        fileSize: 5 * 1024 * 1024, // 2MB
+        fileSize: 5 * 1024 * 1024, // 1MB
       },
     }),
   )
   uploadFile(
     @UploadedFiles(
-      new ParseFilePipe({
+      new ParseFilePipeWithUnlink({
         validators: [
-          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 2MB
+          new MaxFileSizeValidator({ maxSize: 1 * 1024 * 1024 }), // 5MB
           new FileTypeValidator({ fileType: /(jpg|jpeg|png|webp)$/ }),
         ],
       }),
@@ -57,5 +56,11 @@ export class MediaController {
         res.status(notfound.getStatus()).json(notfound.getResponse())
       }
     })
+  }
+
+  @Post('images/upload/presigned-url')
+  @IsPublic()
+  createPresignedUrl(@Body() body: { filename: string }) {
+    return this.mediaService.getPresignUrl(body)
   }
 }
