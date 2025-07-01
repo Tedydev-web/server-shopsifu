@@ -67,7 +67,7 @@ export class CookieService {
     this.set(res, 'accessToken', accessToken)
 
     // Áp dụng logic "remember me" cho thời gian sống của refresh token
-    const timeInMs = this.configService.get('timeInMs')
+    const timeInMs = this.configService.get('timeouts')
     const refreshTokenMaxAge = rememberMe ? timeInMs.rememberMe : timeInMs.refreshToken
 
     this.set(res, 'refreshToken', refreshToken, { maxAge: refreshTokenMaxAge })

@@ -105,7 +105,7 @@ export class CoreAuthService {
       email: body.email,
       code,
       type: body.type,
-      expiresAt: addMilliseconds(new Date(), this.configService.get('timeInMs').otp),
+      expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp),
     })
     await this.emailService.sendOTP({
       email: body.email,
@@ -131,7 +131,7 @@ export class CoreAuthService {
 
     const device = await this.deviceService.findOrCreateDevice(user.id, req)
 
-    const refreshTokenExpiresInMs = this.configService.get('timeInMs').refreshToken
+    const refreshTokenExpiresInMs = this.configService.get('timeouts').refreshToken
     const refreshTokenExpiresAt = addMilliseconds(new Date(), refreshTokenExpiresInMs)
 
     const session = await this.sessionRepository.createSession({

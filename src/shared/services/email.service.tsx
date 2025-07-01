@@ -11,7 +11,7 @@ export class EmailService {
   private from: string
 
   constructor(private readonly configService: ConfigService<EnvConfigType>) {
-    this.resend = new Resend(this.configService.get('resend').apiKey)
+    this.resend = new Resend(this.configService.get('email').apiKey)
     this.from = this.configService.get('app').emailFrom
   }
   async sendOTP(payload: { email: string; code: string }) {

@@ -15,7 +15,7 @@ export class SessionService {
     private readonly configService: ConfigService<EnvConfigType>,
   ) {
     // Cache TTL cho session bằng với thời gian hết hạn của Refresh Token
-    this.sessionTtlSeconds = this.configService.get('timeInMs').refreshToken / 1000
+    this.sessionTtlSeconds = this.configService.get('timeouts').refreshToken / 1000
   }
 
   // === Session Lifecycle Management ===

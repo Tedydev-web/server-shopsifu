@@ -49,7 +49,7 @@ export class OtpService {
       email: body.email,
       code,
       type: body.type,
-      expiresAt: addMilliseconds(new Date(), this.configService.get('timeInMs').otp),
+      expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp),
     })
     await this.emailService.sendOTP({
       email: body.email,

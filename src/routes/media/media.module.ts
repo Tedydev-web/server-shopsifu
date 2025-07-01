@@ -5,6 +5,7 @@ import path from 'path'
 import { MediaController } from 'src/routes/media/media.controller'
 import { generateRandomFilename } from 'src/shared/helpers'
 import * as fs from 'fs'
+import { MediaService } from './media.service'
 
 const UPLOAD_DIR = path.resolve('upload')
 const storage = multer.diskStorage({
@@ -29,5 +30,6 @@ if (!fs.existsSync(uploadDir)) {
     }),
   ],
   controllers: [MediaController],
+  providers: [MediaService],
 })
 export class MediaModule {}

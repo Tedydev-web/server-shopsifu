@@ -28,6 +28,7 @@ import { SessionService } from './services/session.service'
 import { SltService } from './services/slt.service'
 import { PaginationService } from './services/pagination.service'
 import { SharedRoleRepository } from './repositories/shared-role.repo'
+import { S3Service } from './services/s3.service'
 
 const redisClientProvider = {
   provide: IORedisKey,
@@ -72,6 +73,7 @@ const sharedServices = [
   SessionService,
   SltService,
   PaginationService,
+  S3Service,
 ]
 
 const sharedMiddlewares = [CsrfProtectionMiddleware, SecurityHeadersMiddleware]

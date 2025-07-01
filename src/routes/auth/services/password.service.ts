@@ -35,7 +35,7 @@ export class PasswordService {
         email: body.email,
         code,
         type: TypeOfVerificationCode.FORGOT_PASSWORD,
-        expiresAt: addMilliseconds(new Date(), this.configService.get('timeInMs').otp),
+        expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp),
       })
     }
     return {

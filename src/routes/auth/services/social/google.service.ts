@@ -39,7 +39,7 @@ export class GoogleService {
     private readonly sessionRepository: SessionRepository,
     private readonly authRepository: AuthRepository,
   ) {
-    const googleConfig = this.configService.get('google')
+    const googleConfig = this.configService.get('oauth').google
     const appConfig = this.configService.get('app')
 
     this.oauth2Client = new google.auth.OAuth2(
@@ -123,7 +123,7 @@ export class GoogleService {
       const device = await this.deviceService.findOrCreateDevice(user.id, req)
 
       // 6. Tính toán thời gian hết hạn cho Refresh Token
-      const refreshTokenExpiresInMs = this.configService.get('timeInMs').refreshToken
+      const refreshTokenExpiresInMs = this.configService.get('timeouts').refreshToken
       const refreshTokenExpiresAt = addMilliseconds(new Date(), refreshTokenExpiresInMs)
 
       // 7. Tạo một phiên đăng nhập (session) mới trong DB
