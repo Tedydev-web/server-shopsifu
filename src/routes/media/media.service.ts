@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { S3Service } from 'src/shared/services/s3.service'
 import { unlink } from 'fs/promises'
 import { generateRandomFilename } from 'src/shared/helpers'
+import { PresignedUploadFileBodyType } from './media.model'
 @Injectable()
 export class MediaService {
   constructor(private readonly s3Service: S3Service) {}
@@ -29,10 +30,12 @@ export class MediaService {
         return unlink(file.path).catch(() => undefined)
       }),
     )
-    return result
+    return {
+      data: result,
+    }
   }
 
-  async getPresignUrl(body: { filename: string }) {
+  async getPresignUrl(body: PresignedUploadFileBodyType) {
     const randomFilename = generateRandomFilename(body.filename)
     const presignedUrl = await this.s3Service.createPresignedUrlWithClient(randomFilename)
     const url = presignedUrl.split('?')[0]
