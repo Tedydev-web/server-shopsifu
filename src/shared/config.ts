@@ -68,6 +68,10 @@ const DeviceConfigSchema = z.object({
   DEVICE_TRUST_EXPIRATION_DAYS: z.coerce.number().int().positive().default(30),
 })
 
+const MediaConfigSchema = z.object({
+  PREFIX_STATIC_ENPOINT: z.string().default('http://localhost:3000/media/static'),
+})
+
 // --- Root Schema ---
 const RootConfigSchema = AppConfigSchema.merge(JWTConfigSchema)
   .merge(CookieConfigSchema)
@@ -79,6 +83,7 @@ const RootConfigSchema = AppConfigSchema.merge(JWTConfigSchema)
   .merge(CsrfConfigSchema)
   .merge(RedisConfigSchema)
   .merge(DeviceConfigSchema)
+  .merge(MediaConfigSchema)
 
 // --- Validation and Parsing ---
 const validatedConfig = RootConfigSchema.parse(process.env)
@@ -200,6 +205,9 @@ const envConfig = {
     password: validatedConfig.ADMIN_PASSWORD,
     email: validatedConfig.ADMIN_EMAIL,
     phoneNumber: validatedConfig.ADMIN_PHONE_NUMBER,
+  },
+  media: {
+    prefixStaticEnpoint: validatedConfig.PREFIX_STATIC_ENPOINT,
   },
 }
 

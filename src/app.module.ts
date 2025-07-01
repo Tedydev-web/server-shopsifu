@@ -17,7 +17,8 @@ import { ProfileModule } from './routes/profile/profile.module'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
 import { UserModule } from './routes/user/user.module'
-
+import { MediaModule } from './routes/media/media.module'
+  
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -46,6 +47,7 @@ import { UserModule } from './routes/user/user.module'
     RoleModule,
     ProfileModule,
     UserModule,
+    MediaModule,
   ],
   providers: [
     {

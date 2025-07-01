@@ -23,7 +23,7 @@ export const OTPEmail = ({ otpCode, title }: OTPEmailProps) => (
         </Section>
         <Text style={paragraph}>Nếu bạn không chủ động thực hiện hành động này, xin hãy bỏ qua email?</Text>
       </Container>
-      <Text style={footer}>From Được Edu with ❤️.</Text>
+      <Text style={footer}>From Shopsifu Ecommerce</Text>
     </Body>
   </Html>
 )
