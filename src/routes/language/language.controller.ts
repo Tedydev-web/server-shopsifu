@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
   CreateLanguageBodyDTO,
@@ -6,6 +6,7 @@ import {
   GetLanguageParamsDTO,
   GetLanguagesResDTO,
   UpdateLanguageBodyDTO,
+  LanguagePaginationQueryDTO,
 } from 'src/routes/language/language.dto'
 import { LanguageService } from 'src/routes/language/language.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -17,8 +18,8 @@ export class LanguageController {
 
   @Get()
   @ZodSerializerDto(GetLanguagesResDTO)
-  findAll() {
-    return this.languageService.findAll()
+  findAll(@Query() query: LanguagePaginationQueryDTO) {
+    return this.languageService.findAll(query)
   }
 
   @Get(':languageId')

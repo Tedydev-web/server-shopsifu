@@ -8,35 +8,23 @@ import {
   UpdateRoleBodyType,
 } from 'src/routes/role/role.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { PaginationService, PaginatedResult } from 'src/shared/services/pagination.service'
 
 @Injectable()
 export class RoleRepo {
-  constructor(private prismaService: PrismaService) {}
+  constructor(
+    private prismaService: PrismaService,
+    private paginationService: PaginationService,
+  ) {}
 
-  async list(pagination: GetRolesQueryType): Promise<GetRolesResType> {
-    const skip = (pagination.page - 1) * pagination.limit
-    const take = pagination.limit
-    const [totalItems, data] = await Promise.all([
-      this.prismaService.role.count({
-        where: {
-          deletedAt: null,
-        },
-      }),
-      this.prismaService.role.findMany({
-        where: {
-          deletedAt: null,
-        },
-        skip,
-        take,
-      }),
-    ])
-    return {
-      data,
-      totalItems,
-      page: pagination.page,
-      limit: pagination.limit,
-      totalPages: Math.ceil(totalItems / pagination.limit),
-    }
+  async list(pagination: GetRolesQueryType): Promise<PaginatedResult<RoleType>> {
+    return this.paginationService.paginate<RoleType>(
+      'role',
+      pagination,
+      { deletedAt: null },
+      {},
+      { searchableFields: ['id', 'name', 'description'] },
+    )
   }
 
   findById(id: number): Promise<RoleWithPermissionsType | null> {

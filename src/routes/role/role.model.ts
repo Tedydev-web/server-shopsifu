@@ -8,16 +8,23 @@ export const RoleWithPermissionsSchema = RoleSchema.extend({
 
 export const GetRolesResSchema = z.object({
   data: z.array(RoleSchema),
-  totalItems: z.number(),
-  page: z.number(),
-  limit: z.number(),
-  totalPages: z.number(),
+  metadata: z.object({
+    totalItems: z.number(),
+    page: z.number(),
+    limit: z.number(),
+    totalPages: z.number(),
+    hasNext: z.boolean(),
+    hasPrev: z.boolean(),
+  }),
 })
 
 export const GetRolesQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().default(10),
+    sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+    sortBy: z.string().optional(),
+    search: z.string().optional(),
   })
   .strict()
 

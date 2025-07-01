@@ -3,16 +3,23 @@ import { z } from 'zod'
 
 export const GetPermissionsResSchema = z.object({
   data: z.array(PermissionSchema),
-  totalItems: z.number(), // Tổng số item
-  page: z.number(), // Số trang hiện tại
-  limit: z.number(), // Số item trên 1 trang
-  totalPages: z.number(), // Tổng số trang
+  metadata: z.object({
+    totalItems: z.number(),
+    page: z.number(),
+    limit: z.number(),
+    totalPages: z.number(),
+    hasNext: z.boolean(),
+    hasPrev: z.boolean(),
+  }),
 })
 
 export const GetPermissionsQuerySchema = z
   .object({
-    page: z.coerce.number().int().positive().default(1), // Phải thêm coerce để chuyển từ string sang number
-    limit: z.coerce.number().int().positive().default(10), // Phải thêm coerce để chuyển từ string sang number
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().default(10),
+    sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+    sortBy: z.string().optional(),
+    search: z.string().optional(),
   })
   .strict()
 

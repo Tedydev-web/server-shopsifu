@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common'
 import { LanguageRepo } from 'src/routes/language/language.repo'
-import { CreateLanguageBodyType, UpdateLanguageBodyType } from 'src/routes/language/language.model'
+import {
+  CreateLanguageBodyType,
+  UpdateLanguageBodyType,
+  LanguagePaginationQueryType,
+} from 'src/routes/language/language.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { LanguageAlreadyExistsException } from 'src/routes/language/language.error'
@@ -9,12 +13,8 @@ import { LanguageAlreadyExistsException } from 'src/routes/language/language.err
 export class LanguageService {
   constructor(private languageRepo: LanguageRepo) {}
 
-  async findAll() {
-    const data = await this.languageRepo.findAll()
-    return {
-      data,
-      totalItems: data.length,
-    }
+  async findAll(query: LanguagePaginationQueryType) {
+    return this.languageRepo.findAllWithPagination(query)
   }
 
   async findById(id: string) {

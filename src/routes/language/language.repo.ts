@@ -1,10 +1,19 @@
 import { Injectable } from '@nestjs/common'
-import { CreateLanguageBodyType, LanguageType, UpdateLanguageBodyType } from 'src/routes/language/language.model'
+import {
+  CreateLanguageBodyType,
+  LanguageType,
+  UpdateLanguageBodyType,
+  LanguagePaginationQueryType,
+} from 'src/routes/language/language.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { PaginationService, PaginatedResult } from 'src/shared/services/pagination.service'
 
 @Injectable()
 export class LanguageRepo {
-  constructor(private prismaService: PrismaService) {}
+  constructor(
+    private prismaService: PrismaService,
+    private paginationService: PaginationService,
+  ) {}
 
   findAll(): Promise<LanguageType[]> {
     return this.prismaService.language.findMany({
@@ -69,5 +78,15 @@ export class LanguageRepo {
             deletedAt: new Date(),
           },
         })
+  }
+
+  findAllWithPagination(query: LanguagePaginationQueryType): Promise<PaginatedResult<LanguageType>> {
+    return this.paginationService.paginate<LanguageType>(
+      'language',
+      query,
+      { deletedAt: null },
+      {},
+      { searchableFields: ['id', 'name'] },
+    )
   }
 }

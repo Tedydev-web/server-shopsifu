@@ -10,12 +10,15 @@ import {
   Patch,
   UseGuards,
 } from '@nestjs/common'
-import { ZodSerializerDto } from 'nestjs-zod'
+import { ZodSerializerDto, createZodDto } from 'nestjs-zod'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { MessageResponseDTO } from 'src/shared/dtos/core.dto'
 import { AccessTokenGuard } from 'src/shared/guards/access-token.guard'
 import { DeviceResponseDto, RenameDeviceDto } from './device.dto'
 import { DeviceService } from './device.service'
+import { z } from 'zod'
+
+// Định nghĩa DTO trả về message cho device
+export class DeviceMessageResponseDTO extends createZodDto(z.object({ message: z.string() })) {}
 
 @Controller('devices')
 @UseGuards(AccessTokenGuard)
@@ -39,7 +42,7 @@ export class DeviceController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(MessageResponseDTO)
+  @ZodSerializerDto(DeviceMessageResponseDTO)
   async revokeDevice(@ActiveUser('userId') userId: number, @Param('id', ParseIntPipe) deviceId: number) {
     return this.deviceService.revokeDevice(userId, deviceId)
   }

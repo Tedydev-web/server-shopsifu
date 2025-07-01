@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Res, UseGuards, Req } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Response, Request } from 'express'
-import { ZodSerializerDto } from 'nestjs-zod'
+import { ZodSerializerDto, createZodDto } from 'nestjs-zod'
 import {
   DisableTwoFactorBodyDTO,
   ForgotPasswordBodyDTO,
@@ -14,14 +14,22 @@ import { CoreAuthService } from '../services/core.service'
 import { GoogleService } from '../services/social/google.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
-import { MessageResponseDTO, createTypedSuccessResponseDTO } from 'src/shared/dtos/core.dto'
 import { AccessTokenGuard } from 'src/shared/guards/access-token.guard'
 import { CookieNames } from 'src/shared/constants/cookie.constant'
 import { OtpService } from '../services/otp.service'
 import { PasswordService } from '../services/password.service'
 import { SessionService } from '../services/session.service'
+import { z } from 'zod'
 
-const TwoFactorSetupResponseDTO = createTypedSuccessResponseDTO(TwoFactorSetupResDTO.schema)
+// Định nghĩa DTO trả về message cho auth
+export class AuthMessageResponseDTO extends createZodDto(z.object({ message: z.string() })) {}
+
+const TwoFactorSetupResponseDTO = createZodDto(
+  z.object({
+    qrCode: z.string(),
+    secret: z.string(),
+  }),
+)
 
 @Controller('auth')
 export class AuthController {
@@ -43,21 +51,21 @@ export class AuthController {
 
   @Post('register')
   @IsPublic()
-  @ZodSerializerDto(MessageResponseDTO)
+  @ZodSerializerDto(AuthMessageResponseDTO)
   register(@Body() body: RegisterBodyDTO, @Req() req: Request) {
     return this.coreAuthService.register(body, req)
   }
 
   @Post('send-otp')
   @IsPublic()
-  @ZodSerializerDto(MessageResponseDTO)
+  @ZodSerializerDto(AuthMessageResponseDTO)
   sendOTP(@Body() body: SendOTPBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.otpService.sendOTP(body, req, res)
   }
 
   @Post('login')
   @IsPublic()
-  @ZodSerializerDto(MessageResponseDTO)
+  @ZodSerializerDto(AuthMessageResponseDTO)
   login(@Body() body: LoginBodyDTO, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.coreAuthService.login(body, req, res)
   }
@@ -101,7 +109,7 @@ export class AuthController {
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @IsPublic()
-  @ZodSerializerDto(MessageResponseDTO)
+  @ZodSerializerDto(AuthMessageResponseDTO)
   forgotPassword(@Body() body: ForgotPasswordBodyDTO) {
     return this.passwordService.forgotPassword(body)
   }
@@ -115,7 +123,7 @@ export class AuthController {
 
   @Post('disable-2fa')
   @UseGuards(AccessTokenGuard)
-  @ZodSerializerDto(MessageResponseDTO)
+  @ZodSerializerDto(AuthMessageResponseDTO)
   disableTwoFactorAuth(@Body() body: DisableTwoFactorBodyDTO, @ActiveUser('userId') userId: number) {
     return this.coreAuthService.disableTwoFactorAuth({ ...body, userId })
   }

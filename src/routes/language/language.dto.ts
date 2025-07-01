@@ -5,6 +5,7 @@ import {
   GetLanguageParamsSchema,
   GetLanguagesResSchema,
   UpdateLanguageBodySchema,
+  LanguagePaginationQuerySchema,
 } from 'src/routes/language/language.model'
 
 export class GetLanguagesResDTO extends createZodDto(GetLanguagesResSchema) {}
@@ -16,3 +17,5 @@ export class GetLanguageDetailResDTO extends createZodDto(GetLanguageDetailResSc
 export class CreateLanguageBodyDTO extends createZodDto(CreateLanguageBodySchema) {}
 
 export class UpdateLanguageBodyDTO extends createZodDto(UpdateLanguageBodySchema) {}
+
+export class LanguagePaginationQueryDTO extends createZodDto(LanguagePaginationQuerySchema) {}
