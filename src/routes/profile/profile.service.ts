@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common'
+import { InvalidPasswordException, NotFoundRecordException } from 'src/shared/error'
 import { ChangePasswordBodyType, UpdateMeBodySchema, UpdateMeBodyType } from './profile.model'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
-import { isUniqueConstraintPrismaError } from 'src/shared/utils/prisma.utils'
-import { GlobalError } from 'src/shared/global.error'
+import { isUniqueConstraintPrismaError } from 'src/shared/helpers'
 
 @Injectable()
 export class ProfileService {
@@ -19,7 +19,7 @@ export class ProfileService {
     })
 
     if (!user) {
-      throw GlobalError.NotFoundRecordException()
+      throw NotFoundRecordException
     }
 
     return user
@@ -36,7 +36,7 @@ export class ProfileService {
       )
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw GlobalError.NotFoundRecordException()
+        throw NotFoundRecordException
       }
       throw error
     }
@@ -50,11 +50,11 @@ export class ProfileService {
         deletedAt: null,
       })
       if (!user) {
-        throw GlobalError.NotFoundRecordException()
+        throw NotFoundRecordException
       }
       const isPasswordMatch = await this.hashingService.compare(password, user.password)
       if (!isPasswordMatch) {
-        throw GlobalError.InvalidPasswordException()
+        throw InvalidPasswordException
       }
       const hashedPassword = await this.hashingService.hash(newPassword)
 
@@ -66,13 +66,11 @@ export class ProfileService {
         },
       )
       return {
-        success: true,
-        statusCode: 200,
-        message: 'profile.success.CHANGE_PASSWORD',
+        message: 'Password changed successfully',
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw GlobalError.NotFoundRecordException()
+        throw NotFoundRecordException
       }
       throw error
     }

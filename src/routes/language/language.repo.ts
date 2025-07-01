@@ -1,39 +1,21 @@
 import { Injectable } from '@nestjs/common'
+import { CreateLanguageBodyType, LanguageType, UpdateLanguageBodyType } from 'src/routes/language/language.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { BasePaginationQueryType, PaginatedResponseType } from 'src/shared/models/core.model'
-import { CreateLanguageBodyType, LanguageType } from './language.model'
-import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 
 @Injectable()
-export class LanguageRepo extends BaseRepository<LanguageType> {
-  constructor(prismaService: PrismaService) {
-    super(prismaService, 'language')
-  }
+export class LanguageRepo {
+  constructor(private prismaService: PrismaService) {}
 
-  // === STANDARD REPOSITORY METHODS ===
-
-  protected getSearchableFields(): string[] {
-    return ['id', 'name']
-  }
-
-  protected getSortableFields(): string[] {
-    return ['id', 'name', 'createdAt', 'updatedAt']
-  }
-
-  async findAllWithPagination(query: BasePaginationQueryType): Promise<PaginatedResponseType<LanguageType>> {
-    return this.paginate(query, { deletedAt: null })
-  }
-
-  async findAll(prismaClient?: PrismaTransactionClient): Promise<LanguageType[]> {
-    const client = this.getClient(prismaClient)
-    return client.language.findMany({
-      where: { deletedAt: null },
+  findAll(): Promise<LanguageType[]> {
+    return this.prismaService.language.findMany({
+      where: {
+        deletedAt: null,
+      },
     })
   }
 
-  async findById(id: string, prismaClient?: PrismaTransactionClient): Promise<LanguageType | null> {
-    const client = this.getClient(prismaClient)
-    return client.language.findUnique({
+  findById(id: string): Promise<LanguageType | null> {
+    return this.prismaService.language.findUnique({
       where: {
         id,
         deletedAt: null,
@@ -41,109 +23,51 @@ export class LanguageRepo extends BaseRepository<LanguageType> {
     })
   }
 
-  async create(
-    { createdById, data }: { createdById: number; data: CreateLanguageBodyType },
-    prismaClient?: PrismaTransactionClient,
-  ): Promise<LanguageType> {
-    const client = this.getClient(prismaClient)
-    return client.language.create({
+  create({ createdById, data }: { createdById: number; data: CreateLanguageBodyType }): Promise<LanguageType> {
+    return this.prismaService.language.create({
       data: {
         ...data,
         createdById,
-        updatedById: createdById,
       },
     })
   }
 
-  async update(id: string | number, data: any, prismaClient?: PrismaTransactionClient): Promise<LanguageType> {
-    const client = this.getClient(prismaClient)
-    return client.language.update({
+  update({
+    id,
+    updatedById,
+    data,
+  }: {
+    id: string
+    updatedById: number
+    data: UpdateLanguageBodyType
+  }): Promise<LanguageType> {
+    return this.prismaService.language.update({
       where: {
-        id: String(id),
+        id,
         deletedAt: null,
       },
       data: {
         ...data,
-        updatedById: data.updatedById,
+        updatedById,
       },
     })
   }
 
-  async delete(id: string | number, data: any, prismaClient?: PrismaTransactionClient): Promise<LanguageType> {
-    const client = this.getClient(prismaClient)
-    return client.language.update({
-      where: {
-        id: String(id),
-        deletedAt: null,
-      },
-      data: {
-        deletedAt: new Date(),
-        deletedById: data.deletedById,
-      },
-    })
-  }
-
-  async findByIdOrName(id: string, name: string, prismaClient?: PrismaTransactionClient): Promise<LanguageType | null> {
-    const client = this.getClient(prismaClient)
-    return client.language.findFirst({
-      where: {
-        OR: [
-          { id: id },
-          {
-            name: {
-              equals: name,
-              mode: 'insensitive',
-            },
+  delete(id: string, isHard?: boolean): Promise<LanguageType> {
+    return isHard
+      ? this.prismaService.language.delete({
+          where: {
+            id,
           },
-        ],
-        deletedAt: null,
-      },
-    })
-  }
-
-  async findByIdOrNameExcludingCurrent(
-    id: string,
-    name: string,
-    currentId: string,
-    prismaClient?: PrismaTransactionClient,
-  ): Promise<LanguageType | null> {
-    const client = this.getClient(prismaClient)
-    return client.language.findFirst({
-      where: {
-        OR: [
-          { id: id },
-          {
-            name: {
-              equals: name,
-              mode: 'insensitive',
-            },
+        })
+      : this.prismaService.language.update({
+          where: {
+            id,
+            deletedAt: null,
           },
-        ],
-        id: {
-          not: currentId,
-        },
-        deletedAt: null,
-      },
-    })
-  }
-
-  async findNameExcludingCurrent(
-    name: string,
-    currentId: string,
-    prismaClient?: PrismaTransactionClient,
-  ): Promise<LanguageType | null> {
-    const client = this.getClient(prismaClient)
-    return client.language.findFirst({
-      where: {
-        name: {
-          equals: name,
-          mode: 'insensitive',
-        },
-        id: {
-          not: currentId,
-        },
-        deletedAt: null,
-      },
-    })
+          data: {
+            deletedAt: new Date(),
+          },
+        })
   }
 }

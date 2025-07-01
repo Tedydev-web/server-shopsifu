@@ -4,41 +4,34 @@ import {
   CreatePermissionBodyDTO,
   GetPermissionDetailResDTO,
   GetPermissionParamsDTO,
-  PermissionPaginationQueryDTO,
+  GetPermissionsQueryDTO,
   GetPermissionsResDTO,
   UpdatePermissionBodyDTO,
 } from 'src/routes/permission/permission.dto'
 import { PermissionService } from 'src/routes/permission/permission.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { RequireCreate, RequireDelete, RequireRead, RequireUpdate } from 'src/shared/decorators/permission.decorator'
-import { MessageResponseDTO } from 'src/shared/dtos/core.dto'
+import { MessageResDTO } from 'src/shared/dtos/response.dto'
 
 @Controller('permissions')
 export class PermissionController {
   constructor(private readonly permissionService: PermissionService) {}
 
   @Get()
-  @RequireRead('permission')
   @ZodSerializerDto(GetPermissionsResDTO)
-  list(@Query() query: PermissionPaginationQueryDTO) {
+  list(@Query() query: GetPermissionsQueryDTO) {
     return this.permissionService.list({
       page: query.page,
       limit: query.limit,
-      sortOrder: query.sortOrder,
-      sortBy: query.sortBy,
-      search: query.search,
     })
   }
 
   @Get(':permissionId')
-  @RequireRead('permission')
   @ZodSerializerDto(GetPermissionDetailResDTO)
   findById(@Param() params: GetPermissionParamsDTO) {
     return this.permissionService.findById(params.permissionId)
   }
 
   @Post()
-  @RequireCreate('permission')
   @ZodSerializerDto(GetPermissionDetailResDTO)
   create(@Body() body: CreatePermissionBodyDTO, @ActiveUser('userId') userId: number) {
     return this.permissionService.create({
@@ -48,7 +41,6 @@ export class PermissionController {
   }
 
   @Put(':permissionId')
-  @RequireUpdate('permission')
   @ZodSerializerDto(GetPermissionDetailResDTO)
   update(
     @Body() body: UpdatePermissionBodyDTO,
@@ -63,8 +55,7 @@ export class PermissionController {
   }
 
   @Delete(':permissionId')
-  @RequireDelete('permission')
-  @ZodSerializerDto(MessageResponseDTO)
+  @ZodSerializerDto(MessageResDTO)
   delete(@Param() params: GetPermissionParamsDTO, @ActiveUser('userId') userId: number) {
     return this.permissionService.delete({
       id: params.permissionId,

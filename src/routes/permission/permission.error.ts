@@ -1,18 +1,12 @@
-import { GlobalError } from 'src/shared/global.error'
+import { UnprocessableEntityException } from '@nestjs/common'
 
-export const PermissionError = {
-  NotFound: GlobalError.NotFound('permission.error.NOT_FOUND'),
-
-  AlreadyExists: GlobalError.Conflict('permission.error.ALREADY_EXISTS', [
-    {
-      path: 'path',
-      message: 'permission.error.ALREADY_EXISTS',
-    },
-    {
-      path: 'method',
-      message: 'permission.error.ALREADY_EXISTS',
-    },
-  ]),
-} as const
-
-export type PermissionErrorKey = keyof typeof PermissionError
+export const PermissionAlreadyExistsException = new UnprocessableEntityException([
+  {
+    message: 'Error.PermissionAlreadyExists',
+    path: 'path',
+  },
+  {
+    message: 'Error.PermissionAlreadyExists',
+    path: 'method',
+  },
+])

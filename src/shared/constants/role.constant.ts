@@ -8,8 +8,8 @@ export const HTTPMethod = {
   GET: 'GET',
   POST: 'POST',
   PUT: 'PUT',
-  PATCH: 'PATCH',
   DELETE: 'DELETE',
+  PATCH: 'PATCH',
   OPTIONS: 'OPTIONS',
   HEAD: 'HEAD',
 } as const

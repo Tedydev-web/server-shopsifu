@@ -44,7 +44,6 @@ model User {
   role                        Role                  @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   devices                     Device[] // Liên kết 1-n với Device
   sessions                    Session[] // Liên kết 1-n với Session
-  revokedAllSessionsBefore    DateTime?             @map("revoked_all_sessions_before") // Dùng để thu hồi tất cả các phiên đăng nhập
   carts                       CartItem[]
   orders                      Order[]
   reviews                     Review[]

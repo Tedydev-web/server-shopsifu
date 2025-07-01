@@ -60,10 +60,6 @@ export class SessionRepository extends BaseRepository<SessionType> {
       return null
     }
 
-    if (session.user.revokedAllSessionsBefore && session.createdAt < session.user.revokedAllSessionsBefore) {
-      return null
-    }
-
     return session
   }
 

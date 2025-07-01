@@ -1,11 +1,4 @@
 import { z } from 'zod'
-import {
-  createTypedSuccessResponseSchema,
-  createTypedPaginatedResponseSchema,
-  BaseResponseSchema,
-  BasePaginationQuerySchema,
-  PaginatedResponseType,
-} from 'src/shared/models/core.model'
 
 export const LanguageSchema = z.object({
   id: z.string().max(10),
@@ -17,19 +10,18 @@ export const LanguageSchema = z.object({
   updatedAt: z.date(),
 })
 
-// Response Schemas
-export const GetLanguagesResSchema = createTypedPaginatedResponseSchema(LanguageSchema)
-export const GetLanguageDetailResSchema = createTypedSuccessResponseSchema(LanguageSchema)
-export const CreateLanguageResSchema = createTypedSuccessResponseSchema(LanguageSchema)
-export const UpdateLanguageResSchema = createTypedSuccessResponseSchema(LanguageSchema)
-export const DeleteLanguageResSchema = BaseResponseSchema
+export const GetLanguagesResSchema = z.object({
+  data: z.array(LanguageSchema),
+  totalItems: z.number(),
+})
 
-// Request Schemas
 export const GetLanguageParamsSchema = z
   .object({
     languageId: z.string().max(10),
   })
   .strict()
+
+export const GetLanguageDetailResSchema = LanguageSchema
 
 export const CreateLanguageBodySchema = LanguageSchema.pick({
   id: true,
@@ -40,22 +32,9 @@ export const UpdateLanguageBodySchema = LanguageSchema.pick({
   name: true,
 }).strict()
 
-// Pagination Schema (re-export for module-specific customization if needed)
-export const LanguagePaginationQuerySchema = BasePaginationQuerySchema
-
-// Types
 export type LanguageType = z.infer<typeof LanguageSchema>
 export type GetLanguagesResType = z.infer<typeof GetLanguagesResSchema>
 export type GetLanguageDetailResType = z.infer<typeof GetLanguageDetailResSchema>
-export type CreateLanguageResType = z.infer<typeof CreateLanguageResSchema>
-export type UpdateLanguageResType = z.infer<typeof UpdateLanguageResSchema>
-export type DeleteLanguageResType = z.infer<typeof DeleteLanguageResSchema>
 export type CreateLanguageBodyType = z.infer<typeof CreateLanguageBodySchema>
 export type GetLanguageParamsType = z.infer<typeof GetLanguageParamsSchema>
 export type UpdateLanguageBodyType = z.infer<typeof UpdateLanguageBodySchema>
-
-// Pagination Types (re-export for module use)
-export type LanguagePaginationQueryType = z.infer<typeof LanguagePaginationQuerySchema>
-
-// Re-export PaginatedResponseType for module use
-export type { PaginatedResponseType }

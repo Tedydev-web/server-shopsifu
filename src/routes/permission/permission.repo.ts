@@ -1,31 +1,45 @@
 import { Injectable } from '@nestjs/common'
-
+import {
+  CreatePermissionBodyType,
+  GetPermissionsQueryType,
+  GetPermissionsResType,
+  PermissionType,
+  UpdatePermissionBodyType,
+} from 'src/routes/permission/permission.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { PermissionPaginationQueryType, PaginatedResponseType } from 'src/routes/permission/permission.model'
-import { CreatePermissionBodyType, PermissionType } from './permission.model'
-import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
 
 @Injectable()
-export class PermissionRepo extends BaseRepository<PermissionType> {
-  constructor(prismaService: PrismaService) {
-    super(prismaService, 'permission')
+export class PermissionRepo {
+  constructor(private prismaService: PrismaService) {}
+
+  async list(pagination: GetPermissionsQueryType): Promise<GetPermissionsResType> {
+    const skip = (pagination.page - 1) * pagination.limit
+    const take = pagination.limit
+    const [totalItems, data] = await Promise.all([
+      this.prismaService.permission.count({
+        where: {
+          deletedAt: null,
+        },
+      }),
+      this.prismaService.permission.findMany({
+        where: {
+          deletedAt: null,
+        },
+        skip,
+        take,
+      }),
+    ])
+    return {
+      data,
+      totalItems,
+      page: pagination.page,
+      limit: pagination.limit,
+      totalPages: Math.ceil(totalItems / pagination.limit),
+    }
   }
 
-  protected getSearchableFields(): string[] {
-    return ['name', 'description', 'path']
-  }
-
-  protected getSortableFields(): string[] {
-    return ['id', 'name', 'path', 'method', 'createdAt', 'updatedAt']
-  }
-
-  async findAllWithPagination(query: PermissionPaginationQueryType): Promise<PaginatedResponseType<PermissionType>> {
-    return this.paginate(query, { deletedAt: null })
-  }
-
-  async findById(id: number, prismaClient?: PrismaTransactionClient): Promise<PermissionType | null> {
-    const client = this.getClient(prismaClient)
-    return client.permission.findUnique({
+  findById(id: number): Promise<PermissionType | null> {
+    return this.prismaService.permission.findUnique({
       where: {
         id,
         deletedAt: null,
@@ -33,72 +47,67 @@ export class PermissionRepo extends BaseRepository<PermissionType> {
     })
   }
 
-  async create(
-    { createdById, data }: { createdById: number | null; data: CreatePermissionBodyType },
-    prismaClient?: PrismaTransactionClient,
-  ): Promise<PermissionType> {
-    const client = this.getClient(prismaClient)
-    return client.permission.create({
+  create({
+    createdById,
+    data,
+  }: {
+    createdById: number | null
+    data: CreatePermissionBodyType
+  }): Promise<PermissionType> {
+    return this.prismaService.permission.create({
       data: {
         ...data,
         createdById,
-        updatedById: createdById,
       },
     })
   }
 
-  async update(id: string | number, data: any, prismaClient?: PrismaTransactionClient): Promise<PermissionType> {
-    const client = this.getClient(prismaClient)
-    return client.permission.update({
-      where: {
-        id: Number(id),
-        deletedAt: null,
-      },
-      data: {
-        ...data,
-        updatedById: data.updatedById,
-      },
-    })
-  }
-
-  async delete(id: string | number, data: any, prismaClient?: PrismaTransactionClient): Promise<PermissionType> {
-    const client = this.getClient(prismaClient)
-    return client.permission.update({
-      where: {
-        id: Number(id),
-        deletedAt: null,
-      },
-      data: {
-        deletedAt: new Date(),
-        deletedById: data.deletedById,
-      },
-    })
-  }
-
-  async updatePermission(
-    id: number,
-    updatedById: number,
-    data: CreatePermissionBodyType,
-    prismaClient?: PrismaTransactionClient,
-  ): Promise<PermissionType> {
-    return this.update(id, { ...data, updatedById }, prismaClient)
-  }
-
-  async softDeletePermission(
-    id: number,
-    deletedById: number,
-    prismaClient?: PrismaTransactionClient,
-  ): Promise<PermissionType> {
-    const client = this.getClient(prismaClient)
-    return client.permission.update({
+  update({
+    id,
+    updatedById,
+    data,
+  }: {
+    id: number
+    updatedById: number
+    data: UpdatePermissionBodyType
+  }): Promise<PermissionType> {
+    return this.prismaService.permission.update({
       where: {
         id,
         deletedAt: null,
       },
       data: {
-        deletedAt: new Date(),
-        deletedById,
+        ...data,
+        updatedById,
       },
     })
+  }
+
+  delete(
+    {
+      id,
+      deletedById,
+    }: {
+      id: number
+      deletedById: number
+    },
+    isHard?: boolean,
+  ): Promise<PermissionType> {
+    return isHard
+      ? this.prismaService.permission.delete({
+          where: {
+            id,
+          },
+        })
+      : this.prismaService.permission.update({
+          where: {
+            id,
+            deletedAt: null,
+          },
+          data: {
+            deletedAt: new Date(),
+            deletedById,
+          },
+        })
   }
 }

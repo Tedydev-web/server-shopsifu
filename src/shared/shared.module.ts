@@ -26,6 +26,7 @@ import { GeolocationService } from './services/geolocation.service'
 import { DeviceFingerprintService } from './services/device-fingerprint.service'
 import { SessionService } from './services/session.service'
 import { SltService } from './services/slt.service'
+import { PaginationService } from './services/pagination.service'
 
 const redisClientProvider = {
   provide: IORedisKey,
@@ -68,6 +69,7 @@ const sharedServices = [
   DeviceFingerprintService,
   SessionService,
   SltService,
+  PaginationService,
 ]
 
 const sharedMiddlewares = [CsrfProtectionMiddleware, SecurityHeadersMiddleware]

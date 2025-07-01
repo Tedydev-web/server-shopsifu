@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable } from '@nestjs/common'
 import { RoleRepo } from 'src/routes/role/role.repo'
 import { CreateRoleBodyType, GetRolesQueryType, UpdateRoleBodyType } from 'src/routes/role/role.model'
-import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/utils/prisma.utils'
+import { NotFoundRecordException } from 'src/shared/error'
+import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
+import { ProhibitedActionOnBaseRoleException, RoleAlreadyExistsException } from 'src/routes/role/role.error'
 import { RoleName } from 'src/shared/constants/role.constant'
-import { GlobalError } from 'src/shared/global.error'
 
 @Injectable()
 export class RoleService {
@@ -17,7 +18,7 @@ export class RoleService {
   async findById(id: number) {
     const role = await this.roleRepo.findById(id)
     if (!role) {
-      throw GlobalError.NotFoundRecordException()
+      throw NotFoundRecordException
     }
     return role
   }
@@ -31,9 +32,9 @@ export class RoleService {
       return role
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw GlobalError.Conflict()
+        throw RoleAlreadyExistsException
       }
-      throw GlobalError.InternalServerError()
+      throw error
     }
   }
 
@@ -43,12 +44,12 @@ export class RoleService {
   private async verifyRole(roleId: number) {
     const role = await this.roleRepo.findById(roleId)
     if (!role) {
-      throw GlobalError.NotFoundRecordException()
+      throw NotFoundRecordException
     }
     const baseRoles: string[] = [RoleName.Admin, RoleName.Client, RoleName.Seller]
 
     if (baseRoles.includes(role.name)) {
-      throw GlobalError.Forbidden()
+      throw ProhibitedActionOnBaseRoleException
     }
   }
 
@@ -63,10 +64,10 @@ export class RoleService {
       return updatedRole
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw GlobalError.NotFoundRecordException()
+        throw NotFoundRecordException
       }
       if (isUniqueConstraintPrismaError(error)) {
-        throw GlobalError.Conflict()
+        throw RoleAlreadyExistsException
       }
       throw error
     }
@@ -80,13 +81,11 @@ export class RoleService {
         deletedById,
       })
       return {
-        success: true,
-        statusCode: 200,
-        message: 'role.success.DELETE_SUCCESS',
+        message: 'Delete successfully',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw GlobalError.NotFoundRecordException()
+        throw NotFoundRecordException
       }
       throw error
     }

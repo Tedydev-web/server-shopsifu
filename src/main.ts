@@ -66,13 +66,13 @@ async function bootstrap() {
   const securityHeadersMiddleware = app.get(SecurityHeadersMiddleware)
   app.use(securityHeadersMiddleware.use.bind(securityHeadersMiddleware))
 
-  app.setGlobalPrefix('api/v1', {
-    exclude: ['/'],
-  })
+  // app.setGlobalPrefix('api/v1', {
+  //   exclude: ['/'],
+  // })
 
-  app.enableVersioning({
-    type: VersioningType.URI,
-  })
+  // app.enableVersioning({
+  //   type: VersioningType.URI,
+  // })
 
   await app.listen(3000)
 
