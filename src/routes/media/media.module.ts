@@ -18,7 +18,7 @@ const storage = multer.diskStorage({
   },
 })
 
-const uploadDir = path.join(__dirname, '..', '..', '..', '..', 'upload')
+const uploadDir = path.join(__dirname, '..', '..', '..', 'upload')
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir)
 }

@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext, Logger } from '@nestjs/common'
+import { Injectable, CanActivate, ExecutionContext, Logger, UnauthorizedException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { Request } from 'express'
 import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
@@ -6,6 +6,7 @@ import { AuthError } from 'src/routes/auth/auth.error'
 import { PrismaService } from '../services/prisma.service'
 import { RedisService } from '../providers/redis/redis.service'
 import { RedisKeyManager } from '../providers/redis/redis-key.manager'
+import { I18nService } from 'nestjs-i18n'
 
 export interface RequiredPermission {
   resource: string
@@ -33,6 +34,7 @@ export class PermissionGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly prismaService: PrismaService,
     private readonly redisService: RedisService,
+    private readonly i18n: I18nService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -48,7 +50,7 @@ export class PermissionGuard implements CanActivate {
 
     if (!user) {
       this.logDenied(request, 'NO_USER_IN_REQUEST', null)
-      throw AuthError.AccessTokenRequired
+      throw new UnauthorizedException(this.i18n.t('auth.error.ACCESS_TOKEN_REQUIRED'))
     }
 
     // 1. Kiểm tra trạng thái user và role (có thể cache nếu cần)

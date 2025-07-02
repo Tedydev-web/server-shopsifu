@@ -27,7 +27,7 @@ export class PaginationService {
       limit,
       totalPages,
       hasNext: page < totalPages,
-      hasPrev: page > 1,
+      hasPrevious: page > 1,
       ...extra,
     }
   }
@@ -94,7 +94,7 @@ export class PaginationService {
           limit,
           totalPages: 1,
           hasNext,
-          hasPrev: false,
+          hasPrevious: false,
           nextCursor,
           prevCursor,
         },

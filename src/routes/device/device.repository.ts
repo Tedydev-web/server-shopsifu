@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
+import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repo'
 import { Device } from '@prisma/client'
 
 // Dữ liệu cần thiết để tạo một thiết bị mới, bao gồm tất cả các trường

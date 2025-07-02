@@ -37,8 +37,6 @@ export const AuthError = {
   TOTPNotEnabled: BadRequestError('auth.error.TOTP_NOT_ENABLED'),
 
   // --- Tokens & Sessions ---
-  AccessTokenRequired: UnauthorizedError('auth.error.ACCESS_TOKEN_REQUIRED'),
-  InvalidAccessToken: UnauthorizedError('auth.error.INVALID_ACCESS_TOKEN'),
   RefreshTokenRequired: UnauthorizedError('auth.error.REFRESH_TOKEN_REQUIRED'),
   InvalidRefreshToken: UnauthorizedError('auth.error.INVALID_REFRESH_TOKEN'),
   RefreshTokenReused: ForbiddenError('auth.error.REFRESH_TOKEN_REUSED'),

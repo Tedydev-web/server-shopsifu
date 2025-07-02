@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { addMilliseconds } from 'date-fns'
 import { DisableTwoFactorBodyDTO, LoginBodyDTO, RegisterBodyDTO, SendOTPBodyDTO } from '../dtos/auth.dto'
@@ -22,22 +22,11 @@ import { SessionRepository } from '../repositories/session.repository'
 import { OtpService } from './otp.service'
 import { AuthRepository } from '../repositories/auth.repo'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
-
-interface RefreshTokenInput {
-  refreshToken: string | undefined
-  res: Response
-}
-
-interface LogoutInput {
-  accessToken: string | undefined
-  refreshToken: string | undefined
-  res: Response
-}
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class CoreAuthService {
-  private readonly logger = new Logger(CoreAuthService.name)
-
   constructor(
     private readonly hashingService: HashingService,
     private readonly sharedRoleRepository: SharedRoleRepository,
@@ -54,6 +43,7 @@ export class CoreAuthService {
     private readonly sessionRepository: SessionRepository,
     private readonly otpService: OtpService,
     private readonly authRepository: AuthRepository,
+    private readonly i18n: I18nService<I18nTranslations>,
   ) {}
 
   async register(body: RegisterBodyDTO, req: Request) {
@@ -80,9 +70,7 @@ export class CoreAuthService {
       })
 
       return {
-        success: true,
-        statusCode: 201,
-        message: 'auth.success.REGISTER_SUCCESS',
+        message: this.i18n.t('auth.success.REGISTER_SUCCESS'),
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -112,9 +100,7 @@ export class CoreAuthService {
       code,
     })
     return {
-      success: true,
-      statusCode: 200,
-      message: 'auth.success.SEND_OTP_SUCCESS',
+      message: this.i18n.t('auth.success.SEND_OTP_SUCCESS'),
     }
   }
 
@@ -158,9 +144,7 @@ export class CoreAuthService {
     this.cookieService.setTokenCookies(res, accessToken, refreshToken)
 
     return {
-      success: true,
-      statusCode: 200,
-      message: 'auth.success.LOGIN_SUCCESS',
+      message: this.i18n.t('auth.success.LOGIN_SUCCESS'),
     }
   }
 
@@ -206,9 +190,7 @@ export class CoreAuthService {
     }
     await this.sharedUserRepository.update({ id: data.userId }, { totpSecret: null })
     return {
-      success: true,
-      statusCode: 200,
-      message: 'auth.success.DISABLE_2FA_SUCCESS',
+      message: this.i18n.t('auth.success.DISABLE_2FA_SUCCESS'),
     }
   }
 }

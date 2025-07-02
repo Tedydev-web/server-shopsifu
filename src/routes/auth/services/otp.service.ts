@@ -56,8 +56,6 @@ export class OtpService {
       code,
     })
     return {
-      success: true,
-      statusCode: 200,
       message: 'auth.success.SEND_OTP_SUCCESS',
     }
   }

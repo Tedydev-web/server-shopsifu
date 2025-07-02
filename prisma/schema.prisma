@@ -415,7 +415,7 @@ model Brand {
   logo              String             @db.VarChar(1000)
   products          Product[]
   brandTranslations BrandTranslation[]
-
+  name              String             @db.VarChar(500)
   createdById Int?
   createdBy   User? @relation("BrandCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
   updatedById Int?

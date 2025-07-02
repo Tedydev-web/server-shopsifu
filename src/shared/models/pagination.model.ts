@@ -17,7 +17,7 @@ export interface PaginationMetadata {
   limit: number
   totalPages: number
   hasNext: boolean
-  hasPrev: boolean
+  hasPrevious: boolean
   nextCursor?: string | null
   prevCursor?: string | null
 }

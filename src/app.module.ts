@@ -2,7 +2,6 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common'
 import { SharedModule } from './shared/shared.module'
 import { AuthModule } from './routes/auth/auth.module'
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
-import { AllExceptionsFilter } from 'src/shared/filters/all-exceptions.filter'
 import { LanguageModule } from 'src/routes/language/language.module'
 import { ConfigModule } from '@nestjs/config'
 import { CsrfProtectionMiddleware } from 'src/shared/middleware/csrf.middleware'
@@ -18,7 +17,9 @@ import { ZodSerializerInterceptor } from 'nestjs-zod'
 import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
 import { UserModule } from './routes/user/user.module'
 import { MediaModule } from './routes/media/media.module'
-  
+import { BrandModule } from './routes/brand/brand.module'
+import { BrandTranslationModule } from './routes/brand/brand-translation/brand-translation.module'
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -48,6 +49,8 @@ import { MediaModule } from './routes/media/media.module'
     ProfileModule,
     UserModule,
     MediaModule,
+    BrandModule,
+    BrandTranslationModule,
   ],
   providers: [
     {
@@ -61,10 +64,6 @@ import { MediaModule } from './routes/media/media.module'
     {
       provide: APP_INTERCEPTOR,
       useClass: ZodSerializerInterceptor,
-    },
-    {
-      provide: APP_FILTER,
-      useClass: AllExceptionsFilter,
     },
     {
       provide: APP_GUARD,

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repository'
+import { BaseRepository, PrismaTransactionClient } from 'src/shared/repositories/base.repo'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { SessionType } from '../model/session.model'
 import { UserType } from 'src/shared/models/shared-user.model'

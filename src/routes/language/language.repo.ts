@@ -15,14 +15,6 @@ export class LanguageRepo {
     private paginationService: PaginationService,
   ) {}
 
-  findAll(): Promise<LanguageType[]> {
-    return this.prismaService.language.findMany({
-      where: {
-        deletedAt: null,
-      },
-    })
-  }
-
   findById(id: string): Promise<LanguageType | null> {
     return this.prismaService.language.findUnique({
       where: {

@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext, HttpException } from '@nestjs/common'
+import { Injectable, CanActivate, ExecutionContext, HttpException, UnauthorizedException } from '@nestjs/common'
 import { Request } from 'express'
 import { REQUEST_USER_KEY, REQUEST_ROLE_PERMISSIONS } from 'src/shared/constants/auth.constant'
 import { CookieNames } from 'src/shared/constants/cookie.constant'
@@ -6,6 +6,7 @@ import { TokenService } from 'src/shared/services/token.service'
 import { SessionService } from '../services/session.service'
 import { AuthError } from 'src/routes/auth/auth.error'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
+import { I18nService } from 'nestjs-i18n'
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
@@ -13,6 +14,7 @@ export class AccessTokenGuard implements CanActivate {
     private readonly tokenService: TokenService,
     private readonly sessionService: SessionService,
     private readonly sharedRoleRepository: SharedRoleRepository,
+    private readonly i18n: I18nService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -20,7 +22,7 @@ export class AccessTokenGuard implements CanActivate {
     const accessToken = this.extractToken(request)
 
     if (!accessToken) {
-      throw AuthError.AccessTokenRequired
+      throw new UnauthorizedException(this.i18n.t('auth.error.ACCESS_TOKEN_REQUIRED'))
     }
 
     try {
@@ -75,7 +77,7 @@ export class AccessTokenGuard implements CanActivate {
         throw error
       }
       // Fallback for unexpected JWT errors (e.g., malformed token)
-      throw AuthError.InvalidAccessToken
+      throw new UnauthorizedException(this.i18n.t('auth.error.INVALID_ACCESS_TOKEN'))
     }
   }
 

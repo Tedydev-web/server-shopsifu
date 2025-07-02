@@ -39,8 +39,6 @@ export class PasswordService {
       })
     }
     return {
-      success: true,
-      statusCode: 200,
       message: 'auth.success.FORGOT_PASSWORD_SUCCESS',
     }
   }

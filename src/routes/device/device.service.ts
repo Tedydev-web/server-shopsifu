@@ -4,6 +4,7 @@ import { Request } from 'express'
 import { DeviceFingerprintService } from 'src/shared/services/device-fingerprint.service'
 import { DeviceRepository } from './device.repository'
 import { DeviceError } from './device.error'
+import { I18nService } from 'nestjs-i18n'
 
 @Injectable()
 export class DeviceService {
@@ -12,6 +13,7 @@ export class DeviceService {
   constructor(
     private readonly deviceFingerprintService: DeviceFingerprintService,
     private readonly deviceRepository: DeviceRepository,
+    private readonly i18n: I18nService,
   ) {}
 
   async findOrCreateDevice(userId: number, req: Request): Promise<Device> {
@@ -79,10 +81,7 @@ export class DeviceService {
     return this.deviceRepository.update(deviceId, { name })
   }
 
-  async revokeDevice(
-    userId: number,
-    deviceId: number,
-  ): Promise<{ success: boolean; statusCode: number; message: string }> {
+  async revokeDevice(userId: number, deviceId: number): Promise<{ message: string }> {
     const device = await this.deviceRepository.findById(deviceId)
     if (!device) {
       throw DeviceError.DeviceNotFound
@@ -95,9 +94,7 @@ export class DeviceService {
     await this.deviceRepository.update(deviceId, { isActive: false })
 
     return {
-      success: true,
-      statusCode: 200,
-      message: 'device.success.DEVICE_REVOKED',
+      message: this.i18n.t('device.success.DEVICE_REVOKED'),
     }
   }
 
