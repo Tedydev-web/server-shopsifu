@@ -7,6 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+generator json {
+  provider = "prisma-json-types-generator"
+}
+
 model Language {
   id                   String                @id @db.VarChar(10)
   name                 String                @db.VarChar(500)
@@ -251,6 +255,7 @@ model Product {
   brand               Brand                @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   images              String[]
   categories          Category[]
+  /// [Variants]
   variants            Json
   skus                SKU[]
   reviews             Review[]
