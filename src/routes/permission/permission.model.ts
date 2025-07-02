@@ -9,7 +9,7 @@ export const GetPermissionsResSchema = z.object({
     limit: z.number(),
     totalPages: z.number(),
     hasNext: z.boolean(),
-    hasPrev: z.boolean(),
+    hasPrevious: z.boolean(),
   }),
 })
 

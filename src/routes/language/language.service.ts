@@ -38,7 +38,7 @@ export class LanguageService {
       })
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw LanguageAlreadyExistsException
+        throw LanguageAlreadyExistsException()
       }
       throw error
     }

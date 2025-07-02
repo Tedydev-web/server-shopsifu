@@ -4,11 +4,11 @@ import { I18nTranslations } from 'src/generated/i18n.generated'
 
 export const UserAlreadyExistsException = (i18n: I18nService<I18nTranslations>) =>
   new UnprocessableEntityException([
-  {
-    message: i18n.t('user.error.ALREADY_EXISTS'),
-    path: 'email',
-  },
-])
+    {
+      message: i18n.t('user.error.ALREADY_EXISTS'),
+      path: 'email',
+    },
+  ])
 
 export const CannotUpdateAdminUserException = new ForbiddenException('Error.CannotUpdateAdminUser')
 

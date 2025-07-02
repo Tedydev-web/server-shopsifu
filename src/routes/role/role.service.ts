@@ -10,7 +10,10 @@ import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class RoleService {
-  constructor(private roleRepo: RoleRepo, private readonly i18n: I18nService<I18nTranslations>) {}
+  constructor(
+    private roleRepo: RoleRepo,
+    private readonly i18n: I18nService<I18nTranslations>,
+  ) {}
 
   async list(pagination: GetRolesQueryType) {
     const data = await this.roleRepo.list(pagination)
