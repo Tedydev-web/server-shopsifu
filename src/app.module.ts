@@ -29,10 +29,10 @@ import { BrandTranslationModule } from './routes/brand/brand-translation/brand-t
     I18nModule.forRoot({
       fallbackLanguage: 'vi',
       loaderOptions: {
-        path: path.resolve('src/i18n'),
+        path: path.resolve('src/i18n/'),
         watch: true,
       },
-      resolvers: [AcceptLanguageResolver, new QueryResolver(['lang'])],
+      resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
       typesOutputPath: path.resolve('src/generated/i18n.generated.ts'),
     }),
     ThrottlerModule.forRoot([

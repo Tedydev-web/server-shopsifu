@@ -3,18 +3,20 @@ import { BrandRepo } from 'src/routes/brand/brand.repo'
 import { CreateBrandBodyType, UpdateBrandBodyType, BrandPaginationQueryType } from 'src/routes/brand/brand.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
+import { I18nContext } from 'nestjs-i18n'
 
 @Injectable()
 export class BrandService {
   constructor(private brandRepo: BrandRepo) {}
 
   async list(pagination: BrandPaginationQueryType) {
-    const data = await this.brandRepo.list(pagination)
+    const data = await this.brandRepo.list(pagination, I18nContext.current()?.lang as string)
     return data
   }
 
   async findById(id: number) {
-    const brand = await this.brandRepo.findById(id)
+    const brand = await this.brandRepo.findById(id, I18nContext.current()?.lang as string)
+
     if (!brand) {
       throw NotFoundRecordException
     }

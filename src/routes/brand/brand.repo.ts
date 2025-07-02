@@ -9,6 +9,7 @@ import {
 } from 'src/routes/brand/brand.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { PaginationService, PaginatedResult } from 'src/shared/services/pagination.service'
+import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
 
 @Injectable()
 export class BrandRepo {
@@ -17,13 +18,10 @@ export class BrandRepo {
     private paginationService: PaginationService,
   ) {}
 
-  async list(
-    pagination: BrandPaginationQueryType,
-    languageId?: string,
-  ): Promise<PaginatedResult<BrandIncludeTranslationType>> {
+  async list(pagination: BrandPaginationQueryType, languageId: string): Promise<PaginatedResult<GetBrandsResType>> {
     const include = {
       brandTranslations: {
-        where: languageId ? { deletedAt: null, languageId } : { deletedAt: null },
+        where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId },
       },
     }
 
@@ -39,7 +37,7 @@ export class BrandRepo {
     )
   }
 
-  findById(id: number, languageId?: string): Promise<BrandIncludeTranslationType | null> {
+  findById(id: number, languageId: string): Promise<BrandIncludeTranslationType | null> {
     return this.prismaService.brand.findUnique({
       where: {
         id,
@@ -47,7 +45,7 @@ export class BrandRepo {
       },
       include: {
         brandTranslations: {
-          where: languageId ? { deletedAt: null, languageId } : { deletedAt: null },
+          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId },
         },
       },
     })
