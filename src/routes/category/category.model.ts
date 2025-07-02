@@ -27,8 +27,8 @@ export const CreateCategoryBodySchema = CategorySchema.pick({
 export const UpdateCategoryBodySchema = CreateCategoryBodySchema
 
 export type CategoryType = z.infer<typeof CategorySchema>
-export type GetAllCategoriesResType = z.infer<typeof GetAllCategoriesResSchema>
 export type CategoryIncludeTranslationType = z.infer<typeof CategoryIncludeTranslationSchema>
+export type GetAllCategoriesResType = z.infer<typeof GetAllCategoriesResSchema>
 export type GetAllCategoriesQueryType = z.infer<typeof GetAllCategoriesQuerySchema>
 export type GetCategoryDetailResType = z.infer<typeof GetCategoryDetailResSchema>
 export type CreateCategoryBodyType = z.infer<typeof CreateCategoryBodySchema>

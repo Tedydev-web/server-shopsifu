@@ -7,15 +7,10 @@ import {
   CreateCategoryTranslationBodyType,
   UpdateCategoryTranslationBodyType,
 } from 'src/routes/category/category-translation/category-translation.model'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class CategoryTranslationService {
-  constructor(
-    private categoryTranslationRepo: CategoryTranslationRepo,
-    private readonly i18n: I18nService<I18nTranslations>,
-  ) {}
+  constructor(private categoryTranslationRepo: CategoryTranslationRepo) {}
 
   async findById(id: number) {
     const category = await this.categoryTranslationRepo.findById(id)
@@ -73,7 +68,7 @@ export class CategoryTranslationService {
         deletedById,
       })
       return {
-        message: this.i18n.t('category.success.DELETE_SUCCESS'),
+        message: 'Delete successfully',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

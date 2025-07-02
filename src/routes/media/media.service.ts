@@ -2,32 +2,29 @@ import { Injectable } from '@nestjs/common'
 import { S3Service } from 'src/shared/services/s3.service'
 import { unlink } from 'fs/promises'
 import { generateRandomFilename } from 'src/shared/helpers'
-import { PresignedUploadFileBodyType } from './media.model'
+import { PresignedUploadFileBodyType } from 'src/routes/media/media.model'
 @Injectable()
 export class MediaService {
   constructor(private readonly s3Service: S3Service) {}
 
   async uploadFile(files: Array<Express.Multer.File>) {
     const result = await Promise.all(
-      files.map(async (file) => {
-        try {
-          const res = await this.s3Service.uploadedFile({
+      files.map((file) => {
+        return this.s3Service
+          .uploadedFile({
             filename: 'images/' + file.filename,
             filepath: file.path,
             contentType: file.mimetype,
           })
-          return { url: res.Location }
-        } catch (err) {
-          // Nếu upload thất bại vẫn xóa file local
-          await unlink(file.path)
-          return { error: true, message: 'Upload failed', filename: file.filename, reason: err?.message || err }
-        }
+          .then((res) => {
+            return { url: res.Location }
+          })
       }),
     )
-    // Xóa file local còn sót lại (nếu có)
+    // Xóa file sau khi upload lên S3
     await Promise.all(
       files.map((file) => {
-        return unlink(file.path).catch(() => undefined)
+        return unlink(file.path)
       }),
     )
     return {

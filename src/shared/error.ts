@@ -17,12 +17,12 @@ import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 
 // --- Common Exception Instances ---
-export const NotFoundRecordException = new NotFoundException([{ message: 'Error.NotFoundRecord' }])
+export const NotFoundRecordException = new NotFoundException([{ message: 'global.error.NOT_FOUND' }])
 export const InvalidPasswordException = (i18n: I18nService<I18nTranslations>) =>
   new UnprocessableEntityException([{ message: i18n.t('global.error.INVALID_PASSWORD'), path: 'password' }])
 
 // --- Factory Functions for Custom Error ---
-export const NotFoundError = (message = 'Error.NotFoundRecord', path?: string) =>
+export const NotFoundError = (message = 'global.error.NOT_FOUND_RECORD', path?: string) =>
   new NotFoundException([{ message, ...(path ? { path } : {}) }])
 
 export const BadRequestError = (message = 'global.error.BAD_REQUEST', path?: string) =>

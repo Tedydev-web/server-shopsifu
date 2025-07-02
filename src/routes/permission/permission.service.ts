@@ -39,7 +39,7 @@ export class PermissionService {
       })
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw PermissionAlreadyExistsException
+        throw PermissionAlreadyExistsException(this.i18n)
       }
       throw error
     }
@@ -58,7 +58,7 @@ export class PermissionService {
         throw NotFoundRecordException
       }
       if (isUniqueConstraintPrismaError(error)) {
-        throw PermissionAlreadyExistsException
+        throw PermissionAlreadyExistsException(this.i18n)
       }
       throw error
     }

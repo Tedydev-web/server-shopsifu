@@ -4,15 +4,10 @@ import { CreateCategoryBodyType, UpdateCategoryBodyType } from 'src/routes/categ
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext } from 'nestjs-i18n'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class CategoryService {
-  constructor(
-    private categoryRepo: CategoryRepo,
-    private readonly i18n: I18nService<I18nTranslations>,
-  ) {}
+  constructor(private categoryRepo: CategoryRepo) {}
 
   findAll(parentCategoryId?: number | null) {
     return this.categoryRepo.findAll({
@@ -62,7 +57,7 @@ export class CategoryService {
         deletedById,
       })
       return {
-        message: this.i18n.t('category.success.DELETE_SUCCESS'),
+        message: 'Delete successfully',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

@@ -64,7 +64,7 @@ export class MediaController {
   @Post('images/upload/presigned-url')
   @ZodSerializerDto(PresignedUploadFileResDTO)
   @IsPublic()
-  createPresignedUrl(@Body() body: PresignedUploadFileBodyDTO) {
+  async createPresignedUrl(@Body() body: PresignedUploadFileBodyDTO) {
     return this.mediaService.getPresignUrl(body)
   }
 }
