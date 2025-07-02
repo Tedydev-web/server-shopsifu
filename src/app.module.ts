@@ -21,6 +21,7 @@ import { BrandModule } from './routes/brand/brand.module'
 import { BrandTranslationModule } from './routes/brand/brand-translation/brand-translation.module'
 import { CategoryTranslationModule } from './routes/category/category-translation/category-translation.module'
 import { CategoryModule } from './routes/category/category.module'
+import { HttpExceptionFilter } from './shared/filters/http-exception.filter'
 
 @Module({
   imports: [
@@ -29,7 +30,7 @@ import { CategoryModule } from './routes/category/category.module'
       load: [envConfig],
     }),
     I18nModule.forRoot({
-      fallbackLanguage: 'vi',
+      fallbackLanguage: 'en',
       loaderOptions: {
         path: path.resolve('src/i18n/'),
         watch: true,
@@ -37,12 +38,12 @@ import { CategoryModule } from './routes/category/category.module'
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
       typesOutputPath: path.resolve('src/generated/i18n.generated.ts'),
     }),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000,
-        limit: 10,
-      },
-    ]),
+    // ThrottlerModule.forRoot([
+    //   {
+    //     ttl: 60000,
+    //     limit: 10,
+    //   },
+    // ]),
     SharedModule,
     AuthModule,
     LanguageModule,
@@ -61,17 +62,10 @@ import { CategoryModule } from './routes/category/category.module'
       provide: APP_PIPE,
       useClass: CustomZodValidationPipe,
     },
+    { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
     {
-      provide: APP_INTERCEPTOR,
-      useClass: TransformInterceptor,
-    },
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: ZodSerializerInterceptor,
-    },
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      provide: APP_FILTER,
+      useClass: HttpExceptionFilter,
     },
   ],
 })
