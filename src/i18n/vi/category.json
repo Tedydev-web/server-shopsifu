@@ -1,0 +1,14 @@
+{
+  "success": {
+    "CREATE_SUCCESS": "Tạo danh mục thành công",
+    "UPDATE_SUCCESS": "Cập nhật danh mục thành công",
+    "DELETE_SUCCESS": "Xóa danh mục thành công",
+    "GET_CATEGORIES": "Lấy danh sách danh mục thành công",
+    "GET_CATEGORY_DETAIL": "Lấy chi tiết danh mục thành công"
+  },
+  "error": {
+    "NOT_FOUND": "Danh mục không tồn tại.",
+    "ALREADY_EXISTS": "Mã danh mục này đã tồn tại.",
+    "CANNOT_DELETE": "Không thể xóa danh mục này vì đang được sử dụng."
+  }
+}

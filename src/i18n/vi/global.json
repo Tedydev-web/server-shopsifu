@@ -8,6 +8,7 @@
     "PROCESSED": "Xử lý thành công"
   },
   "error": {
+    "INVALID_PASSWORD": "Mật khẩu không hợp lệ",
     "INTERNAL_SERVER_ERROR": "Đã có lỗi xảy ra ở phía máy chủ. Vui lòng thử lại sau",
     "BAD_REQUEST": "Yêu cầu không hợp lệ. Vui lòng kiểm tra lại dữ liệu đầu vào",
     "UNAUTHORIZED": "Bạn cần đăng nhập để truy cập tài nguyên này",

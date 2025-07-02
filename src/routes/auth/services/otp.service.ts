@@ -13,6 +13,8 @@ import { SltService } from 'src/shared/services/slt.service'
 import { CookieService } from 'src/shared/services/cookie.service'
 import { Request, Response } from 'express'
 import { CookieNames } from 'src/shared/constants/cookie.constant'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class OtpService {
@@ -24,6 +26,7 @@ export class OtpService {
     private readonly configService: ConfigService<EnvConfigType>,
     private readonly sltService: SltService,
     private readonly cookieService: CookieService,
+    private readonly i18n: I18nService<I18nTranslations>,
   ) {}
 
   async sendOTP(body: SendOTPBodyDTO, req: Request, res: Response) {
@@ -33,7 +36,7 @@ export class OtpService {
     }
     if (body.type === TypeOfVerificationCode.FORGOT_PASSWORD && !user) {
       // Don't throw an error to prevent user enumeration attacks
-      return { message: 'auth.success.SEND_OTP_SUCCESS' }
+      return { message: this.i18n.t('auth.success.SEND_OTP_SUCCESS') }
     }
 
     const code = this.cryptoService.generateOTP()
@@ -56,7 +59,7 @@ export class OtpService {
       code,
     })
     return {
-      message: 'auth.success.SEND_OTP_SUCCESS',
+      message: this.i18n.t('auth.success.SEND_OTP_SUCCESS'),
     }
   }
 

@@ -98,6 +98,34 @@ export type I18nTranslations = {
             "SUSPICIOUS_ACTIVITY": string;
         };
     };
+    "brand": {
+        "success": {
+            "CREATE_SUCCESS": string;
+            "UPDATE_SUCCESS": string;
+            "DELETE_SUCCESS": string;
+            "GET_BRANDS": string;
+            "GET_BRAND_DETAIL": string;
+        };
+        "error": {
+            "NOT_FOUND": string;
+            "ALREADY_EXISTS": string;
+            "CANNOT_DELETE": string;
+        };
+    };
+    "category": {
+        "success": {
+            "CREATE_SUCCESS": string;
+            "UPDATE_SUCCESS": string;
+            "DELETE_SUCCESS": string;
+            "GET_CATEGORIES": string;
+            "GET_CATEGORY_DETAIL": string;
+        };
+        "error": {
+            "NOT_FOUND": string;
+            "ALREADY_EXISTS": string;
+            "CANNOT_DELETE": string;
+        };
+    };
     "device": {
         "success": {
             "DEVICE_RENAMED": string;
@@ -139,6 +167,7 @@ export type I18nTranslations = {
             "PROCESSED": string;
         };
         "error": {
+            "INVALID_PASSWORD": string;
             "INTERNAL_SERVER_ERROR": string;
             "BAD_REQUEST": string;
             "UNAUTHORIZED": string;
@@ -262,7 +291,6 @@ export type I18nTranslations = {
             "DELETE_SUCCESS": string;
             "GET_LANGUAGES": string;
             "GET_LANGUAGE_DETAIL": string;
-            "IMPORT_SUCCESS": string;
         };
         "error": {
             "NOT_FOUND": string;
@@ -311,6 +339,23 @@ export type I18nTranslations = {
             "OPERATION_FAILED": string;
             "CANNOT_UPDATE_DEFAULT_ROLE": string;
             "CANNOT_DELETE_DEFAULT_ROLE": string;
+        };
+    };
+    "user": {
+        "success": {
+            "CREATE_SUCCESS": string;
+            "UPDATE_SUCCESS": string;
+            "DELETE_SUCCESS": string;
+            "GET_USERS": string;
+            "GET_USER_DETAIL": string;
+        };
+        "error": {
+            "NOT_FOUND": string;
+            "ALREADY_EXISTS": string;
+            "CANNOT_DELETE": string;
+            "CANNOT_UPDATE_ADMIN_USER": string;
+            "CANNOT_DELETE_ADMIN_USER": string;
+            "ROLE_NOT_FOUND": string;
         };
     };
 };

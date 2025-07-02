@@ -19,7 +19,7 @@ export const ChangePasswordBodySchema = UserSchema.pick({
     if (newPassword !== confirmNewPassword) {
       ctx.addIssue({
         code: 'custom',
-        message: 'Error.ConfirmPasswordNotMatch',
+        message: 'profile.error.CONFIRM_PASSWORD_NOT_MATCH',
         path: ['confirmNewPassword'],
       })
     }

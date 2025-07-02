@@ -8,10 +8,15 @@ import {
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { PermissionAlreadyExistsException } from 'src/routes/permission/permission.error'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class PermissionService {
-  constructor(private permissionRepo: PermissionRepo) {}
+  constructor(
+    private permissionRepo: PermissionRepo,
+    private readonly i18n: I18nService<I18nTranslations>,
+  ) {}
 
   async list(pagination: GetPermissionsQueryType) {
     const data = await this.permissionRepo.list(pagination)
@@ -66,7 +71,7 @@ export class PermissionService {
         deletedById,
       })
       return {
-        message: 'Delete successfully',
+        message: this.i18n.t('permission.success.DELETE_SUCCESS'),
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

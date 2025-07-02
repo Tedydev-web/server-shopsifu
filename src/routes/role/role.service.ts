@@ -5,10 +5,12 @@ import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { ProhibitedActionOnBaseRoleException, RoleAlreadyExistsException } from 'src/routes/role/role.error'
 import { RoleName } from 'src/shared/constants/role.constant'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class RoleService {
-  constructor(private roleRepo: RoleRepo) {}
+  constructor(private roleRepo: RoleRepo, private readonly i18n: I18nService<I18nTranslations>) {}
 
   async list(pagination: GetRolesQueryType) {
     const data = await this.roleRepo.list(pagination)
@@ -81,7 +83,7 @@ export class RoleService {
         deletedById,
       })
       return {
-        message: 'Delete successfully',
+        message: this.i18n.t('role.success.DELETE_SUCCESS'),
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

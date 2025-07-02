@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
-import { BrandRepo } from 'src/routes/brand/brand.repo'
-import { CreateBrandBodyType, UpdateBrandBodyType, BrandPaginationQueryType } from 'src/routes/brand/brand.model'
+import { CategoryRepo } from 'src/routes/category/category.repo'
+import { CreateCategoryBodyType, UpdateCategoryBodyType } from 'src/routes/category/category.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext } from 'nestjs-i18n'
@@ -8,41 +8,45 @@ import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
-export class BrandService {
+export class CategoryService {
   constructor(
-    private brandRepo: BrandRepo,
+    private categoryRepo: CategoryRepo,
     private readonly i18n: I18nService<I18nTranslations>,
   ) {}
 
-  async list(pagination: BrandPaginationQueryType) {
-    const data = await this.brandRepo.list(pagination, I18nContext.current()?.lang as string)
-    return data
+  findAll(parentCategoryId?: number | null) {
+    return this.categoryRepo.findAll({
+      parentCategoryId,
+      languageId: I18nContext.current()?.lang as string,
+    })
   }
 
   async findById(id: number) {
-    const brand = await this.brandRepo.findById(id, I18nContext.current()?.lang as string)
-
-    if (!brand) {
+    const category = await this.categoryRepo.findById({
+      id,
+      languageId: I18nContext.current()?.lang as string,
+    })
+    if (!category) {
       throw NotFoundRecordException
     }
-    return brand
+    return category
   }
 
-  create({ data, createdById }: { data: CreateBrandBodyType; createdById: number }) {
-    return this.brandRepo.create({
+  create({ data, createdById }: { data: CreateCategoryBodyType; createdById: number }) {
+    return this.categoryRepo.create({
       createdById,
       data,
     })
   }
 
-  async update({ id, data, updatedById }: { id: number; data: UpdateBrandBodyType; updatedById: number }) {
+  async update({ id, data, updatedById }: { id: number; data: UpdateCategoryBodyType; updatedById: number }) {
     try {
-      const brand = await this.brandRepo.update({
+      const category = await this.categoryRepo.update({
         id,
         updatedById,
         data,
       })
-      return brand
+      return category
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -53,12 +57,12 @@ export class BrandService {
 
   async delete({ id, deletedById }: { id: number; deletedById: number }) {
     try {
-      await this.brandRepo.delete({
+      await this.categoryRepo.delete({
         id,
         deletedById,
       })
       return {
-        message: this.i18n.t('brand.success.DELETE_SUCCESS'),
+        message: this.i18n.t('category.success.DELETE_SUCCESS'),
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

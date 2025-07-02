@@ -8,6 +8,8 @@ import { AuthError } from '../auth.error'
 import { SessionRepository } from '../repositories/session.repository'
 import { SessionService as SharedSessionService } from 'src/shared/services/session.service'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 interface RefreshTokenInput {
   refreshToken: string | undefined
@@ -32,6 +34,7 @@ export class SessionService {
     private readonly sessionRepository: SessionRepository,
     private readonly sharedSessionService: SharedSessionService,
     private readonly sharedRoleRepository: SharedRoleRepository,
+    private readonly i18n: I18nService<I18nTranslations>,
   ) {}
 
   async refreshToken({ refreshToken, res }: RefreshTokenInput) {
@@ -93,7 +96,7 @@ export class SessionService {
     this.cookieService.setTokenCookies(res, tokens.accessToken, tokens.refreshToken, true)
 
     return {
-      message: 'auth.success.REFRESH_TOKEN_SUCCESS',
+      message: this.i18n.t('auth.success.REFRESH_TOKEN_SUCCESS'),
     }
   }
 
@@ -124,7 +127,7 @@ export class SessionService {
     this.cookieService.clearTokenCookies(res)
     await Promise.allSettled(promises)
     return {
-      message: 'auth.success.LOGOUT_SUCCESS',
+      message: this.i18n.t('auth.success.LOGOUT_SUCCESS'),
     }
   }
 }

@@ -16,6 +16,8 @@ import { RoleName } from 'src/shared/constants/role.constant'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class UserService {
@@ -24,6 +26,7 @@ export class UserService {
     private hashingService: HashingService,
     private sharedUserRepository: SharedUserRepository,
     private sharedRoleRepository: SharedRoleRepository,
+    private readonly i18n: I18nService<I18nTranslations>,
   ) {}
 
   list(pagination: GetUsersQueryType) {
@@ -180,7 +183,7 @@ export class UserService {
         deletedById,
       })
       return {
-        message: 'Delete successfully',
+        message: this.i18n.t('user.success.DELETE_SUCCESS'),
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

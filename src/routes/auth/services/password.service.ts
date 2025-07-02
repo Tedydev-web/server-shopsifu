@@ -8,6 +8,8 @@ import { EmailService } from 'src/shared/services/email.service'
 import { CryptoService } from 'src/shared/services/crypto.service'
 import { VerificationCodeRepository } from '../repositories/verification-code.repository'
 import { EnvConfigType } from 'src/shared/config'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class PasswordService {
@@ -17,6 +19,7 @@ export class PasswordService {
     private readonly cryptoService: CryptoService,
     private readonly verificationCodeRepository: VerificationCodeRepository,
     private readonly configService: ConfigService<EnvConfigType>,
+    private readonly i18n: I18nService<I18nTranslations>,
   ) {}
 
   async forgotPassword(body: ForgotPasswordBodyDTO) {
@@ -39,7 +42,7 @@ export class PasswordService {
       })
     }
     return {
-      message: 'auth.success.FORGOT_PASSWORD_SUCCESS',
+      message: this.i18n.t('auth.success.FORGOT_PASSWORD_SUCCESS'),
     }
   }
 

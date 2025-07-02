@@ -7,10 +7,15 @@ import {
   CreateBrandTranslationBodyType,
   UpdateBrandTranslationBodyType,
 } from 'src/routes/brand/brand-translation/brand-translation.model'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class BrandTranslationService {
-  constructor(private brandTranslationRepo: BrandTranslationRepo) {}
+  constructor(
+    private brandTranslationRepo: BrandTranslationRepo,
+    private readonly i18n: I18nService<I18nTranslations>,
+  ) {}
 
   async findById(id: number) {
     const brand = await this.brandTranslationRepo.findById(id)
@@ -60,7 +65,7 @@ export class BrandTranslationService {
         deletedById,
       })
       return {
-        message: 'Delete successfully',
+        message: this.i18n.t('brand.success.DELETE_SUCCESS'),
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
