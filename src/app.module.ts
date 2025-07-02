@@ -69,8 +69,10 @@ import { HttpExceptionFilter } from './shared/filters/http-exception.filter'
     },
   ],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(CsrfProtectionMiddleware).forRoutes('*')
-  }
-}
+export class AppModule {}
+
+// export class AppModule implements NestModule {
+//   configure(consumer: MiddlewareConsumer) {
+//     consumer.apply(CsrfProtectionMiddleware).forRoutes('*')
+//   }
+// }

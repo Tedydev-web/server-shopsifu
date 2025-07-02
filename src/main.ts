@@ -13,45 +13,45 @@ import compression from 'compression'
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule)
 
-  app.set('trust proxy', 1)
+  // app.set('trust proxy', 1)
 
   const configService = app.get(ConfigService)
 
-  useContainer(app.select(AppModule), { fallbackOnErrors: true })
+  // useContainer(app.select(AppModule), { fallbackOnErrors: true })
 
   const logger = new Logger('Bootstrap')
   app.useLogger(logger)
 
   app.enableCors({
-    origin: configService.get('app.clientUrl'),
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-XSRF-TOKEN', 'X-CSRF-TOKEN'],
-    exposedHeaders: ['X-XSRF-TOKEN', 'X-CSRF-TOKEN'],
+    origin: '*',
+    // methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    // credentials: true,
+    // allowedHeaders: ['Content-Type', 'Authorization', 'X-XSRF-TOKEN', 'X-CSRF-TOKEN'],
+    // exposedHeaders: ['X-XSRF-TOKEN', 'X-CSRF-TOKEN'],
   })
 
-  app.use(
-    helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'"],
-          objectSrc: ["'none'"],
-          imgSrc: ["'self'", 'data:'],
-          styleSrc: ["'self'"],
-          upgradeInsecureRequests: [],
-        },
-      },
-      hsts:
-        configService.get<string>('app.nodeEnv') === 'production'
-          ? { maxAge: 31536000, includeSubDomains: true, preload: true }
-          : false,
-      frameguard: { action: 'deny' },
-      dnsPrefetchControl: { allow: false },
-      noSniff: true,
-      xssFilter: true,
-    }),
-  )
+  // app.use(
+  //   helmet({
+  //     contentSecurityPolicy: {
+  //       directives: {
+  //         defaultSrc: ["'self'"],
+  //         scriptSrc: ["'self'", "'unsafe-inline'"],
+  //         objectSrc: ["'none'"],
+  //         imgSrc: ["'self'", 'data:'],
+  //         styleSrc: ["'self'"],
+  //         upgradeInsecureRequests: [],
+  //       },
+  //     },
+  //     hsts:
+  //       configService.get<string>('app.nodeEnv') === 'production'
+  //         ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+  //         : false,
+  //     frameguard: { action: 'deny' },
+  //     dnsPrefetchControl: { allow: false },
+  //     noSniff: true,
+  //     xssFilter: true,
+  //   }),
+  // )
 
   app.use(compression())
   app.use(
@@ -60,11 +60,11 @@ async function bootstrap() {
     }),
   )
 
-  const csrfMiddleware = app.get(CsrfProtectionMiddleware)
-  app.use(csrfMiddleware.use.bind(csrfMiddleware))
+  // const csrfMiddleware = app.get(CsrfProtectionMiddleware)
+  // app.use(csrfMiddleware.use.bind(csrfMiddleware))
 
-  const securityHeadersMiddleware = app.get(SecurityHeadersMiddleware)
-  app.use(securityHeadersMiddleware.use.bind(securityHeadersMiddleware))
+  // const securityHeadersMiddleware = app.get(SecurityHeadersMiddleware)
+  // app.use(securityHeadersMiddleware.use.bind(securityHeadersMiddleware))
 
   // app.setGlobalPrefix('api/v1', {
   //   exclude: ['/'],
