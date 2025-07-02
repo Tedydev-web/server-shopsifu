@@ -59,12 +59,6 @@ model User {
   createdCategories           Category[]            @relation("CategoryCreatedBy")
   updatedCategories           Category[]            @relation("CategoryUpdatedBy")
   deletedCategories           Category[]            @relation("CategoryDeletedBy")
-  createdVariants             Variant[]             @relation("VariantCreatedBy")
-  updatedVariants             Variant[]             @relation("VariantUpdatedBy")
-  deletedVariants             Variant[]             @relation("VariantDeletedBy")
-  createdVariantOptions       VariantOption[]       @relation("VariantOptionCreatedBy")
-  updatedVariantOptions       VariantOption[]       @relation("VariantOptionUpdatedBy")
-  deletedVariantOptions       VariantOption[]       @relation("VariantOptionDeletedBy")
   createdSKUS                 SKU[]                 @relation("SKUCreatedBy")
   updatedSKUS                 SKU[]                 @relation("SKUUpdatedBy")
   deletedSKUS                 SKU[]                 @relation("SKUDeletedBy")
@@ -249,13 +243,15 @@ model Role {
 
 model Product {
   id                  Int                  @id @default(autoincrement())
-  base_price          Float
-  virtual_price       Float
+  publishedAt         DateTime?
+  name                String               @db.VarChar(500)
+  basePrice           Float
+  virtualPrice        Float
   brandId             Int
   brand               Brand                @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   images              String[]
   categories          Category[]
-  variants            Variant[]
+  variants            Json
   skus                SKU[]
   reviews             Review[]
   productTranslations ProductTranslation[]
@@ -344,57 +340,14 @@ model CategoryTranslation {
   @@index([deletedAt])
 }
 
-model Variant {
-  id             Int             @id @default(autoincrement())
-  name           String          @db.VarChar(500)
-  productId      Int
-  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  variantOptions VariantOption[]
-
-  createdById Int?
-  createdBy   User? @relation("VariantCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  updatedById Int?
-  updatedBy   User? @relation("VariantUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  deletedById Int?
-  deletedBy   User? @relation("VariantDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
-
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  @@index([deletedAt])
-}
-
-model VariantOption {
-  id        Int     @id @default(autoincrement())
-  value     String  @db.VarChar(500)
-  variantId Int
-  variant   Variant @relation(fields: [variantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  skus      SKU[]
-
-  createdById Int?
-  createdBy   User? @relation("VariantOptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  updatedById Int?
-  updatedBy   User? @relation("VariantOptionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  deletedById Int?
-  deletedBy   User? @relation("VariantOptionDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
-
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  @@index([deletedAt])
-}
-
 model SKU {
   id                  Int                  @id @default(autoincrement())
   value               String               @db.VarChar(500)
   price               Float
   stock               Int
-  images              String[]
+  image               String
   productId           Int
   product             Product              @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  variantOptions      VariantOption[]
   cartItems           CartItem[]
   productSKUSnapshots ProductSKUSnapshot[]
 
