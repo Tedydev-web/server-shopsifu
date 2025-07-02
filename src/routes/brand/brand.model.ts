@@ -1,23 +1,6 @@
-import { BrandTranslationSchema } from 'src/routes/brand/brand-translation/brand-translation.model'
 import { BasePaginationQuerySchema } from 'src/shared/models/pagination.model'
+import { BrandIncludeTranslationSchema, BrandSchema } from 'src/shared/models/shared-brand.model'
 import { z } from 'zod'
-
-export const BrandSchema = z.object({
-  id: z.number(),
-  name: z.string().max(500),
-  logo: z.string().url().max(1000),
-
-  createdById: z.number().nullable(),
-  updatedById: z.number().nullable(),
-  deletedById: z.number().nullable(),
-  deletedAt: z.date().nullable(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
-})
-
-const BrandIncludeTranslationSchema = BrandSchema.extend({
-  brandTranslations: z.array(BrandTranslationSchema),
-})
 
 export const GetBrandsResSchema = z.object({
   data: z.array(BrandIncludeTranslationSchema),
