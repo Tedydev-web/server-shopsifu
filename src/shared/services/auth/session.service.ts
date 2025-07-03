@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Session } from '@prisma/client'
 import { EnvConfigType } from 'src/shared/config'
-import { RedisKeyManager } from '../providers/redis/redis-key.manager'
-import { RedisService } from '../providers/redis/redis.service'
+import { RedisKeyManager } from '../../providers/redis/redis-key.manager'
+import { RedisService } from '../../providers/redis/redis.service'
 
 @Injectable()
 export class SessionService {

@@ -1,5 +1,5 @@
 import { SetMetadata } from '@nestjs/common'
-import { RequiredPermission, PERMISSIONS_KEY } from '../guards/permission.guard'
+import { RequiredPermission, PERMISSIONS_KEY } from '../../guards/permission.guard'
 
 /**
  * Decorator to define required permissions for an endpoint

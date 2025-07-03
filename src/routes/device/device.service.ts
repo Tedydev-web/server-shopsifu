@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Device } from '@prisma/client'
 import { Request } from 'express'
-import { DeviceFingerprintService } from 'src/shared/services/device-fingerprint.service'
+import { DeviceFingerprintService } from 'src/shared/services/auth/device-fingerprint.service'
 import { DeviceRepository } from './device.repository'
 import { DeviceError } from './device.error'
 import { I18nService } from 'nestjs-i18n'

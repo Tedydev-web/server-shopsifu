@@ -3,7 +3,7 @@ import { createHash } from 'crypto'
 import { Request } from 'express'
 import { GeolocationService, GeoLocationResult } from './geolocation.service'
 import { ParsedUserAgent, UserAgentService } from './user-agent.service'
-import { extractRealIpFromRequest } from '../utils/http.utils'
+import { extractRealIpFromRequest } from '../../utils/http.utils'
 
 export interface EnhancedDeviceInfo {
   userAgent: ParsedUserAgent

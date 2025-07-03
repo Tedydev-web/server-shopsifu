@@ -9,7 +9,7 @@ import {
   UpdateUserBodyDTO,
 } from 'src/routes/user/user.dto'
 import { UserService } from 'src/routes/user/user.service'
-import { ActiveRolePermissions } from 'src/shared/decorators/active-role-permissions.decorator'
+import { ActiveRolePermissions } from 'src/shared/decorators/auth/active-role-permissions.decorator'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { GetUserProfileResDTO, UpdateProfileResDTO } from 'src/shared/dtos/shared-user.dto'
