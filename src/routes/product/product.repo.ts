@@ -1,58 +1,58 @@
 import { Injectable } from '@nestjs/common'
 import {
+  CreateProductBodyType,
   GetProductDetailResType,
   GetProductsQueryType,
   GetProductsResType,
   ProductType,
+  ProductWithTranslationType,
+  UpdateProductBodyType,
 } from 'src/routes/product/product.model'
 import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
-import { PaginationService } from 'src/shared/services/pagination.service'
+import { PaginatedResult, PaginationService } from 'src/shared/services/pagination.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class ProductRepo {
   constructor(
-    private readonly paginationService: PaginationService,
     private readonly prismaService: PrismaService,
+    private readonly paginationService: PaginationService,
   ) {}
 
-  async list(query: GetProductsQueryType, languageId: string): Promise<GetProductsResType> {
-    const { brandIds, categories, minPrice, maxPrice } = query
-    const where: any = {
-      deletedAt: null,
-    }
+  async list(query: GetProductsQueryType, languageId: string): Promise<PaginatedResult<ProductWithTranslationType>> {
+    const { brandIds, categories, minPrice, maxPrice, ...pagination } = query
 
-    if (brandIds?.length) {
+    const where: any = { deletedAt: null }
+
+    if (brandIds && brandIds.length > 0) {
       where.brandId = { in: brandIds }
     }
-
-    if (categories?.length) {
-      where.categories = {
-        some: {
-          categoryId: {
-            in: categories,
-          },
-        },
+    if (categories && categories.length > 0) {
+      where.categories = { some: { id: { in: categories } } }
+    }
+    if (minPrice !== undefined) {
+      where.basePrice = { gte: minPrice }
+    }
+    if (maxPrice !== undefined) {
+      if (where.basePrice) {
+        where.basePrice.lte = maxPrice
+      } else {
+        where.basePrice = { lte: maxPrice }
       }
     }
 
-    if (minPrice !== undefined) {
-      where.basePrice = { ...where.basePrice, gte: minPrice }
-    }
-
-    if (maxPrice !== undefined) {
-      where.basePrice = { ...where.basePrice, lte: maxPrice }
-    }
-
-    return this.paginationService.paginate('product', query, where, {
-      include: {
-        productTranslations: {
-          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
-        },
+    const include = {
+      productTranslations: {
+        where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
       },
-      orderBy: [{ createdAt: 'desc' }],
+    }
+
+    return this.paginationService.paginate('product', pagination, where, {
+      include,
+      searchableFields: ['name'],
     })
   }
+
   findById(id: number, languageId: string): Promise<GetProductDetailResType | null> {
     return this.prismaService.product.findUnique({
       where: {

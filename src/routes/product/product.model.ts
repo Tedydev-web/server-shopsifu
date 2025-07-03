@@ -1,9 +1,9 @@
 import { ProductTranslationSchema } from 'src/routes/product/product-translation/product-translation.model'
 import { SKUSchema, UpsertSKUBodySchema } from 'src/routes/product/sku.model'
-import { BasePaginationQuerySchema } from 'src/shared/models/pagination.model'
 import { BrandIncludeTranslationSchema } from 'src/shared/models/shared-brand.model'
 import { CategoryIncludeTranslationSchema } from 'src/shared/models/shared-category.model'
 import { z } from 'zod'
+import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 function generateSKUs(variants: VariantsType) {
   // Hàm hỗ trợ để tạo tất cả tổ hợp
@@ -26,23 +26,26 @@ function generateSKUs(variants: VariantsType) {
   }))
 }
 export const VariantSchema = z.object({
-  value: z.string(),
-  options: z.array(z.string()),
+  value: z.string().trim(),
+  options: z.array(z.string().trim()),
 })
 
 export const VariantsSchema = z.array(VariantSchema).superRefine((variants, ctx) => {
   // Kiểm tra variants và variant option có bị trùng hay không
   for (let i = 0; i < variants.length; i++) {
     const variant = variants[i]
-    const isDifferent = variants.findIndex((v) => v.value === variant.value) !== i
-    if (!isDifferent) {
+    const isExistingVariant = variants.findIndex((v) => v.value.toLowerCase() === variant.value.toLowerCase()) !== i
+    if (isExistingVariant) {
       return ctx.addIssue({
         code: 'custom',
         message: `Giá trị ${variant.value} đã tồn tại trong danh sách variants. Vui lòng kiểm tra lại.`,
         path: ['variants'],
       })
     }
-    const isDifferentOption = variant.options.findIndex((o) => variant.options.includes(o)) !== -1
+    const isDifferentOption = variant.options.some((option, index) => {
+      const isExistingOption = variant.options.findIndex((o) => o.toLowerCase() === option.toLowerCase()) !== index
+      return isExistingOption
+    })
     if (isDifferentOption) {
       return ctx.addIssue({
         code: 'custom',
@@ -56,9 +59,9 @@ export const VariantsSchema = z.array(VariantSchema).superRefine((variants, ctx)
 export const ProductSchema = z.object({
   id: z.number(),
   publishedAt: z.coerce.date().nullable(),
-  name: z.string().max(500),
-  basePrice: z.number().positive(),
-  virtualPrice: z.number().positive(),
+  name: z.string().trim().max(500),
+  basePrice: z.number().min(0),
+  virtualPrice: z.number().min(0),
   brandId: z.number().positive(),
   images: z.array(z.string()),
   variants: VariantsSchema, // Json field represented as a record
@@ -72,26 +75,20 @@ export const ProductSchema = z.object({
 })
 
 export const GetProductsQuerySchema = BasePaginationQuerySchema.extend({
+  name: z.string().optional(),
   brandIds: z.array(z.coerce.number().int().positive()).optional(),
   categories: z.array(z.coerce.number().int().positive()).optional(),
   minPrice: z.coerce.number().positive().optional(),
   maxPrice: z.coerce.number().positive().optional(),
 })
 
+export const ProductWithTranslationSchema = ProductSchema.extend({
+  productTranslations: z.array(ProductTranslationSchema),
+})
+
 export const GetProductsResSchema = z.object({
-  data: z.array(
-    ProductSchema.extend({
-      productTranslations: z.array(ProductTranslationSchema),
-    }),
-  ),
-  metadata: z.object({
-    totalItems: z.number(),
-    page: z.number(),
-    limit: z.number(),
-    totalPages: z.number(),
-    hasNext: z.boolean(),
-    hasPrevious: z.boolean(),
-  }),
+  data: z.array(ProductWithTranslationSchema),
+  metadata: PaginationMetadataSchema,
 })
 
 export const GetProductParamsSchema = z
@@ -154,6 +151,7 @@ export const UpdateProductBodySchema = CreateProductBodySchema
 
 export type ProductType = z.infer<typeof ProductSchema>
 export type VariantsType = z.infer<typeof VariantsSchema>
+export type ProductWithTranslationType = z.infer<typeof ProductWithTranslationSchema>
 export type GetProductsResType = z.infer<typeof GetProductsResSchema>
 export type GetProductsQueryType = z.infer<typeof GetProductsQuerySchema>
 export type GetProductDetailResType = z.infer<typeof GetProductDetailResSchema>

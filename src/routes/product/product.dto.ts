@@ -5,8 +5,11 @@ import {
   GetProductParamsSchema,
   GetProductsQuerySchema,
   GetProductsResSchema,
+  ProductSchema,
   UpdateProductBodySchema,
 } from 'src/routes/product/product.model'
+
+export class ProductDTO extends createZodDto(ProductSchema) {}
 
 export class GetProductsResDTO extends createZodDto(GetProductsResSchema) {}
 

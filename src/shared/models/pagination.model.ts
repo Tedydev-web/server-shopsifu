@@ -11,6 +11,17 @@ export const BasePaginationQuerySchema = z.object({
   cursor: z.string().optional(), // for infinite scroll
 })
 
+export const PaginationMetadataSchema = z.object({
+  totalItems: z.number(),
+  page: z.number(),
+  limit: z.number(),
+  totalPages: z.number(),
+  hasNext: z.boolean(),
+  hasPrevious: z.boolean(),
+  nextCursor: z.string().nullish(),
+  prevCursor: z.string().nullish(),
+})
+
 export interface PaginationMetadata {
   totalItems: number
   page: number
