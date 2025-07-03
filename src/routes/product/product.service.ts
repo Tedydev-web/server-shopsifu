@@ -20,6 +20,8 @@ export class ProductService {
       categories: props.query.categories,
       name: props.query.name,
       createdById: props.query.createdById,
+      orderBy: props.query.orderBy,
+      sortBy: props.query.sortBy,
     })
     return data
   }
