@@ -7,10 +7,9 @@ import {
   UpdateProductBodyType,
 } from 'src/routes/product/product.model'
 import { NotFoundRecordException } from 'src/shared/error'
-import { isForeignKeyConstraintPrismaError, isNotFoundPrismaError } from 'src/shared/helpers'
+import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext } from 'nestjs-i18n'
 import { RoleName } from 'src/shared/constants/role.constant'
-import { BrandNotFoundException } from 'src/routes/product/product.error'
 
 @Injectable()
 export class ManageProductService {
@@ -49,6 +48,11 @@ export class ManageProductService {
       languageId: I18nContext.current()?.lang as string,
       createdById: props.query.createdById,
       isPublic: props.query.isPublic,
+      brandIds: props.query.brandIds,
+      minPrice: props.query.minPrice,
+      maxPrice: props.query.maxPrice,
+      categories: props.query.categories,
+      name: props.query.name,
     })
     return data
   }
@@ -70,18 +74,11 @@ export class ManageProductService {
     return product
   }
 
-  async create({ data, createdById }: { data: CreateProductBodyType; createdById: number }) {
-    try {
-      return await this.productRepo.create({
-        createdById,
-        data,
-      })
-    } catch (error) {
-      if (isForeignKeyConstraintPrismaError(error)) {
-        throw BrandNotFoundException
-      }
-      throw error
-    }
+  create({ data, createdById }: { data: CreateProductBodyType; createdById: number }) {
+    return this.productRepo.create({
+      createdById,
+      data,
+    })
   }
 
   async update({
