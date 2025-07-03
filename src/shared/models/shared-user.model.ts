@@ -11,8 +11,8 @@ export const UserSchema = z.object({
   phoneNumber: z.string().min(9).max(15),
   avatar: z.string().nullable(),
   totpSecret: z.string().nullable(),
-  status: z.enum([UserStatus.ACTIVE, UserStatus.INACTIVE, UserStatus.BLOCKED]),
-  roleId: z.number().positive(),
+  status: z.nativeEnum(UserStatus),
+  roleId: z.number(),
   createdById: z.number().nullable(),
   updatedById: z.number().nullable(),
   deletedById: z.number().nullable(),
@@ -55,3 +55,4 @@ export const UpdateProfileResSchema = UserSchema.omit({
 export type UserType = z.infer<typeof UserSchema>
 export type GetUserProfileResType = z.infer<typeof GetUserProfileResSchema>
 export type UpdateProfileResType = z.infer<typeof UpdateProfileResSchema>
+export { UserStatus }

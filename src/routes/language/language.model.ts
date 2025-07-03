@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { BasePaginationQuerySchema } from 'src/shared/models/pagination.model'
+import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const LanguageSchema = z.object({
   id: z.string().max(10),
@@ -13,14 +13,7 @@ export const LanguageSchema = z.object({
 
 export const GetLanguagesResSchema = z.object({
   data: z.array(LanguageSchema),
-  metadata: z.object({
-    totalItems: z.number(),
-    page: z.number(),
-    limit: z.number(),
-    totalPages: z.number(),
-    hasNext: z.boolean(),
-    hasPrevious: z.boolean(),
-  }),
+  metadata: PaginationMetadataSchema,
 })
 
 export const GetLanguageParamsSchema = z

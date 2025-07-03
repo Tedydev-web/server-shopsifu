@@ -1,17 +1,10 @@
-import { BasePaginationQuerySchema } from 'src/shared/models/pagination.model'
+import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 import { BrandIncludeTranslationSchema, BrandSchema } from 'src/shared/models/shared-brand.model'
 import { z } from 'zod'
 
 export const GetBrandsResSchema = z.object({
   data: z.array(BrandIncludeTranslationSchema),
-  metadata: z.object({
-    totalItems: z.number(),
-    page: z.number(),
-    limit: z.number(),
-    totalPages: z.number(),
-    hasNext: z.boolean(),
-    hasPrevious: z.boolean(),
-  }),
+  metadata: PaginationMetadataSchema,
 })
 
 export const GetBrandParamsSchema = z

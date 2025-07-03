@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { UserSchema } from 'src/shared/models/shared-user.model'
+import { UserSchema, UserStatus } from 'src/shared/models/shared-user.model'
 import { RoleSchema } from 'src/shared/models/shared-role.model'
-import { BasePaginationQuerySchema } from 'src/shared/models/pagination.model'
+import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const GetUsersResSchema = z.object({
   data: z.array(
@@ -12,17 +12,16 @@ export const GetUsersResSchema = z.object({
       }),
     }),
   ),
-  metadata: z.object({
-    totalItems: z.number(),
-    page: z.number(),
-    limit: z.number(),
-    totalPages: z.number(),
-    hasNext: z.boolean(),
-    hasPrevious: z.boolean(),
-  }),
+  metadata: PaginationMetadataSchema,
 })
 
-export const GetUsersQuerySchema = BasePaginationQuerySchema
+export const GetUsersQuerySchema = BasePaginationQuerySchema.extend({
+  email: z.string().optional(),
+  status: z.nativeEnum(UserStatus).optional(),
+  roleId: z.coerce.number().int().positive().optional(),
+  createdFrom: z.string().datetime().optional(),
+  createdTo: z.string().datetime().optional(),
+})
 
 export const GetUserParamsSchema = z
   .object({

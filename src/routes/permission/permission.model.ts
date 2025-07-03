@@ -1,27 +1,13 @@
 import { PermissionSchema } from 'src/shared/models/shared-permission.model'
 import { z } from 'zod'
+import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const GetPermissionsResSchema = z.object({
   data: z.array(PermissionSchema),
-  metadata: z.object({
-    totalItems: z.number(),
-    page: z.number(),
-    limit: z.number(),
-    totalPages: z.number(),
-    hasNext: z.boolean(),
-    hasPrevious: z.boolean(),
-  }),
+  metadata: PaginationMetadataSchema,
 })
 
-export const GetPermissionsQuerySchema = z
-  .object({
-    page: z.coerce.number().int().positive().default(1),
-    limit: z.coerce.number().int().positive().default(10),
-    sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
-    sortBy: z.string().optional(),
-    search: z.string().optional(),
-  })
-  .strict()
+export const GetPermissionsQuerySchema = BasePaginationQuerySchema
 
 export const GetPermissionParamsSchema = z
   .object({
