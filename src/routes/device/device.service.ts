@@ -5,6 +5,7 @@ import { DeviceFingerprintService } from 'src/shared/services/auth/device-finger
 import { DeviceRepository } from './device.repository'
 import { DeviceError } from './device.error'
 import { I18nService } from 'nestjs-i18n'
+import { isUniqueConstraintPrismaError } from 'src/shared/helpers'
 
 @Injectable()
 export class DeviceService {
@@ -31,23 +32,34 @@ export class DeviceService {
       }
     }
 
-    // If no matching fingerprint, create a new device
-    const newDevice = await this.deviceRepository.create({
-      userId,
-      ip: deviceInfo.ip,
-      userAgent: deviceInfo.userAgent.raw,
-      name: deviceInfo.userAgent.deviceName,
-      fingerprint: deviceInfo.fingerprint,
-      browser: deviceInfo.userAgent.browser,
-      browserVersion: deviceInfo.userAgent.browserVersion,
-      os: deviceInfo.userAgent.os,
-      osVersion: deviceInfo.userAgent.osVersion,
-      deviceType: deviceInfo.userAgent.deviceType,
-      deviceVendor: deviceInfo.userAgent.deviceVendor,
-      deviceModel: deviceInfo.userAgent.deviceModel,
-    })
+    try {
+      // If no matching fingerprint, create a new device
+      const newDevice = await this.deviceRepository.create({
+        userId,
+        ip: deviceInfo.ip,
+        userAgent: deviceInfo.userAgent.raw,
+        name: deviceInfo.userAgent.deviceName,
+        fingerprint: deviceInfo.fingerprint,
+        browser: deviceInfo.userAgent.browser,
+        browserVersion: deviceInfo.userAgent.browserVersion,
+        os: deviceInfo.userAgent.os,
+        osVersion: deviceInfo.userAgent.osVersion,
+        deviceType: deviceInfo.userAgent.deviceType,
+        deviceVendor: deviceInfo.userAgent.deviceVendor,
+        deviceModel: deviceInfo.userAgent.deviceModel,
+      })
 
-    return newDevice
+      return newDevice
+    } catch (error) {
+      if (isUniqueConstraintPrismaError(error)) {
+        this.logger.warn(`Race condition handled: Device with fingerprint already exists, re-fetching.`)
+        // The device was created by a concurrent request, so we fetch it.
+        const device = await this.deviceRepository.findByFingerprint(deviceInfo.fingerprint)
+        if (device) return device
+      }
+      // Re-throw if it's a different error or re-fetching fails
+      throw error
+    }
   }
 
   async listDevicesForUser(userId: number) {
