@@ -19,6 +19,8 @@ import { CategoryModule } from './routes/category/category.module'
 import { HttpExceptionFilter } from 'src/shared/filters/http-exception.filter'
 import { ConfigModule } from '@nestjs/config'
 import envConfig from 'src/shared/config'
+import { ProductModule } from './routes/product/product.module'
+import { ProductTranslationModule } from './routes/product/product-translation/product-translation.module'
 
 @Module({
   imports: [
@@ -48,6 +50,8 @@ import envConfig from 'src/shared/config'
     BrandTranslationModule,
     CategoryModule,
     CategoryTranslationModule,
+    ProductModule,
+    ProductTranslationModule,
   ],
   providers: [
     {
