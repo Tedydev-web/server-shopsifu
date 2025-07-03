@@ -6,7 +6,7 @@ export const BasePaginationQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().min(1).max(100).optional().default(10),
   sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
-  sortBy: z.union([z.string(), z.array(z.string())]).optional(),
+  sortBy: z.string().optional(),
   search: z.string().optional(),
   cursor: z.string().optional(), // for infinite scroll
 })

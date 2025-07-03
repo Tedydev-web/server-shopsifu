@@ -3,50 +3,41 @@ import { Prisma } from '@prisma/client'
 import {
   CreateProductBodyType,
   GetProductDetailResType,
-  GetProductsResType,
+  GetProductsQueryType,
+  GetManageProductsQueryType,
   ProductType,
+  ProductWithTranslationType,
   UpdateProductBodyType,
 } from 'src/routes/product/product.model'
 import { ALL_LANGUAGE_CODE, OrderByType, SortBy, SortByType } from 'src/shared/constants/other.constant'
+import { PaginatedResult, PaginationService } from 'src/shared/services/pagination.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class ProductRepo {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly paginationService: PaginationService,
+  ) {}
 
-  async list({
-    limit,
-    page,
-    name,
-    brandIds,
-    categories,
-    minPrice,
-    maxPrice,
-    createdById,
-    isPublic,
-    languageId,
-    orderBy,
-    sortBy,
-  }: {
-    limit: number
-    page: number
-    name?: string
-    brandIds?: number[]
-    categories?: number[]
-    minPrice?: number
-    maxPrice?: number
-    createdById?: number
-    isPublic?: boolean
-    languageId: string
-    orderBy: OrderByType
-    sortBy: SortByType
-  }): Promise<GetProductsResType> {
-    const skip = (page - 1) * limit
-    const take = limit
+  async list(
+    query: GetProductsQueryType,
+    options: {
+      languageId: string
+      createdById?: number
+      isPublic?: boolean
+    },
+  ): Promise<PaginatedResult<ProductWithTranslationType>> {
+    const { brandIds, categories, minPrice, maxPrice, ...pagination } = query
+    const { languageId, createdById, isPublic } = options
+
+    // Build where clause
     let where: Prisma.ProductWhereInput = {
       deletedAt: null,
       createdById: createdById ? createdById : undefined,
     }
+
+    // Handle isPublic filter
     if (isPublic === true) {
       where.publishedAt = {
         lte: new Date(),
@@ -58,24 +49,14 @@ export class ProductRepo {
         OR: [{ publishedAt: null }, { publishedAt: { gt: new Date() } }],
       }
     }
-    if (name) {
-      where.name = {
-        contains: name,
-        mode: 'insensitive',
-      }
-    }
+
+    // Apply additional filters
     if (brandIds && brandIds.length > 0) {
-      where.brandId = {
-        in: brandIds,
-      }
+      where.brandId = { in: brandIds }
     }
     if (categories && categories.length > 0) {
       where.categories = {
-        some: {
-          id: {
-            in: categories,
-          },
-        },
+        some: { id: { in: categories } },
       }
     }
     if (minPrice !== undefined || maxPrice !== undefined) {
@@ -84,50 +65,37 @@ export class ProductRepo {
         lte: maxPrice,
       }
     }
-    // Mặc định sort theo createdAt mới nhất
-    let caculatedOrderBy: Prisma.ProductOrderByWithRelationInput | Prisma.ProductOrderByWithRelationInput[] = {
-      createdAt: orderBy,
-    }
-    if (sortBy === SortBy.Price) {
-      caculatedOrderBy = {
-        basePrice: orderBy,
-      }
-    } else if (sortBy === SortBy.Sale) {
-      caculatedOrderBy = {
-        orders: {
-          _count: orderBy,
-        },
+
+    // Build orderBy based on sortBy
+    let orderBy: Prisma.ProductOrderByWithRelationInput[] = [{ createdAt: 'desc' }]
+    if (pagination.sortBy) {
+      const sortOrder = pagination.sortOrder || 'desc'
+      if (pagination.sortBy === 'price') {
+        orderBy = [{ basePrice: sortOrder }]
+      } else if (pagination.sortBy === 'sale') {
+        orderBy = [{ orders: { _count: sortOrder } }]
+      } else if (pagination.sortBy === 'createdAt') {
+        orderBy = [{ createdAt: sortOrder }]
       }
     }
-    const [totalItems, data] = await Promise.all([
-      this.prismaService.product.count({
-        where,
-      }),
-      this.prismaService.product.findMany({
-        where,
-        include: {
-          productTranslations: {
-            where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
-          },
-          orders: {
-            where: {
-              deletedAt: null,
-              status: 'DELIVERED',
-            },
-          },
+
+    const include = {
+      productTranslations: {
+        where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
+      },
+      orders: {
+        where: {
+          deletedAt: null,
+          status: 'DELIVERED',
         },
-        orderBy: caculatedOrderBy,
-        skip,
-        take,
-      }),
-    ])
-    return {
-      data,
-      totalItems,
-      page: page,
-      limit: limit,
-      totalPages: Math.ceil(totalItems / limit),
+      },
     }
+
+    return this.paginationService.paginate('product', pagination, where, {
+      include,
+      searchableFields: ['name'],
+      orderBy,
+    })
   }
 
   findById(productId: number): Promise<ProductType | null> {

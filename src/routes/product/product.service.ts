@@ -9,19 +9,9 @@ export class ProductService {
   constructor(private productRepo: ProductRepo) {}
 
   async list(props: { query: GetProductsQueryType }) {
-    const data = await this.productRepo.list({
-      page: props.query.page,
-      limit: props.query.limit,
+    const data = await this.productRepo.list(props.query, {
       languageId: I18nContext.current()?.lang as string,
       isPublic: true,
-      brandIds: props.query.brandIds,
-      minPrice: props.query.minPrice,
-      maxPrice: props.query.maxPrice,
-      categories: props.query.categories,
-      name: props.query.name,
-      createdById: props.query.createdById,
-      orderBy: props.query.orderBy,
-      sortBy: props.query.sortBy,
     })
     return data
   }

@@ -42,19 +42,10 @@ export class ManageProductService {
       roleNameRequest: props.roleNameRequest,
       createdById: props.query.createdById,
     })
-    const data = await this.productRepo.list({
-      page: props.query.page,
-      limit: props.query.limit,
+    const data = await this.productRepo.list(props.query, {
       languageId: I18nContext.current()?.lang as string,
       createdById: props.query.createdById,
       isPublic: props.query.isPublic,
-      brandIds: props.query.brandIds,
-      minPrice: props.query.minPrice,
-      maxPrice: props.query.maxPrice,
-      categories: props.query.categories,
-      name: props.query.name,
-      orderBy: props.query.orderBy,
-      sortBy: props.query.sortBy,
     })
     return data
   }
