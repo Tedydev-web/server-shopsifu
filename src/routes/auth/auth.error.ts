@@ -48,7 +48,7 @@ export const AuthError = {
   CsrfTokenMissing: ForbiddenError('auth.error.CSRF_TOKEN_MISSING'),
 
   // --- General ---
-  InsufficientPermissions: ForbiddenError('auth.error.INSUFFICIENT_PERMISSIONS'),
+  InsufficientPermissions: ForbiddenError('auth.error.INSUFFICIENT_PERMISSIONS', 'permission'),
   RoleNotFound: InternalServerError('auth.error.ROLE_NOT_FOUND'),
 
   // === Password & Credentials Errors ===

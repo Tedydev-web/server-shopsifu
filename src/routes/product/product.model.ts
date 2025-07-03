@@ -3,7 +3,6 @@ import { SKUSchema, UpsertSKUBodySchema } from 'src/routes/product/sku.model'
 import { BrandIncludeTranslationSchema } from 'src/shared/models/shared-brand.model'
 import { CategoryIncludeTranslationSchema } from 'src/shared/models/shared-category.model'
 import { z } from 'zod'
-import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 function generateSKUs(variants: VariantsType) {
   // Hàm hỗ trợ để tạo tất cả tổ hợp
@@ -74,21 +73,38 @@ export const ProductSchema = z.object({
   updatedAt: z.date(),
 })
 
-export const GetProductsQuerySchema = BasePaginationQuerySchema.extend({
+/**
+ * Dành cho client và guest
+ */
+export const GetProductsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().default(10),
   name: z.string().optional(),
   brandIds: z.array(z.coerce.number().int().positive()).optional(),
   categories: z.array(z.coerce.number().int().positive()).optional(),
   minPrice: z.coerce.number().positive().optional(),
   maxPrice: z.coerce.number().positive().optional(),
+  createdById: z.coerce.number().int().positive().optional(),
 })
 
-export const ProductWithTranslationSchema = ProductSchema.extend({
-  productTranslations: z.array(ProductTranslationSchema),
+/**
+ * Dành cho Admin và Seller
+ */
+export const GetManageProductsQuerySchema = GetProductsQuerySchema.extend({
+  isPublic: z.preprocess((value) => value === 'true', z.boolean()).optional(),
+  createdById: z.coerce.number().int().positive(),
 })
 
 export const GetProductsResSchema = z.object({
-  data: z.array(ProductWithTranslationSchema),
-  metadata: PaginationMetadataSchema,
+  data: z.array(
+    ProductSchema.extend({
+      productTranslations: z.array(ProductTranslationSchema),
+    }),
+  ),
+  totalItems: z.number(),
+  page: z.number(), // Số trang hiện tại
+  limit: z.number(), // Số item trên 1 trang
+  totalPages: z.number(), // Tổng số trang
 })
 
 export const GetProductParamsSchema = z
@@ -151,9 +167,9 @@ export const UpdateProductBodySchema = CreateProductBodySchema
 
 export type ProductType = z.infer<typeof ProductSchema>
 export type VariantsType = z.infer<typeof VariantsSchema>
-export type ProductWithTranslationType = z.infer<typeof ProductWithTranslationSchema>
 export type GetProductsResType = z.infer<typeof GetProductsResSchema>
 export type GetProductsQueryType = z.infer<typeof GetProductsQuerySchema>
+export type GetManageProductsQueryType = z.infer<typeof GetManageProductsQuerySchema>
 export type GetProductDetailResType = z.infer<typeof GetProductDetailResSchema>
 export type CreateProductBodyType = z.infer<typeof CreateProductBodySchema>
 export type GetProductParamsType = z.infer<typeof GetProductParamsSchema>

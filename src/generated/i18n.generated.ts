@@ -311,6 +311,19 @@ export type I18nTranslations = {
             "ALREADY_EXISTS": string;
         };
     };
+    "product": {
+        "success": {
+            "CREATE_SUCCESS": string;
+            "UPDATE_SUCCESS": string;
+            "DELETE_SUCCESS": string;
+            "GET_PRODUCTS": string;
+            "GET_PRODUCT_DETAIL": string;
+        };
+        "error": {
+            "NOT_FOUND": string;
+            "BRAND_NOT_FOUND": string;
+        };
+    };
     "profile": {
         "success": {
             "GET_PROFILE": string;
