@@ -8,6 +8,7 @@ import {
   GetCartResSchema,
   UpdateCartItemBodySchema,
 } from 'src/routes/cart/cart.model'
+import { BasePaginationQuerySchema } from 'src/shared/models/pagination.model'
 
 export class CartItemDTO extends createZodDto(CartItemSchema) {}
 
@@ -22,3 +23,4 @@ export class AddToCartBodyDTO extends createZodDto(AddToCartBodySchema) {}
 export class UpdateCartItemBodyDTO extends createZodDto(UpdateCartItemBodySchema) {}
 
 export class DeleteCartBodyDTO extends createZodDto(DeleteCartBodySchema) {}
+export class CartPaginationQueryDTO extends createZodDto(BasePaginationQuerySchema) {}

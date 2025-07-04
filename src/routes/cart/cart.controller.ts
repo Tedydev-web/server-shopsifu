@@ -5,9 +5,9 @@ import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import {
   AddToCartBodyDTO,
   CartItemDTO,
+  CartPaginationQueryDTO,
   DeleteCartBodyDTO,
   GetCartItemParamsDTO,
-  GetCartQueryDTO,
   GetCartResDTO,
   UpdateCartItemBodyDTO,
 } from 'src/routes/cart/cart.dto'
@@ -19,7 +19,7 @@ export class CartController {
 
   @Get()
   @ZodSerializerDto(GetCartResDTO)
-  getCart(@ActiveUser('userId') userId: number, @Query() query: GetCartQueryDTO) {
+  getCart(@ActiveUser('userId') userId: number, @Query() query: CartPaginationQueryDTO) {
     return this.cartService.getCart(userId, query)
   }
 
