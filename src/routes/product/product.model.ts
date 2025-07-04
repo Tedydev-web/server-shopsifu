@@ -1,4 +1,4 @@
-import { ProductTranslationSchema } from 'src/routes/product/product-translation/product-translation.model'
+
 import { UpsertSKUBodySchema } from 'src/routes/product/sku.model'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 import { BrandIncludeTranslationSchema } from 'src/shared/models/shared-brand.model'
@@ -7,6 +7,7 @@ import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/
 import { ProductSchema, VariantsType } from 'src/shared/models/shared-product.model'
 import { SKUSchema } from 'src/shared/models/shared-sku.model'
 import { z } from 'zod'
+import { ProductTranslationSchema } from 'src/shared/models/shared-product-translation.model'
 
 function generateSKUs(variants: VariantsType) {
   // Hàm hỗ trợ để tạo tất cả tổ hợp
