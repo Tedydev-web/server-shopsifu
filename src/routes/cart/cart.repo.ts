@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { NotFoundSKUException, OutOfStockSKUException, ProductNotFoundException } from 'src/routes/cart/cart.error'
 import {
   AddToCartBodyType,
+  CartItemDetailType,
   CartItemType,
   DeleteCartBodyType,
   GetCartResType,
@@ -54,40 +55,58 @@ export class CartRepo {
     limit: number
     page: number
   }): Promise<GetCartResType> {
-    const skip = (page - 1) * limit
-    const take = limit
-    const [totalItems, data] = await Promise.all([
-      this.prismaService.cartItem.count({
-        where: { userId },
-      }),
-      this.prismaService.cartItem.findMany({
-        where: { userId },
-        include: {
-          sku: {
-            include: {
-              product: {
-                include: {
-                  productTranslations: {
-                    where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
-                  },
+    const cartItems = await this.prismaService.cartItem.findMany({
+      where: {
+        userId,
+        sku: {
+          product: {
+            deletedAt: null,
+            publishedAt: {
+              lte: new Date(),
+              not: null,
+            },
+          },
+        },
+      },
+      include: {
+        sku: {
+          include: {
+            product: {
+              include: {
+                productTranslations: {
+                  where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
                 },
+                createdBy: true,
               },
             },
           },
         },
-        skip,
-        take,
-        orderBy: {
-          createdAt: 'desc',
-        },
-      }),
-    ])
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    })
+    const groupMap = new Map<number, CartItemDetailType>()
+    for (const cartItem of cartItems) {
+      const shopId = cartItem.sku.product.createdById
+      if (shopId) {
+        if (!groupMap.has(shopId)) {
+          groupMap.set(shopId, { shop: cartItem.sku.product.createdBy, cartItems: [] })
+        }
+        groupMap.get(shopId)?.cartItems.push(cartItem)
+      }
+    }
+    const sortedGroups = Array.from(groupMap.values())
+    const skip = (page - 1) * limit
+    const take = limit
+    const totalGroups = sortedGroups.length
+    const pagedGroups = sortedGroups.slice(skip, skip + take)
     return {
-      data,
-      totalItems: data.length,
+      data: pagedGroups,
+      totalItems: totalGroups,
       limit,
       page,
-      totalPages: Math.ceil(totalItems / limit),
+      totalPages: Math.ceil(totalGroups / limit),
     }
   }
 
