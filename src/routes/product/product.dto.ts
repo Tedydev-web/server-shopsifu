@@ -1,4 +1,5 @@
 import { createZodDto } from 'nestjs-zod'
+import { ProductSchema } from 'src/shared/models/shared-product.model'
 import {
   CreateProductBodySchema,
   GetManageProductsQuerySchema,
@@ -6,7 +7,6 @@ import {
   GetProductParamsSchema,
   GetProductsQuerySchema,
   GetProductsResSchema,
-  ProductSchema,
   UpdateProductBodySchema,
 } from 'src/routes/product/product.model'
 

@@ -5,13 +5,13 @@ import {
   GetProductDetailResType,
   GetProductsQueryType,
   GetManageProductsQueryType,
-  ProductType,
   ProductWithTranslationType,
   UpdateProductBodyType,
 } from 'src/routes/product/product.model'
 import { ALL_LANGUAGE_CODE, OrderByType, SortBy, SortByType } from 'src/shared/constants/other.constant'
 import { PaginatedResult, PaginationService } from 'src/shared/services/pagination.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { ProductType } from 'src/shared/models/shared-product.model'
 
 @Injectable()
 export class ProductRepo {

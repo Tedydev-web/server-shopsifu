@@ -371,6 +371,7 @@ model SKU {
   updatedAt DateTime  @updatedAt
 
   @@index([deletedAt])
+  @@index([productId])
 }
 
 model Brand {
@@ -420,12 +421,15 @@ model CartItem {
   id       Int  @id @default(autoincrement())
   quantity Int
   skuId    Int
-  sku      SKU  @relation(fields: [skuId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sku      SKU  @relation(fields: [skuId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
   userId   Int
   user     User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model ProductSKUSnapshot {
