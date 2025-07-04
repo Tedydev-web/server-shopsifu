@@ -79,6 +79,8 @@ export class LanguageRepo {
       { deletedAt: null },
       {
         searchableFields: ['id', 'name'],
+        cursorFields: ['id'],
+        orderBy: [{ createdAt: 'desc' }],
       },
     )
   }

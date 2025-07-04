@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import {
   CreateBrandBodyType,
-  GetBrandsResType,
   UpdateBrandBodyType,
   BrandType,
   BrandIncludeTranslationType,
@@ -18,23 +17,33 @@ export class BrandRepo {
     private paginationService: PaginationService,
   ) {}
 
-  async list(pagination: BrandPaginationQueryType, languageId: string): Promise<PaginatedResult<GetBrandsResType>> {
+  async list(
+    pagination: BrandPaginationQueryType,
+    languageId: string,
+  ): Promise<PaginatedResult<BrandIncludeTranslationType>> {
+    const { search, ...rest } = pagination
+    const where: any = {
+      deletedAt: null,
+    }
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { brandTranslations: { some: { name: { contains: search, mode: 'insensitive' } } } },
+      ]
+    }
+
     const include = {
       brandTranslations: {
         where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId },
       },
     }
 
-    return this.paginationService.paginate(
-      'brand',
-      pagination,
-      { deletedAt: null },
-      {
-        include,
-        searchableFields: ['id', 'name'],
-        orderBy: [{ createdAt: 'desc' }],
-      },
-    )
+    return this.paginationService.paginate('brand', rest, where, {
+      include,
+      searchableFields: ['name'],
+      cursorFields: ['id'],
+    })
   }
 
   findById(id: number, languageId: string): Promise<BrandIncludeTranslationType | null> {

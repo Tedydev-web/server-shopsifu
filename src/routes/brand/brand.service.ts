@@ -1,31 +1,18 @@
 import { Injectable } from '@nestjs/common'
 import { BrandRepo } from 'src/routes/brand/brand.repo'
 import { CreateBrandBodyType, UpdateBrandBodyType, BrandPaginationQueryType } from 'src/routes/brand/brand.model'
-import { ExceptionFactory } from 'src/shared/error'
-import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext } from 'nestjs-i18n'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
 
 @Injectable()
 export class BrandService {
-  constructor(
-    private brandRepo: BrandRepo,
-    private readonly i18n: I18nService<I18nTranslations>,
-  ) {}
+  constructor(private brandRepo: BrandRepo) {}
 
-  async list(pagination: BrandPaginationQueryType) {
-    const data = await this.brandRepo.list(pagination, I18nContext.current()?.lang as string)
-    return data
+  list(query: BrandPaginationQueryType) {
+    return this.brandRepo.list(query, I18nContext.current()?.lang as string)
   }
 
-  async findById(id: number) {
-    const brand = await this.brandRepo.findById(id, I18nContext.current()?.lang as string)
-
-    if (!brand) {
-      throw ExceptionFactory.recordNotFound()
-    }
-    return brand
+  findById(id: number) {
+    return this.brandRepo.findById(id, I18nContext.current()?.lang as string)
   }
 
   create({ data, createdById }: { data: CreateBrandBodyType; createdById: number }) {
@@ -35,36 +22,18 @@ export class BrandService {
     })
   }
 
-  async update({ id, data, updatedById }: { id: number; data: UpdateBrandBodyType; updatedById: number }) {
-    try {
-      const brand = await this.brandRepo.update({
-        id,
-        updatedById,
-        data,
-      })
-      return brand
-    } catch (error) {
-      if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
-      }
-      throw error
-    }
+  update({ id, data, updatedById }: { id: number; data: UpdateBrandBodyType; updatedById: number }) {
+    return this.brandRepo.update({
+      id,
+      updatedById,
+      data,
+    })
   }
 
-  async delete({ id, deletedById }: { id: number; deletedById: number }) {
-    try {
-      await this.brandRepo.delete({
-        id,
-        deletedById,
-      })
-      return {
-        message: this.i18n.t('brand.success.DELETE_SUCCESS'),
-      }
-    } catch (error) {
-      if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
-      }
-      throw error
-    }
+  delete({ id, deletedById }: { id: number; deletedById: number }) {
+    return this.brandRepo.delete({
+      id,
+      deletedById,
+    })
   }
 }

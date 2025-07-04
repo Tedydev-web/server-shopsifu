@@ -33,7 +33,9 @@ export const UpdateLanguageBodySchema = LanguageSchema.pick({
   name: true,
 }).strict()
 
-export const LanguagePaginationQuerySchema = BasePaginationQuerySchema
+export const LanguagePaginationQuerySchema = BasePaginationQuerySchema.extend({
+  sortBy: z.enum(['id', 'name', 'createdAt']).optional(),
+})
 
 export type LanguageType = z.infer<typeof LanguageSchema>
 export type GetLanguagesResType = z.infer<typeof GetLanguagesResSchema>

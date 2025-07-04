@@ -21,7 +21,9 @@ export const CreateBrandBodySchema = BrandSchema.pick({
 }).strict()
 
 export const UpdateBrandBodySchema = CreateBrandBodySchema.partial()
-export const BrandPaginationQuerySchema = BasePaginationQuerySchema
+export const BrandPaginationQuerySchema = BasePaginationQuerySchema.extend({
+  sortBy: z.enum(['name', 'createdAt']).optional(),
+})
 export type BrandType = z.infer<typeof BrandSchema>
 export type BrandIncludeTranslationType = z.infer<typeof BrandIncludeTranslationSchema>
 export type GetBrandsResType = z.infer<typeof GetBrandsResSchema>

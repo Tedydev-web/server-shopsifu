@@ -1,13 +1,15 @@
 import { CategoryIncludeTranslationSchema, CategorySchema } from 'src/shared/models/shared-category.model'
 import { z } from 'zod'
+import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const GetAllCategoriesResSchema = z.object({
   data: z.array(CategorySchema),
-  totalItems: z.number(),
+  metadata: PaginationMetadataSchema,
 })
 
-export const GetAllCategoriesQuerySchema = z.object({
+export const GetAllCategoriesQuerySchema = BasePaginationQuerySchema.extend({
   parentCategoryId: z.coerce.number().int().positive().optional(),
+  sortBy: z.enum(['name', 'createdAt']).optional(),
 })
 
 export const GetCategoryParamsSchema = z

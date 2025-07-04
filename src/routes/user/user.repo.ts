@@ -24,7 +24,8 @@ export class UserRepo {
     return this.paginationService.paginate<UserType>('user', baseQuery, where, {
       include: { role: true },
       searchableFields: ['id', 'email', 'name', 'phoneNumber'],
-      cursorField: 'id',
+      cursorFields: ['id'],
+      orderBy: [{ createdAt: 'desc' }],
     })
   }
 

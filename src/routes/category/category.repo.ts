@@ -5,40 +5,43 @@ import {
   UpdateCategoryBodyType,
   CategoryType,
   CategoryIncludeTranslationType,
+  GetAllCategoriesQueryType,
 } from 'src/routes/category/category.model'
 import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { PaginationService, PaginatedResult } from 'src/shared/services/pagination.service'
 
 @Injectable()
 export class CategoryRepo {
-  constructor(private prismaService: PrismaService) {}
+  constructor(
+    private prismaService: PrismaService,
+    private paginationService: PaginationService,
+  ) {}
 
-  async findAll({
-    parentCategoryId,
-    languageId,
-  }: {
-    parentCategoryId?: number | null
-    languageId: string
-  }): Promise<GetAllCategoriesResType> {
-    const categories = await this.prismaService.category.findMany({
-      where: {
-        deletedAt: null,
-        parentCategoryId: parentCategoryId ?? null,
-      },
-      include: {
-        categoryTranslations: {
-          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    })
-
-    return {
-      data: categories,
-      totalItems: categories.length,
+  async findAll(query: GetAllCategoriesQueryType & { languageId: string }): Promise<PaginatedResult<CategoryType>> {
+    const { parentCategoryId, languageId, search, ...pagination } = query
+    const where: any = {
+      deletedAt: null,
+      parentCategoryId: parentCategoryId ?? null,
     }
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { categoryTranslations: { some: { name: { contains: search, mode: 'insensitive' } } } },
+      ]
+    }
+
+    const include = {
+      categoryTranslations: {
+        where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId },
+      },
+    }
+    return this.paginationService.paginate('category', pagination, where, {
+      include,
+      searchableFields: ['name'],
+      cursorFields: ['id'],
+    })
   }
 
   findById({ id, languageId }: { id: number; languageId: string }): Promise<CategoryIncludeTranslationType | null> {

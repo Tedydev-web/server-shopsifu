@@ -2,11 +2,11 @@ import { Injectable } from '@nestjs/common'
 import {
   CreatePermissionBodyType,
   GetPermissionsQueryType,
-  GetPermissionsResType,
-  PermissionType,
   UpdatePermissionBodyType,
 } from 'src/routes/permission/permission.model'
+import { PermissionType } from 'src/shared/models/shared-permission.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { HTTPMethod } from '@prisma/client'
 import { PaginationService, PaginatedResult } from 'src/shared/services/pagination.service'
 
 @Injectable()
@@ -16,15 +16,24 @@ export class PermissionRepo {
     private paginationService: PaginationService,
   ) {}
 
-  async list(pagination: GetPermissionsQueryType): Promise<PaginatedResult<PermissionType>> {
-    return this.paginationService.paginate(
-      'permission',
-      pagination,
-      { deletedAt: null },
-      {
-        searchableFields: ['id', 'name', 'path', 'method'],
-      },
-    )
+  list(pagination: GetPermissionsQueryType): Promise<PaginatedResult<PermissionType>> {
+    const { module, ...rest } = pagination
+    const where: any = { deletedAt: null }
+    if (module) {
+      where.module = module
+    }
+    return this.paginationService.paginate('permission', rest, where, {
+      searchableFields: ['id', 'name', 'path', 'module'],
+      cursorFields: ['id'],
+      orderBy: [{ createdAt: 'desc' }],
+    })
+  }
+
+  findAll(): Promise<PermissionType[]> {
+    return this.prismaService.permission.findMany({
+      where: { deletedAt: null },
+      orderBy: [{ module: 'asc' }, { name: 'asc' }],
+    })
   }
 
   findById(id: number): Promise<PermissionType | null> {
@@ -51,7 +60,7 @@ export class PermissionRepo {
     })
   }
 
-  update({
+  async update({
     id,
     updatedById,
     data,
@@ -98,5 +107,15 @@ export class PermissionRepo {
             deletedById,
           },
         })
+  }
+
+  isExisted(path: string, method: string): Promise<PermissionType | null> {
+    return this.prismaService.permission.findFirst({
+      where: {
+        path,
+        method: method as HTTPMethod,
+        deletedAt: null,
+      },
+    })
   }
 }

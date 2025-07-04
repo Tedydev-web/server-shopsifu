@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
   CreatePermissionBodyDTO,
+  GetGroupedPermissionsResDTO,
   GetPermissionDetailResDTO,
   GetPermissionParamsDTO,
   GetPermissionsQueryDTO,
@@ -20,6 +21,12 @@ export class PermissionController {
   @ZodSerializerDto(GetPermissionsResDTO)
   list(@Query() query: GetPermissionsQueryDTO) {
     return this.permissionService.list(query)
+  }
+
+  @Get('grouped')
+  @ZodSerializerDto(GetGroupedPermissionsResDTO)
+  findAllGrouped() {
+    return this.permissionService.findAllGrouped()
   }
 
   @Get(':permissionId')

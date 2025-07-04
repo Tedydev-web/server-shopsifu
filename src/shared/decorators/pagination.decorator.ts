@@ -10,8 +10,8 @@ export const Pagination = createParamDecorator((data: unknown, ctx: ExecutionCon
   const query = request.query
 
   return {
-    page: Number(query.page) || 1,
     limit: Number(query.limit) || 10,
+    offset: Number(query.offset) || 0,
     sortOrder: query.sortOrder || 'desc',
     sortBy: query.sortBy,
     search: query.search,

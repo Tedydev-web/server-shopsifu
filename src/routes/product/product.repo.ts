@@ -95,6 +95,7 @@ export class ProductRepo {
       include,
       searchableFields: ['name'],
       orderBy,
+      cursorFields: ['id'],
     })
   }
 

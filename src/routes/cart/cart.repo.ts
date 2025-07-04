@@ -50,105 +50,116 @@ export class CartRepo {
     return sku
   }
 
-  async list(query: { userId: number; languageId: string; page?: number; limit?: number }): Promise<GetCartResType> {
-    const { userId, languageId, page = 1, limit = 10 } = query
-    const skip = (page - 1) * limit
+  async list(query: {
+    userId: number
+    languageId: string
+    limit?: number
+    cursor?: string
+    offset?: number
+  }): Promise<GetCartResType> {
+    const { userId, languageId, limit = 10, cursor, offset = 0 } = query
 
-    // Đếm tổng số nhóm sản phẩm (shops) - optimized
-    const totalShopsQuery = this.prismaService.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(DISTINCT "Product"."createdById") as count
-      FROM "CartItem"
-      JOIN "SKU" ON "CartItem"."skuId" = "SKU"."id"
-      JOIN "Product" ON "SKU"."productId" = "Product"."id"
-      WHERE "CartItem"."userId" = ${userId}
-        AND "Product"."deletedAt" IS NULL
-        AND "Product"."publishedAt" IS NOT NULL
-        AND "Product"."publishedAt" <= NOW()
-    `
+    // Sử dụng PaginationService để paginate cart items
+    const paginationQuery = {
+      limit,
+      cursor,
+      offset,
+      sortOrder: 'desc' as const,
+      sortBy: 'updatedAt',
+    }
 
-    // Lấy data với GROUP BY và JSON aggregation - highly optimized
-    const dataQuery = this.prismaService.$queryRaw<
+    const cartItemsResult = await this.paginationService.paginate(
+      'cartItem',
+      paginationQuery,
       {
-        shop: { id: number; name: string; avatar: string | null }
-        cartItems: any[]
-      }[]
-    >`
-      SELECT
-        jsonb_build_object(
-          'id', "User"."id",
-          'name', "User"."name",
-          'avatar', "User"."avatar"
-        ) AS "shop",
-        json_agg(
-          jsonb_build_object(
-            'id', "CartItem"."id",
-            'quantity', "CartItem"."quantity",
-            'skuId', "CartItem"."skuId",
-            'userId', "CartItem"."userId",
-            'createdAt', "CartItem"."createdAt",
-            'updatedAt', "CartItem"."updatedAt",
-            'sku', jsonb_build_object(
-              'id', "SKU"."id",
-              'value', "SKU"."value",
-              'price', "SKU"."price",
-              'stock', "SKU"."stock",
-              'image', "SKU"."image",
-              'productId', "SKU"."productId",
-              'product', jsonb_build_object(
-                'id', "Product"."id",
-                'publishedAt', "Product"."publishedAt",
-                'name', "Product"."name",
-                'basePrice', "Product"."basePrice",
-                'virtualPrice', "Product"."virtualPrice",
-                'brandId', "Product"."brandId",
-                'images', "Product"."images",
-                'variants', "Product"."variants",
-                'productTranslations', COALESCE((
-                  SELECT json_agg(
-                    jsonb_build_object(
-                      'id', pt."id",
-                      'productId', pt."productId",
-                      'languageId', pt."languageId",
-                      'name', pt."name",
-                      'description', pt."description"
-                    )
-                  ) FILTER (WHERE pt."id" IS NOT NULL)
-                  FROM "ProductTranslation" pt
-                  WHERE pt."productId" = "Product"."id"
-                    AND pt."deletedAt" IS NULL
-                    ${languageId === ALL_LANGUAGE_CODE ? Prisma.sql`` : Prisma.sql`AND pt."languageId" = ${languageId}`}
-                ), '[]'::json)
-              )
-            )
-          ) ORDER BY "CartItem"."updatedAt" DESC
-        ) AS "cartItems"
-      FROM "CartItem"
-      JOIN "SKU" ON "CartItem"."skuId" = "SKU"."id"
-      JOIN "Product" ON "SKU"."productId" = "Product"."id"
-      LEFT JOIN "User" ON "Product"."createdById" = "User"."id"
-      WHERE "CartItem"."userId" = ${userId}
-        AND "Product"."deletedAt" IS NULL
-        AND "Product"."publishedAt" IS NOT NULL
-        AND "Product"."publishedAt" <= NOW()
-      GROUP BY "Product"."createdById", "User"."id", "User"."name", "User"."avatar"
-      ORDER BY MAX("CartItem"."updatedAt") DESC
-      LIMIT ${limit}
-      OFFSET ${skip}
-    `
-
-    // Execute parallel queries cho performance tốt nhất
-    const [data, totalShopsResult] = await Promise.all([dataQuery, totalShopsQuery])
-    const totalItems = Number(totalShopsResult[0]?.count || 0)
-
-    // Sử dụng PaginationService chuẩn cho metadata
-    const metadata = this.paginationService.createPaginationMetadata(
-      { page, limit, sortOrder: 'desc' as const },
-      totalItems,
+        userId,
+        sku: {
+          product: {
+            deletedAt: null,
+            publishedAt: {
+              not: null,
+              lte: new Date(),
+            },
+          },
+        },
+      },
+      {
+        include: {
+          sku: {
+            include: {
+              product: {
+                include: {
+                  productTranslations: {
+                    where: {
+                      deletedAt: null,
+                      ...(languageId !== 'all' && { languageId }),
+                    },
+                  },
+                  createdBy: {
+                    select: {
+                      id: true,
+                      name: true,
+                      avatar: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        cursorFields: ['id'],
+        orderBy: [{ updatedAt: 'desc' }],
+      },
     )
+
+    // Group cart items by shop
+    const shopMap = new Map()
+
+    cartItemsResult.data.forEach((cartItem: any) => {
+      const shopId = cartItem.sku.product.createdBy.id
+      const shop = cartItem.sku.product.createdBy
+
+      if (!shopMap.has(shopId)) {
+        shopMap.set(shopId, {
+          shop,
+          cartItems: [],
+        })
+      }
+
+      shopMap.get(shopId).cartItems.push({
+        id: cartItem.id,
+        quantity: cartItem.quantity,
+        skuId: cartItem.skuId,
+        userId: cartItem.userId,
+        createdAt: cartItem.createdAt,
+        updatedAt: cartItem.updatedAt,
+        sku: {
+          id: cartItem.sku.id,
+          value: cartItem.sku.value,
+          price: cartItem.sku.price,
+          stock: cartItem.sku.stock,
+          image: cartItem.sku.image,
+          productId: cartItem.sku.productId,
+          product: {
+            id: cartItem.sku.product.id,
+            publishedAt: cartItem.sku.product.publishedAt,
+            name: cartItem.sku.product.name,
+            basePrice: cartItem.sku.product.basePrice,
+            virtualPrice: cartItem.sku.product.virtualPrice,
+            brandId: cartItem.sku.product.brandId,
+            images: cartItem.sku.product.images,
+            variants: cartItem.sku.product.variants,
+            productTranslations: cartItem.sku.product.productTranslations,
+          },
+        },
+      })
+    })
+
+    const data = Array.from(shopMap.values())
 
     return {
       data,
-      metadata,
+      metadata: cartItemsResult.metadata,
     }
   }
 

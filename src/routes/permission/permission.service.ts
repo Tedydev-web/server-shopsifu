@@ -4,12 +4,15 @@ import {
   CreatePermissionBodyType,
   GetPermissionsQueryType,
   UpdatePermissionBodyType,
+  PermissionGroupType,
+  PermissionType,
 } from 'src/routes/permission/permission.model'
 import { ExceptionFactory } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { PermissionAlreadyExistsException } from 'src/routes/permission/permission.error'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
+import { PaginatedResult } from 'src/shared/services/pagination.service'
 
 @Injectable()
 export class PermissionService {
@@ -18,9 +21,28 @@ export class PermissionService {
     private readonly i18n: I18nService<I18nTranslations>,
   ) {}
 
-  async list(pagination: GetPermissionsQueryType) {
-    const data = await this.permissionRepo.list(pagination)
-    return data
+  async list(pagination: GetPermissionsQueryType): Promise<PaginatedResult<PermissionType>> {
+    return await this.permissionRepo.list(pagination)
+  }
+
+  async findAllGrouped(): Promise<PermissionGroupType[]> {
+    const permissions = await this.permissionRepo.findAll()
+    const moduleMap = new Map<string, PermissionType[]>()
+
+    permissions.forEach((permission) => {
+      const moduleName = permission.module
+      if (!moduleMap.has(moduleName)) {
+        moduleMap.set(moduleName, [])
+      }
+      moduleMap.get(moduleName)!.push(permission)
+    })
+
+    const groupedPermissions = Array.from(moduleMap.entries()).map(([module, permissions]) => ({
+      module,
+      permissions,
+    }))
+
+    return groupedPermissions
   }
 
   async findById(id: number) {
