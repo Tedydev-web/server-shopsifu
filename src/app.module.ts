@@ -21,6 +21,7 @@ import { ConfigModule } from '@nestjs/config'
 import envConfig from 'src/shared/config'
 import { ProductModule } from './routes/product/product.module'
 import { ProductTranslationModule } from './routes/product/product-translation/product-translation.module'
+import { CartModule } from './routes/cart/cart.module'
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { ProductTranslationModule } from './routes/product/product-translation/p
     CategoryTranslationModule,
     ProductModule,
     ProductTranslationModule,
+    CartModule
   ],
   providers: [
     {
