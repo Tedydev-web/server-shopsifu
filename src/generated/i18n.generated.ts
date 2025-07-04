@@ -98,6 +98,19 @@ export type I18nTranslations = {
             "SUSPICIOUS_ACTIVITY": string;
         };
     };
+    "brand-translation": {
+        "success": {
+            "CREATE_SUCCESS": string;
+            "UPDATE_SUCCESS": string;
+            "DELETE_SUCCESS": string;
+            "GET_BRAND_TRANSLATIONS": string;
+            "GET_BRAND_TRANSLATION_DETAIL": string;
+        };
+        "error": {
+            "NOT_FOUND": string;
+            "ALREADY_EXISTS": string;
+        };
+    };
     "brand": {
         "success": {
             "CREATE_SUCCESS": string;
@@ -110,6 +123,37 @@ export type I18nTranslations = {
             "NOT_FOUND": string;
             "ALREADY_EXISTS": string;
             "CANNOT_DELETE": string;
+        };
+    };
+    "cart": {
+        "success": {
+            "ADD_TO_CART_SUCCESS": string;
+            "UPDATE_CART_SUCCESS": string;
+            "DELETE_CART_SUCCESS": string;
+            "GET_CART_SUCCESS": string;
+            "CLEAR_CART_SUCCESS": string;
+        };
+        "error": {
+            "SKU_NOT_FOUND": string;
+            "OUT_OF_STOCK": string;
+            "PRODUCT_NOT_FOUND": string;
+            "INSUFFICIENT_STOCK": string;
+            "CART_ITEM_NOT_FOUND": string;
+            "INVALID_QUANTITY": string;
+            "CART_EMPTY": string;
+        };
+    };
+    "category-translation": {
+        "success": {
+            "CREATE_SUCCESS": string;
+            "UPDATE_SUCCESS": string;
+            "DELETE_SUCCESS": string;
+            "GET_CATEGORY_TRANSLATIONS": string;
+            "GET_CATEGORY_TRANSLATION_DETAIL": string;
+        };
+        "error": {
+            "NOT_FOUND": string;
+            "ALREADY_EXISTS": string;
         };
     };
     "category": {
@@ -159,129 +203,12 @@ export type I18nTranslations = {
     };
     "global": {
         "success": {
-            "GENERAL": string;
-            "CREATED": string;
-            "UPDATED": string;
-            "DELETED": string;
-            "RETRIEVED": string;
-            "PROCESSED": string;
+            "CREATE_SUCCESS": string;
+            "UPDATE_SUCCESS": string;
+            "DELETE_SUCCESS": string;
         };
         "error": {
-            "INVALID_PASSWORD": string;
-            "INTERNAL_SERVER_ERROR": string;
-            "BAD_REQUEST": string;
-            "UNAUTHORIZED": string;
-            "FORBIDDEN": string;
-            "NOT_FOUND": string;
-            "METHOD_NOT_ALLOWED": string;
-            "NOT_ACCEPTABLE": string;
-            "REQUEST_TIMEOUT": string;
-            "CONFLICT": string;
-            "GONE": string;
-            "LENGTH_REQUIRED": string;
-            "PRECONDITION_FAILED": string;
-            "PAYLOAD_TOO_LARGE": string;
-            "URI_TOO_LONG": string;
-            "UNSUPPORTED_MEDIA_TYPE": string;
-            "RANGE_NOT_SATISFIABLE": string;
-            "EXPECTATION_FAILED": string;
-            "UNPROCESSABLE_ENTITY": string;
-            "VALIDATION_FAILED": string;
-            "LOCKED": string;
-            "FAILED_DEPENDENCY": string;
-            "TOO_EARLY": string;
-            "UPGRADE_REQUIRED": string;
-            "PRECONDITION_REQUIRED": string;
-            "TOO_MANY_REQUESTS": string;
-            "REQUEST_HEADER_FIELDS_TOO_LARGE": string;
-            "UNAVAILABLE_FOR_LEGAL_REASONS": string;
-            "INTERNAL_SERVER_ERROR_DETAILED": string;
-            "NOT_IMPLEMENTED": string;
-            "BAD_GATEWAY": string;
-            "SERVICE_UNAVAILABLE": string;
-            "GATEWAY_TIMEOUT": string;
-            "HTTP_VERSION_NOT_SUPPORTED": string;
-            "VARIANT_ALSO_NEGOTIATES": string;
-            "INSUFFICIENT_STORAGE": string;
-            "LOOP_DETECTED": string;
-            "NOT_EXTENDED": string;
-            "NETWORK_AUTHENTICATION_REQUIRED": string;
-            "RESOURCE_NOT_FOUND": string;
-            "USER_NOT_FOUND": string;
-            "ROLE_NOT_FOUND": string;
-            "PERMISSION_NOT_FOUND": string;
-            "FILE_NOT_FOUND": string;
-            "IMAGE_NOT_FOUND": string;
-            "DOCUMENT_NOT_FOUND": string;
-            "DATABASE_ERROR": string;
-            "CONNECTION_ERROR": string;
-            "NETWORK_ERROR": string;
-            "EXTERNAL_SERVICE_ERROR": string;
-            "FILE_SYSTEM_ERROR": string;
-            "CACHE_ERROR": string;
-            "QUEUE_ERROR": string;
-            "EMAIL_ERROR": string;
-            "SMS_ERROR": string;
-            "PAYMENT_ERROR": string;
-            "DUPLICATE_ENTRY": string;
-            "FOREIGN_KEY_CONSTRAINT": string;
-            "UNIQUE_CONSTRAINT": string;
-            "CHECK_CONSTRAINT": string;
-            "NOT_NULL_CONSTRAINT": string;
-            "CONCURRENT_MODIFICATION": string;
-            "OPTIMISTIC_LOCK": string;
-            "DEADLOCK": string;
-            "TRANSACTION_ROLLBACK": string;
-        };
-        "entities": {
-            "user": string;
-            "role": string;
-            "permission": string;
-            "session": string;
-            "device": string;
-            "file": string;
-            "image": string;
-            "document": string;
-            "resource": string;
-            "record": string;
-            "data": string;
-            "information": string;
-            "content": string;
-            "item": string;
-            "entry": string;
-            "object": string;
-            "entity": string;
-        };
-        "validation": {
-            "REQUIRED": string;
-            "INVALID_FORMAT": string;
-            "INVALID_EMAIL": string;
-            "INVALID_PHONE": string;
-            "INVALID_URL": string;
-            "INVALID_DATE": string;
-            "INVALID_NUMBER": string;
-            "INVALID_UUID": string;
-            "TOO_SHORT": string;
-            "TOO_LONG": string;
-            "TOO_SMALL": string;
-            "TOO_LARGE": string;
-            "INVALID_CHOICE": string;
-            "PASSWORDS_NOT_MATCH": string;
-        };
-        "duration": {
-            "justNow": string;
-            "aMinuteAgo": string;
-            "minutesAgo": string;
-            "anHourAgo": string;
-            "hoursAgo": string;
-            "aDayAgo": string;
-            "daysAgo": string;
-            "aWeekAgo": string;
-            "weeksAgo": string;
-            "aMonthAgo": string;
-            "monthsAgo": string;
-            "aYearAgo": string;
-            "yearsAgo": string;
+            "NOT_FOUND_RECORD": string;
         };
     };
     "language": {
@@ -305,6 +232,19 @@ export type I18nTranslations = {
             "DELETE_SUCCESS": string;
             "GET_PERMISSIONS": string;
             "GET_PERMISSION_DETAIL": string;
+        };
+        "error": {
+            "NOT_FOUND": string;
+            "ALREADY_EXISTS": string;
+        };
+    };
+    "product-translation": {
+        "success": {
+            "CREATE_SUCCESS": string;
+            "UPDATE_SUCCESS": string;
+            "DELETE_SUCCESS": string;
+            "GET_PRODUCT_TRANSLATIONS": string;
+            "GET_PRODUCT_TRANSLATION_DETAIL": string;
         };
         "error": {
             "NOT_FOUND": string;
@@ -352,6 +292,7 @@ export type I18nTranslations = {
             "OPERATION_FAILED": string;
             "CANNOT_UPDATE_DEFAULT_ROLE": string;
             "CANNOT_DELETE_DEFAULT_ROLE": string;
+            "PROHIBITED_ACTION_ON_BASE_ROLE": string;
         };
     };
     "user": {
@@ -368,6 +309,8 @@ export type I18nTranslations = {
             "CANNOT_DELETE": string;
             "CANNOT_UPDATE_ADMIN_USER": string;
             "CANNOT_DELETE_ADMIN_USER": string;
+            "CANNOT_SET_ADMIN_ROLE_TO_USER": string;
+            "CANNOT_UPDATE_OR_DELETE_YOURSELF": string;
             "ROLE_NOT_FOUND": string;
         };
     };

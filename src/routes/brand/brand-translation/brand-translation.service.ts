@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { NotFoundRecordException } from 'src/shared/error'
+import { ExceptionFactory } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { BrandTranslationRepo } from 'src/routes/brand/brand-translation/brand-translation.repo'
 import { BrandTranslationAlreadyExistsException } from 'src/routes/brand/brand-translation/brand-translation.error'
@@ -15,7 +15,7 @@ export class BrandTranslationService {
   async findById(id: number) {
     const brand = await this.brandTranslationRepo.findById(id)
     if (!brand) {
-      throw NotFoundRecordException
+      throw ExceptionFactory.recordNotFound()
     }
     return brand
   }
@@ -47,7 +47,7 @@ export class BrandTranslationService {
         throw BrandTranslationAlreadyExistsException
       }
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       throw error
     }
@@ -64,7 +64,7 @@ export class BrandTranslationService {
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       throw error
     }

@@ -5,7 +5,7 @@ import {
   GetPermissionsQueryType,
   UpdatePermissionBodyType,
 } from 'src/routes/permission/permission.model'
-import { NotFoundRecordException } from 'src/shared/error'
+import { ExceptionFactory } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { PermissionAlreadyExistsException } from 'src/routes/permission/permission.error'
 import { I18nService } from 'nestjs-i18n'
@@ -26,7 +26,7 @@ export class PermissionService {
   async findById(id: number) {
     const permission = await this.permissionRepo.findById(id)
     if (!permission) {
-      throw NotFoundRecordException
+      throw ExceptionFactory.recordNotFound()
     }
     return permission
   }
@@ -39,7 +39,7 @@ export class PermissionService {
       })
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw PermissionAlreadyExistsException(this.i18n)
+        throw PermissionAlreadyExistsException
       }
       throw error
     }
@@ -55,10 +55,10 @@ export class PermissionService {
       return permission
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       if (isUniqueConstraintPrismaError(error)) {
-        throw PermissionAlreadyExistsException(this.i18n)
+        throw PermissionAlreadyExistsException
       }
       throw error
     }
@@ -75,7 +75,7 @@ export class PermissionService {
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       throw error
     }

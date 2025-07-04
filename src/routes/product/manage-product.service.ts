@@ -6,7 +6,7 @@ import {
   GetProductsQueryType,
   UpdateProductBodyType,
 } from 'src/routes/product/product.model'
-import { NotFoundRecordException } from 'src/shared/error'
+import { ExceptionFactory } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext } from 'nestjs-i18n'
 import { RoleName } from 'src/shared/constants/role.constant'
@@ -57,7 +57,7 @@ export class ManageProductService {
     })
 
     if (!product) {
-      throw NotFoundRecordException
+      throw ExceptionFactory.recordNotFound()
     }
     this.validatePrivilege({
       userIdRequest: props.userIdRequest,
@@ -87,7 +87,7 @@ export class ManageProductService {
   }) {
     const product = await this.productRepo.findById(productId)
     if (!product) {
-      throw NotFoundRecordException
+      throw ExceptionFactory.recordNotFound()
     }
     this.validatePrivilege({
       userIdRequest: updatedById,
@@ -103,7 +103,7 @@ export class ManageProductService {
       return updatedProduct
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       throw error
     }
@@ -120,7 +120,7 @@ export class ManageProductService {
   }) {
     const product = await this.productRepo.findById(productId)
     if (!product) {
-      throw NotFoundRecordException
+      throw ExceptionFactory.recordNotFound()
     }
     this.validatePrivilege({
       userIdRequest: deletedById,
@@ -137,7 +137,7 @@ export class ManageProductService {
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       throw error
     }

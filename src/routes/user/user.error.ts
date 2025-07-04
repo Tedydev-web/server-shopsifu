@@ -1,28 +1,16 @@
-import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { ExceptionFactory } from 'src/shared/error'
 
-export const UserAlreadyExistsException = (i18n: I18nService<I18nTranslations>) =>
-  new UnprocessableEntityException([
-    {
-      message: i18n.t('user.error.ALREADY_EXISTS'),
-      path: 'email',
-    },
-  ])
+// --- User-specific Exceptions sử dụng ExceptionFactory ---
+export const UserAlreadyExistsException = ExceptionFactory.alreadyExists('user.error.ALREADY_EXISTS', 'email')
 
-export const CannotUpdateAdminUserException = new ForbiddenException('Error.CannotUpdateAdminUser')
+export const CannotUpdateAdminUserException = ExceptionFactory.cannotUpdateAdminUser()
 
-export const CannotDeleteAdminUserException = new ForbiddenException('Error.CannotDeleteAdminUser')
+export const CannotDeleteAdminUserException = ExceptionFactory.cannotDeleteAdminUser()
 
 // Chỉ Admin mới có thể đặt role là ADMIN
-export const CannotSetAdminRoleToUserException = new ForbiddenException('Error.CannotSetAdminRoleToUser')
+export const CannotSetAdminRoleToUserException = ExceptionFactory.cannotSetAdminRoleToUser()
 
-export const RoleNotFoundException = new UnprocessableEntityException([
-  {
-    message: 'Error.RoleNotFound',
-    path: 'roleId',
-  },
-])
+export const RoleNotFoundException = ExceptionFactory.unprocessableEntity('user.error.ROLE_NOT_FOUND', 'roleId')
 
 // Không thể xóa hoặc cập nhật chính bản thân mình
-export const CannotUpdateOrDeleteYourselfException = new ForbiddenException('Error.CannotUpdateOrDeleteYourself')
+export const CannotUpdateOrDeleteYourselfException = ExceptionFactory.cannotUpdateOrDeleteYourself()

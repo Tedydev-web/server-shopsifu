@@ -1,13 +1,6 @@
-import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { ExceptionFactory } from 'src/shared/error'
 
-export const RoleAlreadyExistsException = (i18n: I18nService<I18nTranslations>) =>
-  new UnprocessableEntityException([
-    {
-      message: i18n.t('role.error.ALREADY_EXISTS'),
-      path: 'name',
-    },
-  ])
+// --- Role-specific Exceptions sử dụng ExceptionFactory ---
+export const RoleAlreadyExistsException = ExceptionFactory.alreadyExists('role.error.ALREADY_EXISTS', 'name')
 
-export const ProhibitedActionOnBaseRoleException = new ForbiddenException('Error.ProhibitedActionOnBaseRole')
+export const ProhibitedActionOnBaseRoleException = ExceptionFactory.prohibitedActionOnBaseRole()

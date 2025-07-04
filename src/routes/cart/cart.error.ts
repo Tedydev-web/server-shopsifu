@@ -1,7 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { ExceptionFactory } from 'src/shared/error'
 
-export const NotFoundSKUException = new NotFoundException('Error.SKU.NotFound')
+// --- Cart-specific Exceptions sử dụng ExceptionFactory ---
+export const NotFoundSKUException = ExceptionFactory.notFound('cart.error.SKU_NOT_FOUND', 'skuId')
 
-export const OutOfStockSKUException = new BadRequestException('Error.SKU.OutOfStock')
+export const OutOfStockSKUException = ExceptionFactory.outOfStock('cart.error.OUT_OF_STOCK', 'skuId')
 
-export const ProductNotFoundException = new NotFoundException('Error.Product.NotFound')
+export const ProductNotFoundException = ExceptionFactory.notFound('cart.error.PRODUCT_NOT_FOUND', 'productId')

@@ -1,11 +1,4 @@
-import { ConflictException } from '@nestjs/common'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { ExceptionFactory } from 'src/shared/error'
 
-export const LanguageAlreadyExistsException = (i18n: I18nService<I18nTranslations>) =>
-  new ConflictException([
-    {
-      message: 'language.error.ALREADY_EXISTS',
-      path: 'id',
-    },
-  ])
+// --- Language-specific Exceptions sử dụng ExceptionFactory ---
+export const LanguageAlreadyExistsException = ExceptionFactory.conflict('language.error.ALREADY_EXISTS', 'id')

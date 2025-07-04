@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { BrandRepo } from 'src/routes/brand/brand.repo'
 import { CreateBrandBodyType, UpdateBrandBodyType, BrandPaginationQueryType } from 'src/routes/brand/brand.model'
-import { NotFoundRecordException } from 'src/shared/error'
+import { ExceptionFactory } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext } from 'nestjs-i18n'
 import { I18nService } from 'nestjs-i18n'
@@ -23,7 +23,7 @@ export class BrandService {
     const brand = await this.brandRepo.findById(id, I18nContext.current()?.lang as string)
 
     if (!brand) {
-      throw NotFoundRecordException
+      throw ExceptionFactory.recordNotFound()
     }
     return brand
   }
@@ -45,7 +45,7 @@ export class BrandService {
       return brand
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       throw error
     }
@@ -62,7 +62,7 @@ export class BrandService {
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       throw error
     }

@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common'
 import { UserRepo } from 'src/routes/user/user.repo'
 import { CreateUserBodyType, GetUsersQueryType, UpdateUserBodyType } from 'src/routes/user/user.model'
-import { NotFoundRecordException } from 'src/shared/error'
+import { ExceptionFactory } from 'src/shared/error'
 import {
   isForeignKeyConstraintPrismaError,
   isNotFoundPrismaError,
@@ -38,7 +38,7 @@ export class UserService {
       id,
     })
     if (!user) {
-      throw NotFoundRecordException
+      throw ExceptionFactory.recordNotFound()
     }
     return user
   }
@@ -136,7 +136,7 @@ export class UserService {
       return updatedUser
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       if (isUniqueConstraintPrismaError(error)) {
         throw UserAlreadyExistsException
@@ -153,7 +153,7 @@ export class UserService {
       id: userId,
     })
     if (!currentUser) {
-      throw NotFoundRecordException
+      throw ExceptionFactory.recordNotFound()
     }
     return currentUser.roleId
   }
@@ -187,7 +187,7 @@ export class UserService {
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       throw error
     }

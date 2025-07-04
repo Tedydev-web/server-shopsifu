@@ -1,0 +1,13 @@
+{
+  "success": {
+    "CREATE_SUCCESS": "Tạo bản dịch thương hiệu thành công",
+    "UPDATE_SUCCESS": "Cập nhật bản dịch thương hiệu thành công",
+    "DELETE_SUCCESS": "Xóa bản dịch thương hiệu thành công",
+    "GET_BRAND_TRANSLATIONS": "Lấy danh sách bản dịch thương hiệu thành công",
+    "GET_BRAND_TRANSLATION_DETAIL": "Lấy chi tiết bản dịch thương hiệu thành công"
+  },
+  "error": {
+    "NOT_FOUND": "Bản dịch thương hiệu không tồn tại.",
+    "ALREADY_EXISTS": "Bản dịch cho thương hiệu này đã tồn tại."
+  }
+}

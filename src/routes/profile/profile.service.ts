@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { InvalidPasswordException, NotFoundRecordException } from 'src/shared/error'
+import { ExceptionFactory } from 'src/shared/error'
 import { ChangePasswordBodyType, UpdateMeBodySchema, UpdateMeBodyType } from './profile.model'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
@@ -21,7 +21,7 @@ export class ProfileService {
     })
 
     if (!user) {
-      throw NotFoundRecordException
+      throw ExceptionFactory.recordNotFound()
     }
 
     return user
@@ -38,7 +38,7 @@ export class ProfileService {
       )
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       throw error
     }
@@ -51,11 +51,11 @@ export class ProfileService {
         id: userId,
       })
       if (!user) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       const isPasswordMatch = await this.hashingService.compare(password, user.password)
       if (!isPasswordMatch) {
-        throw InvalidPasswordException
+        throw ExceptionFactory.invalidPassword()
       }
       const hashedPassword = await this.hashingService.hash(newPassword)
 
@@ -71,7 +71,7 @@ export class ProfileService {
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw NotFoundRecordException
+        throw ExceptionFactory.recordNotFound()
       }
       throw error
     }

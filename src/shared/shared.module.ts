@@ -29,6 +29,7 @@ import { SltService } from './services/slt.service'
 import { PaginationService } from './services/pagination.service'
 import { SharedRoleRepository } from './repositories/shared-role.repo'
 import { S3Service } from './services/s3.service'
+import { ExceptionService } from './services/exception.service'
 
 const redisClientProvider = {
   provide: IORedisKey,
@@ -74,6 +75,7 @@ const sharedServices = [
   SltService,
   PaginationService,
   S3Service,
+  ExceptionService,
 ]
 
 const sharedMiddlewares = [CsrfProtectionMiddleware, SecurityHeadersMiddleware]
@@ -99,6 +101,6 @@ const allProviders = [
 @Module({
   imports: [JwtModule, ConfigModule],
   providers: allProviders,
-  exports: [...sharedServices, ...sharedMiddlewares, ...sharedGuards],
+  exports: [...sharedServices, ...sharedMiddlewares, ...sharedGuards, ExceptionService],
 })
 export class SharedModule {}

@@ -1,8 +1,7 @@
-import { UnprocessableEntityException } from '@nestjs/common'
+import { ExceptionFactory } from 'src/shared/error'
 
-export const CategoryTranslationAlreadyExistsException = new UnprocessableEntityException([
-  {
-    path: 'languageId',
-    message: 'Error.CategoryTranslationAlreadyExists',
-  },
-])
+// --- Category Translation-specific Exceptions sử dụng ExceptionFactory ---
+export const CategoryTranslationAlreadyExistsException = ExceptionFactory.alreadyExists(
+  'category-translation.error.ALREADY_EXISTS',
+  'languageId',
+)
