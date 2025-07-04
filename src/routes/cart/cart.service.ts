@@ -9,7 +9,7 @@ export class CartService {
   constructor(private readonly cartRepo: CartRepo) {}
 
   getCart(userId: number, query: PaginationQueryType) {
-    return this.cartRepo.list({
+    return this.cartRepo.list2({
       userId,
       languageId: I18nContext.current()?.lang as string,
       page: query.page,
