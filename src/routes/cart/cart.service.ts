@@ -1,19 +1,22 @@
 import { Injectable } from '@nestjs/common'
 import { CartRepo } from './cart.repo'
-import { AddToCartBodyType, DeleteCartBodyType, UpdateCartItemBodyType } from 'src/routes/cart/cart.model'
+import {
+  AddToCartBodyType,
+  DeleteCartBodyType,
+  GetCartQueryType,
+  UpdateCartItemBodyType,
+} from 'src/routes/cart/cart.model'
 import { I18nContext } from 'nestjs-i18n'
-import { PaginationQueryType } from 'src/shared/models/request.model'
 
 @Injectable()
 export class CartService {
   constructor(private readonly cartRepo: CartRepo) {}
 
-  getCart(userId: number, query: PaginationQueryType) {
-    return this.cartRepo.list2({
+  getCart(userId: number, query: GetCartQueryType) {
+    return this.cartRepo.list({
+      ...query,
       userId,
       languageId: I18nContext.current()?.lang as string,
-      page: query.page,
-      limit: query.limit,
     })
   }
 

@@ -2,6 +2,7 @@ import { ProductSchema } from 'src/shared/models/shared-product.model'
 import { ProductTranslationSchema } from 'src/shared/models/shared-product-translation.model'
 import { SKUSchema } from 'src/shared/models/shared-sku.model'
 import { UserSchema } from 'src/shared/models/shared-user.model'
+import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 import { z } from 'zod'
 
 export const CartItemSchema = z.object({
@@ -58,12 +59,15 @@ export const CartItemDetailSchema = z.object({
   ),
 })
 
+export const GetCartQuerySchema = BasePaginationQuerySchema.extend({
+  // Có thể thêm các filter riêng cho cart nếu cần sau này
+  // shopId: z.coerce.number().int().positive().optional(),
+  // categoryId: z.coerce.number().int().positive().optional(),
+})
+
 export const GetCartResSchema = z.object({
   data: z.array(CartItemDetailSchema),
-  totalItems: z.number(),
-  page: z.number(), // Số trang hiện tại
-  limit: z.number(), // Số item trên 1 trang
-  totalPages: z.number(), // Tổng số trang
+  metadata: PaginationMetadataSchema,
 })
 
 export const AddToCartBodySchema = CartItemSchema.pick({
@@ -82,6 +86,7 @@ export const DeleteCartBodySchema = z
 export type CartItemType = z.infer<typeof CartItemSchema>
 export type GetCartItemParamType = z.infer<typeof GetCartItemParamsSchema>
 export type CartItemDetailType = z.infer<typeof CartItemDetailSchema>
+export type GetCartQueryType = z.infer<typeof GetCartQuerySchema>
 export type GetCartResType = z.infer<typeof GetCartResSchema>
 export type AddToCartBodyType = z.infer<typeof AddToCartBodySchema>
 export type UpdateCartItemBodyType = z.infer<typeof UpdateCartItemBodySchema>
