@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const LanguageSchema = z.object({
   id: z.string().max(10),
@@ -13,7 +12,6 @@ export const LanguageSchema = z.object({
 
 export const GetLanguagesResSchema = z.object({
   data: z.array(LanguageSchema),
-  metadata: PaginationMetadataSchema,
 })
 
 export const GetLanguageParamsSchema = z
@@ -33,12 +31,9 @@ export const UpdateLanguageBodySchema = LanguageSchema.pick({
   name: true,
 }).strict()
 
-export const LanguagePaginationQuerySchema = BasePaginationQuerySchema
-
 export type LanguageType = z.infer<typeof LanguageSchema>
 export type GetLanguagesResType = z.infer<typeof GetLanguagesResSchema>
 export type GetLanguageDetailResType = z.infer<typeof GetLanguageDetailResSchema>
 export type CreateLanguageBodyType = z.infer<typeof CreateLanguageBodySchema>
 export type GetLanguageParamsType = z.infer<typeof GetLanguageParamsSchema>
 export type UpdateLanguageBodyType = z.infer<typeof UpdateLanguageBodySchema>
-export type LanguagePaginationQueryType = z.infer<typeof LanguagePaginationQuerySchema>

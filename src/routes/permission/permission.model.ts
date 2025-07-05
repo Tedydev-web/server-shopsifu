@@ -1,13 +1,11 @@
 import { PermissionSchema } from 'src/shared/models/shared-permission.model'
 import { z } from 'zod'
-import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
+import { PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const GetPermissionsResSchema = z.object({
   data: z.array(PermissionSchema),
   metadata: PaginationMetadataSchema,
 })
-
-export const GetPermissionsQuerySchema = BasePaginationQuerySchema
 
 export const GetPermissionParamsSchema = z
   .object({
@@ -28,7 +26,6 @@ export const UpdatePermissionBodySchema = CreatePermissionBodySchema
 
 export type PermissionType = z.infer<typeof PermissionSchema>
 export type GetPermissionsResType = z.infer<typeof GetPermissionsResSchema>
-export type GetPermissionsQueryType = z.infer<typeof GetPermissionsQuerySchema>
 export type GetPermissionDetailResType = z.infer<typeof GetPermissionDetailResSchema>
 export type CreatePermissionBodyType = z.infer<typeof CreatePermissionBodySchema>
 export type GetPermissionParamsType = z.infer<typeof GetPermissionParamsSchema>

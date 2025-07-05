@@ -5,37 +5,14 @@ import {
   UpdateBrandBodyType,
   BrandType,
   BrandIncludeTranslationType,
-  BrandPaginationQueryType,
 } from 'src/routes/brand/brand.model'
-import { PrismaService } from 'src/shared/services/prisma.service'
-import { PaginationService, PaginatedResult } from 'src/shared/services/pagination.service'
 import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
+import { PaginationQueryType } from 'src/shared/models/pagination.model'
+import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class BrandRepo {
-  constructor(
-    private prismaService: PrismaService,
-    private paginationService: PaginationService,
-  ) {}
-
-  async list(pagination: BrandPaginationQueryType, languageId: string): Promise<PaginatedResult<GetBrandsResType>> {
-    const include = {
-      brandTranslations: {
-        where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId },
-      },
-    }
-
-    return this.paginationService.paginate(
-      'brand',
-      pagination,
-      { deletedAt: null },
-      {
-        include,
-        searchableFields: ['id', 'name'],
-        orderBy: [{ createdAt: 'desc' }],
-      },
-    )
-  }
+  constructor(private prismaService: PrismaService) {}
 
   findById(id: number, languageId: string): Promise<BrandIncludeTranslationType | null> {
     return this.prismaService.brand.findUnique({

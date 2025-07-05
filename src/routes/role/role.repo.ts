@@ -1,32 +1,11 @@
 import { Injectable } from '@nestjs/common'
-import {
-  CreateRoleBodyType,
-  GetRolesQueryType,
-  GetRolesResType,
-  RoleType,
-  RoleWithPermissionsType,
-  UpdateRoleBodyType,
-} from 'src/routes/role/role.model'
+import { CreateRoleBodyType, RoleWithPermissionsType, UpdateRoleBodyType } from 'src/routes/role/role.model'
+import { RoleType } from 'src/shared/models/shared-role.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { PaginationService, PaginatedResult } from 'src/shared/services/pagination.service'
 
 @Injectable()
 export class RoleRepo {
-  constructor(
-    private prismaService: PrismaService,
-    private paginationService: PaginationService,
-  ) {}
-
-  async list(pagination: GetRolesQueryType): Promise<PaginatedResult<RoleType>> {
-    return this.paginationService.paginate(
-      'role',
-      pagination,
-      { deletedAt: null },
-      {
-        searchableFields: ['id', 'name', 'description'],
-      },
-    )
-  }
+  constructor(private prismaService: PrismaService) {}
 
   findById(id: number): Promise<RoleWithPermissionsType | null> {
     return this.prismaService.role.findUnique({

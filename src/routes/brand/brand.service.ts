@@ -1,27 +1,73 @@
 import { Injectable } from '@nestjs/common'
 import { BrandRepo } from 'src/routes/brand/brand.repo'
-import { CreateBrandBodyType, UpdateBrandBodyType, BrandPaginationQueryType } from 'src/routes/brand/brand.model'
+import { CreateBrandBodyType, UpdateBrandBodyType } from 'src/routes/brand/brand.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
+import { PaginationQueryType } from 'src/shared/models/pagination.model'
 import { I18nContext } from 'nestjs-i18n'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { PaginationService } from 'src/shared/services/pagination.service'
+import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 
 @Injectable()
 export class BrandService {
   constructor(
     private brandRepo: BrandRepo,
-    private readonly i18n: I18nService<I18nTranslations>,
+    private paginationService: PaginationService,
   ) {}
 
-  async list(pagination: BrandPaginationQueryType) {
-    const data = await this.brandRepo.list(pagination, I18nContext.current()?.lang as string)
-    return data
+  async list(props: { pagination: PaginationQueryType; filters: any }) {
+    const languageId = I18nContext.current()?.lang as string
+
+    // Xây dựng where clause từ filters
+    const where = this.buildWhereClause(props.filters)
+
+    // Xây dựng orderBy từ pagination và filters
+    const orderBy = this.buildOrderBy(props.pagination, props.filters)
+
+    return this.paginationService.paginate('brand', props.pagination, {
+      where,
+      include: {
+        brandTranslations: {
+          where: languageId === 'all' ? { deletedAt: null } : { deletedAt: null, languageId },
+        },
+      },
+      orderBy,
+      defaultSortField: 'createdAt',
+    })
+  }
+
+  private buildWhereClause(filters: any) {
+    const where: any = { deletedAt: null }
+
+    // Hỗ trợ cả 'search' và 'name' param
+    if (filters.search) {
+      const searchTerm = filters.search
+      where.name = {
+        contains: searchTerm,
+        mode: 'insensitive',
+      }
+    }
+
+    // Filter theo createdById (cho admin/seller)
+    if (filters.createdById) {
+      where.createdById = Number(filters.createdById)
+    }
+
+    return where
+  }
+
+  private buildOrderBy(pagination: PaginationQueryType, filters: any) {
+    const { sortBy = SortBy.CreatedAt, sortOrder = OrderBy.Desc } = filters
+
+    if (sortBy === SortBy.Name) {
+      return [{ name: sortOrder }]
+    }
+
+    return [{ createdAt: sortOrder }]
   }
 
   async findById(id: number) {
     const brand = await this.brandRepo.findById(id, I18nContext.current()?.lang as string)
-
     if (!brand) {
       throw NotFoundRecordException
     }
@@ -58,7 +104,7 @@ export class BrandService {
         deletedById,
       })
       return {
-        message: this.i18n.t('brand.success.DELETE_SUCCESS'),
+        message: 'Delete successfully',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

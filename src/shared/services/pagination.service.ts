@@ -1,11 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
-import { BasePaginationQueryType, PaginationMetadata } from '../models/pagination.model'
-
-export interface PaginatedResult<T> {
-  data: T[]
-  metadata: PaginationMetadata
-}
+import { PaginationQueryType, PaginationMetadata, PaginatedResult } from '../models/pagination.model'
 
 @Injectable()
 export class PaginationService {
@@ -15,12 +10,12 @@ export class PaginationService {
    * Tạo pagination metadata từ query và total count
    */
   createPaginationMetadata(
-    query: BasePaginationQueryType,
+    query: PaginationQueryType | { page?: number; limit?: number },
     totalItems: number,
-    extra?: Partial<PaginationMetadata>,
   ): PaginationMetadata {
     const { page = 1, limit = 10 } = query
     const totalPages = Math.ceil(totalItems / limit)
+
     return {
       totalItems,
       page,
@@ -28,115 +23,86 @@ export class PaginationService {
       totalPages,
       hasNext: page < totalPages,
       hasPrevious: page > 1,
-      ...extra,
     }
   }
 
   /**
-   * Phân trang hỗn hợp: page-based hoặc cursor-based (infinite scroll)
+   * Phân trang offset-based với sorting
    */
   async paginate<T>(
     modelName: string,
-    query: BasePaginationQueryType,
-    where: any = {},
+    query: PaginationQueryType | { page?: number; limit?: number; sortBy?: string; sortOrder?: 'asc' | 'desc' },
     options: {
+      where?: any
       include?: any
       select?: any
       orderBy?: any[]
-      searchableFields?: string[]
-      search?: string
-      cursorField?: string // default: 'id'
+      defaultSortField?: string
     } = {},
   ): Promise<PaginatedResult<T>> {
-    const { page = 1, limit = 10, sortBy, sortOrder, search, cursor } = query
-    const { include, select, orderBy, searchableFields, cursorField = 'id' } = options
+    const { page = 1, limit = 10, sortBy, sortOrder = 'desc' } = query
+    const { where = {}, include, select, orderBy, defaultSortField = 'id' } = options
 
-    // Build search query if provided
-    const searchQuery = search && searchableFields ? this.buildSearchQuery(search, searchableFields) : {}
-    const finalWhere = { ...where, ...searchQuery }
+    // Xây dựng orderBy
+    const finalOrderBy = this.buildOrderBy(orderBy, sortBy, sortOrder, defaultSortField)
 
-    // Multi-field sort
-    let finalOrderBy: any[] = []
-    if (orderBy && orderBy.length > 0) {
-      finalOrderBy = orderBy
-    } else if (sortBy) {
-      if (Array.isArray(sortBy)) {
-        finalOrderBy = sortBy.map((field) => ({ [field]: sortOrder || 'desc' }))
-      } else {
-        finalOrderBy = [{ [sortBy]: sortOrder || 'desc' }]
-      }
-    } else {
-      finalOrderBy = [{ [cursorField]: 'desc' }]
-    }
-
-    // Cursor-based (infinite scroll)
-    if (cursor) {
-      const findManyArgs: any = {
-        where: finalWhere,
-        orderBy: finalOrderBy,
-        take: limit + 1, // lấy dư 1 để xác định hasNext
-        cursor: { [cursorField]: this.parseCursor(cursor) },
-        skip: 1, // bỏ qua cursor hiện tại
-      }
-      if (include) findManyArgs.include = include
-      if (select) findManyArgs.select = select
-      const data = await this.prismaService[modelName].findMany(findManyArgs)
-      const hasNext = data.length > limit
-      const result = hasNext ? data.slice(0, limit) : data
-      const nextCursor = hasNext ? this.encodeCursor(result[result.length - 1][cursorField]) : null
-      const prevCursor = result.length > 0 ? this.encodeCursor(result[0][cursorField]) : null
-      // Không cần totalItems cho infinite scroll
-      return {
-        data: result,
-        metadata: {
-          totalItems: 0,
-          page: 1,
-          limit,
-          totalPages: 1,
-          hasNext,
-          hasPrevious: false,
-          nextCursor,
-          prevCursor,
-        },
-      }
-    }
-
-    // Page-based
-    const findManyArgs: any = {
-      where: finalWhere,
-      orderBy: finalOrderBy,
-      skip: (page - 1) * limit,
-      take: limit,
-    }
-    if (include) findManyArgs.include = include
-    if (select) findManyArgs.select = select
+    // Thực hiện query với transaction để đảm bảo consistency
     const [data, totalItems] = await this.prismaService.$transaction([
-      this.prismaService[modelName].findMany(findManyArgs),
-      this.prismaService[modelName].count({ where: finalWhere }),
+      this.prismaService[modelName].findMany({
+        where,
+        orderBy: finalOrderBy,
+        skip: (page - 1) * limit,
+        take: limit,
+        include,
+        select,
+      }),
+      this.prismaService[modelName].count({ where }),
     ])
+
     const metadata = this.createPaginationMetadata(query, totalItems)
+
     return { data, metadata }
   }
 
   /**
-   * Xây dựng search query
+   * Xây dựng orderBy clause
    */
-  private buildSearchQuery(search: string, searchableFields: string[]): any {
-    if (searchableFields.length === 0) return {}
-    return {
-      OR: searchableFields.map((field) => ({
-        [field]: { contains: search, mode: 'insensitive' },
-      })),
+  private buildOrderBy(
+    orderBy?: any[],
+    sortBy?: string,
+    sortOrder: 'asc' | 'desc' = 'desc',
+    defaultSortField: string = 'id',
+  ): any[] {
+    // Ưu tiên orderBy được truyền vào
+    if (orderBy && orderBy.length > 0) {
+      return orderBy
     }
+
+    // Sử dụng sortBy nếu có
+    if (sortBy) {
+      return [{ [sortBy]: sortOrder }]
+    }
+
+    // Fallback về default sort field
+    return [{ [defaultSortField]: sortOrder }]
   }
 
   /**
-   * Encode/decode cursor (có thể mở rộng cho nhiều trường)
+   * Tính toán offset từ page và limit
    */
-  private encodeCursor(value: any): string {
-    return Buffer.from(String(value)).toString('base64')
+  calculateOffset(page: number, limit: number): number {
+    return (page - 1) * limit
   }
-  private parseCursor(cursor: string): any {
-    return Buffer.from(cursor, 'base64').toString()
+
+  /**
+   * Validate pagination parameters
+   */
+  validatePaginationParams(page: number, limit: number): void {
+    if (page < 1) {
+      throw new Error('Page must be greater than 0')
+    }
+    if (limit < 1 || limit > 100) {
+      throw new Error('Limit must be between 1 and 100')
+    }
   }
 }

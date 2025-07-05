@@ -1,31 +1,14 @@
 import { Injectable } from '@nestjs/common'
 import {
   CreatePermissionBodyType,
-  GetPermissionsQueryType,
-  GetPermissionsResType,
   PermissionType,
   UpdatePermissionBodyType,
 } from 'src/routes/permission/permission.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { PaginationService, PaginatedResult } from 'src/shared/services/pagination.service'
 
 @Injectable()
 export class PermissionRepo {
-  constructor(
-    private prismaService: PrismaService,
-    private paginationService: PaginationService,
-  ) {}
-
-  async list(pagination: GetPermissionsQueryType): Promise<PaginatedResult<PermissionType>> {
-    return this.paginationService.paginate(
-      'permission',
-      pagination,
-      { deletedAt: null },
-      {
-        searchableFields: ['id', 'name', 'path', 'method'],
-      },
-    )
-  }
+  constructor(private prismaService: PrismaService) {}
 
   findById(id: number): Promise<PermissionType | null> {
     return this.prismaService.permission.findUnique({

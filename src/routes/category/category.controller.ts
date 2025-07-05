@@ -21,7 +21,7 @@ export class CategoryController {
   @IsPublic()
   @ZodSerializerDto(GetAllCategoriesResDTO)
   findAll(@Query() query: GetAllCategoriesQueryDTO) {
-    return this.categoryService.findAll(query.parentCategoryId)
+    return this.categoryService.findAll(query)
   }
 
   @Get(':categoryId')

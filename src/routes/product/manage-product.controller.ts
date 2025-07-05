@@ -3,7 +3,6 @@ import { ZodSerializerDto } from 'nestjs-zod'
 import { ManageProductService } from 'src/routes/product/manage-product.service'
 import {
   CreateProductBodyDTO,
-  GetManageProductsQueryDTO,
   GetProductDetailResDTO,
   GetProductParamsDTO,
   GetProductsResDTO,
@@ -13,18 +12,21 @@ import {
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { Pagination } from 'src/shared/decorators/pagination.decorator'
+import { PaginationQueryDTO } from 'src/shared/dtos/pagination.dto'
 
-@Controller('manage-product/products')
+@Controller('manage-product')
 export class ManageProductController {
   constructor(private readonly manageProductService: ManageProductService) {}
 
   @Get()
   @ZodSerializerDto(GetProductsResDTO)
-  list(@Query() query: GetManageProductsQueryDTO, @ActiveUser() user: AccessTokenPayload) {
+  list(@Pagination() pagination: PaginationQueryDTO, @Query() query: any, @ActiveUser() user: AccessTokenPayload) {
     return this.manageProductService.list({
-      query,
-      roleNameRequest: user.roleName,
+      pagination,
+      filters: query,
       userIdRequest: user.userId,
+      roleNameRequest: user.roleName,
     })
   }
 

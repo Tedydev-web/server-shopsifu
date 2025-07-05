@@ -1,6 +1,5 @@
-import { z } from 'zod'
-
 import { ProductTranslationSchema } from 'src/shared/models/shared-product-translation.model'
+import { z } from 'zod'
 
 export const GetProductTranslationParamsSchema = z
   .object({

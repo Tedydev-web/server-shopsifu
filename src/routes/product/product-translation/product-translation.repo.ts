@@ -4,8 +4,8 @@ import {
   CreateProductTranslationBodyType,
   UpdateProductTranslationBodyType,
 } from 'src/routes/product/product-translation/product-translation.model'
-import { PrismaService } from 'src/shared/services/prisma.service'
 import { ProductTranslationType } from 'src/shared/models/shared-product-translation.model'
+import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class ProductTranslationRepo {

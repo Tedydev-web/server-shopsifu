@@ -4,7 +4,6 @@ import {
   CreateUserBodyDTO,
   CreateUserResDTO,
   GetUserParamsDTO,
-  GetUsersQueryDTO,
   GetUsersResDTO,
   UpdateUserBodyDTO,
 } from 'src/routes/user/user.dto'
@@ -13,6 +12,8 @@ import { ActiveRolePermissions } from 'src/shared/decorators/auth/active-role-pe
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { GetUserProfileResDTO, UpdateProfileResDTO } from 'src/shared/dtos/shared-user.dto'
+import { Pagination } from 'src/shared/decorators/pagination.decorator'
+import { PaginationQueryDTO } from 'src/shared/dtos/pagination.dto'
 
 @Controller('users')
 export class UserController {
@@ -20,8 +21,11 @@ export class UserController {
 
   @Get()
   @ZodSerializerDto(GetUsersResDTO)
-  list(@Query() query: GetUsersQueryDTO) {
-    return this.userService.list(query)
+  list(@Pagination() pagination: PaginationQueryDTO, @Query() query: any) {
+    return this.userService.list({
+      pagination,
+      filters: query,
+    })
   }
 
   @Get(':userId')

@@ -1,11 +1,11 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common'
-import { BasePaginationQueryType } from '../models/pagination.model'
+import { PaginationQueryDTO } from '../dtos/pagination.dto'
 
 /**
  * Decorator để extract pagination query từ request
- * Sử dụng: @Pagination() query: BasePaginationQueryType
+ * Sử dụng: @Pagination() query: PaginationQueryDTO
  */
-export const Pagination = createParamDecorator((data: unknown, ctx: ExecutionContext): BasePaginationQueryType => {
+export const Pagination = createParamDecorator((data: unknown, ctx: ExecutionContext): PaginationQueryDTO => {
   const request = ctx.switchToHttp().getRequest()
   const query = request.query
 
@@ -14,6 +14,5 @@ export const Pagination = createParamDecorator((data: unknown, ctx: ExecutionCon
     limit: Number(query.limit) || 10,
     sortOrder: query.sortOrder || 'desc',
     sortBy: query.sortBy,
-    search: query.search,
   }
 })

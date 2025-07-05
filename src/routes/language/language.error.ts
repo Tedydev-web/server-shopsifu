@@ -1,11 +1,8 @@
-import { ConflictException } from '@nestjs/common'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { UnprocessableEntityException } from '@nestjs/common'
 
-export const LanguageAlreadyExistsException = (i18n: I18nService<I18nTranslations>) =>
-  new ConflictException([
-    {
-      message: 'language.error.ALREADY_EXISTS',
-      path: 'id',
-    },
-  ])
+export const LanguageAlreadyExistsException = new UnprocessableEntityException([
+  {
+    message: 'Error.LanguageAlreadyExists',
+    path: 'id',
+  },
+])

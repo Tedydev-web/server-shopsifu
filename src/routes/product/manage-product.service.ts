@@ -1,19 +1,20 @@
 import { ForbiddenException, Injectable } from '@nestjs/common'
 import { ProductRepo } from 'src/routes/product/product.repo'
-import {
-  CreateProductBodyType,
-  GetManageProductsQueryType,
-  GetProductsQueryType,
-  UpdateProductBodyType,
-} from 'src/routes/product/product.model'
+import { CreateProductBodyType, UpdateProductBodyType } from 'src/routes/product/product.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext } from 'nestjs-i18n'
 import { RoleName } from 'src/shared/constants/role.constant'
+import { PaginationService } from 'src/shared/services/pagination.service'
+import { PaginationQueryType } from 'src/shared/models/pagination.model'
+import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 
 @Injectable()
 export class ManageProductService {
-  constructor(private productRepo: ProductRepo) {}
+  constructor(
+    private productRepo: ProductRepo,
+    private paginationService: PaginationService,
+  ) {}
 
   /**
    * Kiểm tra nếu người dùng không phải là người tạo sản phẩm hoặc admin thì không cho tiếp tục
@@ -36,18 +37,106 @@ export class ManageProductService {
   /**
    * @description: Xem danh sách sản phẩm của một shop, bắt buộc phải truyền query param là `createdById`
    */
-  async list(props: { query: GetManageProductsQueryType; userIdRequest: number; roleNameRequest: string }) {
+  async list(props: { pagination: PaginationQueryType; filters: any; userIdRequest: number; roleNameRequest: string }) {
     this.validatePrivilege({
       userIdRequest: props.userIdRequest,
       roleNameRequest: props.roleNameRequest,
-      createdById: props.query.createdById,
+      createdById: props.filters.createdById,
     })
-    const data = await this.productRepo.list(props.query, {
-      languageId: I18nContext.current()?.lang as string,
-      createdById: props.query.createdById,
-      isPublic: props.query.isPublic,
+
+    const languageId = I18nContext.current()?.lang as string
+
+    // Xây dựng where clause từ filters
+    const where = this.buildWhereClause(props.filters, false)
+
+    // Xây dựng orderBy từ pagination và filters
+    const orderBy = this.buildOrderBy(props.pagination, props.filters)
+
+    return this.paginationService.paginate('product', props.pagination, {
+      where,
+      include: {
+        productTranslations: {
+          where: languageId === 'all' ? { deletedAt: null } : { deletedAt: null, languageId },
+        },
+        orders: {
+          where: {
+            deletedAt: null,
+            status: 'DELIVERED',
+          },
+        },
+      },
+      orderBy,
+      defaultSortField: 'createdAt',
     })
-    return data
+  }
+
+  private buildWhereClause(filters: any, isPublic: boolean = false) {
+    const where: any = { deletedAt: null }
+
+    if (isPublic) {
+      where.publishedAt = {
+        lte: new Date(),
+        not: null,
+      }
+    } else if (filters.isPublic === true) {
+      where.publishedAt = {
+        lte: new Date(),
+        not: null,
+      }
+    } else if (filters.isPublic === false) {
+      where.OR = [{ publishedAt: null }, { publishedAt: { gt: new Date() } }]
+    }
+
+    if (filters.search) {
+      const searchTerm = filters.search
+      where.name = {
+        contains: searchTerm,
+        mode: 'insensitive',
+      }
+    }
+
+    if (filters.brandIds && filters.brandIds.length > 0) {
+      const brandIds = Array.isArray(filters.brandIds) ? filters.brandIds : [filters.brandIds]
+      where.brandId = {
+        in: brandIds.map((id) => Number(id)),
+      }
+    }
+
+    if (filters.categories && filters.categories.length > 0) {
+      const categories = Array.isArray(filters.categories) ? filters.categories : [filters.categories]
+      where.categories = {
+        some: {
+          id: {
+            in: categories.map((id) => Number(id)),
+          },
+        },
+      }
+    }
+
+    if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
+      where.basePrice = {
+        gte: filters.minPrice ? Number(filters.minPrice) : undefined,
+        lte: filters.maxPrice ? Number(filters.maxPrice) : undefined,
+      }
+    }
+
+    if (filters.createdById) {
+      where.createdById = Number(filters.createdById)
+    }
+
+    return where
+  }
+
+  private buildOrderBy(pagination: PaginationQueryType, filters: any) {
+    const { sortBy = SortBy.CreatedAt, sortOrder = OrderBy.Desc } = filters
+
+    if (sortBy === SortBy.Price) {
+      return [{ basePrice: sortOrder }]
+    } else if (sortBy === SortBy.Sale) {
+      return [{ orders: { _count: sortOrder } }]
+    }
+
+    return [{ createdAt: sortOrder }]
   }
 
   async getDetail(props: { productId: number; userIdRequest: number; roleNameRequest: string }) {

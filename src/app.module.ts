@@ -53,7 +53,7 @@ import { CartModule } from './routes/cart/cart.module'
     CategoryTranslationModule,
     ProductModule,
     ProductTranslationModule,
-    CartModule
+    CartModule,
   ],
   providers: [
     {

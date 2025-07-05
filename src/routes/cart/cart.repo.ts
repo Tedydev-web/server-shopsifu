@@ -6,21 +6,24 @@ import {
   CartItemDetailType,
   CartItemType,
   DeleteCartBodyType,
-  GetCartQueryType,
   GetCartResType,
   UpdateCartItemBodyType,
 } from 'src/routes/cart/cart.model'
 import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
 import { SKUSchemaType } from 'src/shared/models/shared-sku.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { PaginationService } from 'src/shared/services/pagination.service'
+
+// Interface cho internal result của CartRepo
+interface CartRepoResult {
+  data: CartItemDetailType[]
+  totalItems: number
+  page: number
+  limit: number
+}
 
 @Injectable()
 export class CartRepo {
-  constructor(
-    private readonly prismaService: PrismaService,
-    private readonly paginationService: PaginationService,
-  ) {}
+  constructor(private readonly prismaService: PrismaService) {}
 
   private async validateSKU(skuId: number, quantity: number): Promise<SKUSchemaType> {
     const sku = await this.prismaService.sKU.findUnique({
@@ -50,13 +53,88 @@ export class CartRepo {
     return sku
   }
 
-  async list(query: { userId: number; languageId: string; page?: number; limit?: number }): Promise<GetCartResType> {
-    const { userId, languageId, page = 1, limit = 10 } = query
+  async list({
+    userId,
+    languageId,
+    page,
+    limit,
+  }: {
+    userId: number
+    languageId: string
+    limit: number
+    page: number
+  }): Promise<CartRepoResult> {
+    const cartItems = await this.prismaService.cartItem.findMany({
+      where: {
+        userId,
+        sku: {
+          product: {
+            deletedAt: null,
+            publishedAt: {
+              lte: new Date(),
+              not: null,
+            },
+          },
+        },
+      },
+      include: {
+        sku: {
+          include: {
+            product: {
+              include: {
+                productTranslations: {
+                  where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
+                },
+                createdBy: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    })
+    const groupMap = new Map<number, CartItemDetailType>()
+    for (const cartItem of cartItems) {
+      const shopId = cartItem.sku.product.createdById
+      if (shopId) {
+        if (!groupMap.has(shopId)) {
+          groupMap.set(shopId, { shop: cartItem.sku.product.createdBy, cartItems: [] })
+        }
+        groupMap.get(shopId)?.cartItems.push(cartItem)
+      }
+    }
+    const sortedGroups = Array.from(groupMap.values())
     const skip = (page - 1) * limit
+    const take = limit
+    const totalGroups = sortedGroups.length
+    const pagedGroups = sortedGroups.slice(skip, skip + take)
+    return {
+      data: pagedGroups,
+      totalItems: totalGroups,
+      page,
+      limit,
+    }
+  }
 
-    // Đếm tổng số nhóm sản phẩm (shops) - optimized
-    const totalShopsQuery = this.prismaService.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(DISTINCT "Product"."createdById") as count
+  async list2({
+    userId,
+    languageId,
+    page,
+    limit,
+  }: {
+    userId: number
+    languageId: string
+    limit: number
+    page: number
+  }): Promise<CartRepoResult> {
+    const skip = (page - 1) * limit
+    const take = limit
+    // Đếm tổng số nhóm sản phẩm
+    const totalItems$ = this.prismaService.$queryRaw<{ createdById: number }[]>`
+      SELECT
+        "Product"."createdById"
       FROM "CartItem"
       JOIN "SKU" ON "CartItem"."skuId" = "SKU"."id"
       JOIN "Product" ON "SKU"."productId" = "Product"."id"
@@ -64,31 +142,21 @@ export class CartRepo {
         AND "Product"."deletedAt" IS NULL
         AND "Product"."publishedAt" IS NOT NULL
         AND "Product"."publishedAt" <= NOW()
+      GROUP BY "Product"."createdById"
     `
-
-    // Lấy data với GROUP BY và JSON aggregation - highly optimized
-    const dataQuery = this.prismaService.$queryRaw<
-      {
-        shop: { id: number; name: string; avatar: string | null }
-        cartItems: any[]
-      }[]
-    >`
-      SELECT
-        jsonb_build_object(
-          'id', "User"."id",
-          'name', "User"."name",
-          'avatar', "User"."avatar"
-        ) AS "shop",
-        json_agg(
-          jsonb_build_object(
-            'id', "CartItem"."id",
-            'quantity', "CartItem"."quantity",
-            'skuId', "CartItem"."skuId",
-            'userId', "CartItem"."userId",
-            'createdAt', "CartItem"."createdAt",
-            'updatedAt', "CartItem"."updatedAt",
-            'sku', jsonb_build_object(
-              'id', "SKU"."id",
+    const data$ = await this.prismaService.$queryRaw<CartItemDetailType[]>`
+     SELECT
+       "Product"."createdById",
+       json_agg(
+         jsonb_build_object(
+           'id', "CartItem"."id",
+           'quantity', "CartItem"."quantity",
+           'skuId', "CartItem"."skuId",
+           'userId', "CartItem"."userId",
+           'createdAt', "CartItem"."createdAt",
+           'updatedAt', "CartItem"."updatedAt",
+           'sku', jsonb_build_object(
+             'id', "SKU"."id",
               'value', "SKU"."value",
               'price', "SKU"."price",
               'stock', "SKU"."stock",
@@ -119,36 +187,36 @@ export class CartRepo {
                     ${languageId === ALL_LANGUAGE_CODE ? Prisma.sql`` : Prisma.sql`AND pt."languageId" = ${languageId}`}
                 ), '[]'::json)
               )
-            )
-          ) ORDER BY "CartItem"."updatedAt" DESC
-        ) AS "cartItems"
-      FROM "CartItem"
-      JOIN "SKU" ON "CartItem"."skuId" = "SKU"."id"
-      JOIN "Product" ON "SKU"."productId" = "Product"."id"
-      LEFT JOIN "User" ON "Product"."createdById" = "User"."id"
-      WHERE "CartItem"."userId" = ${userId}
+           )
+         ) ORDER BY "CartItem"."updatedAt" DESC
+       ) AS "cartItems",
+       jsonb_build_object(
+         'id', "User"."id",
+         'name', "User"."name",
+         'avatar', "User"."avatar"
+       ) AS "shop"
+     FROM "CartItem"
+     JOIN "SKU" ON "CartItem"."skuId" = "SKU"."id"
+     JOIN "Product" ON "SKU"."productId" = "Product"."id"
+     LEFT JOIN "ProductTranslation" ON "Product"."id" = "ProductTranslation"."productId"
+       AND "ProductTranslation"."deletedAt" IS NULL
+       ${languageId === ALL_LANGUAGE_CODE ? Prisma.sql`` : Prisma.sql`AND "ProductTranslation"."languageId" = ${languageId}`}
+     LEFT JOIN "User" ON "Product"."createdById" = "User"."id"
+     WHERE "CartItem"."userId" = ${userId}
         AND "Product"."deletedAt" IS NULL
         AND "Product"."publishedAt" IS NOT NULL
         AND "Product"."publishedAt" <= NOW()
-      GROUP BY "Product"."createdById", "User"."id", "User"."name", "User"."avatar"
-      ORDER BY MAX("CartItem"."updatedAt") DESC
-      LIMIT ${limit}
+     GROUP BY "Product"."createdById", "User"."id"
+     ORDER BY MAX("CartItem"."updatedAt") DESC
+      LIMIT ${take} 
       OFFSET ${skip}
-    `
-
-    // Execute parallel queries cho performance tốt nhất
-    const [data, totalShopsResult] = await Promise.all([dataQuery, totalShopsQuery])
-    const totalItems = Number(totalShopsResult[0]?.count || 0)
-
-    // Sử dụng PaginationService chuẩn cho metadata
-    const metadata = this.paginationService.createPaginationMetadata(
-      { page, limit, sortOrder: 'desc' as const },
-      totalItems,
-    )
-
+   `
+    const [data, totalItems] = await Promise.all([data$, totalItems$])
     return {
       data,
-      metadata,
+      page,
+      limit,
+      totalItems: totalItems.length,
     }
   }
 

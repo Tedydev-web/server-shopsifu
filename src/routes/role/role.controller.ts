@@ -5,13 +5,14 @@ import {
   CreateRoleResDTO,
   GetRoleDetailResDTO,
   GetRoleParamsDTO,
-  GetRolesQueryDTO,
   GetRolesResDTO,
   UpdateRoleBodyDTO,
 } from 'src/routes/role/role.dto'
 import { RoleService } from 'src/routes/role/role.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { Pagination } from 'src/shared/decorators/pagination.decorator'
+import { PaginationQueryDTO } from 'src/shared/dtos/pagination.dto'
 
 @Controller('roles')
 export class RoleController {
@@ -19,8 +20,11 @@ export class RoleController {
 
   @Get()
   @ZodSerializerDto(GetRolesResDTO)
-  list(@Query() query: GetRolesQueryDTO) {
-    return this.roleService.list(query)
+  list(@Pagination() pagination: PaginationQueryDTO, @Query() query: any) {
+    return this.roleService.list({
+      pagination,
+      filters: query,
+    })
   }
 
   @Get(':roleId')

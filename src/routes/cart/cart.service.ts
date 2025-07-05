@@ -1,23 +1,35 @@
 import { Injectable } from '@nestjs/common'
 import { CartRepo } from './cart.repo'
-import {
-  AddToCartBodyType,
-  DeleteCartBodyType,
-  GetCartQueryType,
-  UpdateCartItemBodyType,
-} from 'src/routes/cart/cart.model'
+import { AddToCartBodyType, DeleteCartBodyType, UpdateCartItemBodyType } from 'src/routes/cart/cart.model'
 import { I18nContext } from 'nestjs-i18n'
+import { PaginationQueryType } from 'src/shared/models/pagination.model'
+import { PaginationService } from 'src/shared/services/pagination.service'
 
 @Injectable()
 export class CartService {
-  constructor(private readonly cartRepo: CartRepo) {}
+  constructor(
+    private readonly cartRepo: CartRepo,
+    private readonly paginationService: PaginationService,
+  ) {}
 
-  getCart(userId: number, query: GetCartQueryType) {
-    return this.cartRepo.list({
-      ...query,
+  async getCart(userId: number, pagination: PaginationQueryType) {
+    const languageId = I18nContext.current()?.lang as string
+
+    // Sử dụng logic đặc biệt của cart để lấy data
+    const result = await this.cartRepo.list2({
       userId,
-      languageId: I18nContext.current()?.lang as string,
+      languageId,
+      page: pagination.page,
+      limit: pagination.limit,
     })
+
+    // Tạo metadata chuẩn từ PaginationService
+    const metadata = this.paginationService.createPaginationMetadata(pagination, result.totalItems)
+
+    return {
+      data: result.data,
+      metadata,
+    }
   }
 
   addToCart(userId: number, body: AddToCartBodyType) {

@@ -1,13 +1,10 @@
 import { Controller, Get, Param, Query } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
-import {
-  GetProductDetailResDTO,
-  GetProductParamsDTO,
-  GetProductsQueryDTO,
-  GetProductsResDTO,
-} from 'src/routes/product/product.dto'
+import { GetProductDetailResDTO, GetProductParamsDTO, GetProductsResDTO } from 'src/routes/product/product.dto'
 import { ProductService } from 'src/routes/product/product.service'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { Pagination } from 'src/shared/decorators/pagination.decorator'
+import { PaginationQueryDTO } from 'src/shared/dtos/pagination.dto'
 
 @Controller('products')
 @IsPublic()
@@ -16,9 +13,10 @@ export class ProductController {
 
   @Get()
   @ZodSerializerDto(GetProductsResDTO)
-  list(@Query() query: GetProductsQueryDTO) {
+  list(@Pagination() pagination: PaginationQueryDTO, @Query() query: any) {
     return this.productService.list({
-      query,
+      pagination,
+      filters: query,
     })
   }
 

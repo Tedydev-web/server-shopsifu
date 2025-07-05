@@ -1,13 +1,12 @@
-
 import { UpsertSKUBodySchema } from 'src/routes/product/sku.model'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 import { BrandIncludeTranslationSchema } from 'src/shared/models/shared-brand.model'
-import { CategoryIncludeTranslationSchema } from 'src/shared/models/shared-category.model'
-import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
+import { CategorySchema } from 'src/shared/models/shared-category.model'
+import { ProductTranslationSchema } from 'src/shared/models/shared-product-translation.model'
 import { ProductSchema, VariantsType } from 'src/shared/models/shared-product.model'
 import { SKUSchema } from 'src/shared/models/shared-sku.model'
 import { z } from 'zod'
-import { ProductTranslationSchema } from 'src/shared/models/shared-product-translation.model'
+import { PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 function generateSKUs(variants: VariantsType) {
   // Hàm hỗ trợ để tạo tất cả tổ hợp
@@ -30,47 +29,12 @@ function generateSKUs(variants: VariantsType) {
   }))
 }
 
-/**
- * Dành cho client và guest
- */
-export const GetProductsQuerySchema = BasePaginationQuerySchema.extend({
-  name: z.string().optional(),
-  brandIds: z
-    .preprocess((value) => {
-      if (typeof value === 'string') {
-        return [Number(value)]
-      }
-      return value
-    }, z.array(z.coerce.number().int().positive()))
-    .optional(),
-  categories: z
-    .preprocess((value) => {
-      if (typeof value === 'string') {
-        return [Number(value)]
-      }
-      return value
-    }, z.array(z.coerce.number().int().positive()))
-    .optional(),
-  minPrice: z.coerce.number().positive().optional(),
-  maxPrice: z.coerce.number().positive().optional(),
-  createdById: z.coerce.number().int().positive().optional(),
-  sortBy: z.enum([SortBy.CreatedAt, SortBy.Price, SortBy.Sale]).default(SortBy.CreatedAt).optional(),
-})
-
-/**
- * Dành cho Admin và Seller
- */
-export const GetManageProductsQuerySchema = GetProductsQuerySchema.extend({
-  isPublic: z.preprocess((value) => value === 'true', z.boolean()).optional(),
-  createdById: z.coerce.number().int().positive(),
-})
-
-export const ProductWithTranslationSchema = ProductSchema.extend({
-  productTranslations: z.array(ProductTranslationSchema),
-})
-
 export const GetProductsResSchema = z.object({
-  data: z.array(ProductWithTranslationSchema),
+  data: z.array(
+    ProductSchema.extend({
+      productTranslations: z.array(ProductTranslationSchema),
+    }),
+  ),
   metadata: PaginationMetadataSchema,
 })
 
@@ -83,7 +47,7 @@ export const GetProductParamsSchema = z
 export const GetProductDetailResSchema = ProductSchema.extend({
   productTranslations: z.array(ProductTranslationSchema),
   skus: z.array(SKUSchema),
-  categories: z.array(CategoryIncludeTranslationSchema),
+  categories: z.array(CategorySchema),
   brand: BrandIncludeTranslationSchema,
 })
 
@@ -132,10 +96,7 @@ export const CreateProductBodySchema = ProductSchema.pick({
 
 export const UpdateProductBodySchema = CreateProductBodySchema
 
-export type ProductWithTranslationType = z.infer<typeof ProductWithTranslationSchema>
 export type GetProductsResType = z.infer<typeof GetProductsResSchema>
-export type GetProductsQueryType = z.infer<typeof GetProductsQuerySchema>
-export type GetManageProductsQueryType = z.infer<typeof GetManageProductsQuerySchema>
 export type GetProductDetailResType = z.infer<typeof GetProductDetailResSchema>
 export type CreateProductBodyType = z.infer<typeof CreateProductBodySchema>
 export type GetProductParamsType = z.infer<typeof GetProductParamsSchema>

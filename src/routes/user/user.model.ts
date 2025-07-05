@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { UserSchema, UserStatus } from 'src/shared/models/shared-user.model'
+import { UserSchema } from 'src/shared/models/shared-user.model'
 import { RoleSchema } from 'src/shared/models/shared-role.model'
-import { BasePaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
+import { PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const GetUsersResSchema = z.object({
   data: z.array(
@@ -13,14 +13,6 @@ export const GetUsersResSchema = z.object({
     }),
   ),
   metadata: PaginationMetadataSchema,
-})
-
-export const GetUsersQuerySchema = BasePaginationQuerySchema.extend({
-  email: z.string().optional(),
-  status: z.nativeEnum(UserStatus).optional(),
-  roleId: z.coerce.number().int().positive().optional(),
-  createdFrom: z.string().datetime().optional(),
-  createdTo: z.string().datetime().optional(),
 })
 
 export const GetUserParamsSchema = z
@@ -42,7 +34,6 @@ export const CreateUserBodySchema = UserSchema.pick({
 export const UpdateUserBodySchema = CreateUserBodySchema
 
 export type GetUsersResType = z.infer<typeof GetUsersResSchema>
-export type GetUsersQueryType = z.infer<typeof GetUsersQuerySchema>
 export type GetUserParamsType = z.infer<typeof GetUserParamsSchema>
 export type CreateUserBodyType = z.infer<typeof CreateUserBodySchema>
 export type UpdateUserBodyType = z.infer<typeof UpdateUserBodySchema>

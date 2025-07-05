@@ -6,12 +6,13 @@ import {
   GetBrandParamsDTO,
   GetBrandsResDTO,
   UpdateBrandBodyDTO,
-  BrandPaginationQueryDTO,
 } from 'src/routes/brand/brand.dto'
 import { BrandService } from 'src/routes/brand/brand.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { PaginationQueryDTO } from 'src/shared/dtos/pagination.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { Pagination } from 'src/shared/decorators/pagination.decorator'
 
 @Controller('brands')
 export class BrandController {
@@ -20,8 +21,11 @@ export class BrandController {
   @Get()
   @IsPublic()
   @ZodSerializerDto(GetBrandsResDTO)
-  list(@Query() query: BrandPaginationQueryDTO) {
-    return this.brandService.list(query)
+  list(@Pagination() pagination: PaginationQueryDTO, @Query() query: any) {
+    return this.brandService.list({
+      pagination,
+      filters: query,
+    })
   }
 
   @Get(':brandId')

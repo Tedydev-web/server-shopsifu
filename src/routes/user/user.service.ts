@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common'
 import { UserRepo } from 'src/routes/user/user.repo'
-import { CreateUserBodyType, GetUsersQueryType, UpdateUserBodyType } from 'src/routes/user/user.model'
+import { CreateUserBodyType, UpdateUserBodyType } from 'src/routes/user/user.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import {
   isForeignKeyConstraintPrismaError,
@@ -16,8 +16,9 @@ import { RoleName } from 'src/shared/constants/role.constant'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { PaginationService } from 'src/shared/services/pagination.service'
+import { PaginationQueryType } from 'src/shared/models/pagination.model'
+import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 
 @Injectable()
 export class UserService {
@@ -26,11 +27,101 @@ export class UserService {
     private hashingService: HashingService,
     private sharedUserRepository: SharedUserRepository,
     private sharedRoleRepository: SharedRoleRepository,
-    private readonly i18n: I18nService<I18nTranslations>,
+    private paginationService: PaginationService,
   ) {}
 
-  list(pagination: GetUsersQueryType) {
-    return this.userRepo.list(pagination)
+  list(props: { pagination: PaginationQueryType; filters: any }) {
+    // Xây dựng where clause từ filters
+    const where = this.buildWhereClause(props.filters)
+
+    // Xây dựng orderBy từ pagination và filters
+    const orderBy = this.buildOrderBy(props.pagination, props.filters)
+
+    return this.paginationService.paginate('user', props.pagination, {
+      where,
+      include: {
+        role: true,
+      },
+      orderBy,
+      defaultSortField: 'createdAt',
+    })
+  }
+
+  private buildWhereClause(filters: any) {
+    const where: any = { deletedAt: null }
+
+    // Hỗ trợ search theo tên, email, phone
+    if (filters.search) {
+      const searchTerm = filters.search
+      where.OR = [
+        {
+          name: {
+            contains: searchTerm,
+            mode: 'insensitive',
+          },
+        },
+        {
+          email: {
+            contains: searchTerm,
+            mode: 'insensitive',
+          },
+        },
+        {
+          phoneNumber: {
+            contains: searchTerm,
+            mode: 'insensitive',
+          },
+        },
+      ]
+    }
+
+    // Filter theo tên
+    if (filters.name) {
+      where.name = {
+        contains: filters.name,
+        mode: 'insensitive',
+      }
+    }
+
+    // Filter theo email
+    if (filters.email) {
+      where.email = {
+        contains: filters.email,
+        mode: 'insensitive',
+      }
+    }
+
+    // Filter theo phone
+    if (filters.phoneNumber) {
+      where.phoneNumber = {
+        contains: filters.phoneNumber,
+        mode: 'insensitive',
+      }
+    }
+
+    // Filter theo role
+    if (filters.roleId) {
+      where.roleId = Number(filters.roleId)
+    }
+
+    // Filter theo status
+    if (filters.status) {
+      where.status = filters.status
+    }
+
+    return where
+  }
+
+  private buildOrderBy(pagination: PaginationQueryType, filters: any) {
+    const { sortBy = SortBy.CreatedAt, sortOrder = OrderBy.Desc } = filters
+
+    if (sortBy === SortBy.Name) {
+      return [{ name: sortOrder }]
+    } else if (sortBy === SortBy.Email) {
+      return [{ email: sortOrder }]
+    }
+
+    return [{ createdAt: sortOrder }]
   }
 
   async findById(id: number) {
@@ -183,7 +274,7 @@ export class UserService {
         deletedById,
       })
       return {
-        message: this.i18n.t('user.success.DELETE_SUCCESS'),
+        message: 'Delete successfully',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

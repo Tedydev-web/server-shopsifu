@@ -1,102 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import {
-  CreateProductBodyType,
-  GetProductDetailResType,
-  GetProductsQueryType,
-  GetManageProductsQueryType,
-  ProductWithTranslationType,
-  UpdateProductBodyType,
-} from 'src/routes/product/product.model'
+import { CreateProductBodyType, GetProductDetailResType, UpdateProductBodyType } from 'src/routes/product/product.model'
 import { ALL_LANGUAGE_CODE, OrderByType, SortBy, SortByType } from 'src/shared/constants/other.constant'
-import { PaginatedResult, PaginationService } from 'src/shared/services/pagination.service'
-import { PrismaService } from 'src/shared/services/prisma.service'
 import { ProductType } from 'src/shared/models/shared-product.model'
+import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class ProductRepo {
-  constructor(
-    private readonly prismaService: PrismaService,
-    private readonly paginationService: PaginationService,
-  ) {}
-
-  async list(
-    query: GetProductsQueryType,
-    options: {
-      languageId: string
-      createdById?: number
-      isPublic?: boolean
-    },
-  ): Promise<PaginatedResult<ProductWithTranslationType>> {
-    const { brandIds, categories, minPrice, maxPrice, ...pagination } = query
-    const { languageId, createdById, isPublic } = options
-
-    // Build where clause
-    let where: Prisma.ProductWhereInput = {
-      deletedAt: null,
-      createdById: createdById ? createdById : undefined,
-    }
-
-    // Handle isPublic filter
-    if (isPublic === true) {
-      where.publishedAt = {
-        lte: new Date(),
-        not: null,
-      }
-    } else if (isPublic === false) {
-      where = {
-        ...where,
-        OR: [{ publishedAt: null }, { publishedAt: { gt: new Date() } }],
-      }
-    }
-
-    // Apply additional filters
-    if (brandIds && brandIds.length > 0) {
-      where.brandId = { in: brandIds }
-    }
-    if (categories && categories.length > 0) {
-      where.categories = {
-        some: { id: { in: categories } },
-      }
-    }
-    if (minPrice !== undefined || maxPrice !== undefined) {
-      where.basePrice = {
-        gte: minPrice,
-        lte: maxPrice,
-      }
-    }
-
-    // Build orderBy based on sortBy
-    let orderBy: Prisma.ProductOrderByWithRelationInput[] = [{ createdAt: 'desc' }]
-    if (pagination.sortBy) {
-      const sortOrder = pagination.sortOrder || 'desc'
-      if (pagination.sortBy === 'price') {
-        orderBy = [{ basePrice: sortOrder }]
-      } else if (pagination.sortBy === 'sale') {
-        orderBy = [{ orders: { _count: sortOrder } }]
-      } else if (pagination.sortBy === 'createdAt') {
-        orderBy = [{ createdAt: sortOrder }]
-      }
-    }
-
-    const include = {
-      productTranslations: {
-        where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
-      },
-      orders: {
-        where: {
-          deletedAt: null,
-          status: 'DELIVERED',
-        },
-      },
-    }
-
-    return this.paginationService.paginate('product', pagination, where, {
-      include,
-      searchableFields: ['name'],
-      orderBy,
-    })
-  }
+  constructor(private readonly prismaService: PrismaService) {}
 
   findById(productId: number): Promise<ProductType | null> {
     return this.prismaService.product.findUnique({
@@ -116,51 +27,62 @@ export class ProductRepo {
     languageId: string
     isPublic?: boolean
   }): Promise<GetProductDetailResType | null> {
-    let where: Prisma.ProductWhereUniqueInput = {
+    let where: any = {
       id: productId,
       deletedAt: null,
     }
-    if (isPublic === true) {
-      where.publishedAt = {
-        lte: new Date(),
-        not: null,
-      }
-    } else if (isPublic === false) {
+    if (isPublic) {
       where = {
         ...where,
         OR: [{ publishedAt: null }, { publishedAt: { gt: new Date() } }],
       }
     }
-    return this.prismaService.product.findUnique({
-      where,
-      include: {
-        productTranslations: {
-          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
-        },
-        skus: {
-          where: {
-            deletedAt: null,
+    return this.prismaService.product
+      .findUnique({
+        where,
+        include: {
+          productTranslations: {
+            where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
           },
-        },
-        brand: {
-          include: {
-            brandTranslations: {
-              where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
+          skus: {
+            where: {
+              deletedAt: null,
+            },
+          },
+          brand: {
+            include: {
+              brandTranslations: {
+                where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
+              },
+            },
+          },
+          categories: {
+            where: {
+              deletedAt: null,
+            },
+            include: {
+              categoryTranslations: {
+                where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
+              },
             },
           },
         },
-        categories: {
-          where: {
-            deletedAt: null,
-          },
-          include: {
-            categoryTranslations: {
-              where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
-            },
-          },
-        },
-      },
-    })
+      })
+      .then((product) => {
+        if (!product) return null
+
+        return {
+          ...product,
+          categories: product.categories.map((category) => {
+            const translation = category.categoryTranslations?.[0]
+            return {
+              ...category,
+              name: translation?.name || category.name,
+              description: translation?.description || null,
+            }
+          }),
+        }
+      })
   }
 
   create({
@@ -171,48 +93,62 @@ export class ProductRepo {
     data: CreateProductBodyType
   }): Promise<GetProductDetailResType> {
     const { skus, categories, ...productData } = data
-    return this.prismaService.product.create({
-      data: {
-        createdById,
-        ...productData,
-        categories: {
-          connect: categories.map((category) => ({ id: category })),
-        },
-        skus: {
-          createMany: {
-            data: skus.map((sku) => ({
-              ...sku,
-              createdById,
-            })),
+    return this.prismaService.product
+      .create({
+        data: {
+          createdById,
+          ...productData,
+          categories: {
+            connect: categories.map((category) => ({ id: category })),
           },
-        },
-      },
-      include: {
-        productTranslations: {
-          where: { deletedAt: null },
-        },
-        skus: {
-          where: { deletedAt: null },
-        },
-        brand: {
-          include: {
-            brandTranslations: {
-              where: { deletedAt: null },
+          skus: {
+            createMany: {
+              data: skus.map((sku) => ({
+                ...sku,
+                createdById,
+              })),
             },
           },
         },
-        categories: {
-          where: {
-            deletedAt: null,
+        include: {
+          productTranslations: {
+            where: { deletedAt: null },
           },
-          include: {
-            categoryTranslations: {
-              where: { deletedAt: null },
+          skus: {
+            where: { deletedAt: null },
+          },
+          brand: {
+            include: {
+              brandTranslations: {
+                where: { deletedAt: null },
+              },
+            },
+          },
+          categories: {
+            where: {
+              deletedAt: null,
+            },
+            include: {
+              categoryTranslations: {
+                where: { deletedAt: null },
+              },
             },
           },
         },
-      },
-    })
+      })
+      .then((product) => {
+        return {
+          ...product,
+          categories: product.categories.map((category) => {
+            const translation = category.categoryTranslations?.[0]
+            return {
+              ...category,
+              name: translation?.name || category.name,
+              description: translation?.description || null,
+            }
+          }),
+        }
+      })
   }
 
   async update({

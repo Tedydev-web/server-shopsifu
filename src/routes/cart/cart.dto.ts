@@ -4,19 +4,15 @@ import {
   CartItemSchema,
   DeleteCartBodySchema,
   GetCartItemParamsSchema,
-  GetCartQuerySchema,
   GetCartResSchema,
   UpdateCartItemBodySchema,
 } from 'src/routes/cart/cart.model'
 
 export class CartItemDTO extends createZodDto(CartItemSchema) {}
 
-export class GetCartQueryDTO extends createZodDto(GetCartQuerySchema) {}
-
 export class GetCartResDTO extends createZodDto(GetCartResSchema) {}
 
 export class GetCartItemParamsDTO extends createZodDto(GetCartItemParamsSchema) {}
-
 export class AddToCartBodyDTO extends createZodDto(AddToCartBodySchema) {}
 
 export class UpdateCartItemBodyDTO extends createZodDto(UpdateCartItemBodySchema) {}

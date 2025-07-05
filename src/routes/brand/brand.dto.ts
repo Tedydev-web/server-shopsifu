@@ -4,7 +4,6 @@ import {
   GetBrandDetailResSchema,
   GetBrandParamsSchema,
   GetBrandsResSchema,
-  BrandPaginationQuerySchema,
   UpdateBrandBodySchema,
 } from 'src/routes/brand/brand.model'
 
@@ -17,5 +16,3 @@ export class GetBrandDetailResDTO extends createZodDto(GetBrandDetailResSchema) 
 export class CreateBrandBodyDTO extends createZodDto(CreateBrandBodySchema) {}
 
 export class UpdateBrandBodyDTO extends createZodDto(UpdateBrandBodySchema) {}
-
-export class BrandPaginationQueryDTO extends createZodDto(BrandPaginationQuerySchema) {}

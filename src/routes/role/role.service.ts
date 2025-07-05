@@ -1,23 +1,89 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { RoleRepo } from 'src/routes/role/role.repo'
-import { CreateRoleBodyType, GetRolesQueryType, UpdateRoleBodyType } from 'src/routes/role/role.model'
+import { CreateRoleBodyType, UpdateRoleBodyType } from 'src/routes/role/role.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { ProhibitedActionOnBaseRoleException, RoleAlreadyExistsException } from 'src/routes/role/role.error'
 import { RoleName } from 'src/shared/constants/role.constant'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { PaginationService } from 'src/shared/services/pagination.service'
+import { PaginationQueryType } from 'src/shared/models/pagination.model'
+import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 
 @Injectable()
 export class RoleService {
   constructor(
     private roleRepo: RoleRepo,
-    private readonly i18n: I18nService<I18nTranslations>,
+    private paginationService: PaginationService,
   ) {}
 
-  async list(pagination: GetRolesQueryType) {
-    const data = await this.roleRepo.list(pagination)
-    return data
+  async list(props: { pagination: PaginationQueryType; filters: any }) {
+    // Xây dựng where clause từ filters
+    const where = this.buildWhereClause(props.filters)
+
+    // Xây dựng orderBy từ pagination và filters
+    const orderBy = this.buildOrderBy(props.pagination, props.filters)
+
+    return this.paginationService.paginate('role', props.pagination, {
+      where,
+      orderBy,
+      defaultSortField: 'createdAt',
+    })
+  }
+
+  private buildWhereClause(filters: any) {
+    const where: any = { deletedAt: null }
+
+    // Hỗ trợ search theo tên và description
+    if (filters.search) {
+      const searchTerm = filters.search
+      where.OR = [
+        {
+          name: {
+            contains: searchTerm,
+            mode: 'insensitive',
+          },
+        },
+        {
+          description: {
+            contains: searchTerm,
+            mode: 'insensitive',
+          },
+        },
+      ]
+    }
+
+    // Filter theo tên
+    if (filters.name) {
+      where.name = {
+        contains: filters.name,
+        mode: 'insensitive',
+      }
+    }
+
+    // Filter theo description
+    if (filters.description) {
+      where.description = {
+        contains: filters.description,
+        mode: 'insensitive',
+      }
+    }
+
+    // Filter theo trạng thái active
+    if (filters.isActive !== undefined) {
+      where.isActive = filters.isActive === 'true'
+    }
+
+    return where
+  }
+
+  private buildOrderBy(pagination: PaginationQueryType, filters: any) {
+    const { sortBy = SortBy.CreatedAt, sortOrder = OrderBy.Desc } = filters
+
+    if (sortBy === SortBy.Name) {
+      return [{ name: sortOrder }]
+    }
+
+    return [{ createdAt: sortOrder }]
   }
 
   async findById(id: number) {
@@ -86,7 +152,7 @@ export class RoleService {
         deletedById,
       })
       return {
-        message: this.i18n.t('role.success.DELETE_SUCCESS'),
+        message: 'Delete successfully',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
