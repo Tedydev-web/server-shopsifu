@@ -16,6 +16,10 @@ export function isForeignKeyConstraintPrismaError(error: any): error is Prisma.P
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003'
 }
 
+export function isForeignKeyConstraintForConstraint(error: any, constraint: string): boolean {
+  return isForeignKeyConstraintPrismaError(error) && error.meta?.constraint === constraint
+}
+
 export const generateOTP = () => {
   return String(randomInt(100000, 1000000))
 }

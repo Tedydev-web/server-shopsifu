@@ -1,7 +1,16 @@
 import { Injectable } from '@nestjs/common'
-import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
+import {
+  isNotFoundPrismaError,
+  isUniqueConstraintPrismaError,
+  isForeignKeyConstraintPrismaError,
+  isForeignKeyConstraintForConstraint,
+} from 'src/shared/helpers'
 import { CategoryTranslationRepo } from 'src/routes/category/category-translation/category-translation.repo'
-import { CategoryTranslationAlreadyExistsException } from 'src/routes/category/category-translation/category-translation.error'
+import {
+  CategoryTranslationAlreadyExistsException,
+  CategoryTranslationLanguageNotFoundException,
+  CategoryTranslationCategoryNotFoundException,
+} from 'src/routes/category/category-translation/category-translation.error'
 import {
   CreateCategoryTranslationBodyType,
   UpdateCategoryTranslationBodyType,
@@ -30,6 +39,12 @@ export class CategoryTranslationService {
       if (isUniqueConstraintPrismaError(error)) {
         throw CategoryTranslationAlreadyExistsException
       }
+      if (isForeignKeyConstraintForConstraint(error, 'CategoryTranslation_languageId_fkey')) {
+        throw CategoryTranslationLanguageNotFoundException
+      }
+      if (isForeignKeyConstraintForConstraint(error, 'CategoryTranslation_categoryId_fkey')) {
+        throw CategoryTranslationCategoryNotFoundException
+      }
       throw error
     }
   }
@@ -53,6 +68,12 @@ export class CategoryTranslationService {
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw CategoryTranslationAlreadyExistsException
+      }
+      if (isForeignKeyConstraintForConstraint(error, 'CategoryTranslation_languageId_fkey')) {
+        throw CategoryTranslationLanguageNotFoundException
+      }
+      if (isForeignKeyConstraintForConstraint(error, 'CategoryTranslation_categoryId_fkey')) {
+        throw CategoryTranslationCategoryNotFoundException
       }
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
