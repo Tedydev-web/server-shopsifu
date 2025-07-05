@@ -11,7 +11,7 @@ import {
   TwoFactorSetupResDTO,
 } from '../dtos/auth.dto'
 import { CoreAuthService } from '../services/core.service'
-import { GoogleService } from '../services/social/google.service'
+import { GoogleService } from '../services/google.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { AccessTokenGuard } from 'src/shared/guards/access-token.guard'
