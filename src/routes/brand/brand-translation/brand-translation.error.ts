@@ -1,7 +1,8 @@
-import { ExceptionFactory } from 'src/shared/error'
+import { UnprocessableEntityException } from '@nestjs/common'
 
-// --- Brand Translation-specific Exceptions sử dụng ExceptionFactory ---
-export const BrandTranslationAlreadyExistsException = ExceptionFactory.alreadyExists(
-  'brand-translation.error.ALREADY_EXISTS',
-  'languageId',
-)
+export const BrandTranslationAlreadyExistsException = new UnprocessableEntityException([
+  {
+    path: 'languageId',
+    message: 'brand.brand-translation.error.ALREADY_EXISTS',
+  },
+])

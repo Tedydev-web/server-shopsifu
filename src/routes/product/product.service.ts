@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import { ProductRepo } from 'src/routes/product/product.repo'
 import { GetProductsQueryType } from 'src/routes/product/product.model'
-import { ExceptionFactory } from 'src/shared/error'
 import { I18nContext } from 'nestjs-i18n'
+import { NotFoundRecordException } from 'src/shared/error'
 
 @Injectable()
 export class ProductService {
@@ -23,7 +23,7 @@ export class ProductService {
       isPublic: true,
     })
     if (!product) {
-      throw ExceptionFactory.recordNotFound()
+      throw NotFoundRecordException
     }
     return product
   }

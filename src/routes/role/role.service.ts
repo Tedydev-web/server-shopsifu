@@ -1,12 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { RoleRepo } from 'src/routes/role/role.repo'
 import { CreateRoleBodyType, GetRolesQueryType, UpdateRoleBodyType } from 'src/routes/role/role.model'
-import { ExceptionFactory } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { ProhibitedActionOnBaseRoleException, RoleAlreadyExistsException } from 'src/routes/role/role.error'
 import { RoleName } from 'src/shared/constants/role.constant'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
+import { NotFoundRecordException } from 'src/shared/error'
 
 @Injectable()
 export class RoleService {
@@ -23,7 +23,7 @@ export class RoleService {
   async findById(id: number) {
     const role = await this.roleRepo.findById(id)
     if (!role) {
-      throw ExceptionFactory.recordNotFound()
+      throw NotFoundRecordException
     }
     return role
   }
@@ -49,7 +49,7 @@ export class RoleService {
   private async verifyRole(roleId: number) {
     const role = await this.roleRepo.findById(roleId)
     if (!role) {
-      throw ExceptionFactory.recordNotFound()
+      throw NotFoundRecordException
     }
     const baseRoles: string[] = [RoleName.Admin, RoleName.Client, RoleName.Seller]
 
@@ -69,7 +69,7 @@ export class RoleService {
       return updatedRole
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       if (isUniqueConstraintPrismaError(error)) {
         throw RoleAlreadyExistsException
@@ -90,7 +90,7 @@ export class RoleService {
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       throw error
     }

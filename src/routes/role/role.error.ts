@@ -1,6 +1,10 @@
-import { ExceptionFactory } from 'src/shared/error'
+import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common'
 
-// --- Role-specific Exceptions sử dụng ExceptionFactory ---
-export const RoleAlreadyExistsException = ExceptionFactory.alreadyExists('role.error.ALREADY_EXISTS', 'name')
+export const RoleAlreadyExistsException = new UnprocessableEntityException([
+  {
+    message: 'role.error.ALREADY_EXISTS',
+    path: 'name',
+  },
+])
 
-export const ProhibitedActionOnBaseRoleException = ExceptionFactory.prohibitedActionOnBaseRole()
+export const ProhibitedActionOnBaseRoleException = new ForbiddenException('role.error.PROHIBITED_ACTION_ON_BASE_ROLE')

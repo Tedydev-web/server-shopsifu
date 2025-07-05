@@ -7,8 +7,8 @@ import { EnvConfigType } from 'src/shared/config'
 import { RedisKeyManager } from '../providers/redis/redis-key.manager'
 import { RedisService } from '../providers/redis/redis.service'
 import { v4 as uuidv4 } from 'uuid'
-import { UnauthorizedError, ForbiddenError } from 'src/shared/error'
 import { extractRealIpFromRequest } from '../utils/http.utils'
+import { ForbiddenError, UnauthorizedError } from '../error'
 
 export interface SltJwtPayload {
   jti: string
@@ -84,18 +84,21 @@ export class SltService {
     try {
       payload = this.jwtService.verify(token, { secret: sltSecret })
     } catch (error) {
-      throw UnauthorizedError('Invalid or expired state token.')
+      throw UnauthorizedError
+      // TODO: translate
     }
 
     if (payload.purpose !== expectedPurpose) {
-      throw ForbiddenError('Invalid token purpose.')
+      throw ForbiddenError
+      // TODO: translate
     }
 
     const key = RedisKeyManager.getSltContextKey(payload.jti)
     const context = await this.redisService.get<SltContextData>(key)
 
     if (!context) {
-      throw UnauthorizedError('State context not found or expired.')
+      throw UnauthorizedError
+      // TODO: translate
     }
 
     const ip = extractRealIpFromRequest(req)
@@ -103,7 +106,8 @@ export class SltService {
     if (context.ipAddress !== ip || context.userAgent !== (req.headers['user-agent'] || '')) {
       // If mismatch, invalidate the context immediately as a security measure
       await this.redisService.del(key)
-      throw ForbiddenError('Client environment mismatch. Possible session hijacking attempt.')
+      throw ForbiddenError
+      // TODO: translate
     }
 
     return context

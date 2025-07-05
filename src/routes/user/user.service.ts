@@ -1,7 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common'
 import { UserRepo } from 'src/routes/user/user.repo'
 import { CreateUserBodyType, GetUsersQueryType, UpdateUserBodyType } from 'src/routes/user/user.model'
-import { ExceptionFactory } from 'src/shared/error'
 import {
   isForeignKeyConstraintPrismaError,
   isNotFoundPrismaError,
@@ -18,6 +17,7 @@ import { HashingService } from 'src/shared/services/hashing.service'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
+import { NotFoundRecordException } from 'src/shared/error'
 
 @Injectable()
 export class UserService {
@@ -38,7 +38,7 @@ export class UserService {
       id,
     })
     if (!user) {
-      throw ExceptionFactory.recordNotFound()
+      throw NotFoundRecordException
     }
     return user
   }
@@ -136,7 +136,7 @@ export class UserService {
       return updatedUser
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       if (isUniqueConstraintPrismaError(error)) {
         throw UserAlreadyExistsException
@@ -153,7 +153,7 @@ export class UserService {
       id: userId,
     })
     if (!currentUser) {
-      throw ExceptionFactory.recordNotFound()
+      throw NotFoundRecordException
     }
     return currentUser.roleId
   }
@@ -187,7 +187,7 @@ export class UserService {
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       throw error
     }

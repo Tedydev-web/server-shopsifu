@@ -1,4 +1,12 @@
-import { ExceptionFactory } from 'src/shared/error'
+import { UnprocessableEntityException } from '@nestjs/common'
 
-// --- Permission-specific Exceptions sử dụng ExceptionFactory ---
-export const PermissionAlreadyExistsException = ExceptionFactory.alreadyExists('permission.error.ALREADY_EXISTS', 'path')
+export const PermissionAlreadyExistsException = new UnprocessableEntityException([
+  {
+    message: 'permission.error.ALREADY_EXISTS',
+    path: 'path',
+  },
+  {
+    message: 'permission.error.ALREADY_EXISTS',
+    path: 'method',
+  },
+])

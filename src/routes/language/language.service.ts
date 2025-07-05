@@ -5,11 +5,11 @@ import {
   UpdateLanguageBodyType,
   LanguagePaginationQueryType,
 } from 'src/routes/language/language.model'
-import { ExceptionFactory } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { LanguageAlreadyExistsException } from 'src/routes/language/language.error'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
+import { NotFoundRecordException } from 'src/shared/error'
 
 @Injectable()
 export class LanguageService {
@@ -25,7 +25,7 @@ export class LanguageService {
   async findById(id: string) {
     const language = await this.languageRepo.findById(id)
     if (!language) {
-      throw ExceptionFactory.recordNotFound()
+      throw NotFoundRecordException
     }
     return language
   }
@@ -54,7 +54,7 @@ export class LanguageService {
       return language
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       throw error
     }
@@ -69,7 +69,7 @@ export class LanguageService {
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       throw error
     }

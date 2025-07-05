@@ -6,313 +6,70 @@ import { Path } from "nestjs-i18n";
 /* prettier-ignore */
 export type I18nTranslations = {
     "auth": {
-        "success": {
-            "REGISTER_SUCCESS": string;
-            "SEND_OTP_SUCCESS": string;
-            "LOGIN_SUCCESS": string;
-            "REFRESH_TOKEN_SUCCESS": string;
-            "LOGOUT_SUCCESS": string;
-            "FORGOT_PASSWORD_SUCCESS": string;
-            "SETUP_2FA_SUCCESS": string;
-            "DISABLE_2FA_SUCCESS": string;
-            "CSRF_TOKEN_SUCCESS": string;
-            "PASSWORD_RESET_SUCCESS": string;
-            "PASSWORD_CHANGE_SUCCESS": string;
-            "GOOGLE_AUTH_SUCCESS": string;
-            "GOOGLE_UNLINK_SUCCESS": string;
-            "EMAIL_VERIFICATION_SUCCESS": string;
-            "ACCOUNT_ACTIVATION_SUCCESS": string;
-            "OTP_SENT_SUCCESS": string;
-            "VERIFICATION_SUCCESS": string;
-            "TWO_FACTOR_SETUP_SUCCESS": string;
-            "TWO_FACTOR_DISABLE_SUCCESS": string;
-            "DEVICE_TRUSTED_SUCCESS": string;
-            "SESSION_REVOKED_SUCCESS": string;
+        "core": {
+            "success": {
+                "REGISTER_SUCCESS": string;
+                "SEND_OTP_SUCCESS": string;
+                "LOGIN_SUCCESS": string;
+                "DISABLE_2FA_SUCCESS": string;
+            };
+            "error": {};
         };
-        "error": {
-            "EMAIL_ALREADY_EXISTS": string;
-            "EMAIL_NOT_FOUND": string;
-            "USER_NOT_FOUND": string;
-            "USER_NOT_ACTIVE": string;
-            "USER_BLOCKED": string;
-            "ACCOUNT_LOCKED": string;
-            "INVALID_PASSWORD": string;
-            "INVALID_CREDENTIALS": string;
-            "PASSWORDS_NOT_MATCH": string;
-            "SAME_PASSWORD": string;
-            "WEAK_PASSWORD": string;
-            "INVALID_OTP": string;
-            "OTP_EXPIRED": string;
-            "OTP_SENDING_FAILED": string;
-            "OTP_MAX_ATTEMPTS": string;
-            "OTP_REQUIRED": string;
-            "INVALID_TOTP": string;
-            "TOTP_REQUIRED": string;
-            "TOTP_ALREADY_ENABLED": string;
-            "TOTP_NOT_ENABLED": string;
-            "INVALID_TOTP_AND_CODE": string;
-            "DISABLE_2FA_REQUIRES_CODE": string;
-            "INVALID_RECOVERY_CODE": string;
-            "STATE_TOKEN_MISSING": string;
-            "REFRESH_TOKEN_REQUIRED": string;
-            "INVALID_REFRESH_TOKEN": string;
-            "REFRESH_TOKEN_REUSED": string;
-            "ACCESS_TOKEN_EXPIRED": string;
-            "INVALID_ACCESS_TOKEN": string;
-            "TOKEN_BLACKLISTED": string;
-            "SESSION_NOT_FOUND": string;
-            "SESSION_EXPIRED": string;
-            "SESSION_REVOKED": string;
-            "SESSION_USER_MISMATCH": string;
-            "INVALID_SESSION": string;
-            "DEVICE_NOT_FOUND": string;
-            "DEVICE_NOT_TRUSTED": string;
-            "DEVICE_INACTIVE": string;
-            "SUSPICIOUS_DEVICE": string;
-            "GOOGLE_AUTH_ERROR": string;
-            "GOOGLE_USER_INFO_ERROR": string;
-            "GOOGLE_CALLBACK_ERROR": string;
-            "GOOGLE_ACCOUNT_LINKED": string;
-            "GOOGLE_NOT_LINKED": string;
-            "INVALID_OAUTH_STATE": string;
-            "OAUTH_CANCELLED": string;
-            "INVALID_CSRF_TOKEN": string;
-            "CSRF_TOKEN_MISSING": string;
-            "VERIFICATION_CODE_INVALID": string;
-            "VERIFICATION_CODE_NOT_FOUND": string;
-            "VERIFICATION_REQUIRED": string;
-            "EMAIL_NOT_VERIFIED": string;
-            "ROLE_NOT_FOUND": string;
-            "INSUFFICIENT_PERMISSIONS": string;
-            "RATE_LIMIT_EXCEEDED": string;
-            "SERVICE_UNAVAILABLE": string;
-            "MAINTENANCE_MODE": string;
-            "ACCESS_TOKEN_REQUIRED": string;
+        "google": {
+            "success": {
+                "LOGIN_SUCCESS": string;
+            };
+            "error": {};
         };
-        "messages": {
-            "LOGIN_2FA_REQUIRED": string;
-            "LOGIN_OTP_REQUIRED": string;
-            "DEVICE_NEW_LOGIN": string;
-            "ACCOUNT_SECURITY_CHECK": string;
-            "PASSWORD_WILL_EXPIRE": string;
-            "SUSPICIOUS_ACTIVITY": string;
+        "session": {
+            "success": {
+                "REFRESH_TOKEN_SUCCESS": string;
+                "LOGOUT_SUCCESS": string;
+            };
+            "error": {};
         };
-    };
-    "brand-translation": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_BRAND_TRANSLATIONS": string;
-            "GET_BRAND_TRANSLATION_DETAIL": string;
+        "otp": {
+            "success": {
+                "SEND_OTP_SUCCESS": string;
+            };
+            "error": {};
         };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-        };
-    };
-    "brand": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_BRANDS": string;
-            "GET_BRAND_DETAIL": string;
-        };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-            "CANNOT_DELETE": string;
-        };
-    };
-    "cart": {
-        "success": {
-            "ADD_TO_CART_SUCCESS": string;
-            "UPDATE_CART_SUCCESS": string;
-            "DELETE_CART_SUCCESS": string;
-            "GET_CART_SUCCESS": string;
-            "CLEAR_CART_SUCCESS": string;
-        };
-        "error": {
-            "SKU_NOT_FOUND": string;
-            "OUT_OF_STOCK": string;
-            "PRODUCT_NOT_FOUND": string;
-            "INSUFFICIENT_STOCK": string;
-            "CART_ITEM_NOT_FOUND": string;
-            "INVALID_QUANTITY": string;
-            "CART_EMPTY": string;
-        };
-    };
-    "category-translation": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_CATEGORY_TRANSLATIONS": string;
-            "GET_CATEGORY_TRANSLATION_DETAIL": string;
-        };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-        };
-    };
-    "category": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_CATEGORIES": string;
-            "GET_CATEGORY_DETAIL": string;
-        };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-            "CANNOT_DELETE": string;
-        };
-    };
-    "device": {
-        "success": {
-            "DEVICE_RENAMED": string;
-            "DEVICE_REVOKED": string;
-            "DEVICE_TRUSTED": string;
-            "DEVICE_UNTRUSTED": string;
-            "DEVICE_UPDATED": string;
-        };
-        "error": {
-            "DEVICE_NOT_FOUND": string;
-            "DEVICE_NOT_BELONG_TO_USER": string;
-            "DEVICE_NOT_TRUSTED": string;
-            "DEVICE_TRUST_EXPIRED": string;
-            "DEVICE_ALREADY_TRUSTED": string;
-            "DEVICE_INACTIVE": string;
-            "DEVICE_REVOKED": string;
-            "DEVICE_LIMIT_EXCEEDED": string;
-            "DEVICE_NAME_REQUIRED": string;
-            "DEVICE_NAME_TOO_LONG": string;
-            "DEVICE_NAME_INVALID": string;
-            "INVALID_DEVICE_FINGERPRINT": string;
-            "DEVICE_FINGERPRINT_REQUIRED": string;
-            "DEVICE_SESSION_NOT_FOUND": string;
-            "DEVICE_SESSION_EXPIRED": string;
-            "DEVICE_SESSION_REVOKED": string;
-            "DEVICE_CREATION_FAILED": string;
-            "DEVICE_UPDATE_FAILED": string;
-            "DEVICE_DELETION_FAILED": string;
-            "DEVICE_REVOKE_FAILED": string;
-        };
-    };
-    "global": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-        };
-        "error": {
-            "NOT_FOUND_RECORD": string;
+        "password": {
+            "success": {
+                "FORGOT_PASSWORD_SUCCESS": string;
+            };
+            "error": {};
         };
     };
     "language": {
         "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
             "DELETE_SUCCESS": string;
-            "GET_LANGUAGES": string;
-            "GET_LANGUAGE_DETAIL": string;
         };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-            "CANNOT_DELETE": string;
-        };
+        "error": {};
     };
     "permission": {
         "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
             "DELETE_SUCCESS": string;
-            "GET_PERMISSIONS": string;
-            "GET_PERMISSION_DETAIL": string;
         };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-        };
-    };
-    "product-translation": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_PRODUCT_TRANSLATIONS": string;
-            "GET_PRODUCT_TRANSLATION_DETAIL": string;
-        };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-        };
-    };
-    "product": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_PRODUCTS": string;
-            "GET_PRODUCT_DETAIL": string;
-        };
-        "error": {
-            "NOT_FOUND": string;
-            "BRAND_NOT_FOUND": string;
-        };
+        "error": {};
     };
     "profile": {
         "success": {
-            "GET_PROFILE": string;
-            "UPDATE_PROFILE": string;
-            "CHANGE_PASSWORD": string;
+            "CHANGE_PASSWORD_SUCCESS": string;
         };
-        "error": {
-            "NOT_FOUND": string;
-            "INVALID_PASSWORD": string;
-            "UPDATE_FAILED": string;
-            "CHANGE_PASSWORD_FAILED": string;
-        };
+        "error": {};
     };
     "role": {
         "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
             "DELETE_SUCCESS": string;
-            "GET_ROLES": string;
-            "GET_ROLE_DETAIL": string;
         };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-            "DELETED_PERMISSION_INCLUDED": string;
-            "OPERATION_FAILED": string;
-            "CANNOT_UPDATE_DEFAULT_ROLE": string;
-            "CANNOT_DELETE_DEFAULT_ROLE": string;
-            "PROHIBITED_ACTION_ON_BASE_ROLE": string;
-        };
+        "error": {};
     };
     "user": {
         "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
             "DELETE_SUCCESS": string;
-            "GET_USERS": string;
-            "GET_USER_DETAIL": string;
         };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-            "CANNOT_DELETE": string;
-            "CANNOT_UPDATE_ADMIN_USER": string;
-            "CANNOT_DELETE_ADMIN_USER": string;
-            "CANNOT_SET_ADMIN_ROLE_TO_USER": string;
-            "CANNOT_UPDATE_OR_DELETE_YOURSELF": string;
-            "ROLE_NOT_FOUND": string;
-        };
+        "error": {};
     };
 };
 /* prettier-ignore */

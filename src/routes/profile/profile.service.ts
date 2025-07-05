@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common'
-import { ExceptionFactory } from 'src/shared/error'
 import { ChangePasswordBodyType, UpdateMeBodySchema, UpdateMeBodyType } from './profile.model'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
+import { InvalidPasswordException, NotFoundRecordException } from 'src/shared/error'
 
 @Injectable()
 export class ProfileService {
@@ -21,7 +21,7 @@ export class ProfileService {
     })
 
     if (!user) {
-      throw ExceptionFactory.recordNotFound()
+      throw NotFoundRecordException
     }
 
     return user
@@ -38,7 +38,7 @@ export class ProfileService {
       )
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       throw error
     }
@@ -51,11 +51,11 @@ export class ProfileService {
         id: userId,
       })
       if (!user) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       const isPasswordMatch = await this.hashingService.compare(password, user.password)
       if (!isPasswordMatch) {
-        throw ExceptionFactory.invalidPassword()
+        throw InvalidPasswordException
       }
       const hashedPassword = await this.hashingService.hash(newPassword)
 
@@ -67,11 +67,11 @@ export class ProfileService {
         },
       )
       return {
-        message: this.i18n.t('profile.success.CHANGE_PASSWORD'),
+        message: this.i18n.t('profile.success.CHANGE_PASSWORD_SUCCESS'),
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       throw error
     }

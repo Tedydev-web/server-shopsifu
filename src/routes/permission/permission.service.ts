@@ -7,12 +7,12 @@ import {
   PermissionGroupType,
   PermissionType,
 } from 'src/routes/permission/permission.model'
-import { ExceptionFactory } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { PermissionAlreadyExistsException } from 'src/routes/permission/permission.error'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
 import { PaginatedResult } from 'src/shared/services/pagination.service'
+import { NotFoundRecordException } from 'src/shared/error'
 
 @Injectable()
 export class PermissionService {
@@ -48,7 +48,7 @@ export class PermissionService {
   async findById(id: number) {
     const permission = await this.permissionRepo.findById(id)
     if (!permission) {
-      throw ExceptionFactory.recordNotFound()
+      throw NotFoundRecordException
     }
     return permission
   }
@@ -77,7 +77,7 @@ export class PermissionService {
       return permission
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       if (isUniqueConstraintPrismaError(error)) {
         throw PermissionAlreadyExistsException
@@ -94,10 +94,11 @@ export class PermissionService {
       })
       return {
         message: this.i18n.t('permission.success.DELETE_SUCCESS'),
+        // TODO: translate
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       throw error
     }

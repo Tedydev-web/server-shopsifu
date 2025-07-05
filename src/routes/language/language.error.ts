@@ -1,4 +1,8 @@
-import { ExceptionFactory } from 'src/shared/error'
+import { UnprocessableEntityException } from '@nestjs/common'
 
-// --- Language-specific Exceptions sử dụng ExceptionFactory ---
-export const LanguageAlreadyExistsException = ExceptionFactory.conflict('language.error.ALREADY_EXISTS', 'id')
+export const LanguageAlreadyExistsException = new UnprocessableEntityException([
+  {
+    message: 'language.error.ALREADY_EXISTS',
+    path: 'id',
+  },
+])

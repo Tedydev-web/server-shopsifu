@@ -4,9 +4,10 @@ import { REQUEST_USER_KEY, REQUEST_ROLE_PERMISSIONS } from 'src/shared/constants
 import { CookieNames } from 'src/shared/constants/cookie.constant'
 import { TokenService } from 'src/shared/services/auth/token.service'
 import { SessionService } from '../services/auth/session.service'
-import { AuthError } from 'src/routes/auth/auth.error'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { I18nService } from 'nestjs-i18n'
+import { ForbiddenError } from '../error'
+import { NotFoundRecordException } from '../error'
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
@@ -36,17 +37,17 @@ export class AccessTokenGuard implements CanActivate {
       ])
 
       if (isBlacklisted) {
-        throw AuthError.TokenBlacklisted
+        throw ForbiddenError
       }
 
       if (!session) {
-        throw AuthError.SessionNotFound
+        throw NotFoundRecordException
       }
 
       // 3. Lấy role (kèm permissions) từ DB
       const role = await this.sharedRoleRepository.getRoleByIdIncludePermissions(payload.roleId)
       if (!role) {
-        throw AuthError.RoleNotFound
+        throw NotFoundRecordException
       }
 
       // 4. Kiểm tra quyền truy cập route/method hiện tại
@@ -56,7 +57,7 @@ export class AccessTokenGuard implements CanActivate {
         (permission) => permission.path === path && permission.method === method && !permission.deletedAt,
       )
       if (!canAccess) {
-        throw AuthError.InsufficientPermissions
+        throw ForbiddenError
       }
 
       // 5. Store user info và role permissions vào request

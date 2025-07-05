@@ -5,9 +5,9 @@ import {
   UpdateCategoryBodyType,
   GetAllCategoriesQueryType,
 } from 'src/routes/category/category.model'
-import { ExceptionFactory } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext } from 'nestjs-i18n'
+import { NotFoundRecordException } from 'src/shared/error'
 
 @Injectable()
 export class CategoryService {
@@ -26,7 +26,7 @@ export class CategoryService {
       languageId: I18nContext.current()?.lang as string,
     })
     if (!category) {
-      throw ExceptionFactory.recordNotFound()
+      throw NotFoundRecordException
     }
     return category
   }
@@ -48,7 +48,7 @@ export class CategoryService {
       return category
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       throw error
     }
@@ -65,7 +65,7 @@ export class CategoryService {
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
-        throw ExceptionFactory.recordNotFound()
+        throw NotFoundRecordException
       }
       throw error
     }

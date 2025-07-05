@@ -10,7 +10,6 @@ import { TokenService } from 'src/shared/services/auth/token.service'
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
 import { EmailService } from 'src/shared/services/email.service'
 import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
-import { AuthError } from '../auth.error'
 import { TwoFactorService } from 'src/shared/services/auth/2fa.service'
 import { CookieService } from 'src/shared/services/cookie.service'
 import { Response, Request } from 'express'
@@ -24,6 +23,8 @@ import { AuthRepository } from '../repositories/auth.repo'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/generated/i18n.generated'
+import { ForbiddenError } from 'src/shared/error'
+import { NotFoundRecordException } from 'src/shared/error'
 
 @Injectable()
 export class CoreAuthService {
@@ -70,11 +71,11 @@ export class CoreAuthService {
       })
 
       return {
-        message: this.i18n.t('auth.success.REGISTER_SUCCESS'),
+        message: this.i18n.t('auth.core.success.REGISTER_SUCCESS'),
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw AuthError.EmailAlreadyExists
+        throw ForbiddenError
       }
       throw error
     }
@@ -83,10 +84,10 @@ export class CoreAuthService {
   async sendOTP(body: SendOTPBodyDTO) {
     const user = await this.sharedUserRepository.findUnique({ email: body.email })
     if (body.type === TypeOfVerificationCode.REGISTER && user) {
-      throw AuthError.EmailAlreadyExists
+      throw ForbiddenError
     }
     if (body.type === TypeOfVerificationCode.FORGOT_PASSWORD && !user) {
-      throw AuthError.EmailNotFound
+      throw NotFoundRecordException
     }
     const code = this.cryptoService.generateOTP()
     await this.verificationCodeRepository.create({
@@ -100,19 +101,19 @@ export class CoreAuthService {
       code,
     })
     return {
-      message: this.i18n.t('auth.success.SEND_OTP_SUCCESS'),
+      message: this.i18n.t('auth.core.success.SEND_OTP_SUCCESS'),
     }
   }
 
   async login(body: LoginBodyDTO, req: Request, res: Response) {
     const user = await this.authRepository.findUniqueUserIncludeRole({ email: body.email })
     if (!user) {
-      throw AuthError.InvalidCredentials
+      throw ForbiddenError
     }
 
     const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
     if (!isPasswordMatch) {
-      throw AuthError.InvalidCredentials
+      throw ForbiddenError
     }
 
     const device = await this.deviceService.findOrCreateDevice(user.id, req)
@@ -132,7 +133,7 @@ export class CoreAuthService {
 
     const userRole = await this.sharedRoleRepository.getRoleById(user.roleId)
     if (!userRole) {
-      throw AuthError.RoleNotFound
+      throw NotFoundRecordException
     }
     const { accessToken, refreshToken } = await this.generateTokens({
       userId: user.id,
@@ -144,7 +145,7 @@ export class CoreAuthService {
     this.cookieService.setTokenCookies(res, accessToken, refreshToken)
 
     return {
-      message: this.i18n.t('auth.success.LOGIN_SUCCESS'),
+      message: this.i18n.t('auth.core.success.LOGIN_SUCCESS'),
     }
   }
 
@@ -167,10 +168,10 @@ export class CoreAuthService {
   async setupTwoFactorAuth(userId: number) {
     const user = await this.sharedUserRepository.findUnique({ id: userId })
     if (!user) {
-      throw AuthError.UserNotFound
+      throw NotFoundRecordException
     }
     if (user.totpSecret) {
-      throw AuthError.TOTPAlreadyEnabled
+      throw ForbiddenError
     }
     const { secret, uri } = this.twoFactorService.generateTOTPSecret(user.email)
     return { secret, uri }
@@ -179,18 +180,18 @@ export class CoreAuthService {
   async disableTwoFactorAuth(data: DisableTwoFactorBodyDTO & { userId: number }) {
     const user = await this.sharedUserRepository.findUnique({ id: data.userId })
     if (!user || !user.totpSecret) {
-      throw AuthError.UserNotFound
+      throw NotFoundRecordException
     }
     if (!data.code) {
-      throw AuthError.InvalidOTP
+      throw ForbiddenError
     }
     const isValid = this.twoFactorService.verifyTOTP({ token: data.code, secret: user.totpSecret })
     if (!isValid) {
-      throw AuthError.InvalidOTP
+      throw ForbiddenError
     }
     await this.sharedUserRepository.update({ id: data.userId }, { totpSecret: null })
     return {
-      message: this.i18n.t('auth.success.DISABLE_2FA_SUCCESS'),
+      message: this.i18n.t('auth.core.success.DISABLE_2FA_SUCCESS'),
     }
   }
 }
