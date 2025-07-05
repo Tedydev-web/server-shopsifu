@@ -43,19 +43,29 @@ export type I18nTranslations = {
     };
     "brand": {
         "brand": {
-            "brand-translation": {
-                "success": {
-                    "DELETE_SUCCESS": string;
-                };
+            "success": {};
+            "error": {};
+        };
+        "brand-translation": {
+            "success": {
+                "DELETE_SUCCESS": string;
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
             };
+            "error": {};
         };
     };
     "category": {
+        "category": {
+            "success": {};
+            "error": {};
+        };
         "category-translation": {
             "error": {
                 "ALREADY_EXISTS": string;
                 "LANGUAGE_NOT_FOUND": string;
                 "CATEGORY_NOT_FOUND": string;
+                "DELETE_SUCCESS": string;
             };
         };
     };

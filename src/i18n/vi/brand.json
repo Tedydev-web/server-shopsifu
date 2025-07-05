@@ -1,9 +1,14 @@
 {
   "brand": {
-    "brand-translation": {
-      "success": {
-        "DELETE_SUCCESS": "Xóa thành công"
-      }
-    }
+    "success": {},
+    "error": {}
+  },
+  "brand-translation": {
+    "success": {
+      "DELETE_SUCCESS": "Xóa thành công",
+      "CREATE_SUCCESS": "Tạo thành công",
+      "UPDATE_SUCCESS": "Cập nhật thành công"
+    },
+    "error": {}
   }
 }

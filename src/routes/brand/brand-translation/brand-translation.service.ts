@@ -14,7 +14,7 @@ import { I18nTranslations } from 'src/generated/i18n.generated'
 export class BrandTranslationService {
   constructor(
     private brandTranslationRepo: BrandTranslationRepo,
-    private i18n: I18nService<I18nTranslations>,
+    private i18n: I18nService,
   ) {}
 
   async findById(id: number) {
