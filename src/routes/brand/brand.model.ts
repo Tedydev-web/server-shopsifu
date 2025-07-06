@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const GetBrandsResSchema = z.object({
+  message: z.string(),
   data: z.array(BrandIncludeTranslationSchema),
   metadata: PaginationMetadataSchema
 })

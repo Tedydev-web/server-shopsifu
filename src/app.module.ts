@@ -31,13 +31,13 @@ import { OrderModule } from './routes/order/order.module'
       load: [envConfig]
     }),
     I18nModule.forRoot({
-      fallbackLanguage: 'en',
+      fallbackLanguage: 'vi',
       loaderOptions: {
-        path: path.resolve('src/i18n/'),
+        path: path.resolve('src/shared/i18n/'),
         watch: true
       },
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
-      typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
+      typesOutputPath: path.resolve('src/shared/i18n/generated/i18n.generated.ts')
     }),
 
     SharedModule,

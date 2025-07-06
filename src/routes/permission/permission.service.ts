@@ -6,19 +6,27 @@ import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared
 import { PermissionAlreadyExistsException } from 'src/routes/permission/permission.error'
 import { PaginationService } from 'src/shared/services/pagination.service'
 import { PaginationQueryType } from 'src/shared/models/pagination.model'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class PermissionService {
   constructor(
     private permissionRepo: PermissionRepo,
-    private paginationService: PaginationService
+    private paginationService: PaginationService,
+    private i18n: I18nService<I18nTranslations>
   ) {}
 
   async list(pagination: PaginationQueryType) {
-    return this.paginationService.paginate('permission', pagination, {
+    const result = await this.paginationService.paginate('permission', pagination, {
       where: { deletedAt: null },
       defaultSortField: 'createdAt'
     })
+
+    return {
+      ...result,
+      message: this.i18n.t('permission.permission.success.GET_SUCCESS')
+    }
   }
 
   async findById(id: number) {
@@ -26,15 +34,24 @@ export class PermissionService {
     if (!permission) {
       throw NotFoundRecordException
     }
-    return permission
+
+    return {
+      data: permission,
+      message: this.i18n.t('permission.permission.success.GET_DETAIL_SUCCESS')
+    }
   }
 
   async create({ data, createdById }: { data: CreatePermissionBodyType; createdById: number }) {
     try {
-      return await this.permissionRepo.create({
+      const permission = await this.permissionRepo.create({
         createdById,
         data
       })
+
+      return {
+        data: permission,
+        message: this.i18n.t('permission.permission.success.CREATE_SUCCESS')
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw PermissionAlreadyExistsException
@@ -50,7 +67,11 @@ export class PermissionService {
         updatedById,
         data
       })
-      return permission
+
+      return {
+        data: permission,
+        message: this.i18n.t('permission.permission.success.UPDATE_SUCCESS')
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -69,7 +90,7 @@ export class PermissionService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('permission.permission.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

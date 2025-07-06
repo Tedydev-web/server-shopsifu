@@ -9,7 +9,7 @@ import { CryptoService } from 'src/shared/services/crypto.service'
 import { VerificationCodeRepository } from '../repositories/verification-code.repository'
 import { EnvConfigType } from 'src/shared/config'
 import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class PasswordService {

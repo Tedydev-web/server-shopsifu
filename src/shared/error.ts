@@ -13,13 +13,12 @@ import {
   NotAcceptableException,
   UnsupportedMediaTypeException
 } from '@nestjs/common'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
 
 // --- Common Exception Instances ---
 export const NotFoundRecordException = new NotFoundException([{ message: 'global.error.NOT_FOUND' }])
-export const InvalidPasswordException = (i18n: I18nService<I18nTranslations>) =>
-  new UnprocessableEntityException([{ message: i18n.t('global.error.INVALID_PASSWORD'), path: 'password' }])
+export const InvalidPasswordException = new UnprocessableEntityException([
+  { message: 'global.error.INVALID_PASSWORD', path: 'password' }
+])
 
 // --- Factory Functions for Custom Error ---
 export const NotFoundError = (message = 'global.error.NOT_FOUND_RECORD', path?: string) =>

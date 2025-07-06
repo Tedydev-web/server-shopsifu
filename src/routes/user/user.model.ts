@@ -4,6 +4,7 @@ import { RoleSchema } from 'src/shared/models/shared-role.model'
 import { PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const GetUsersResSchema = z.object({
+  message: z.string(),
   data: z.array(
     UserSchema.omit({ password: true, totpSecret: true }).extend({
       role: RoleSchema.pick({
@@ -17,6 +18,7 @@ export const GetUsersResSchema = z.object({
 
 export const GetUserParamsSchema = z
   .object({
+    message: z.string(),
     userId: z.coerce.number().int().positive()
   })
   .strict()

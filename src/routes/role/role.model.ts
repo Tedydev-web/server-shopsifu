@@ -8,12 +8,14 @@ export const RoleWithPermissionsSchema = RoleSchema.extend({
 })
 
 export const GetRolesResSchema = z.object({
+  message: z.string(),
   data: z.array(RoleSchema),
   metadata: PaginationMetadataSchema
 })
 
 export const GetRoleParamsSchema = z
   .object({
+    message: z.string(),
     roleId: z.coerce.number()
   })
   .strict()

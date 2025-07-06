@@ -11,6 +11,7 @@ export const LanguageSchema = z.object({
 })
 
 export const GetLanguagesResSchema = z.object({
+  message: z.string(),
   data: z.array(LanguageSchema)
 })
 

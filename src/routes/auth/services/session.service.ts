@@ -9,7 +9,7 @@ import { SessionRepository } from '../repositories/session.repository'
 import { SessionService as SharedSessionService } from 'src/shared/services/auth/session.service'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 interface RefreshTokenInput {
   refreshToken: string | undefined

@@ -1,34 +1,55 @@
 import { Injectable } from '@nestjs/common'
 import { NotFoundRecordException } from 'src/shared/error'
-import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
+import {
+  isNotFoundPrismaError,
+  isUniqueConstraintPrismaError,
+  isForeignKeyConstraintPrismaError
+} from 'src/shared/helpers'
 import { ProductTranslationRepo } from 'src/routes/product/product-translation/product-translation.repo'
 import { ProductTranslationAlreadyExistsException } from 'src/routes/product/product-translation/product-translation.error'
 import {
   CreateProductTranslationBodyType,
   UpdateProductTranslationBodyType
 } from 'src/routes/product/product-translation/product-translation.model'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class ProductTranslationService {
-  constructor(private productTranslationRepo: ProductTranslationRepo) {}
+  constructor(
+    private productTranslationRepo: ProductTranslationRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   async findById(id: number) {
     const product = await this.productTranslationRepo.findById(id)
     if (!product) {
       throw NotFoundRecordException
     }
-    return product
+
+    return {
+      data: product,
+      message: this.i18n.t('product.productTranslation.success.GET_DETAIL_SUCCESS')
+    }
   }
 
   async create({ data, createdById }: { data: CreateProductTranslationBodyType; createdById: number }) {
     try {
-      return await this.productTranslationRepo.create({
+      const productTranslation = await this.productTranslationRepo.create({
         createdById,
         data
       })
+
+      return {
+        data: productTranslation,
+        message: this.i18n.t('product.productTranslation.success.CREATE_SUCCESS')
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw ProductTranslationAlreadyExistsException
+      }
+      if (isForeignKeyConstraintPrismaError(error)) {
+        throw NotFoundRecordException
       }
       throw error
     }
@@ -41,12 +62,19 @@ export class ProductTranslationService {
         updatedById,
         data
       })
-      return product
+
+      return {
+        data: product,
+        message: this.i18n.t('product.productTranslation.success.UPDATE_SUCCESS')
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw ProductTranslationAlreadyExistsException
       }
       if (isNotFoundPrismaError(error)) {
+        throw NotFoundRecordException
+      }
+      if (isForeignKeyConstraintPrismaError(error)) {
         throw NotFoundRecordException
       }
       throw error
@@ -60,7 +88,7 @@ export class ProductTranslationService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('product.productTranslation.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

@@ -8,6 +8,7 @@ export const PresignedUploadFileBodySchema = z
   .strict()
 
 export const UploadFilesResSchema = z.object({
+  message: z.string(),
   data: z.array(
     z.object({
       url: z.string()
@@ -16,6 +17,7 @@ export const UploadFilesResSchema = z.object({
 })
 
 export const PresignedUploadFileResSchema = z.object({
+  message: z.string(),
   presignedUrl: z.string(),
   url: z.string()
 })

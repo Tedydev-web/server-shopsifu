@@ -4,15 +4,17 @@ import { CreateBrandBodyType, UpdateBrandBodyType } from 'src/routes/brand/brand
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { PaginationQueryType } from 'src/shared/models/pagination.model'
-import { I18nContext } from 'nestjs-i18n'
+import { I18nContext, I18nService } from 'nestjs-i18n'
 import { PaginationService } from 'src/shared/services/pagination.service'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class BrandService {
   constructor(
     private brandRepo: BrandRepo,
-    private paginationService: PaginationService
+    private paginationService: PaginationService,
+    private i18n: I18nService<I18nTranslations>
   ) {}
 
   async list(props: { pagination: PaginationQueryType; filters: any }) {
@@ -24,7 +26,7 @@ export class BrandService {
     // Xây dựng orderBy từ pagination và filters
     const orderBy = this.buildOrderBy(props.pagination, props.filters)
 
-    return this.paginationService.paginate('brand', props.pagination, {
+    const result = await this.paginationService.paginate('brand', props.pagination, {
       where,
       include: {
         brandTranslations: {
@@ -34,6 +36,11 @@ export class BrandService {
       orderBy,
       defaultSortField: 'createdAt'
     })
+
+    return {
+      ...result,
+      message: this.i18n.t('brand.brand.success.GET_SUCCESS')
+    }
   }
 
   private buildWhereClause(filters: any) {
@@ -71,14 +78,23 @@ export class BrandService {
     if (!brand) {
       throw NotFoundRecordException
     }
-    return brand
+
+    return {
+      data: brand,
+      message: this.i18n.t('brand.brand.success.GET_DETAIL_SUCCESS')
+    }
   }
 
-  create({ data, createdById }: { data: CreateBrandBodyType; createdById: number }) {
-    return this.brandRepo.create({
+  async create({ data, createdById }: { data: CreateBrandBodyType; createdById: number }) {
+    const brand = await this.brandRepo.create({
       createdById,
       data
     })
+
+    return {
+      data: brand,
+      message: this.i18n.t('brand.brand.success.CREATE_SUCCESS')
+    }
   }
 
   async update({ id, data, updatedById }: { id: number; data: UpdateBrandBodyType; updatedById: number }) {
@@ -88,7 +104,11 @@ export class BrandService {
         updatedById,
         data
       })
-      return brand
+
+      return {
+        data: brand,
+        message: this.i18n.t('brand.brand.success.UPDATE_SUCCESS')
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -104,7 +124,7 @@ export class BrandService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('brand.brand.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

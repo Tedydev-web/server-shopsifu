@@ -3,9 +3,15 @@ import { S3Service } from 'src/shared/services/s3.service'
 import { unlink } from 'fs/promises'
 import { generateRandomFilename } from 'src/shared/helpers'
 import { PresignedUploadFileBodyType } from 'src/routes/media/media.model'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+
 @Injectable()
 export class MediaService {
-  constructor(private readonly s3Service: S3Service) {}
+  constructor(
+    private readonly s3Service: S3Service,
+    private readonly i18n: I18nService<I18nTranslations>
+  ) {}
 
   async uploadFile(files: Array<Express.Multer.File>) {
     const result = await Promise.all(
@@ -28,7 +34,8 @@ export class MediaService {
       })
     )
     return {
-      data: result
+      data: result,
+      message: this.i18n.t('media.media.success.UPLOAD_SUCCESS')
     }
   }
 
@@ -37,8 +44,11 @@ export class MediaService {
     const presignedUrl = await this.s3Service.createPresignedUrlWithClient(randomFilename)
     const url = presignedUrl.split('?')[0]
     return {
-      presignedUrl,
-      url
+      data: {
+        presignedUrl,
+        url
+      },
+      message: this.i18n.t('media.media.success.GET_PRESIGNED_URL_SUCCESS')
     }
   }
 }

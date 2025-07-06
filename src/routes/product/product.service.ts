@@ -1,16 +1,18 @@
 import { Injectable } from '@nestjs/common'
 import { ProductRepo } from 'src/routes/product/product.repo'
 import { NotFoundRecordException } from 'src/shared/error'
-import { I18nContext } from 'nestjs-i18n'
+import { I18nContext, I18nService } from 'nestjs-i18n'
 import { PaginationService } from 'src/shared/services/pagination.service'
 import { PaginationQueryType } from 'src/shared/models/pagination.model'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class ProductService {
   constructor(
     private productRepo: ProductRepo,
-    private paginationService: PaginationService
+    private paginationService: PaginationService,
+    private i18n: I18nService<I18nTranslations>
   ) {}
 
   async list(props: { pagination: PaginationQueryType; filters: any }) {
@@ -22,7 +24,7 @@ export class ProductService {
     // Xây dựng orderBy từ pagination và filters
     const orderBy = this.buildOrderBy(props.pagination, props.filters)
 
-    return this.paginationService.paginate('product', props.pagination, {
+    const result = await this.paginationService.paginate('product', props.pagination, {
       where,
       include: {
         productTranslations: {
@@ -38,6 +40,11 @@ export class ProductService {
       orderBy,
       defaultSortField: 'createdAt'
     })
+
+    return {
+      ...result,
+      message: this.i18n.t('product.product.success.GET_PRODUCTS')
+    }
   }
 
   private buildWhereClause(filters: any, isPublic: boolean = true) {
@@ -111,6 +118,10 @@ export class ProductService {
     if (!product) {
       throw NotFoundRecordException
     }
-    return product
+
+    return {
+      data: product,
+      message: this.i18n.t('product.product.success.GET_PRODUCT_DETAIL')
+    }
   }
 }

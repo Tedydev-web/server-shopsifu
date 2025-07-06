@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 export const GetProductTranslationParamsSchema = z
   .object({
+    message: z.string(),
     productTranslationId: z.coerce.number().int().positive()
   })
   .strict()

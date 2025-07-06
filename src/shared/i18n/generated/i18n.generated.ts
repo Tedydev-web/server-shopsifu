@@ -99,31 +99,81 @@ export type I18nTranslations = {
         };
     };
     "brand": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_BRANDS": string;
-            "GET_BRAND_DETAIL": string;
+        "brand": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
+            };
+            "error": {
+                "NOT_FOUND": string;
+                "ALREADY_EXISTS": string;
+                "CANNOT_DELETE": string;
+            };
         };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-            "CANNOT_DELETE": string;
+        "brandTranslation": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
+            };
+            "error": {
+                "BRAND_NOT_FOUND": string;
+                "LANGUAGE_NOT_FOUND": string;
+                "ALREADY_EXISTS": string;
+                "CANNOT_DELETE": string;
+            };
+        };
+    };
+    "cart": {
+        "cart": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
+            };
+            "error": {
+                "SKU_NOT_FOUND": string;
+                "SKU_OUT_OF_STOCK": string;
+                "PRODUCT_NOT_FOUND": string;
+                "CART_ITEM_NOT_FOUND": string;
+                "INVALID_QUANTITY": string;
+            };
         };
     };
     "category": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_CATEGORIES": string;
-            "GET_CATEGORY_DETAIL": string;
+        "category": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
+            };
+            "error": {
+                "NOT_FOUND": string;
+                "ALREADY_EXISTS": string;
+                "CANNOT_DELETE": string;
+            };
         };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-            "CANNOT_DELETE": string;
+        "categoryTranslation": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
+            };
+            "error": {
+                "NOT_FOUND": string;
+                "ALREADY_EXISTS": string;
+                "CATEGORY_NOT_FOUND": string;
+                "LANGUAGE_NOT_FOUND": string;
+            };
         };
     };
     "device": {
@@ -285,43 +335,103 @@ export type I18nTranslations = {
         };
     };
     "language": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_LANGUAGES": string;
-            "GET_LANGUAGE_DETAIL": string;
+        "language": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
+            };
+            "error": {
+                "NOT_FOUND": string;
+                "ALREADY_EXISTS": string;
+                "CANNOT_DELETE": string;
+            };
         };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-            "CANNOT_DELETE": string;
+    };
+    "media": {
+        "media": {
+            "success": {
+                "UPLOAD_SUCCESS": string;
+                "GET_PRESIGNED_URL_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+            };
+            "error": {
+                "UPLOAD_FAILED": string;
+                "FILE_NOT_FOUND": string;
+                "INVALID_FILE_TYPE": string;
+                "FILE_TOO_LARGE": string;
+                "PRESIGNED_URL_FAILED": string;
+                "S3_ERROR": string;
+            };
+        };
+    };
+    "order": {
+        "order": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
+                "CANCEL_SUCCESS": string;
+            };
+            "error": {
+                "NOT_FOUND": string;
+                "ALREADY_EXISTS": string;
+                "CANNOT_CANCEL": string;
+                "INVALID_STATUS": string;
+                "INSUFFICIENT_STOCK": string;
+                "PRODUCT_NOT_FOUND": string;
+                "NOT_FOUND_CART_ITEM": string;
+                "SKU_NOT_BELONG_TO_SHOP": string;
+                "OUT_OF_STOCK_SKU": string;
+            };
         };
     };
     "permission": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_PERMISSIONS": string;
-            "GET_PERMISSION_DETAIL": string;
-        };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
+        "permission": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
+            };
+            "error": {
+                "NOT_FOUND": string;
+                "ALREADY_EXISTS": string;
+            };
         };
     };
     "product": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_PRODUCTS": string;
-            "GET_PRODUCT_DETAIL": string;
+        "product": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_PRODUCTS": string;
+                "GET_PRODUCT_DETAIL": string;
+            };
+            "error": {
+                "NOT_FOUND": string;
+                "BRAND_NOT_FOUND": string;
+            };
         };
-        "error": {
-            "NOT_FOUND": string;
-            "BRAND_NOT_FOUND": string;
+        "productTranslation": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
+            };
+            "error": {
+                "NOT_FOUND": string;
+                "ALREADY_EXISTS": string;
+                "PRODUCT_NOT_FOUND": string;
+                "LANGUAGE_NOT_FOUND": string;
+            };
         };
     };
     "profile": {
@@ -338,20 +448,22 @@ export type I18nTranslations = {
         };
     };
     "role": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_ROLES": string;
-            "GET_ROLE_DETAIL": string;
-        };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-            "DELETED_PERMISSION_INCLUDED": string;
-            "OPERATION_FAILED": string;
-            "CANNOT_UPDATE_DEFAULT_ROLE": string;
-            "CANNOT_DELETE_DEFAULT_ROLE": string;
+        "role": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
+            };
+            "error": {
+                "NOT_FOUND": string;
+                "ALREADY_EXISTS": string;
+                "DELETED_PERMISSION_INCLUDED": string;
+                "OPERATION_FAILED": string;
+                "CANNOT_UPDATE_DEFAULT_ROLE": string;
+                "CANNOT_DELETE_DEFAULT_ROLE": string;
+            };
         };
     };
     "user": {

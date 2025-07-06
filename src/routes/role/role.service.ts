@@ -8,12 +8,15 @@ import { RoleName } from 'src/shared/constants/role.constant'
 import { PaginationService } from 'src/shared/services/pagination.service'
 import { PaginationQueryType } from 'src/shared/models/pagination.model'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class RoleService {
   constructor(
     private roleRepo: RoleRepo,
-    private paginationService: PaginationService
+    private paginationService: PaginationService,
+    private i18n: I18nService<I18nTranslations>
   ) {}
 
   async list(props: { pagination: PaginationQueryType; filters: any }) {
@@ -23,11 +26,16 @@ export class RoleService {
     // Xây dựng orderBy từ pagination và filters
     const orderBy = this.buildOrderBy(props.pagination, props.filters)
 
-    return this.paginationService.paginate('role', props.pagination, {
+    const result = await this.paginationService.paginate('role', props.pagination, {
       where,
       orderBy,
       defaultSortField: 'createdAt'
     })
+
+    return {
+      ...result,
+      message: this.i18n.t('role.role.success.GET_SUCCESS')
+    }
   }
 
   private buildWhereClause(filters: any) {
@@ -91,7 +99,11 @@ export class RoleService {
     if (!role) {
       throw NotFoundRecordException
     }
-    return role
+
+    return {
+      data: role,
+      message: this.i18n.t('role.role.success.GET_DETAIL_SUCCESS')
+    }
   }
 
   async create({ data, createdById }: { data: CreateRoleBodyType; createdById: number }) {
@@ -100,7 +112,11 @@ export class RoleService {
         createdById,
         data
       })
-      return role
+
+      return {
+        data: role,
+        message: this.i18n.t('role.role.success.CREATE_SUCCESS')
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw RoleAlreadyExistsException
@@ -132,7 +148,11 @@ export class RoleService {
         updatedById,
         data
       })
-      return updatedRole
+
+      return {
+        data: updatedRole,
+        message: this.i18n.t('role.role.success.UPDATE_SUCCESS')
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -152,7 +172,7 @@ export class RoleService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('role.role.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

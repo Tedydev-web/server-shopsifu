@@ -60,6 +60,7 @@ export const CartItemDetailSchema = z.object({
 })
 
 export const GetCartResSchema = z.object({
+  message: z.string(),
   data: z.array(CartItemDetailSchema),
   metadata: PaginationMetadataSchema
 })

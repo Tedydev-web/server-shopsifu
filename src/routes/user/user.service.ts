@@ -19,6 +19,8 @@ import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { PaginationService } from 'src/shared/services/pagination.service'
 import { PaginationQueryType } from 'src/shared/models/pagination.model'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class UserService {
@@ -27,17 +29,18 @@ export class UserService {
     private hashingService: HashingService,
     private sharedUserRepository: SharedUserRepository,
     private sharedRoleRepository: SharedRoleRepository,
-    private paginationService: PaginationService
+    private paginationService: PaginationService,
+    private i18n: I18nService<I18nTranslations>
   ) {}
 
-  list(props: { pagination: PaginationQueryType; filters: any }) {
+  async list(props: { pagination: PaginationQueryType; filters: any }) {
     // Xây dựng where clause từ filters
     const where = this.buildWhereClause(props.filters)
 
     // Xây dựng orderBy từ pagination và filters
     const orderBy = this.buildOrderBy(props.pagination, props.filters)
 
-    return this.paginationService.paginate('user', props.pagination, {
+    const result = await this.paginationService.paginate('user', props.pagination, {
       where,
       include: {
         role: true
@@ -45,6 +48,11 @@ export class UserService {
       orderBy,
       defaultSortField: 'createdAt'
     })
+
+    return {
+      ...result,
+      message: this.i18n.t('user.success.GET_USERS')
+    }
   }
 
   private buildWhereClause(filters: any) {
@@ -131,7 +139,11 @@ export class UserService {
     if (!user) {
       throw NotFoundRecordException
     }
-    return user
+
+    return {
+      data: user,
+      message: this.i18n.t('user.success.GET_USER_DETAIL')
+    }
   }
 
   async create({
@@ -159,7 +171,11 @@ export class UserService {
           password: hashedPassword
         }
       })
-      return user
+
+      return {
+        data: user,
+        message: this.i18n.t('user.success.CREATE_SUCCESS')
+      }
     } catch (error) {
       if (isForeignKeyConstraintPrismaError(error)) {
         throw RoleNotFoundException
@@ -224,7 +240,11 @@ export class UserService {
           updatedById
         }
       )
-      return updatedUser
+
+      return {
+        data: updatedUser,
+        message: this.i18n.t('user.success.UPDATE_SUCCESS')
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -274,7 +294,7 @@ export class UserService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('user.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

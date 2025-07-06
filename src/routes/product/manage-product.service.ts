@@ -3,17 +3,19 @@ import { ProductRepo } from 'src/routes/product/product.repo'
 import { CreateProductBodyType, UpdateProductBodyType } from 'src/routes/product/product.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
-import { I18nContext } from 'nestjs-i18n'
+import { I18nContext, I18nService } from 'nestjs-i18n'
 import { RoleName } from 'src/shared/constants/role.constant'
 import { PaginationService } from 'src/shared/services/pagination.service'
 import { PaginationQueryType } from 'src/shared/models/pagination.model'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class ManageProductService {
   constructor(
     private productRepo: ProductRepo,
-    private paginationService: PaginationService
+    private paginationService: PaginationService,
+    private i18n: I18nService<I18nTranslations>
   ) {}
 
   /**
@@ -52,7 +54,7 @@ export class ManageProductService {
     // Xây dựng orderBy từ pagination và filters
     const orderBy = this.buildOrderBy(props.pagination, props.filters)
 
-    return this.paginationService.paginate('product', props.pagination, {
+    const result = await this.paginationService.paginate('product', props.pagination, {
       where,
       include: {
         productTranslations: {
@@ -68,6 +70,11 @@ export class ManageProductService {
       orderBy,
       defaultSortField: 'createdAt'
     })
+
+    return {
+      ...result,
+      message: this.i18n.t('product.product.success.GET_PRODUCTS')
+    }
   }
 
   private buildWhereClause(filters: any, isPublic: boolean = false) {
@@ -153,14 +160,23 @@ export class ManageProductService {
       roleNameRequest: props.roleNameRequest,
       createdById: product.createdById
     })
-    return product
+
+    return {
+      data: product,
+      message: this.i18n.t('product.product.success.GET_PRODUCT_DETAIL')
+    }
   }
 
-  create({ data, createdById }: { data: CreateProductBodyType; createdById: number }) {
-    return this.productRepo.create({
+  async create({ data, createdById }: { data: CreateProductBodyType; createdById: number }) {
+    const product = await this.productRepo.create({
       createdById,
       data
     })
+
+    return {
+      data: product,
+      message: this.i18n.t('product.product.success.CREATE_SUCCESS')
+    }
   }
 
   async update({
@@ -189,7 +205,11 @@ export class ManageProductService {
         updatedById,
         data
       })
-      return updatedProduct
+
+      return {
+        data: updatedProduct,
+        message: this.i18n.t('product.product.success.UPDATE_SUCCESS')
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -222,7 +242,7 @@ export class ManageProductService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('product.product.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 export const GetCategoryTranslationParamsSchema = z
   .object({
+    message: z.string(),
     categoryTranslationId: z.coerce.number().int().positive()
   })
   .strict()

@@ -3,12 +3,14 @@ import { z } from 'zod'
 import { PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const GetPermissionsResSchema = z.object({
+  message: z.string(),
   data: z.array(PermissionSchema),
   metadata: PaginationMetadataSchema
 })
 
 export const GetPermissionParamsSchema = z
   .object({
+    message: z.string(),
     permissionId: z.coerce.number() // Phải thêm coerce để chuyển từ string sang number
   })
   .strict()

@@ -24,23 +24,26 @@ export const UserSchema = z.object({
 /**
  * Áp dụng cho Response của api GET('profile') và GET('users/:userId')
  */
-export const GetUserProfileResSchema = UserSchema.omit({
-  password: true,
-  totpSecret: true
-}).extend({
-  role: RoleSchema.pick({
-    id: true,
-    name: true
+export const GetUserProfileResSchema = z.object({
+  message: z.string(),
+  data: UserSchema.omit({
+    password: true,
+    totpSecret: true
   }).extend({
-    permissions: z.array(
-      PermissionSchema.pick({
-        id: true,
-        name: true,
-        module: true,
-        path: true,
-        method: true
-      })
-    )
+    role: RoleSchema.pick({
+      id: true,
+      name: true
+    }).extend({
+      permissions: z.array(
+        PermissionSchema.pick({
+          id: true,
+          name: true,
+          module: true,
+          path: true,
+          method: true
+        })
+      )
+    })
   })
 })
 

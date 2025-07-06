@@ -53,6 +53,7 @@ export const ProductSKUSnapshotSchema = z.object({
 })
 
 export const GetOrderListResSchema = z.object({
+  message: z.string(),
   data: z.array(
     OrderSchema.extend({
       items: z.array(ProductSKUSnapshotSchema)
@@ -96,6 +97,7 @@ export const CancelOrderResSchema = OrderSchema
 
 export const GetOrderParamsSchema = z
   .object({
+    message: z.string(),
     orderId: z.coerce.number().int().positive()
   })
   .strict()

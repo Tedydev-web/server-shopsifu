@@ -14,7 +14,7 @@ import { CookieService } from 'src/shared/services/cookie.service'
 import { Request, Response } from 'express'
 import { CookieNames } from 'src/shared/constants/cookie.constant'
 import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class OtpService {

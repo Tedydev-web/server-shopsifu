@@ -23,7 +23,7 @@ import { OtpService } from './otp.service'
 import { AuthRepository } from '../repositories/auth.repo'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class CoreAuthService {
@@ -70,7 +70,7 @@ export class CoreAuthService {
       })
 
       return {
-        message: this.i18n.t('auth.success.REGISTER_SUCCESS')
+        message: 'auth.success.REGISTER_SUCCESS'
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -100,7 +100,7 @@ export class CoreAuthService {
       code
     })
     return {
-      message: this.i18n.t('auth.success.SEND_OTP_SUCCESS')
+      message: 'auth.success.SEND_OTP_SUCCESS'
     }
   }
 
@@ -144,7 +144,7 @@ export class CoreAuthService {
     this.cookieService.setTokenCookies(res, accessToken, refreshToken)
 
     return {
-      message: this.i18n.t('auth.success.LOGIN_SUCCESS')
+      message: 'auth.success.LOGIN_SUCCESS'
     }
   }
 
@@ -190,7 +190,7 @@ export class CoreAuthService {
     }
     await this.sharedUserRepository.update({ id: data.userId }, { totpSecret: null })
     return {
-      message: this.i18n.t('auth.success.DISABLE_2FA_SUCCESS')
+      message: 'auth.success.DISABLE_2FA_SUCCESS'
     }
   }
 }

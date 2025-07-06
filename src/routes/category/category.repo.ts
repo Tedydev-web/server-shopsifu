@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { I18nService } from 'nestjs-i18n'
 import {
   CreateCategoryBodyType,
   GetAllCategoriesResType,
@@ -7,11 +8,15 @@ import {
   CategoryIncludeTranslationType
 } from 'src/routes/category/category.model'
 import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class CategoryRepo {
-  constructor(private prismaService: PrismaService) {}
+  constructor(
+    private prismaService: PrismaService,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   async findAll({
     parentCategoryId,
@@ -36,7 +41,8 @@ export class CategoryRepo {
     })
 
     return {
-      data: categories
+      data: categories,
+      message: this.i18n.t('category.category.success.GET_SUCCESS')
     }
   }
 
