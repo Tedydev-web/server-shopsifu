@@ -5,7 +5,6 @@ export const CategorySchema = z.object({
   id: z.number(),
   parentCategoryId: z.number().nullable(),
   name: z.string(),
-  description: z.string().nullable(),
   logo: z.string().nullable(),
 
   createdById: z.number().nullable(),
@@ -14,4 +13,8 @@ export const CategorySchema = z.object({
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
+})
+
+export const CategoryIncludeTranslationSchema = CategorySchema.extend({
+  categoryTranslations: z.array(CategoryTranslationSchema),
 })

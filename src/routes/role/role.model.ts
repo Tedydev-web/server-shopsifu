@@ -10,7 +10,7 @@ export const RoleWithPermissionsSchema = RoleSchema.extend({
 export const GetRolesResSchema = z.object({
   data: z.array(RoleSchema),
   metadata: PaginationMetadataSchema,
-})
+  })
 
 export const GetRoleParamsSchema = z
   .object({

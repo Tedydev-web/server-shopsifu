@@ -27,62 +27,51 @@ export class ProductRepo {
     languageId: string
     isPublic?: boolean
   }): Promise<GetProductDetailResType | null> {
-    let where: any = {
+    let where: Prisma.ProductWhereUniqueInput = {
       id: productId,
       deletedAt: null,
     }
-    if (isPublic) {
+    if (isPublic === true) {
+      where.publishedAt = {
+        lte: new Date(),
+        not: null,
+      }
+    } else if (isPublic === false) {
       where = {
         ...where,
         OR: [{ publishedAt: null }, { publishedAt: { gt: new Date() } }],
       }
     }
-    return this.prismaService.product
-      .findUnique({
-        where,
-        include: {
-          productTranslations: {
-            where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
+    return this.prismaService.product.findUnique({
+      where,
+      include: {
+        productTranslations: {
+          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
+        },
+        skus: {
+          where: {
+            deletedAt: null,
           },
-          skus: {
-            where: {
-              deletedAt: null,
-            },
-          },
-          brand: {
-            include: {
-              brandTranslations: {
-                where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
-              },
-            },
-          },
-          categories: {
-            where: {
-              deletedAt: null,
-            },
-            include: {
-              categoryTranslations: {
-                where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
-              },
+        },
+        brand: {
+          include: {
+            brandTranslations: {
+              where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
             },
           },
         },
-      })
-      .then((product) => {
-        if (!product) return null
-
-        return {
-          ...product,
-          categories: product.categories.map((category) => {
-            const translation = category.categoryTranslations?.[0]
-            return {
-              ...category,
-              name: translation?.name || category.name,
-              description: translation?.description || null,
-            }
-          }),
-        }
-      })
+        categories: {
+          where: {
+            deletedAt: null,
+          },
+          include: {
+            categoryTranslations: {
+              where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
+            },
+          },
+        },
+      },
+    })
   }
 
   create({
@@ -93,62 +82,48 @@ export class ProductRepo {
     data: CreateProductBodyType
   }): Promise<GetProductDetailResType> {
     const { skus, categories, ...productData } = data
-    return this.prismaService.product
-      .create({
-        data: {
-          createdById,
-          ...productData,
-          categories: {
-            connect: categories.map((category) => ({ id: category })),
+    return this.prismaService.product.create({
+      data: {
+        createdById,
+        ...productData,
+        categories: {
+          connect: categories.map((category) => ({ id: category })),
+        },
+        skus: {
+          createMany: {
+            data: skus.map((sku) => ({
+              ...sku,
+              createdById,
+            })),
           },
-          skus: {
-            createMany: {
-              data: skus.map((sku) => ({
-                ...sku,
-                createdById,
-              })),
+        },
+      },
+      include: {
+        productTranslations: {
+          where: { deletedAt: null },
+        },
+        skus: {
+          where: { deletedAt: null },
+        },
+        brand: {
+          include: {
+            brandTranslations: {
+              where: { deletedAt: null },
             },
           },
         },
-        include: {
-          productTranslations: {
-            where: { deletedAt: null },
+        categories: {
+          where: {
+            deletedAt: null,
           },
-          skus: {
-            where: { deletedAt: null },
-          },
-          brand: {
-            include: {
-              brandTranslations: {
-                where: { deletedAt: null },
-              },
-            },
-          },
-          categories: {
-            where: {
-              deletedAt: null,
-            },
-            include: {
-              categoryTranslations: {
-                where: { deletedAt: null },
-              },
+          include: {
+            categoryTranslations: {
+              where: { deletedAt: null },
             },
           },
         },
-      })
-      .then((product) => {
-        return {
-          ...product,
-          categories: product.categories.map((category) => {
-            const translation = category.categoryTranslations?.[0]
-            return {
-              ...category,
-              name: translation?.name || category.name,
-              description: translation?.description || null,
-            }
-          }),
-        }
-      })
+      },
+    })
   }
 
   async update({

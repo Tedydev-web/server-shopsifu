@@ -1,7 +1,7 @@
 import { UpsertSKUBodySchema } from 'src/routes/product/sku.model'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 import { BrandIncludeTranslationSchema } from 'src/shared/models/shared-brand.model'
-import { CategorySchema } from 'src/shared/models/shared-category.model'
+import { CategoryIncludeTranslationSchema } from 'src/shared/models/shared-category.model'
 import { ProductTranslationSchema } from 'src/shared/models/shared-product-translation.model'
 import { ProductSchema, VariantsType } from 'src/shared/models/shared-product.model'
 import { SKUSchema } from 'src/shared/models/shared-sku.model'
@@ -47,7 +47,7 @@ export const GetProductParamsSchema = z
 export const GetProductDetailResSchema = ProductSchema.extend({
   productTranslations: z.array(ProductTranslationSchema),
   skus: z.array(SKUSchema),
-  categories: z.array(CategorySchema),
+  categories: z.array(CategoryIncludeTranslationSchema),
   brand: BrandIncludeTranslationSchema,
 })
 

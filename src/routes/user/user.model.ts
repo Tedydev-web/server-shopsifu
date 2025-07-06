@@ -13,7 +13,7 @@ export const GetUsersResSchema = z.object({
     }),
   ),
   metadata: PaginationMetadataSchema,
-})
+  })
 
 export const GetUserParamsSchema = z
   .object({
