@@ -4,12 +4,13 @@ import { CoreAuthService } from './core.service'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { TokenService } from 'src/shared/services/auth/token.service'
 import { CookieService } from 'src/shared/services/cookie.service'
-import { AuthError } from '../auth.error'
 import { SessionRepository } from '../repositories/session.repository'
 import { SessionService as SharedSessionService } from 'src/shared/services/auth/session.service'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { InvalidRefreshTokenException, RefreshTokenReusedException } from '../auth.error'
+import { NotFoundRecordException, UserNotActiveException } from 'src/shared/error'
 
 interface RefreshTokenInput {
   refreshToken: string | undefined
@@ -40,12 +41,12 @@ export class SessionService {
   async refreshToken({ refreshToken, res }: RefreshTokenInput) {
     if (!refreshToken) {
       this.cookieService.clearTokenCookies(res)
-      throw AuthError.InvalidRefreshToken
+      throw InvalidRefreshTokenException
     }
 
     const { jti, sessionId, userId } = await this.tokenService.verifyRefreshToken(refreshToken).catch(() => {
       this.cookieService.clearTokenCookies(res)
-      throw AuthError.InvalidRefreshToken
+      throw InvalidRefreshTokenException
     })
 
     const [isUsed, isBlacklisted] = await Promise.all([
@@ -55,7 +56,7 @@ export class SessionService {
 
     if (isUsed || isBlacklisted) {
       await this.sharedSessionService.revokeAllUserSessions(userId)
-      throw AuthError.RefreshTokenReused
+      throw RefreshTokenReusedException
     }
 
     await this.sharedSessionService.markRefreshTokenAsUsed(jti)
@@ -63,23 +64,23 @@ export class SessionService {
 
     if (!session || session.userId !== userId) {
       this.cookieService.clearTokenCookies(res)
-      throw AuthError.InvalidRefreshToken
+      throw InvalidRefreshTokenException
     }
     const user = await this.userRepository.findUnique({ id: session.userId })
     if (!user) {
       this.cookieService.clearTokenCookies(res)
-      throw AuthError.UserNotFound
+      throw NotFoundRecordException
     }
 
     if (user.status !== 'ACTIVE') {
       this.cookieService.clearTokenCookies(res)
-      throw AuthError.UserNotActive
+      throw UserNotActiveException
     }
 
     const userRole = await this.sharedRoleRepository.getRoleById(user.roleId)
     if (!userRole) {
       this.cookieService.clearTokenCookies(res)
-      throw AuthError.RoleNotFound
+      throw NotFoundRecordException
     }
 
     await this.sessionRepository.updateSessionLastActive(sessionId)
@@ -96,7 +97,7 @@ export class SessionService {
     this.cookieService.setTokenCookies(res, tokens.accessToken, tokens.refreshToken, true)
 
     return {
-      message: this.i18n.t('auth.success.REFRESH_TOKEN_SUCCESS')
+      message: this.i18n.t('auth.auth.success.REFRESH_TOKEN_SUCCESS')
     }
   }
 
@@ -127,7 +128,7 @@ export class SessionService {
     this.cookieService.clearTokenCookies(res)
     await Promise.allSettled(promises)
     return {
-      message: this.i18n.t('auth.success.LOGOUT_SUCCESS')
+      message: this.i18n.t('auth.auth.success.LOGOUT_SUCCESS')
     }
   }
 }

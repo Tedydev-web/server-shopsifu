@@ -1,11 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common'
 import { Device } from '@prisma/client'
 import { Request } from 'express'
 import { DeviceFingerprintService } from 'src/shared/services/auth/device-fingerprint.service'
 import { DeviceRepository } from './device.repository'
-import { DeviceError } from './device.error'
 import { I18nService } from 'nestjs-i18n'
 import { isUniqueConstraintPrismaError } from 'src/shared/helpers'
+import { NotFoundRecordException } from 'src/shared/error'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class DeviceService {
@@ -14,7 +15,7 @@ export class DeviceService {
   constructor(
     private readonly deviceFingerprintService: DeviceFingerprintService,
     private readonly deviceRepository: DeviceRepository,
-    private readonly i18n: I18nService
+    private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   async findOrCreateDevice(userId: number, req: Request): Promise<Device> {
@@ -85,10 +86,10 @@ export class DeviceService {
   async renameDevice(userId: number, deviceId: number, name: string): Promise<Device> {
     const device = await this.deviceRepository.findById(deviceId)
     if (!device) {
-      throw DeviceError.DeviceNotFound
+      throw NotFoundRecordException
     }
     if (device.userId !== userId) {
-      throw DeviceError.DeviceNotBelongToUser
+      throw ForbiddenException
     }
     return this.deviceRepository.update(deviceId, { name })
   }
@@ -96,10 +97,10 @@ export class DeviceService {
   async revokeDevice(userId: number, deviceId: number): Promise<{ message: string }> {
     const device = await this.deviceRepository.findById(deviceId)
     if (!device) {
-      throw DeviceError.DeviceNotFound
+      throw NotFoundRecordException
     }
     if (device.userId !== userId) {
-      throw DeviceError.DeviceNotBelongToUser
+      throw ForbiddenException
     }
 
     // Đánh dấu thiết bị là không hoạt động

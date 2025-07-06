@@ -7,8 +7,10 @@ import { EnvConfigType } from 'src/shared/config'
 import { RedisKeyManager } from '../providers/redis/redis-key.manager'
 import { RedisService } from '../providers/redis/redis.service'
 import { v4 as uuidv4 } from 'uuid'
-import { UnauthorizedError, ForbiddenError } from 'src/shared/error'
+import { UnauthorizedException, ForbiddenException } from 'src/shared/error'
 import { extractRealIpFromRequest } from '../utils/http.utils'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from '../i18n/generated/i18n.generated'
 
 export interface SltJwtPayload {
   jti: string
@@ -34,7 +36,8 @@ export class SltService {
   constructor(
     private readonly configService: ConfigService<EnvConfigType>,
     private readonly jwtService: JwtService,
-    private readonly redisService: RedisService
+    private readonly redisService: RedisService,
+    private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   /**
@@ -84,18 +87,18 @@ export class SltService {
     try {
       payload = this.jwtService.verify(token, { secret: sltSecret })
     } catch (error) {
-      throw UnauthorizedError('Invalid or expired state token.')
+      throw UnauthorizedException
     }
 
     if (payload.purpose !== expectedPurpose) {
-      throw ForbiddenError('Invalid token purpose.')
+      throw ForbiddenException
     }
 
     const key = RedisKeyManager.getSltContextKey(payload.jti)
     const context = await this.redisService.get<SltContextData>(key)
 
     if (!context) {
-      throw UnauthorizedError('State context not found or expired.')
+      throw UnauthorizedException
     }
 
     const ip = extractRealIpFromRequest(req)
@@ -103,7 +106,7 @@ export class SltService {
     if (context.ipAddress !== ip || context.userAgent !== (req.headers['user-agent'] || '')) {
       // If mismatch, invalidate the context immediately as a security measure
       await this.redisService.del(key)
-      throw ForbiddenError('Client environment mismatch. Possible session hijacking attempt.')
+      throw ForbiddenException
     }
 
     return context

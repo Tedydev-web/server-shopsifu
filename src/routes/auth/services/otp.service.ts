@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { addMilliseconds } from 'date-fns'
-import { AuthError } from '../auth.error'
 import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import { CryptoService } from 'src/shared/services/crypto.service'
 import { EmailService } from 'src/shared/services/email.service'
@@ -15,6 +14,7 @@ import { Request, Response } from 'express'
 import { CookieNames } from 'src/shared/constants/cookie.constant'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { EmailAlreadyExistsException, InvalidOTPException, OTPExpiredException, StateTokenMissingException } from '../auth.error'
 
 @Injectable()
 export class OtpService {
@@ -32,11 +32,11 @@ export class OtpService {
   async sendOTP(body: SendOTPBodyDTO, req: Request, res: Response) {
     const user = await this.userRepository.findUnique({ email: body.email })
     if (body.type === TypeOfVerificationCode.REGISTER && user) {
-      throw AuthError.EmailAlreadyExists
+      throw EmailAlreadyExistsException
     }
     if (body.type === TypeOfVerificationCode.FORGOT_PASSWORD && !user) {
       // Don't throw an error to prevent user enumeration attacks
-      return { message: this.i18n.t('auth.success.SEND_OTP_SUCCESS') }
+      return { message: this.i18n.t('auth.auth.success.SEND_OTP_SUCCESS') }
     }
 
     const code = this.cryptoService.generateOTP()
@@ -59,7 +59,7 @@ export class OtpService {
       code
     })
     return {
-      message: this.i18n.t('auth.success.SEND_OTP_SUCCESS')
+      message: this.i18n.t('auth.auth.success.SEND_OTP_SUCCESS')
     }
   }
 
@@ -77,7 +77,7 @@ export class OtpService {
     // 1. Validate the SLT
     const sltCookie = req.cookies[CookieNames.SLT]
     if (!sltCookie) {
-      throw AuthError.StateTokenMissing
+      throw StateTokenMissingException
     }
     await this.sltService.validateAndGetContext(sltCookie, req, type)
 
@@ -88,11 +88,11 @@ export class OtpService {
       type
     })
     if (!verificationCode) {
-      throw AuthError.InvalidOTP
+      throw InvalidOTPException
     }
     if (verificationCode.expiresAt < new Date()) {
       await this.verificationCodeRepository.delete({ email, code, type })
-      throw AuthError.OTPExpired
+      throw OTPExpiredException
     }
 
     // Delete the code after successful validation

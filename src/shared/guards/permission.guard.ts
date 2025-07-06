@@ -2,11 +2,16 @@ import { Injectable, CanActivate, ExecutionContext, Logger, UnauthorizedExceptio
 import { Reflector } from '@nestjs/core'
 import { Request } from 'express'
 import { REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
-import { AuthError } from 'src/routes/auth/auth.error'
 import { PrismaService } from '../services/prisma.service'
 import { RedisService } from '../providers/redis/redis.service'
 import { RedisKeyManager } from '../providers/redis/redis-key.manager'
 import { I18nService } from 'nestjs-i18n'
+import {
+  InsufficientPermissionsException,
+  NotFoundRecordException,
+  SessionNotFoundException,
+  UserNotActiveException
+} from '../error'
 
 export interface RequiredPermission {
   resource: string
@@ -60,15 +65,15 @@ export class PermissionGuard implements CanActivate {
     })
     if (!dbUser) {
       this.logDenied(request, 'USER_NOT_FOUND', user)
-      throw AuthError.UserNotFound
+      throw NotFoundRecordException
     }
     if (!dbUser.role || !dbUser.role.isActive) {
       this.logDenied(request, 'ROLE_NOT_ACTIVE', user)
-      throw AuthError.UserNotActive
+      throw UserNotActiveException
     }
     if (dbUser.status !== 'ACTIVE') {
       this.logDenied(request, `USER_STATUS_${dbUser.status}`, user)
-      throw AuthError.UserNotActive
+      throw UserNotActiveException
     }
 
     // 2. Validate device (with caching)
@@ -96,7 +101,7 @@ export class PermissionGuard implements CanActivate {
 
     if (!hasPermission) {
       this.logDenied(request, 'INSUFFICIENT_PERMISSIONS', user)
-      throw AuthError.InsufficientPermissions
+      throw InsufficientPermissionsException
     }
 
     return true
@@ -110,7 +115,7 @@ export class PermissionGuard implements CanActivate {
 
     if (cachedStatus) {
       if (!cachedStatus.isActive) {
-        throw AuthError.UserNotActive
+        throw UserNotActiveException
       }
       return
     }
@@ -122,11 +127,11 @@ export class PermissionGuard implements CanActivate {
     })
 
     if (!device) {
-      throw AuthError.SessionNotFound
+      throw SessionNotFoundException
     }
 
     if (!device.isActive) {
-      throw AuthError.UserNotActive
+      throw UserNotActiveException
     }
 
     // Cache the result
@@ -155,7 +160,7 @@ export class PermissionGuard implements CanActivate {
     })
 
     if (!roleWithPermissions) {
-      throw AuthError.RoleNotFound
+      throw NotFoundRecordException
     }
 
     const permissions = roleWithPermissions.permissions.map((p) => ({

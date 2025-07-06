@@ -1,99 +1,115 @@
-import {
-  ConflictError,
-  NotFoundError,
-  ForbiddenError,
-  UnauthorizedError,
-  BadRequestError,
-  InternalServerError,
-  UnprocessableEntityError
-} from 'src/shared/error'
+import { UnauthorizedException, UnprocessableEntityException } from '@nestjs/common'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
-export const AuthError = {
-  // --- Account & User ---
-  EmailAlreadyExists: ConflictError('auth.error.EMAIL_ALREADY_EXISTS'),
-  EmailNotFound: NotFoundError('auth.error.EMAIL_NOT_FOUND'),
-  UserNotFound: NotFoundError('auth.error.USER_NOT_FOUND'),
-  UserNotActive: ForbiddenError('auth.error.USER_NOT_ACTIVE'),
-  UserBlocked: ForbiddenError('auth.error.USER_BLOCKED'),
-  AccountLocked: ForbiddenError('auth.error.ACCOUNT_LOCKED'),
+// OTP related errors
+export const InvalidOTPException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.INVALID_OTP'),
+      path: 'code'
+    }
+  ])
 
-  // --- Credentials ---
-  InvalidCredentials: UnauthorizedError('auth.error.INVALID_CREDENTIALS'),
-  InvalidPassword: UnauthorizedError('auth.error.INVALID_CREDENTIALS', 'password'),
-  PasswordsNotMatch: BadRequestError('auth.error.PASSWORDS_NOT_MATCH', 'confirmPassword'),
-  SamePassword: BadRequestError('auth.error.SAME_PASSWORD', 'newPassword'),
+export const OTPExpiredException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.OTP_EXPIRED'),
+      path: 'code'
+    }
+  ])
 
-  // --- OTP & Verification ---
-  InvalidOTP: BadRequestError('auth.error.INVALID_OTP', 'code'),
-  OTPExpired: BadRequestError('auth.error.OTP_EXPIRED', 'code'),
-  OTPSendingFailed: InternalServerError('auth.error.OTP_SENDING_FAILED'),
-  VerificationCodeInvalid: BadRequestError('auth.error.VERIFICATION_CODE_INVALID'),
-  VerificationCodeNotFound: NotFoundError('auth.error.VERIFICATION_CODE_NOT_FOUND'),
+export const FailedToSendOTPException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.FAILED_TO_SEND_OTP'),
+      path: 'code'
+    }
+  ])
 
-  // --- Two-Factor Authentication ---
-  InvalidTOTP: BadRequestError('auth.error.INVALID_TOTP', 'totpCode'),
-  TOTPRequired: BadRequestError('auth.error.TOTP_REQUIRED'),
-  TOTPAlreadyEnabled: ConflictError('auth.error.TOTP_ALREADY_ENABLED'),
-  TOTPNotEnabled: BadRequestError('auth.error.TOTP_NOT_ENABLED'),
+// Email related errors
+export const EmailAlreadyExistsException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.EMAIL_ALREADY_EXISTS'),
+      path: 'email'
+    }
+  ])
 
-  // --- Tokens & Sessions ---
-  RefreshTokenRequired: UnauthorizedError('auth.error.REFRESH_TOKEN_REQUIRED'),
-  InvalidRefreshToken: UnauthorizedError('auth.error.INVALID_REFRESH_TOKEN'),
-  RefreshTokenReused: ForbiddenError('auth.error.REFRESH_TOKEN_REUSED'),
-  TokenBlacklisted: UnauthorizedError('auth.error.TOKEN_BLACKLISTED'),
-  SessionNotFound: NotFoundError('auth.error.SESSION_NOT_FOUND'),
+export const EmailNotFoundException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.EMAIL_NOT_FOUND'),
+      path: 'email'
+    }
+  ])
 
-  // --- CSRF ---
-  InvalidCsrfToken: ForbiddenError('auth.error.INVALID_CSRF_TOKEN'),
-  CsrfTokenMissing: ForbiddenError('auth.error.CSRF_TOKEN_MISSING'),
+// Auth token related errors
+export const RefreshTokenAlreadyUsedException = (i18n: I18nService<I18nTranslations>) =>
+  new UnauthorizedException(i18n.t('auth.auth.error.REFRESH_TOKEN_ALREADY_USED'))
+export const UnauthorizedAccessException = (i18n: I18nService<I18nTranslations>) =>
+  new UnauthorizedException(i18n.t('auth.auth.error.UNAUTHORIZED_ACCESS'))
 
-  // --- General ---
-  InsufficientPermissions: ForbiddenError('auth.error.INSUFFICIENT_PERMISSIONS', 'permission'),
-  RoleNotFound: InternalServerError('auth.error.ROLE_NOT_FOUND'),
+// Google auth related errors
+export const GoogleUserInfoError = (i18n: I18nService<I18nTranslations>) =>
+  new Error(i18n.t('auth.auth.error.FAILED_TO_GET_GOOGLE_USER_INFO'))
 
-  // === Password & Credentials Errors ===
-  WeakPassword: BadRequestError('auth.error.WEAK_PASSWORD', 'password'),
+export const InvalidTOTPException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.INVALID_TOTP'),
+      path: 'totpCode'
+    }
+  ])
 
-  // === OTP Errors ===
-  OTPMaxAttempts: BadRequestError('auth.error.OTP_MAX_ATTEMPTS'),
-  OTPRequired: BadRequestError('auth.error.OTP_REQUIRED'),
+export const TOTPAlreadyEnabledException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.TOTP_ALREADY_ENABLED'),
+      path: 'totpCode'
+    }
+  ])
 
-  // === 2FA/TOTP Errors ===
-  InvalidTOTPAndCode: BadRequestError('auth.error.INVALID_TOTP_AND_CODE'),
-  Disable2FARequiresCode: BadRequestError('auth.error.DISABLE_2FA_REQUIRES_CODE'),
-  InvalidRecoveryCode: BadRequestError('auth.error.INVALID_RECOVERY_CODE'),
-  StateTokenMissing: BadRequestError('auth.error.STATE_TOKEN_MISSING'),
+export const TOTPNotEnabledException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.TOTP_NOT_ENABLED'),
+      path: 'totpCode'
+    }
+  ])
 
-  // === Token & Session Errors ===
-  AccessTokenExpired: UnauthorizedError('auth.error.ACCESS_TOKEN_EXPIRED'),
-  SessionExpired: UnauthorizedError('auth.error.SESSION_EXPIRED'),
-  SessionRevoked: UnauthorizedError('auth.error.SESSION_REVOKED'),
-  SessionUserMismatch: UnauthorizedError('auth.error.SESSION_USER_MISMATCH'),
-  InvalidSession: UnauthorizedError('auth.error.INVALID_SESSION'),
+export const InvalidTOTPAndCodeException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.INVALID_TOTP_AND_CODE'),
+      path: 'totpCode'
+    },
+    {
+      message: i18n.t('auth.auth.error.INVALID_TOTP_AND_CODE'),
+      path: 'code'
+    }
+  ])
 
-  // === Device Errors ===
-  DeviceNotFound: NotFoundError('auth.error.DEVICE_NOT_FOUND'),
-  DeviceNotTrusted: ForbiddenError('auth.error.DEVICE_NOT_TRUSTED'),
-  DeviceInactive: ForbiddenError('auth.error.DEVICE_INACTIVE'),
-  SuspiciousDevice: ForbiddenError('auth.error.SUSPICIOUS_DEVICE'),
+export const InvalidRefreshTokenException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.INVALID_REFRESH_TOKEN'),
+      path: 'refreshToken'
+    }
+  ])
 
-  // === OAuth & Social Auth Errors ===
-  GoogleAuthError: InternalServerError('auth.error.GOOGLE_AUTH_ERROR'),
-  GoogleUserInfoError: InternalServerError('auth.error.GOOGLE_USER_INFO_ERROR'),
-  GoogleCallbackError: BadRequestError('auth.error.GOOGLE_CALLBACK_ERROR'),
-  GoogleAccountLinked: ConflictError('auth.error.GOOGLE_ACCOUNT_LINKED'),
-  GoogleNotLinked: BadRequestError('auth.error.GOOGLE_NOT_LINKED'),
-  InvalidOAuthState: BadRequestError('auth.error.INVALID_OAUTH_STATE'),
-  OAuthCancelled: BadRequestError('auth.error.OAUTH_CANCELLED'),
+export const RefreshTokenReusedException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.REFRESH_TOKEN_REUSED'),
+      path: 'refreshToken'
+    }
+  ])
 
-  // === Verification Errors ===
-  VerificationRequired: BadRequestError('auth.error.VERIFICATION_REQUIRED'),
-  EmailNotVerified: BadRequestError('auth.error.EMAIL_NOT_VERIFIED'),
-
-  // === System & General Errors ===
-  RateLimitExceeded: BadRequestError('auth.error.RATE_LIMIT_EXCEEDED'),
-  ServiceUnavailable: InternalServerError('auth.error.SERVICE_UNAVAILABLE'),
-  MaintenanceMode: InternalServerError('auth.error.MAINTENANCE_MODE')
-} as const
-
-export type AuthErrorKey = keyof typeof AuthError
+export const StateTokenMissingException = (i18n: I18nService<I18nTranslations>) =>
+  new UnprocessableEntityException([
+    {
+      message: i18n.t('auth.auth.error.STATE_TOKEN_MISSING'),
+      path: 'stateToken'
+    }
+  ])

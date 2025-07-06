@@ -42,7 +42,7 @@ export class PasswordService {
       })
     }
     return {
-      message: this.i18n.t('auth.success.FORGOT_PASSWORD_SUCCESS')
+      message: this.i18n.t('auth.auth.success.FORGOT_PASSWORD_SUCCESS')
     }
   }
 

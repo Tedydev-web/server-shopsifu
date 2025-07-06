@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config'
 import { Response, Request } from 'express'
 import { OAuth2Client } from 'google-auth-library'
 import { google } from 'googleapis'
-import { AuthError } from '../../auth.error'
 import { CoreAuthService } from '../core.service'
 import { CookieService } from 'src/shared/services/cookie.service'
 import { HashingService } from 'src/shared/services/hashing.service'
@@ -18,6 +17,8 @@ import { SessionService } from 'src/shared/services/auth/session.service'
 import { SessionRepository } from '../../repositories/session.repository'
 import { AuthRepository } from '../../repositories/auth.repo'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
+import { GoogleUserInfoError } from '../../auth.error'
+import { NotFoundRecordException } from 'src/shared/error'
 
 const GOOGLE_OAUTH_NONCE_COOKIE = 'google_oauth_nonce'
 
@@ -95,7 +96,7 @@ export class GoogleService {
       })
       const { data: googleUser } = await oauth2.userinfo.get()
       if (!googleUser.email) {
-        throw AuthError.GoogleUserInfoError
+        throw GoogleUserInfoError
       }
 
       // 4. Tìm hoặc tạo user
@@ -116,7 +117,7 @@ export class GoogleService {
       }
 
       if (!user) {
-        throw AuthError.UserNotFound
+        throw NotFoundRecordException
       }
 
       // 5. Sử dụng fingerprint để tìm hoặc tạo thiết bị mới
