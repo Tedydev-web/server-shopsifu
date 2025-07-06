@@ -13,6 +13,7 @@ export const SortBy = {
   Sale: 'sale',
   Name: 'name',
   Email: 'email',
+  Status: 'status',
 } as const
 
 export type OrderByType = (typeof OrderBy)[keyof typeof OrderBy]

@@ -12,6 +12,8 @@ import {
 } from 'src/routes/order/order.dto'
 import { OrderService } from 'src/routes/order/order.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { Pagination } from 'src/shared/decorators/pagination.decorator'
+import { PaginationQueryDTO } from 'src/shared/dtos/pagination.dto'
 
 @Controller('orders')
 export class OrderController {
@@ -19,8 +21,12 @@ export class OrderController {
 
   @Get()
   @ZodSerializerDto(GetOrderListResDTO)
-  getCart(@ActiveUser('userId') userId: number, @Query() query: GetOrderListQueryDTO) {
-    return this.orderService.list(userId, query)
+  getCart(
+    @ActiveUser('userId') userId: number,
+    @Pagination() pagination: PaginationQueryDTO,
+    @Query() query: GetOrderListQueryDTO,
+  ) {
+    return this.orderService.list(userId, { ...pagination, ...query })
   }
 
   @Post()

@@ -1,5 +1,5 @@
 import { OrderStatus } from 'src/shared/constants/order.constant'
-import { PaginationQuerySchema } from 'src/shared/models/request.model'
+import { PaginationQuerySchema, PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 import { z } from 'zod'
 
 const OrderStatusSchema = z.enum([
@@ -64,14 +64,12 @@ export const GetOrderListResSchema = z.object({
       updatedById: true,
     }),
   ),
-  totalItems: z.number(),
-  page: z.number(), // Số trang hiện tại
-  limit: z.number(), // Số item trên 1 trang
-  totalPages: z.number(), // Tổng số trang
+  metadata: PaginationMetadataSchema,
 })
 
 export const GetOrderListQuerySchema = PaginationQuerySchema.extend({
   status: OrderStatusSchema.optional(),
+  search: z.string().optional(),
 })
 
 export const GetOrderDetailResSchema = OrderSchema.extend({
