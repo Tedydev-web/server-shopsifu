@@ -22,7 +22,7 @@ import envConfig from 'src/shared/config'
 import { ProductModule } from './routes/product/product.module'
 import { ProductTranslationModule } from './routes/product/product-translation/product-translation.module'
 import { CartModule } from './routes/cart/cart.module'
-import { OrderModule } from './routes/order/cart.module'
+import { OrderModule } from './routes/order/order.module'
 
 @Module({
   imports: [

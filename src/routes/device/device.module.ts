@@ -4,7 +4,6 @@ import { DeviceService } from './device.service'
 import { DeviceRepository } from './device.repository'
 
 @Module({
-  imports: [],
   controllers: [DeviceController],
   providers: [DeviceService, DeviceRepository],
   exports: [DeviceService, DeviceRepository],
