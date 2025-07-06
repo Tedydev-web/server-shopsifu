@@ -23,8 +23,8 @@ import { AuthRepository } from './repositories/auth.repo'
     VerificationCodeRepository,
     PasswordService,
     SessionService,
-    AuthRepository,
+    AuthRepository
   ],
-  exports: [CoreAuthService, SessionService],
+  exports: [CoreAuthService, SessionService]
 })
 export class AuthModule {}

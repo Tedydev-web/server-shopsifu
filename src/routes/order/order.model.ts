@@ -8,7 +8,7 @@ const OrderStatusSchema = z.enum([
   OrderStatus.PENDING_DELIVERY,
   OrderStatus.DELIVERED,
   OrderStatus.RETURNED,
-  OrderStatus.CANCELLED,
+  OrderStatus.CANCELLED
 ])
 
 export const OrderSchema = z.object({
@@ -18,7 +18,7 @@ export const OrderSchema = z.object({
   receiver: z.object({
     name: z.string(),
     phone: z.string(),
-    address: z.string(),
+    address: z.string()
   }),
   shopId: z.number().nullable(),
 
@@ -27,7 +27,7 @@ export const OrderSchema = z.object({
   deletedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date(),
+  updatedAt: z.date()
 })
 
 export const ProductSKUSnapshotSchema = z.object({
@@ -39,8 +39,8 @@ export const ProductSKUSnapshotSchema = z.object({
       id: z.number(),
       name: z.string(),
       description: z.string(),
-      languageId: z.string(),
-    }),
+      languageId: z.string()
+    })
   ),
   skuPrice: z.number(),
   image: z.string(),
@@ -49,31 +49,31 @@ export const ProductSKUSnapshotSchema = z.object({
   orderId: z.number().nullable(),
   quantity: z.number(),
 
-  createdAt: z.date(),
+  createdAt: z.date()
 })
 
 export const GetOrderListResSchema = z.object({
   data: z.array(
     OrderSchema.extend({
-      items: z.array(ProductSKUSnapshotSchema),
+      items: z.array(ProductSKUSnapshotSchema)
     }).omit({
       receiver: true,
       deletedAt: true,
       deletedById: true,
       createdById: true,
-      updatedById: true,
-    }),
+      updatedById: true
+    })
   ),
-  metadata: PaginationMetadataSchema,
+  metadata: PaginationMetadataSchema
 })
 
 export const GetOrderListQuerySchema = PaginationQuerySchema.extend({
   status: OrderStatusSchema.optional(),
-  search: z.string().optional(),
+  search: z.string().optional()
 })
 
 export const GetOrderDetailResSchema = OrderSchema.extend({
-  items: z.array(ProductSKUSnapshotSchema),
+  items: z.array(ProductSKUSnapshotSchema)
 })
 
 export const CreateOrderBodySchema = z
@@ -83,10 +83,10 @@ export const CreateOrderBodySchema = z
       receiver: z.object({
         name: z.string(),
         phone: z.string().min(9).max(20),
-        address: z.string(),
+        address: z.string()
       }),
-      cartItemIds: z.array(z.number()).min(1),
-    }),
+      cartItemIds: z.array(z.number()).min(1)
+    })
   )
   .min(1)
 
@@ -96,7 +96,7 @@ export const CancelOrderResSchema = OrderSchema
 
 export const GetOrderParamsSchema = z
   .object({
-    orderId: z.coerce.number().int().positive(),
+    orderId: z.coerce.number().int().positive()
   })
   .strict()
 

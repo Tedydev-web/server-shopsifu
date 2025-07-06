@@ -12,19 +12,19 @@ export class AuthRepository {
   constructor(private readonly prismaService: PrismaService) {}
 
   async createUser(
-    user: Pick<UserType, 'email' | 'name' | 'password' | 'phoneNumber' | 'roleId'>,
+    user: Pick<UserType, 'email' | 'name' | 'password' | 'phoneNumber' | 'roleId'>
   ): Promise<Omit<UserType, 'password' | 'totpSecret'>> {
     return this.prismaService.user.create({
       data: user,
       omit: {
         password: true,
-        totpSecret: true,
-      },
+        totpSecret: true
+      }
     })
   }
 
   async createUserInclueRole(
-    user: Pick<UserType, 'email' | 'name' | 'password' | 'phoneNumber' | 'avatar' | 'roleId'>,
+    user: Pick<UserType, 'email' | 'name' | 'password' | 'phoneNumber' | 'avatar' | 'roleId'>
   ): Promise<UserType & { role: RoleType & { permissions: PermissionType[] } }> {
     return this.prismaService.user.create({
       data: user,
@@ -33,31 +33,31 @@ export class AuthRepository {
           include: {
             permissions: {
               where: {
-                deletedAt: null,
-              },
-            },
-          },
-        },
-      },
+                deletedAt: null
+              }
+            }
+          }
+        }
+      }
     })
   }
 
   async createVerificationCode(
-    payload: Pick<VerificationCodeType, 'email' | 'type' | 'code' | 'expiresAt'>,
+    payload: Pick<VerificationCodeType, 'email' | 'type' | 'code' | 'expiresAt'>
   ): Promise<VerificationCodeType> {
     return this.prismaService.verificationCode.upsert({
       where: {
         email_code_type: {
           email: payload.email,
           code: payload.code,
-          type: payload.type,
-        },
+          type: payload.type
+        }
       },
       create: payload,
       update: {
         code: payload.code,
-        expiresAt: payload.expiresAt,
-      },
+        expiresAt: payload.expiresAt
+      }
     })
   }
 
@@ -70,19 +70,19 @@ export class AuthRepository {
             code: string
             type: TypeOfVerificationCodeType
           }
-        },
+        }
   ): Promise<VerificationCodeType | null> {
     return this.prismaService.verificationCode.findUnique({
-      where: uniqueValue,
+      where: uniqueValue
     })
   }
 
   createDevice(
     data: Pick<DeviceType, 'userId' | 'userAgent' | 'ip' | 'name'> &
-      Partial<Pick<DeviceType, 'lastActive' | 'isActive'>>,
+      Partial<Pick<DeviceType, 'lastActive' | 'isActive'>>
   ) {
     return this.prismaService.device.create({
-      data,
+      data
     })
   }
 
@@ -90,20 +90,20 @@ export class AuthRepository {
     return this.prismaService.user.findFirst({
       where: {
         ...where,
-        deletedAt: null,
+        deletedAt: null
       },
       include: {
-        role: true,
-      },
+        role: true
+      }
     })
   }
 
   updateDevice(deviceId: number, data: Partial<DeviceType>): Promise<DeviceType> {
     return this.prismaService.device.update({
       where: {
-        id: deviceId,
+        id: deviceId
       },
-      data,
+      data
     })
   }
 
@@ -116,10 +116,10 @@ export class AuthRepository {
             code: string
             type: TypeOfVerificationCodeType
           }
-        },
+        }
   ): Promise<VerificationCodeType> {
     return this.prismaService.verificationCode.delete({
-      where: uniqueValue,
+      where: uniqueValue
     })
   }
 }

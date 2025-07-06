@@ -37,7 +37,7 @@ export class GoogleService {
     private readonly deviceService: DeviceService,
     private readonly sessionService: SessionService,
     private readonly sessionRepository: SessionRepository,
-    private readonly authRepository: AuthRepository,
+    private readonly authRepository: AuthRepository
   ) {
     const googleConfig = this.configService.get('oauth').google
     const appConfig = this.configService.get('app')
@@ -45,7 +45,7 @@ export class GoogleService {
     this.oauth2Client = new google.auth.OAuth2(
       googleConfig.clientId,
       googleConfig.clientSecret,
-      googleConfig.redirectUri,
+      googleConfig.redirectUri
     )
     this.clientUrl = appConfig.clientUrl
   }
@@ -61,7 +61,7 @@ export class GoogleService {
       httpOnly: true,
       secure: !this.configService.get('isProd'),
       sameSite: 'lax',
-      maxAge: ms('15m'), // Nonce chỉ hợp lệ trong 15 phút
+      maxAge: ms('15m') // Nonce chỉ hợp lệ trong 15 phút
     })
 
     // 3. Truyền nonce vào state
@@ -69,7 +69,7 @@ export class GoogleService {
       access_type: 'offline',
       scope,
       include_granted_scopes: true,
-      state: nonce,
+      state: nonce
     })
     return { url }
   }
@@ -91,7 +91,7 @@ export class GoogleService {
       // 3. Lấy thông tin google user
       const oauth2 = google.oauth2({
         auth: this.oauth2Client,
-        version: 'v2',
+        version: 'v2'
       })
       const { data: googleUser } = await oauth2.userinfo.get()
       if (!googleUser.email) {
@@ -111,7 +111,7 @@ export class GoogleService {
           password: hashedPassword,
           roleId: clientRoleId,
           phoneNumber: '',
-          avatar: googleUser.picture ?? null,
+          avatar: googleUser.picture ?? null
         })
       }
 
@@ -132,7 +132,7 @@ export class GoogleService {
         deviceId: device.id,
         ipAddress: device.ip, // Sử dụng IP đã chuẩn hóa
         userAgent: device.userAgent, // Sử dụng User Agent đã chuẩn hóa
-        expiresAt: refreshTokenExpiresAt,
+        expiresAt: refreshTokenExpiresAt
       })
 
       // 7.1 Cache session vào Redis
@@ -144,7 +144,7 @@ export class GoogleService {
         userId: user.id,
         sessionId: session.id,
         roleId: user.roleId,
-        roleName: userRole?.name || 'Client',
+        roleName: userRole?.name || 'Client'
       })
 
       // 9. Set cookies. Google login is like "remember me" by default.

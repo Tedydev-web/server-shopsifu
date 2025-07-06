@@ -4,12 +4,12 @@ import { PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const GetBrandsResSchema = z.object({
   data: z.array(BrandIncludeTranslationSchema),
-  metadata: PaginationMetadataSchema,
+  metadata: PaginationMetadataSchema
 })
 
 export const GetBrandParamsSchema = z
   .object({
-    brandId: z.coerce.number().int().positive(),
+    brandId: z.coerce.number().int().positive()
   })
   .strict()
 
@@ -17,7 +17,7 @@ export const GetBrandDetailResSchema = BrandIncludeTranslationSchema
 
 export const CreateBrandBodySchema = BrandSchema.pick({
   name: true,
-  logo: true,
+  logo: true
 }).strict()
 
 export const UpdateBrandBodySchema = CreateBrandBodySchema

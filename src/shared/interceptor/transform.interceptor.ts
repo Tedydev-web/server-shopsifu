@@ -21,7 +21,7 @@ export class TransformInterceptor<T> implements NestInterceptor<T, any> {
         } else {
           return { data }
         }
-      }),
+      })
     )
   }
 }

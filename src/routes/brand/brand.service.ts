@@ -12,7 +12,7 @@ import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 export class BrandService {
   constructor(
     private brandRepo: BrandRepo,
-    private paginationService: PaginationService,
+    private paginationService: PaginationService
   ) {}
 
   async list(props: { pagination: PaginationQueryType; filters: any }) {
@@ -28,11 +28,11 @@ export class BrandService {
       where,
       include: {
         brandTranslations: {
-          where: languageId === 'all' ? { deletedAt: null } : { deletedAt: null, languageId },
-        },
+          where: languageId === 'all' ? { deletedAt: null } : { deletedAt: null, languageId }
+        }
       },
       orderBy,
-      defaultSortField: 'createdAt',
+      defaultSortField: 'createdAt'
     })
   }
 
@@ -44,7 +44,7 @@ export class BrandService {
       const searchTerm = filters.search
       where.name = {
         contains: searchTerm,
-        mode: 'insensitive',
+        mode: 'insensitive'
       }
     }
 
@@ -77,7 +77,7 @@ export class BrandService {
   create({ data, createdById }: { data: CreateBrandBodyType; createdById: number }) {
     return this.brandRepo.create({
       createdById,
-      data,
+      data
     })
   }
 
@@ -86,7 +86,7 @@ export class BrandService {
       const brand = await this.brandRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
       return brand
     } catch (error) {
@@ -101,10 +101,10 @@ export class BrandService {
     try {
       await this.brandRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

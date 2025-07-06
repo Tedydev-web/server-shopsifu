@@ -9,7 +9,7 @@ import { PaginationService } from 'src/shared/services/pagination.service'
 export class CartService {
   constructor(
     private readonly cartRepo: CartRepo,
-    private readonly paginationService: PaginationService,
+    private readonly paginationService: PaginationService
   ) {}
 
   async getCart(userId: number, pagination: PaginationQueryType) {
@@ -20,7 +20,7 @@ export class CartService {
       userId,
       languageId,
       page: pagination.page,
-      limit: pagination.limit,
+      limit: pagination.limit
     })
 
     // Tạo metadata chuẩn từ PaginationService
@@ -28,7 +28,7 @@ export class CartService {
 
     return {
       data: result.data,
-      metadata,
+      metadata
     }
   }
 
@@ -40,14 +40,14 @@ export class CartService {
     return this.cartRepo.update({
       userId,
       body,
-      cartItemId,
+      cartItemId
     })
   }
 
   async deleteCart(userId: number, body: DeleteCartBodyType) {
     const { count } = await this.cartRepo.delete(userId, body)
     return {
-      message: `${count} item(s) deleted from cart`,
+      message: `${count} item(s) deleted from cart`
     }
   }
 }

@@ -4,7 +4,7 @@ import {
   ConflictError,
   BadRequestError,
   UnauthorizedError,
-  InternalServerError,
+  InternalServerError
 } from 'src/shared/error'
 
 export const DeviceError = {
@@ -40,7 +40,7 @@ export const DeviceError = {
   DeviceCreationFailed: InternalServerError('device.error.DEVICE_CREATION_FAILED'),
   DeviceUpdateFailed: InternalServerError('device.error.DEVICE_UPDATE_FAILED'),
   DeviceDeletionFailed: InternalServerError('device.error.DEVICE_DELETION_FAILED'),
-  DeviceRevokeFailed: InternalServerError('device.error.DEVICE_REVOKE_FAILED'),
+  DeviceRevokeFailed: InternalServerError('device.error.DEVICE_REVOKE_FAILED')
 } as const
 
 export type DeviceErrorKey = keyof typeof DeviceError

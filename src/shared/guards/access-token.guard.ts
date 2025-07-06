@@ -14,7 +14,7 @@ export class AccessTokenGuard implements CanActivate {
     private readonly tokenService: TokenService,
     private readonly sessionService: SessionService,
     private readonly sharedRoleRepository: SharedRoleRepository,
-    private readonly i18n: I18nService,
+    private readonly i18n: I18nService
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -32,7 +32,7 @@ export class AccessTokenGuard implements CanActivate {
       // 2. Check if token is blacklisted or session is invalid
       const [isBlacklisted, session] = await Promise.all([
         this.sessionService.isBlacklisted(payload.jti),
-        this.sessionService.getSession(payload.sessionId),
+        this.sessionService.getSession(payload.sessionId)
       ])
 
       if (isBlacklisted) {
@@ -53,7 +53,7 @@ export class AccessTokenGuard implements CanActivate {
       const path = request.route?.path || request.path
       const method = request.method
       const canAccess = role.permissions.some(
-        (permission) => permission.path === path && permission.method === method && !permission.deletedAt,
+        (permission) => permission.path === path && permission.method === method && !permission.deletedAt
       )
       if (!canAccess) {
         throw AuthError.InsufficientPermissions
@@ -66,7 +66,7 @@ export class AccessTokenGuard implements CanActivate {
         roleId: payload.roleId,
         roleName: payload.roleName,
         deviceId: session.deviceId,
-        jti: payload.jti,
+        jti: payload.jti
       }
       request[REQUEST_ROLE_PERMISSIONS] = role
 

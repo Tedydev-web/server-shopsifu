@@ -25,22 +25,22 @@ function generateSKUs(variants: VariantsType) {
     value,
     price: 0,
     stock: 100,
-    image: '',
+    image: ''
   }))
 }
 
 export const GetProductsResSchema = z.object({
   data: z.array(
     ProductSchema.extend({
-      productTranslations: z.array(ProductTranslationSchema),
-    }),
+      productTranslations: z.array(ProductTranslationSchema)
+    })
   ),
-  metadata: PaginationMetadataSchema,
+  metadata: PaginationMetadataSchema
 })
 
 export const GetProductParamsSchema = z
   .object({
-    productId: z.coerce.number().int().positive(),
+    productId: z.coerce.number().int().positive()
   })
   .strict()
 
@@ -48,7 +48,7 @@ export const GetProductDetailResSchema = ProductSchema.extend({
   productTranslations: z.array(ProductTranslationSchema),
   skus: z.array(SKUSchema),
   categories: z.array(CategoryIncludeTranslationSchema),
-  brand: BrandIncludeTranslationSchema,
+  brand: BrandIncludeTranslationSchema
 })
 
 export const CreateProductBodySchema = ProductSchema.pick({
@@ -58,11 +58,11 @@ export const CreateProductBodySchema = ProductSchema.pick({
   virtualPrice: true,
   brandId: true,
   images: true,
-  variants: true,
+  variants: true
 })
   .extend({
     categories: z.array(z.coerce.number().int().positive()),
-    skus: z.array(UpsertSKUBodySchema),
+    skus: z.array(UpsertSKUBodySchema)
   })
   .strict()
   .superRefine(({ variants, skus }, ctx) => {
@@ -72,7 +72,7 @@ export const CreateProductBodySchema = ProductSchema.pick({
       return ctx.addIssue({
         code: 'custom',
         path: ['skus'],
-        message: `Số lượng SKU nên là ${skuValueArray.length}. Vui lòng kiểm tra lại.`,
+        message: `Số lượng SKU nên là ${skuValueArray.length}. Vui lòng kiểm tra lại.`
       })
     }
 
@@ -89,7 +89,7 @@ export const CreateProductBodySchema = ProductSchema.pick({
       ctx.addIssue({
         code: 'custom',
         path: ['skus'],
-        message: `Giá trị SKU index ${wrongSKUIndex} không hợp lệ. Vui lòng kiểm tra lại.`,
+        message: `Giá trị SKU index ${wrongSKUIndex} không hợp lệ. Vui lòng kiểm tra lại.`
       })
     }
   })

@@ -53,7 +53,7 @@ export class CookieService {
     // Để xóa cookie, phải cung cấp chính xác path và domain đã dùng để set.
     const clearOptions = {
       path: definition.options.path,
-      domain: definition.options.domain,
+      domain: definition.options.domain
     }
     res.clearCookie(cookieName, clearOptions)
   }

@@ -61,7 +61,7 @@ export class UserAgentService {
       deviceVendor: deviceVendor || 'Unknown',
       deviceModel: deviceModel || 'Unknown',
       deviceName: getDeviceName(),
-      raw: ua,
+      raw: ua
     }
   }
 

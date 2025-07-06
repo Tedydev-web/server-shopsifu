@@ -13,7 +13,7 @@ export abstract class BaseRepository<T> {
 
   constructor(
     protected readonly prismaService: PrismaService,
-    modelName: string,
+    modelName: string
   ) {
     this.modelName = modelName
   }

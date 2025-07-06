@@ -11,9 +11,9 @@ export const BrandSchema = z.object({
   deletedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date(),
+  updatedAt: z.date()
 })
 
 export const BrandIncludeTranslationSchema = BrandSchema.extend({
-  brandTranslations: z.array(BrandTranslationSchema),
+  brandTranslations: z.array(BrandTranslationSchema)
 })

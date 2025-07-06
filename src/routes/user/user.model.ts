@@ -8,16 +8,16 @@ export const GetUsersResSchema = z.object({
     UserSchema.omit({ password: true, totpSecret: true }).extend({
       role: RoleSchema.pick({
         id: true,
-        name: true,
-      }),
-    }),
+        name: true
+      })
+    })
   ),
-  metadata: PaginationMetadataSchema,
-  })
+  metadata: PaginationMetadataSchema
+})
 
 export const GetUserParamsSchema = z
   .object({
-    userId: z.coerce.number().int().positive(),
+    userId: z.coerce.number().int().positive()
   })
   .strict()
 
@@ -28,7 +28,7 @@ export const CreateUserBodySchema = UserSchema.pick({
   avatar: true,
   status: true,
   password: true,
-  roleId: true,
+  roleId: true
 }).strict()
 
 export const UpdateUserBodySchema = CreateUserBodySchema

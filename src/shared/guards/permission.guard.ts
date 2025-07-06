@@ -27,14 +27,14 @@ export class PermissionGuard implements CanActivate {
     create: 'POST',
     update: 'PUT',
     delete: 'DELETE',
-    manage: 'GET', // manage có thể truy cập tất cả methods
+    manage: 'GET' // manage có thể truy cập tất cả methods
   }
 
   constructor(
     private readonly reflector: Reflector,
     private readonly prismaService: PrismaService,
     private readonly redisService: RedisService,
-    private readonly i18n: I18nService,
+    private readonly i18n: I18nService
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -56,7 +56,7 @@ export class PermissionGuard implements CanActivate {
     // 1. Kiểm tra trạng thái user và role (có thể cache nếu cần)
     const dbUser = await this.prismaService.user.findUnique({
       where: { id: user.userId },
-      select: { status: true, role: { select: { isActive: true } } },
+      select: { status: true, role: { select: { isActive: true } } }
     })
     if (!dbUser) {
       this.logDenied(request, 'USER_NOT_FOUND', user)
@@ -118,7 +118,7 @@ export class PermissionGuard implements CanActivate {
     // Query database if not in cache
     const device = await this.prismaService.device.findUnique({
       where: { id: deviceId },
-      select: { isActive: true },
+      select: { isActive: true }
     })
 
     if (!device) {
@@ -149,9 +149,9 @@ export class PermissionGuard implements CanActivate {
       include: {
         permissions: {
           where: { deletedAt: null },
-          select: { path: true, method: true },
-        },
-      },
+          select: { path: true, method: true }
+        }
+      }
     })
 
     if (!roleWithPermissions) {
@@ -160,7 +160,7 @@ export class PermissionGuard implements CanActivate {
 
     const permissions = roleWithPermissions.permissions.map((p) => ({
       path: p.path,
-      method: p.method,
+      method: p.method
     }))
 
     // Cache the result
@@ -188,14 +188,14 @@ export class PermissionGuard implements CanActivate {
           { path: `/${resource}s` },
           { path: `/${resource}` },
           // Try with common patterns
-          { path: { contains: resource, mode: 'insensitive' } },
-        ],
+          { path: { contains: resource, mode: 'insensitive' } }
+        ]
       },
       select: { path: true },
       orderBy: [
         // Prioritize paths with parameters for non-GET methods
-        method !== 'GET' ? { path: 'desc' } : { path: 'asc' },
-      ],
+        method !== 'GET' ? { path: 'desc' } : { path: 'asc' }
+      ]
     })
 
     if (!permission) {
@@ -225,7 +225,7 @@ export class PermissionGuard implements CanActivate {
 
   private async matchesPermission(
     userPermission: { path: string; method: string },
-    requiredPermission: RequiredPermission,
+    requiredPermission: RequiredPermission
   ): Promise<boolean> {
     // Get the HTTP method from action first
     const requiredMethod = this.getMethodFromAction(requiredPermission.action)
@@ -234,7 +234,7 @@ export class PermissionGuard implements CanActivate {
 
     // Debug logging
     this.logger.debug(
-      `Permission check: userPermission=${JSON.stringify(userPermission)}, requiredPermission=${JSON.stringify(requiredPermission)}, permissionPath=${permissionPath}, requiredMethod=${requiredMethod}`,
+      `Permission check: userPermission=${JSON.stringify(userPermission)}, requiredPermission=${JSON.stringify(requiredPermission)}, permissionPath=${permissionPath}, requiredMethod=${requiredMethod}`
     )
 
     // Check if path and method match
@@ -247,7 +247,7 @@ export class PermissionGuard implements CanActivate {
 
   private async checkPermissions(
     userPermissions: Array<{ path: string; method: string }>,
-    requiredPermissions: RequiredPermission[],
+    requiredPermissions: RequiredPermission[]
   ): Promise<boolean> {
     // Pre-load all resource mappings to avoid multiple DB queries
     const resourceMappings = new Map<string, string>()
@@ -268,12 +268,12 @@ export class PermissionGuard implements CanActivate {
       const permissionPath = resourceMappings.get(resourceKey)!
 
       const hasThisPermission = userPermissions.some(
-        (permission) => permission.path === permissionPath && permission.method === requiredMethod,
+        (permission) => permission.path === permissionPath && permission.method === requiredMethod
       )
 
       if (!hasThisPermission) {
         this.logger.debug(
-          `Missing permission: required=${JSON.stringify(required)}, path=${permissionPath}, method=${requiredMethod}`,
+          `Missing permission: required=${JSON.stringify(required)}, path=${permissionPath}, method=${requiredMethod}`
         )
         return false
       }
@@ -297,7 +297,7 @@ export class PermissionGuard implements CanActivate {
     }
     const endpoint = `${request.method} ${request.originalUrl}`
     this.logger.warn(
-      `Access denied: userId=${userId}, roleId=${roleId}, deviceId=${deviceId}, ip=${ip}, endpoint=${endpoint}, reason=${reason}, error=${error?.message || ''}`,
+      `Access denied: userId=${userId}, roleId=${roleId}, deviceId=${deviceId}, ip=${ip}, endpoint=${endpoint}, reason=${reason}, error=${error?.message || ''}`
     )
   }
 }

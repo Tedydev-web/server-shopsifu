@@ -18,7 +18,7 @@ export class TwoFactorService {
     const uri = authenticator.keyuri(email, appName, secret)
     return {
       secret,
-      uri,
+      uri
     }
   }
 
@@ -31,7 +31,7 @@ export class TwoFactorService {
   verifyTOTP({ token, secret }: { token: string; secret: string }): boolean {
     return authenticator.verify({
       token,
-      secret,
+      secret
     })
   }
 }

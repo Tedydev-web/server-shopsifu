@@ -4,7 +4,7 @@ import { DeviceSchema } from './device.model'
 
 // DTO for renaming a device
 export const RenameDeviceSchema = z.object({
-  name: z.string().min(1, 'Tên không được để trống').max(100, 'Tên không được quá 100 ký tự'),
+  name: z.string().min(1, 'Tên không được để trống').max(100, 'Tên không được quá 100 ký tự')
 })
 export class RenameDeviceDto extends createZodDto(RenameDeviceSchema) {}
 
@@ -19,6 +19,6 @@ export const DeviceResponseSchema = z.object({
   createdAt: z.coerce.date(),
   browser: z.string().nullable(), // Can be null if browser detection fails
   os: z.string().nullable(), // Can be null if OS detection fails
-  deviceType: z.string().nullable(), // Can be null if device type detection fails
+  deviceType: z.string().nullable() // Can be null if device type detection fails
 })
 export class DeviceResponseDto extends createZodDto(DeviceResponseSchema) {}

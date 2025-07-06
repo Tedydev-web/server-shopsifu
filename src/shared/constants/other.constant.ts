@@ -4,7 +4,7 @@ export const UPLOAD_DIR = path.resolve('upload')
 export const ALL_LANGUAGE_CODE = 'all'
 export const OrderBy = {
   Asc: 'asc',
-  Desc: 'desc',
+  Desc: 'desc'
 } as const
 
 export const SortBy = {
@@ -13,7 +13,7 @@ export const SortBy = {
   Sale: 'sale',
   Name: 'name',
   Email: 'email',
-  Status: 'status',
+  Status: 'status'
 } as const
 
 export type OrderByType = (typeof OrderBy)[keyof typeof OrderBy]

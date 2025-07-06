@@ -12,9 +12,9 @@ export const CategorySchema = z.object({
   deletedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date(),
+  updatedAt: z.date()
 })
 
 export const CategoryIncludeTranslationSchema = CategorySchema.extend({
-  categoryTranslations: z.array(CategoryTranslationSchema),
+  categoryTranslations: z.array(CategoryTranslationSchema)
 })

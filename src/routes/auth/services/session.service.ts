@@ -34,7 +34,7 @@ export class SessionService {
     private readonly sessionRepository: SessionRepository,
     private readonly sharedSessionService: SharedSessionService,
     private readonly sharedRoleRepository: SharedRoleRepository,
-    private readonly i18n: I18nService<I18nTranslations>,
+    private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   async refreshToken({ refreshToken, res }: RefreshTokenInput) {
@@ -50,7 +50,7 @@ export class SessionService {
 
     const [isUsed, isBlacklisted] = await Promise.all([
       this.sharedSessionService.isRefreshTokenUsed(jti),
-      this.sharedSessionService.isBlacklisted(jti),
+      this.sharedSessionService.isBlacklisted(jti)
     ])
 
     if (isUsed || isBlacklisted) {
@@ -87,7 +87,7 @@ export class SessionService {
       userId: user.id,
       sessionId: session.id,
       roleId: user.roleId,
-      roleName: userRole.name,
+      roleName: userRole.name
     })
 
     const { exp: newRefreshTokenExp } = await this.tokenService.verifyRefreshToken(tokens.refreshToken)
@@ -96,7 +96,7 @@ export class SessionService {
     this.cookieService.setTokenCookies(res, tokens.accessToken, tokens.refreshToken, true)
 
     return {
-      message: this.i18n.t('auth.success.REFRESH_TOKEN_SUCCESS'),
+      message: this.i18n.t('auth.success.REFRESH_TOKEN_SUCCESS')
     }
   }
 
@@ -127,7 +127,7 @@ export class SessionService {
     this.cookieService.clearTokenCookies(res)
     await Promise.allSettled(promises)
     return {
-      message: this.i18n.t('auth.success.LOGOUT_SUCCESS'),
+      message: this.i18n.t('auth.success.LOGOUT_SUCCESS')
     }
   }
 }

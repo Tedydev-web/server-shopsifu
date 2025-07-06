@@ -8,10 +8,10 @@ export class VerificationCodeRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(
-    payload: Pick<VerificationCodeType, 'email' | 'type' | 'code' | 'expiresAt'>,
+    payload: Pick<VerificationCodeType, 'email' | 'type' | 'code' | 'expiresAt'>
   ): Promise<VerificationCodeType> {
     return this.prisma.verificationCode.create({
-      data: payload,
+      data: payload
     })
   }
 
@@ -22,8 +22,8 @@ export class VerificationCodeRepository {
   }): Promise<VerificationCodeType | null> {
     return this.prisma.verificationCode.findUnique({
       where: {
-        email_code_type: uniqueValue,
-      },
+        email_code_type: uniqueValue
+      }
     })
   }
 
@@ -34,8 +34,8 @@ export class VerificationCodeRepository {
   }): Promise<VerificationCodeType> {
     return this.prisma.verificationCode.delete({
       where: {
-        email_code_type: uniqueValue,
-      },
+        email_code_type: uniqueValue
+      }
     })
   }
 }

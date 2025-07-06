@@ -4,7 +4,7 @@ import {
   GetBrandsResType,
   UpdateBrandBodyType,
   BrandType,
-  BrandIncludeTranslationType,
+  BrandIncludeTranslationType
 } from 'src/routes/brand/brand.model'
 import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
 import { PaginationQueryType } from 'src/shared/models/pagination.model'
@@ -18,19 +18,19 @@ export class BrandRepo {
     return this.prismaService.brand.findUnique({
       where: {
         id,
-        deletedAt: null,
+        deletedAt: null
       },
       include: {
         brandTranslations: {
-          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId },
-        },
-      },
+          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId }
+        }
+      }
     })
   }
 
   create({
     createdById,
-    data,
+    data
   }: {
     createdById: number | null
     data: CreateBrandBodyType
@@ -38,20 +38,20 @@ export class BrandRepo {
     return this.prismaService.brand.create({
       data: {
         ...data,
-        createdById,
+        createdById
       },
       include: {
         brandTranslations: {
-          where: { deletedAt: null },
-        },
-      },
+          where: { deletedAt: null }
+        }
+      }
     })
   }
 
   async update({
     id,
     updatedById,
-    data,
+    data
   }: {
     id: number
     updatedById: number
@@ -60,45 +60,45 @@ export class BrandRepo {
     return this.prismaService.brand.update({
       where: {
         id,
-        deletedAt: null,
+        deletedAt: null
       },
       data: {
         ...data,
-        updatedById,
+        updatedById
       },
       include: {
         brandTranslations: {
-          where: { deletedAt: null },
-        },
-      },
+          where: { deletedAt: null }
+        }
+      }
     })
   }
 
   delete(
     {
       id,
-      deletedById,
+      deletedById
     }: {
       id: number
       deletedById: number
     },
-    isHard?: boolean,
+    isHard?: boolean
   ): Promise<BrandType> {
     return isHard
       ? this.prismaService.brand.delete({
           where: {
-            id,
-          },
+            id
+          }
         })
       : this.prismaService.brand.update({
           where: {
             id,
-            deletedAt: null,
+            deletedAt: null
           },
           data: {
             deletedAt: new Date(),
-            deletedById,
-          },
+            deletedById
+          }
         })
   }
 }

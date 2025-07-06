@@ -8,7 +8,7 @@ import {
   LoginBodyDTO,
   RegisterBodyDTO,
   SendOTPBodyDTO,
-  TwoFactorSetupResDTO,
+  TwoFactorSetupResDTO
 } from '../dtos/auth.dto'
 import { CoreAuthService } from '../services/core.service'
 import { GoogleService } from '../services/social/google.service'
@@ -27,8 +27,8 @@ export class AuthMessageResponseDTO extends createZodDto(z.object({ message: z.s
 const TwoFactorSetupResponseDTO = createZodDto(
   z.object({
     qrCode: z.string(),
-    secret: z.string(),
-  }),
+    secret: z.string()
+  })
 )
 
 @Controller('auth')
@@ -39,7 +39,7 @@ export class AuthController {
     private readonly configService: ConfigService,
     private readonly otpService: OtpService,
     private readonly passwordService: PasswordService,
-    private readonly sessionService: SessionService,
+    private readonly sessionService: SessionService
   ) {}
 
   @IsPublic()
@@ -95,7 +95,7 @@ export class AuthController {
     @Query('code') code: string,
     @Query('state') state: string,
     @Req() req: Request,
-    @Res() res: Response,
+    @Res() res: Response
   ) {
     if (!code || !state) {
       // Redirect to a failure page or handle the error appropriately

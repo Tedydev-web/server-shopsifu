@@ -9,7 +9,7 @@ import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 export class OrderService {
   constructor(
     private readonly orderRepo: OrderRepo,
-    private readonly paginationService: PaginationService,
+    private readonly paginationService: PaginationService
   ) {}
 
   async list(userId: number, query: GetOrderListQueryType) {
@@ -22,17 +22,17 @@ export class OrderService {
     return this.paginationService.paginate('order', query, {
       where,
       include: {
-        items: true,
+        items: true
       },
       orderBy,
-      defaultSortField: 'createdAt',
+      defaultSortField: 'createdAt'
     })
   }
 
   private buildWhereClause(userId: number, filters: any) {
     const where: any = {
       userId,
-      deletedAt: null,
+      deletedAt: null
     }
 
     // Filter theo status
@@ -52,21 +52,21 @@ export class OrderService {
         {
           receiver: {
             path: ['name'],
-            string_contains: searchTerm,
-          },
+            string_contains: searchTerm
+          }
         },
         {
           receiver: {
             path: ['phone'],
-            string_contains: searchTerm,
-          },
+            string_contains: searchTerm
+          }
         },
         {
           receiver: {
             path: ['address'],
-            string_contains: searchTerm,
-          },
-        },
+            string_contains: searchTerm
+          }
+        }
       ]
     }
 

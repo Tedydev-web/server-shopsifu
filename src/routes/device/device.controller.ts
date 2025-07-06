@@ -8,7 +8,7 @@ import {
   Param,
   ParseIntPipe,
   Patch,
-  UseGuards,
+  UseGuards
 } from '@nestjs/common'
 import { ZodSerializerDto, createZodDto } from 'nestjs-zod'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -35,7 +35,7 @@ export class DeviceController {
   async renameDevice(
     @ActiveUser('userId') userId: number,
     @Param('id', ParseIntPipe) deviceId: number,
-    @Body() body: RenameDeviceDto,
+    @Body() body: RenameDeviceDto
   ) {
     return this.deviceService.renameDevice(userId, deviceId, body.name)
   }

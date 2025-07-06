@@ -5,14 +5,14 @@ import {
   NotFoundCartItemException,
   NotFoundSKUException,
   OutOfStockSKUException,
-  ProductNotFoundException,
+  ProductNotFoundException
 } from 'src/routes/cart/cart.error'
 import {
   AddToCartBodyType,
   CartItemDetailType,
   CartItemType,
   DeleteCartBodyType,
-  UpdateCartItemBodyType,
+  UpdateCartItemBodyType
 } from 'src/routes/cart/cart.model'
 import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
 import { SKUSchemaType } from 'src/shared/models/shared-sku.model'
@@ -35,7 +35,7 @@ export class CartRepo {
     skuId,
     quantity,
     userId,
-    isCreate,
+    isCreate
   }: {
     skuId: number
     quantity: number
@@ -47,16 +47,16 @@ export class CartRepo {
         where: {
           userId_skuId: {
             userId,
-            skuId,
-          },
-        },
+            skuId
+          }
+        }
       }),
       this.prismaService.sKU.findUnique({
         where: { id: skuId, deletedAt: null },
         include: {
-          product: true,
-        },
-      }),
+          product: true
+        }
+      })
     ])
     // Kiểm tra tồn tại của SKU
     if (!sku) {
@@ -89,7 +89,7 @@ export class CartRepo {
     userId,
     languageId,
     page,
-    limit,
+    limit
   }: {
     userId: number
     languageId: string
@@ -104,10 +104,10 @@ export class CartRepo {
             deletedAt: null,
             publishedAt: {
               lte: new Date(),
-              not: null,
-            },
-          },
-        },
+              not: null
+            }
+          }
+        }
       },
       include: {
         sku: {
@@ -115,17 +115,17 @@ export class CartRepo {
             product: {
               include: {
                 productTranslations: {
-                  where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
+                  where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null }
                 },
-                createdBy: true,
-              },
-            },
-          },
-        },
+                createdBy: true
+              }
+            }
+          }
+        }
       },
       orderBy: {
-        updatedAt: 'desc',
-      },
+        updatedAt: 'desc'
+      }
     })
     const groupMap = new Map<number, CartItemDetailType>()
     for (const cartItem of cartItems) {
@@ -146,7 +146,7 @@ export class CartRepo {
       data: pagedGroups,
       totalItems: totalGroups,
       page,
-      limit,
+      limit
     }
   }
 
@@ -154,7 +154,7 @@ export class CartRepo {
     userId,
     languageId,
     page,
-    limit,
+    limit
   }: {
     userId: number
     languageId: string
@@ -248,7 +248,7 @@ export class CartRepo {
       data,
       page,
       limit,
-      totalItems: totalItems.length,
+      totalItems: totalItems.length
     }
   }
 
@@ -257,33 +257,33 @@ export class CartRepo {
       skuId: body.skuId,
       quantity: body.quantity,
       userId,
-      isCreate: true,
+      isCreate: true
     })
 
     return this.prismaService.cartItem.upsert({
       where: {
         userId_skuId: {
           userId,
-          skuId: body.skuId,
-        },
+          skuId: body.skuId
+        }
       },
       update: {
         quantity: {
-          increment: body.quantity,
-        },
+          increment: body.quantity
+        }
       },
       create: {
         userId,
         skuId: body.skuId,
-        quantity: body.quantity,
-      },
+        quantity: body.quantity
+      }
     })
   }
 
   async update({
     userId,
     body,
-    cartItemId,
+    cartItemId
   }: {
     userId: number
     cartItemId: number
@@ -293,19 +293,19 @@ export class CartRepo {
       skuId: body.skuId,
       quantity: body.quantity,
       userId,
-      isCreate: false,
+      isCreate: false
     })
 
     return this.prismaService.cartItem
       .update({
         where: {
           id: cartItemId,
-          userId,
+          userId
         },
         data: {
           skuId: body.skuId,
-          quantity: body.quantity,
-        },
+          quantity: body.quantity
+        }
       })
       .catch((error) => {
         if (isNotFoundPrismaError(error)) {
@@ -319,10 +319,10 @@ export class CartRepo {
     return this.prismaService.cartItem.deleteMany({
       where: {
         id: {
-          in: body.cartItemIds,
+          in: body.cartItemIds
         },
-        userId,
-      },
+        userId
+      }
     })
   }
 }

@@ -13,7 +13,7 @@ import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 export class RoleService {
   constructor(
     private roleRepo: RoleRepo,
-    private paginationService: PaginationService,
+    private paginationService: PaginationService
   ) {}
 
   async list(props: { pagination: PaginationQueryType; filters: any }) {
@@ -26,7 +26,7 @@ export class RoleService {
     return this.paginationService.paginate('role', props.pagination, {
       where,
       orderBy,
-      defaultSortField: 'createdAt',
+      defaultSortField: 'createdAt'
     })
   }
 
@@ -40,15 +40,15 @@ export class RoleService {
         {
           name: {
             contains: searchTerm,
-            mode: 'insensitive',
-          },
+            mode: 'insensitive'
+          }
         },
         {
           description: {
             contains: searchTerm,
-            mode: 'insensitive',
-          },
-        },
+            mode: 'insensitive'
+          }
+        }
       ]
     }
 
@@ -56,7 +56,7 @@ export class RoleService {
     if (filters.name) {
       where.name = {
         contains: filters.name,
-        mode: 'insensitive',
+        mode: 'insensitive'
       }
     }
 
@@ -64,7 +64,7 @@ export class RoleService {
     if (filters.description) {
       where.description = {
         contains: filters.description,
-        mode: 'insensitive',
+        mode: 'insensitive'
       }
     }
 
@@ -98,7 +98,7 @@ export class RoleService {
     try {
       const role = await this.roleRepo.create({
         createdById,
-        data,
+        data
       })
       return role
     } catch (error) {
@@ -130,7 +130,7 @@ export class RoleService {
       const updatedRole = await this.roleRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
       return updatedRole
     } catch (error) {
@@ -149,10 +149,10 @@ export class RoleService {
       await this.verifyRole(id)
       await this.roleRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

@@ -4,17 +4,17 @@ import { PermissionSchema } from 'src/shared/models/shared-permission.model'
 import { PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const RoleWithPermissionsSchema = RoleSchema.extend({
-  permissions: z.array(PermissionSchema),
+  permissions: z.array(PermissionSchema)
 })
 
 export const GetRolesResSchema = z.object({
   data: z.array(RoleSchema),
-  metadata: PaginationMetadataSchema,
-  })
+  metadata: PaginationMetadataSchema
+})
 
 export const GetRoleParamsSchema = z
   .object({
-    roleId: z.coerce.number(),
+    roleId: z.coerce.number()
   })
   .strict()
 
@@ -23,7 +23,7 @@ export const GetRoleDetailResSchema = RoleWithPermissionsSchema
 export const CreateRoleBodySchema = RoleSchema.pick({
   name: true,
   description: true,
-  isActive: true,
+  isActive: true
 }).strict()
 
 export const CreateRoleResSchema = RoleSchema
@@ -31,10 +31,10 @@ export const CreateRoleResSchema = RoleSchema
 export const UpdateRoleBodySchema = RoleSchema.pick({
   name: true,
   description: true,
-  isActive: true,
+  isActive: true
 })
   .extend({
-    permissionIds: z.array(z.number()),
+    permissionIds: z.array(z.number())
   })
   .strict()
 

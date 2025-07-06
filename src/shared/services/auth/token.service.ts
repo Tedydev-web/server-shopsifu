@@ -5,7 +5,7 @@ import {
   AccessTokenPayload,
   AccessTokenPayloadCreate,
   RefreshTokenPayload,
-  RefreshTokenPayloadCreate,
+  RefreshTokenPayloadCreate
 } from 'src/shared/types/jwt.type'
 import { v4 as uuidv4 } from 'uuid'
 import { EnvConfigType } from 'src/shared/config'
@@ -16,7 +16,7 @@ export class TokenService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService<EnvConfigType>,
-    private readonly sessionService: SessionService,
+    private readonly sessionService: SessionService
   ) {}
 
   signAccessToken(payload: AccessTokenPayloadCreate) {
@@ -26,8 +26,8 @@ export class TokenService {
       {
         secret: jwtConfig.accessToken.secret,
         expiresIn: jwtConfig.accessToken.expiresIn,
-        algorithm: 'HS256',
-      },
+        algorithm: 'HS256'
+      }
     )
   }
 
@@ -38,22 +38,22 @@ export class TokenService {
       {
         secret: jwtConfig.refreshToken.secret,
         expiresIn: jwtConfig.refreshToken.expiresIn,
-        algorithm: 'HS256',
-      },
+        algorithm: 'HS256'
+      }
     )
   }
 
   verifyAccessToken(token: string): Promise<AccessTokenPayload> {
     const jwtConfig = this.configService.get('jwt')
     return this.jwtService.verifyAsync(token, {
-      secret: jwtConfig.accessToken.secret,
+      secret: jwtConfig.accessToken.secret
     })
   }
 
   verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
     const jwtConfig = this.configService.get('jwt')
     return this.jwtService.verifyAsync(token, {
-      secret: jwtConfig.refreshToken.secret,
+      secret: jwtConfig.refreshToken.secret
     })
   }
 

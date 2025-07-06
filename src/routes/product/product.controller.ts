@@ -16,7 +16,7 @@ export class ProductController {
   list(@Pagination() pagination: PaginationQueryDTO, @Query() query: any) {
     return this.productService.list({
       pagination,
-      filters: query,
+      filters: query
     })
   }
 
@@ -24,7 +24,7 @@ export class ProductController {
   @ZodSerializerDto(GetProductDetailResDTO)
   findById(@Param() params: GetProductParamsDTO) {
     return this.productService.getDetail({
-      productId: params.productId,
+      productId: params.productId
     })
   }
 }

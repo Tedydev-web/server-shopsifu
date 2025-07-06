@@ -5,7 +5,7 @@ import { BrandTranslationRepo } from 'src/routes/brand/brand-translation/brand-t
 import { BrandTranslationAlreadyExistsException } from 'src/routes/brand/brand-translation/brand-translation.error'
 import {
   CreateBrandTranslationBodyType,
-  UpdateBrandTranslationBodyType,
+  UpdateBrandTranslationBodyType
 } from 'src/routes/brand/brand-translation/brand-translation.model'
 
 @Injectable()
@@ -24,7 +24,7 @@ export class BrandTranslationService {
     try {
       return await this.brandTranslationRepo.create({
         createdById,
-        data,
+        data
       })
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -39,7 +39,7 @@ export class BrandTranslationService {
       const brand = await this.brandTranslationRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
       return brand
     } catch (error) {
@@ -57,10 +57,10 @@ export class BrandTranslationService {
     try {
       await this.brandTranslationRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

@@ -6,7 +6,7 @@ export enum RedisPrefix {
   SLT = 'slt',
   DEVICE = 'device',
   ROLE = 'role',
-  PERMISSION = 'permission',
+  PERMISSION = 'permission'
   // Thêm các prefix khác khi cần
 }
 

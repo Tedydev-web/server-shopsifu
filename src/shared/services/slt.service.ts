@@ -34,7 +34,7 @@ export class SltService {
   constructor(
     private readonly configService: ConfigService<EnvConfigType>,
     private readonly jwtService: JwtService,
-    private readonly redisService: RedisService,
+    private readonly redisService: RedisService
   ) {}
 
   /**
@@ -44,7 +44,7 @@ export class SltService {
     userId: number,
     purpose: TypeOfVerificationCodeType,
     req: Request,
-    metadata?: Record<string, any>,
+    metadata?: Record<string, any>
   ): Promise<string> {
     const jti = uuidv4()
     const sltSecret = this.configService.get('jwt').accessToken.secret // Reuse secret for now
@@ -60,7 +60,7 @@ export class SltService {
       createdAt: new Date().toISOString(),
       attempts: 0,
       status: 'pending',
-      metadata,
+      metadata
     }
 
     const key = RedisKeyManager.getSltContextKey(jti)
@@ -76,7 +76,7 @@ export class SltService {
   async validateAndGetContext(
     token: string,
     req: Request,
-    expectedPurpose: TypeOfVerificationCodeType,
+    expectedPurpose: TypeOfVerificationCodeType
   ): Promise<SltContextData> {
     const sltSecret = this.configService.get('jwt').accessToken.secret
 

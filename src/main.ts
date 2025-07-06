@@ -15,14 +15,14 @@ async function bootstrap() {
   app.useLogger(logger)
 
   app.enableCors({
-    origin: '*',
+    origin: '*'
   })
 
   app.use(compression())
   app.use(
     cookieParser(configService.get<string>('cookie.secret'), {
-      decode: decodeURIComponent,
-    }),
+      decode: decodeURIComponent
+    })
   )
 
   await app.listen(configService.get<number>('app.port') ?? 3000)

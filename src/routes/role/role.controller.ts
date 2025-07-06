@@ -6,7 +6,7 @@ import {
   GetRoleDetailResDTO,
   GetRoleParamsDTO,
   GetRolesResDTO,
-  UpdateRoleBodyDTO,
+  UpdateRoleBodyDTO
 } from 'src/routes/role/role.dto'
 import { RoleService } from 'src/routes/role/role.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -23,7 +23,7 @@ export class RoleController {
   list(@Pagination() pagination: PaginationQueryDTO, @Query() query: any) {
     return this.roleService.list({
       pagination,
-      filters: query,
+      filters: query
     })
   }
 
@@ -38,7 +38,7 @@ export class RoleController {
   create(@Body() body: CreateRoleBodyDTO, @ActiveUser('userId') userId: number) {
     return this.roleService.create({
       data: body,
-      createdById: userId,
+      createdById: userId
     })
   }
 
@@ -48,7 +48,7 @@ export class RoleController {
     return this.roleService.update({
       data: body,
       id: params.roleId,
-      updatedById: userId,
+      updatedById: userId
     })
   }
 
@@ -57,7 +57,7 @@ export class RoleController {
   delete(@Param() params: GetRoleParamsDTO, @ActiveUser('userId') userId: number) {
     return this.roleService.delete({
       id: params.roleId,
-      deletedById: userId,
+      deletedById: userId
     })
   }
 }

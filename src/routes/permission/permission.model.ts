@@ -4,12 +4,12 @@ import { PaginationMetadataSchema } from 'src/shared/models/pagination.model'
 
 export const GetPermissionsResSchema = z.object({
   data: z.array(PermissionSchema),
-  metadata: PaginationMetadataSchema,
+  metadata: PaginationMetadataSchema
 })
 
 export const GetPermissionParamsSchema = z
   .object({
-    permissionId: z.coerce.number(), // Phải thêm coerce để chuyển từ string sang number
+    permissionId: z.coerce.number() // Phải thêm coerce để chuyển từ string sang number
   })
   .strict()
 
@@ -19,7 +19,7 @@ export const CreatePermissionBodySchema = PermissionSchema.pick({
   name: true,
   path: true,
   method: true,
-  module: true,
+  module: true
 }).strict()
 
 export const UpdatePermissionBodySchema = CreatePermissionBodySchema

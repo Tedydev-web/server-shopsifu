@@ -18,7 +18,7 @@ export const UserSchema = z.object({
   deletedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date(),
+  updatedAt: z.date()
 })
 
 /**
@@ -26,11 +26,11 @@ export const UserSchema = z.object({
  */
 export const GetUserProfileResSchema = UserSchema.omit({
   password: true,
-  totpSecret: true,
+  totpSecret: true
 }).extend({
   role: RoleSchema.pick({
     id: true,
-    name: true,
+    name: true
   }).extend({
     permissions: z.array(
       PermissionSchema.pick({
@@ -38,10 +38,10 @@ export const GetUserProfileResSchema = UserSchema.omit({
         name: true,
         module: true,
         path: true,
-        method: true,
-      }),
-    ),
-  }),
+        method: true
+      })
+    )
+  })
 })
 
 /**
@@ -49,7 +49,7 @@ export const GetUserProfileResSchema = UserSchema.omit({
  */
 export const UpdateProfileResSchema = UserSchema.omit({
   password: true,
-  totpSecret: true,
+  totpSecret: true
 })
 
 export type UserType = z.infer<typeof UserSchema>

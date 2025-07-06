@@ -7,7 +7,7 @@ import {
   GetProductParamsDTO,
   GetProductsResDTO,
   ProductDTO,
-  UpdateProductBodyDTO,
+  UpdateProductBodyDTO
 } from 'src/routes/product/product.dto'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
@@ -26,7 +26,7 @@ export class ManageProductController {
       pagination,
       filters: query,
       userIdRequest: user.userId,
-      roleNameRequest: user.roleName,
+      roleNameRequest: user.roleName
     })
   }
 
@@ -36,7 +36,7 @@ export class ManageProductController {
     return this.manageProductService.getDetail({
       productId: params.productId,
       roleNameRequest: user.roleName,
-      userIdRequest: user.userId,
+      userIdRequest: user.userId
     })
   }
 
@@ -45,7 +45,7 @@ export class ManageProductController {
   create(@Body() body: CreateProductBodyDTO, @ActiveUser('userId') userId: number) {
     return this.manageProductService.create({
       data: body,
-      createdById: userId,
+      createdById: userId
     })
   }
 
@@ -54,13 +54,13 @@ export class ManageProductController {
   update(
     @Body() body: UpdateProductBodyDTO,
     @Param() params: GetProductParamsDTO,
-    @ActiveUser() user: AccessTokenPayload,
+    @ActiveUser() user: AccessTokenPayload
   ) {
     return this.manageProductService.update({
       data: body,
       productId: params.productId,
       updatedById: user.userId,
-      roleNameRequest: user.roleName,
+      roleNameRequest: user.roleName
     })
   }
 
@@ -70,7 +70,7 @@ export class ManageProductController {
     return this.manageProductService.delete({
       productId: params.productId,
       deletedById: user.userId,
-      roleNameRequest: user.roleName,
+      roleNameRequest: user.roleName
     })
   }
 }

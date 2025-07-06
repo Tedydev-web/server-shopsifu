@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 export const GetProductTranslationParamsSchema = z
   .object({
-    productTranslationId: z.coerce.number().int().positive(),
+    productTranslationId: z.coerce.number().int().positive()
   })
   .strict()
 
@@ -13,7 +13,7 @@ export const CreateProductTranslationBodySchema = ProductTranslationSchema.pick(
   productId: true,
   name: true,
   description: true,
-  languageId: true,
+  languageId: true
 }).strict()
 
 export const UpdateProductTranslationBodySchema = CreateProductTranslationBodySchema

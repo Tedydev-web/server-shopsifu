@@ -14,8 +14,8 @@ export class S3Service {
       region: envConfig().s3.region,
       credentials: {
         secretAccessKey: envConfig().s3.secretKey,
-        accessKeyId: envConfig().s3.accessKey,
-      },
+        accessKeyId: envConfig().s3.accessKey
+      }
     })
   }
 
@@ -26,12 +26,12 @@ export class S3Service {
         Bucket: envConfig().s3.bucketName,
         Key: filename,
         Body: readFileSync(filepath),
-        ContentType: contentType,
+        ContentType: contentType
       },
       tags: [],
       queueSize: 4,
       partSize: 1024 * 1024 * 5,
-      leavePartsOnError: false,
+      leavePartsOnError: false
     })
     return parallelUploads3.done()
   }

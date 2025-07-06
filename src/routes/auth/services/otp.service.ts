@@ -26,7 +26,7 @@ export class OtpService {
     private readonly configService: ConfigService<EnvConfigType>,
     private readonly sltService: SltService,
     private readonly cookieService: CookieService,
-    private readonly i18n: I18nService<I18nTranslations>,
+    private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   async sendOTP(body: SendOTPBodyDTO, req: Request, res: Response) {
@@ -52,14 +52,14 @@ export class OtpService {
       email: body.email,
       code,
       type: body.type,
-      expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp),
+      expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp)
     })
     await this.emailService.sendOTP({
       email: body.email,
-      code,
+      code
     })
     return {
-      message: this.i18n.t('auth.success.SEND_OTP_SUCCESS'),
+      message: this.i18n.t('auth.success.SEND_OTP_SUCCESS')
     }
   }
 
@@ -67,7 +67,7 @@ export class OtpService {
     email,
     code,
     type,
-    req,
+    req
   }: {
     email: string
     code: string
@@ -85,7 +85,7 @@ export class OtpService {
     const verificationCode = await this.verificationCodeRepository.findUnique({
       email,
       code,
-      type,
+      type
     })
     if (!verificationCode) {
       throw AuthError.InvalidOTP

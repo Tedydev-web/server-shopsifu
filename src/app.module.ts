@@ -28,16 +28,16 @@ import { OrderModule } from './routes/order/order.module'
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [envConfig],
+      load: [envConfig]
     }),
     I18nModule.forRoot({
       fallbackLanguage: 'en',
       loaderOptions: {
         path: path.resolve('src/i18n/'),
-        watch: true,
+        watch: true
       },
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
-      typesOutputPath: path.resolve('src/generated/i18n.generated.ts'),
+      typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
     }),
 
     SharedModule,
@@ -55,18 +55,18 @@ import { OrderModule } from './routes/order/order.module'
     ProductModule,
     ProductTranslationModule,
     CartModule,
-    OrderModule,
+    OrderModule
   ],
   providers: [
     {
       provide: APP_PIPE,
-      useClass: CustomZodValidationPipe,
+      useClass: CustomZodValidationPipe
     },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
     {
       provide: APP_FILTER,
-      useClass: HttpExceptionFilter,
-    },
-  ],
+      useClass: HttpExceptionFilter
+    }
+  ]
 })
 export class AppModule {}

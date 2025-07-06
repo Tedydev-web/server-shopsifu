@@ -11,13 +11,13 @@ import { PaginationQueryType } from 'src/shared/models/pagination.model'
 export class PermissionService {
   constructor(
     private permissionRepo: PermissionRepo,
-    private paginationService: PaginationService,
+    private paginationService: PaginationService
   ) {}
 
   async list(pagination: PaginationQueryType) {
     return this.paginationService.paginate('permission', pagination, {
       where: { deletedAt: null },
-      defaultSortField: 'createdAt',
+      defaultSortField: 'createdAt'
     })
   }
 
@@ -33,7 +33,7 @@ export class PermissionService {
     try {
       return await this.permissionRepo.create({
         createdById,
-        data,
+        data
       })
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -48,7 +48,7 @@ export class PermissionService {
       const permission = await this.permissionRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
       return permission
     } catch (error) {
@@ -66,10 +66,10 @@ export class PermissionService {
     try {
       await this.permissionRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

@@ -44,7 +44,7 @@ const redisClientProvider = {
         const delay = Math.min(times * 100, 3000) // Tối đa 3s
         logger.warn(`Redis: Đang thử kết nối lại (lần ${times}), thử lại sau ${delay}ms.`)
         return delay
-      },
+      }
     })
 
     client.on('error', (err) => {
@@ -53,7 +53,7 @@ const redisClientProvider = {
 
     return client
   },
-  inject: [ConfigService],
+  inject: [ConfigService]
 }
 
 const sharedServices = [
@@ -73,7 +73,7 @@ const sharedServices = [
   SessionService,
   SltService,
   PaginationService,
-  S3Service,
+  S3Service
 ]
 
 const sharedMiddlewares = [CsrfProtectionMiddleware, SecurityHeadersMiddleware]
@@ -87,18 +87,18 @@ const allProviders = [
   redisClientProvider,
   {
     provide: APP_GUARD,
-    useClass: AuthenticationGuard,
+    useClass: AuthenticationGuard
   },
   {
     provide: APP_GUARD,
-    useClass: PermissionGuard,
-  },
+    useClass: PermissionGuard
+  }
 ]
 
 @Global()
 @Module({
   imports: [JwtModule, ConfigModule],
   providers: allProviders,
-  exports: [...sharedServices, ...sharedMiddlewares, ...sharedGuards],
+  exports: [...sharedServices, ...sharedMiddlewares, ...sharedGuards]
 })
 export class SharedModule {}

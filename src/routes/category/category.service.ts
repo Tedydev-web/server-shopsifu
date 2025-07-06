@@ -3,7 +3,7 @@ import { CategoryRepo } from 'src/routes/category/category.repo'
 import {
   CreateCategoryBodyType,
   UpdateCategoryBodyType,
-  GetAllCategoriesQueryType,
+  GetAllCategoriesQueryType
 } from 'src/routes/category/category.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
@@ -18,14 +18,14 @@ export class CategoryService {
 
     return this.categoryRepo.findAll({
       parentCategoryId: query.parentCategoryId,
-      languageId,
+      languageId
     })
   }
 
   async findById(id: number) {
     const category = await this.categoryRepo.findById({
       id,
-      languageId: I18nContext.current()?.lang as string,
+      languageId: I18nContext.current()?.lang as string
     })
     if (!category) {
       throw NotFoundRecordException
@@ -36,7 +36,7 @@ export class CategoryService {
   create({ data, createdById }: { data: CreateCategoryBodyType; createdById: number }) {
     return this.categoryRepo.create({
       createdById,
-      data,
+      data
     })
   }
 
@@ -45,7 +45,7 @@ export class CategoryService {
       const category = await this.categoryRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
       return category
     } catch (error) {
@@ -60,10 +60,10 @@ export class CategoryService {
     try {
       await this.categoryRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

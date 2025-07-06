@@ -17,7 +17,7 @@ export function extractRealIpFromRequest(request: Request): string {
     request.headers['forwarded'],
     request.connection?.remoteAddress,
     request.socket?.remoteAddress,
-    request.ip,
+    request.ip
   ].filter(Boolean)
 
   for (const candidate of candidates) {

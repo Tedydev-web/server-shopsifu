@@ -11,36 +11,36 @@ export class UserRepo {
     return this.prismaService.user.create({
       data: {
         ...data,
-        createdById,
-      },
+        createdById
+      }
     })
   }
 
   delete(
     {
       id,
-      deletedById,
+      deletedById
     }: {
       id: number
       deletedById: number
     },
-    isHard?: boolean,
+    isHard?: boolean
   ): Promise<UserType> {
     return isHard
       ? this.prismaService.user.delete({
           where: {
-            id,
-          },
+            id
+          }
         })
       : this.prismaService.user.update({
           where: {
             id,
-            deletedAt: null,
+            deletedAt: null
           },
           data: {
             deletedAt: new Date(),
-            deletedById,
-          },
+            deletedById
+          }
         })
   }
 }

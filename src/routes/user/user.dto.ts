@@ -3,7 +3,7 @@ import {
   CreateUserBodySchema,
   GetUserParamsSchema,
   GetUsersResSchema,
-  UpdateUserBodySchema,
+  UpdateUserBodySchema
 } from 'src/routes/user/user.model'
 import { UpdateProfileResDTO } from 'src/shared/dtos/shared-user.dto'
 

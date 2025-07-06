@@ -6,7 +6,7 @@ export const PaginationQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().min(1).max(100).optional().default(10),
   sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
-  sortBy: z.string().optional(),
+  sortBy: z.string().optional()
 })
 
 export const PaginationMetadataSchema = z.object({
@@ -15,7 +15,7 @@ export const PaginationMetadataSchema = z.object({
   limit: z.number(),
   totalPages: z.number(),
   hasNext: z.boolean(),
-  hasPrevious: z.boolean(),
+  hasPrevious: z.boolean()
 })
 
 // ==================== TYPES ====================

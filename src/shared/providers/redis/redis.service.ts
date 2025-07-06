@@ -62,7 +62,7 @@ export class RedisService implements IRedisService, OnModuleInit, OnModuleDestro
         }
         return acc
       },
-      {} as Record<string, any>,
+      {} as Record<string, any>
     )
     return deserialized as T
   }

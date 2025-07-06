@@ -13,6 +13,6 @@ export const Pagination = createParamDecorator((data: unknown, ctx: ExecutionCon
     page: Number(query.page) || 1,
     limit: Number(query.limit) || 10,
     sortOrder: query.sortOrder || 'desc',
-    sortBy: query.sortBy,
+    sortBy: query.sortBy
   }
 })

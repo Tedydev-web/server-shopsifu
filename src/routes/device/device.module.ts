@@ -6,6 +6,6 @@ import { DeviceRepository } from './device.repository'
 @Module({
   controllers: [DeviceController],
   providers: [DeviceService, DeviceRepository],
-  exports: [DeviceService, DeviceRepository],
+  exports: [DeviceService, DeviceRepository]
 })
 export class DeviceModule {}

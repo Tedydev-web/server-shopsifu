@@ -9,8 +9,8 @@ export class LanguageRepo {
   findAll(): Promise<LanguageType[]> {
     return this.prismaService.language.findMany({
       where: {
-        deletedAt: null,
-      },
+        deletedAt: null
+      }
     })
   }
 
@@ -18,8 +18,8 @@ export class LanguageRepo {
     return this.prismaService.language.findUnique({
       where: {
         id,
-        deletedAt: null,
-      },
+        deletedAt: null
+      }
     })
   }
 
@@ -27,15 +27,15 @@ export class LanguageRepo {
     return this.prismaService.language.create({
       data: {
         ...data,
-        createdById,
-      },
+        createdById
+      }
     })
   }
 
   update({
     id,
     updatedById,
-    data,
+    data
   }: {
     id: string
     updatedById: number
@@ -44,12 +44,12 @@ export class LanguageRepo {
     return this.prismaService.language.update({
       where: {
         id,
-        deletedAt: null,
+        deletedAt: null
       },
       data: {
         ...data,
-        updatedById,
-      },
+        updatedById
+      }
     })
   }
 
@@ -57,17 +57,17 @@ export class LanguageRepo {
     return isHard
       ? this.prismaService.language.delete({
           where: {
-            id,
-          },
+            id
+          }
         })
       : this.prismaService.language.update({
           where: {
             id,
-            deletedAt: null,
+            deletedAt: null
           },
           data: {
-            deletedAt: new Date(),
-          },
+            deletedAt: new Date()
+          }
         })
   }
 }

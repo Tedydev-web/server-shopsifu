@@ -15,7 +15,7 @@ const AppConfigSchema = z.object({
   API_KEY: z.string().min(32).max(128),
   CLIENT_URL: z.string().url(),
   EMAIL_FROM: z.string().email().default('noreply@shopsifu.com'),
-  LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
+  LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info')
 })
 
 const SecurityConfigSchema = z.object({
@@ -27,7 +27,7 @@ const SecurityConfigSchema = z.object({
     .int()
     .positive()
     .default(15 * 60 * 1000), // 15 minutes
-  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(100),
+  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(100)
 })
 
 const JWTConfigSchema = z.object({
@@ -42,14 +42,14 @@ const JWTConfigSchema = z.object({
     .regex(/^\d+[mhd]$/)
     .default('7d'),
   JWT_ISSUER: z.string().default('shopsifu'),
-  JWT_AUDIENCE: z.string().default('shopsifu-users'),
+  JWT_AUDIENCE: z.string().default('shopsifu-users')
 })
 
 const DatabaseConfigSchema = z.object({
   DATABASE_URL: z.string().url(),
   DATABASE_POOL_MIN: z.coerce.number().int().positive().default(2),
   DATABASE_POOL_MAX: z.coerce.number().int().positive().default(10),
-  DATABASE_TIMEOUT: z.coerce.number().int().positive().default(30000),
+  DATABASE_TIMEOUT: z.coerce.number().int().positive().default(30000)
 })
 
 const RedisConfigSchema = z.object({
@@ -58,21 +58,21 @@ const RedisConfigSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_DB: z.coerce.number().int().min(0).max(15).default(0),
   REDIS_TTL: z.coerce.number().int().positive().default(3600), // 1 hour
-  REDIS_MAX_RETRIES: z.coerce.number().int().positive().default(3),
+  REDIS_MAX_RETRIES: z.coerce.number().int().positive().default(3)
 })
 
 const EmailConfigSchema = z.object({
   RESEND_API_KEY: z.string().min(32).max(128),
   EMAIL_FROM_NAME: z.string().default('Shopsifu Team'),
   EMAIL_TEMPLATE_DIR: z.string().default('./emails'),
-  EMAIL_RATE_LIMIT: z.coerce.number().int().positive().default(10), // emails per minute
+  EMAIL_RATE_LIMIT: z.coerce.number().int().positive().default(10) // emails per minute
 })
 
 const OAuthConfigSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().min(20).max(200),
   GOOGLE_CLIENT_SECRET: z.string().min(20).max(200),
   GOOGLE_REDIRECT_URI: z.string().url(),
-  GOOGLE_SCOPE: z.string().default('email profile'),
+  GOOGLE_SCOPE: z.string().default('email profile')
 })
 
 const MediaConfigSchema = z.object({
@@ -84,7 +84,7 @@ const MediaConfigSchema = z.object({
   UPLOAD_ALLOWED_TYPES: z.string().default('image/jpeg,image/png,image/webp'),
   UPLOAD_DIR: z.string().default('./upload'),
   STATIC_URL_PREFIX: z.string().default('/media/static'),
-  CDN_URL: z.string().url().optional(),
+  CDN_URL: z.string().url().optional()
 })
 
 const S3ConfigSchema = z.object({
@@ -93,14 +93,14 @@ const S3ConfigSchema = z.object({
   S3_SECRET_KEY: z.string().min(20).max(100),
   S3_BUCKET_NAME: z.string().min(1).max(63),
   S3_ENDPOINT: z.string().url().optional(),
-  S3_FORCE_PATH_STYLE: z.coerce.boolean().default(false),
+  S3_FORCE_PATH_STYLE: z.coerce.boolean().default(false)
 })
 
 const AdminConfigSchema = z.object({
   ADMIN_NAME: z.string().min(1).max(100),
   ADMIN_PASSWORD: z.string().min(8).max(128),
   ADMIN_EMAIL: z.string().email(),
-  ADMIN_PHONE_NUMBER: z.string().regex(/^\+?[\d\s\-()]+$/),
+  ADMIN_PHONE_NUMBER: z.string().regex(/^\+?[\d\s\-()]+$/)
 })
 
 const FeatureConfigSchema = z.object({
@@ -109,7 +109,7 @@ const FeatureConfigSchema = z.object({
   ENABLE_DEVICE_TRACKING: z.coerce.boolean().default(true),
   ENABLE_AUDIT_LOG: z.coerce.boolean().default(true),
   DEVICE_TRUST_EXPIRATION_DAYS: z.coerce.number().int().positive().default(30),
-  SESSION_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(30),
+  SESSION_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(30)
 })
 
 // ==================== ROOT SCHEMA ====================
@@ -125,7 +125,7 @@ const RootConfigSchema = z.object({
   ...MediaConfigSchema.shape,
   ...S3ConfigSchema.shape,
   ...AdminConfigSchema.shape,
-  ...FeatureConfigSchema.shape,
+  ...FeatureConfigSchema.shape
 })
 
 // ==================== VALIDATION ====================
@@ -151,19 +151,19 @@ const envConfig = {
     name: validatedConfig.APP_NAME,
     apiKey: validatedConfig.API_KEY,
     clientUrl: validatedConfig.CLIENT_URL,
-    logLevel: validatedConfig.LOG_LEVEL,
+    logLevel: validatedConfig.LOG_LEVEL
   },
 
   // Security configuration
   security: {
     csrf: {
       secretLength: validatedConfig.CSRF_SECRET_LENGTH,
-      headerName: validatedConfig.CSRF_HEADER_NAME,
+      headerName: validatedConfig.CSRF_HEADER_NAME
     },
     rateLimit: {
       windowMs: validatedConfig.RATE_LIMIT_WINDOW_MS,
-      maxRequests: validatedConfig.RATE_LIMIT_MAX_REQUESTS,
-    },
+      maxRequests: validatedConfig.RATE_LIMIT_MAX_REQUESTS
+    }
   },
 
   // JWT configuration
@@ -171,15 +171,15 @@ const envConfig = {
     accessToken: {
       secret: validatedConfig.ACCESS_TOKEN_SECRET,
       expiresIn: validatedConfig.ACCESS_TOKEN_EXPIRES_IN,
-      expiresInMs: ms(validatedConfig.ACCESS_TOKEN_EXPIRES_IN),
+      expiresInMs: ms(validatedConfig.ACCESS_TOKEN_EXPIRES_IN)
     },
     refreshToken: {
       secret: validatedConfig.REFRESH_TOKEN_SECRET,
       expiresIn: validatedConfig.REFRESH_TOKEN_EXPIRES_IN,
-      expiresInMs: ms(validatedConfig.REFRESH_TOKEN_EXPIRES_IN),
+      expiresInMs: ms(validatedConfig.REFRESH_TOKEN_EXPIRES_IN)
     },
     issuer: validatedConfig.JWT_ISSUER,
-    audience: validatedConfig.JWT_AUDIENCE,
+    audience: validatedConfig.JWT_AUDIENCE
   },
 
   // Cookie configuration
@@ -189,7 +189,7 @@ const envConfig = {
       sameSite: isProd ? ('strict' as const) : ('lax' as const),
       httpOnly,
       path: '/',
-      ...(prefix === '__Host-' && { domain: undefined }),
+      ...(prefix === '__Host-' && { domain: undefined })
     })
 
     return {
@@ -200,38 +200,38 @@ const envConfig = {
           prefix: '',
           options: {
             ...getBaseOptions('', true),
-            maxAge: ms(validatedConfig.ACCESS_TOKEN_EXPIRES_IN),
-          },
+            maxAge: ms(validatedConfig.ACCESS_TOKEN_EXPIRES_IN)
+          }
         },
         refreshToken: {
           name: CookieNames.REFRESH_TOKEN,
           prefix: isProd ? '__Host-' : '',
           options: {
             ...getBaseOptions(isProd ? '__Host-' : '', true),
-            maxAge: ms(validatedConfig.REFRESH_TOKEN_EXPIRES_IN),
-          },
+            maxAge: ms(validatedConfig.REFRESH_TOKEN_EXPIRES_IN)
+          }
         },
         csrfSecret: {
           name: CookieNames.CSRF_SECRET,
           prefix: isProd ? '__Host-' : '',
-          options: getBaseOptions(isProd ? '__Host-' : '', true),
+          options: getBaseOptions(isProd ? '__Host-' : '', true)
         },
         csrfToken: {
           name: CookieNames.CSRF_TOKEN,
           prefix: '',
           options: {
-            ...getBaseOptions('', false),
-          },
+            ...getBaseOptions('', false)
+          }
         },
         slt: {
           name: CookieNames.SLT,
           prefix: isProd ? '__Host-' : '',
           options: {
             ...getBaseOptions(isProd ? '__Host-' : '', true),
-            maxAge: ms('15m'),
-          },
-        },
-      },
+            maxAge: ms('15m')
+          }
+        }
+      }
     }
   })(),
 
@@ -240,9 +240,9 @@ const envConfig = {
     url: validatedConfig.DATABASE_URL,
     pool: {
       min: validatedConfig.DATABASE_POOL_MIN,
-      max: validatedConfig.DATABASE_POOL_MAX,
+      max: validatedConfig.DATABASE_POOL_MAX
     },
-    timeout: validatedConfig.DATABASE_TIMEOUT,
+    timeout: validatedConfig.DATABASE_TIMEOUT
   },
 
   // Redis configuration
@@ -252,7 +252,7 @@ const envConfig = {
     password: validatedConfig.REDIS_PASSWORD,
     db: validatedConfig.REDIS_DB,
     ttl: validatedConfig.REDIS_TTL,
-    maxRetries: validatedConfig.REDIS_MAX_RETRIES,
+    maxRetries: validatedConfig.REDIS_MAX_RETRIES
   },
 
   // Email configuration
@@ -261,7 +261,7 @@ const envConfig = {
     fromName: validatedConfig.EMAIL_FROM_NAME,
     apiKey: validatedConfig.RESEND_API_KEY,
     templateDir: validatedConfig.EMAIL_TEMPLATE_DIR,
-    rateLimit: validatedConfig.EMAIL_RATE_LIMIT,
+    rateLimit: validatedConfig.EMAIL_RATE_LIMIT
   },
 
   // OAuth configuration
@@ -270,8 +270,8 @@ const envConfig = {
       clientId: validatedConfig.GOOGLE_CLIENT_ID,
       clientSecret: validatedConfig.GOOGLE_CLIENT_SECRET,
       redirectUri: validatedConfig.GOOGLE_REDIRECT_URI,
-      scope: validatedConfig.GOOGLE_SCOPE,
-    },
+      scope: validatedConfig.GOOGLE_SCOPE
+    }
   },
 
   // Media configuration
@@ -279,12 +279,12 @@ const envConfig = {
     upload: {
       maxSize: validatedConfig.UPLOAD_MAX_SIZE,
       allowedTypes: validatedConfig.UPLOAD_ALLOWED_TYPES.split(','),
-      directory: validatedConfig.UPLOAD_DIR,
+      directory: validatedConfig.UPLOAD_DIR
     },
     static: {
       urlPrefix: validatedConfig.STATIC_URL_PREFIX,
-      cdnUrl: validatedConfig.CDN_URL,
-    },
+      cdnUrl: validatedConfig.CDN_URL
+    }
   },
 
   // S3 configuration
@@ -294,7 +294,7 @@ const envConfig = {
     secretKey: validatedConfig.S3_SECRET_KEY,
     bucketName: validatedConfig.S3_BUCKET_NAME,
     endpoint: validatedConfig.S3_ENDPOINT,
-    forcePathStyle: validatedConfig.S3_FORCE_PATH_STYLE,
+    forcePathStyle: validatedConfig.S3_FORCE_PATH_STYLE
   },
 
   // Admin configuration
@@ -302,7 +302,7 @@ const envConfig = {
     name: validatedConfig.ADMIN_NAME,
     password: validatedConfig.ADMIN_PASSWORD,
     email: validatedConfig.ADMIN_EMAIL,
-    phoneNumber: validatedConfig.ADMIN_PHONE_NUMBER,
+    phoneNumber: validatedConfig.ADMIN_PHONE_NUMBER
   },
 
   // Feature flags
@@ -312,7 +312,7 @@ const envConfig = {
     enableDeviceTracking: validatedConfig.ENABLE_DEVICE_TRACKING,
     enableAuditLog: validatedConfig.ENABLE_AUDIT_LOG,
     deviceTrustExpirationDays: validatedConfig.DEVICE_TRUST_EXPIRATION_DAYS,
-    sessionTimeoutMinutes: validatedConfig.SESSION_TIMEOUT_MINUTES,
+    sessionTimeoutMinutes: validatedConfig.SESSION_TIMEOUT_MINUTES
   },
 
   // Timeouts and durations (in milliseconds)
@@ -321,8 +321,8 @@ const envConfig = {
     refreshToken: ms(validatedConfig.REFRESH_TOKEN_EXPIRES_IN),
     otp: ms('5m'),
     rememberMe: ms('30d'),
-    session: ms(`${validatedConfig.SESSION_TIMEOUT_MINUTES}m`),
-  },
+    session: ms(`${validatedConfig.SESSION_TIMEOUT_MINUTES}m`)
+  }
 }
 
 // ==================== EXPORTS ====================

@@ -36,8 +36,8 @@ export class SessionRepository extends BaseRepository<SessionType> {
         id,
         revokedAt: null,
         expiresAt: {
-          gt: new Date(),
-        },
+          gt: new Date()
+        }
       },
       include: {
         user: {
@@ -46,14 +46,14 @@ export class SessionRepository extends BaseRepository<SessionType> {
               include: {
                 permissions: {
                   where: {
-                    deletedAt: null,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
+                    deletedAt: null
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     })
 
     if (!session) {
@@ -68,8 +68,8 @@ export class SessionRepository extends BaseRepository<SessionType> {
     return await client.session.update({
       where: { id },
       data: {
-        lastActiveAt: new Date(),
-      },
+        lastActiveAt: new Date()
+      }
     })
   }
 
@@ -78,8 +78,8 @@ export class SessionRepository extends BaseRepository<SessionType> {
     return client.session.update({
       where: { id },
       data: {
-        revokedAt: new Date(),
-      },
+        revokedAt: new Date()
+      }
     })
   }
 
@@ -88,15 +88,15 @@ export class SessionRepository extends BaseRepository<SessionType> {
       where: { id },
       data: {
         expiresAt: newExpiresAt,
-        lastActiveAt: new Date(),
-      },
+        lastActiveAt: new Date()
+      }
     })
   }
 
   async findSessionsByDeviceId(deviceId: number, prismaClient?: PrismaTransactionClient): Promise<SessionType[]> {
     const client = this.getClient(prismaClient)
     return client.session.findMany({
-      where: { deviceId, revokedAt: null },
+      where: { deviceId, revokedAt: null }
     })
   }
 
@@ -105,11 +105,11 @@ export class SessionRepository extends BaseRepository<SessionType> {
     await client.session.updateMany({
       where: {
         deviceId: deviceId,
-        revokedAt: null,
+        revokedAt: null
       },
       data: {
-        revokedAt: new Date(),
-      },
+        revokedAt: new Date()
+      }
     })
   }
 }

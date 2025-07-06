@@ -24,7 +24,7 @@ export class DeviceFingerprintService {
 
   constructor(
     private readonly userAgentService: UserAgentService,
-    private readonly geolocationService: GeolocationService,
+    private readonly geolocationService: GeolocationService
   ) {}
 
   async extractInfo(req: Request): Promise<EnhancedDeviceInfo> {
@@ -33,13 +33,13 @@ export class DeviceFingerprintService {
 
     const [userAgent, location] = await Promise.all([
       this.userAgentService.parse(uaString),
-      this.geolocationService.getLocationFromIP(ip),
+      this.geolocationService.getLocationFromIP(ip)
     ])
 
     const acceptHeaders = {
       language: req.headers['accept-language'],
       encoding: req.headers['accept-encoding'],
-      accept: req.headers['accept'],
+      accept: req.headers['accept']
     }
 
     // Extract Client Hints (Sec-CH-UA-*)
@@ -57,7 +57,7 @@ export class DeviceFingerprintService {
       deviceType: userAgent.deviceType,
       lang: acceptHeaders.language,
       encoding: acceptHeaders.encoding,
-      clientHints,
+      clientHints
     }
 
     const fingerprint = createHash('sha256').update(JSON.stringify(fingerprintSource)).digest('hex')
@@ -68,7 +68,7 @@ export class DeviceFingerprintService {
       location,
       fingerprint,
       acceptHeaders,
-      clientHints,
+      clientHints
     }
   }
 }

@@ -43,7 +43,7 @@ export class CoreAuthService {
     private readonly sessionRepository: SessionRepository,
     private readonly otpService: OtpService,
     private readonly authRepository: AuthRepository,
-    private readonly i18n: I18nService<I18nTranslations>,
+    private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   async register(body: RegisterBodyDTO, req: Request) {
@@ -52,7 +52,7 @@ export class CoreAuthService {
         email: body.email,
         code: body.code,
         type: TypeOfVerificationCode.REGISTER,
-        req,
+        req
       })
       const clientRoleId = await this.sharedRoleRepository.getClientRoleId()
       const hashedPassword = await this.hashingService.hash(body.password)
@@ -60,17 +60,17 @@ export class CoreAuthService {
       await this.authRepository.createUser({
         ...body,
         password: hashedPassword,
-        roleId: clientRoleId,
+        roleId: clientRoleId
       })
 
       await this.verificationCodeRepository.delete({
         email: body.email,
         code: body.code,
-        type: TypeOfVerificationCode.REGISTER,
+        type: TypeOfVerificationCode.REGISTER
       })
 
       return {
-        message: this.i18n.t('auth.success.REGISTER_SUCCESS'),
+        message: this.i18n.t('auth.success.REGISTER_SUCCESS')
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -93,14 +93,14 @@ export class CoreAuthService {
       email: body.email,
       code,
       type: body.type,
-      expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp),
+      expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp)
     })
     await this.emailService.sendOTP({
       email: body.email,
-      code,
+      code
     })
     return {
-      message: this.i18n.t('auth.success.SEND_OTP_SUCCESS'),
+      message: this.i18n.t('auth.success.SEND_OTP_SUCCESS')
     }
   }
 
@@ -125,7 +125,7 @@ export class CoreAuthService {
       deviceId: device.id,
       ipAddress: device.ip,
       userAgent: device.userAgent,
-      expiresAt: refreshTokenExpiresAt,
+      expiresAt: refreshTokenExpiresAt
     })
 
     await this.sessionService.createSession(session)
@@ -138,13 +138,13 @@ export class CoreAuthService {
       userId: user.id,
       sessionId: session.id,
       roleId: user.roleId,
-      roleName: userRole.name,
+      roleName: userRole.name
     })
 
     this.cookieService.setTokenCookies(res, accessToken, refreshToken)
 
     return {
-      message: this.i18n.t('auth.success.LOGIN_SUCCESS'),
+      message: this.i18n.t('auth.success.LOGIN_SUCCESS')
     }
   }
 
@@ -154,12 +154,12 @@ export class CoreAuthService {
         userId,
         sessionId,
         roleId,
-        roleName,
+        roleName
       }),
       this.tokenService.signRefreshToken({
         userId,
-        sessionId,
-      }),
+        sessionId
+      })
     ])
     return { accessToken, refreshToken }
   }
@@ -190,7 +190,7 @@ export class CoreAuthService {
     }
     await this.sharedUserRepository.update({ id: data.userId }, { totpSecret: null })
     return {
-      message: this.i18n.t('auth.success.DISABLE_2FA_SUCCESS'),
+      message: this.i18n.t('auth.success.DISABLE_2FA_SUCCESS')
     }
   }
 }

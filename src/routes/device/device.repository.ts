@@ -39,14 +39,14 @@ export class DeviceRepository extends BaseRepository<Device> {
     if (!fingerprint) return null
     const client = this.getClient(prismaClient)
     return client.device.findUnique({
-      where: { fingerprint },
+      where: { fingerprint }
     })
   }
 
   async createDevice(data: CreateDeviceData, prismaClient?: PrismaTransactionClient): Promise<Device> {
     const client = this.getClient(prismaClient)
     return client.device.create({
-      data,
+      data
     })
   }
 
@@ -54,7 +54,7 @@ export class DeviceRepository extends BaseRepository<Device> {
     const client = this.getClient(prismaClient)
     return client.device.update({
       where: { id },
-      data: { ip, lastActive: new Date() },
+      data: { ip, lastActive: new Date() }
     })
   }
 }

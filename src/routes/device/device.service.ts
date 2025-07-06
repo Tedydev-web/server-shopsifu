@@ -14,7 +14,7 @@ export class DeviceService {
   constructor(
     private readonly deviceFingerprintService: DeviceFingerprintService,
     private readonly deviceRepository: DeviceRepository,
-    private readonly i18n: I18nService,
+    private readonly i18n: I18nService
   ) {}
 
   async findOrCreateDevice(userId: number, req: Request): Promise<Device> {
@@ -27,7 +27,7 @@ export class DeviceService {
         // Update IP and last active time for the existing device
         return this.deviceRepository.update(existingDevice.id, {
           ip: deviceInfo.ip,
-          lastActive: new Date(),
+          lastActive: new Date()
         })
       }
     }
@@ -46,7 +46,7 @@ export class DeviceService {
         osVersion: deviceInfo.userAgent.osVersion,
         deviceType: deviceInfo.userAgent.deviceType,
         deviceVendor: deviceInfo.userAgent.deviceVendor,
-        deviceModel: deviceInfo.userAgent.deviceModel,
+        deviceModel: deviceInfo.userAgent.deviceModel
       })
 
       return newDevice
@@ -75,7 +75,7 @@ export class DeviceService {
       createdAt: device.createdAt,
       browser: this.normalizeNullableField(device.browser),
       os: this.normalizeNullableField(device.os),
-      deviceType: this.normalizeNullableField(device.deviceType),
+      deviceType: this.normalizeNullableField(device.deviceType)
     }))
 
     console.log('Device list response:', JSON.stringify(result, null, 2))
@@ -106,7 +106,7 @@ export class DeviceService {
     await this.deviceRepository.update(deviceId, { isActive: false })
 
     return {
-      message: this.i18n.t('device.success.DEVICE_REVOKED'),
+      message: this.i18n.t('device.success.DEVICE_REVOKED')
     }
   }
 

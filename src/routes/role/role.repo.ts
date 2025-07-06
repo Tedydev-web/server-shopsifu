@@ -11,15 +11,15 @@ export class RoleRepo {
     return this.prismaService.role.findUnique({
       where: {
         id,
-        deletedAt: null,
+        deletedAt: null
       },
       include: {
         permissions: {
           where: {
-            deletedAt: null,
-          },
-        },
-      },
+            deletedAt: null
+          }
+        }
+      }
     })
   }
 
@@ -27,15 +27,15 @@ export class RoleRepo {
     return this.prismaService.role.create({
       data: {
         ...data,
-        createdById,
-      },
+        createdById
+      }
     })
   }
 
   async update({
     id,
     updatedById,
-    data,
+    data
   }: {
     id: number
     updatedById: number
@@ -46,9 +46,9 @@ export class RoleRepo {
       const permissions = await this.prismaService.permission.findMany({
         where: {
           id: {
-            in: data.permissionIds,
-          },
-        },
+            in: data.permissionIds
+          }
+        }
       })
       const deletedPermission = permissions.filter((permission) => permission.deletedAt)
       if (deletedPermission.length > 0) {
@@ -60,52 +60,52 @@ export class RoleRepo {
     return this.prismaService.role.update({
       where: {
         id,
-        deletedAt: null,
+        deletedAt: null
       },
       data: {
         name: data.name,
         description: data.description,
         isActive: data.isActive,
         permissions: {
-          set: data.permissionIds.map((id) => ({ id })),
+          set: data.permissionIds.map((id) => ({ id }))
         },
-        updatedById,
+        updatedById
       },
       include: {
         permissions: {
           where: {
-            deletedAt: null,
-          },
-        },
-      },
+            deletedAt: null
+          }
+        }
+      }
     })
   }
 
   delete(
     {
       id,
-      deletedById,
+      deletedById
     }: {
       id: number
       deletedById: number
     },
-    isHard?: boolean,
+    isHard?: boolean
   ): Promise<RoleType> {
     return isHard
       ? this.prismaService.role.delete({
           where: {
-            id,
-          },
+            id
+          }
         })
       : this.prismaService.role.update({
           where: {
             id,
-            deletedAt: null,
+            deletedAt: null
           },
           data: {
             deletedAt: new Date(),
-            deletedById,
-          },
+            deletedById
+          }
         })
   }
 }

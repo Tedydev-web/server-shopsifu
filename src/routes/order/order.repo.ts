@@ -6,13 +6,13 @@ import {
   OrderNotFoundException,
   OutOfStockSKUException,
   ProductNotFoundException,
-  SKUNotBelongToShopException,
+  SKUNotBelongToShopException
 } from 'src/routes/order/order.error'
 import {
   CancelOrderResType,
   CreateOrderBodyType,
   CreateOrderResType,
-  GetOrderDetailResType,
+  GetOrderDetailResType
 } from 'src/routes/order/order.model'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { PrismaService } from 'src/shared/services/prisma.service'
@@ -32,21 +32,21 @@ export class OrderRepo {
     const cartItems = await this.prismaService.cartItem.findMany({
       where: {
         id: {
-          in: allBodyCartItemIds,
+          in: allBodyCartItemIds
         },
-        userId,
+        userId
       },
       include: {
         sku: {
           include: {
             product: {
               include: {
-                productTranslations: true,
-              },
-            },
-          },
-        },
-      },
+                productTranslations: true
+              }
+            }
+          }
+        }
+      }
     })
     // 1. Kiểm tra xem tất cả cartItemIds có tồn tại trong cơ sở dữ liệu hay không
     if (cartItems.length !== allBodyCartItemIds.length) {
@@ -66,7 +66,7 @@ export class OrderRepo {
       (item) =>
         item.sku.product.deletedAt !== null ||
         item.sku.product.publishedAt === null ||
-        item.sku.product.publishedAt > new Date(),
+        item.sku.product.publishedAt > new Date()
     )
     if (isExistNotReadyProduct) {
       throw ProductNotFoundException
@@ -117,35 +117,35 @@ export class OrderRepo {
                         id: translation.id,
                         name: translation.name,
                         description: translation.description,
-                        languageId: translation.languageId,
+                        languageId: translation.languageId
                       }
-                    }),
+                    })
                   }
-                }),
+                })
               },
               products: {
                 connect: item.cartItemIds.map((cartItemId) => {
                   const cartItem = cartItemMap.get(cartItemId)!
                   return {
-                    id: cartItem.sku.product.id,
+                    id: cartItem.sku.product.id
                   }
-                }),
-              },
-            },
-          }),
-        ),
+                })
+              }
+            }
+          })
+        )
       )
       await tx.cartItem.deleteMany({
         where: {
           id: {
-            in: allBodyCartItemIds,
-          },
-        },
+            in: allBodyCartItemIds
+          }
+        }
       })
       return orders
     })
     return {
-      data: orders,
+      data: orders
     }
   }
 
@@ -154,11 +154,11 @@ export class OrderRepo {
       where: {
         id: orderid,
         userId,
-        deletedAt: null,
+        deletedAt: null
       },
       include: {
-        items: true,
-      },
+        items: true
+      }
     })
     if (!order) {
       throw OrderNotFoundException
@@ -172,8 +172,8 @@ export class OrderRepo {
         where: {
           id: orderId,
           userId,
-          deletedAt: null,
-        },
+          deletedAt: null
+        }
       })
       if (order.status !== OrderStatus.PENDING_PAYMENT) {
         throw CannotCancelOrderException
@@ -182,12 +182,12 @@ export class OrderRepo {
         where: {
           id: orderId,
           userId,
-          deletedAt: null,
+          deletedAt: null
         },
         data: {
           status: OrderStatus.CANCELLED,
-          updatedById: userId,
-        },
+          updatedById: userId
+        }
       })
       return updatedOrder
     } catch (error) {

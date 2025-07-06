@@ -11,7 +11,7 @@ export class PaginationService {
    */
   createPaginationMetadata(
     query: PaginationQueryType | { page?: number; limit?: number },
-    totalItems: number,
+    totalItems: number
   ): PaginationMetadata {
     const { page = 1, limit = 10 } = query
     const totalPages = Math.ceil(totalItems / limit)
@@ -22,7 +22,7 @@ export class PaginationService {
       limit,
       totalPages,
       hasNext: page < totalPages,
-      hasPrevious: page > 1,
+      hasPrevious: page > 1
     }
   }
 
@@ -38,7 +38,7 @@ export class PaginationService {
       select?: any
       orderBy?: any[]
       defaultSortField?: string
-    } = {},
+    } = {}
   ): Promise<PaginatedResult<T>> {
     const { page = 1, limit = 10, sortBy, sortOrder = 'desc' } = query
     const { where = {}, include, select, orderBy, defaultSortField = 'id' } = options
@@ -54,9 +54,9 @@ export class PaginationService {
         skip: (page - 1) * limit,
         take: limit,
         include,
-        select,
+        select
       }),
-      this.prismaService[modelName].count({ where }),
+      this.prismaService[modelName].count({ where })
     ])
 
     const metadata = this.createPaginationMetadata(query, totalItems)
@@ -71,7 +71,7 @@ export class PaginationService {
     orderBy?: any[],
     sortBy?: string,
     sortOrder: 'asc' | 'desc' = 'desc',
-    defaultSortField: string = 'id',
+    defaultSortField: string = 'id'
   ): any[] {
     // Ưu tiên orderBy được truyền vào
     if (orderBy && orderBy.length > 0) {

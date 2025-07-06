@@ -5,7 +5,7 @@ import {
   CreateUserResDTO,
   GetUserParamsDTO,
   GetUsersResDTO,
-  UpdateUserBodyDTO,
+  UpdateUserBodyDTO
 } from 'src/routes/user/user.dto'
 import { UserService } from 'src/routes/user/user.service'
 import { ActiveRolePermissions } from 'src/shared/decorators/auth/active-role-permissions.decorator'
@@ -24,7 +24,7 @@ export class UserController {
   list(@Pagination() pagination: PaginationQueryDTO, @Query() query: any) {
     return this.userService.list({
       pagination,
-      filters: query,
+      filters: query
     })
   }
 
@@ -39,12 +39,12 @@ export class UserController {
   create(
     @Body() body: CreateUserBodyDTO,
     @ActiveUser('userId') userId: number,
-    @ActiveRolePermissions('name') roleName: string,
+    @ActiveRolePermissions('name') roleName: string
   ) {
     return this.userService.create({
       data: body,
       createdById: userId,
-      createdByRoleName: roleName,
+      createdByRoleName: roleName
     })
   }
 
@@ -54,13 +54,13 @@ export class UserController {
     @Body() body: UpdateUserBodyDTO,
     @Param() params: GetUserParamsDTO,
     @ActiveUser('userId') userId: number,
-    @ActiveRolePermissions('name') roleName: string,
+    @ActiveRolePermissions('name') roleName: string
   ) {
     return this.userService.update({
       data: body,
       id: params.userId,
       updatedById: userId,
-      updatedByRoleName: roleName,
+      updatedByRoleName: roleName
     })
   }
 
@@ -69,12 +69,12 @@ export class UserController {
   delete(
     @Param() params: GetUserParamsDTO,
     @ActiveUser('userId') userId: number,
-    @ActiveRolePermissions('name') roleName: string,
+    @ActiveRolePermissions('name') roleName: string
   ) {
     return this.userService.delete({
       id: params.userId,
       deletedById: userId,
-      deletedByRoleName: roleName,
+      deletedByRoleName: roleName
     })
   }
 }

@@ -3,8 +3,8 @@ import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common
 export const UserAlreadyExistsException = new UnprocessableEntityException([
   {
     message: 'Error.UserAlreadyExists',
-    path: 'email',
-  },
+    path: 'email'
+  }
 ])
 
 export const CannotUpdateAdminUserException = new ForbiddenException('Error.CannotUpdateAdminUser')
@@ -17,8 +17,8 @@ export const CannotSetAdminRoleToUserException = new ForbiddenException('Error.C
 export const RoleNotFoundException = new UnprocessableEntityException([
   {
     message: 'Error.RoleNotFound',
-    path: 'roleId',
-  },
+    path: 'roleId'
+  }
 ])
 
 // Không thể xóa hoặc cập nhật chính bản thân mình

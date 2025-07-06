@@ -36,7 +36,7 @@ export class GeolocationService {
 
     try {
       const response = await axios.get(
-        `http://ip-api.com/json/${ip}?fields=status,message,country,city,lat,lon,timezone,query`,
+        `http://ip-api.com/json/${ip}?fields=status,message,country,city,lat,lon,timezone,query`
       )
 
       if (response.data.status !== 'success') {
@@ -46,7 +46,7 @@ export class GeolocationService {
 
       const location: GeoLocationResult = {
         ...response.data,
-        display: [response.data.city, response.data.country].filter(Boolean).join(', '),
+        display: [response.data.city, response.data.country].filter(Boolean).join(', ')
       }
 
       this.ipCache.set(ip, { location, timestamp: Date.now() })
@@ -85,7 +85,7 @@ export class GeolocationService {
   private getFallbackLocation(ip: string): GeoLocationResult {
     return {
       query: ip,
-      display: this.isDev ? 'Local Development' : 'Unknown Location',
+      display: this.isDev ? 'Local Development' : 'Unknown Location'
     }
   }
 }

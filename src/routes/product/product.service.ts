@@ -10,7 +10,7 @@ import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 export class ProductService {
   constructor(
     private productRepo: ProductRepo,
-    private paginationService: PaginationService,
+    private paginationService: PaginationService
   ) {}
 
   async list(props: { pagination: PaginationQueryType; filters: any }) {
@@ -26,17 +26,17 @@ export class ProductService {
       where,
       include: {
         productTranslations: {
-          where: languageId === 'all' ? { deletedAt: null } : { deletedAt: null, languageId },
+          where: languageId === 'all' ? { deletedAt: null } : { deletedAt: null, languageId }
         },
         orders: {
           where: {
             deletedAt: null,
-            status: 'DELIVERED',
-          },
-        },
+            status: 'DELIVERED'
+          }
+        }
       },
       orderBy,
-      defaultSortField: 'createdAt',
+      defaultSortField: 'createdAt'
     })
   }
 
@@ -46,7 +46,7 @@ export class ProductService {
     if (isPublic) {
       where.publishedAt = {
         lte: new Date(),
-        not: null,
+        not: null
       }
     }
 
@@ -54,14 +54,14 @@ export class ProductService {
       const searchTerm = filters.search
       where.name = {
         contains: searchTerm,
-        mode: 'insensitive',
+        mode: 'insensitive'
       }
     }
 
     if (filters.brandIds && filters.brandIds.length > 0) {
       const brandIds = Array.isArray(filters.brandIds) ? filters.brandIds : [filters.brandIds]
       where.brandId = {
-        in: brandIds.map((id) => Number(id)),
+        in: brandIds.map((id) => Number(id))
       }
     }
 
@@ -70,16 +70,16 @@ export class ProductService {
       where.categories = {
         some: {
           id: {
-            in: categories.map((id) => Number(id)),
-          },
-        },
+            in: categories.map((id) => Number(id))
+          }
+        }
       }
     }
 
     if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
       where.basePrice = {
         gte: filters.minPrice ? Number(filters.minPrice) : undefined,
-        lte: filters.maxPrice ? Number(filters.maxPrice) : undefined,
+        lte: filters.maxPrice ? Number(filters.maxPrice) : undefined
       }
     }
 
@@ -106,7 +106,7 @@ export class ProductService {
     const product = await this.productRepo.getDetail({
       productId: props.productId,
       languageId: I18nContext.current()?.lang as string,
-      isPublic: true,
+      isPublic: true
     })
     if (!product) {
       throw NotFoundRecordException

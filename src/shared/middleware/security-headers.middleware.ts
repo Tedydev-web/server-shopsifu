@@ -31,7 +31,7 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
     // Chính sách bảo mật nội dung (CSP) - Cấu hình cơ bản, có thể tùy chỉnh thêm
     res.setHeader(
       'Content-Security-Policy',
-      "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
+      "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
     )
 
     next()

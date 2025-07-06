@@ -5,6 +5,6 @@ import { BrandTranslationService } from 'src/routes/brand/brand-translation/bran
 
 @Module({
   providers: [BrandTranslationRepo, BrandTranslationService],
-  controllers: [BrandTranslationController],
+  controllers: [BrandTranslationController]
 })
 export class BrandTranslationModule {}

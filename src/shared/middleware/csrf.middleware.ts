@@ -12,7 +12,7 @@ export class CsrfProtectionMiddleware implements NestMiddleware {
 
   constructor(
     private readonly configService: ConfigService<EnvConfigType>,
-    private readonly cookieService: CookieService,
+    private readonly cookieService: CookieService
   ) {
     // Lấy cấu hình chi tiết cho cookie bí mật (_csrf) từ config trung tâm
     const cookieConfig = this.configService.get('cookie')
@@ -23,12 +23,12 @@ export class CsrfProtectionMiddleware implements NestMiddleware {
         ...csrfSecretConfig.options,
         // Cấu hình của csurf yêu cầu `signed` và `key` phải được đặt ở đây
         signed: true,
-        key: csrfSecretConfig.name,
+        key: csrfSecretConfig.name
       },
       value: (req: Request) => {
         // Hỗ trợ cả hai header phổ biến mà các framework frontend hay dùng
         return (req.headers['x-csrf-token'] || req.headers['x-xsrf-token']) as string
-      },
+      }
     })
   }
 

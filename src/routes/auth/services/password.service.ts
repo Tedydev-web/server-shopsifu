@@ -19,7 +19,7 @@ export class PasswordService {
     private readonly cryptoService: CryptoService,
     private readonly verificationCodeRepository: VerificationCodeRepository,
     private readonly configService: ConfigService<EnvConfigType>,
-    private readonly i18n: I18nService<I18nTranslations>,
+    private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   async forgotPassword(body: ForgotPasswordBodyDTO) {
@@ -32,17 +32,17 @@ export class PasswordService {
       const code = this.cryptoService.generateOTP()
       await this.emailService.sendOTP({
         email,
-        code,
+        code
       })
       await this.verificationCodeRepository.create({
         email: body.email,
         code,
         type: TypeOfVerificationCode.FORGOT_PASSWORD,
-        expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp),
+        expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp)
       })
     }
     return {
-      message: this.i18n.t('auth.success.FORGOT_PASSWORD_SUCCESS'),
+      message: this.i18n.t('auth.success.FORGOT_PASSWORD_SUCCESS')
     }
   }
 

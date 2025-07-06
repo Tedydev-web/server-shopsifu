@@ -12,18 +12,18 @@ export const CartItemSchema = z.object({
   userId: z.number(),
 
   createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
+  updatedAt: z.coerce.date()
 })
 
 export const GetCartItemParamsSchema = z.object({
-  cartItemId: z.coerce.number().int().positive(),
+  cartItemId: z.coerce.number().int().positive()
 })
 
 export const CartItemDetailSchema = z.object({
   shop: UserSchema.pick({
     id: true,
     name: true,
-    avatar: true,
+    avatar: true
   }),
   cartItems: z.array(
     CartItemSchema.extend({
@@ -36,44 +36,44 @@ export const CartItemDetailSchema = z.object({
               deletedById: true,
               deletedAt: true,
               createdAt: true,
-              updatedAt: true,
-            }),
-          ),
+              updatedAt: true
+            })
+          )
         }).omit({
           createdById: true,
           updatedById: true,
           deletedById: true,
           deletedAt: true,
           createdAt: true,
-          updatedAt: true,
-        }),
+          updatedAt: true
+        })
       }).omit({
         createdById: true,
         updatedById: true,
         deletedById: true,
         deletedAt: true,
         createdAt: true,
-        updatedAt: true,
-      }),
-    }),
-  ),
+        updatedAt: true
+      })
+    })
+  )
 })
 
 export const GetCartResSchema = z.object({
   data: z.array(CartItemDetailSchema),
-  metadata: PaginationMetadataSchema,
+  metadata: PaginationMetadataSchema
 })
 
 export const AddToCartBodySchema = CartItemSchema.pick({
   skuId: true,
-  quantity: true,
+  quantity: true
 }).strict()
 
 export const UpdateCartItemBodySchema = AddToCartBodySchema
 
 export const DeleteCartBodySchema = z
   .object({
-    cartItemIds: z.array(z.number().int().positive()),
+    cartItemIds: z.array(z.number().int().positive())
   })
   .strict()
 

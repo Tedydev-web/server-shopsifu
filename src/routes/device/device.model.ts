@@ -20,7 +20,7 @@ export const DeviceSchema = z.object({
   osVersion: z.string().nullable(),
   deviceType: z.string().nullable(),
   deviceVendor: z.string().nullable(),
-  deviceModel: z.string().nullable(),
+  deviceModel: z.string().nullable()
 })
 
 export type DeviceType = z.infer<typeof DeviceSchema>

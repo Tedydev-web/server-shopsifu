@@ -10,7 +10,7 @@ export const SessionSchema = z.object({
   revokedAt: z.date().nullable(),
   expiresAt: z.date(),
   createdAt: z.date(),
-  updatedAt: z.date(),
+  updatedAt: z.date()
 })
 
 export type SessionType = z.infer<typeof SessionSchema>

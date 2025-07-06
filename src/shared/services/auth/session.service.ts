@@ -12,7 +12,7 @@ export class SessionService {
 
   constructor(
     private readonly redis: RedisService,
-    private readonly configService: ConfigService<EnvConfigType>,
+    private readonly configService: ConfigService<EnvConfigType>
   ) {
     // Cache TTL cho session bằng với thời gian hết hạn của Refresh Token
     this.sessionTtlSeconds = this.configService.get('timeouts').refreshToken / 1000

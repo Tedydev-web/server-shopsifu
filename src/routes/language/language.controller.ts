@@ -5,7 +5,7 @@ import {
   GetLanguageDetailResDTO,
   GetLanguageParamsDTO,
   GetLanguagesResDTO,
-  UpdateLanguageBodyDTO,
+  UpdateLanguageBodyDTO
 } from 'src/routes/language/language.dto'
 import { LanguageService } from 'src/routes/language/language.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -32,7 +32,7 @@ export class LanguageController {
   create(@Body() body: CreateLanguageBodyDTO, @ActiveUser('userId') userId: number) {
     return this.languageService.create({
       data: body,
-      createdById: userId,
+      createdById: userId
     })
   }
   // Không cho phép cập nhật id: Vì id là mã ngôn ngữ do người dùng tạo (ví dụ: 'en', 'vi'), nó nên bất biến (immutable). Nếu cần thay đổi id, bạn nên xóa ngôn ngữ cũ và tạo mới.
@@ -44,12 +44,12 @@ export class LanguageController {
   update(
     @Body() body: UpdateLanguageBodyDTO,
     @Param() params: GetLanguageParamsDTO,
-    @ActiveUser('userId') userId: number,
+    @ActiveUser('userId') userId: number
   ) {
     return this.languageService.update({
       data: body,
       id: params.languageId,
-      updatedById: userId,
+      updatedById: userId
     })
   }
 

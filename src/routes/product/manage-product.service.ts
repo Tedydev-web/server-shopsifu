@@ -13,7 +13,7 @@ import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 export class ManageProductService {
   constructor(
     private productRepo: ProductRepo,
-    private paginationService: PaginationService,
+    private paginationService: PaginationService
   ) {}
 
   /**
@@ -22,7 +22,7 @@ export class ManageProductService {
   validatePrivilege({
     userIdRequest,
     roleNameRequest,
-    createdById,
+    createdById
   }: {
     userIdRequest: number
     roleNameRequest: string
@@ -41,7 +41,7 @@ export class ManageProductService {
     this.validatePrivilege({
       userIdRequest: props.userIdRequest,
       roleNameRequest: props.roleNameRequest,
-      createdById: props.filters.createdById,
+      createdById: props.filters.createdById
     })
 
     const languageId = I18nContext.current()?.lang as string
@@ -56,17 +56,17 @@ export class ManageProductService {
       where,
       include: {
         productTranslations: {
-          where: languageId === 'all' ? { deletedAt: null } : { deletedAt: null, languageId },
+          where: languageId === 'all' ? { deletedAt: null } : { deletedAt: null, languageId }
         },
         orders: {
           where: {
             deletedAt: null,
-            status: 'DELIVERED',
-          },
-        },
+            status: 'DELIVERED'
+          }
+        }
       },
       orderBy,
-      defaultSortField: 'createdAt',
+      defaultSortField: 'createdAt'
     })
   }
 
@@ -76,12 +76,12 @@ export class ManageProductService {
     if (isPublic) {
       where.publishedAt = {
         lte: new Date(),
-        not: null,
+        not: null
       }
     } else if (filters.isPublic === true) {
       where.publishedAt = {
         lte: new Date(),
-        not: null,
+        not: null
       }
     } else if (filters.isPublic === false) {
       where.OR = [{ publishedAt: null }, { publishedAt: { gt: new Date() } }]
@@ -91,14 +91,14 @@ export class ManageProductService {
       const searchTerm = filters.search
       where.name = {
         contains: searchTerm,
-        mode: 'insensitive',
+        mode: 'insensitive'
       }
     }
 
     if (filters.brandIds && filters.brandIds.length > 0) {
       const brandIds = Array.isArray(filters.brandIds) ? filters.brandIds : [filters.brandIds]
       where.brandId = {
-        in: brandIds.map((id) => Number(id)),
+        in: brandIds.map((id) => Number(id))
       }
     }
 
@@ -107,16 +107,16 @@ export class ManageProductService {
       where.categories = {
         some: {
           id: {
-            in: categories.map((id) => Number(id)),
-          },
-        },
+            in: categories.map((id) => Number(id))
+          }
+        }
       }
     }
 
     if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
       where.basePrice = {
         gte: filters.minPrice ? Number(filters.minPrice) : undefined,
-        lte: filters.maxPrice ? Number(filters.maxPrice) : undefined,
+        lte: filters.maxPrice ? Number(filters.maxPrice) : undefined
       }
     }
 
@@ -142,7 +142,7 @@ export class ManageProductService {
   async getDetail(props: { productId: number; userIdRequest: number; roleNameRequest: string }) {
     const product = await this.productRepo.getDetail({
       productId: props.productId,
-      languageId: I18nContext.current()?.lang as string,
+      languageId: I18nContext.current()?.lang as string
     })
 
     if (!product) {
@@ -151,7 +151,7 @@ export class ManageProductService {
     this.validatePrivilege({
       userIdRequest: props.userIdRequest,
       roleNameRequest: props.roleNameRequest,
-      createdById: product.createdById,
+      createdById: product.createdById
     })
     return product
   }
@@ -159,7 +159,7 @@ export class ManageProductService {
   create({ data, createdById }: { data: CreateProductBodyType; createdById: number }) {
     return this.productRepo.create({
       createdById,
-      data,
+      data
     })
   }
 
@@ -167,7 +167,7 @@ export class ManageProductService {
     productId,
     data,
     updatedById,
-    roleNameRequest,
+    roleNameRequest
   }: {
     productId: number
     data: UpdateProductBodyType
@@ -181,13 +181,13 @@ export class ManageProductService {
     this.validatePrivilege({
       userIdRequest: updatedById,
       roleNameRequest,
-      createdById: product.createdById,
+      createdById: product.createdById
     })
     try {
       const updatedProduct = await this.productRepo.update({
         id: productId,
         updatedById,
-        data,
+        data
       })
       return updatedProduct
     } catch (error) {
@@ -201,7 +201,7 @@ export class ManageProductService {
   async delete({
     productId,
     deletedById,
-    roleNameRequest,
+    roleNameRequest
   }: {
     productId: number
     deletedById: number
@@ -214,15 +214,15 @@ export class ManageProductService {
     this.validatePrivilege({
       userIdRequest: deletedById,
       roleNameRequest,
-      createdById: product.createdById,
+      createdById: product.createdById
     })
     try {
       await this.productRepo.delete({
         id: productId,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

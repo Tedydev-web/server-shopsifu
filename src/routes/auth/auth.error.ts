@@ -5,7 +5,7 @@ import {
   UnauthorizedError,
   BadRequestError,
   InternalServerError,
-  UnprocessableEntityError,
+  UnprocessableEntityError
 } from 'src/shared/error'
 
 export const AuthError = {
@@ -93,7 +93,7 @@ export const AuthError = {
   // === System & General Errors ===
   RateLimitExceeded: BadRequestError('auth.error.RATE_LIMIT_EXCEEDED'),
   ServiceUnavailable: InternalServerError('auth.error.SERVICE_UNAVAILABLE'),
-  MaintenanceMode: InternalServerError('auth.error.MAINTENANCE_MODE'),
+  MaintenanceMode: InternalServerError('auth.error.MAINTENANCE_MODE')
 } as const
 
 export type AuthErrorKey = keyof typeof AuthError
