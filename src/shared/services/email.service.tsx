@@ -1,26 +1,22 @@
 import { Injectable } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { Resend } from 'resend'
+import envConfig from 'src/shared/config'
 import * as React from 'react'
 import { OTPEmail } from 'emails/otp'
-import { EnvConfigType } from 'src/shared/config'
 
 @Injectable()
 export class EmailService {
   private resend: Resend
-  private from: string
-
-  constructor(private readonly configService: ConfigService<EnvConfigType>) {
-    this.resend = new Resend(this.configService.get('email').apiKey)
-    this.from = this.configService.get('app').emailFrom
+  constructor() {
+    this.resend = new Resend(envConfig.EMAIL_API_KEY)
   }
   async sendOTP(payload: { email: string; code: string }) {
     const subject = 'Mã OTP'
     return this.resend.emails.send({
-      from: this.from,
+      from: 'Nest.js Ecommerce <no-reply@shopsifu.live>',
       to: [payload.email],
       subject,
-      react: <OTPEmail otpCode={payload.code} title={subject} />,
+      react: <OTPEmail otpCode={payload.code} title={subject} />
     })
   }
 }

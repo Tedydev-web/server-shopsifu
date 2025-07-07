@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
-import { EnvConfigType } from 'src/shared/config'
+import envConfig from 'src/shared/config'
 
 export interface GeoLocationResult {
   country?: string
@@ -20,8 +19,8 @@ export class GeolocationService {
   private readonly CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours
   private readonly isDev: boolean
 
-  constructor(private readonly configService: ConfigService<EnvConfigType>) {
-    this.isDev = this.configService.get('app').env === 'development'
+  constructor() {
+    this.isDev = envConfig.NODE_ENV === 'development'
   }
 
   async getLocationFromIP(ip: string | null | undefined): Promise<GeoLocationResult> {

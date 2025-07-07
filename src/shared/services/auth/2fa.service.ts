@@ -1,11 +1,10 @@
 import { Injectable } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { authenticator } from 'otplib'
-import { EnvConfigType } from 'src/shared/config'
+import envConfig from 'src/shared/config'
 
 @Injectable()
 export class TwoFactorService {
-  constructor(private readonly configService: ConfigService<EnvConfigType>) {}
+  constructor() {}
 
   /**
    * Generates a TOTP secret and the corresponding URI for QR code generation.
@@ -14,7 +13,7 @@ export class TwoFactorService {
    */
   generateTOTPSecret(email: string) {
     const secret = authenticator.generateSecret()
-    const appName = this.configService.get('app').name
+    const appName = envConfig.APP_NAME
     const uri = authenticator.keyuri(email, appName, secret)
     return {
       secret,

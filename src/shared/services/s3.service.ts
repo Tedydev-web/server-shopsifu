@@ -10,11 +10,11 @@ export class S3Service {
   private s3: S3
   constructor() {
     this.s3 = new S3({
-      endpoint: envConfig().s3.endpoint,
-      region: envConfig().s3.region,
+      endpoint: envConfig.S3_ENDPOINT,
+      region: envConfig.S3_REGION,
       credentials: {
-        secretAccessKey: envConfig().s3.secretKey,
-        accessKeyId: envConfig().s3.accessKey
+        secretAccessKey: envConfig.S3_SECRET_KEY,
+        accessKeyId: envConfig.S3_ACCESS_KEY
       }
     })
   }
@@ -23,7 +23,7 @@ export class S3Service {
     const parallelUploads3 = new Upload({
       client: this.s3,
       params: {
-        Bucket: envConfig().s3.bucketName,
+        Bucket: envConfig.S3_BUCKET_NAME,
         Key: filename,
         Body: readFileSync(filepath),
         ContentType: contentType
@@ -38,7 +38,7 @@ export class S3Service {
 
   createPresignedUrlWithClient(filename: string) {
     const contentType = mime.lookup(filename) || 'application/octet-stream'
-    const command = new PutObjectCommand({ Bucket: envConfig().s3.bucketName, Key: filename, ContentType: contentType })
+    const command = new PutObjectCommand({ Bucket: envConfig.S3_BUCKET_NAME, Key: filename, ContentType: contentType })
     return getSignedUrl(this.s3, command, { expiresIn: 10 })
   }
 }

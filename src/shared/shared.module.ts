@@ -4,15 +4,13 @@ import { HashingService } from './services/hashing.service'
 import { TokenService } from './services/auth/token.service'
 import { JwtModule } from '@nestjs/jwt'
 import { AccessTokenGuard } from 'src/shared/guards/access-token.guard'
-import { APIKeyGuard } from 'src/shared/guards/api-key.guard'
-import { PermissionGuard } from 'src/shared/guards/permission.guard'
+import { PaymentAPIKeyGuard } from 'src/shared/guards/payment-api-key.guard'
 import { APP_GUARD } from '@nestjs/core'
 import { AuthenticationGuard } from 'src/shared/guards/authentication.guard'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { EmailService } from 'src/shared/services/email.service'
 import { TwoFactorService } from 'src/shared/services/auth/2fa.service'
 import { CookieService } from './services/cookie.service'
-import { ConfigModule, ConfigService } from '@nestjs/config'
 import { RedisService } from './providers/redis/redis.service'
 import { IORedisKey } from './providers/redis/redis.constants'
 import Redis from 'ioredis'
@@ -21,7 +19,7 @@ import { CryptoService } from './services/crypto.service'
 import { UserAgentService } from './services/auth/user-agent.service'
 import { SecurityHeadersMiddleware } from './middleware/security-headers.middleware'
 import { CsrfProtectionMiddleware } from './middleware/csrf.middleware'
-import { EnvConfigType } from './config'
+import envConfig from './config'
 import { GeolocationService } from './services/auth/geolocation.service'
 import { DeviceFingerprintService } from './services/auth/device-fingerprint.service'
 import { SessionService } from './services/auth/session.service'
@@ -32,14 +30,14 @@ import { S3Service } from './services/s3.service'
 
 const redisClientProvider = {
   provide: IORedisKey,
-  useFactory: (configService: ConfigService<EnvConfigType>) => {
+  useFactory: () => {
     const logger = new Logger('RedisProviderFactory')
-    const redisConfig = configService.get('redis')
+    const redisConfig = envConfig.REDIS_HOST
     const client = new Redis({
-      host: redisConfig.host,
-      port: redisConfig.port,
-      password: redisConfig.password,
-      db: redisConfig.db,
+      host: envConfig.REDIS_HOST,
+      port: envConfig.REDIS_PORT,
+      password: envConfig.REDIS_PASSWORD,
+      db: envConfig.REDIS_DB,
       retryStrategy: (times: number) => {
         const delay = Math.min(times * 100, 3000) // Tối đa 3s
         logger.warn(`Redis: Đang thử kết nối lại (lần ${times}), thử lại sau ${delay}ms.`)
@@ -52,8 +50,7 @@ const redisClientProvider = {
     })
 
     return client
-  },
-  inject: [ConfigService]
+  }
 }
 
 const sharedServices = [
@@ -78,7 +75,7 @@ const sharedServices = [
 
 const sharedMiddlewares = [CsrfProtectionMiddleware, SecurityHeadersMiddleware]
 
-const sharedGuards = [AccessTokenGuard, APIKeyGuard, AuthenticationGuard, PermissionGuard]
+const sharedGuards = [AccessTokenGuard, PaymentAPIKeyGuard, AuthenticationGuard]
 
 const allProviders = [
   ...sharedServices,
@@ -88,16 +85,12 @@ const allProviders = [
   {
     provide: APP_GUARD,
     useClass: AuthenticationGuard
-  },
-  {
-    provide: APP_GUARD,
-    useClass: PermissionGuard
   }
 ]
 
 @Global()
 @Module({
-  imports: [JwtModule, ConfigModule],
+  imports: [JwtModule],
   providers: allProviders,
   exports: [...sharedServices, ...sharedMiddlewares, ...sharedGuards]
 })

@@ -1,5 +1,4 @@
 import { Injectable, Logger, ForbiddenException } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { Response, Request } from 'express'
 import { OAuth2Client } from 'google-auth-library'
 import { google } from 'googleapis'
@@ -10,7 +9,6 @@ import { v4 as uuidv4 } from 'uuid'
 import { addMilliseconds } from 'date-fns'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { DeviceService } from 'src/routes/device/device.service'
-import { EnvConfigType } from 'src/shared/config'
 import { randomBytes } from 'crypto'
 import ms from 'ms'
 import { SessionService } from 'src/shared/services/auth/session.service'
@@ -19,6 +17,7 @@ import { AuthRepository } from '../../repositories/auth.repo'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { GoogleUserInfoError } from '../../auth.error'
 import { NotFoundRecordException } from 'src/shared/error'
+import envConfig from 'src/shared/config'
 
 const GOOGLE_OAUTH_NONCE_COOKIE = 'google_oauth_nonce'
 
@@ -32,7 +31,6 @@ export class GoogleService {
     private readonly hashingService: HashingService,
     private readonly sharedRoleRepository: SharedRoleRepository,
     private readonly authService: CoreAuthService,
-    private readonly configService: ConfigService<EnvConfigType>,
     private readonly cookieService: CookieService,
     private readonly sharedUserRepository: SharedUserRepository,
     private readonly deviceService: DeviceService,
@@ -40,8 +38,14 @@ export class GoogleService {
     private readonly sessionRepository: SessionRepository,
     private readonly authRepository: AuthRepository
   ) {
-    const googleConfig = this.configService.get('oauth').google
-    const appConfig = this.configService.get('app')
+    const googleConfig = {
+      clientId: envConfig.GOOGLE_CLIENT_ID,
+      clientSecret: envConfig.GOOGLE_CLIENT_SECRET,
+      redirectUri: envConfig.GOOGLE_REDIRECT_URI
+    }
+    const appConfig = {
+      clientUrl: envConfig.GOOGLE_REDIRECT_URI
+    }
 
     this.oauth2Client = new google.auth.OAuth2(
       googleConfig.clientId,
@@ -60,7 +64,7 @@ export class GoogleService {
     // 2. Lưu nonce vào một httpOnly cookie, an toàn
     res.cookie(GOOGLE_OAUTH_NONCE_COOKIE, nonce, {
       httpOnly: true,
-      secure: !this.configService.get('isProd'),
+      secure: envConfig.NODE_ENV !== 'production',
       sameSite: 'lax',
       maxAge: ms('15m') // Nonce chỉ hợp lệ trong 15 phút
     })
@@ -124,7 +128,7 @@ export class GoogleService {
       const device = await this.deviceService.findOrCreateDevice(user.id, req)
 
       // 6. Tính toán thời gian hết hạn cho Refresh Token
-      const refreshTokenExpiresInMs = this.configService.get('timeouts').refreshToken
+      const refreshTokenExpiresInMs = ms(envConfig.REFRESH_TOKEN_EXPIRES_IN)
       const refreshTokenExpiresAt = addMilliseconds(new Date(), refreshTokenExpiresInMs)
 
       // 7. Tạo một phiên đăng nhập (session) mới trong DB

@@ -13,38 +13,38 @@ const main = async () => {
     data: [
       {
         name: RoleName.Admin,
-        description: 'Admin role',
+        description: 'Admin role'
       },
       {
         name: RoleName.Client,
-        description: 'Client role',
+        description: 'Client role'
       },
       {
         name: RoleName.Seller,
-        description: 'Seller role',
-      },
-    ],
+        description: 'Seller role'
+      }
+    ]
   })
 
   const adminRole = await prisma.role.findFirstOrThrow({
     where: {
-      name: RoleName.Admin,
-    },
+      name: RoleName.Admin
+    }
   })
-  const hashedPassword = await hashingService.hash(envConfig().admin.password)
-  console.log(envConfig().admin)
+  const hashedPassword = await hashingService.hash(envConfig.ADMIN_PASSWORD)
+  console.log(envConfig.ADMIN_PASSWORD)
   const adminUser = await prisma.user.create({
     data: {
-      email: envConfig().admin.email,
+      email: envConfig.ADMIN_EMAIL,
       password: hashedPassword,
-      name: envConfig().admin.name,
-      phoneNumber: envConfig().admin.phoneNumber,
-      roleId: adminRole.id,
-    },
+      name: envConfig.ADMIN_NAME,
+      phoneNumber: envConfig.ADMIN_PHONE_NUMBER,
+      roleId: adminRole.id
+    }
   })
   return {
     createdRoleCount: roles.count,
-    adminUser,
+    adminUser
   }
 }
 

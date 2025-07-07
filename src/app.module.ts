@@ -26,10 +26,6 @@ import { OrderModule } from './routes/order/order.module'
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      load: [envConfig]
-    }),
     I18nModule.forRoot({
       fallbackLanguage: 'vi',
       loaderOptions: {

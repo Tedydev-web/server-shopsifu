@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { addMilliseconds } from 'date-fns'
 import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import { CryptoService } from 'src/shared/services/crypto.service'
@@ -7,7 +6,7 @@ import { EmailService } from 'src/shared/services/email.service'
 import { VerificationCodeRepository } from '../repositories/verification-code.repository'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { SendOTPBodyDTO } from '../dtos/auth.dto'
-import { EnvConfigType } from 'src/shared/config'
+import envConfig from 'src/shared/config'
 import { SltService } from 'src/shared/services/slt.service'
 import { CookieService } from 'src/shared/services/cookie.service'
 import { Request, Response } from 'express'
@@ -15,6 +14,7 @@ import { CookieNames } from 'src/shared/constants/cookie.constant'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 import { EmailAlreadyExistsException, InvalidOTPException, OTPExpiredException, StateTokenMissingException } from '../auth.error'
+import ms from 'ms'
 
 @Injectable()
 export class OtpService {
@@ -23,7 +23,6 @@ export class OtpService {
     private readonly cryptoService: CryptoService,
     private readonly emailService: EmailService,
     private readonly verificationCodeRepository: VerificationCodeRepository,
-    private readonly configService: ConfigService<EnvConfigType>,
     private readonly sltService: SltService,
     private readonly cookieService: CookieService,
     private readonly i18n: I18nService<I18nTranslations>
@@ -52,7 +51,7 @@ export class OtpService {
       email: body.email,
       code,
       type: body.type,
-      expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp)
+      expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_EXPIRES_IN))
     })
     await this.emailService.sendOTP({
       email: body.email,

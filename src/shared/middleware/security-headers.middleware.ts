@@ -1,12 +1,9 @@
 import { Injectable, NestMiddleware } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { Request, Response, NextFunction } from 'express'
-import { EnvConfigType } from 'src/shared/config'
+import envConfig from 'src/shared/config'
 
 @Injectable()
 export class SecurityHeadersMiddleware implements NestMiddleware {
-  constructor(private readonly configService: ConfigService<EnvConfigType>) {}
-
   use(req: Request, res: Response, next: NextFunction) {
     // Chống tấn công XSS
     res.setHeader('X-XSS-Protection', '1; mode=block')
@@ -18,7 +15,7 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
     res.setHeader('X-Frame-Options', 'DENY')
 
     // Buộc sử dụng HTTPS
-    if (this.configService.get('isProd')) {
+    if (envConfig.NODE_ENV === 'production') {
       res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload')
     }
 

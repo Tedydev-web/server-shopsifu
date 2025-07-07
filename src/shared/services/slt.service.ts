@@ -1,15 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import { Request } from 'express'
 import { TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
-import { EnvConfigType } from 'src/shared/config'
+import envConfig from 'src/shared/config'
 import { RedisKeyManager } from '../providers/redis/redis-key.manager'
 import { RedisService } from '../providers/redis/redis.service'
 import { v4 as uuidv4 } from 'uuid'
 import { UnauthorizedException, ForbiddenException } from 'src/shared/error'
 import { extractRealIpFromRequest } from '../utils/http.utils'
-import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from '../i18n/generated/i18n.generated'
 
 export interface SltJwtPayload {
@@ -31,13 +29,9 @@ export interface SltContextData {
 
 @Injectable()
 export class SltService {
-  private readonly logger = new Logger(SltService.name)
-
   constructor(
-    private readonly configService: ConfigService<EnvConfigType>,
     private readonly jwtService: JwtService,
-    private readonly redisService: RedisService,
-    private readonly i18n: I18nService<I18nTranslations>
+    private readonly redisService: RedisService
   ) {}
 
   /**
@@ -50,7 +44,7 @@ export class SltService {
     metadata?: Record<string, any>
   ): Promise<string> {
     const jti = uuidv4()
-    const sltSecret = this.configService.get('jwt').accessToken.secret // Reuse secret for now
+    const sltSecret = envConfig.ACCESS_TOKEN_SECRET // Reuse secret for now
     const sltExpiresIn = '15m' // Hardcode for now
 
     const token = this.jwtService.sign({ sub: userId, purpose, jti }, { secret: sltSecret, expiresIn: sltExpiresIn })
@@ -81,7 +75,7 @@ export class SltService {
     req: Request,
     expectedPurpose: TypeOfVerificationCodeType
   ): Promise<SltContextData> {
-    const sltSecret = this.configService.get('jwt').accessToken.secret
+    const sltSecret = envConfig.ACCESS_TOKEN_SECRET
 
     let payload: SltJwtPayload
     try {

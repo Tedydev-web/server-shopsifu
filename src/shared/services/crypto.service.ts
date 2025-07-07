@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import * as crypto from 'crypto'
-import { EnvConfigType } from 'src/shared/config'
+import envConfig from 'src/shared/config'
 
 @Injectable()
 export class CryptoService {
@@ -11,8 +10,8 @@ export class CryptoService {
   private readonly ivLength = 16
   private readonly tagLength = 16
 
-  constructor(private readonly configService: ConfigService<EnvConfigType>) {
-    const key = this.configService.get('app').apiKey // Sử dụng một key bí mật từ config
+  constructor() {
+    const key = envConfig.COOKIE_SECRET
     if (!key || key.length < 32) {
       throw new Error('A 32-byte (256-bit) encryption key is required. Please check your configuration.')
     }

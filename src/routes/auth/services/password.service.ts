@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { addMilliseconds } from 'date-fns'
 import { ForgotPasswordBodyDTO } from '../dtos/auth.dto'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
@@ -7,9 +6,10 @@ import { TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
 import { EmailService } from 'src/shared/services/email.service'
 import { CryptoService } from 'src/shared/services/crypto.service'
 import { VerificationCodeRepository } from '../repositories/verification-code.repository'
-import { EnvConfigType } from 'src/shared/config'
+import envConfig from 'src/shared/config'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import ms from 'ms'
 
 @Injectable()
 export class PasswordService {
@@ -18,7 +18,6 @@ export class PasswordService {
     private readonly emailService: EmailService,
     private readonly cryptoService: CryptoService,
     private readonly verificationCodeRepository: VerificationCodeRepository,
-    private readonly configService: ConfigService<EnvConfigType>,
     private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
@@ -38,7 +37,7 @@ export class PasswordService {
         email: body.email,
         code,
         type: TypeOfVerificationCode.FORGOT_PASSWORD,
-        expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp)
+        expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_EXPIRES_IN))
       })
     }
     return {

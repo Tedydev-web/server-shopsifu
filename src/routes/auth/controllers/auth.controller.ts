@@ -1,5 +1,4 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Res, UseGuards, Req } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { Response, Request } from 'express'
 import { ZodSerializerDto, createZodDto } from 'nestjs-zod'
 import {
@@ -20,6 +19,7 @@ import { OtpService } from '../services/otp.service'
 import { PasswordService } from '../services/password.service'
 import { SessionService } from '../services/session.service'
 import { z } from 'zod'
+import envConfig from 'src/shared/config'
 
 // Định nghĩa DTO trả về message cho auth
 export class AuthMessageResponseDTO extends createZodDto(z.object({ message: z.string() })) {}
@@ -36,7 +36,6 @@ export class AuthController {
   constructor(
     private readonly coreAuthService: CoreAuthService,
     private readonly googleService: GoogleService,
-    private readonly configService: ConfigService,
     private readonly otpService: OtpService,
     private readonly passwordService: PasswordService,
     private readonly sessionService: SessionService
@@ -99,7 +98,7 @@ export class AuthController {
   ) {
     if (!code || !state) {
       // Redirect to a failure page or handle the error appropriately
-      const failureRedirectUrl = new URL('/auth/login-failure', this.configService.get('app').clientUrl)
+      const failureRedirectUrl = new URL('/auth/login-failure', envConfig.CLIENT_URL)
       failureRedirectUrl.searchParams.set('error', 'invalid_callback_params')
       return res.redirect(failureRedirectUrl.toString())
     }

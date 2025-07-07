@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { addMilliseconds } from 'date-fns'
 import { DisableTwoFactorBodyDTO, LoginBodyDTO, RegisterBodyDTO, SendOTPBodyDTO } from '../dtos/auth.dto'
 import { VerificationCodeRepository } from '../repositories/verification-code.repository'
@@ -16,7 +15,6 @@ import { Response, Request } from 'express'
 import { SessionService } from 'src/shared/services/auth/session.service'
 import { DeviceService } from 'src/routes/device/device.service'
 import { CryptoService } from 'src/shared/services/crypto.service'
-import { EnvConfigType } from 'src/shared/config'
 import { SessionRepository } from '../repositories/session.repository'
 import { OtpService } from './otp.service'
 import { AuthRepository } from '../repositories/auth.repo'
@@ -30,6 +28,8 @@ import {
 import { InvalidPasswordException, NotFoundRecordException } from 'src/shared/error'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import envConfig from 'src/shared/config'
+import ms from 'ms'
 
 @Injectable()
 export class CoreAuthService {
@@ -42,7 +42,6 @@ export class CoreAuthService {
     private readonly tokenService: TokenService,
     private readonly twoFactorService: TwoFactorService,
     private readonly cookieService: CookieService,
-    private readonly configService: ConfigService<EnvConfigType>,
     private readonly cryptoService: CryptoService,
     private readonly deviceService: DeviceService,
     private readonly sessionService: SessionService,
@@ -99,7 +98,7 @@ export class CoreAuthService {
       email: body.email,
       code,
       type: body.type,
-      expiresAt: addMilliseconds(new Date(), this.configService.get('timeouts').otp)
+      expiresAt: addMilliseconds(new Date(), envConfig.OTP_EXPIRES_IN)
     })
     await this.emailService.sendOTP({
       email: body.email,
@@ -123,7 +122,7 @@ export class CoreAuthService {
 
     const device = await this.deviceService.findOrCreateDevice(user.id, req)
 
-    const refreshTokenExpiresInMs = this.configService.get('timeouts').refreshToken
+    const refreshTokenExpiresInMs = ms(envConfig.REFRESH_TOKEN_EXPIRES_IN)
     const refreshTokenExpiresAt = addMilliseconds(new Date(), refreshTokenExpiresInMs)
 
     const session = await this.sessionRepository.createSession({
