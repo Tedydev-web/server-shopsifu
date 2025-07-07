@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from 'uuid'
 export class TokenService {
   constructor(private readonly jwtService: JwtService) {}
 
-  signAccessToken(payload: AccessTokenPayloadCreate) {
+  signAccessToken(payload: AccessTokenPayloadCreate): string {
     return this.jwtService.sign(
       { ...payload, uuid: uuidv4() },
       {
@@ -24,7 +24,7 @@ export class TokenService {
     )
   }
 
-  signRefreshToken(payload: RefreshTokenPayloadCreate) {
+  signRefreshToken(payload: RefreshTokenPayloadCreate): string {
     return this.jwtService.sign(
       { ...payload, uuid: uuidv4() },
       {
@@ -45,5 +45,32 @@ export class TokenService {
     return this.jwtService.verifyAsync(token, {
       secret: envConfig.REFRESH_TOKEN_SECRET,
     })
+  }
+
+  /**
+   * Decode token without verification (for debugging purposes)
+   */
+  decodeToken(token: string): any {
+    return this.jwtService.decode(token)
+  }
+
+  /**
+   * Get token expiration time
+   */
+  getTokenExpiration(token: string): Date | null {
+    try {
+      const decoded = this.jwtService.decode(token)
+      return decoded?.exp ? new Date(decoded.exp * 1000) : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Check if token is expired
+   */
+  isTokenExpired(token: string): boolean {
+    const expiration = this.getTokenExpiration(token)
+    return expiration ? expiration < new Date() : true
   }
 }

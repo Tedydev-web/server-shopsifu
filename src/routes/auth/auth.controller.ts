@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Req, Res } from '@nestjs/common'
-import { Response } from 'express'
+import { Response, Request } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
   DisableTwoFactorBodyDTO,
@@ -13,11 +13,12 @@ import {
   RegisterBodyDTO,
   RegisterResDTO,
   SendOTPBodyDTO,
-  TwoFactorSetupResDTO,
+  TwoFactorSetupResDTO
 } from 'src/routes/auth/auth.dto'
 
 import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleService } from 'src/routes/auth/google.service'
+import { CookieService } from 'src/shared/services/cookie.service'
 import envConfig from 'src/shared/config'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
@@ -30,6 +31,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly googleService: GoogleService,
+    private readonly cookieService: CookieService
   ) {}
 
   @Post('register')
@@ -49,30 +51,77 @@ export class AuthController {
   @Post('login')
   @IsPublic()
   @ZodSerializerDto(LoginResDTO)
-  login(@Body() body: LoginBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
-    return this.authService.login({
+  async login(
+    @Body() body: LoginBodyDTO,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    const result = await this.authService.login({
       ...body,
       userAgent,
-      ip,
+      ip
     })
+
+    // Set cookies
+    this.cookieService.setAuthCookies(
+      res,
+      {
+        userId: result.userId,
+        deviceId: result.deviceId,
+        roleId: result.roleId,
+        roleName: result.roleName
+      },
+      {
+        userId: result.userId
+      }
+    )
+
+    return { message: 'Đăng nhập thành công' }
   }
 
   @Post('refresh-token')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(RefreshTokenResDTO)
-  refreshToken(@Body() body: RefreshTokenBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
-    return this.authService.refreshToken({
+  async refreshToken(
+    @Body() body: RefreshTokenBodyDTO,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    const result = await this.authService.refreshToken({
       refreshToken: body.refreshToken,
       userAgent,
-      ip,
+      ip
     })
+
+    // Set new cookies
+    this.cookieService.setAuthCookies(
+      res,
+      {
+        userId: result.userId,
+        deviceId: result.deviceId,
+        roleId: result.roleId,
+        roleName: result.roleName
+      },
+      {
+        userId: result.userId
+      }
+    )
+
+    return { message: 'Cập nhật token thành công' }
   }
 
   @Post('logout')
   @ZodSerializerDto(MessageResDTO)
-  logout(@Body() body: LogoutBodyDTO) {
-    return this.authService.logout(body.refreshToken)
+  async logout(@Body() body: LogoutBodyDTO, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.logout(body.refreshToken)
+
+    // Clear authentication cookies
+    this.cookieService.clearAuthCookies(res)
+
+    return result
   }
 
   @Get('google-link')
@@ -81,7 +130,7 @@ export class AuthController {
   getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string) {
     return this.googleService.getAuthorizationUrl({
       userAgent,
-      ip,
+      ip
     })
   }
 
@@ -91,11 +140,24 @@ export class AuthController {
     try {
       const data = await this.googleService.googleCallback({
         code,
-        state,
+        state
       })
-      return res.redirect(
-        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`,
+
+      // Set authentication cookies
+      this.cookieService.setAuthCookies(
+        res,
+        {
+          userId: data.userId,
+          deviceId: data.deviceId,
+          roleId: data.roleId,
+          roleName: data.roleName
+        },
+        {
+          userId: data.userId
+        }
       )
+
+      return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true`)
     } catch (error) {
       const message =
         error instanceof Error
@@ -125,7 +187,7 @@ export class AuthController {
   disableTwoFactorAuth(@Body() body: DisableTwoFactorBodyDTO, @ActiveUser('userId') userId: number) {
     return this.authService.disableTwoFactorAuth({
       ...body,
-      userId,
+      userId
     })
   }
 }

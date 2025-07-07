@@ -112,6 +112,7 @@ model User {
 
   @@index([deletedAt])
 }
+
 model UserTranslation {
   id          Int      @id @default(autoincrement())
   userId      Int
@@ -248,7 +249,6 @@ model Product {
   updatedAt DateTime  @updatedAt
 
   @@index([deletedAt])
-  
 }
 
 model ProductTranslation {

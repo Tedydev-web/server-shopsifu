@@ -1,33 +1,33 @@
-import { Module } from '@nestjs/common'
+import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common'
 import { SharedModule } from 'src/shared/shared.module'
-import { AuthModule } from './routes/auth/auth.module'
+import { AuthModule } from 'src/routes/auth/auth.module'
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
+import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
+import { ZodSerializerInterceptor } from 'nestjs-zod'
+import { HttpExceptionFilter } from 'src/shared/filters/http-exception.filter'
 import { LanguageModule } from 'src/routes/language/language.module'
+import { PermissionModule } from 'src/routes/permission/permission.module'
+import { RoleModule } from 'src/routes/role/role.module'
+import { ProfileModule } from 'src/routes/profile/profile.module'
+import { UserModule } from 'src/routes/user/user.module'
+import { MediaModule } from 'src/routes/media/media.module'
+import { BrandModule } from 'src/routes/brand/brand.module'
+import { BrandTranslationModule } from 'src/routes/brand/brand-translation/brand-translation.module'
 import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
 import path from 'path'
-import { PermissionModule } from './routes/permission/permission.module'
-import { RoleModule } from './routes/role/role.module'
-import { ProfileModule } from './routes/profile/profile.module'
-import { ZodSerializerInterceptor } from 'nestjs-zod'
-import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
-import { UserModule } from './routes/user/user.module'
-import { MediaModule } from './routes/media/media.module'
-import { BrandModule } from './routes/brand/brand.module'
-import { BrandTranslationModule } from './routes/brand/brand-translation/brand-translation.module'
-import { CategoryTranslationModule } from './routes/category/category-translation/category-translation.module'
-import { CategoryModule } from './routes/category/category.module'
-import { HttpExceptionFilter } from 'src/shared/filters/http-exception.filter'
-import { ConfigModule } from '@nestjs/config'
-import envConfig from 'src/shared/config'
-import { ProductModule } from './routes/product/product.module'
-import { ProductTranslationModule } from './routes/product/product-translation/product-translation.module'
-import { CartModule } from './routes/cart/cart.module'
-import { OrderModule } from './routes/order/order.module'
+import { CategoryModule } from 'src/routes/category/category.module'
+import { CategoryTranslationModule } from 'src/routes/category/category-translation/category-translation.module'
+import { ProductModule } from 'src/routes/product/product.module'
+import { ProductTranslationModule } from 'src/routes/product/product-translation/product-translation.module'
+import { CartModule } from 'src/routes/cart/cart.module'
+import { OrderModule } from 'src/routes/order/order.module'
+import { PaymentModule } from 'src/routes/payment/payment.module'
+import { CSRFMiddleware } from 'src/shared/middleware/csrf.middleware'
 
 @Module({
   imports: [
     I18nModule.forRoot({
-      fallbackLanguage: 'vi',
+      fallbackLanguage: 'en',
       loaderOptions: {
         path: path.resolve('src/shared/i18n/'),
         watch: true
@@ -35,7 +35,6 @@ import { OrderModule } from './routes/order/order.module'
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
       typesOutputPath: path.resolve('src/shared/i18n/generated/i18n.generated.ts')
     }),
-
     SharedModule,
     AuthModule,
     LanguageModule,
@@ -51,7 +50,8 @@ import { OrderModule } from './routes/order/order.module'
     ProductModule,
     ProductTranslationModule,
     CartModule,
-    OrderModule
+    OrderModule,
+    PaymentModule
   ],
   providers: [
     {
@@ -65,4 +65,8 @@ import { OrderModule } from './routes/order/order.module'
     }
   ]
 })
-export class AppModule {}
+export class AppModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CSRFMiddleware).forRoutes({ path: '*', method: RequestMethod.ALL })
+  }
+}

@@ -2,6 +2,8 @@ import { Global, Module } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { HashingService } from './services/hashing.service'
 import { TokenService } from './services/token.service'
+import { CookieService } from './services/cookie.service'
+import { CSRFService } from './services/csrf.service'
 import { JwtModule } from '@nestjs/jwt'
 import { AccessTokenGuard } from 'src/shared/guards/access-token.guard'
 import { PaymentAPIKeyGuard } from 'src/shared/guards/payment-api-key.guard'
@@ -18,6 +20,8 @@ const sharedServices = [
   PrismaService,
   HashingService,
   TokenService,
+  CookieService,
+  CSRFService,
   EmailService,
   SharedUserRepository,
   TwoFactorService,

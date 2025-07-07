@@ -12,10 +12,11 @@ export const COOKIE_DEFINITIONS = {
     prefix: '',
     options: {
       httpOnly: true,
-      secure: process.env.NODE_ENV !== 'development',
-      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
       path: '/',
-      signed: true
+      signed: true,
+      maxAge: 15 * 60 * 1000 // 15 minutes
     }
   },
   refreshToken: {
@@ -23,10 +24,11 @@ export const COOKIE_DEFINITIONS = {
     prefix: '',
     options: {
       httpOnly: true,
-      secure: process.env.NODE_ENV !== 'development',
-      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
       path: '/',
-      signed: true
+      signed: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     }
   },
   csrfToken: {
@@ -34,8 +36,8 @@ export const COOKIE_DEFINITIONS = {
     prefix: '',
     options: {
       httpOnly: false,
-      secure: process.env.NODE_ENV !== 'development',
-      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
       path: '/',
       signed: false
     }
@@ -45,8 +47,8 @@ export const COOKIE_DEFINITIONS = {
     prefix: '',
     options: {
       httpOnly: true,
-      secure: process.env.NODE_ENV !== 'development',
-      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
       path: '/',
       signed: true
     }
