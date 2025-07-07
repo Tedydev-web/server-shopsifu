@@ -35,7 +35,7 @@ model Language {
 
 model User {
   id          Int     @id @default(autoincrement())
-  email       String  
+  email       String
   name        String  @db.VarChar(500)
   password    String  @db.VarChar(500)
   phoneNumber String  @db.VarChar(50)
@@ -47,7 +47,7 @@ model User {
   roleId                      Int
   role                        Role                  @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   devices                     Device[] // Liên kết 1-n với Device
-  sessions                    Session[] // Liên kết 1-n với Session
+  refreshTokens               RefreshToken[]
   carts                       CartItem[]
   orders                      Order[]
   reviews                     Review[]
@@ -112,7 +112,6 @@ model User {
 
   @@index([deletedAt])
 }
-
 model UserTranslation {
   id          Int      @id @default(autoincrement())
   userId      Int
@@ -149,56 +148,28 @@ model VerificationCode {
   @@index([expiresAt])
 }
 
-model Device {
-  id                      Int       @id @default(autoincrement())
-  userId                  Int
-  name                    String
-  ip                      String
-  userAgent               String
-  lastActive              DateTime  @default(now())
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
-  fingerprint             String?   @unique
-  isTrusted               Boolean   @default(false)
-  trustExpiresAt          DateTime?
-  lastNotificationSentAt  DateTime?
-  isActive                Boolean   @default(true)
-  browser                 String?
-  browserVersion          String?
-  os                      String?
-  osVersion               String?
-  deviceType              String? // e.g., 'desktop', 'mobile', 'tablet'
-  deviceVendor            String?
-  deviceModel             String?
+model RefreshToken {
+  token     String   @unique @db.VarChar(1000)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  deviceId  Int // Foreign key tới Device
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sessions Session[]
+  @@index([expiresAt])
 }
 
-model Session {
-  id         String   @id @default(uuid())
-  userId     Int
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  deviceId   Int
-  device     Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  ipAddress  String    @map("ip_address")
-  userAgent  String    @map("user_agent") @db.Text
-
-  // Timestamps
-  // The time the refresh token associated with this session expires
-  expiresAt    DateTime  @map("expires_at")
-  // The last time this session was used to get a new access token
-  lastActiveAt DateTime  @default(now()) @map("last_active_at")
-  // If this is set, the session is considered revoked
-  revokedAt    DateTime? @map("revoked_at")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@index([userId])
-  @@index([deviceId])
-  @@index([expiresAt])
-  @@map("sessions")
+model Device {
+  id            Int            @id @default(autoincrement())
+  userId        Int
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  userAgent     String
+  ip            String
+  lastActive    DateTime       @updatedAt // Thay updatedAt bằng lastActive cho ý nghĩa rõ hơn
+  createdAt     DateTime       @default(now())
+  isActive      Boolean        @default(true) // Trạng thái thiết bị (đang login hay đã logout)
+  refreshTokens RefreshToken[] // Liên kết 1-n với RefreshToken
 }
 
 model Permission {

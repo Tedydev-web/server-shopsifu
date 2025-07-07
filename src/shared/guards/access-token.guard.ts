@@ -1,100 +1,75 @@
-import { Injectable, CanActivate, ExecutionContext, HttpException, UnauthorizedException } from '@nestjs/common'
-import { Request } from 'express'
-import { REQUEST_USER_KEY, REQUEST_ROLE_PERMISSIONS } from 'src/shared/constants/auth.constant'
-import { CookieNames } from 'src/shared/constants/cookie.constant'
-import { TokenService } from 'src/shared/services/auth/token.service'
-import { SessionService } from '../services/auth/session.service'
-import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
-import { I18nService } from 'nestjs-i18n'
-import {
-  InsufficientPermissionsException,
-  NotFoundRecordException,
-  SessionNotFoundException,
-  TokenBlacklistedException
-} from '../error'
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common'
+import { REQUEST_ROLE_PERMISSIONS, REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
+import { HTTPMethod } from 'src/shared/constants/role.constant'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { TokenService } from 'src/shared/services/token.service'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
   constructor(
     private readonly tokenService: TokenService,
-    private readonly sessionService: SessionService,
-    private readonly sharedRoleRepository: SharedRoleRepository,
-    private readonly i18n: I18nService
+    private readonly prismaService: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<Request>()
-    const accessToken = this.extractToken(request)
+    const request = context.switchToHttp().getRequest()
+    // Extract và validate token
+    const decodedAccessToken = await this.extractAndValidateToken(request)
 
-    if (!accessToken) {
-      throw new UnauthorizedException(this.i18n.t('auth.auth.error.ACCESS_TOKEN_REQUIRED'))
-    }
+    // Check user permission
+    await this.validateUserPermission(decodedAccessToken, request)
+    return true
+  }
 
+  private async extractAndValidateToken(request: any): Promise<AccessTokenPayload> {
+    const accessToken = this.extractAccessTokenFromHeader(request)
     try {
-      // 1. Verify access token
-      const payload = await this.tokenService.verifyAccessToken(accessToken)
+      const decodedAccessToken = await this.tokenService.verifyAccessToken(accessToken)
 
-      // 2. Check if token is blacklisted or session is invalid
-      const [isBlacklisted, session] = await Promise.all([
-        this.sessionService.isBlacklisted(payload.jti),
-        this.sessionService.getSession(payload.sessionId)
-      ])
-
-      if (isBlacklisted) {
-        throw TokenBlacklistedException
-      }
-
-      if (!session) {
-        throw SessionNotFoundException
-      }
-
-      // 3. Lấy role (kèm permissions) từ DB
-      const role = await this.sharedRoleRepository.getRoleByIdIncludePermissions(payload.roleId)
-      if (!role) {
-        throw NotFoundRecordException
-      }
-
-      // 4. Kiểm tra quyền truy cập route/method hiện tại
-      const path = request.route?.path || request.path
-      const method = request.method
-      const canAccess = role.permissions.some(
-        (permission) => permission.path === path && permission.method === method && !permission.deletedAt
-      )
-      if (!canAccess) {
-        throw InsufficientPermissionsException
-      }
-
-      // 5. Store user info và role permissions vào request
-      request[REQUEST_USER_KEY] = {
-        userId: payload.userId,
-        sessionId: payload.sessionId,
-        roleId: payload.roleId,
-        roleName: payload.roleName,
-        deviceId: session.deviceId,
-        jti: payload.jti
-      }
-      request[REQUEST_ROLE_PERMISSIONS] = role
-
-      return true
-    } catch (error) {
-      // Ensure only our standardized errors are thrown
-      if (error instanceof HttpException) {
-        throw error
-      }
-      // Fallback for unexpected JWT errors (e.g., malformed token)
-      throw new UnauthorizedException(this.i18n.t('auth.error.INVALID_ACCESS_TOKEN'))
+      request[REQUEST_USER_KEY] = decodedAccessToken
+      return decodedAccessToken
+    } catch {
+      throw new UnauthorizedException('Error.InvalidAccessToken')
     }
   }
 
-  private extractToken(request: Request): string | undefined {
-    // 1. Priority: Get from cookie
-    const fromCookie = request.cookies[CookieNames.ACCESS_TOKEN]
-    if (fromCookie) {
-      return fromCookie
+  private extractAccessTokenFromHeader(request: any): string {
+    const accessToken = request.headers.authorization?.split(' ')[1]
+    if (!accessToken) {
+      throw new UnauthorizedException('Error.MissingAccessToken')
     }
+    return accessToken
+  }
 
-    // 2. Fallback: Get from header
-    const [type, token] = request.headers.authorization?.split(' ') ?? []
-    return type === 'Bearer' ? token : undefined
+  private async validateUserPermission(decodedAccessToken: AccessTokenPayload, request: any): Promise<void> {
+    const roleId: number = decodedAccessToken.roleId
+    const path: string = request.route.path
+    const method = request.method as keyof typeof HTTPMethod
+    const role = await this.prismaService.role
+      .findUniqueOrThrow({
+        where: {
+          id: roleId,
+          deletedAt: null,
+          isActive: true,
+        },
+        include: {
+          permissions: {
+            where: {
+              deletedAt: null,
+              path,
+              method,
+            },
+          },
+        },
+      })
+      .catch(() => {
+        throw new ForbiddenException()
+      })
+    const canAccess = role.permissions.length > 0
+    if (!canAccess) {
+      throw new ForbiddenException()
+    }
+    request[REQUEST_ROLE_PERMISSIONS] = role
   }
 }

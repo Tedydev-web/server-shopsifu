@@ -8,7 +8,7 @@ import { OTPEmail } from 'emails/otp'
 export class EmailService {
   private resend: Resend
   constructor() {
-    this.resend = new Resend(envConfig.EMAIL_API_KEY)
+    this.resend = new Resend(envConfig.RESEND_API_KEY)
   }
   async sendOTP(payload: { email: string; code: string }) {
     const subject = 'Mã OTP'
@@ -16,7 +16,7 @@ export class EmailService {
       from: 'Nest.js Ecommerce <no-reply@shopsifu.live>',
       to: [payload.email],
       subject,
-      react: <OTPEmail otpCode={payload.code} title={subject} />
+      react: <OTPEmail otpCode={payload.code} title={subject} />,
     })
   }
 }

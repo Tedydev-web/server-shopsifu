@@ -6,11 +6,11 @@ export const RegisterBodySchema = UserSchema.pick({
   email: true,
   password: true,
   name: true,
-  phoneNumber: true
+  phoneNumber: true,
 })
   .extend({
     confirmPassword: z.string().min(6).max(100),
-    code: z.string().length(6)
+    code: z.string().length(6),
   })
   .strict()
   .superRefine(({ confirmPassword, password }, ctx) => {
@@ -18,14 +18,14 @@ export const RegisterBodySchema = UserSchema.pick({
       ctx.addIssue({
         code: 'custom',
         message: 'Password and confirm password must match',
-        path: ['confirmPassword']
+        path: ['confirmPassword'],
       })
     }
   })
 
 export const RegisterResSchema = UserSchema.omit({
   password: true,
-  totpSecret: true
+  totpSecret: true,
 })
 
 export const VerificationCodeSchema = z.object({
@@ -36,24 +36,24 @@ export const VerificationCodeSchema = z.object({
     TypeOfVerificationCode.REGISTER,
     TypeOfVerificationCode.FORGOT_PASSWORD,
     TypeOfVerificationCode.LOGIN,
-    TypeOfVerificationCode.DISABLE_2FA
+    TypeOfVerificationCode.DISABLE_2FA,
   ]),
   expiresAt: z.date(),
-  createdAt: z.date()
+  createdAt: z.date(),
 })
 
 export const SendOTPBodySchema = VerificationCodeSchema.pick({
   email: true,
-  type: true
+  type: true,
 }).strict()
 
 export const LoginBodySchema = UserSchema.pick({
   email: true,
-  password: true
+  password: true,
 })
   .extend({
     totpCode: z.string().length(6).optional(), // 2FA code
-    code: z.string().length(6).optional() // Email OTP code
+    code: z.string().length(6).optional(), // Email OTP code
   })
   .strict()
   .superRefine(({ totpCode, code }, ctx) => {
@@ -63,24 +63,24 @@ export const LoginBodySchema = UserSchema.pick({
       ctx.addIssue({
         path: ['totpCode'],
         message,
-        code: 'custom'
+        code: 'custom',
       })
       ctx.addIssue({
         path: ['code'],
         message,
-        code: 'custom'
+        code: 'custom',
       })
     }
   })
 
 export const LoginResSchema = z.object({
   accessToken: z.string(),
-  refreshToken: z.string()
+  refreshToken: z.string(),
 })
 
 export const RefreshTokenBodySchema = z
   .object({
-    refreshToken: z.string()
+    refreshToken: z.string(),
   })
   .strict()
 
@@ -93,7 +93,7 @@ export const DeviceSchema = z.object({
   ip: z.string(),
   lastActive: z.date(),
   createdAt: z.date(),
-  isActive: z.boolean()
+  isActive: z.boolean(),
 })
 
 export const RefreshTokenSchema = z.object({
@@ -101,7 +101,7 @@ export const RefreshTokenSchema = z.object({
   userId: z.number(),
   deviceId: z.number(),
   expiresAt: z.date(),
-  createdAt: z.date()
+  createdAt: z.date(),
 })
 
 export const RoleSchema = z.object({
@@ -113,18 +113,18 @@ export const RoleSchema = z.object({
   updatedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date()
+  updatedAt: z.date(),
 })
 
 export const LogoutBodySchema = RefreshTokenBodySchema
 
 export const GoogleAuthStateSchema = DeviceSchema.pick({
   userAgent: true,
-  ip: true
+  ip: true,
 })
 
 export const GetAuthorizationUrlResSchema = z.object({
-  url: z.string().url()
+  url: z.string().url(),
 })
 
 export const ForgotPasswordBodySchema = z
@@ -132,7 +132,7 @@ export const ForgotPasswordBodySchema = z
     email: z.string().email(),
     code: z.string().length(6),
     newPassword: z.string().min(6).max(100),
-    confirmNewPassword: z.string().min(6).max(100)
+    confirmNewPassword: z.string().min(6).max(100),
   })
   .strict()
   .superRefine(({ confirmNewPassword, newPassword }, ctx) => {
@@ -140,7 +140,7 @@ export const ForgotPasswordBodySchema = z
       ctx.addIssue({
         code: 'custom',
         message: 'Mật khẩu và mật khẩu xác nhận phải giống nhau',
-        path: ['confirmNewPassword']
+        path: ['confirmNewPassword'],
       })
     }
   })
@@ -148,7 +148,7 @@ export const ForgotPasswordBodySchema = z
 export const DisableTwoFactorBodySchema = z
   .object({
     totpCode: z.string().length(6).optional(),
-    code: z.string().length(6).optional()
+    code: z.string().length(6).optional(),
   })
   .strict()
   .superRefine(({ totpCode, code }, ctx) => {
@@ -158,18 +158,18 @@ export const DisableTwoFactorBodySchema = z
       ctx.addIssue({
         path: ['totpCode'],
         message,
-        code: 'custom'
+        code: 'custom',
       })
       ctx.addIssue({
         path: ['code'],
         message,
-        code: 'custom'
+        code: 'custom',
       })
     }
   })
 export const TwoFactorSetupResSchema = z.object({
   secret: z.string(),
-  uri: z.string()
+  uri: z.string(),
 })
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>
 export type RegisterResType = z.infer<typeof RegisterResSchema>
@@ -181,7 +181,6 @@ export type RefreshTokenType = z.infer<typeof RefreshTokenSchema>
 export type RefreshTokenBodyType = z.infer<typeof RefreshTokenBodySchema>
 export type RefreshTokenResType = LoginResType
 export type DeviceType = z.infer<typeof DeviceSchema>
-export type RoleType = z.infer<typeof RoleSchema>
 export type LogoutBodyType = RefreshTokenBodyType
 export type GoogleAuthStateType = z.infer<typeof GoogleAuthStateSchema>
 export type GetAuthorizationUrlResType = z.infer<typeof GetAuthorizationUrlResSchema>
