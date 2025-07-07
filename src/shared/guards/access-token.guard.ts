@@ -6,7 +6,12 @@ import { TokenService } from 'src/shared/services/auth/token.service'
 import { SessionService } from '../services/auth/session.service'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { I18nService } from 'nestjs-i18n'
-import { InsufficientPermissionsException, NotFoundRecordException, SessionNotFoundException, TokenBlacklistedException } from '../error'
+import {
+  InsufficientPermissionsException,
+  NotFoundRecordException,
+  SessionNotFoundException,
+  TokenBlacklistedException
+} from '../error'
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
@@ -22,7 +27,7 @@ export class AccessTokenGuard implements CanActivate {
     const accessToken = this.extractToken(request)
 
     if (!accessToken) {
-      throw new UnauthorizedException(this.i18n.t('auth.error.ACCESS_TOKEN_REQUIRED'))
+      throw new UnauthorizedException(this.i18n.t('auth.auth.error.ACCESS_TOKEN_REQUIRED'))
     }
 
     try {

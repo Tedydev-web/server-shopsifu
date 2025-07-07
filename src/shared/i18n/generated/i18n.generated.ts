@@ -31,6 +31,7 @@ export type I18nTranslations = {
                 "INVALID_REFRESH_TOKEN": string;
                 "REFRESH_TOKEN_REUSED": string;
                 "STATE_TOKEN_MISSING": string;
+                "ACCESS_TOKEN_REQUIRED": string;
             };
         };
     };

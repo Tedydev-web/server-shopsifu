@@ -55,7 +55,7 @@ export class PermissionGuard implements CanActivate {
 
     if (!user) {
       this.logDenied(request, 'NO_USER_IN_REQUEST', null)
-      throw new UnauthorizedException(this.i18n.t('auth.error.ACCESS_TOKEN_REQUIRED'))
+      throw new UnauthorizedException(this.i18n.t('auth.auth.error.ACCESS_TOKEN_REQUIRED'))
     }
 
     // 1. Kiểm tra trạng thái user và role (có thể cache nếu cần)
