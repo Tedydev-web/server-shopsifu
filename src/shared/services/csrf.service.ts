@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { doubleCsrf } from 'csrf-csrf'
 import { Request, Response } from 'express'
 import envConfig from 'src/shared/config'
+import { COOKIE_DEFINITIONS } from 'src/shared/constants/cookie.constant'
 
 @Injectable()
 export class CSRFService {
@@ -11,13 +12,8 @@ export class CSRFService {
     const { invalidCsrfTokenError, generateCsrfToken, validateRequest, doubleCsrfProtection } = doubleCsrf({
       getSecret: () => envConfig.COOKIE_SECRET,
       getSessionIdentifier: (req: Request) => 'csrf',
-      cookieName: 'csrf_token',
-      cookieOptions: {
-        httpOnly: false,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax' as const,
-        path: '/'
-      },
+      cookieName: COOKIE_DEFINITIONS.csrfSecret.name,
+      cookieOptions: COOKIE_DEFINITIONS.csrfSecret.options,
       size: 64,
       ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
       getCsrfTokenFromRequest: (req: Request) => {

@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser'
 import session from 'express-session'
 
 import envConfig from 'src/shared/config'
+import { COOKIE_DEFINITIONS } from './shared/constants/cookie.constant'
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule)
@@ -27,15 +28,11 @@ async function bootstrap() {
   // Session middleware (cần thiết cho CSRF)
   app.use(
     session({
+      name: COOKIE_DEFINITIONS.session.name,
       secret: envConfig.COOKIE_SECRET,
       resave: false,
       saveUninitialized: false,
-      cookie: {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-      }
+      cookie: COOKIE_DEFINITIONS.session.options
     })
   )
 

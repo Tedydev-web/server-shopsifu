@@ -32,7 +32,6 @@ const main = async () => {
     }
   })
   const hashedPassword = await hashingService.hash(envConfig.ADMIN_PASSWORD)
-  console.log(envConfig.ADMIN_PASSWORD)
   const adminUser = await prisma.user.create({
     data: {
       email: envConfig.ADMIN_EMAIL,

@@ -26,11 +26,14 @@
     ]
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
+    "initialScript/**/*",
+    "emails/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "auth"
+    "auth",
+    "test-script.ts"
   ]
 }
