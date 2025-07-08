@@ -23,6 +23,9 @@ export class RoleController {
     return this.roleService.list({
       page: query.page,
       limit: query.limit,
+      sortBy: query.sortBy,
+      orderBy: query.orderBy,
+      search: query.search
     })
   }
 

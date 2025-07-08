@@ -1,24 +1,22 @@
 import { PermissionSchema } from 'src/shared/models/shared-permission.model'
 import { z } from 'zod'
+import { PaginationResponseSchema } from 'src/shared/models/pagination.model'
+import { PaginationQuerySchema } from 'src/shared/models/request.model'
 
-export const GetPermissionsResSchema = z.object({
-  data: z.array(PermissionSchema),
-  totalItems: z.number(), // Tổng số item
-  page: z.number(), // Số trang hiện tại
-  limit: z.number(), // Số item trên 1 trang
-  totalPages: z.number(), // Tổng số trang
+export const GetPermissionsResSchema = PaginationResponseSchema(PermissionSchema)
+
+export const GetPermissionsQuerySchema = PaginationQuerySchema.pick({
+  page: true,
+  limit: true,
+  search: true
+}).extend({
+  sortBy: z.enum(['path', 'method', 'module', 'createdAt', 'updatedAt']).default('createdAt'),
+  orderBy: z.enum(['asc', 'desc']).default('desc')
 })
-
-export const GetPermissionsQuerySchema = z
-  .object({
-    page: z.coerce.number().int().positive().default(1), // Phải thêm coerce để chuyển từ string sang number
-    limit: z.coerce.number().int().positive().default(10), // Phải thêm coerce để chuyển từ string sang number
-  })
-  .strict()
 
 export const GetPermissionParamsSchema = z
   .object({
-    permissionId: z.coerce.number(), // Phải thêm coerce để chuyển từ string sang number
+    permissionId: z.coerce.number() // Phải thêm coerce để chuyển từ string sang number
   })
   .strict()
 
@@ -28,7 +26,7 @@ export const CreatePermissionBodySchema = PermissionSchema.pick({
   name: true,
   path: true,
   method: true,
-  module: true,
+  module: true
 }).strict()
 
 export const UpdatePermissionBodySchema = CreatePermissionBodySchema

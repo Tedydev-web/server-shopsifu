@@ -5,10 +5,13 @@ import cookieParser from 'cookie-parser'
 import session from 'express-session'
 import envConfig from 'src/shared/config'
 import { COOKIE_DEFINITIONS } from './shared/constants/cookie.constant'
+import helmet from 'helmet'
+import compression from 'compression'
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule)
-
+  app.use(helmet())
+  app.use(compression())
   // CORS configuration
   app.enableCors({
     origin: ['https://localhost:8000', 'https://shopsifu.live'],

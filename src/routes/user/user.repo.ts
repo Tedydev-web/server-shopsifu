@@ -2,45 +2,26 @@ import { Injectable } from '@nestjs/common'
 import { CreateUserBodyType, GetUsersQueryType, GetUsersResType, UpdateUserBodyType } from 'src/routes/user/user.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { UserType } from 'src/shared/models/shared-user.model'
+import { PaginatedResult, paginate } from 'src/shared/utils/pagination.util'
 
 @Injectable()
 export class UserRepo {
   constructor(private prismaService: PrismaService) {}
 
-  async list(pagination: GetUsersQueryType): Promise<GetUsersResType> {
-    const skip = (pagination.page - 1) * pagination.limit
-    const take = pagination.limit
-    const [totalItems, data] = await Promise.all([
-      this.prismaService.user.count({
-        where: {
-          deletedAt: null
-        }
-      }),
-      this.prismaService.user.findMany({
+  async list(pagination: GetUsersQueryType): Promise<PaginatedResult<UserType>> {
+    return paginate(
+      this.prismaService.user,
+      pagination,
+      {
         where: {
           deletedAt: null
         },
-        skip,
-        take,
         include: {
           role: true
         }
-      })
-    ])
-    const totalPages = Math.ceil(totalItems / pagination.limit)
-    const hasNext = pagination.page < totalPages
-    const hasPrev = pagination.page > 1 && totalPages > 0
-    return {
-      data,
-      metadata: {
-        totalItems,
-        page: pagination.page,
-        limit: pagination.limit,
-        totalPages,
-        hasNext,
-        hasPrev
-      }
-    }
+      },
+      ['name', 'email', 'phoneNumber']
+    )
   }
 
   create({ createdById, data }: { createdById: number | null; data: CreateUserBodyType }): Promise<UserType> {

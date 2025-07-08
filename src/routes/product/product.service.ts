@@ -10,18 +10,9 @@ export class ProductService {
 
   async list(props: { query: GetProductsQueryType }) {
     const data = await this.productRepo.list({
-      page: props.query.page,
-      limit: props.query.limit,
+      ...props.query,
       languageId: I18nContext.current()?.lang as string,
-      isPublic: true,
-      brandIds: props.query.brandIds,
-      minPrice: props.query.minPrice,
-      maxPrice: props.query.maxPrice,
-      categories: props.query.categories,
-      name: props.query.name,
-      createdById: props.query.createdById,
-      orderBy: props.query.orderBy,
-      sortBy: props.query.sortBy,
+      isPublic: true
     })
     return data
   }
@@ -30,7 +21,7 @@ export class ProductService {
     const product = await this.productRepo.getDetail({
       productId: props.productId,
       languageId: I18nContext.current()?.lang as string,
-      isPublic: true,
+      isPublic: true
     })
     if (!product) {
       throw NotFoundRecordException

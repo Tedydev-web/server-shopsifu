@@ -24,6 +24,9 @@ export class UserController {
     return this.userService.list({
       page: query.page,
       limit: query.limit,
+      sortBy: query.sortBy,
+      orderBy: query.orderBy,
+      search: query.search
     })
   }
 
