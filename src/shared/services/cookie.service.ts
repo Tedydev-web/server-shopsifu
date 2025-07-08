@@ -13,8 +13,7 @@ export class CookieService {
   /**
    * Set access token cookie
    */
-  setAccessTokenCookie(res: Response, payload: AccessTokenPayloadCreate): void {
-    const accessToken = this.tokenService.signAccessToken(payload)
+  setAccessTokenCookie(res: Response, accessToken: string): void {
     const cookieOptions = COOKIE_DEFINITIONS.accessToken.options
 
     res.cookie(CookieNames.ACCESS_TOKEN, accessToken, {
@@ -26,8 +25,7 @@ export class CookieService {
   /**
    * Set refresh token cookie
    */
-  setRefreshTokenCookie(res: Response, payload: RefreshTokenPayloadCreate): void {
-    const refreshToken = this.tokenService.signRefreshToken(payload)
+  setRefreshTokenCookie(res: Response, refreshToken: string): void {
     const cookieOptions = COOKIE_DEFINITIONS.refreshToken.options
 
     res.cookie(CookieNames.REFRESH_TOKEN, refreshToken, {
@@ -39,13 +37,12 @@ export class CookieService {
   /**
    * Set both access and refresh token cookies
    */
-  setAuthCookies(
-    res: Response,
-    accessPayload: AccessTokenPayloadCreate,
-    refreshPayload: RefreshTokenPayloadCreate
-  ): void {
-    this.setAccessTokenCookie(res, accessPayload)
-    this.setRefreshTokenCookie(res, refreshPayload)
+  setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
+    // Clear old cookies first to avoid conflicts
+    this.clearAuthCookies(res)
+
+    this.setAccessTokenCookie(res, accessToken)
+    this.setRefreshTokenCookie(res, refreshToken)
   }
 
   /**

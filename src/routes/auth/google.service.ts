@@ -7,7 +7,6 @@ import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleUserInfoError } from 'src/routes/auth/auth.error'
 import envConfig from 'src/shared/config'
 import { HashingService } from 'src/shared/services/hashing.service'
-import { CookieService } from 'src/shared/services/cookie.service'
 import { v4 as uuidv4 } from 'uuid'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 
@@ -18,8 +17,7 @@ export class GoogleService {
     private readonly authRepository: AuthRepository,
     private readonly hashingService: HashingService,
     private readonly sharedRoleRepository: SharedRoleRepository,
-    private readonly authService: AuthService,
-    private readonly cookieService: CookieService
+    private readonly authService: AuthService
   ) {
     this.oauth2Client = new google.auth.OAuth2(
       envConfig.GOOGLE_CLIENT_ID,
@@ -94,19 +92,18 @@ export class GoogleService {
         userAgent,
         ip
       })
-      const authTokens = await this.authService.generateTokensForCookies({
+      const authTokens = await this.authService.generateTokens({
         userId: user.id,
         deviceId: device.id,
         roleId: user.roleId,
         roleName: user.role.name
       })
       return {
+        ...authTokens,
         userId: user.id,
         deviceId: device.id,
         roleId: user.roleId,
-        roleName: user.role.name,
-        accessToken: authTokens.accessToken,
-        refreshToken: authTokens.refreshToken
+        roleName: user.role.name
       }
     } catch (error) {
       console.error('Error in googleCallback', error)

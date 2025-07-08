@@ -18,8 +18,7 @@ export class CookieController {
     const csrfToken = this.csrfService.generateToken(req, res)
 
     return {
-      message: 'CSRF token generated successfully',
-      csrfToken
+      message: 'CSRF token generated successfully'
     }
   }
 

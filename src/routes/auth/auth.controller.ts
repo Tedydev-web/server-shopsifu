@@ -18,13 +18,14 @@ import {
 
 import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleService } from 'src/routes/auth/google.service'
-import { CookieService } from 'src/shared/services/cookie.service'
 import envConfig from 'src/shared/config'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { EmptyBodyDTO } from 'src/shared/dtos/request.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { CookieService } from 'src/shared/services/cookie.service'
+import { UnauthorizedException } from '@nestjs/common'
 
 @Controller('auth')
 export class AuthController {
@@ -50,6 +51,7 @@ export class AuthController {
 
   @Post('login')
   @IsPublic()
+  @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(LoginResDTO)
   async login(
     @Body() body: LoginBodyDTO,
@@ -57,25 +59,13 @@ export class AuthController {
     @Ip() ip: string,
     @Res({ passthrough: true }) res: Response
   ) {
-    const result = await this.authService.login({
+    const data = await this.authService.login({
       ...body,
       userAgent,
       ip
     })
 
-    // Set cookies
-    this.cookieService.setAuthCookies(
-      res,
-      {
-        userId: result.userId,
-        deviceId: result.deviceId,
-        roleId: result.roleId,
-        roleName: result.roleName
-      },
-      {
-        userId: result.userId
-      }
-    )
+    this.cookieService.setAuthCookies(res, data.accessToken, data.refreshToken)
 
     return { message: 'Đăng nhập thành công' }
   }
@@ -85,43 +75,41 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(RefreshTokenResDTO)
   async refreshToken(
-    @Body() body: RefreshTokenBodyDTO,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ) {
-    const result = await this.authService.refreshToken({
-      refreshToken: body.refreshToken,
-      userAgent,
-      ip
-    })
+    const refreshTokenFromCookie = this.cookieService.getRefreshTokenFromCookie(req)
+    if (!refreshTokenFromCookie) {
+      throw new UnauthorizedException('Refresh token not found')
+    }
 
-    // Set new cookies
-    this.cookieService.setAuthCookies(
-      res,
+    const data = await this.authService.refreshToken(
       {
-        userId: result.userId,
-        deviceId: result.deviceId,
-        roleId: result.roleId,
-        roleName: result.roleName
+        userAgent,
+        ip
       },
-      {
-        userId: result.userId
-      }
+      refreshTokenFromCookie
     )
 
-    return { message: 'Cập nhật token thành công' }
+    this.cookieService.setAuthCookies(res, data.accessToken, data.refreshToken)
+
+    return { message: 'Làm mới token thành công' }
   }
 
   @Post('logout')
+  @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  async logout(@Body() body: LogoutBodyDTO, @Res({ passthrough: true }) res: Response) {
-    const result = await this.authService.logout(body.refreshToken)
-
-    // Clear authentication cookies
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refreshTokenFromCookie = this.cookieService.getRefreshTokenFromCookie(req)
+    if (!refreshTokenFromCookie) {
+      throw new UnauthorizedException('Refresh token not found')
+    }
+    await this.authService.logout(refreshTokenFromCookie)
     this.cookieService.clearAuthCookies(res)
 
-    return result
+    return { message: 'Đăng xuất thành công' }
   }
 
   @Get('google-link')
@@ -143,19 +131,7 @@ export class AuthController {
         state
       })
 
-      // Set authentication cookies
-      this.cookieService.setAuthCookies(
-        res,
-        {
-          userId: data.userId,
-          deviceId: data.deviceId,
-          roleId: data.roleId,
-          roleName: data.roleName
-        },
-        {
-          userId: data.userId
-        }
-      )
+      this.cookieService.setAuthCookies(res, data.accessToken, data.refreshToken)
 
       return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true`)
     } catch (error) {

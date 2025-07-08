@@ -11,7 +11,7 @@ export class CSRFService {
     const { invalidCsrfTokenError, generateCsrfToken, validateRequest, doubleCsrfProtection } = doubleCsrf({
       getSecret: () => envConfig.COOKIE_SECRET,
       getSessionIdentifier: (req: Request) => 'csrf',
-      cookieName: 'XSRF-TOKEN',
+      cookieName: 'csrf_token',
       cookieOptions: {
         httpOnly: false,
         secure: process.env.NODE_ENV === 'production',

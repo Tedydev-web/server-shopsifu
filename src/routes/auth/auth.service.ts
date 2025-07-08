@@ -184,19 +184,20 @@ export class AuthService {
     })
 
     // 4. Tạo mới accessToken và refreshToken
-    const tokens = await this.generateTokensForCookies({
+    const tokens = await this.generateTokens({
       userId: user.id,
       deviceId: device.id,
       roleId: user.roleId,
       roleName: user.role.name
     })
+
+    // 5. Trả về thông tin cần thiết cho cookies
     return {
+      ...tokens,
       userId: user.id,
       deviceId: device.id,
       roleId: user.roleId,
-      roleName: user.role.name,
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken
+      roleName: user.role.name
     }
   }
 
@@ -222,29 +223,7 @@ export class AuthService {
     return { accessToken, refreshToken }
   }
 
-  async generateTokensForCookies({ userId, deviceId, roleId, roleName }: AccessTokenPayloadCreate) {
-    const [accessToken, refreshToken] = await Promise.all([
-      this.tokenService.signAccessToken({
-        userId,
-        deviceId,
-        roleId,
-        roleName
-      }),
-      this.tokenService.signRefreshToken({
-        userId
-      })
-    ])
-    const decodedRefreshToken = await this.tokenService.verifyRefreshToken(refreshToken)
-    await this.authRepository.createRefreshToken({
-      token: refreshToken,
-      userId,
-      expiresAt: new Date(decodedRefreshToken.exp * 1000),
-      deviceId
-    })
-    return { accessToken, refreshToken }
-  }
-
-  async refreshToken({ refreshToken, userAgent, ip }: RefreshTokenBodyType & { userAgent: string; ip: string }) {
+  async refreshToken({ userAgent, ip }: { userAgent: string; ip: string }, refreshToken: string) {
     try {
       // 1. Kiểm tra refreshToken có hợp lệ không
       const { userId } = await this.tokenService.verifyRefreshToken(refreshToken)
@@ -274,15 +253,14 @@ export class AuthService {
         token: refreshToken
       })
       // 5. Tạo mới accessToken và refreshToken
-      const $tokens = this.generateTokensForCookies({ userId, roleId, roleName, deviceId })
+      const $tokens = this.generateTokens({ userId, roleId, roleName, deviceId })
       const [, , tokens] = await Promise.all([$updateDevice, $deleteRefreshToken, $tokens])
       return {
+        ...tokens,
         userId,
         deviceId,
         roleId,
-        roleName,
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken
+        roleName
       }
     } catch (error) {
       if (error instanceof HttpException) {

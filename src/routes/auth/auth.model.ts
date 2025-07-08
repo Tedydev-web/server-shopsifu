@@ -77,11 +77,7 @@ export const LoginResSchema = z.object({
   message: z.string()
 })
 
-export const RefreshTokenBodySchema = z
-  .object({
-    refreshToken: z.string()
-  })
-  .strict()
+export const RefreshTokenBodySchema = z.object({}).strict()
 
 export const RefreshTokenResSchema = z.object({
   message: z.string()
