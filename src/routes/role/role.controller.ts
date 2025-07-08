@@ -5,14 +5,13 @@ import {
   CreateRoleResDTO,
   GetRoleDetailResDTO,
   GetRoleParamsDTO,
+  GetRolesQueryDTO,
   GetRolesResDTO,
-  UpdateRoleBodyDTO
+  UpdateRoleBodyDTO,
 } from 'src/routes/role/role.dto'
 import { RoleService } from 'src/routes/role/role.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
-import { Pagination } from 'src/shared/decorators/pagination.decorator'
-import { PaginationQueryDTO } from 'src/shared/dtos/pagination.dto'
 
 @Controller('roles')
 export class RoleController {
@@ -20,10 +19,10 @@ export class RoleController {
 
   @Get()
   @ZodSerializerDto(GetRolesResDTO)
-  list(@Pagination() pagination: PaginationQueryDTO, @Query() query: any) {
+  list(@Query() query: GetRolesQueryDTO) {
     return this.roleService.list({
-      pagination,
-      filters: query
+      page: query.page,
+      limit: query.limit,
     })
   }
 
@@ -38,7 +37,7 @@ export class RoleController {
   create(@Body() body: CreateRoleBodyDTO, @ActiveUser('userId') userId: number) {
     return this.roleService.create({
       data: body,
-      createdById: userId
+      createdById: userId,
     })
   }
 
@@ -48,7 +47,7 @@ export class RoleController {
     return this.roleService.update({
       data: body,
       id: params.roleId,
-      updatedById: userId
+      updatedById: userId,
     })
   }
 
@@ -57,7 +56,7 @@ export class RoleController {
   delete(@Param() params: GetRoleParamsDTO, @ActiveUser('userId') userId: number) {
     return this.roleService.delete({
       id: params.roleId,
-      deletedById: userId
+      deletedById: userId,
     })
   }
 }

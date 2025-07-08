@@ -21,7 +21,7 @@ export class ProfileController {
   updateProfile(@Body() body: UpdateMeBodyDTO, @ActiveUser('userId') userId: number) {
     return this.profileService.updateProfile({
       userId,
-      body
+      body,
     })
   }
 
@@ -30,7 +30,7 @@ export class ProfileController {
   changePassword(@Body() body: ChangePasswordBodyDTO, @ActiveUser('userId') userId: number) {
     return this.profileService.changePassword({
       userId,
-      body
+      body,
     })
   }
 }

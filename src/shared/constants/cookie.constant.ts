@@ -26,8 +26,8 @@ export const COOKIE_DEFINITIONS = {
   accessToken: {
     name: CookieNames.ACCESS_TOKEN,
     options: {
-      ...signedHttpOnlyOptions,
-      httpOnly: false, // Secret phải là httpOnly
+      ...baseOptions,
+      httpOnly: false,
       secure: true,
       sameSite: 'none',
       maxAge: 15 * 60 * 1000 // 15 phút
@@ -36,7 +36,7 @@ export const COOKIE_DEFINITIONS = {
   refreshToken: {
     name: CookieNames.REFRESH_TOKEN,
     options: {
-      ...signedHttpOnlyOptions,
+      ...baseOptions,
       httpOnly: false, // Secret phải là httpOnly
       secure: true,
       sameSite: 'none',

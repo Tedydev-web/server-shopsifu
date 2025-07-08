@@ -6,7 +6,7 @@ import {
   GetCategoryParamsDTO,
   GetAllCategoriesResDTO,
   UpdateCategoryBodyDTO,
-  GetAllCategoriesQueryDTO
+  GetAllCategoriesQueryDTO,
 } from 'src/routes/category/category.dto'
 import { CategoryService } from 'src/routes/category/category.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -21,7 +21,7 @@ export class CategoryController {
   @IsPublic()
   @ZodSerializerDto(GetAllCategoriesResDTO)
   findAll(@Query() query: GetAllCategoriesQueryDTO) {
-    return this.categoryService.findAll(query)
+    return this.categoryService.findAll(query.parentCategoryId)
   }
 
   @Get(':categoryId')
@@ -36,7 +36,7 @@ export class CategoryController {
   create(@Body() body: CreateCategoryBodyDTO, @ActiveUser('userId') userId: number) {
     return this.categoryService.create({
       data: body,
-      createdById: userId
+      createdById: userId,
     })
   }
 
@@ -45,12 +45,12 @@ export class CategoryController {
   update(
     @Body() body: UpdateCategoryBodyDTO,
     @Param() params: GetCategoryParamsDTO,
-    @ActiveUser('userId') userId: number
+    @ActiveUser('userId') userId: number,
   ) {
     return this.categoryService.update({
       data: body,
       id: params.categoryId,
-      updatedById: userId
+      updatedById: userId,
     })
   }
 
@@ -59,7 +59,7 @@ export class CategoryController {
   delete(@Param() params: GetCategoryParamsDTO, @ActiveUser('userId') userId: number) {
     return this.categoryService.delete({
       id: params.categoryId,
-      deletedById: userId
+      deletedById: userId,
     })
   }
 }

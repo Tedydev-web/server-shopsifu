@@ -7,17 +7,17 @@ export const LanguageSchema = z.object({
   updatedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date()
+  updatedAt: z.date(),
 })
 
 export const GetLanguagesResSchema = z.object({
-  message: z.string(),
-  data: z.array(LanguageSchema)
+  data: z.array(LanguageSchema),
+  totalItems: z.number(),
 })
 
 export const GetLanguageParamsSchema = z
   .object({
-    languageId: z.string().max(10)
+    languageId: z.string().max(10),
   })
   .strict()
 
@@ -25,11 +25,11 @@ export const GetLanguageDetailResSchema = LanguageSchema
 
 export const CreateLanguageBodySchema = LanguageSchema.pick({
   id: true,
-  name: true
+  name: true,
 }).strict()
 
 export const UpdateLanguageBodySchema = LanguageSchema.pick({
-  name: true
+  name: true,
 }).strict()
 
 export type LanguageType = z.infer<typeof LanguageSchema>

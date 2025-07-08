@@ -3,74 +3,16 @@ import { BrandRepo } from 'src/routes/brand/brand.repo'
 import { CreateBrandBodyType, UpdateBrandBodyType } from 'src/routes/brand/brand.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
-import { PaginationQueryType } from 'src/shared/models/pagination.model'
-import { I18nContext, I18nService } from 'nestjs-i18n'
-import { PaginationService } from 'src/shared/services/pagination.service'
-import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
-import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { PaginationQueryType } from 'src/shared/models/request.model'
+import { I18nContext } from 'nestjs-i18n'
 
 @Injectable()
 export class BrandService {
-  constructor(
-    private brandRepo: BrandRepo,
-    private paginationService: PaginationService,
-    private i18n: I18nService<I18nTranslations>
-  ) {}
+  constructor(private brandRepo: BrandRepo) {}
 
-  async list(props: { pagination: PaginationQueryType; filters: any }) {
-    const languageId = I18nContext.current()?.lang as string
-
-    // Xây dựng where clause từ filters
-    const where = this.buildWhereClause(props.filters)
-
-    // Xây dựng orderBy từ pagination và filters
-    const orderBy = this.buildOrderBy(props.pagination, props.filters)
-
-    const result = await this.paginationService.paginate('brand', props.pagination, {
-      where,
-      include: {
-        brandTranslations: {
-          where: languageId === 'all' ? { deletedAt: null } : { deletedAt: null, languageId }
-        }
-      },
-      orderBy,
-      defaultSortField: 'createdAt'
-    })
-
-    return {
-      ...result,
-      message: this.i18n.t('brand.brand.success.GET_SUCCESS')
-    }
-  }
-
-  private buildWhereClause(filters: any) {
-    const where: any = { deletedAt: null }
-
-    // Hỗ trợ cả 'search' và 'name' param
-    if (filters.search) {
-      const searchTerm = filters.search
-      where.name = {
-        contains: searchTerm,
-        mode: 'insensitive'
-      }
-    }
-
-    // Filter theo createdById (cho admin/seller)
-    if (filters.createdById) {
-      where.createdById = Number(filters.createdById)
-    }
-
-    return where
-  }
-
-  private buildOrderBy(pagination: PaginationQueryType, filters: any) {
-    const { sortBy = SortBy.CreatedAt, sortOrder = OrderBy.Desc } = filters
-
-    if (sortBy === SortBy.Name) {
-      return [{ name: sortOrder }]
-    }
-
-    return [{ createdAt: sortOrder }]
+  async list(pagination: PaginationQueryType) {
+    const data = await this.brandRepo.list(pagination, I18nContext.current()?.lang as string)
+    return data
   }
 
   async findById(id: number) {
@@ -78,23 +20,14 @@ export class BrandService {
     if (!brand) {
       throw NotFoundRecordException
     }
-
-    return {
-      data: brand,
-      message: this.i18n.t('brand.brand.success.GET_DETAIL_SUCCESS')
-    }
+    return brand
   }
 
-  async create({ data, createdById }: { data: CreateBrandBodyType; createdById: number }) {
-    const brand = await this.brandRepo.create({
+  create({ data, createdById }: { data: CreateBrandBodyType; createdById: number }) {
+    return this.brandRepo.create({
       createdById,
-      data
+      data,
     })
-
-    return {
-      data: brand,
-      message: this.i18n.t('brand.brand.success.CREATE_SUCCESS')
-    }
   }
 
   async update({ id, data, updatedById }: { id: number; data: UpdateBrandBodyType; updatedById: number }) {
@@ -102,13 +35,9 @@ export class BrandService {
       const brand = await this.brandRepo.update({
         id,
         updatedById,
-        data
+        data,
       })
-
-      return {
-        data: brand,
-        message: this.i18n.t('brand.brand.success.UPDATE_SUCCESS')
-      }
+      return brand
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -121,10 +50,10 @@ export class BrandService {
     try {
       await this.brandRepo.delete({
         id,
-        deletedById
+        deletedById,
       })
       return {
-        message: this.i18n.t('brand.brand.success.DELETE_SUCCESS')
+        message: 'Delete successfully',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

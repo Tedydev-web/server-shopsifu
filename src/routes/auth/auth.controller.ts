@@ -57,16 +57,15 @@ export class AuthController {
     @Body() body: LoginBodyDTO,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ) {
-    const data = await this.authService.login({
+    const { accessToken, refreshToken } = await this.authService.login({
       ...body,
       userAgent,
       ip
     })
-
-    this.cookieService.setAuthCookies(res, data.accessToken, data.refreshToken)
-
+    this.cookieService.setAuthCookies(res, accessToken, refreshToken)
     return { message: 'Đăng nhập thành công' }
   }
 

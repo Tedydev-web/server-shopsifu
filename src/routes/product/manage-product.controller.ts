@@ -3,30 +3,28 @@ import { ZodSerializerDto } from 'nestjs-zod'
 import { ManageProductService } from 'src/routes/product/manage-product.service'
 import {
   CreateProductBodyDTO,
+  GetManageProductsQueryDTO,
   GetProductDetailResDTO,
   GetProductParamsDTO,
   GetProductsResDTO,
   ProductDTO,
-  UpdateProductBodyDTO
+  UpdateProductBodyDTO,
 } from 'src/routes/product/product.dto'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { Pagination } from 'src/shared/decorators/pagination.decorator'
-import { PaginationQueryDTO } from 'src/shared/dtos/pagination.dto'
 
-@Controller('manage-product')
+@Controller('manage-product/products')
 export class ManageProductController {
   constructor(private readonly manageProductService: ManageProductService) {}
 
   @Get()
   @ZodSerializerDto(GetProductsResDTO)
-  list(@Pagination() pagination: PaginationQueryDTO, @Query() query: any, @ActiveUser() user: AccessTokenPayload) {
+  list(@Query() query: GetManageProductsQueryDTO, @ActiveUser() user: AccessTokenPayload) {
     return this.manageProductService.list({
-      pagination,
-      filters: query,
+      query,
+      roleNameRequest: user.roleName,
       userIdRequest: user.userId,
-      roleNameRequest: user.roleName
     })
   }
 
@@ -36,7 +34,7 @@ export class ManageProductController {
     return this.manageProductService.getDetail({
       productId: params.productId,
       roleNameRequest: user.roleName,
-      userIdRequest: user.userId
+      userIdRequest: user.userId,
     })
   }
 
@@ -45,7 +43,7 @@ export class ManageProductController {
   create(@Body() body: CreateProductBodyDTO, @ActiveUser('userId') userId: number) {
     return this.manageProductService.create({
       data: body,
-      createdById: userId
+      createdById: userId,
     })
   }
 
@@ -54,13 +52,13 @@ export class ManageProductController {
   update(
     @Body() body: UpdateProductBodyDTO,
     @Param() params: GetProductParamsDTO,
-    @ActiveUser() user: AccessTokenPayload
+    @ActiveUser() user: AccessTokenPayload,
   ) {
     return this.manageProductService.update({
       data: body,
       productId: params.productId,
       updatedById: user.userId,
-      roleNameRequest: user.roleName
+      roleNameRequest: user.roleName,
     })
   }
 
@@ -70,7 +68,7 @@ export class ManageProductController {
     return this.manageProductService.delete({
       productId: params.productId,
       deletedById: user.userId,
-      roleNameRequest: user.roleName
+      roleNameRequest: user.roleName,
     })
   }
 }

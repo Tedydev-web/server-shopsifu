@@ -5,6 +5,6 @@ import { OrderController } from 'src/routes/order/order.controller'
 
 @Module({
   providers: [OrderService, OrderRepo],
-  controllers: [OrderController]
+  controllers: [OrderController],
 })
 export class OrderModule {}

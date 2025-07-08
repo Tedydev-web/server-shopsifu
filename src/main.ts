@@ -4,7 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express'
 import { UPLOAD_DIR } from 'src/shared/constants/other.constant'
 import cookieParser from 'cookie-parser'
 import session from 'express-session'
-
+import { doubleCsrf } from 'csrf-csrf'
 import envConfig from 'src/shared/config'
 import { COOKIE_DEFINITIONS } from './shared/constants/cookie.constant'
 

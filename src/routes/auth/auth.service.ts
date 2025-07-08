@@ -191,14 +191,7 @@ export class AuthService {
       roleName: user.role.name
     })
 
-    // 5. Trả về thông tin cần thiết cho cookies
-    return {
-      ...tokens,
-      userId: user.id,
-      deviceId: device.id,
-      roleId: user.roleId,
-      roleName: user.role.name
-    }
+    return tokens
   }
 
   async generateTokens({ userId, deviceId, roleId, roleName }: AccessTokenPayloadCreate) {

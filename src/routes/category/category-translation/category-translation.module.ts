@@ -5,6 +5,6 @@ import { CategoryTranslationService } from 'src/routes/category/category-transla
 
 @Module({
   providers: [CategoryTranslationRepo, CategoryTranslationService],
-  controllers: [CategoryTranslationController]
+  controllers: [CategoryTranslationController],
 })
 export class CategoryTranslationModule {}

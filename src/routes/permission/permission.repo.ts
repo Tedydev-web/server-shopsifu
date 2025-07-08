@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common'
 import {
   CreatePermissionBodyType,
+  GetPermissionsQueryType,
+  GetPermissionsResType,
   PermissionType,
-  UpdatePermissionBodyType
+  UpdatePermissionBodyType,
 } from 'src/routes/permission/permission.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
@@ -10,18 +12,44 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 export class PermissionRepo {
   constructor(private prismaService: PrismaService) {}
 
+  async list(pagination: GetPermissionsQueryType): Promise<GetPermissionsResType> {
+    const skip = (pagination.page - 1) * pagination.limit
+    const take = pagination.limit
+    const [totalItems, data] = await Promise.all([
+      this.prismaService.permission.count({
+        where: {
+          deletedAt: null,
+        },
+      }),
+      this.prismaService.permission.findMany({
+        where: {
+          deletedAt: null,
+        },
+        skip,
+        take,
+      }),
+    ])
+    return {
+      data,
+      totalItems,
+      page: pagination.page,
+      limit: pagination.limit,
+      totalPages: Math.ceil(totalItems / pagination.limit),
+    }
+  }
+
   findById(id: number): Promise<PermissionType | null> {
     return this.prismaService.permission.findUnique({
       where: {
         id,
-        deletedAt: null
-      }
+        deletedAt: null,
+      },
     })
   }
 
   create({
     createdById,
-    data
+    data,
   }: {
     createdById: number | null
     data: CreatePermissionBodyType
@@ -29,15 +57,15 @@ export class PermissionRepo {
     return this.prismaService.permission.create({
       data: {
         ...data,
-        createdById
-      }
+        createdById,
+      },
     })
   }
 
   update({
     id,
     updatedById,
-    data
+    data,
   }: {
     id: number
     updatedById: number
@@ -46,40 +74,40 @@ export class PermissionRepo {
     return this.prismaService.permission.update({
       where: {
         id,
-        deletedAt: null
+        deletedAt: null,
       },
       data: {
         ...data,
-        updatedById
-      }
+        updatedById,
+      },
     })
   }
 
   delete(
     {
       id,
-      deletedById
+      deletedById,
     }: {
       id: number
       deletedById: number
     },
-    isHard?: boolean
+    isHard?: boolean,
   ): Promise<PermissionType> {
     return isHard
       ? this.prismaService.permission.delete({
           where: {
-            id
-          }
+            id,
+          },
         })
       : this.prismaService.permission.update({
           where: {
             id,
-            deletedAt: null
+            deletedAt: null,
           },
           data: {
             deletedAt: new Date(),
-            deletedById
-          }
+            deletedById,
+          },
         })
   }
 }

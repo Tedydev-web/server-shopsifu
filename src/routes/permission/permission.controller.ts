@@ -4,14 +4,13 @@ import {
   CreatePermissionBodyDTO,
   GetPermissionDetailResDTO,
   GetPermissionParamsDTO,
+  GetPermissionsQueryDTO,
   GetPermissionsResDTO,
-  UpdatePermissionBodyDTO
+  UpdatePermissionBodyDTO,
 } from 'src/routes/permission/permission.dto'
 import { PermissionService } from 'src/routes/permission/permission.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
-import { Pagination } from 'src/shared/decorators/pagination.decorator'
-import { PaginationQueryDTO } from 'src/shared/dtos/pagination.dto'
 
 @Controller('permissions')
 export class PermissionController {
@@ -19,8 +18,11 @@ export class PermissionController {
 
   @Get()
   @ZodSerializerDto(GetPermissionsResDTO)
-  list(@Pagination() pagination: PaginationQueryDTO) {
-    return this.permissionService.list(pagination)
+  list(@Query() query: GetPermissionsQueryDTO) {
+    return this.permissionService.list({
+      page: query.page,
+      limit: query.limit,
+    })
   }
 
   @Get(':permissionId')
@@ -34,7 +36,7 @@ export class PermissionController {
   create(@Body() body: CreatePermissionBodyDTO, @ActiveUser('userId') userId: number) {
     return this.permissionService.create({
       data: body,
-      createdById: userId
+      createdById: userId,
     })
   }
 
@@ -43,12 +45,12 @@ export class PermissionController {
   update(
     @Body() body: UpdatePermissionBodyDTO,
     @Param() params: GetPermissionParamsDTO,
-    @ActiveUser('userId') userId: number
+    @ActiveUser('userId') userId: number,
   ) {
     return this.permissionService.update({
       data: body,
       id: params.permissionId,
-      updatedById: userId
+      updatedById: userId,
     })
   }
 
@@ -57,7 +59,7 @@ export class PermissionController {
   delete(@Param() params: GetPermissionParamsDTO, @ActiveUser('userId') userId: number) {
     return this.permissionService.delete({
       id: params.permissionId,
-      deletedById: userId
+      deletedById: userId,
     })
   }
 }
