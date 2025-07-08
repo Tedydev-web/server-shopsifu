@@ -1,3 +1,4 @@
+/* eslint-disable prefer-const */
 export interface PaginatedResult<T> {
   data: T[]
   metadata: {
@@ -33,7 +34,7 @@ export async function paginate<T>(
   const skip = (page - 1) * limit
   const take = limit
 
-  const where = args?.where || {}
+  let where = args?.where ? { ...args.where } : {}
 
   if (search && searchableFields && searchableFields.length > 0) {
     where.OR = searchableFields.map((field) => ({

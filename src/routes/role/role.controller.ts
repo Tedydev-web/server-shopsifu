@@ -7,7 +7,7 @@ import {
   GetRoleParamsDTO,
   GetRolesQueryDTO,
   GetRolesResDTO,
-  UpdateRoleBodyDTO,
+  UpdateRoleBodyDTO
 } from 'src/routes/role/role.dto'
 import { RoleService } from 'src/routes/role/role.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -20,13 +20,7 @@ export class RoleController {
   @Get()
   @ZodSerializerDto(GetRolesResDTO)
   list(@Query() query: GetRolesQueryDTO) {
-    return this.roleService.list({
-      page: query.page,
-      limit: query.limit,
-      sortBy: query.sortBy,
-      orderBy: query.orderBy,
-      search: query.search
-    })
+    return this.roleService.list(query)
   }
 
   @Get(':roleId')
@@ -40,7 +34,7 @@ export class RoleController {
   create(@Body() body: CreateRoleBodyDTO, @ActiveUser('userId') userId: number) {
     return this.roleService.create({
       data: body,
-      createdById: userId,
+      createdById: userId
     })
   }
 
@@ -50,7 +44,7 @@ export class RoleController {
     return this.roleService.update({
       data: body,
       id: params.roleId,
-      updatedById: userId,
+      updatedById: userId
     })
   }
 
@@ -59,7 +53,7 @@ export class RoleController {
   delete(@Param() params: GetRoleParamsDTO, @ActiveUser('userId') userId: number) {
     return this.roleService.delete({
       id: params.roleId,
-      deletedById: userId,
+      deletedById: userId
     })
   }
 }
