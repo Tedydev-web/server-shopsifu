@@ -75,7 +75,7 @@ export class UserService {
         }
       })
       return {
-        data: user,
+        ...user,
         message: this.i18n.t('user.user.success.CREATE_SUCCESS')
       }
     } catch (error) {
