@@ -14,12 +14,7 @@ export class CookieController {
   @Get('csrf-token')
   @IsPublic()
   getCSRFToken(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    // Generate CSRF secret and token using csrf-csrf
     const csrfToken = this.csrfService.generateToken(req, res)
-
-    // Set the CSRF token in a separate, non-httpOnly cookie for the client
-    this.cookieService.setCSRFTokenCookie(res, csrfToken)
-
     return {
       message: 'CSRF token generated successfully',
       csrfToken

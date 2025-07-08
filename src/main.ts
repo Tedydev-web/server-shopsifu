@@ -1,10 +1,8 @@
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
 import { NestExpressApplication } from '@nestjs/platform-express'
-import { UPLOAD_DIR } from 'src/shared/constants/other.constant'
 import cookieParser from 'cookie-parser'
 import session from 'express-session'
-import { doubleCsrf } from 'csrf-csrf'
 import envConfig from 'src/shared/config'
 import { COOKIE_DEFINITIONS } from './shared/constants/cookie.constant'
 
@@ -13,7 +11,7 @@ async function bootstrap() {
 
   // CORS configuration
   app.enableCors({
-    origin: ['http://localhost:8000'],
+    origin: ['https://localhost:8000', 'https://shopsifu.live'],
     credentials: true, // Quan trọng cho cookies
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-XSRF-Token', 'x-csrf-token', 'x-xsrf-token']
@@ -32,10 +30,6 @@ async function bootstrap() {
       cookie: COOKIE_DEFINITIONS.session.options
     })
   )
-
-  // app.useStaticAssets(UPLOAD_DIR, {
-  //   prefix: '/media/static',
-  // })
 
   await app.listen(process.env.PORT ?? 3000)
 }

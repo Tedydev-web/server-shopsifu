@@ -41,14 +41,14 @@ export class CookieService {
    * Get access token from cookies
    */
   getAccessTokenFromCookie(req: Request): string | null {
-    return req.signedCookies[COOKIE_DEFINITIONS.accessToken.name] || null
+    return req.cookies[COOKIE_DEFINITIONS.accessToken.name] || null
   }
 
   /**
    * Get refresh token from cookies
    */
   getRefreshTokenFromCookie(req: Request): string | null {
-    return req.signedCookies[COOKIE_DEFINITIONS.refreshToken.name] || null
+    return req.cookies[COOKIE_DEFINITIONS.refreshToken.name] || null
   }
 
   /**
@@ -65,21 +65,6 @@ export class CookieService {
   clearCookie(res: Response, cookieKey: CookieDefinitionKey): void {
     const { name, options } = COOKIE_DEFINITIONS[cookieKey]
     res.clearCookie(name, options)
-  }
-
-  /**
-   * Set CSRF token cookie
-   */
-  setCSRFTokenCookie(res: Response, token: string): void {
-    const { name, options } = COOKIE_DEFINITIONS.csrfToken
-    res.cookie(name, token, options)
-  }
-
-  /**
-   * Get CSRF token from cookies
-   */
-  getCSRFTokenFromCookie(req: Request): string | null {
-    return req.cookies[COOKIE_DEFINITIONS.csrfToken.name] || null
   }
 
   /**

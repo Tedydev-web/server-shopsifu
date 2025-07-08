@@ -11,40 +11,37 @@ export const UserSchema = z.object({
   phoneNumber: z.string().min(9).max(15),
   avatar: z.string().nullable(),
   totpSecret: z.string().nullable(),
-  status: z.nativeEnum(UserStatus),
-  roleId: z.number(),
+  status: z.enum([UserStatus.ACTIVE, UserStatus.INACTIVE, UserStatus.BLOCKED]),
+  roleId: z.number().positive(),
   createdById: z.number().nullable(),
   updatedById: z.number().nullable(),
   deletedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date()
+  updatedAt: z.date(),
 })
 
 /**
  * Áp dụng cho Response của api GET('profile') và GET('users/:userId')
  */
-export const GetUserProfileResSchema = z.object({
-  message: z.string(),
-  data: UserSchema.omit({
-    password: true,
-    totpSecret: true
+export const GetUserProfileResSchema = UserSchema.omit({
+  password: true,
+  totpSecret: true,
+}).extend({
+  role: RoleSchema.pick({
+    id: true,
+    name: true,
   }).extend({
-    role: RoleSchema.pick({
-      id: true,
-      name: true
-    }).extend({
-      permissions: z.array(
-        PermissionSchema.pick({
-          id: true,
-          name: true,
-          module: true,
-          path: true,
-          method: true
-        })
-      )
-    })
-  })
+    permissions: z.array(
+      PermissionSchema.pick({
+        id: true,
+        name: true,
+        module: true,
+        path: true,
+        method: true,
+      }),
+    ),
+  }),
 })
 
 /**
@@ -52,10 +49,9 @@ export const GetUserProfileResSchema = z.object({
  */
 export const UpdateProfileResSchema = UserSchema.omit({
   password: true,
-  totpSecret: true
+  totpSecret: true,
 })
 
 export type UserType = z.infer<typeof UserSchema>
 export type GetUserProfileResType = z.infer<typeof GetUserProfileResSchema>
 export type UpdateProfileResType = z.infer<typeof UpdateProfileResSchema>
-export { UserStatus }

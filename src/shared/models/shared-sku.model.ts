@@ -13,7 +13,7 @@ export const SKUSchema = z.object({
   deletedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date()
+  updatedAt: z.date(),
 })
 
 export type SKUSchemaType = z.infer<typeof SKUSchema>
