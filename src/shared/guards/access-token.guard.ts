@@ -28,7 +28,7 @@ export class AccessTokenGuard implements CanActivate {
   private async extractAndValidateToken(request: any): Promise<AccessTokenPayload> {
     const accessToken = this.extractAccessTokenFromCookie(request)
     if (!accessToken) {
-      throw new UnauthorizedException('Error.MissingAccessToken')
+      throw new UnauthorizedException('global.global.error.MISSING_ACCESS_TOKEN')
     }
 
     try {
@@ -36,7 +36,7 @@ export class AccessTokenGuard implements CanActivate {
       request[REQUEST_USER_KEY] = decodedAccessToken
       return decodedAccessToken
     } catch (error) {
-      throw new UnauthorizedException('Error.InvalidAccessToken')
+      throw new UnauthorizedException('global.global.error.INVALID_ACCESS_TOKEN')
     }
   }
 

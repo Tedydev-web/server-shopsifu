@@ -14,28 +14,15 @@ export class CookieController {
   @Get('csrf-token')
   @IsPublic()
   getCSRFToken(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    // Generate CSRF token using csrf-csrf
+    // Generate CSRF secret and token using csrf-csrf
     const csrfToken = this.csrfService.generateToken(req, res)
 
-    return {
-      message: 'CSRF token generated successfully'
-    }
-  }
+    // Set the CSRF token in a separate, non-httpOnly cookie for the client
+    this.cookieService.setCSRFTokenCookie(res, csrfToken)
 
-  @Get('clear')
-  @IsPublic()
-  clearCookies(@Res({ passthrough: true }) res: Response) {
-    this.cookieService.clearAuthCookies(res)
-    return { message: 'Cookies cleared successfully' }
-  }
-
-  @Get('validate')
-  @IsPublic()
-  validateCSRFToken(@Req() req: Request) {
-    const isValid = this.csrfService.validateToken(req)
     return {
-      message: isValid ? 'CSRF token is valid' : 'CSRF token is invalid',
-      isValid
+      message: 'CSRF token generated successfully',
+      csrfToken
     }
   }
 }

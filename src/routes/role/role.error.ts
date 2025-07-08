@@ -10,4 +10,6 @@ export const RoleAlreadyExistsException = (i18n: I18nService<I18nTranslations>) 
     }
   ])
 
-export const ProhibitedActionOnBaseRoleException = new ForbiddenException('Error.ProhibitedActionOnBaseRole')
+export const ProhibitedActionOnBaseRoleException = new ForbiddenException(
+  'role.role.error.PROHIBITED_ACTION_ON_BASE_ROLE'
+)

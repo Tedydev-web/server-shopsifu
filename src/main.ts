@@ -13,13 +13,10 @@ async function bootstrap() {
 
   // CORS configuration
   app.enableCors({
-    origin:
-      process.env.NODE_ENV === 'production'
-        ? ['https://yourdomain.com'] // Thay đổi domain production
-        : ['http://localhost:3000', 'http://localhost:3001'],
+    origin: ['http://localhost:8000'],
     credentials: true, // Quan trọng cho cookies
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-XSRF-Token']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-XSRF-Token', 'x-csrf-token', 'x-xsrf-token']
   })
 
   // Cookie parser middleware

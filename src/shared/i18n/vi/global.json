@@ -15,7 +15,8 @@
       "SESSION_NOT_FOUND": "Session không tồn tại",
       "TOKEN_BLACKLISTED": "Token đã bị vô hiệu hóa",
       "USER_NOT_ACTIVE": "Tài khoản chưa được kích hoạt",
-      "INSUFFICIENT_PERMISSIONS": "Quyền truy cập không đủ"
+      "INSUFFICIENT_PERMISSIONS": "Quyền truy cập không đủ",
+      "MISSING_ACCESS_TOKEN": "Token truy cập không tồn tại"
     }
   }
 }

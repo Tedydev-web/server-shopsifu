@@ -12,7 +12,6 @@ import { ActiveRolePermissions } from 'src/shared/decorators/active-role-permiss
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { GetUserProfileResDTO, UpdateProfileResDTO } from 'src/shared/dtos/shared-user.dto'
-import { Pagination } from 'src/shared/decorators/pagination.decorator'
 import { PaginationQueryDTO } from 'src/shared/dtos/pagination.dto'
 
 @Controller('users')
@@ -21,10 +20,12 @@ export class UserController {
 
   @Get()
   @ZodSerializerDto(GetUsersResDTO)
-  list(@Pagination() pagination: PaginationQueryDTO, @Query() query: any) {
+  list(@Query() query: PaginationQueryDTO) {
     return this.userService.list({
-      pagination,
-      filters: query
+      page: query.page,
+      limit: query.limit,
+      sortOrder: query.sortOrder,
+      sortBy: query.sortBy
     })
   }
 

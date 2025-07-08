@@ -162,6 +162,7 @@ export type I18nTranslations = {
                 "TOKEN_BLACKLISTED": string;
                 "USER_NOT_ACTIVE": string;
                 "INSUFFICIENT_PERMISSIONS": string;
+                "MISSING_ACCESS_TOKEN": string;
             };
         };
     };
@@ -294,6 +295,7 @@ export type I18nTranslations = {
                 "OPERATION_FAILED": string;
                 "CANNOT_UPDATE_DEFAULT_ROLE": string;
                 "CANNOT_DELETE_DEFAULT_ROLE": string;
+                "PROHIBITED_ACTION_ON_BASE_ROLE": string;
             };
         };
     };
@@ -302,8 +304,8 @@ export type I18nTranslations = {
             "CREATE_SUCCESS": string;
             "UPDATE_SUCCESS": string;
             "DELETE_SUCCESS": string;
-            "GET_USERS": string;
-            "GET_USER_DETAIL": string;
+            "GET_LIST_SUCCESS": string;
+            "GET_DETAIL_SUCCESS": string;
         };
         "error": {
             "NOT_FOUND": string;

@@ -27,6 +27,9 @@ export const COOKIE_DEFINITIONS = {
     name: CookieNames.ACCESS_TOKEN,
     options: {
       ...signedHttpOnlyOptions,
+      httpOnly: false, // Secret phải là httpOnly
+      secure: true,
+      sameSite: 'none',
       maxAge: 15 * 60 * 1000 // 15 phút
     }
   },
@@ -34,6 +37,9 @@ export const COOKIE_DEFINITIONS = {
     name: CookieNames.REFRESH_TOKEN,
     options: {
       ...signedHttpOnlyOptions,
+      httpOnly: false, // Secret phải là httpOnly
+      secure: true,
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
     }
   },
@@ -53,6 +59,7 @@ export const COOKIE_DEFINITIONS = {
       ...baseOptions,
       httpOnly: false, // Secret phải là httpOnly
       secure: true,
+      sameSite: 'none',
       signed: false // Thư viện tự quản lý, không cần ký bằng cookie-parser
     }
   },
