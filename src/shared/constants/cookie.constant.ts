@@ -20,7 +20,7 @@ export const COOKIE_DEFINITIONS = {
     name: CookieNames.ACCESS_TOKEN,
     options: {
       ...baseOptions,
-      httpOnly: true,
+      httpOnly: false,
       secure: true,
       sameSite: 'none',
       // signed: true,
@@ -31,7 +31,7 @@ export const COOKIE_DEFINITIONS = {
     name: CookieNames.REFRESH_TOKEN,
     options: {
       ...baseOptions,
-      httpOnly: true, // Secret phải là httpOnly
+      httpOnly: false, // Secret phải là httpOnly
       secure: true,
       sameSite: 'none',
       // signed: true,

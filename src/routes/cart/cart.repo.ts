@@ -5,17 +5,18 @@ import {
   NotFoundCartItemException,
   NotFoundSKUException,
   OutOfStockSKUException,
-  ProductNotFoundException,
+  ProductNotFoundException
 } from 'src/routes/cart/cart.error'
 import {
   AddToCartBodyType,
   CartItemDetailType,
   CartItemType,
   DeleteCartBodyType,
+  GetCartQueryType,
   GetCartResType,
-  UpdateCartItemBodyType,
+  UpdateCartItemBodyType
 } from 'src/routes/cart/cart.model'
-import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
+import { ALL_LANGUAGE_CODE, OrderBy, SortBy } from 'src/shared/constants/other.constant'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { SKUSchemaType } from 'src/shared/models/shared-sku.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
@@ -28,7 +29,7 @@ export class CartRepo {
     skuId,
     quantity,
     userId,
-    isCreate,
+    isCreate
   }: {
     skuId: number
     quantity: number
@@ -40,16 +41,16 @@ export class CartRepo {
         where: {
           userId_skuId: {
             userId,
-            skuId,
-          },
-        },
+            skuId
+          }
+        }
       }),
       this.prismaService.sKU.findUnique({
         where: { id: skuId, deletedAt: null },
         include: {
-          product: true,
-        },
-      }),
+          product: true
+        }
+      })
     ])
     // Kiểm tra tồn tại của SKU
     if (!sku) {
@@ -83,94 +84,69 @@ export class CartRepo {
     languageId,
     page,
     limit,
+    search,
+    sortBy,
+    orderBy
   }: {
     userId: number
     languageId: string
-    limit: number
     page: number
+    limit: number
+    search?: string
+    sortBy?: string
+    orderBy?: string
   }): Promise<GetCartResType> {
-    const cartItems = await this.prismaService.cartItem.findMany({
-      where: {
-        userId,
-        sku: {
-          product: {
-            deletedAt: null,
-            publishedAt: {
-              lte: new Date(),
-              not: null,
-            },
-          },
-        },
-      },
-      include: {
-        sku: {
-          include: {
-            product: {
-              include: {
-                productTranslations: {
-                  where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
-                },
-                createdBy: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: {
-        updatedAt: 'desc',
-      },
-    })
-    const groupMap = new Map<number, CartItemDetailType>()
-    for (const cartItem of cartItems) {
-      const shopId = cartItem.sku.product.createdById
-      if (shopId) {
-        if (!groupMap.has(shopId)) {
-          groupMap.set(shopId, { shop: cartItem.sku.product.createdBy, cartItems: [] })
-        }
-        groupMap.get(shopId)?.cartItems.push(cartItem)
-      }
-    }
-    const sortedGroups = Array.from(groupMap.values())
     const skip = (page - 1) * limit
     const take = limit
-    const totalGroups = sortedGroups.length
-    const pagedGroups = sortedGroups.slice(skip, skip + take)
-    return {
-      data: pagedGroups,
-      totalItems: totalGroups,
-      limit,
-      page,
-      totalPages: Math.ceil(totalGroups / limit),
-    }
-  }
 
-  async list2({
-    userId,
-    languageId,
-    page,
-    limit,
-  }: {
-    userId: number
-    languageId: string
-    limit: number
-    page: number
-  }): Promise<GetCartResType> {
-    const skip = (page - 1) * limit
-    const take = limit
-    // Đếm tổng số nhóm sản phẩm
+    // Xây dựng điều kiện search
+    const searchCondition = search
+      ? Prisma.sql`AND (
+        "User"."name" ILIKE ${`%${search}%`} OR
+        "Product"."name" ILIKE ${`%${search}%`} OR
+        EXISTS (
+          SELECT 1 FROM "ProductTranslation" pt 
+          WHERE pt."productId" = "Product"."id" 
+            AND pt."deletedAt" IS NULL
+            ${languageId === ALL_LANGUAGE_CODE ? Prisma.sql`` : Prisma.sql`AND pt."languageId" = ${languageId}`}
+            AND pt."name" ILIKE ${`%${search}%`}
+        )
+      )`
+      : Prisma.sql``
+
+    // Xây dựng điều kiện sort
+    let orderByClause: Prisma.Sql
+    switch (sortBy) {
+      case SortBy.ShopName:
+        orderByClause = Prisma.sql`"User"."name" ${orderBy === OrderBy.Asc ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
+        break
+      case SortBy.CreatedAt:
+        orderByClause = Prisma.sql`MAX("CartItem"."createdAt") ${orderBy === OrderBy.Asc ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
+        break
+      case SortBy.UpdatedAt:
+      default:
+        orderByClause = Prisma.sql`MAX("CartItem"."updatedAt") ${orderBy === OrderBy.Asc ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
+        break
+    }
+
+    // Đếm tổng số nhóm sản phẩm với điều kiện search
     const totalItems$ = this.prismaService.$queryRaw<{ createdById: number }[]>`
       SELECT
         "Product"."createdById"
       FROM "CartItem"
       JOIN "SKU" ON "CartItem"."skuId" = "SKU"."id"
       JOIN "Product" ON "SKU"."productId" = "Product"."id"
+      LEFT JOIN "User" ON "Product"."createdById" = "User"."id"
       WHERE "CartItem"."userId" = ${userId}
         AND "Product"."deletedAt" IS NULL
         AND "Product"."publishedAt" IS NOT NULL
         AND "Product"."publishedAt" <= NOW()
+        ${searchCondition}
       GROUP BY "Product"."createdById"
     `
-    const data$ = await this.prismaService.$queryRaw<CartItemDetailType[]>`
+
+    // Query chính với pagination, search và sort
+    const data$ = this.prismaService.$queryRaw<CartItemDetailType[]>`
      SELECT
        "Product"."createdById",
        json_agg(
@@ -232,18 +208,25 @@ export class CartRepo {
         AND "Product"."deletedAt" IS NULL
         AND "Product"."publishedAt" IS NOT NULL
         AND "Product"."publishedAt" <= NOW()
+        ${searchCondition}
      GROUP BY "Product"."createdById", "User"."id"
-     ORDER BY MAX("CartItem"."updatedAt") DESC
+     ORDER BY ${orderByClause}
       LIMIT ${take} 
       OFFSET ${skip}
    `
+
     const [data, totalItems] = await Promise.all([data$, totalItems$])
+
     return {
       data,
-      page,
-      limit,
-      totalItems: totalItems.length,
-      totalPages: Math.ceil(totalItems.length / limit),
+      metadata: {
+        totalItems: totalItems.length,
+        page,
+        limit,
+        totalPages: Math.ceil(totalItems.length / limit),
+        hasNext: page < Math.ceil(totalItems.length / limit),
+        hasPrev: page > 1
+      }
     }
   }
 
@@ -252,33 +235,33 @@ export class CartRepo {
       skuId: body.skuId,
       quantity: body.quantity,
       userId,
-      isCreate: true,
+      isCreate: true
     })
 
     return this.prismaService.cartItem.upsert({
       where: {
         userId_skuId: {
           userId,
-          skuId: body.skuId,
-        },
+          skuId: body.skuId
+        }
       },
       update: {
         quantity: {
-          increment: body.quantity,
-        },
+          increment: body.quantity
+        }
       },
       create: {
         userId,
         skuId: body.skuId,
-        quantity: body.quantity,
-      },
+        quantity: body.quantity
+      }
     })
   }
 
   async update({
     userId,
     body,
-    cartItemId,
+    cartItemId
   }: {
     userId: number
     cartItemId: number
@@ -288,19 +271,19 @@ export class CartRepo {
       skuId: body.skuId,
       quantity: body.quantity,
       userId,
-      isCreate: false,
+      isCreate: false
     })
 
     return this.prismaService.cartItem
       .update({
         where: {
           id: cartItemId,
-          userId,
+          userId
         },
         data: {
           skuId: body.skuId,
-          quantity: body.quantity,
-        },
+          quantity: body.quantity
+        }
       })
       .catch((error) => {
         if (isNotFoundPrismaError(error)) {
@@ -314,10 +297,10 @@ export class CartRepo {
     return this.prismaService.cartItem.deleteMany({
       where: {
         id: {
-          in: body.cartItemIds,
+          in: body.cartItemIds
         },
-        userId,
-      },
+        userId
+      }
     })
   }
 }
