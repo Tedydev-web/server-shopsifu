@@ -23,9 +23,21 @@ import { CartModule } from 'src/routes/cart/cart.module'
 import { OrderModule } from 'src/routes/order/order.module'
 import { PaymentModule } from 'src/routes/payment/payment.module'
 import { CSRFMiddleware } from 'src/shared/middleware/csrf.middleware'
+import { BullModule } from '@nestjs/bullmq'
+import envConfig from './shared/config'
 
 @Module({
   imports: [
+    BullModule.forRoot({
+      connection: {
+        // host: 'localhost',
+        // port: 6378,
+        host: envConfig.REDIS_HOST,
+        port: envConfig.REDIS_PORT,
+        username: envConfig.REDIS_USER,
+        password: envConfig.REDIS_PASSWORD
+      }
+    }),
     I18nModule.forRoot({
       fallbackLanguage: 'en',
       loaderOptions: {
