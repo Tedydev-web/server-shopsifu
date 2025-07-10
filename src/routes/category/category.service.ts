@@ -3,35 +3,50 @@ import { CategoryRepo } from 'src/routes/category/category.repo'
 import { CreateCategoryBodyType, UpdateCategoryBodyType } from 'src/routes/category/category.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
-import { I18nContext } from 'nestjs-i18n'
+import { I18nContext, I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class CategoryService {
-  constructor(private categoryRepo: CategoryRepo) {}
+  constructor(
+    private categoryRepo: CategoryRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
-  findAll(parentCategoryId?: number | null) {
-    return this.categoryRepo.findAll({
+  async findAll(parentCategoryId?: number | null) {
+    const result = await this.categoryRepo.findAll({
       parentCategoryId,
-      languageId: I18nContext.current()?.lang as string,
+      languageId: I18nContext.current()?.lang as string
     })
+    return {
+      ...result,
+      message: this.i18n.t('category.category.success.GET_SUCCESS')
+    }
   }
 
   async findById(id: number) {
     const category = await this.categoryRepo.findById({
       id,
-      languageId: I18nContext.current()?.lang as string,
+      languageId: I18nContext.current()?.lang as string
     })
     if (!category) {
       throw NotFoundRecordException
     }
-    return category
+    return {
+      data: category,
+      message: this.i18n.t('category.category.success.GET_DETAIL_SUCCESS')
+    }
   }
 
-  create({ data, createdById }: { data: CreateCategoryBodyType; createdById: number }) {
-    return this.categoryRepo.create({
+  async create({ data, createdById }: { data: CreateCategoryBodyType; createdById: number }) {
+    const category = await this.categoryRepo.create({
       createdById,
-      data,
+      data
     })
+    return {
+      data: category,
+      message: this.i18n.t('category.category.success.CREATE_SUCCESS')
+    }
   }
 
   async update({ id, data, updatedById }: { id: number; data: UpdateCategoryBodyType; updatedById: number }) {
@@ -39,9 +54,12 @@ export class CategoryService {
       const category = await this.categoryRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
-      return category
+      return {
+        data: category,
+        message: this.i18n.t('category.category.success.UPDATE_SUCCESS')
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -54,10 +72,10 @@ export class CategoryService {
     try {
       await this.categoryRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: this.i18n.t('category.category.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

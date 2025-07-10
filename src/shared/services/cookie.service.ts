@@ -1,31 +1,10 @@
 import { Injectable } from '@nestjs/common'
 import { Response } from 'express'
 import { Request } from 'express'
-import { COOKIE_DEFINITIONS, CookieDefinitionKey, CookieNames } from 'src/shared/constants/cookie.constant'
-import envConfig from 'src/shared/config'
-import { TokenService } from './token.service'
-import { AccessTokenPayloadCreate, RefreshTokenPayloadCreate } from 'src/shared/types/jwt.type'
+import { COOKIE_DEFINITIONS } from 'src/shared/constants/cookie.constant'
 
 @Injectable()
 export class CookieService {
-  constructor(private readonly tokenService: TokenService) {}
-
-  /**
-   * Set access token cookie
-   */
-  setAccessTokenCookie(res: Response, accessToken: string): void {
-    const { name, options } = COOKIE_DEFINITIONS.accessToken
-    res.cookie(name, accessToken, options)
-  }
-
-  /**
-   * Set refresh token cookie
-   */
-  setRefreshTokenCookie(res: Response, refreshToken: string): void {
-    const { name, options } = COOKIE_DEFINITIONS.refreshToken
-    res.cookie(name, refreshToken, options)
-  }
-
   /**
    * Set both access and refresh token cookies
    */
@@ -33,8 +12,13 @@ export class CookieService {
     // Clear old cookies first to avoid conflicts
     this.clearAuthCookies(res)
 
-    this.setAccessTokenCookie(res, accessToken)
-    this.setRefreshTokenCookie(res, refreshToken)
+    // Set access token cookie
+    const { name: accessTokenName, options: accessTokenOptions } = COOKIE_DEFINITIONS.accessToken
+    res.cookie(accessTokenName, accessToken, accessTokenOptions)
+
+    // Set refresh token cookie
+    const { name: refreshTokenName, options: refreshTokenOptions } = COOKIE_DEFINITIONS.refreshToken
+    res.cookie(refreshTokenName, refreshToken, refreshTokenOptions)
   }
 
   /**
@@ -55,29 +39,7 @@ export class CookieService {
    * Clear all authentication cookies
    */
   clearAuthCookies(res: Response): void {
-    res.clearCookie(COOKIE_DEFINITIONS.accessToken.name, COOKIE_DEFINITIONS.accessToken.options)
-    res.clearCookie(COOKIE_DEFINITIONS.refreshToken.name, COOKIE_DEFINITIONS.refreshToken.options)
-  }
-
-  /**
-   * Clear specific cookie
-   */
-  clearCookie(res: Response, cookieKey: CookieDefinitionKey): void {
-    const { name, options } = COOKIE_DEFINITIONS[cookieKey]
-    res.clearCookie(name, options)
-  }
-
-  /**
-   * Validate if cookies are present
-   */
-  hasAuthCookies(req: Request): boolean {
-    return !!(this.getAccessTokenFromCookie(req) || this.getRefreshTokenFromCookie(req))
-  }
-
-  /**
-   * Get cookie options for specific environment
-   */
-  getCookieOptions(cookieType: keyof typeof COOKIE_DEFINITIONS) {
-    return COOKIE_DEFINITIONS[cookieType].options
+    res.clearCookie(COOKIE_DEFINITIONS.accessToken.name)
+    res.clearCookie(COOKIE_DEFINITIONS.refreshToken.name)
   }
 }

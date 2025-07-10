@@ -23,7 +23,7 @@ async function bootstrap() {
   // Cookie parser middleware
   app.use(cookieParser(envConfig.COOKIE_SECRET))
 
-  // Session middleware (cần thiết cho CSRF)
+  // Session middleware
   app.use(
     session({
       name: COOKIE_DEFINITIONS.session.name,

@@ -11,11 +11,11 @@ export const RoleSchema = z.object({
   deletedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date(),
+  updatedAt: z.date()
 })
 
 export const RolePermissionsSchema = RoleSchema.extend({
-  permissions: z.array(PermissionSchema),
+  permissions: z.array(PermissionSchema)
 })
 export type RoleType = z.infer<typeof RoleSchema>
 export type RolePermissionsType = z.infer<typeof RolePermissionsSchema>

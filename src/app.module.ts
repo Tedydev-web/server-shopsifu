@@ -39,7 +39,7 @@ import envConfig from './shared/config'
       }
     }),
     I18nModule.forRoot({
-      fallbackLanguage: 'en',
+      fallbackLanguage: 'vi',
       loaderOptions: {
         path: path.resolve('src/shared/i18n/'),
         watch: true

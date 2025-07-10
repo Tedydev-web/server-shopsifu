@@ -4,7 +4,7 @@ import {
   CreateProductTranslationBodyDTO,
   GetProductTranslationDetailResDTO,
   GetProductTranslationParamsDTO,
-  UpdateProductTranslationBodyDTO,
+  UpdateProductTranslationBodyDTO
 } from 'src/routes/product/product-translation/product-translation.dto'
 import { ProductTranslationService } from 'src/routes/product/product-translation/product-translation.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -25,7 +25,7 @@ export class ProductTranslationController {
   create(@Body() body: CreateProductTranslationBodyDTO, @ActiveUser('userId') userId: number) {
     return this.productTranslationService.create({
       data: body,
-      createdById: userId,
+      createdById: userId
     })
   }
 
@@ -34,12 +34,12 @@ export class ProductTranslationController {
   update(
     @Body() body: UpdateProductTranslationBodyDTO,
     @Param() params: GetProductTranslationParamsDTO,
-    @ActiveUser('userId') userId: number,
+    @ActiveUser('userId') userId: number
   ) {
     return this.productTranslationService.update({
       data: body,
       id: params.productTranslationId,
-      updatedById: userId,
+      updatedById: userId
     })
   }
 
@@ -48,7 +48,7 @@ export class ProductTranslationController {
   delete(@Param() params: GetProductTranslationParamsDTO, @ActiveUser('userId') userId: number) {
     return this.productTranslationService.delete({
       id: params.productTranslationId,
-      deletedById: userId,
+      deletedById: userId
     })
   }
 }

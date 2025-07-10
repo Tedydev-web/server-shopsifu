@@ -4,35 +4,45 @@ import { ChangePasswordBodyType, UpdateMeBodySchema, UpdateMeBodyType } from './
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { isUniqueConstraintPrismaError } from 'src/shared/helpers'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class ProfileService {
   constructor(
     private readonly sharedUserRepository: SharedUserRepository,
     private readonly hashingService: HashingService,
+    private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   async getProfile(userId: number) {
     const user = await this.sharedUserRepository.findUniqueIncludeRolePermissions({
-      id: userId,
+      id: userId
     })
 
     if (!user) {
       throw NotFoundRecordException
     }
 
-    return user
+    return {
+      data: user,
+      message: this.i18n.t('profile.success.GET_PROFILE')
+    }
   }
 
   async updateProfile({ userId, body }: { userId: number; body: UpdateMeBodyType }) {
     try {
-      return await this.sharedUserRepository.update(
+      const user = await this.sharedUserRepository.update(
         { id: userId },
         {
           ...body,
-          updatedById: userId,
-        },
+          updatedById: userId
+        }
       )
+      return {
+        data: user,
+        message: this.i18n.t('profile.success.UPDATE_PROFILE')
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw NotFoundRecordException
@@ -45,7 +55,7 @@ export class ProfileService {
     try {
       const { password, newPassword } = body
       const user = await this.sharedUserRepository.findUnique({
-        id: userId,
+        id: userId
       })
       if (!user) {
         throw NotFoundRecordException
@@ -60,11 +70,11 @@ export class ProfileService {
         { id: userId },
         {
           password: hashedPassword,
-          updatedById: userId,
-        },
+          updatedById: userId
+        }
       )
       return {
-        message: 'Password changed successfully',
+        message: this.i18n.t('profile.success.CHANGE_PASSWORD')
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {

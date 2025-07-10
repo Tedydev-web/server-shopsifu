@@ -5,17 +5,19 @@ import { NotFoundRecordException } from 'src/shared/error'
 import {
   isForeignKeyConstraintPrismaError,
   isNotFoundPrismaError,
-  isUniqueConstraintPrismaError,
+  isUniqueConstraintPrismaError
 } from 'src/shared/helpers'
 import {
   CannotUpdateOrDeleteYourselfException,
   RoleNotFoundException,
-  UserAlreadyExistsException,
+  UserAlreadyExistsException
 } from 'src/routes/user/user.error'
 import { RoleName } from 'src/shared/constants/role.constant'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class UserService {
@@ -24,53 +26,60 @@ export class UserService {
     private hashingService: HashingService,
     private sharedUserRepository: SharedUserRepository,
     private sharedRoleRepository: SharedRoleRepository,
+    private i18n: I18nService<I18nTranslations>
   ) {}
 
-  list(pagination: GetUsersQueryType) {
-    return this.userRepo.list(pagination)
+  async list(pagination: GetUsersQueryType) {
+    const data = await this.userRepo.list(pagination)
+    return {
+      ...data,
+      message: this.i18n.t('user.success.GET_LIST_SUCCESS')
+    }
   }
 
   async findById(id: number) {
     const user = await this.sharedUserRepository.findUniqueIncludeRolePermissions({
-      id,
+      id
     })
     if (!user) {
       throw NotFoundRecordException
     }
-    return user
+    return {
+      data: user,
+      message: this.i18n.t('user.success.GET_DETAIL_SUCCESS')
+    }
   }
 
   async create({
     data,
     createdById,
-    createdByRoleName,
+    createdByRoleName
   }: {
     data: CreateUserBodyType
     createdById: number
     createdByRoleName: string
   }) {
     try {
-      // Chỉ có admin agent mới có quyền tạo user với role là admin
       await this.verifyRole({
         roleNameAgent: createdByRoleName,
-        roleIdTarget: data.roleId,
+        roleIdTarget: data.roleId
       })
-      // Hash the password
       const hashedPassword = await this.hashingService.hash(data.password)
-
       const user = await this.userRepo.create({
         createdById,
         data: {
           ...data,
-          password: hashedPassword,
-        },
+          password: hashedPassword
+        }
       })
-      return user
+      return {
+        data: user,
+        message: this.i18n.t('user.success.CREATE_SUCCESS')
+      }
     } catch (error) {
       if (isForeignKeyConstraintPrismaError(error)) {
         throw RoleNotFoundException
       }
-
       if (isUniqueConstraintPrismaError(error)) {
         throw UserAlreadyExistsException
       }
@@ -101,7 +110,7 @@ export class UserService {
     id,
     data,
     updatedById,
-    updatedByRoleName,
+    updatedByRoleName
   }: {
     id: number
     data: UpdateUserBodyType
@@ -109,28 +118,26 @@ export class UserService {
     updatedByRoleName: string
   }) {
     try {
-      // Không thể cập nhật chính mình
       this.verifyYourself({
         userAgentId: updatedById,
-        userTargetId: id,
+        userTargetId: id
       })
-
-      // Lấy roleId ban đầu của người được update để kiểm tra xem liệu người update có quyền update không
-      // Không dùng data.roleId vì dữ liệu này có thể bị cố tình truyền sai
       const roleIdTarget = await this.getRoleIdByUserId(id)
       await this.verifyRole({
         roleNameAgent: updatedByRoleName,
-        roleIdTarget,
+        roleIdTarget
       })
-
       const updatedUser = await this.sharedUserRepository.update(
         { id },
         {
           ...data,
-          updatedById,
-        },
+          updatedById
+        }
       )
-      return updatedUser
+      return {
+        data: updatedUser,
+        message: this.i18n.t('user.success.UPDATE_SUCCESS')
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -147,7 +154,7 @@ export class UserService {
 
   private async getRoleIdByUserId(userId: number) {
     const currentUser = await this.sharedUserRepository.findUnique({
-      id: userId,
+      id: userId
     })
     if (!currentUser) {
       throw NotFoundRecordException
@@ -163,24 +170,21 @@ export class UserService {
 
   async delete({ id, deletedById, deletedByRoleName }: { id: number; deletedById: number; deletedByRoleName: string }) {
     try {
-      // Không thể xóa chính mình
       this.verifyYourself({
         userAgentId: deletedById,
-        userTargetId: id,
+        userTargetId: id
       })
-
       const roleIdTarget = await this.getRoleIdByUserId(id)
       await this.verifyRole({
         roleNameAgent: deletedByRoleName,
-        roleIdTarget,
+        roleIdTarget
       })
-
       await this.userRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: this.i18n.t('user.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

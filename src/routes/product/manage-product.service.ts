@@ -8,12 +8,16 @@ import {
 } from 'src/routes/product/product.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
-import { I18nContext } from 'nestjs-i18n'
+import { I18nContext, I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 import { RoleName } from 'src/shared/constants/role.constant'
 
 @Injectable()
 export class ManageProductService {
-  constructor(private productRepo: ProductRepo) {}
+  constructor(
+    private productRepo: ProductRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   /**
    * Kiểm tra nếu người dùng không phải là người tạo sản phẩm hoặc admin thì không cho tiếp tục
@@ -48,7 +52,10 @@ export class ManageProductService {
       createdById: props.query.createdById,
       isPublic: props.query.isPublic
     })
-    return data
+    return {
+      ...data,
+      message: this.i18n.t('product.product.success.GET_PRODUCTS')
+    }
   }
 
   async getDetail(props: { productId: number; userIdRequest: number; roleNameRequest: string }) {
@@ -65,14 +72,21 @@ export class ManageProductService {
       roleNameRequest: props.roleNameRequest,
       createdById: product.createdById
     })
-    return product
+    return {
+      data: product,
+      message: this.i18n.t('product.product.success.GET_PRODUCT_DETAIL')
+    }
   }
 
-  create({ data, createdById }: { data: CreateProductBodyType; createdById: number }) {
-    return this.productRepo.create({
+  async create({ data, createdById }: { data: CreateProductBodyType; createdById: number }) {
+    const product = await this.productRepo.create({
       createdById,
       data
     })
+    return {
+      data: product,
+      message: this.i18n.t('product.product.success.CREATE_SUCCESS')
+    }
   }
 
   async update({
@@ -101,7 +115,10 @@ export class ManageProductService {
         updatedById,
         data
       })
-      return updatedProduct
+      return {
+        data: updatedProduct,
+        message: this.i18n.t('product.product.success.UPDATE_SUCCESS')
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -134,7 +151,7 @@ export class ManageProductService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('product.product.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

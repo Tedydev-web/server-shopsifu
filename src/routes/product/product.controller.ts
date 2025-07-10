@@ -4,7 +4,7 @@ import {
   GetProductDetailResDTO,
   GetProductParamsDTO,
   GetProductsQueryDTO,
-  GetProductsResDTO,
+  GetProductsResDTO
 } from 'src/routes/product/product.dto'
 import { ProductService } from 'src/routes/product/product.service'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
@@ -18,7 +18,7 @@ export class ProductController {
   @ZodSerializerDto(GetProductsResDTO)
   list(@Query() query: GetProductsQueryDTO) {
     return this.productService.list({
-      query,
+      query
     })
   }
 
@@ -26,7 +26,7 @@ export class ProductController {
   @ZodSerializerDto(GetProductDetailResDTO)
   findById(@Param() params: GetProductParamsDTO) {
     return this.productService.getDetail({
-      productId: params.productId,
+      productId: params.productId
     })
   }
 }

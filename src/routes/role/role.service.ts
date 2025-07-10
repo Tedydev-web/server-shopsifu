@@ -5,14 +5,22 @@ import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { ProhibitedActionOnBaseRoleException, RoleAlreadyExistsException } from 'src/routes/role/role.error'
 import { RoleName } from 'src/shared/constants/role.constant'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class RoleService {
-  constructor(private roleRepo: RoleRepo) {}
+  constructor(
+    private roleRepo: RoleRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   async list(pagination: GetRolesQueryType) {
     const data = await this.roleRepo.list(pagination)
-    return data
+    return {
+      ...data,
+      message: this.i18n.t('role.role.success.GET_SUCCESS')
+    }
   }
 
   async findById(id: number) {
@@ -20,16 +28,22 @@ export class RoleService {
     if (!role) {
       throw NotFoundRecordException
     }
-    return role
+    return {
+      data: role,
+      message: this.i18n.t('role.role.success.GET_DETAIL_SUCCESS')
+    }
   }
 
   async create({ data, createdById }: { data: CreateRoleBodyType; createdById: number }) {
     try {
       const role = await this.roleRepo.create({
         createdById,
-        data,
+        data
       })
-      return role
+      return {
+        data: role,
+        message: this.i18n.t('role.role.success.CREATE_SUCCESS')
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw RoleAlreadyExistsException
@@ -59,9 +73,12 @@ export class RoleService {
       const updatedRole = await this.roleRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
-      return updatedRole
+      return {
+        data: updatedRole,
+        message: this.i18n.t('role.role.success.UPDATE_SUCCESS')
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -78,10 +95,10 @@ export class RoleService {
       await this.verifyRole(id)
       await this.roleRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: this.i18n.t('role.role.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

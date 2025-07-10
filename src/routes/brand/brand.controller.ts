@@ -5,7 +5,7 @@ import {
   GetBrandDetailResDTO,
   GetBrandParamsDTO,
   GetBrandsResDTO,
-  UpdateBrandBodyDTO,
+  UpdateBrandBodyDTO
 } from 'src/routes/brand/brand.dto'
 import { BrandService } from 'src/routes/brand/brand.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -36,7 +36,7 @@ export class BrandController {
   create(@Body() body: CreateBrandBodyDTO, @ActiveUser('userId') userId: number) {
     return this.brandService.create({
       data: body,
-      createdById: userId,
+      createdById: userId
     })
   }
 
@@ -46,7 +46,7 @@ export class BrandController {
     return this.brandService.update({
       data: body,
       id: params.brandId,
-      updatedById: userId,
+      updatedById: userId
     })
   }
 
@@ -55,7 +55,7 @@ export class BrandController {
   delete(@Param() params: GetBrandParamsDTO, @ActiveUser('userId') userId: number) {
     return this.brandService.delete({
       id: params.brandId,
-      deletedById: userId,
+      deletedById: userId
     })
   }
 }

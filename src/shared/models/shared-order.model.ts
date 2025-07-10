@@ -7,7 +7,7 @@ export const OrderStatusSchema = z.enum([
   OrderStatus.PENDING_DELIVERY,
   OrderStatus.DELIVERED,
   OrderStatus.RETURNED,
-  OrderStatus.CANCELLED,
+  OrderStatus.CANCELLED
 ])
 
 export const OrderSchema = z.object({
@@ -17,7 +17,7 @@ export const OrderSchema = z.object({
   receiver: z.object({
     name: z.string(),
     phone: z.string(),
-    address: z.string(),
+    address: z.string()
   }),
   shopId: z.number().nullable(),
   paymentId: z.number(),
@@ -27,7 +27,7 @@ export const OrderSchema = z.object({
   deletedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date(),
+  updatedAt: z.date()
 })
 
 export const ProductSKUSnapshotSchema = z.object({
@@ -39,8 +39,8 @@ export const ProductSKUSnapshotSchema = z.object({
       id: z.number(),
       name: z.string(),
       description: z.string(),
-      languageId: z.string(),
-    }),
+      languageId: z.string()
+    })
   ),
   skuPrice: z.number(),
   image: z.string(),
@@ -49,11 +49,11 @@ export const ProductSKUSnapshotSchema = z.object({
   orderId: z.number().nullable(),
   quantity: z.number(),
 
-  createdAt: z.date(),
+  createdAt: z.date()
 })
 
 export const OrderIncludeProductSKUSnapshotSchema = OrderSchema.extend({
-  items: z.array(ProductSKUSnapshotSchema),
+  items: z.array(ProductSKUSnapshotSchema)
 })
 
 export type OrderType = z.infer<typeof OrderSchema>

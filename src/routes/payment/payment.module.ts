@@ -5,6 +5,6 @@ import { PaymentRepo } from 'src/routes/payment/payment.repo'
 
 @Module({
   providers: [PaymentService, PaymentRepo],
-  controllers: [PaymentController],
+  controllers: [PaymentController]
 })
 export class PaymentModule {}

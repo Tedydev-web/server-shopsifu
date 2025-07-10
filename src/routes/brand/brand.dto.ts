@@ -4,7 +4,7 @@ import {
   GetBrandDetailResSchema,
   GetBrandParamsSchema,
   GetBrandsResSchema,
-  UpdateBrandBodySchema,
+  UpdateBrandBodySchema
 } from 'src/routes/brand/brand.model'
 
 export class GetBrandsResDTO extends createZodDto(GetBrandsResSchema) {}

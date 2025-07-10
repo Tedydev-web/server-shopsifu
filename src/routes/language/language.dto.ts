@@ -4,7 +4,7 @@ import {
   GetLanguageDetailResSchema,
   GetLanguageParamsSchema,
   GetLanguagesResSchema,
-  UpdateLanguageBodySchema,
+  UpdateLanguageBodySchema
 } from 'src/routes/language/language.model'
 
 export class GetLanguagesResDTO extends createZodDto(GetLanguagesResSchema) {}

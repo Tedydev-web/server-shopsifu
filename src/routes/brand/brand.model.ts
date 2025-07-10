@@ -2,7 +2,10 @@ import { BrandIncludeTranslationSchema, BrandSchema } from 'src/shared/models/sh
 import { z } from 'zod'
 import { PaginationResponseSchema } from 'src/shared/models/pagination.model'
 
-export const GetBrandsResSchema = PaginationResponseSchema(BrandIncludeTranslationSchema)
+export const GetBrandsResSchema = z.object({
+  message: z.string(),
+  ...PaginationResponseSchema(BrandIncludeTranslationSchema).shape
+})
 
 export const GetBrandParamsSchema = z
   .object({
@@ -10,7 +13,9 @@ export const GetBrandParamsSchema = z
   })
   .strict()
 
-export const GetBrandDetailResSchema = BrandIncludeTranslationSchema
+export const GetBrandDetailResSchema = BrandIncludeTranslationSchema.extend({
+  message: z.string()
+})
 
 export const CreateBrandBodySchema = BrandSchema.pick({
   name: true,
@@ -21,7 +26,6 @@ export const UpdateBrandBodySchema = CreateBrandBodySchema
 
 export type BrandType = z.infer<typeof BrandSchema>
 export type BrandIncludeTranslationType = z.infer<typeof BrandIncludeTranslationSchema>
-export type GetBrandsResType = z.infer<typeof GetBrandsResSchema>
 export type GetBrandDetailResType = z.infer<typeof GetBrandDetailResSchema>
 export type CreateBrandBodyType = z.infer<typeof CreateBrandBodySchema>
 export type GetBrandParamsType = z.infer<typeof GetBrandParamsSchema>

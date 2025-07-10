@@ -2,17 +2,25 @@ import { Injectable } from '@nestjs/common'
 import { BrandRepo } from 'src/routes/brand/brand.repo'
 import { CreateBrandBodyType, UpdateBrandBodyType } from 'src/routes/brand/brand.model'
 import { NotFoundRecordException } from 'src/shared/error'
-import { isNotFoundPrismaError } from 'src/shared/helpers'
+import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { PaginationQueryType } from 'src/shared/models/request.model'
-import { I18nContext } from 'nestjs-i18n'
+import { I18nContext, I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { BrandAlreadyExistsException } from 'src/routes/brand/brand.error'
 
 @Injectable()
 export class BrandService {
-  constructor(private brandRepo: BrandRepo) {}
+  constructor(
+    private brandRepo: BrandRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   async list(pagination: PaginationQueryType) {
     const data = await this.brandRepo.list(pagination, I18nContext.current()?.lang as string)
-    return data
+    return {
+      message: this.i18n.t('brand.brand.success.GET_SUCCESS'),
+      ...data
+    }
   }
 
   async findById(id: number) {
@@ -20,14 +28,28 @@ export class BrandService {
     if (!brand) {
       throw NotFoundRecordException
     }
-    return brand
+    return {
+      message: this.i18n.t('brand.brand.success.GET_DETAIL_SUCCESS'),
+      ...brand
+    }
   }
 
-  create({ data, createdById }: { data: CreateBrandBodyType; createdById: number }) {
-    return this.brandRepo.create({
-      createdById,
-      data,
-    })
+  async create({ data, createdById }: { data: CreateBrandBodyType; createdById: number }) {
+    try {
+      const brand = await this.brandRepo.create({
+        createdById,
+        data
+      })
+      return {
+        message: this.i18n.t('brand.brand.success.CREATE_SUCCESS'),
+        ...brand
+      }
+    } catch (error) {
+      if (isUniqueConstraintPrismaError(error)) {
+        throw BrandAlreadyExistsException
+      }
+      throw error
+    }
   }
 
   async update({ id, data, updatedById }: { id: number; data: UpdateBrandBodyType; updatedById: number }) {
@@ -35,12 +57,18 @@ export class BrandService {
       const brand = await this.brandRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
-      return brand
+      return {
+        message: this.i18n.t('brand.brand.success.UPDATE_SUCCESS'),
+        ...brand
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
+      }
+      if (isUniqueConstraintPrismaError(error)) {
+        throw BrandAlreadyExistsException
       }
       throw error
     }
@@ -50,10 +78,10 @@ export class BrandService {
     try {
       await this.brandRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: this.i18n.t('brand.brand.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

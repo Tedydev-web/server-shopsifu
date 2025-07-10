@@ -1,3 +1,6 @@
+import envConfig from '../config'
+import ms from 'ms'
+
 export const enum CookieNames {
   ACCESS_TOKEN = 'access_token',
   REFRESH_TOKEN = 'refresh_token',
@@ -15,6 +18,11 @@ const baseOptions = {
   path: '/'
 }
 
+// Helper function để chuyển đổi string thành milliseconds
+const parseMs = (value: string): number => {
+  return (ms as any)(value)
+}
+
 export const COOKIE_DEFINITIONS = {
   accessToken: {
     name: CookieNames.ACCESS_TOKEN,
@@ -22,9 +30,9 @@ export const COOKIE_DEFINITIONS = {
       ...baseOptions,
       httpOnly: false,
       secure: true,
-      sameSite: 'none',
+      sameSite: 'none' as const,
       // signed: true,
-      maxAge: 15 * 60 * 1000 // 15 phút
+      maxAge: parseMs(envConfig.ACCESS_TOKEN_EXPIRES_IN)
     }
   },
   refreshToken: {
@@ -33,9 +41,9 @@ export const COOKIE_DEFINITIONS = {
       ...baseOptions,
       httpOnly: false, // Secret phải là httpOnly
       secure: true,
-      sameSite: 'none',
+      sameSite: 'none' as const,
       // signed: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
+      maxAge: parseMs(envConfig.REFRESH_TOKEN_EXPIRES_IN)
     }
   },
   // Cookie chứa CSRF secret, được quản lý bởi thư viện csrf-csrf
@@ -45,17 +53,17 @@ export const COOKIE_DEFINITIONS = {
       ...baseOptions,
       httpOnly: false, // Secret phải là httpOnly
       secure: true,
-      sameSite: 'none',
+      sameSite: 'none' as const,
       signed: false // Thư viện tự quản lý, không cần ký bằng cookie-parser
     }
   },
-  // Cấu hình cho express-session
+  // Cấu hình cho express-session - session nên có thời gian hết hạn dài hơn RT một chút
   session: {
     name: CookieNames.SESSION,
     options: {
       ...baseOptions,
       httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000 // 24 giờ
+      maxAge: parseMs(envConfig.REFRESH_TOKEN_EXPIRES_IN) + parseMs('1d') // RT + 1 ngày
     }
   }
 } as const

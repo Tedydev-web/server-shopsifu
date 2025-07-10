@@ -1,11 +1,11 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 
-export const NotFoundSKUException = new NotFoundException('Error.SKU.NotFound')
+export const NotFoundSKUException = new NotFoundException('cart.cart.error.SKU_NOT_FOUND')
 
-export const OutOfStockSKUException = new BadRequestException('Error.SKU.OutOfStock')
+export const OutOfStockSKUException = new BadRequestException('cart.cart.error.SKU_OUT_OF_STOCK')
 
-export const ProductNotFoundException = new NotFoundException('Error.Product.NotFound')
+export const ProductNotFoundException = new NotFoundException('cart.cart.error.PRODUCT_NOT_FOUND')
 
-export const NotFoundCartItemException = new NotFoundException('Error.CartItem.NotFound')
+export const NotFoundCartItemException = new NotFoundException('cart.cart.error.CART_ITEM_NOT_FOUND')
 
-export const InvalidQuantityException = new BadRequestException('Error.CartItem.InvalidQuantity')
+export const InvalidQuantityException = new BadRequestException('cart.cart.error.INVALID_QUANTITY')

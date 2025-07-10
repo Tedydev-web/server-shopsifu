@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 export const GetCategoryTranslationParamsSchema = z
   .object({
-    categoryTranslationId: z.coerce.number().int().positive(),
+    categoryTranslationId: z.coerce.number().int().positive()
   })
   .strict()
 export const GetCategoryTranslationDetailResSchema = CategoryTranslationSchema
@@ -11,7 +11,7 @@ export const CreateCategoryTranslationBodySchema = CategoryTranslationSchema.pic
   categoryId: true,
   languageId: true,
   name: true,
-  description: true,
+  description: true
 }).strict()
 export const UpdateCategoryTranslationBodySchema = CreateCategoryTranslationBodySchema
 

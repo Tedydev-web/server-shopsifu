@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import {
   CreateBrandBodyType,
-  GetBrandsResType,
   UpdateBrandBodyType,
   BrandType,
   BrandIncludeTranslationType
