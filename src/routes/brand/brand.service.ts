@@ -16,10 +16,11 @@ export class BrandService {
   ) {}
 
   async list(pagination: PaginationQueryType) {
-    const data = await this.brandRepo.list(pagination, I18nContext.current()?.lang as string)
+    const result = await this.brandRepo.list(pagination, I18nContext.current()?.lang as string)
     return {
       message: this.i18n.t('brand.brand.success.GET_SUCCESS'),
-      ...data
+      data: result.data,
+      metadata: result.metadata
     }
   }
 
@@ -30,7 +31,7 @@ export class BrandService {
     }
     return {
       message: this.i18n.t('brand.brand.success.GET_DETAIL_SUCCESS'),
-      ...brand
+      data: brand
     }
   }
 
@@ -42,7 +43,7 @@ export class BrandService {
       })
       return {
         message: this.i18n.t('brand.brand.success.CREATE_SUCCESS'),
-        ...brand
+        data: brand
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -61,7 +62,7 @@ export class BrandService {
       })
       return {
         message: this.i18n.t('brand.brand.success.UPDATE_SUCCESS'),
-        ...brand
+        data: brand
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

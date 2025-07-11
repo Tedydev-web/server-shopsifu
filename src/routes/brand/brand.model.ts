@@ -13,8 +13,9 @@ export const GetBrandParamsSchema = z
   })
   .strict()
 
-export const GetBrandDetailResSchema = BrandIncludeTranslationSchema.extend({
-  message: z.string()
+export const GetBrandDetailResSchema = z.object({
+  message: z.string(),
+  data: BrandIncludeTranslationSchema
 })
 
 export const CreateBrandBodySchema = BrandSchema.pick({
@@ -22,7 +23,12 @@ export const CreateBrandBodySchema = BrandSchema.pick({
   logo: true
 }).strict()
 
-export const UpdateBrandBodySchema = CreateBrandBodySchema
+export const UpdateBrandBodySchema = BrandSchema.pick({
+  name: true,
+  logo: true
+})
+  .partial()
+  .strict()
 
 export type BrandType = z.infer<typeof BrandSchema>
 export type BrandIncludeTranslationType = z.infer<typeof BrandIncludeTranslationSchema>

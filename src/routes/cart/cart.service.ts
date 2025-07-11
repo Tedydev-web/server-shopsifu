@@ -1,12 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { CartRepo } from './cart.repo'
-import {
-  AddToCartBodyType,
-  DeleteCartBodyType,
-  GetCartQueryType,
-  UpdateCartItemBodyType
-} from 'src/routes/cart/cart.model'
+import { AddToCartBodyType, DeleteCartBodyType, UpdateCartItemBodyType } from 'src/routes/cart/cart.model'
 import { I18nContext, I18nService } from 'nestjs-i18n'
+import { PaginationQueryType } from 'src/shared/models/request.model'
+import { PaginationArgs } from 'src/shared/utils/pagination.util'
 import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
@@ -16,22 +13,32 @@ export class CartService {
     private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
-  async getCart(userId: number, query: GetCartQueryType) {
-    const data = await this.cartRepo.list({
+  async getCart(userId: number, pagination: PaginationQueryType) {
+    const paginationArgs: PaginationArgs = {
+      page: pagination.page,
+      limit: pagination.limit,
+      search: pagination.search,
+      sortBy: pagination.sortBy,
+      orderBy: pagination.orderBy
+    }
+
+    const result = await this.cartRepo.list({
       userId,
       languageId: I18nContext.current()?.lang as string,
-      ...query
+      pagination: paginationArgs
     })
+
     return {
-      data,
+      data: result.data,
+      metadata: result.metadata,
       message: this.i18n.t('cart.cart.success.GET_SUCCESS')
     }
   }
 
   async addToCart(userId: number, body: AddToCartBodyType) {
-    const data = await this.cartRepo.create(userId, body)
+    const cartItem = await this.cartRepo.create(userId, body)
     return {
-      data,
+      data: cartItem,
       message: this.i18n.t('cart.cart.success.CREATE_SUCCESS')
     }
   }
@@ -45,13 +52,13 @@ export class CartService {
     cartItemId: number
     body: UpdateCartItemBodyType
   }) {
-    const data = await this.cartRepo.update({
+    const cartItem = await this.cartRepo.update({
       userId,
       body,
       cartItemId
     })
     return {
-      data,
+      data: cartItem,
       message: this.i18n.t('cart.cart.success.UPDATE_SUCCESS')
     }
   }

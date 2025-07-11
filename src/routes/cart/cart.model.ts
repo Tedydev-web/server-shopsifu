@@ -1,11 +1,9 @@
+import { PaginationResponseSchema } from 'src/shared/models/pagination.model'
 import { ProductTranslationSchema } from 'src/shared/models/shared-product-translation.model'
 import { ProductSchema } from 'src/shared/models/shared-product.model'
 import { SKUSchema } from 'src/shared/models/shared-sku.model'
 import { UserSchema } from 'src/shared/models/shared-user.model'
 import { z } from 'zod'
-import { PaginationResponseSchema } from 'src/shared/models/pagination.model'
-import { PaginationQuerySchema } from 'src/shared/models/request.model'
-import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 
 export const CartItemSchema = z.object({
   id: z.number(),
@@ -61,15 +59,17 @@ export const CartItemDetailSchema = z.object({
   )
 })
 
-export const GetCartResSchema = PaginationResponseSchema(CartItemDetailSchema)
-
-export const GetCartQuerySchema = PaginationQuerySchema.pick({
-  page: true,
-  limit: true,
-  search: true
-}).extend({
-  sortBy: z.nativeEnum(SortBy).default(SortBy.UpdatedAt),
-  orderBy: z.nativeEnum(OrderBy).default(OrderBy.Desc)
+export const GetCartResSchema = z.object({
+  message: z.string(),
+  data: z.array(CartItemDetailSchema),
+  metadata: z.object({
+    totalItems: z.number(),
+    page: z.number(),
+    limit: z.number(),
+    totalPages: z.number(),
+    hasNext: z.boolean(),
+    hasPrev: z.boolean()
+  })
 })
 
 export const AddToCartBodySchema = CartItemSchema.pick({
@@ -89,7 +89,6 @@ export type CartItemType = z.infer<typeof CartItemSchema>
 export type GetCartItemParamType = z.infer<typeof GetCartItemParamsSchema>
 export type CartItemDetailType = z.infer<typeof CartItemDetailSchema>
 export type GetCartResType = z.infer<typeof GetCartResSchema>
-export type GetCartQueryType = z.infer<typeof GetCartQuerySchema>
 export type AddToCartBodyType = z.infer<typeof AddToCartBodySchema>
 export type UpdateCartItemBodyType = z.infer<typeof UpdateCartItemBodySchema>
 export type DeleteCartBodyType = z.infer<typeof DeleteCartBodySchema>

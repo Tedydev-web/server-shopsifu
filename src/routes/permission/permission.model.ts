@@ -3,7 +3,10 @@ import { z } from 'zod'
 import { PaginationResponseSchema } from 'src/shared/models/pagination.model'
 import { PaginationQuerySchema } from 'src/shared/models/request.model'
 
-export const GetPermissionsResSchema = PaginationResponseSchema(PermissionSchema)
+export const GetPermissionsResSchema = z.object({
+  message: z.string(),
+  ...PaginationResponseSchema(PermissionSchema).shape
+})
 
 export const GetPermissionsQuerySchema = PaginationQuerySchema.pick({
   page: true,
@@ -20,7 +23,10 @@ export const GetPermissionParamsSchema = z
   })
   .strict()
 
-export const GetPermissionDetailResSchema = PermissionSchema
+export const GetPermissionDetailResSchema = z.object({
+  message: z.string(),
+  data: PermissionSchema
+})
 
 export const CreatePermissionBodySchema = PermissionSchema.pick({
   name: true,

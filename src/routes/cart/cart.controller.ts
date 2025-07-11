@@ -8,10 +8,10 @@ import {
   DeleteCartBodyDTO,
   GetCartItemParamsDTO,
   GetCartResDTO,
-  GetCartQueryDTO,
   UpdateCartItemBodyDTO
 } from 'src/routes/cart/cart.dto'
 import { ZodSerializerDto } from 'nestjs-zod'
+import { PaginationQueryDTO } from 'src/shared/dtos/request.dto'
 
 @Controller('cart')
 export class CartController {
@@ -19,7 +19,7 @@ export class CartController {
 
   @Get()
   @ZodSerializerDto(GetCartResDTO)
-  getCart(@ActiveUser('userId') userId: number, @Query() query: GetCartQueryDTO) {
+  getCart(@ActiveUser('userId') userId: number, @Query() query: PaginationQueryDTO) {
     return this.cartService.getCart(userId, query)
   }
 

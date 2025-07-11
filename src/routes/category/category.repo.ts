@@ -8,10 +8,12 @@ import {
 } from 'src/routes/category/category.model'
 import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
 
 @Injectable()
 export class CategoryRepo {
-  constructor(private prismaService: PrismaService) {}
+  constructor(private prismaService: PrismaService, private i18n: I18nService<I18nTranslations>) {}
 
   async findAll({
     parentCategoryId,
@@ -36,6 +38,7 @@ export class CategoryRepo {
     })
 
     return {
+      message: this.i18n.t('category.category.success.GET_SUCCESS'),
       data: categories,
       totalItems: categories.length
     }

@@ -12,18 +12,23 @@ import {
   CartItemDetailType,
   CartItemType,
   DeleteCartBodyType,
-  GetCartQueryType,
   GetCartResType,
   UpdateCartItemBodyType
 } from 'src/routes/cart/cart.model'
-import { ALL_LANGUAGE_CODE, OrderBy, SortBy } from 'src/shared/constants/other.constant'
+import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { SKUSchemaType } from 'src/shared/models/shared-sku.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { I18nService } from 'nestjs-i18n'
+import { PaginatedResult, PaginationArgs, paginate } from 'src/shared/utils/pagination.util'
 
 @Injectable()
 export class CartRepo {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly i18n: I18nService<I18nTranslations>
+  ) {}
 
   private async validateSKU({
     skuId,
@@ -56,10 +61,7 @@ export class CartRepo {
     if (!sku) {
       throw NotFoundSKUException
     }
-    if (!cartItem) {
-      throw NotFoundCartItemException
-    }
-    if (isCreate && quantity + cartItem.quantity > sku.stock) {
+    if (cartItem && isCreate && quantity + cartItem.quantity > sku.stock) {
       throw InvalidQuantityException
     }
     // Kiểm tra lượng hàng còn lại
@@ -79,155 +81,141 @@ export class CartRepo {
     return sku
   }
 
+  private async paginateCart(
+    userId: number,
+    languageId: string,
+    pagination: PaginationArgs
+  ): Promise<PaginatedResult<CartItemDetailType>> {
+    const { search, sortBy, orderBy } = pagination
+
+    // Tạo custom model để sử dụng với paginate utility
+    const cartModel = {
+      count: async () => {
+        const searchCondition = search
+          ? Prisma.sql`AND (
+            "Product"."name" ILIKE ${`%${search}%`} OR
+            "User"."name" ILIKE ${`%${search}%`} OR
+            "SKU"."value" ILIKE ${`%${search}%`}
+          )`
+          : Prisma.sql``
+
+        const result = await this.prismaService.$queryRaw<{ count: bigint }[]>`
+          SELECT COUNT(DISTINCT "Product"."createdById") as count
+          FROM "CartItem"
+          JOIN "SKU" ON "CartItem"."skuId" = "SKU"."id"
+          JOIN "Product" ON "SKU"."productId" = "Product"."id"
+          LEFT JOIN "User" ON "Product"."createdById" = "User"."id"
+          WHERE "CartItem"."userId" = ${userId}
+            AND "Product"."deletedAt" IS NULL
+            AND "Product"."publishedAt" IS NOT NULL
+            AND "Product"."publishedAt" <= NOW()
+            ${searchCondition}
+        `
+        return Number(result[0]?.count || 0)
+      },
+      findMany: async (args: any) => {
+        const { skip, take } = args
+
+        const searchCondition = search
+          ? Prisma.sql`AND (
+            "Product"."name" ILIKE ${`%${search}%`} OR
+            "User"."name" ILIKE ${`%${search}%`} OR
+            "SKU"."value" ILIKE ${`%${search}%`}
+          )`
+          : Prisma.sql``
+
+        const orderByClause =
+          sortBy === 'price'
+            ? Prisma.sql`ORDER BY MAX("SKU"."price") ${orderBy === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
+            : sortBy === 'name'
+              ? Prisma.sql`ORDER BY MAX("Product"."name") ${orderBy === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
+              : sortBy === 'shopName'
+                ? Prisma.sql`ORDER BY MAX("User"."name") ${orderBy === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
+                : Prisma.sql`ORDER BY MAX("CartItem"."updatedAt") DESC`
+
+        return this.prismaService.$queryRaw<CartItemDetailType[]>`
+         SELECT
+           "Product"."createdById",
+           json_agg(
+             jsonb_build_object(
+               'id', "CartItem"."id",
+               'quantity', "CartItem"."quantity",
+               'skuId', "CartItem"."skuId",
+               'userId', "CartItem"."userId",
+               'createdAt', "CartItem"."createdAt",
+               'updatedAt', "CartItem"."updatedAt",
+               'sku', jsonb_build_object(
+                 'id', "SKU"."id",
+                  'value', "SKU"."value",
+                  'price', "SKU"."price",
+                  'stock', "SKU"."stock",
+                  'image', "SKU"."image",
+                  'productId', "SKU"."productId",
+                  'product', jsonb_build_object(
+                    'id', "Product"."id",
+                    'publishedAt', "Product"."publishedAt",
+                    'name', "Product"."name",
+                    'basePrice', "Product"."basePrice",
+                    'virtualPrice', "Product"."virtualPrice",
+                    'brandId', "Product"."brandId",
+                    'images', "Product"."images",
+                    'variants', "Product"."variants",
+                    'productTranslations', COALESCE((
+                      SELECT json_agg(
+                        jsonb_build_object(
+                          'id', pt."id",
+                          'productId', pt."productId",
+                          'languageId', pt."languageId",
+                          'name', pt."name",
+                          'description', pt."description"
+                        )
+                      ) FILTER (WHERE pt."id" IS NOT NULL)
+                      FROM "ProductTranslation" pt
+                      WHERE pt."productId" = "Product"."id"
+                        AND pt."deletedAt" IS NULL
+                        ${languageId === ALL_LANGUAGE_CODE ? Prisma.sql`` : Prisma.sql`AND pt."languageId" = ${languageId}`}
+                    ), '[]'::json)
+                  )
+               )
+             ) ORDER BY "CartItem"."updatedAt" DESC
+           ) AS "cartItems",
+           jsonb_build_object(
+             'id', "User"."id",
+             'name', "User"."name",
+             'avatar', "User"."avatar"
+           ) AS "shop"
+         FROM "CartItem"
+         JOIN "SKU" ON "CartItem"."skuId" = "SKU"."id"
+         JOIN "Product" ON "SKU"."productId" = "Product"."id"
+         LEFT JOIN "ProductTranslation" ON "Product"."id" = "ProductTranslation"."productId"
+           AND "ProductTranslation"."deletedAt" IS NULL
+           ${languageId === ALL_LANGUAGE_CODE ? Prisma.sql`` : Prisma.sql`AND "ProductTranslation"."languageId" = ${languageId}`}
+         LEFT JOIN "User" ON "Product"."createdById" = "User"."id"
+         WHERE "CartItem"."userId" = ${userId}
+            AND "Product"."deletedAt" IS NULL
+            AND "Product"."publishedAt" IS NOT NULL
+            AND "Product"."publishedAt" <= NOW()
+            ${searchCondition}
+         GROUP BY "Product"."createdById", "User"."id"
+         ${orderByClause}
+         LIMIT ${take} OFFSET ${skip}
+       `
+      }
+    }
+
+    return paginate(cartModel, pagination)
+  }
+
   async list({
     userId,
     languageId,
-    page,
-    limit,
-    search,
-    sortBy,
-    orderBy
+    pagination
   }: {
     userId: number
     languageId: string
-    page: number
-    limit: number
-    search?: string
-    sortBy?: string
-    orderBy?: string
-  }): Promise<GetCartResType> {
-    const skip = (page - 1) * limit
-    const take = limit
-
-    // Xây dựng điều kiện search
-    const searchCondition = search
-      ? Prisma.sql`AND (
-        "User"."name" ILIKE ${`%${search}%`} OR
-        "Product"."name" ILIKE ${`%${search}%`} OR
-        EXISTS (
-          SELECT 1 FROM "ProductTranslation" pt 
-          WHERE pt."productId" = "Product"."id" 
-            AND pt."deletedAt" IS NULL
-            ${languageId === ALL_LANGUAGE_CODE ? Prisma.sql`` : Prisma.sql`AND pt."languageId" = ${languageId}`}
-            AND pt."name" ILIKE ${`%${search}%`}
-        )
-      )`
-      : Prisma.sql``
-
-    // Xây dựng điều kiện sort
-    let orderByClause: Prisma.Sql
-    switch (sortBy) {
-      case SortBy.ShopName:
-        orderByClause = Prisma.sql`"User"."name" ${orderBy === OrderBy.Asc ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
-        break
-      case SortBy.CreatedAt:
-        orderByClause = Prisma.sql`MAX("CartItem"."createdAt") ${orderBy === OrderBy.Asc ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
-        break
-      case SortBy.UpdatedAt:
-      default:
-        orderByClause = Prisma.sql`MAX("CartItem"."updatedAt") ${orderBy === OrderBy.Asc ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
-        break
-    }
-
-    // Đếm tổng số nhóm sản phẩm với điều kiện search
-    const totalItems$ = this.prismaService.$queryRaw<{ createdById: number }[]>`
-      SELECT
-        "Product"."createdById"
-      FROM "CartItem"
-      JOIN "SKU" ON "CartItem"."skuId" = "SKU"."id"
-      JOIN "Product" ON "SKU"."productId" = "Product"."id"
-      LEFT JOIN "User" ON "Product"."createdById" = "User"."id"
-      WHERE "CartItem"."userId" = ${userId}
-        AND "Product"."deletedAt" IS NULL
-        AND "Product"."publishedAt" IS NOT NULL
-        AND "Product"."publishedAt" <= NOW()
-        ${searchCondition}
-      GROUP BY "Product"."createdById"
-    `
-
-    // Query chính với pagination, search và sort
-    const data$ = this.prismaService.$queryRaw<CartItemDetailType[]>`
-     SELECT
-       "Product"."createdById",
-       json_agg(
-         jsonb_build_object(
-           'id', "CartItem"."id",
-           'quantity', "CartItem"."quantity",
-           'skuId', "CartItem"."skuId",
-           'userId', "CartItem"."userId",
-           'createdAt', "CartItem"."createdAt",
-           'updatedAt', "CartItem"."updatedAt",
-           'sku', jsonb_build_object(
-             'id', "SKU"."id",
-              'value', "SKU"."value",
-              'price', "SKU"."price",
-              'stock', "SKU"."stock",
-              'image', "SKU"."image",
-              'productId', "SKU"."productId",
-              'product', jsonb_build_object(
-                'id', "Product"."id",
-                'publishedAt', "Product"."publishedAt",
-                'name', "Product"."name",
-                'basePrice', "Product"."basePrice",
-                'virtualPrice', "Product"."virtualPrice",
-                'brandId', "Product"."brandId",
-                'images', "Product"."images",
-                'variants', "Product"."variants",
-                'productTranslations', COALESCE((
-                  SELECT json_agg(
-                    jsonb_build_object(
-                      'id', pt."id",
-                      'productId', pt."productId",
-                      'languageId', pt."languageId",
-                      'name', pt."name",
-                      'description', pt."description"
-                    )
-                  ) FILTER (WHERE pt."id" IS NOT NULL)
-                  FROM "ProductTranslation" pt
-                  WHERE pt."productId" = "Product"."id"
-                    AND pt."deletedAt" IS NULL
-                    ${languageId === ALL_LANGUAGE_CODE ? Prisma.sql`` : Prisma.sql`AND pt."languageId" = ${languageId}`}
-                ), '[]'::json)
-              )
-           )
-         ) ORDER BY "CartItem"."updatedAt" DESC
-       ) AS "cartItems",
-       jsonb_build_object(
-         'id', "User"."id",
-         'name', "User"."name",
-         'avatar', "User"."avatar"
-       ) AS "shop"
-     FROM "CartItem"
-     JOIN "SKU" ON "CartItem"."skuId" = "SKU"."id"
-     JOIN "Product" ON "SKU"."productId" = "Product"."id"
-     LEFT JOIN "ProductTranslation" ON "Product"."id" = "ProductTranslation"."productId"
-       AND "ProductTranslation"."deletedAt" IS NULL
-       ${languageId === ALL_LANGUAGE_CODE ? Prisma.sql`` : Prisma.sql`AND "ProductTranslation"."languageId" = ${languageId}`}
-     LEFT JOIN "User" ON "Product"."createdById" = "User"."id"
-     WHERE "CartItem"."userId" = ${userId}
-        AND "Product"."deletedAt" IS NULL
-        AND "Product"."publishedAt" IS NOT NULL
-        AND "Product"."publishedAt" <= NOW()
-        ${searchCondition}
-     GROUP BY "Product"."createdById", "User"."id"
-     ORDER BY ${orderByClause}
-      LIMIT ${take} 
-      OFFSET ${skip}
-   `
-
-    const [data, totalItems] = await Promise.all([data$, totalItems$])
-
-    return {
-      data,
-      metadata: {
-        totalItems: totalItems.length,
-        page,
-        limit,
-        totalPages: Math.ceil(totalItems.length / limit),
-        hasNext: page < Math.ceil(totalItems.length / limit),
-        hasPrev: page > 1
-      }
-    }
+    pagination: PaginationArgs
+  }): Promise<PaginatedResult<CartItemDetailType>> {
+    return this.paginateCart(userId, languageId, pagination)
   }
 
   async create(userId: number, body: AddToCartBodyType): Promise<CartItemType> {
