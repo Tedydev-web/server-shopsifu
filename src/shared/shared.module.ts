@@ -10,36 +10,36 @@ import { PaymentAPIKeyGuard } from 'src/shared/guards/payment-api-key.guard'
 import { APP_GUARD } from '@nestjs/core'
 import { AuthenticationGuard } from 'src/shared/guards/authentication.guard'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
-import { EmailService } from 'src/shared/services/email.service'
+import { EmailService } from './services/email.service'
 import { TwoFactorService } from 'src/shared/services/2fa.service'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { S3Service } from 'src/shared/services/s3.service'
 
 const sharedServices = [
-  PrismaService,
-  HashingService,
-  TokenService,
-  CookieService,
-  CSRFService,
-  EmailService,
-  SharedUserRepository,
-  TwoFactorService,
-  SharedRoleRepository,
-  S3Service
+	PrismaService,
+	HashingService,
+	TokenService,
+	CookieService,
+	CSRFService,
+	EmailService,
+	SharedUserRepository,
+	TwoFactorService,
+	SharedRoleRepository,
+	S3Service
 ]
 
 @Global()
 @Module({
-  providers: [
-    ...sharedServices,
-    AccessTokenGuard,
-    PaymentAPIKeyGuard,
-    {
-      provide: APP_GUARD,
-      useClass: AuthenticationGuard
-    }
-  ],
-  exports: sharedServices,
-  imports: [JwtModule]
+	providers: [
+		...sharedServices,
+		AccessTokenGuard,
+		PaymentAPIKeyGuard,
+		{
+			provide: APP_GUARD,
+			useClass: AuthenticationGuard
+		}
+	],
+	exports: sharedServices,
+	imports: [JwtModule]
 })
 export class SharedModule {}

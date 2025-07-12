@@ -5,45 +5,45 @@ import { PaginationResponseSchema } from 'src/shared/models/pagination.model'
 import { PaginationQuerySchema } from 'src/shared/models/request.model'
 
 export const RoleWithPermissionsSchema = RoleSchema.extend({
-  permissions: z.array(PermissionSchema)
+	permissions: z.array(PermissionSchema)
 })
 
 export const GetRolesResSchema = PaginationResponseSchema(RoleSchema)
 
 export const GetRolesQuerySchema = PaginationQuerySchema.pick({
-  page: true,
-  limit: true,
-  search: true
+	page: true,
+	limit: true,
+	search: true
 }).extend({
-  sortBy: z.enum(['name', 'createdAt', 'updatedAt']).default('createdAt'),
-  orderBy: z.enum(['asc', 'desc']).default('desc')
+	sortBy: z.enum(['name', 'createdAt', 'updatedAt']).default('createdAt'),
+	orderBy: z.enum(['asc', 'desc']).default('desc')
 })
 
 export const GetRoleParamsSchema = z
-  .object({
-    roleId: z.coerce.number()
-  })
-  .strict()
+	.object({
+		roleId: z.coerce.number()
+	})
+	.strict()
 
 export const GetRoleDetailResSchema = RoleWithPermissionsSchema
 
 export const CreateRoleBodySchema = RoleSchema.pick({
-  name: true,
-  description: true,
-  isActive: true
+	name: true,
+	description: true,
+	isActive: true
 }).strict()
 
 export const CreateRoleResSchema = RoleSchema
 
 export const UpdateRoleBodySchema = RoleSchema.pick({
-  name: true,
-  description: true,
-  isActive: true
+	name: true,
+	description: true,
+	isActive: true
 })
-  .extend({
-    permissionIds: z.array(z.number())
-  })
-  .strict()
+	.extend({
+		permissionIds: z.array(z.number())
+	})
+	.strict()
 
 export type RoleWithPermissionsType = z.infer<typeof RoleWithPermissionsSchema>
 export type GetRolesResType = z.infer<typeof GetRolesResSchema>

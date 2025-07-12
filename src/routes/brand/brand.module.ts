@@ -4,7 +4,7 @@ import { BrandRepo } from 'src/routes/brand/brand.repo'
 import { BrandService } from 'src/routes/brand/brand.service'
 
 @Module({
-  providers: [BrandService, BrandRepo],
-  controllers: [BrandController]
+	providers: [BrandService, BrandRepo],
+	controllers: [BrandController]
 })
 export class BrandModule {}

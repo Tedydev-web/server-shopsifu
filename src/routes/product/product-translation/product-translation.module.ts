@@ -4,7 +4,7 @@ import { ProductTranslationRepo } from 'src/routes/product/product-translation/p
 import { ProductTranslationService } from 'src/routes/product/product-translation/product-translation.service'
 
 @Module({
-  providers: [ProductTranslationRepo, ProductTranslationService],
-  controllers: [ProductTranslationController]
+	providers: [ProductTranslationRepo, ProductTranslationService],
+	controllers: [ProductTranslationController]
 })
 export class ProductTranslationModule {}

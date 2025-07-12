@@ -4,9 +4,9 @@ import { WebhookPaymentBodyType } from 'src/routes/payment/payment.model'
 
 @Injectable()
 export class PaymentService {
-  constructor(private readonly paymentRepo: PaymentRepo) {}
+	constructor(private readonly paymentRepo: PaymentRepo) {}
 
-  receiver(body: WebhookPaymentBodyType) {
-    return this.paymentRepo.receiver(body)
-  }
+	receiver(body: WebhookPaymentBodyType) {
+		return this.paymentRepo.receiver(body)
+	}
 }

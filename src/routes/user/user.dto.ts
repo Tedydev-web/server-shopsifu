@@ -1,10 +1,10 @@
 import { createZodDto } from 'nestjs-zod'
 import {
-  CreateUserBodySchema,
-  GetUserParamsSchema,
-  GetUsersQuerySchema,
-  GetUsersResSchema,
-  UpdateUserBodySchema
+	CreateUserBodySchema,
+	GetUserParamsSchema,
+	GetUsersQuerySchema,
+	GetUsersResSchema,
+	UpdateUserBodySchema
 } from 'src/routes/user/user.model'
 import { UpdateProfileResDTO } from 'src/shared/dtos/shared-user.dto'
 

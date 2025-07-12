@@ -1,76 +1,81 @@
 import { PaginationQuerySchema } from 'src/shared/models/request.model'
-import { OrderSchema, OrderStatusSchema } from 'src/shared/models/shared-order.model'
+import {
+	OrderSchema,
+	OrderStatusSchema
+} from 'src/shared/models/shared-order.model'
 import { z } from 'zod'
 import { PaginationResponseSchema } from 'src/shared/models/pagination.model'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 
 export const ProductSKUSnapshotSchema = z.object({
-  id: z.number(),
-  productId: z.number().nullable(),
-  productName: z.string(),
-  productTranslations: z.array(
-    z.object({
-      id: z.number(),
-      name: z.string(),
-      description: z.string(),
-      languageId: z.string()
-    })
-  ),
-  skuPrice: z.number(),
-  image: z.string(),
-  skuValue: z.string(),
-  skuId: z.number().nullable(),
-  orderId: z.number().nullable(),
-  quantity: z.number(),
-  createdAt: z.date()
+	id: z.number(),
+	productId: z.number().nullable(),
+	productName: z.string(),
+	productTranslations: z.array(
+		z.object({
+			id: z.number(),
+			name: z.string(),
+			description: z.string(),
+			languageId: z.string()
+		})
+	),
+	skuPrice: z.number(),
+	image: z.string(),
+	skuValue: z.string(),
+	skuId: z.number().nullable(),
+	orderId: z.number().nullable(),
+	quantity: z.number(),
+	createdAt: z.date()
 })
 
 export const GetOrderListItemSchema = OrderSchema.extend({
-  items: z.array(ProductSKUSnapshotSchema)
+	items: z.array(ProductSKUSnapshotSchema)
 }).omit({
-  receiver: true,
-  deletedAt: true,
-  deletedById: true,
-  createdById: true,
-  updatedById: true
+	receiver: true,
+	deletedAt: true,
+	deletedById: true,
+	createdById: true,
+	updatedById: true
 })
 
-export const GetOrderListResSchema = PaginationResponseSchema(GetOrderListItemSchema)
+export const GetOrderListResSchema = PaginationResponseSchema(
+	GetOrderListItemSchema
+)
 
 export const GetOrderListQuerySchema = PaginationQuerySchema.extend({
-  status: OrderStatusSchema.optional(),
-  sortBy: z.nativeEnum(SortBy).default(SortBy.CreatedAt),
-  orderBy: z.nativeEnum(OrderBy).default(OrderBy.Desc),
-  search: z.string().optional()
+	status: OrderStatusSchema.optional(),
+	sortBy: z.nativeEnum(SortBy).default(SortBy.CreatedAt),
+	orderBy: z.nativeEnum(OrderBy).default(OrderBy.Desc),
+	search: z.string().optional()
 })
 
 export const GetOrderDetailResSchema = OrderSchema.extend({
-  items: z.array(ProductSKUSnapshotSchema)
+	items: z.array(ProductSKUSnapshotSchema)
 })
 
 export const CreateOrderBodySchema = z
-  .array(
-    z.object({
-      shopId: z.number(),
-      receiver: z.object({
-        name: z.string(),
-        phone: z.string().min(9).max(20),
-        address: z.string()
-      }),
-      cartItemIds: z.array(z.number()).min(1)
-    })
-  )
-  .min(1)
+	.array(
+		z.object({
+			shopId: z.number(),
+			receiver: z.object({
+				name: z.string(),
+				phone: z.string().min(9).max(20),
+				address: z.string()
+			}),
+			cartItemIds: z.array(z.number()).min(1)
+		})
+	)
+	.min(1)
 
 export const CreateOrderResSchema = z.object({ data: z.array(OrderSchema) })
 export const CancelOrderBodySchema = z.object({})
 export const CancelOrderResSchema = OrderSchema
 
 export const GetOrderParamsSchema = z
-  .object({
-    orderId: z.coerce.number().int().positive()
-  })
-  .strict()
+	.object({
+		orderId: z.coerce.number().int().positive()
+	})
+	.strict()
 
 export type GetOrderListResType = z.infer<typeof GetOrderListResSchema>
 export type GetOrderListQueryType = z.infer<typeof GetOrderListQuerySchema>

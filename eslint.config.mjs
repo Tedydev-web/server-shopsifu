@@ -1,42 +1,98 @@
-// @ts-check
-import eslint from '@eslint/js'
-import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended'
-import globals from 'globals'
-import tseslint from 'typescript-eslint'
+import eslintConfigPrettier from 'eslint-config-prettier';
+import tsEsLintPlugin from '@typescript-eslint/eslint-plugin';
+import tsParser from '@typescript-eslint/parser';
+import tsEslint from 'typescript-eslint';
 
-export default tseslint.config(
-  {
-    ignores: ['eslint.config.mjs', 'ecosystem.config.js']
-  },
-  eslint.configs.recommended,
-  ...tseslint.configs.recommendedTypeChecked,
-  eslintPluginPrettierRecommended,
-  {
-    languageOptions: {
-      globals: {
-        ...globals.node,
-        ...globals.jest
-      },
-      ecmaVersion: 5,
-      sourceType: 'module',
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname
-      }
-    }
-  },
-  {
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-floating-promises': 'warn',
-      '@typescript-eslint/no-unsafe-assignment': 'off',
-      '@typescript-eslint/only-throw-error': 'off',
-      '@typescript-eslint/no-unsafe-argument': 'off',
-      '@typescript-eslint/no-unsafe-member-access': 'off',
-      '@typescript-eslint/no-unsafe-call': 'off',
-      '@typescript-eslint/no-unused-vars': 'off',
-      '@typescript-eslint/no-unsafe-return': 'off',
-      'prettier/prettier': 'off'
-    }
-  }
-)
+const rules = tsEslint.configs.recommended
+    .map(config => config.rules)
+    .filter(rules => rules !== undefined)
+    .reduce((a, b) => ({ ...b, ...a }), {});
+
+export default [
+    eslintConfigPrettier,
+    {
+        ignores: [
+            '.github/*',
+            '.husky/*',
+            'coverage/*',
+            'dist/*',
+            'docs/*',
+            'node_modules/*',
+            '**/**/*.json',
+        ],
+    },
+    {
+        name: 'ts/default',
+        files: ['src/**/*.ts'],
+        languageOptions: {
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+            parser: tsParser,
+            parserOptions: {
+                project: 'tsconfig.json',
+                tsconfigRootDir: '.',
+            },
+        },
+        linterOptions: {
+            noInlineConfig: true,
+            reportUnusedDisableDirectives: true,
+        },
+        plugins: {
+            '@typescript-eslint': tsEsLintPlugin,
+        },
+        rules: {
+            ...rules,
+            '@typescript-eslint/no-explicit-any': 'off',
+            'no-unused-vars': 'off',
+            '@typescript-eslint/no-unused-vars': [
+                'warn',
+                {
+                    args: 'all',
+                    argsIgnorePattern: '^_',
+                    caughtErrors: 'all',
+                    caughtErrorsIgnorePattern: '^_',
+                    destructuredArrayIgnorePattern: '^_',
+                    varsIgnorePattern: '^_',
+                    ignoreRestSiblings: true,
+                },
+            ],
+        },
+    },
+    {
+        name: 'ts/test',
+        files: ['test/**/*.spec.ts'],
+        languageOptions: {
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+            parser: tsParser,
+            parserOptions: {
+                project: 'tsconfig.json',
+                tsconfigRootDir: '.',
+            },
+        },
+        linterOptions: {
+            noInlineConfig: false,
+            reportUnusedDisableDirectives: true,
+        },
+        plugins: {
+            '@typescript-eslint': tsEsLintPlugin,
+        },
+        rules: {
+            ...rules,
+            '@typescript-eslint/no-explicit-any': 'off',
+            'no-unused-vars': 'off',
+            '@typescript-eslint/no-unused-vars': [
+                'warn',
+                {
+                    args: 'all',
+                    argsIgnorePattern: '^_',
+                    caughtErrors: 'all',
+                    caughtErrorsIgnorePattern: '^_',
+                    destructuredArrayIgnorePattern: '^_',
+                    varsIgnorePattern: '^_',
+                    ignoreRestSiblings: true,
+                },
+            ],
+        },
+    },
+];

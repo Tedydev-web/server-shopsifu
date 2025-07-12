@@ -1,39 +1,32 @@
 {
   "compilerOptions": {
-    "jsx": "react",
-    "module": "commonjs",
+    "module": "CommonJS",
     "declaration": true,
+    "jsx": "react",
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "target": "ES2021",
+    "target": "ESNext",
+    "useDefineForClassFields": false,
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
-    "strictNullChecks": true,
-    "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
-  },
-  "ts-node": {
-    "require": [
-      "tsconfig-paths/register"
-    ]
+    "allowJs": false,
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true
   },
   "include": [
     "src/**/*",
     "initialScript/**/*",
-    "emails/**/*"
+    "src/shared/emails/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "auth",
-    "test-script.ts"
+    "*coverage"
   ]
 }

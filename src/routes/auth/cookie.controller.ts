@@ -6,18 +6,21 @@ import { CSRFService } from 'src/shared/services/csrf.service'
 
 @Controller('cookies')
 export class CookieController {
-  constructor(
-    private readonly cookieService: CookieService,
-    private readonly csrfService: CSRFService
-  ) {}
+	constructor(
+		private readonly cookieService: CookieService,
+		private readonly csrfService: CSRFService
+	) {}
 
-  @Get('csrf-token')
-  @IsPublic()
-  getCSRFToken(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const csrfToken = this.csrfService.generateToken(req, res)
-    return {
-      message: 'CSRF token generated successfully',
-      csrfToken
-    }
-  }
+	@Get('csrf-token')
+	@IsPublic()
+	getCSRFToken(
+		@Req() req: Request,
+		@Res({ passthrough: true }) res: Response
+	) {
+		const csrfToken = this.csrfService.generateToken(req, res)
+		return {
+			message: 'CSRF token generated successfully',
+			csrfToken
+		}
+	}
 }

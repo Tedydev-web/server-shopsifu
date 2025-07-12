@@ -6,7 +6,7 @@ import { GoogleService } from 'src/routes/auth/google.service'
 import { CookieController } from './cookie.controller'
 
 @Module({
-  providers: [AuthService, AuthRepository, GoogleService],
-  controllers: [AuthController, CookieController]
+	providers: [AuthService, AuthRepository, GoogleService],
+	controllers: [AuthController, CookieController]
 })
 export class AuthModule {}

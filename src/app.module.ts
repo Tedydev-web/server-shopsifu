@@ -24,70 +24,71 @@ import { PaymentModule } from 'src/routes/payment/payment.module'
 import { CSRFMiddleware } from 'src/shared/middleware/csrf.middleware'
 import { BullModule } from '@nestjs/bullmq'
 import envConfig from './shared/config'
-import path, { join } from 'path'
+import path from 'path'
+import { ConfigModule } from '@nestjs/config'
+import configs from 'src/shared/configs'
 
 @Module({
-  imports: [
-    BullModule.forRoot({
-      connection: {
-        // host: 'localhost',
-        // port: 6378,
-        host: envConfig.REDIS_HOST,
-        port: envConfig.REDIS_PORT,
-        username: envConfig.REDIS_USER,
-        password: envConfig.REDIS_PASSWORD
-      }
-    }),
-    // I18nModule.forRoot({
-    //   fallbackLanguage: 'en',
-    //   loaderOptions: {
-    //     path: join(__dirname, 'shared/languages/'),
-    //     watch: true
-    //   },
-    //   resolvers: [AcceptLanguageResolver, new HeaderResolver(['accept-language']), new HeaderResolver(['lang'])],
-    //   typesOutputPath: path.join(__dirname, 'shared/languages/generated/i18n.generated.ts')
-    // }),
-    I18nModule.forRoot({
-      fallbackLanguage: 'en',
-      loaderOptions: {
-        path: path.resolve('src/shared/languages/'),
-        watch: true
-      },
-      resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
-      typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts')
-    }),
-    SharedModule,
-    AuthModule,
-    LanguageModule,
-    PermissionModule,
-    RoleModule,
-    ProfileModule,
-    UserModule,
-    MediaModule,
-    BrandModule,
-    BrandTranslationModule,
-    CategoryModule,
-    CategoryTranslationModule,
-    ProductModule,
-    ProductTranslationModule,
-    CartModule,
-    OrderModule,
-    PaymentModule
-  ],
-  providers: [
-    {
-      provide: APP_PIPE,
-      useClass: CustomZodValidationPipe
-    },
-    { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
-    {
-      provide: APP_FILTER,
-      useClass: HttpExceptionFilter
-    }
-  ]
+	imports: [
+		// Configuration - Global
+		ConfigModule.forRoot({
+			load: configs,
+			isGlobal: true,
+			cache: true,
+			envFilePath: ['.env'],
+			expandVariables: true
+		}),
+
+		BullModule.forRoot({
+			connection: {
+				host: envConfig.REDIS_HOST,
+				port: envConfig.REDIS_PORT,
+				password: envConfig.REDIS_PASSWORD,
+				tls: envConfig.REDIS_ENABLE_TLS === 'true' ? {} : null
+			}
+		}),
+
+		I18nModule.forRoot({
+			fallbackLanguage: 'en',
+			loaderOptions: {
+				path: path.resolve('src/shared/languages/'),
+				watch: true
+			},
+			resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
+			typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts')
+		}),
+		SharedModule,
+		AuthModule,
+		LanguageModule,
+		PermissionModule,
+		RoleModule,
+		ProfileModule,
+		UserModule,
+		MediaModule,
+		BrandModule,
+		BrandTranslationModule,
+		CategoryModule,
+		CategoryTranslationModule,
+		ProductModule,
+		ProductTranslationModule,
+		CartModule,
+		OrderModule,
+		PaymentModule
+	],
+	providers: [
+		{
+			provide: APP_PIPE,
+			useClass: CustomZodValidationPipe
+		},
+		{ provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
+		{
+			provide: APP_FILTER,
+			useClass: HttpExceptionFilter
+		}
+	]
 })
 export class AppModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(CSRFMiddleware).forRoutes({ path: '*', method: RequestMethod.ALL })
-  }
+	configure(consumer: MiddlewareConsumer) {
+		consumer.apply(CSRFMiddleware).forRoutes({ path: '*', method: RequestMethod.ALL })
+	}
 }

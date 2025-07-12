@@ -7,35 +7,35 @@ import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class ProductService {
-  constructor(
-    private productRepo: ProductRepo,
-    private i18n: I18nService<I18nTranslations>
-  ) {}
+	constructor(
+		private productRepo: ProductRepo,
+		private i18n: I18nService<I18nTranslations>
+	) {}
 
-  async list(props: { query: GetProductsQueryType }) {
-    const data = await this.productRepo.list({
-      ...props.query,
-      languageId: I18nContext.current()?.lang as string,
-      isPublic: true
-    })
-    return {
-      ...data,
-      message: this.i18n.t('product.product.success.GET_PRODUCTS')
-    }
-  }
+	async list(props: { query: GetProductsQueryType }) {
+		const data = await this.productRepo.list({
+			...props.query,
+			languageId: I18nContext.current()?.lang as string,
+			isPublic: true
+		})
+		return {
+			...data,
+			message: this.i18n.t('product.product.success.GET_PRODUCTS')
+		}
+	}
 
-  async getDetail(props: { productId: number }) {
-    const product = await this.productRepo.getDetail({
-      productId: props.productId,
-      languageId: I18nContext.current()?.lang as string,
-      isPublic: true
-    })
-    if (!product) {
-      throw NotFoundRecordException
-    }
-    return {
-      data: product,
-      message: this.i18n.t('product.product.success.GET_PRODUCT_DETAIL')
-    }
-  }
+	async getDetail(props: { productId: number }) {
+		const product = await this.productRepo.getDetail({
+			productId: props.productId,
+			languageId: I18nContext.current()?.lang as string,
+			isPublic: true
+		})
+		if (!product) {
+			throw NotFoundRecordException
+		}
+		return {
+			data: product,
+			message: this.i18n.t('product.product.success.GET_PRODUCT_DETAIL')
+		}
+	}
 }

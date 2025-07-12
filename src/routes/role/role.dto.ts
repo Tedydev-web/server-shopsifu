@@ -1,12 +1,12 @@
 import { createZodDto } from 'nestjs-zod'
 import {
-  CreateRoleBodySchema,
-  CreateRoleResSchema,
-  GetRoleDetailResSchema,
-  GetRoleParamsSchema,
-  GetRolesQuerySchema,
-  GetRolesResSchema,
-  UpdateRoleBodySchema
+	CreateRoleBodySchema,
+	CreateRoleResSchema,
+	GetRoleDetailResSchema,
+	GetRoleParamsSchema,
+	GetRolesQuerySchema,
+	GetRolesResSchema,
+	UpdateRoleBodySchema
 } from 'src/routes/role/role.model'
 
 export class GetRolesResDTO extends createZodDto(GetRolesResSchema) {}
