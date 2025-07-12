@@ -4,7 +4,7 @@ import { CreateCategoryBodyType, UpdateCategoryBodyType } from 'src/routes/categ
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext, I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class CategoryService {
@@ -33,8 +33,8 @@ export class CategoryService {
       throw NotFoundRecordException
     }
     return {
-      data: category,
-      message: this.i18n.t('category.category.success.GET_DETAIL_SUCCESS')
+      message: this.i18n.t('category.category.success.GET_DETAIL_SUCCESS'),
+      data: category
     }
   }
 

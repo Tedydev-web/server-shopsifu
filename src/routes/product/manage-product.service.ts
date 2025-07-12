@@ -9,7 +9,7 @@ import {
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext, I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { RoleName } from 'src/shared/constants/role.constant'
 
 @Injectable()

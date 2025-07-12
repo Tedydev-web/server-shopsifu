@@ -9,11 +9,14 @@ import {
 import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class CategoryRepo {
-  constructor(private prismaService: PrismaService, private i18n: I18nService<I18nTranslations>) {}
+  constructor(
+    private prismaService: PrismaService,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   async findAll({
     parentCategoryId,

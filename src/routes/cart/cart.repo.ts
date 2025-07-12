@@ -19,7 +19,7 @@ import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { SKUSchemaType } from 'src/shared/models/shared-sku.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { I18nService } from 'nestjs-i18n'
 import { PaginatedResult, PaginationArgs, paginate } from 'src/shared/utils/pagination.util'
 

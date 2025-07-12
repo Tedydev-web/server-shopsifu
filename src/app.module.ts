@@ -13,8 +13,7 @@ import { UserModule } from 'src/routes/user/user.module'
 import { MediaModule } from 'src/routes/media/media.module'
 import { BrandModule } from 'src/routes/brand/brand.module'
 import { BrandTranslationModule } from 'src/routes/brand/brand-translation/brand-translation.module'
-import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
-import path from 'path'
+import { AcceptLanguageResolver, HeaderResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
 import { CategoryModule } from 'src/routes/category/category.module'
 import { CategoryTranslationModule } from 'src/routes/category/category-translation/category-translation.module'
 import { ProductModule } from 'src/routes/product/product.module'
@@ -25,6 +24,7 @@ import { PaymentModule } from 'src/routes/payment/payment.module'
 import { CSRFMiddleware } from 'src/shared/middleware/csrf.middleware'
 import { BullModule } from '@nestjs/bullmq'
 import envConfig from './shared/config'
+import path, { join } from 'path'
 
 @Module({
   imports: [
@@ -38,14 +38,23 @@ import envConfig from './shared/config'
         password: envConfig.REDIS_PASSWORD
       }
     }),
+    // I18nModule.forRoot({
+    //   fallbackLanguage: 'en',
+    //   loaderOptions: {
+    //     path: join(__dirname, 'shared/languages/'),
+    //     watch: true
+    //   },
+    //   resolvers: [AcceptLanguageResolver, new HeaderResolver(['accept-language']), new HeaderResolver(['lang'])],
+    //   typesOutputPath: path.join(__dirname, 'shared/languages/generated/i18n.generated.ts')
+    // }),
     I18nModule.forRoot({
-      fallbackLanguage: 'vi',
+      fallbackLanguage: 'en',
       loaderOptions: {
-        path: path.resolve('src/shared/i18n/'),
+        path: path.resolve('src/shared/languages/'),
         watch: true
       },
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
-      typesOutputPath: path.resolve('src/shared/i18n/generated/i18n.generated.ts')
+      typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts')
     }),
     SharedModule,
     AuthModule,

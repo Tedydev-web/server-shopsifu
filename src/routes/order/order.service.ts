@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { CreateOrderBodyType, GetOrderListQueryType, GetOrderListResType } from 'src/routes/order/order.model'
 import { OrderRepo } from 'src/routes/order/order.repo'
 import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class OrderService {

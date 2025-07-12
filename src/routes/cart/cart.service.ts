@@ -4,7 +4,7 @@ import { AddToCartBodyType, DeleteCartBodyType, UpdateCartItemBodyType } from 's
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { PaginationQueryType } from 'src/shared/models/request.model'
 import { PaginationArgs } from 'src/shared/utils/pagination.util'
-import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class CartService {

@@ -1,6 +1,6 @@
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 export const NotFoundRecordException = (i18n: I18nService<I18nTranslations>) =>
   new NotFoundException([{ message: i18n.t('global.global.error.NOT_FOUND_RECORD') }])

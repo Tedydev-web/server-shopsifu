@@ -4,7 +4,7 @@ import { unlink } from 'fs/promises'
 import { generateRandomFilename } from 'src/shared/helpers'
 import { PresignedUploadFileBodyType } from 'src/routes/media/media.model'
 import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/shared/i18n/generated/i18n.generated'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class MediaService {

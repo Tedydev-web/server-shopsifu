@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 export const GetAllCategoriesResSchema = z.object({
   message: z.string(),
-  data: z.array(CategorySchema),
+  data: z.array(CategoryIncludeTranslationSchema),
   totalItems: z.number()
 })
 
@@ -17,7 +17,10 @@ export const GetCategoryParamsSchema = z
   })
   .strict()
 
-export const GetCategoryDetailResSchema = CategoryIncludeTranslationSchema
+export const GetCategoryDetailResSchema = z.object({
+  message: z.string(),
+  data: CategoryIncludeTranslationSchema
+})
 
 export const CreateCategoryBodySchema = CategorySchema.pick({
   name: true,
