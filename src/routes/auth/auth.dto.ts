@@ -30,18 +30,10 @@ export class RefreshTokenResDTO extends createZodDto(RefreshTokenResSchema) {}
 
 export class LogoutBodyDTO extends createZodDto(LogoutBodySchema) {}
 
-export class GetAuthorizationUrlResDTO extends createZodDto(
-	GetAuthorizationUrlResSchema
-) {}
+export class GetAuthorizationUrlResDTO extends createZodDto(GetAuthorizationUrlResSchema) {}
 
-export class ForgotPasswordBodyDTO extends createZodDto(
-	ForgotPasswordBodySchema
-) {}
+export class ForgotPasswordBodyDTO extends createZodDto(ForgotPasswordBodySchema) {}
 
-export class TwoFactorSetupResDTO extends createZodDto(
-	TwoFactorSetupResSchema
-) {}
+export class TwoFactorSetupResDTO extends createZodDto(TwoFactorSetupResSchema) {}
 
-export class DisableTwoFactorBodyDTO extends createZodDto(
-	DisableTwoFactorBodySchema
-) {}
+export class DisableTwoFactorBodyDTO extends createZodDto(DisableTwoFactorBodySchema) {}

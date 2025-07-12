@@ -4,7 +4,7 @@ import { LanguageRepo } from 'src/routes/language/language.repo'
 import { LanguageService } from 'src/routes/language/language.service'
 
 @Module({
-	providers: [LanguageService, LanguageRepo],
-	controllers: [LanguageController]
+  providers: [LanguageService, LanguageRepo],
+  controllers: [LanguageController],
 })
 export class LanguageModule {}

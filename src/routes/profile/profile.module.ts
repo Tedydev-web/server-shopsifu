@@ -4,9 +4,9 @@ import { ProfileService } from './profile.service'
 import { SharedModule } from 'src/shared/shared.module'
 
 @Module({
-	imports: [SharedModule],
-	controllers: [ProfileController],
-	providers: [ProfileService],
-	exports: [ProfileService]
+  imports: [SharedModule],
+  controllers: [ProfileController],
+  providers: [ProfileService],
+  exports: [ProfileService],
 })
 export class ProfileModule {}

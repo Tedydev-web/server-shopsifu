@@ -18,7 +18,7 @@ export default registerAs('app', (): Record<string, any> => {
 
 	return {
 		env: process.env.NODE_ENV ?? APP_ENVIRONMENT.LOCAL,
-		name: process.env.APP_NAME ?? 'nestjs-starter',
+		name: process.env.APP_NAME ?? 'shopsifu',
 
 		versioning: {
 			enable: process.env.HTTP_VERSIONING_ENABLE === 'true',

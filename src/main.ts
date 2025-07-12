@@ -3,14 +3,12 @@ import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
 import cookieParser from 'cookie-parser'
 import session from 'express-session'
-import envConfig from 'src/shared/config'
-import { COOKIE_DEFINITIONS } from './shared/constants/cookie.constant'
 import helmet from 'helmet'
 import compression from 'compression'
 import { Logger, VersioningType } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import express from 'express'
 import { ExpressAdapter } from '@nestjs/platform-express'
-import configs from './shared/configs'
 
 async function bootstrap(): Promise<void> {
 	const server = express()
@@ -23,35 +21,23 @@ async function bootstrap(): Promise<void> {
 		})
 
 		const logger = app.get(Logger)
-		const host = ('app.http.host')
-		const port = ('app.http.port')
+		const config = app.get(ConfigService)
+		const host = config.getOrThrow('app.http.host')
+		const port = config.getOrThrow('app.http.port')
 
 		// Middleware
 		app.use(helmet())
 		app.use(compression())
 		app.useLogger(logger)
-		app.enableCors({
-			origin: envConfig.APP_CORS_ORIGINS.split(','),
-			credentials: true
-		})
+		app.enableCors(config.get('app.cors'))
 
 		app.enableVersioning({
 			type: VersioningType.URI,
 			defaultVersion: '1'
 		})
 		// Cookie parser middleware
-		app.use(cookieParser(envConfig.COOKIE_SECRET))
+		app.use(cookieParser(config.getOrThrow('app.cookie.secret')))
 
-		// Session middleware
-		app.use(
-			session({
-				name: COOKIE_DEFINITIONS.session.name,
-				secret: envConfig.COOKIE_SECRET,
-				resave: false,
-				saveUninitialized: false,
-				cookie: COOKIE_DEFINITIONS.session.options
-			})
-		)
 		// Graceful shutdown
 		const gracefulShutdown = async (signal: string) => {
 			logger.log(`Received ${signal}, shutting down gracefully...`)

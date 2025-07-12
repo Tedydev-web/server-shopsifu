@@ -6,7 +6,8 @@ export const RegisterBodySchema = UserSchema.pick({
 	email: true,
 	password: true,
 	name: true,
-	phoneNumber: true
+	phoneNumber: true,
+	role: true
 })
 	.extend({
 		confirmPassword: z.string().min(6).max(100),
@@ -58,8 +59,7 @@ export const LoginBodySchema = UserSchema.pick({
 	.strict()
 	.superRefine(({ totpCode, code }, ctx) => {
 		// Nếu mà truyền cùng lúc totpCode và code thì sẽ add issue
-		const message =
-			'Bạn chỉ nên truyền mã xác thực 2FA hoặc mã OTP. Không được truyền cả 2'
+		const message = 'Bạn chỉ nên truyền mã xác thực 2FA hoặc mã OTP. Không được truyền cả 2'
 		if (totpCode !== undefined && code !== undefined) {
 			ctx.addIssue({
 				path: ['totpCode'],
@@ -150,8 +150,7 @@ export const DisableTwoFactorBodySchema = z
 	})
 	.strict()
 	.superRefine(({ totpCode, code }, ctx) => {
-		const message =
-			'Bạn phải cung cấp mã xác thực 2FA hoặc mã OTP. Không được cung cấp cả 2'
+		const message = 'Bạn phải cung cấp mã xác thực 2FA hoặc mã OTP. Không được cung cấp cả 2'
 		// Nếu cả 2 đều có hoặc không có thì sẽ nhảy vào if
 		if ((totpCode !== undefined) === (code !== undefined)) {
 			ctx.addIssue({
@@ -182,11 +181,7 @@ export type RefreshTokenResType = LoginResType
 export type DeviceType = z.infer<typeof DeviceSchema>
 export type LogoutBodyType = RefreshTokenBodyType
 export type GoogleAuthStateType = z.infer<typeof GoogleAuthStateSchema>
-export type GetAuthorizationUrlResType = z.infer<
-	typeof GetAuthorizationUrlResSchema
->
+export type GetAuthorizationUrlResType = z.infer<typeof GetAuthorizationUrlResSchema>
 export type ForgotPasswordBodyType = z.infer<typeof ForgotPasswordBodySchema>
-export type DisableTwoFactorBodyType = z.infer<
-	typeof DisableTwoFactorBodySchema
->
+export type DisableTwoFactorBodyType = z.infer<typeof DisableTwoFactorBodySchema>
 export type TwoFactorSetupResType = z.infer<typeof TwoFactorSetupResSchema>

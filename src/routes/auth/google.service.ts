@@ -5,7 +5,6 @@ import { GoogleAuthStateType } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleUserInfoError } from 'src/routes/auth/auth.error'
-import envConfig from 'src/shared/config'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { v4 as uuidv4 } from 'uuid'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
@@ -20,9 +19,9 @@ export class GoogleService {
 		private readonly authService: AuthService
 	) {
 		this.oauth2Client = new google.auth.OAuth2(
-			envConfig.GOOGLE_CLIENT_ID,
-			envConfig.GOOGLE_CLIENT_SECRET,
-			envConfig.GOOGLE_REDIRECT_URI
+			process.env.GOOGLE_CLIENT_ID,
+			process.env.GOOGLE_CLIENT_SECRET,
+			process.env.GOOGLE_REDIRECT_URI
 		)
 	}
 	getAuthorizationUrl({ userAgent, ip }: GoogleAuthStateType) {
@@ -52,9 +51,7 @@ export class GoogleService {
 			// 1. Lấy state từ url
 			try {
 				if (state) {
-					const clientInfo = JSON.parse(
-						Buffer.from(state, 'base64').toString()
-					) as GoogleAuthStateType
+					const clientInfo = JSON.parse(Buffer.from(state, 'base64').toString()) as GoogleAuthStateType
 					userAgent = clientInfo.userAgent
 					ip = clientInfo.ip
 				}
@@ -80,11 +77,9 @@ export class GoogleService {
 			})
 			// Nếu không có user tức là người mới, vậy nên sẽ tiến hành đăng ký
 			if (!user) {
-				const clientRoleId =
-					await this.sharedRoleRepository.getClientRoleId()
+				const clientRoleId = await this.sharedRoleRepository.getClientRoleId()
 				const randomPassword = uuidv4()
-				const hashedPassword =
-					await this.hashingService.hash(randomPassword)
+				const hashedPassword = await this.hashingService.hash(randomPassword)
 				user = await this.authRepository.createUserInclueRole({
 					email: data.email,
 					name: data.name ?? '',
