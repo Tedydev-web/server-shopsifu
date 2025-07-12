@@ -10,7 +10,6 @@ import { PermissionModule } from 'src/routes/permission/permission.module'
 import { RoleModule } from 'src/routes/role/role.module'
 import { ProfileModule } from 'src/routes/profile/profile.module'
 import { UserModule } from 'src/routes/user/user.module'
-import { MediaModule } from 'src/routes/media/media.module'
 import { BrandModule } from 'src/routes/brand/brand.module'
 import { BrandTranslationModule } from 'src/routes/brand/brand-translation/brand-translation.module'
 import { CategoryModule } from 'src/routes/category/category.module'
@@ -20,7 +19,6 @@ import { ProductTranslationModule } from 'src/routes/product/product-translation
 import { CartModule } from 'src/routes/cart/cart.module'
 import { OrderModule } from 'src/routes/order/order.module'
 import { PaymentModule } from 'src/routes/payment/payment.module'
-import { CSRFMiddleware } from 'src/shared/middleware/csrf.middleware'
 
 @Module({
 	imports: [
@@ -31,7 +29,6 @@ import { CSRFMiddleware } from 'src/shared/middleware/csrf.middleware'
 		RoleModule,
 		ProfileModule,
 		UserModule,
-		MediaModule,
 		BrandModule,
 		BrandTranslationModule,
 		CategoryModule,

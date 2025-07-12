@@ -5,16 +5,16 @@ import { GoogleAuthStateType } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleUserInfoError } from 'src/routes/auth/auth.error'
-import { HashingService } from 'src/shared/services/hashing.service'
 import { v4 as uuidv4 } from 'uuid'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
+import { HelperEncryptionService } from 'src/shared/helper/services/helper.encryption.service'
 
 @Injectable()
 export class GoogleService {
 	private oauth2Client: OAuth2Client
 	constructor(
 		private readonly authRepository: AuthRepository,
-		private readonly hashingService: HashingService,
+		private readonly helperEncryptionService: HelperEncryptionService,
 		private readonly sharedRoleRepository: SharedRoleRepository,
 		private readonly authService: AuthService
 	) {
@@ -79,7 +79,7 @@ export class GoogleService {
 			if (!user) {
 				const clientRoleId = await this.sharedRoleRepository.getClientRoleId()
 				const randomPassword = uuidv4()
-				const hashedPassword = await this.hashingService.hash(randomPassword)
+				const hashedPassword = await this.helperEncryptionService.createHash(randomPassword)
 				user = await this.authRepository.createUserInclueRole({
 					email: data.email,
 					name: data.name ?? '',
@@ -94,7 +94,7 @@ export class GoogleService {
 				userAgent,
 				ip
 			})
-			const authTokens = await this.authService.generateTokens({
+			const authTokens = await this.authService.createJwtTokens({
 				userId: user.id,
 				deviceId: device.id,
 				roleId: user.roleId,

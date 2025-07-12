@@ -1,14 +1,17 @@
 import 'reflect-metadata'
-import { NestFactory } from '@nestjs/core'
-import { AppModule } from './app.module'
-import cookieParser from 'cookie-parser'
-import session from 'express-session'
-import helmet from 'helmet'
-import compression from 'compression'
-import { Logger, VersioningType } from '@nestjs/common'
+import { ValidationPipe, VersioningType } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import express from 'express'
+import { NestFactory } from '@nestjs/core'
 import { ExpressAdapter } from '@nestjs/platform-express'
+import { useContainer } from 'class-validator'
+import compression from 'compression'
+import express from 'express'
+import helmet from 'helmet'
+import { Logger } from 'nestjs-pino'
+
+import { AppModule } from 'src/app.module'
+import { APP_ENVIRONMENT } from 'src/shared/enums/app.enum'
+import setupSwagger from 'src/swagger'
 
 async function bootstrap(): Promise<void> {
 	const server = express()
@@ -20,8 +23,9 @@ async function bootstrap(): Promise<void> {
 			bufferLogs: true
 		})
 
-		const logger = app.get(Logger)
 		const config = app.get(ConfigService)
+		const logger = app.get(Logger)
+		const env = config.get('app.env')
 		const host = config.getOrThrow('app.http.host')
 		const port = config.getOrThrow('app.http.port')
 
@@ -31,12 +35,26 @@ async function bootstrap(): Promise<void> {
 		app.useLogger(logger)
 		app.enableCors(config.get('app.cors'))
 
+		// Global settings
+		app.useGlobalPipes(
+			new ValidationPipe({
+				transform: true,
+				whitelist: true,
+				forbidNonWhitelisted: true
+			})
+		)
+
 		app.enableVersioning({
 			type: VersioningType.URI,
 			defaultVersion: '1'
 		})
-		// Cookie parser middleware
-		app.use(cookieParser(config.getOrThrow('app.cookie.secret')))
+
+		useContainer(app.select(AppModule), { fallbackOnErrors: true })
+
+		// Swagger for non-production
+		if (env !== APP_ENVIRONMENT.PRODUCTION) {
+			setupSwagger(app)
+		}
 
 		// Graceful shutdown
 		const gracefulShutdown = async (signal: string) => {

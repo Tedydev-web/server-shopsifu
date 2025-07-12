@@ -6,15 +6,17 @@ import { AuthService } from './auth.service'
 import { LoginBodyType, RegisterBodyType } from './auth.model'
 import { AuthUser } from 'src/shared/request/decorators/request.user.decorator'
 import { IAuthUser } from 'src/shared/request/interfaces/request.interface'
+import { PublicRoute } from 'src/shared/request/decorators/request.public.decorator'
 
 @Controller({
 	version: '1',
 	path: '/auth'
 })
-export class AuthPublicController {
+export class AuthController {
 	constructor(private readonly authService: AuthService) {}
 
 	@Post('login')
+	@PublicRoute()
 	public login(@Body() payload: LoginBodyType & { userAgent: string; ip: string }) {
 		return this.authService.login(payload)
 	}

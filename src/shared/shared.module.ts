@@ -1,30 +1,33 @@
 import { Global, Module } from '@nestjs/common'
 import { PaymentAPIKeyGuard } from 'src/shared/guards/payment-api-key.guard'
 import { APP_GUARD, APP_PIPE, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core'
-import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
-import { TwoFactorService } from 'src/shared/services/2fa.service'
-import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
-import { S3Service } from 'src/shared/services/s3.service'
-import path from 'path'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { CacheModule } from '@nestjs/cache-manager'
 import * as redisStore from 'cache-manager-ioredis'
-import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
 import { BullModule } from '@nestjs/bullmq'
 import { HttpExceptionFilter } from './filters/http-exception.filter'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import CustomZodValidationPipe from './pipes/custom-zod-validation.pipe'
 import { JwtAccessGuard } from './guards/jwt.access.guard'
 import { RolesGuard } from './guards/roles.guard'
-import { ThrottlerGuard } from '@nestjs/throttler'
-import configs from './configs'
+import configs from './config'
 import { DatabaseModule } from 'src/shared/database/database.module'
-
-const sharedServices = [DatabaseModule, SharedUserRepository, TwoFactorService, SharedRoleRepository]
+import { RequestModule } from './request/request.module'
+import { ResponseModule } from './response/response.module'
+import { SharedUserRepository } from './repositories/shared-user.repo'
+import { SharedRoleRepository } from './repositories/shared-role.repo'
+import { HelperEncryptionService } from './helper/services/helper.encryption.service'
+import { JwtModule } from '@nestjs/jwt'
+import { CustomLoggerModule } from './logger/logger.module'
 
 @Global()
 @Module({
 	imports: [
+		DatabaseModule,
+		RequestModule,
+		ResponseModule,
+		CustomLoggerModule,
+
 		// Configuration - Global
 		ConfigModule.forRoot({
 			load: configs,
@@ -63,24 +66,24 @@ const sharedServices = [DatabaseModule, SharedUserRepository, TwoFactorService, 
 			inject: [ConfigService]
 		}),
 
-		I18nModule.forRoot({
-			fallbackLanguage: 'en',
-			loaderOptions: {
-				path: path.resolve('src/shared/languages/'),
-				watch: true
-			},
-			resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
-			typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts')
+		// JWT Module
+		JwtModule.registerAsync({
+			imports: [ConfigModule],
+			useFactory: (configService: ConfigService) => ({
+				secret: configService.get('jwt.secret'),
+				signOptions: {
+					expiresIn: configService.get('jwt.accessTokenExpiresIn')
+				}
+			}),
+			inject: [ConfigService]
 		})
 	],
 
 	providers: [
-		...sharedServices,
 		PaymentAPIKeyGuard,
-		{
-			provide: APP_GUARD,
-			useClass: ThrottlerGuard
-		},
+		SharedUserRepository,
+		SharedRoleRepository,
+		HelperEncryptionService,
 		{
 			provide: APP_GUARD,
 			useClass: JwtAccessGuard
@@ -99,6 +102,6 @@ const sharedServices = [DatabaseModule, SharedUserRepository, TwoFactorService, 
 			useClass: HttpExceptionFilter
 		}
 	],
-	exports: sharedServices
+	exports: [DatabaseModule, SharedUserRepository, SharedRoleRepository]
 })
 export class SharedModule {}

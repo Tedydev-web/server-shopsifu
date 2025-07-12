@@ -1,6 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq'
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common'
-import { Role } from '@prisma/client'
 import { Queue } from 'bullmq'
 
 import { APP_BULL_QUEUES } from 'src/shared/enums/app.enum'
@@ -25,9 +24,9 @@ export class AuthService {
 		private emailQueue: Queue
 	) {}
 
-	public async login(data: LoginBodyType & { userAgent: string; ip: string }) {
+	public async login(data: LoginBodyType) {
 		try {
-			const { email, password, userAgent, ip } = data
+			const { email, password } = data
 
 			const user = await this.sharedUserRepository.findUnique({ email })
 
@@ -42,13 +41,12 @@ export class AuthService {
 			}
 
 			const tokens = await this.helperEncryptionService.createJwtTokens({
-				roleId: user.roleId,
+				role: user.roleId,
 				userId: user.id.toString()
 			})
 
 			return {
-				...tokens,
-				user
+				...tokens
 			}
 		} catch (error) {
 			throw error
@@ -80,7 +78,7 @@ export class AuthService {
 			})
 
 			const tokens = await this.helperEncryptionService.createJwtTokens({
-				roleId: createdUser.roleId,
+				role: createdUser.roleId,
 				userId: createdUser.id.toString()
 			})
 
@@ -107,7 +105,7 @@ export class AuthService {
 	public async refreshTokens(payload: IAuthUser) {
 		return this.helperEncryptionService.createJwtTokens({
 			userId: payload.userId,
-			roleId: payload.roleId
+			role: payload.role
 		})
 	}
 }

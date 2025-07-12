@@ -1,8 +1,7 @@
-import { HashingService } from 'src/shared/services/hashing.service'
-import { PrismaService } from 'src/shared/services/prisma.service'
-import { RoleName } from 'src/shared/constants/role.constant'
-const prisma = new PrismaService()
-const hashingService = new HashingService()
+import { DatabaseService } from '../src/shared/database/services/database.service'
+import { RoleName } from '../src/shared/constants/role.constant'
+import * as argon2 from 'argon2'
+const prisma = new DatabaseService()
 const main = async () => {
 	const roleCount = await prisma.role.count()
 	if (roleCount > 0) {
@@ -30,7 +29,7 @@ const main = async () => {
 			name: RoleName.Admin
 		}
 	})
-	const hashedPassword = await hashingService.hash(process.env.ADMIN_PASSWORD)
+	const hashedPassword = await argon2.hash(process.env.ADMIN_PASSWORD)
 	const adminUser = await prisma.user.create({
 		data: {
 			email: process.env.ADMIN_EMAIL,

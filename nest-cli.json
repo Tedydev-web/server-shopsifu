@@ -13,7 +13,7 @@
 		"deleteOutDir": true,
 		"assets": [
 			{
-				"include": "shared/**/*, emails/**/*",
+				"include": "shared/**/*, emails/**/*, src/shared/languages/**/*",
 				"watchAssets": true,
 				"outDir": "dist/src"
 			}
