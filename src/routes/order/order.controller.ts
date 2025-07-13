@@ -8,7 +8,7 @@ import {
   GetOrderDetailResDTO,
   GetOrderListQueryDTO,
   GetOrderListResDTO,
-  GetOrderParamsDTO
+  GetOrderParamsDTO,
 } from 'src/routes/order/order.dto'
 import { OrderService } from 'src/routes/order/order.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'

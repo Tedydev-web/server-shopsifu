@@ -1,4 +1,4 @@
-import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common'
+import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common'
 import { SharedModule } from 'src/shared/shared.module'
 import { AuthModule } from 'src/routes/auth/auth.module'
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
@@ -13,7 +13,8 @@ import { UserModule } from 'src/routes/user/user.module'
 import { MediaModule } from 'src/routes/media/media.module'
 import { BrandModule } from 'src/routes/brand/brand.module'
 import { BrandTranslationModule } from 'src/routes/brand/brand-translation/brand-translation.module'
-import { AcceptLanguageResolver, HeaderResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
+import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
+import path from 'path'
 import { CategoryModule } from 'src/routes/category/category.module'
 import { CategoryTranslationModule } from 'src/routes/category/category-translation/category-translation.module'
 import { ProductModule } from 'src/routes/product/product.module'
@@ -21,10 +22,10 @@ import { ProductTranslationModule } from 'src/routes/product/product-translation
 import { CartModule } from 'src/routes/cart/cart.module'
 import { OrderModule } from 'src/routes/order/order.module'
 import { PaymentModule } from 'src/routes/payment/payment.module'
-import { CSRFMiddleware } from 'src/shared/middleware/csrf.middleware'
 import { BullModule } from '@nestjs/bullmq'
+import { PaymentConsumer } from 'src/queues/payment.consumer'
+import { CSRFMiddleware } from './shared/middleware/csrf.middleware'
 import envConfig from './shared/config'
-import path, { join } from 'path'
 
 @Module({
   imports: [
@@ -34,19 +35,10 @@ import path, { join } from 'path'
         // port: 6378,
         host: envConfig.REDIS_HOST,
         port: envConfig.REDIS_PORT,
-        username: envConfig.REDIS_USER,
         password: envConfig.REDIS_PASSWORD
       }
     }),
-    // I18nModule.forRoot({
-    //   fallbackLanguage: 'en',
-    //   loaderOptions: {
-    //     path: join(__dirname, 'shared/languages/'),
-    //     watch: true
-    //   },
-    //   resolvers: [AcceptLanguageResolver, new HeaderResolver(['accept-language']), new HeaderResolver(['lang'])],
-    //   typesOutputPath: path.join(__dirname, 'shared/languages/generated/i18n.generated.ts')
-    // }),
+
     I18nModule.forRoot({
       fallbackLanguage: 'en',
       loaderOptions: {
@@ -83,7 +75,8 @@ import path, { join } from 'path'
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter
-    }
+    },
+    PaymentConsumer
   ]
 })
 export class AppModule {

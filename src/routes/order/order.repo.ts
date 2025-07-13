@@ -6,7 +6,7 @@ import {
   OrderNotFoundException,
   OutOfStockSKUException,
   ProductNotFoundException,
-  SKUNotBelongToShopException
+  SKUNotBelongToShopException,
 } from 'src/routes/order/order.error'
 import {
   CancelOrderResType,
@@ -14,75 +14,57 @@ import {
   CreateOrderResType,
   GetOrderDetailResType,
   GetOrderListQueryType,
-  GetOrderListResType
+  GetOrderListResType,
 } from 'src/routes/order/order.model'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 
 @Injectable()
 export class OrderRepo {
   constructor(private readonly prismaService: PrismaService) {}
   async list(userId: number, query: GetOrderListQueryType): Promise<GetOrderListResType> {
-    const { page, limit, status, search, sortBy, orderBy } = query
+    const { page, limit, status } = query
     const skip = (page - 1) * limit
     const take = limit
-    // Xây dựng điều kiện search
-    let where: Prisma.OrderWhereInput = {
+    const where: Prisma.OrderWhereInput = {
       userId,
-      status
+      status,
     }
-    if (search) {
-      where = {
-        ...where,
-        OR: [
-          { id: { equals: Number(search) } },
-          { shop: { name: { contains: search, mode: 'insensitive' } } },
-          { items: { some: { productName: { contains: search, mode: 'insensitive' } } } }
-        ]
-      }
-    }
-    // Xây dựng điều kiện sort
-    let orderByClause: Prisma.OrderOrderByWithRelationInput = {}
-    switch (sortBy) {
-      case SortBy.UpdatedAt:
-        orderByClause = { updatedAt: orderBy === OrderBy.Asc ? 'asc' : 'desc' }
-        break
-      case SortBy.CreatedAt:
-      default:
-        orderByClause = { createdAt: orderBy === OrderBy.Asc ? 'asc' : 'desc' }
-        break
-    }
+
     // Đếm tổng số order
     const totalItem$ = this.prismaService.order.count({
-      where
+      where,
     })
     // Lấy list order
-    const data$ = this.prismaService.order.findMany({
+    const data$ = await this.prismaService.order.findMany({
       where,
       include: {
-        items: true
+        items: true,
       },
       skip,
       take,
-      orderBy: orderByClause
+      orderBy: {
+        createdAt: 'desc',
+      },
     })
     const [data, totalItems] = await Promise.all([data$, totalItem$])
     return {
       data,
-      metadata: {
-        totalItems,
-        page,
-        limit,
-        totalPages: Math.ceil(totalItems / limit),
-        hasNext: page < Math.ceil(totalItems / limit),
-        hasPrev: page > 1
-      }
+      page,
+      limit,
+      totalItems,
+      totalPages: Math.ceil(totalItems / limit),
     }
   }
 
-  async create(userId: number, body: CreateOrderBodyType): Promise<CreateOrderResType> {
+  async create(
+    userId: number,
+    body: CreateOrderBodyType,
+  ): Promise<{
+    paymentId: number
+    orders: CreateOrderResType['data']
+  }> {
     // 1. Kiểm tra xem tất cả cartItemIds có tồn tại trong cơ sở dữ liệu hay không
     // 2. Kiểm tra số lượng mua có lớn hơn số lượng tồn kho hay không
     // 3. Kiểm tra xem tất cả sản phẩm mua có sản phẩm nào bị xóa hay ẩn không
@@ -93,21 +75,21 @@ export class OrderRepo {
     const cartItems = await this.prismaService.cartItem.findMany({
       where: {
         id: {
-          in: allBodyCartItemIds
+          in: allBodyCartItemIds,
         },
-        userId
+        userId,
       },
       include: {
         sku: {
           include: {
             product: {
               include: {
-                productTranslations: true
-              }
-            }
-          }
-        }
-      }
+                productTranslations: true,
+              },
+            },
+          },
+        },
+      },
     })
     // 1. Kiểm tra xem tất cả cartItemIds có tồn tại trong cơ sở dữ liệu hay không
     if (cartItems.length !== allBodyCartItemIds.length) {
@@ -127,7 +109,7 @@ export class OrderRepo {
       (item) =>
         item.sku.product.deletedAt !== null ||
         item.sku.product.publishedAt === null ||
-        item.sku.product.publishedAt > new Date()
+        item.sku.product.publishedAt > new Date(),
     )
     if (isExistNotReadyProduct) {
       throw ProductNotFoundException
@@ -152,11 +134,11 @@ export class OrderRepo {
     }
 
     // 5. Tạo order và xóa cartItem trong transaction để đảm bảo tính toàn vẹn dữ liệu
-    const orders = await this.prismaService.$transaction(async (tx) => {
+    const [paymentId, orders] = await this.prismaService.$transaction(async (tx) => {
       const payment = await tx.payment.create({
         data: {
-          status: PaymentStatus.PENDING
-        }
+          status: PaymentStatus.PENDING,
+        },
       })
       const orders$ = Promise.all(
         body.map((item) =>
@@ -184,50 +166,51 @@ export class OrderRepo {
                         id: translation.id,
                         name: translation.name,
                         description: translation.description,
-                        languageId: translation.languageId
+                        languageId: translation.languageId,
                       }
-                    })
+                    }),
                   }
-                })
+                }),
               },
               products: {
                 connect: item.cartItemIds.map((cartItemId) => {
                   const cartItem = cartItemMap.get(cartItemId)!
                   return {
-                    id: cartItem.sku.product.id
+                    id: cartItem.sku.product.id,
                   }
-                })
-              }
-            }
-          })
-        )
+                }),
+              },
+            },
+          }),
+        ),
       )
       const cartItem$ = tx.cartItem.deleteMany({
         where: {
           id: {
-            in: allBodyCartItemIds
-          }
-        }
+            in: allBodyCartItemIds,
+          },
+        },
       })
       const sku$ = Promise.all(
         cartItems.map((item) =>
           tx.sKU.update({
             where: {
-              id: item.sku.id
+              id: item.sku.id,
             },
             data: {
               stock: {
-                decrement: item.quantity
-              }
-            }
-          })
-        )
+                decrement: item.quantity,
+              },
+            },
+          }),
+        ),
       )
       const [orders] = await Promise.all([orders$, cartItem$, sku$])
-      return orders
+      return [payment.id, orders]
     })
     return {
-      data: orders
+      paymentId,
+      orders,
     }
   }
 
@@ -236,11 +219,11 @@ export class OrderRepo {
       where: {
         id: orderid,
         userId,
-        deletedAt: null
+        deletedAt: null,
       },
       include: {
-        items: true
-      }
+        items: true,
+      },
     })
     if (!order) {
       throw OrderNotFoundException
@@ -254,8 +237,8 @@ export class OrderRepo {
         where: {
           id: orderId,
           userId,
-          deletedAt: null
-        }
+          deletedAt: null,
+        },
       })
       if (order.status !== OrderStatus.PENDING_PAYMENT) {
         throw CannotCancelOrderException
@@ -264,12 +247,12 @@ export class OrderRepo {
         where: {
           id: orderId,
           userId,
-          deletedAt: null
+          deletedAt: null,
         },
         data: {
           status: OrderStatus.CANCELLED,
-          updatedById: userId
-        }
+          updatedById: userId,
+        },
       })
       return updatedOrder
     } catch (error) {

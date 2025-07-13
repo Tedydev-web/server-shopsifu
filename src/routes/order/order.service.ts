@@ -1,45 +1,32 @@
 import { Injectable } from '@nestjs/common'
 import { CreateOrderBodyType, GetOrderListQueryType, GetOrderListResType } from 'src/routes/order/order.model'
+import { OrderProducer } from 'src/routes/order/order.producer'
 import { OrderRepo } from 'src/routes/order/order.repo'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class OrderService {
   constructor(
     private readonly orderRepo: OrderRepo,
-    private readonly i18n: I18nService<I18nTranslations>
+    private orderProducer: OrderProducer,
   ) {}
 
   async list(userId: number, query: GetOrderListQueryType) {
-    const result = await this.orderRepo.list(userId, query)
-    return {
-      ...result,
-      message: this.i18n.t('order.order.success.GET_SUCCESS')
-    }
+    return this.orderRepo.list(userId, query)
   }
 
   async create(userId: number, body: CreateOrderBodyType) {
-    const order = await this.orderRepo.create(userId, body)
+    const result = await this.orderRepo.create(userId, body)
+    await this.orderProducer.addCancelPaymentJob(result.paymentId)
     return {
-      data: order,
-      message: this.i18n.t('order.order.success.CREATE_SUCCESS')
+      data: result.orders,
     }
   }
 
-  async cancel(userId: number, orderId: number) {
-    const order = await this.orderRepo.cancel(userId, orderId)
-    return {
-      data: order,
-      message: this.i18n.t('order.order.success.CANCEL_SUCCESS')
-    }
+  cancel(userId: number, orderId: number) {
+    return this.orderRepo.cancel(userId, orderId)
   }
 
-  async detail(userId: number, orderId: number) {
-    const order = await this.orderRepo.detail(userId, orderId)
-    return {
-      data: order,
-      message: this.i18n.t('order.order.success.GET_DETAIL_SUCCESS')
-    }
+  detail(userId: number, orderId: number) {
+    return this.orderRepo.detail(userId, orderId)
   }
 }

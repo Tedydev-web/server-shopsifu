@@ -32,7 +32,7 @@ export const COOKIE_DEFINITIONS = {
       secure: true,
       sameSite: 'none' as const,
       // signed: true,
-      maxAge: parseMs(envConfig.ACCESS_TOKEN_EXPIRES_IN)
+      maxAge: parseMs(envConfig.AUTH_ACCESS_TOKEN_EXP)
     }
   },
   refreshToken: {
@@ -43,7 +43,7 @@ export const COOKIE_DEFINITIONS = {
       secure: true,
       sameSite: 'none' as const,
       // signed: true,
-      maxAge: parseMs(envConfig.REFRESH_TOKEN_EXPIRES_IN)
+      maxAge: parseMs(envConfig.AUTH_REFRESH_TOKEN_EXP)
     }
   },
   // Cookie chứa CSRF secret, được quản lý bởi thư viện csrf-csrf
@@ -63,7 +63,7 @@ export const COOKIE_DEFINITIONS = {
     options: {
       ...baseOptions,
       httpOnly: true,
-      maxAge: parseMs(envConfig.REFRESH_TOKEN_EXPIRES_IN) + parseMs('1d') // RT + 1 ngày
+      maxAge: parseMs(envConfig.AUTH_REFRESH_TOKEN_EXP) + parseMs('1d') // RT + 1 ngày
     }
   }
 } as const
