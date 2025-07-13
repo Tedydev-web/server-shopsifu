@@ -21,7 +21,11 @@ export class PaymentRepo {
     }, 0)
   }
 
-  async receiver(body: WebhookPaymentBodyType): Promise<MessageResType> {
+  async receiver(body: WebhookPaymentBodyType): Promise<
+    MessageResType & {
+      paymentId: number
+    }
+  > {
     // 1. Thêm thông tin giao dịch vào DB
     // Tham khảo: https://docs.sepay.vn/lap-trinh-webhooks.html
     let amountIn = 0
@@ -43,8 +47,8 @@ export class PaymentRepo {
         code: body.code,
         transactionContent: body.content,
         referenceNumber: body.referenceCode,
-        body: body.description
-      }
+        body: body.description,
+      },
     })
 
     // 2. Kiểm tra nội dung chuyển khoản và tổng số tiền có khớp hay không
@@ -57,15 +61,15 @@ export class PaymentRepo {
 
     const payment = await this.prismaService.payment.findUnique({
       where: {
-        id: paymentId
+        id: paymentId,
       },
       include: {
         orders: {
           include: {
-            items: true
-          }
-        }
-      }
+            items: true,
+          },
+        },
+      },
     })
     if (!payment) {
       throw new BadRequestException(`Cannot find payment with id ${paymentId}`)
@@ -80,26 +84,27 @@ export class PaymentRepo {
     await this.prismaService.$transaction([
       this.prismaService.payment.update({
         where: {
-          id: paymentId
+          id: paymentId,
         },
         data: {
-          status: PaymentStatus.SUCCESS
-        }
+          status: PaymentStatus.SUCCESS,
+        },
       }),
       this.prismaService.order.updateMany({
         where: {
           id: {
-            in: orders.map((order) => order.id)
-          }
+            in: orders.map((order) => order.id),
+          },
         },
         data: {
-          status: OrderStatus.PENDING_PICKUP
-        }
-      })
+          status: OrderStatus.PENDING_PICKUP,
+        },
+      }),
     ])
 
     return {
-      message: 'Payment success'
+      paymentId,
+      message: 'Payment success',
     }
   }
 }

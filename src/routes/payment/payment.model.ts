@@ -13,7 +13,7 @@ export const PaymentTransactionSchema = z.object({
   transactionContent: z.string().nullable(),
   referenceNumber: z.string().nullable(),
   body: z.string().nullable(),
-  createdAt: z.date()
+  createdAt: z.date(),
 })
 
 /**
@@ -31,7 +31,7 @@ export const WebhookPaymentBodySchema = z.object({
   accumulated: z.number(), // Số dư tài khoản (lũy kế)
   subAccount: z.string().nullable(), // Tài khoản ngân hàng phụ (tài khoản định danh),
   referenceCode: z.string().nullable(), // Mã tham chiếu của tin nhắn sms
-  description: z.string() // Toàn bộ nội dung tin nhắn sms
+  description: z.string(), // Toàn bộ nội dung tin nhắn sms
 })
 
 export type PaymentTransactionType = z.infer<typeof PaymentTransactionSchema>
