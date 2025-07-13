@@ -26,6 +26,7 @@ import { BullModule } from '@nestjs/bullmq'
 import { PaymentConsumer } from 'src/queues/payment.consumer'
 import { CSRFMiddleware } from './shared/middleware/csrf.middleware'
 import envConfig from './shared/config'
+import { WebsocketModule } from './websockets/websocket.module'
 
 @Module({
   imports: [
@@ -64,7 +65,8 @@ import envConfig from './shared/config'
     ProductTranslationModule,
     CartModule,
     OrderModule,
-    PaymentModule
+    PaymentModule,
+    WebsocketModule
   ],
   providers: [
     {
