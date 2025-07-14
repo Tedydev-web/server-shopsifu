@@ -1,7 +1,7 @@
-import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common'
+import { Module } from '@nestjs/common'
 import { SharedModule } from 'src/shared/shared.module'
 import { AuthModule } from 'src/routes/auth/auth.module'
-import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
 import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import { HttpExceptionFilter } from 'src/shared/filters/http-exception.filter'
@@ -24,23 +24,25 @@ import { OrderModule } from 'src/routes/order/order.module'
 import { PaymentModule } from 'src/routes/payment/payment.module'
 import { BullModule } from '@nestjs/bullmq'
 import { PaymentConsumer } from 'src/queues/payment.consumer'
-import { CSRFMiddleware } from './shared/middleware/csrf.middleware'
-import envConfig from './shared/config'
-import { WebsocketModule } from './websockets/websocket.module'
-import { ReviewModule } from './routes/review/review.module'
+import envConfig from 'src/shared/config'
+import { WebsocketModule } from 'src/websockets/websocket.module'
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { ThrottlerBehindProxyGuard } from 'src/shared/guards/throttler-behind-proxy.guard'
+import { ReviewModule } from 'src/routes/review/review.module'
+import { ScheduleModule } from '@nestjs/schedule'
+import { RemoveRefreshTokenCronjob } from 'src/cronjobs/remove-refresh-token.cronjob'
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     BullModule.forRoot({
       connection: {
-        // host: 'localhost',
-        // port: 6378,
         host: envConfig.REDIS_HOST,
         port: envConfig.REDIS_PORT,
-        password: envConfig.REDIS_PASSWORD
+        password: envConfig.REDIS_PASSWORD,
+        tls: process.env.REDIS_ENABLE_TLS === 'true' ? {} : undefined
       }
     }),
-
     I18nModule.forRoot({
       fallbackLanguage: 'en',
       loaderOptions: {
@@ -50,6 +52,21 @@ import { ReviewModule } from './routes/review/review.module'
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
       typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts')
     }),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          name: 'short',
+          ttl: 60000, // 1 minute
+          limit: 5
+        },
+        {
+          name: 'long',
+          ttl: 120000, // 2 minutes
+          limit: 7
+        }
+      ]
+    }),
+    WebsocketModule,
     SharedModule,
     AuthModule,
     LanguageModule,
@@ -67,7 +84,6 @@ import { ReviewModule } from './routes/review/review.module'
     CartModule,
     OrderModule,
     PaymentModule,
-    WebsocketModule,
     ReviewModule
   ],
   providers: [
@@ -80,11 +96,12 @@ import { ReviewModule } from './routes/review/review.module'
       provide: APP_FILTER,
       useClass: HttpExceptionFilter
     },
-    PaymentConsumer
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerBehindProxyGuard
+    },
+    PaymentConsumer,
+    RemoveRefreshTokenCronjob
   ]
 })
-export class AppModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(CSRFMiddleware).forRoutes({ path: '*', method: RequestMethod.ALL })
-  }
-}
+export class AppModule {}
