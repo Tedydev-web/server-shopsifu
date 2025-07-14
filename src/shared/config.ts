@@ -78,6 +78,7 @@ const configSchema = z.object({
   REDIS_PORT: z.coerce.number().int().positive(),
   REDIS_PASSWORD: z.string(),
   REDIS_ENABLE_TLS: z.coerce.boolean(),
+  REDIS_URL: z.string().url(),
 
   // Payment API key configuration
   PAYMENT_API_KEY: z.string()
