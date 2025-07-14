@@ -10,12 +10,16 @@ import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared
 import { PermissionAlreadyExistsException } from 'src/routes/permission/permission.error'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { CACHE_MANAGER } from '@nestjs/cache-manager'
+import { Cache } from 'cache-manager'
+import { Inject } from '@nestjs/common'
 
 @Injectable()
 export class PermissionService {
   constructor(
     private permissionRepo: PermissionRepo,
-    private i18n: I18nService<I18nTranslations>
+    private i18n: I18nService<I18nTranslations>,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {}
 
   async list(pagination: GetPermissionsQueryType) {
@@ -31,6 +35,7 @@ export class PermissionService {
     if (!permission) {
       throw NotFoundRecordException
     }
+
     return {
       data: permission,
       message: this.i18n.t('permission.permission.success.GET_DETAIL_SUCCESS')
@@ -62,6 +67,8 @@ export class PermissionService {
         updatedById,
         data
       })
+      const { roles } = permission
+      await this.deleteCachedRole(roles)
       return {
         data: permission,
         message: this.i18n.t('permission.permission.success.UPDATE_SUCCESS')
@@ -79,10 +86,12 @@ export class PermissionService {
 
   async delete({ id, deletedById }: { id: number; deletedById: number }) {
     try {
-      await this.permissionRepo.delete({
+      const permission = await this.permissionRepo.delete({
         id,
         deletedById
       })
+      const { roles } = permission
+      await this.deleteCachedRole(roles)
       return {
         message: this.i18n.t('permission.permission.success.DELETE_SUCCESS')
       }
@@ -92,5 +101,14 @@ export class PermissionService {
       }
       throw error
     }
+  }
+
+  deleteCachedRole(roles: { id: number }[]) {
+    return Promise.all(
+      roles.map((role) => {
+        const cacheKey = `role:${role.id}`
+        return this.cacheManager.del(cacheKey)
+      })
+    )
   }
 }
