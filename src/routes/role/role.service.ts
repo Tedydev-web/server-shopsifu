@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { RoleRepo } from 'src/routes/role/role.repo'
 import { CreateRoleBodyType, GetRolesQueryType, UpdateRoleBodyType } from 'src/routes/role/role.model'
 import { NotFoundRecordException } from 'src/shared/error'
@@ -7,12 +7,16 @@ import { ProhibitedActionOnBaseRoleException, RoleAlreadyExistsException } from 
 import { RoleName } from 'src/shared/constants/role.constant'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { CACHE_MANAGER } from '@nestjs/cache-manager'
+import { Cache } from 'cache-manager'
+import { Inject } from '@nestjs/common'
 
 @Injectable()
 export class RoleService {
   constructor(
     private roleRepo: RoleRepo,
-    private i18n: I18nService<I18nTranslations>
+    private i18n: I18nService<I18nTranslations>,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {}
 
   async list(pagination: GetRolesQueryType) {
@@ -75,6 +79,7 @@ export class RoleService {
         updatedById,
         data
       })
+      await this.cacheManager.del(`role:${updatedRole.id}`) // Xóa cache của role đã cập nhật
       return {
         data: updatedRole,
         message: this.i18n.t('role.role.success.UPDATE_SUCCESS')
@@ -97,6 +102,7 @@ export class RoleService {
         id,
         deletedById
       })
+      await this.cacheManager.del(`role:${id}`) // Xóa cache của role đã xóa
       return {
         message: this.i18n.t('role.role.success.DELETE_SUCCESS')
       }
