@@ -42,7 +42,7 @@ export class AccessTokenGuard implements CanActivate {
   }
 
   private async extractAndValidateToken(request: any): Promise<AccessTokenPayload> {
-    const accessToken = this.extractAccessTokenFromHeader(request)
+    const accessToken = this.extractAccessToken(request)
     try {
       const decodedAccessToken = await this.tokenService.verifyAccessToken(accessToken)
 
@@ -53,8 +53,13 @@ export class AccessTokenGuard implements CanActivate {
     }
   }
 
-  private extractAccessTokenFromHeader(request: any): string {
-    const accessToken = request.headers.authorization?.split(' ')[1]
+  private extractAccessToken(request: any): string {
+    // Ưu tiên lấy từ header Authorization
+    let accessToken = request.headers.authorization?.split(' ')[1]
+    // Nếu không có, lấy từ cookie
+    if (!accessToken && request.cookies) {
+      accessToken = request.cookies['access_token']
+    }
     if (!accessToken) {
       throw new UnauthorizedException('Error.MissingAccessToken')
     }
@@ -69,7 +74,7 @@ export class AccessTokenGuard implements CanActivate {
     // 1. Thử lấy từ cache
     let cachedRole = await this.cacheManager.get<CachedRole>(cacheKey)
     // 2. Nếu không có trong cache, thì truy vấn từ cơ sở dữ liệu
-    if (cachedRole === null) {
+    if (cachedRole === undefined) {
       const role = await this.prismaService.role
         .findUniqueOrThrow({
           where: {
@@ -100,7 +105,7 @@ export class AccessTokenGuard implements CanActivate {
     }
 
     // 3. Kiểm tra quyền truy cập
-    const canAccess: Permission | undefined = cachedRole?.permissions[`${path}:${method}`]
+    const canAccess: Permission | undefined = cachedRole.permissions[`${path}:${method}`]
     if (!canAccess) {
       throw new ForbiddenException()
     }
