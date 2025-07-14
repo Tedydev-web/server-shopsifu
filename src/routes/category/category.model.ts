@@ -2,30 +2,26 @@ import { CategoryIncludeTranslationSchema, CategorySchema } from 'src/shared/mod
 import { z } from 'zod'
 
 export const GetAllCategoriesResSchema = z.object({
-  message: z.string(),
-  data: z.array(CategoryIncludeTranslationSchema),
-  totalItems: z.number()
+  data: z.array(CategorySchema),
+  totalItems: z.number(),
 })
 
 export const GetAllCategoriesQuerySchema = z.object({
-  parentCategoryId: z.coerce.number().int().positive().optional()
+  parentCategoryId: z.coerce.number().int().positive().optional(),
 })
 
 export const GetCategoryParamsSchema = z
   .object({
-    categoryId: z.coerce.number().int().positive()
+    categoryId: z.coerce.number().int().positive(),
   })
   .strict()
 
-export const GetCategoryDetailResSchema = z.object({
-  message: z.string(),
-  data: CategoryIncludeTranslationSchema
-})
+export const GetCategoryDetailResSchema = CategoryIncludeTranslationSchema
 
 export const CreateCategoryBodySchema = CategorySchema.pick({
   name: true,
   logo: true,
-  parentCategoryId: true
+  parentCategoryId: true,
 }).strict()
 
 export const UpdateCategoryBodySchema = CreateCategoryBodySchema

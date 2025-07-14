@@ -132,13 +132,13 @@ export class AuthController {
 
       this.cookieService.setAuthCookies(res, data.accessToken, data.refreshToken)
 
-      return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?success=true`)
+      return res.redirect(`${process.env.GOOGLE_CLIENT_REDIRECT_URI}?success=true`)
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : 'Đã xảy ra lỗi khi đăng nhập bằng Google, vui lòng thử lại bằng cách khác'
-      return res.redirect(`${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?errorMessage=${message}`)
+      return res.redirect(`${process.env.GOOGLE_CLIENT_REDIRECT_URI}?errorMessage=${message}`)
     }
   }
 

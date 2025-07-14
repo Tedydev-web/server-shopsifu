@@ -112,7 +112,7 @@ export class AuthService {
       email: body.email,
       code,
       type: body.type,
-      expiresAt: addMilliseconds(new Date(), (ms as any)(envConfig.OTP_EXP))
+      expiresAt: addMilliseconds(new Date(), (ms as any)(process.env.OTP_EXP))
     })
     // 3. Gửi mã OTP
     const { error } = await this.emailService.sendOTP({

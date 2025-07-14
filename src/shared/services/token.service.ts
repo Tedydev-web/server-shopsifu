@@ -17,8 +17,8 @@ export class TokenService {
     return this.jwtService.sign(
       { ...payload, uuid: uuidv4() },
       {
-        secret: envConfig.AUTH_ACCESS_TOKEN_SECRET,
-        expiresIn: envConfig.AUTH_ACCESS_TOKEN_EXP,
+        secret: process.env.AUTH_ACCESS_TOKEN_SECRET,
+        expiresIn: process.env.AUTH_ACCESS_TOKEN_EXP,
         algorithm: 'HS256'
       }
     )
@@ -28,8 +28,8 @@ export class TokenService {
     return this.jwtService.sign(
       { ...payload, uuid: uuidv4() },
       {
-        secret: envConfig.AUTH_REFRESH_TOKEN_SECRET,
-        expiresIn: envConfig.AUTH_REFRESH_TOKEN_EXP,
+        secret: process.env.AUTH_REFRESH_TOKEN_SECRET,
+        expiresIn: process.env.AUTH_REFRESH_TOKEN_EXP,
         algorithm: 'HS256'
       }
     )
@@ -37,13 +37,13 @@ export class TokenService {
 
   verifyAccessToken(token: string): Promise<AccessTokenPayload> {
     return this.jwtService.verifyAsync(token, {
-      secret: envConfig.AUTH_ACCESS_TOKEN_SECRET
+      secret: process.env.AUTH_ACCESS_TOKEN_SECRET
     })
   }
 
   verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
     return this.jwtService.verifyAsync(token, {
-      secret: envConfig.AUTH_REFRESH_TOKEN_SECRET
+      secret: process.env.AUTH_REFRESH_TOKEN_SECRET
     })
   }
 

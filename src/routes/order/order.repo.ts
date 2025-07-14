@@ -57,10 +57,14 @@ export class OrderRepo {
     const [data, totalItems] = await Promise.all([data$, totalItem$])
     return {
       data,
-      page,
-      limit,
-      totalItems,
-      totalPages: Math.ceil(totalItems / limit)
+      metadata: {
+        totalItems,
+        page,
+        limit,
+        totalPages: Math.ceil(totalItems / limit),
+        hasNext: page < Math.ceil(totalItems / limit),
+        hasPrev: page > 1
+      }
     }
   }
 

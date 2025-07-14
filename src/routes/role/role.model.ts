@@ -1,23 +1,29 @@
 import { z } from 'zod'
 import { RoleSchema } from 'src/shared/models/shared-role.model'
 import { PermissionSchema } from 'src/shared/models/shared-permission.model'
-import { PaginationResponseSchema } from 'src/shared/models/pagination.model'
-import { PaginationQuerySchema } from 'src/shared/models/request.model'
 
 export const RoleWithPermissionsSchema = RoleSchema.extend({
   permissions: z.array(PermissionSchema)
 })
 
-export const GetRolesResSchema = PaginationResponseSchema(RoleSchema)
-
-export const GetRolesQuerySchema = PaginationQuerySchema.pick({
-  page: true,
-  limit: true,
-  search: true
-}).extend({
-  sortBy: z.enum(['name', 'createdAt', 'updatedAt']).default('createdAt'),
-  orderBy: z.enum(['asc', 'desc']).default('desc')
+export const GetRolesResSchema = z.object({
+  data: z.array(RoleSchema),
+  metadata: z.object({
+    totalItems: z.number(),
+    page: z.number(),
+    limit: z.number(),
+    totalPages: z.number(),
+    hasNext: z.boolean(),
+    hasPrev: z.boolean()
+  })
 })
+
+export const GetRolesQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().default(10)
+  })
+  .strict()
 
 export const GetRoleParamsSchema = z
   .object({

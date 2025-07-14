@@ -7,7 +7,7 @@ export const ReviewMediaSchema = z.object({
   url: z.string().max(1000),
   type: z.enum([MediaType.IMAGE, MediaType.VIDEO]),
   reviewId: z.number().int(),
-  createdAt: z.date(),
+  createdAt: z.date()
 })
 
 export const ReviewSchema = z.object({
@@ -19,21 +19,21 @@ export const ReviewSchema = z.object({
   userId: z.number().int(),
   updateCount: z.number().int(),
   createdAt: z.date(),
-  updatedAt: z.date(),
+  updatedAt: z.date()
 })
 
 export const CreateReviewBodySchema = ReviewSchema.pick({
   content: true,
   rating: true,
   productId: true,
-  orderId: true,
+  orderId: true
 }).extend({
   medias: z.array(
     ReviewMediaSchema.pick({
       url: true,
-      type: true,
-    }),
-  ),
+      type: true
+    })
+  )
 })
 
 export const CreateReviewResSchema = ReviewSchema.extend({
@@ -41,26 +41,30 @@ export const CreateReviewResSchema = ReviewSchema.extend({
   user: UserSchema.pick({
     id: true,
     name: true,
-    avatar: true,
-  }),
+    avatar: true
+  })
 })
 
 export const UpdateReviewResSchema = CreateReviewResSchema
 
 export const GetReviewsSchema = z.object({
   data: z.array(CreateReviewResSchema),
-  totalItems: z.number(),
-  page: z.number(), // Số trang hiện tại
-  limit: z.number(), // Số item trên 1 trang
-  totalPages: z.number(), // Tổng số trang
+  metadata: z.object({
+    totalItems: z.number(),
+    page: z.number(),
+    limit: z.number(),
+    totalPages: z.number(),
+    hasNext: z.boolean(),
+    hasPrev: z.boolean()
+  })
 })
 
 export const UpdateReviewBodySchema = CreateReviewBodySchema
 export const GetReviewsParamsSchema = z.object({
-  productId: z.coerce.number().int().positive(),
+  productId: z.coerce.number().int().positive()
 })
 export const GetReviewDetailParamsSchema = z.object({
-  reviewId: z.coerce.number().int().positive(),
+  reviewId: z.coerce.number().int().positive()
 })
 
 export type ReviewType = z.infer<typeof ReviewSchema>

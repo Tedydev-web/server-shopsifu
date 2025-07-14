@@ -4,7 +4,7 @@ export const OrderStatus = {
   PENDING_DELIVERY: 'PENDING_DELIVERY',
   DELIVERED: 'DELIVERED',
   RETURNED: 'RETURNED',
-  CANCELLED: 'CANCELLED'
+  CANCELLED: 'CANCELLED',
 } as const
 
 export type OrderStatusType = (typeof OrderStatus)[keyof typeof OrderStatus]

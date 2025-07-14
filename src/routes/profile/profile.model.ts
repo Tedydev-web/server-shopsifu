@@ -4,15 +4,15 @@ import { UserSchema } from 'src/shared/models/shared-user.model'
 export const UpdateMeBodySchema = UserSchema.pick({
   name: true,
   phoneNumber: true,
-  avatar: true
+  avatar: true,
 }).strict()
 
 export const ChangePasswordBodySchema = UserSchema.pick({
-  password: true
+  password: true,
 })
   .extend({
     newPassword: z.string().min(6).max(100),
-    confirmNewPassword: z.string().min(6).max(100)
+    confirmNewPassword: z.string().min(6).max(100),
   })
   .strict()
   .superRefine(({ newPassword, confirmNewPassword }, ctx) => {
@@ -20,7 +20,7 @@ export const ChangePasswordBodySchema = UserSchema.pick({
       ctx.addIssue({
         code: 'custom',
         message: 'Error.ConfirmPasswordNotMatch',
-        path: ['confirmNewPassword']
+        path: ['confirmNewPassword'],
       })
     }
   })

@@ -9,7 +9,7 @@ import {
   Post,
   Res,
   UploadedFiles,
-  UseInterceptors
+  UseInterceptors,
 } from '@nestjs/common'
 import { FilesInterceptor } from '@nestjs/platform-express'
 import { Response } from 'express'
@@ -29,20 +29,20 @@ export class MediaController {
   @UseInterceptors(
     FilesInterceptor('files', 100, {
       limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB
-      }
-    })
+        fileSize: 5 * 1024 * 1024, // 1MB
+      },
+    }),
   )
   uploadFile(
     @UploadedFiles(
       new ParseFilePipeWithUnlink({
         validators: [
           new MaxFileSizeValidator({ maxSize: 1 * 1024 * 1024 }), // 5MB
-          new FileTypeValidator({ fileType: /(jpg|jpeg|png|webp)$/, skipMagicNumbersValidation: true })
-        ]
-      })
+          new FileTypeValidator({ fileType: /(jpg|jpeg|png|webp)$/ }),
+        ],
+      }),
     )
-    files: Array<Express.Multer.File>
+    files: Array<Express.Multer.File>,
   ) {
     return this.mediaService.uploadFile(files)
     // return files.map((file) => ({

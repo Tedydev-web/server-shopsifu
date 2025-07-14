@@ -41,21 +41,4 @@ export class SharedRoleRepository {
     this.adminRoleId = role.id
     return role.id
   }
-
-  async getRoleById(id: number) {
-    return this.prismaService.role.findUnique({
-      where: { id }
-    })
-  }
-
-  async getRoleByIdIncludePermissions(id: number) {
-    return this.prismaService.role.findUnique({
-      where: { id },
-      include: {
-        permissions: {
-          where: { deletedAt: null }
-        }
-      }
-    })
-  }
 }

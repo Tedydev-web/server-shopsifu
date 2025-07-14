@@ -5,7 +5,8 @@
     "builder": {
       "type": "swc",
       "options": {
-        "swcrcPath": ".swcrc"
+        "swcrcPath": ".swcrc",
+        "extensions": [".js", ".ts", ".jsx", ".tsx"]
       }
     },
     "deleteOutDir": true,

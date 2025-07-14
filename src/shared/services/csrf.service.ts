@@ -10,7 +10,7 @@ export class CSRFService {
 
   constructor() {
     const { invalidCsrfTokenError, generateCsrfToken, validateRequest, doubleCsrfProtection } = doubleCsrf({
-      getSecret: () => envConfig.COOKIE_SECRET,
+      getSecret: () => process.env.COOKIE_SECRET,
       getSessionIdentifier: (req: Request) => 'csrf',
       cookieName: COOKIE_DEFINITIONS.csrfSecret.name,
       cookieOptions: COOKIE_DEFINITIONS.csrfSecret.options,

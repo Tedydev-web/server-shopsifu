@@ -4,13 +4,11 @@ import {
   CreateProductBodyType,
   GetProductDetailResType,
   GetProductsResType,
-  UpdateProductBodyType,
-  GetProductsQueryType
+  UpdateProductBodyType
 } from 'src/routes/product/product.model'
 import { ALL_LANGUAGE_CODE, OrderByType, SortBy, SortByType } from 'src/shared/constants/other.constant'
 import { ProductType } from 'src/shared/models/shared-product.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { PaginatedResult, paginate } from 'src/shared/utils/pagination.util'
 
 @Injectable()
 export class ProductRepo {
@@ -19,7 +17,7 @@ export class ProductRepo {
   async list({
     limit,
     page,
-    search,
+    name,
     brandIds,
     categories,
     minPrice,
@@ -29,11 +27,22 @@ export class ProductRepo {
     languageId,
     orderBy,
     sortBy
-  }: GetProductsQueryType & {
+  }: {
+    limit: number
+    page: number
+    name?: string
+    brandIds?: number[]
+    categories?: number[]
+    minPrice?: number
+    maxPrice?: number
     createdById?: number
     isPublic?: boolean
     languageId: string
-  }): Promise<PaginatedResult<ProductType>> {
+    orderBy: OrderByType
+    sortBy: SortByType
+  }): Promise<GetProductsResType> {
+    const skip = (page - 1) * limit
+    const take = limit
     let where: Prisma.ProductWhereInput = {
       deletedAt: null,
       createdById: createdById ? createdById : undefined
@@ -49,7 +58,12 @@ export class ProductRepo {
         OR: [{ publishedAt: null }, { publishedAt: { gt: new Date() } }]
       }
     }
-
+    if (name) {
+      where.name = {
+        contains: name,
+        mode: 'insensitive'
+      }
+    }
     if (brandIds && brandIds.length > 0) {
       where.brandId = {
         in: brandIds
@@ -70,23 +84,26 @@ export class ProductRepo {
         lte: maxPrice
       }
     }
-
-    let calculatedOrderBy: Prisma.ProductOrderByWithRelationInput | Prisma.ProductOrderByWithRelationInput[] = {
-      [sortBy]: orderBy
+    // Mặc định sort theo createdAt mới nhất
+    let caculatedOrderBy: Prisma.ProductOrderByWithRelationInput | Prisma.ProductOrderByWithRelationInput[] = {
+      createdAt: orderBy
     }
-
-    if (sortBy === 'sale') {
-      calculatedOrderBy = {
+    if (sortBy === SortBy.Price) {
+      caculatedOrderBy = {
+        basePrice: orderBy
+      }
+    } else if (sortBy === SortBy.Sale) {
+      caculatedOrderBy = {
         orders: {
           _count: orderBy
         }
       }
     }
-
-    return paginate(
-      this.prismaService.product,
-      { page, limit, search, sortBy, orderBy },
-      {
+    const [totalItems, data] = await Promise.all([
+      this.prismaService.product.count({
+        where
+      }),
+      this.prismaService.product.findMany({
         where,
         include: {
           productTranslations: {
@@ -99,10 +116,22 @@ export class ProductRepo {
             }
           }
         },
-        orderBy: calculatedOrderBy
-      },
-      ['name']
-    )
+        orderBy: caculatedOrderBy,
+        skip,
+        take
+      })
+    ])
+    return {
+      data,
+      metadata: {
+        totalItems,
+        page,
+        limit,
+        totalPages: Math.ceil(totalItems / limit),
+        hasNext: page < Math.ceil(totalItems / limit),
+        hasPrev: page > 1
+      }
+    }
   }
 
   findById(productId: number): Promise<ProductType | null> {

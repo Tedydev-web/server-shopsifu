@@ -21,7 +21,10 @@ export class UserController {
   @Get()
   @ZodSerializerDto(GetUsersResDTO)
   list(@Query() query: GetUsersQueryDTO) {
-    return this.userService.list(query)
+    return this.userService.list({
+      page: query.page,
+      limit: query.limit
+    })
   }
 
   @Get(':userId')

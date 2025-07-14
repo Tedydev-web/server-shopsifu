@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import {
   CreateBrandBodyType,
+  GetBrandsResType,
   UpdateBrandBodyType,
   BrandType,
   BrandIncludeTranslationType
@@ -8,29 +9,47 @@ import {
 import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
 import { PaginationQueryType } from 'src/shared/models/request.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { PaginatedResult, paginate } from 'src/shared/utils/pagination.util'
 
 @Injectable()
 export class BrandRepo {
   constructor(private prismaService: PrismaService) {}
 
-  async list(
-    pagination: PaginationQueryType,
-    languageId: string
-  ): Promise<PaginatedResult<BrandIncludeTranslationType>> {
-    return paginate<BrandIncludeTranslationType>(this.prismaService.brand, pagination, {
-      where: {
-        deletedAt: null
-      },
-      include: {
-        brandTranslations: {
-          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId }
+  async list(pagination: PaginationQueryType, languageId: string): Promise<GetBrandsResType> {
+    const skip = (pagination.page - 1) * pagination.limit
+    const take = pagination.limit
+    const [totalItems, data] = await Promise.all([
+      this.prismaService.brand.count({
+        where: {
+          deletedAt: null
         }
-      },
-      orderBy: {
-        createdAt: 'desc'
+      }),
+      this.prismaService.brand.findMany({
+        where: {
+          deletedAt: null
+        },
+        include: {
+          brandTranslations: {
+            where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        skip,
+        take
+      })
+    ])
+    return {
+      data,
+      metadata: {
+        totalItems,
+        page: pagination.page,
+        limit: pagination.limit,
+        totalPages: Math.ceil(totalItems / pagination.limit),
+        hasNext: pagination.page < Math.ceil(totalItems / pagination.limit),
+        hasPrev: pagination.page > 1
       }
-    })
+    }
   }
 
   findById(id: number, languageId: string): Promise<BrandIncludeTranslationType | null> {

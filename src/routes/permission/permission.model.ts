@@ -1,21 +1,24 @@
 import { PermissionSchema } from 'src/shared/models/shared-permission.model'
 import { z } from 'zod'
-import { PaginationResponseSchema } from 'src/shared/models/pagination.model'
-import { PaginationQuerySchema } from 'src/shared/models/request.model'
 
 export const GetPermissionsResSchema = z.object({
-  message: z.string(),
-  ...PaginationResponseSchema(PermissionSchema).shape
+  data: z.array(PermissionSchema),
+  metadata: z.object({
+    totalItems: z.number(),
+    page: z.number(),
+    limit: z.number(),
+    totalPages: z.number(),
+    hasNext: z.boolean(),
+    hasPrev: z.boolean()
+  })
 })
 
-export const GetPermissionsQuerySchema = PaginationQuerySchema.pick({
-  page: true,
-  limit: true,
-  search: true
-}).extend({
-  sortBy: z.enum(['path', 'method', 'module', 'createdAt', 'updatedAt']).default('createdAt'),
-  orderBy: z.enum(['asc', 'desc']).default('desc')
-})
+export const GetPermissionsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1), // Phải thêm coerce để chuyển từ string sang number
+    limit: z.coerce.number().int().positive().default(10) // Phải thêm coerce để chuyển từ string sang number
+  })
+  .strict()
 
 export const GetPermissionParamsSchema = z
   .object({
@@ -23,10 +26,7 @@ export const GetPermissionParamsSchema = z
   })
   .strict()
 
-export const GetPermissionDetailResSchema = z.object({
-  message: z.string(),
-  data: PermissionSchema
-})
+export const GetPermissionDetailResSchema = PermissionSchema
 
 export const CreatePermissionBodySchema = PermissionSchema.pick({
   name: true,

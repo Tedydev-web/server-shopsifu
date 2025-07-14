@@ -5,6 +5,6 @@ import { CategoryService } from 'src/routes/category/category.service'
 
 @Module({
   providers: [CategoryService, CategoryRepo],
-  controllers: [CategoryController]
+  controllers: [CategoryController],
 })
 export class CategoryModule {}

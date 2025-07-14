@@ -5,6 +5,6 @@ import { ProductTranslationService } from 'src/routes/product/product-translatio
 
 @Module({
   providers: [ProductTranslationRepo, ProductTranslationService],
-  controllers: [ProductTranslationController]
+  controllers: [ProductTranslationController],
 })
 export class ProductTranslationModule {}

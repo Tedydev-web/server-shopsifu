@@ -14,13 +14,13 @@ export const PermissionSchema = z.object({
     HTTPMethod.DELETE,
     HTTPMethod.PATCH,
     HTTPMethod.OPTIONS,
-    HTTPMethod.HEAD
+    HTTPMethod.HEAD,
   ]),
   createdById: z.number().nullable(),
   updatedById: z.number().nullable(),
   deletedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date()
+  updatedAt: z.date(),
 })
 export type PermissionType = z.infer<typeof PermissionSchema>

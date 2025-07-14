@@ -4,7 +4,7 @@ import {
   CreateReviewResType,
   GetReviewsType,
   UpdateReviewBodyType,
-  UpdateReviewResType,
+  UpdateReviewResType
 } from 'src/routes/review/review.model'
 import { OrderStatus } from 'src/shared/constants/order.constant'
 import { isUniqueConstraintPrismaError } from 'src/shared/helpers'
@@ -22,36 +22,40 @@ export class ReviewRepository {
     const [totalItems, data] = await Promise.all([
       this.prismaService.review.count({
         where: {
-          productId,
-        },
+          productId
+        }
       }),
       this.prismaService.review.findMany({
         where: {
-          productId,
+          productId
         },
         include: {
           user: {
             select: {
               id: true,
               name: true,
-              avatar: true,
-            },
+              avatar: true
+            }
           },
-          medias: true,
+          medias: true
         },
         skip,
         take,
         orderBy: {
-          createdAt: 'desc',
-        },
-      }),
+          createdAt: 'desc'
+        }
+      })
     ])
     return {
       data,
-      totalItems,
-      page: pagination.page,
-      limit: pagination.limit,
-      totalPages: Math.ceil(totalItems / pagination.limit),
+      metadata: {
+        totalItems,
+        page: pagination.page,
+        limit: pagination.limit,
+        totalPages: Math.ceil(totalItems / pagination.limit),
+        hasNext: pagination.page < Math.ceil(totalItems / pagination.limit),
+        hasPrev: pagination.page > 1
+      }
     }
   }
 
@@ -59,8 +63,8 @@ export class ReviewRepository {
     const order = await this.prismaService.order.findUnique({
       where: {
         id: orderId,
-        userId,
-      },
+        userId
+      }
     })
     // Mua hàng thì mới được review
     if (!order) {
@@ -78,8 +82,8 @@ export class ReviewRepository {
     const review = await this.prismaService.review.findUnique({
       where: {
         id: reviewId,
-        userId,
-      },
+        userId
+      }
     })
     if (!review) {
       throw new NotFoundException('Đánh giá không tồn tại hoặc không thuộc về bạn')
@@ -94,7 +98,7 @@ export class ReviewRepository {
     const { content, medias, productId, orderId, rating } = body
     await this.validateOrder({
       orderId,
-      userId,
+      userId
     })
     return this.prismaService.$transaction(async (tx) => {
       const review = await tx.review
@@ -104,17 +108,17 @@ export class ReviewRepository {
             rating,
             productId,
             orderId,
-            userId,
+            userId
           },
           include: {
             user: {
               select: {
                 id: true,
                 name: true,
-                avatar: true,
-              },
-            },
-          },
+                avatar: true
+              }
+            }
+          }
         })
         .catch((error) => {
           if (isUniqueConstraintPrismaError(error)) {
@@ -126,12 +130,12 @@ export class ReviewRepository {
         data: medias.map((media) => ({
           url: media.url,
           type: media.type,
-          reviewId: review.id,
-        })),
+          reviewId: review.id
+        }))
       })
       return {
         ...review,
-        medias: reviewMedias,
+        medias: reviewMedias
       }
     })
   }
@@ -139,7 +143,7 @@ export class ReviewRepository {
   async update({
     userId,
     reviewId,
-    body,
+    body
   }: {
     userId: number
     reviewId: number
@@ -149,17 +153,17 @@ export class ReviewRepository {
     await Promise.all([
       this.validateOrder({
         orderId,
-        userId,
+        userId
       }),
       this.validateUpdateReview({
         reviewId,
-        userId,
-      }),
+        userId
+      })
     ])
     return this.prismaService.$transaction(async (tx) => {
       const review = await tx.review.update({
         where: {
-          id: reviewId,
+          id: reviewId
         },
         data: {
           content,
@@ -168,35 +172,35 @@ export class ReviewRepository {
           orderId,
           userId,
           updateCount: {
-            increment: 1,
-          },
+            increment: 1
+          }
         },
         include: {
           user: {
             select: {
               id: true,
               name: true,
-              avatar: true,
-            },
-          },
-        },
+              avatar: true
+            }
+          }
+        }
       })
 
       await tx.reviewMedia.deleteMany({
         where: {
-          reviewId,
-        },
+          reviewId
+        }
       })
       const reviewMedias = await tx.reviewMedia.createManyAndReturn({
         data: medias.map((media) => ({
           url: media.url,
           type: media.type,
-          reviewId: review.id,
-        })),
+          reviewId: review.id
+        }))
       })
       return {
         ...review,
-        medias: reviewMedias,
+        medias: reviewMedias
       }
     })
   }

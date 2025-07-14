@@ -6,7 +6,7 @@ import {
   GetProductParamsSchema,
   GetProductsQuerySchema,
   GetProductsResSchema,
-  UpdateProductBodySchema
+  UpdateProductBodySchema,
 } from 'src/routes/product/product.model'
 import { ProductSchema } from 'src/shared/models/shared-product.model'
 

@@ -1,4 +1,3 @@
-import { PaginationResponseSchema } from 'src/shared/models/pagination.model'
 import { ProductTranslationSchema } from 'src/shared/models/shared-product-translation.model'
 import { ProductSchema } from 'src/shared/models/shared-product.model'
 import { SKUSchema } from 'src/shared/models/shared-sku.model'
@@ -60,7 +59,6 @@ export const CartItemDetailSchema = z.object({
 })
 
 export const GetCartResSchema = z.object({
-  message: z.string(),
   data: z.array(CartItemDetailSchema),
   metadata: z.object({
     totalItems: z.number(),

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import {
   GetProductTranslationDetailResType,
   CreateProductTranslationBodyType,
-  UpdateProductTranslationBodyType
+  UpdateProductTranslationBodyType,
 } from 'src/routes/product/product-translation/product-translation.model'
 import { ProductTranslationType } from 'src/shared/models/shared-product-translation.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
@@ -15,14 +15,14 @@ export class ProductTranslationRepo {
     return this.prismaService.productTranslation.findUnique({
       where: {
         id,
-        deletedAt: null
-      }
+        deletedAt: null,
+      },
     })
   }
 
   create({
     createdById,
-    data
+    data,
   }: {
     createdById: number | null
     data: CreateProductTranslationBodyType
@@ -30,15 +30,15 @@ export class ProductTranslationRepo {
     return this.prismaService.productTranslation.create({
       data: {
         ...data,
-        createdById
-      }
+        createdById,
+      },
     })
   }
 
   async update({
     id,
     updatedById,
-    data
+    data,
   }: {
     id: number
     updatedById: number
@@ -47,40 +47,40 @@ export class ProductTranslationRepo {
     return this.prismaService.productTranslation.update({
       where: {
         id,
-        deletedAt: null
+        deletedAt: null,
       },
       data: {
         ...data,
-        updatedById
-      }
+        updatedById,
+      },
     })
   }
 
   delete(
     {
       id,
-      deletedById
+      deletedById,
     }: {
       id: number
       deletedById: number
     },
-    isHard?: boolean
+    isHard?: boolean,
   ): Promise<ProductTranslationType> {
     return isHard
       ? this.prismaService.productTranslation.delete({
           where: {
-            id
-          }
+            id,
+          },
         })
       : this.prismaService.productTranslation.update({
           where: {
             id,
-            deletedAt: null
+            deletedAt: null,
           },
           data: {
             deletedAt: new Date(),
-            deletedById
-          }
+            deletedById,
+          },
         })
   }
 }

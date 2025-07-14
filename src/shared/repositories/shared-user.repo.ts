@@ -16,8 +16,8 @@ export class SharedUserRepository {
     return this.prismaService.user.findFirst({
       where: {
         ...where,
-        deletedAt: null
-      }
+        deletedAt: null,
+      },
     })
   }
 
@@ -25,19 +25,19 @@ export class SharedUserRepository {
     return this.prismaService.user.findFirst({
       where: {
         ...where,
-        deletedAt: null
+        deletedAt: null,
       },
       include: {
         role: {
           include: {
             permissions: {
               where: {
-                deletedAt: null
-              }
-            }
-          }
-        }
-      }
+                deletedAt: null,
+              },
+            },
+          },
+        },
+      },
     })
   }
 
@@ -45,9 +45,9 @@ export class SharedUserRepository {
     return this.prismaService.user.update({
       where: {
         ...where,
-        deletedAt: null
+        deletedAt: null,
       },
-      data
+      data,
     })
   }
 }

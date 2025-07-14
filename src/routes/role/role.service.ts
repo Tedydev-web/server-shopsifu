@@ -1,30 +1,23 @@
-import { Injectable } from '@nestjs/common'
+import { BadRequestException, Inject, Injectable } from '@nestjs/common'
 import { RoleRepo } from 'src/routes/role/role.repo'
 import { CreateRoleBodyType, GetRolesQueryType, UpdateRoleBodyType } from 'src/routes/role/role.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { ProhibitedActionOnBaseRoleException, RoleAlreadyExistsException } from 'src/routes/role/role.error'
 import { RoleName } from 'src/shared/constants/role.constant'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { CACHE_MANAGER } from '@nestjs/cache-manager'
 import { Cache } from 'cache-manager'
-import { Inject } from '@nestjs/common'
 
 @Injectable()
 export class RoleService {
   constructor(
     private roleRepo: RoleRepo,
-    private i18n: I18nService<I18nTranslations>,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
   async list(pagination: GetRolesQueryType) {
     const data = await this.roleRepo.list(pagination)
-    return {
-      ...data,
-      message: this.i18n.t('role.role.success.GET_SUCCESS')
-    }
+    return data
   }
 
   async findById(id: number) {
@@ -32,22 +25,16 @@ export class RoleService {
     if (!role) {
       throw NotFoundRecordException
     }
-    return {
-      data: role,
-      message: this.i18n.t('role.role.success.GET_DETAIL_SUCCESS')
-    }
+    return role
   }
 
   async create({ data, createdById }: { data: CreateRoleBodyType; createdById: number }) {
     try {
       const role = await this.roleRepo.create({
         createdById,
-        data
+        data,
       })
-      return {
-        data: role,
-        message: this.i18n.t('role.role.success.CREATE_SUCCESS')
-      }
+      return role
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw RoleAlreadyExistsException
@@ -77,13 +64,10 @@ export class RoleService {
       const updatedRole = await this.roleRepo.update({
         id,
         updatedById,
-        data
+        data,
       })
       await this.cacheManager.del(`role:${updatedRole.id}`) // Xóa cache của role đã cập nhật
-      return {
-        data: updatedRole,
-        message: this.i18n.t('role.role.success.UPDATE_SUCCESS')
-      }
+      return updatedRole
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -100,11 +84,11 @@ export class RoleService {
       await this.verifyRole(id)
       await this.roleRepo.delete({
         id,
-        deletedById
+        deletedById,
       })
       await this.cacheManager.del(`role:${id}`) // Xóa cache của role đã xóa
       return {
-        message: this.i18n.t('role.role.success.DELETE_SUCCESS')
+        message: 'Delete successfully',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

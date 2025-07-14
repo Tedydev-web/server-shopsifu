@@ -24,17 +24,19 @@ import { OrderModule } from 'src/routes/order/order.module'
 import { PaymentModule } from 'src/routes/payment/payment.module'
 import { BullModule } from '@nestjs/bullmq'
 import { PaymentConsumer } from 'src/queues/payment.consumer'
-import envConfig from 'src/shared/config'
 import { WebsocketModule } from 'src/websockets/websocket.module'
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { ThrottlerModule } from '@nestjs/throttler'
 import { ThrottlerBehindProxyGuard } from 'src/shared/guards/throttler-behind-proxy.guard'
 import { ReviewModule } from 'src/routes/review/review.module'
 import { ScheduleModule } from '@nestjs/schedule'
 import { RemoveRefreshTokenCronjob } from 'src/cronjobs/remove-refresh-token.cronjob'
 import { CacheModule } from '@nestjs/cache-manager'
-import { createKeyv } from '@keyv/redis'
 import { LoggerModule } from 'nestjs-pino'
 import pino from 'pino'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { createKeyv } from '@keyv/redis'
+import configs from './shared/config'
+
 @Module({
   imports: [
     LoggerModule.forRoot({
@@ -61,23 +63,20 @@ import pino from 'pino'
         })
       }
     }),
-    CacheModule.registerAsync({
+
+    // Configuration - Global
+    ConfigModule.forRoot({
+      load: configs,
       isGlobal: true,
-      useFactory: () => {
-        return {
-          stores: [createKeyv(envConfig.REDIS_URL)]
-        }
-      }
+      cache: true,
+      envFilePath: ['.env'],
+      expandVariables: true
     }),
+
+    // Schedule Module - Cronjobs
     ScheduleModule.forRoot(),
-    BullModule.forRoot({
-      connection: {
-        host: envConfig.REDIS_HOST,
-        port: envConfig.REDIS_PORT,
-        password: envConfig.REDIS_PASSWORD,
-        tls: process.env.REDIS_ENABLE_TLS === 'true' ? {} : undefined
-      }
-    }),
+
+    // Internationalization - I18n
     I18nModule.forRoot({
       fallbackLanguage: 'en',
       loaderOptions: {
@@ -87,6 +86,30 @@ import pino from 'pino'
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
       typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts')
     }),
+
+    CacheModule.registerAsync({
+      isGlobal: true,
+      useFactory: () => {
+        return {
+          stores: [createKeyv(process.env.REDIS_URL)]
+        }
+      }
+    }),
+
+    // Queue Management - Bull/Redis
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        connection: {
+          host: configService.get('redis.host'),
+          port: Number(configService.get('redis.port')),
+          password: configService.get('redis.password')
+        }
+      }),
+      inject: [ConfigService]
+    }),
+
+    // Rate Limiting - Throttler
     ThrottlerModule.forRoot({
       throttlers: [
         {
@@ -101,6 +124,8 @@ import pino from 'pino'
         }
       ]
     }),
+
+    // Websocket Module
     WebsocketModule,
     SharedModule,
     AuthModule,

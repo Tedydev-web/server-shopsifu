@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const VariantSchema = z.object({
   value: z.string().trim(),
-  options: z.array(z.string().trim())
+  options: z.array(z.string().trim()),
 })
 
 export const VariantsSchema = z.array(VariantSchema).superRefine((variants, ctx) => {
@@ -14,7 +14,7 @@ export const VariantsSchema = z.array(VariantSchema).superRefine((variants, ctx)
       return ctx.addIssue({
         code: 'custom',
         message: `Giá trị ${variant.value} đã tồn tại trong danh sách variants. Vui lòng kiểm tra lại.`,
-        path: ['variants']
+        path: ['variants'],
       })
     }
     const isDifferentOption = variant.options.some((option, index) => {
@@ -25,7 +25,7 @@ export const VariantsSchema = z.array(VariantSchema).superRefine((variants, ctx)
       return ctx.addIssue({
         code: 'custom',
         message: `Variant ${variant.value} chứa các option trùng tên với nhau. Vui lòng kiểm tra lại.`,
-        path: ['variants']
+        path: ['variants'],
       })
     }
   }
@@ -46,7 +46,7 @@ export const ProductSchema = z.object({
   deletedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date()
+  updatedAt: z.date(),
 })
 
 export type ProductType = z.infer<typeof ProductSchema>

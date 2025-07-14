@@ -4,22 +4,16 @@ import { CreateLanguageBodyType, UpdateLanguageBodyType } from 'src/routes/langu
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { LanguageAlreadyExistsException } from 'src/routes/language/language.error'
-import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class LanguageService {
-  constructor(
-    private languageRepo: LanguageRepo,
-    private i18n: I18nService<I18nTranslations>
-  ) {}
+  constructor(private languageRepo: LanguageRepo) {}
 
   async findAll() {
     const data = await this.languageRepo.findAll()
     return {
       data,
       totalItems: data.length,
-      message: this.i18n.t('language.language.success.GET_SUCCESS')
     }
   }
 
@@ -28,22 +22,15 @@ export class LanguageService {
     if (!language) {
       throw NotFoundRecordException
     }
-    return {
-      data: language,
-      message: this.i18n.t('language.language.success.GET_DETAIL_SUCCESS')
-    }
+    return language
   }
 
   async create({ data, createdById }: { data: CreateLanguageBodyType; createdById: number }) {
     try {
-      const language = await this.languageRepo.create({
+      return await this.languageRepo.create({
         createdById,
-        data
+        data,
       })
-      return {
-        data: language,
-        message: this.i18n.t('language.language.success.CREATE_SUCCESS')
-      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw LanguageAlreadyExistsException
@@ -57,12 +44,9 @@ export class LanguageService {
       const language = await this.languageRepo.update({
         id,
         updatedById,
-        data
+        data,
       })
-      return {
-        data: language,
-        message: this.i18n.t('language.language.success.UPDATE_SUCCESS')
-      }
+      return language
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -76,7 +60,7 @@ export class LanguageService {
       // hard delete
       await this.languageRepo.delete(id, true)
       return {
-        message: this.i18n.t('language.language.success.DELETE_SUCCESS')
+        message: 'Delete successfully',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

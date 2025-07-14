@@ -4,20 +4,16 @@ import {
   CreateProductBodyType,
   GetManageProductsQueryType,
   GetProductsQueryType,
-  UpdateProductBodyType
+  UpdateProductBodyType,
 } from 'src/routes/product/product.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
-import { I18nContext, I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { I18nContext } from 'nestjs-i18n'
 import { RoleName } from 'src/shared/constants/role.constant'
 
 @Injectable()
 export class ManageProductService {
-  constructor(
-    private productRepo: ProductRepo,
-    private i18n: I18nService<I18nTranslations>
-  ) {}
+  constructor(private productRepo: ProductRepo) {}
 
   /**
    * Kiểm tra nếu người dùng không phải là người tạo sản phẩm hoặc admin thì không cho tiếp tục
@@ -25,7 +21,7 @@ export class ManageProductService {
   validatePrivilege({
     userIdRequest,
     roleNameRequest,
-    createdById
+    createdById,
   }: {
     userIdRequest: number
     roleNameRequest: string
@@ -44,24 +40,29 @@ export class ManageProductService {
     this.validatePrivilege({
       userIdRequest: props.userIdRequest,
       roleNameRequest: props.roleNameRequest,
-      createdById: props.query.createdById
+      createdById: props.query.createdById,
     })
     const data = await this.productRepo.list({
-      ...props.query,
+      page: props.query.page,
+      limit: props.query.limit,
       languageId: I18nContext.current()?.lang as string,
       createdById: props.query.createdById,
-      isPublic: props.query.isPublic
+      isPublic: props.query.isPublic,
+      brandIds: props.query.brandIds,
+      minPrice: props.query.minPrice,
+      maxPrice: props.query.maxPrice,
+      categories: props.query.categories,
+      name: props.query.name,
+      orderBy: props.query.orderBy,
+      sortBy: props.query.sortBy,
     })
-    return {
-      ...data,
-      message: this.i18n.t('product.product.success.GET_PRODUCTS')
-    }
+    return data
   }
 
   async getDetail(props: { productId: number; userIdRequest: number; roleNameRequest: string }) {
     const product = await this.productRepo.getDetail({
       productId: props.productId,
-      languageId: I18nContext.current()?.lang as string
+      languageId: I18nContext.current()?.lang as string,
     })
 
     if (!product) {
@@ -70,30 +71,23 @@ export class ManageProductService {
     this.validatePrivilege({
       userIdRequest: props.userIdRequest,
       roleNameRequest: props.roleNameRequest,
-      createdById: product.createdById
+      createdById: product.createdById,
     })
-    return {
-      data: product,
-      message: this.i18n.t('product.product.success.GET_PRODUCT_DETAIL')
-    }
+    return product
   }
 
-  async create({ data, createdById }: { data: CreateProductBodyType; createdById: number }) {
-    const product = await this.productRepo.create({
+  create({ data, createdById }: { data: CreateProductBodyType; createdById: number }) {
+    return this.productRepo.create({
       createdById,
-      data
+      data,
     })
-    return {
-      data: product,
-      message: this.i18n.t('product.product.success.CREATE_SUCCESS')
-    }
   }
 
   async update({
     productId,
     data,
     updatedById,
-    roleNameRequest
+    roleNameRequest,
   }: {
     productId: number
     data: UpdateProductBodyType
@@ -107,18 +101,15 @@ export class ManageProductService {
     this.validatePrivilege({
       userIdRequest: updatedById,
       roleNameRequest,
-      createdById: product.createdById
+      createdById: product.createdById,
     })
     try {
       const updatedProduct = await this.productRepo.update({
         id: productId,
         updatedById,
-        data
+        data,
       })
-      return {
-        data: updatedProduct,
-        message: this.i18n.t('product.product.success.UPDATE_SUCCESS')
-      }
+      return updatedProduct
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -130,7 +121,7 @@ export class ManageProductService {
   async delete({
     productId,
     deletedById,
-    roleNameRequest
+    roleNameRequest,
   }: {
     productId: number
     deletedById: number
@@ -143,15 +134,15 @@ export class ManageProductService {
     this.validatePrivilege({
       userIdRequest: deletedById,
       roleNameRequest,
-      createdById: product.createdById
+      createdById: product.createdById,
     })
     try {
       await this.productRepo.delete({
         id: productId,
-        deletedById
+        deletedById,
       })
       return {
-        message: this.i18n.t('product.product.success.DELETE_SUCCESS')
+        message: 'Delete successfully',
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

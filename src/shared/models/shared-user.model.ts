@@ -18,44 +18,38 @@ export const UserSchema = z.object({
   deletedById: z.number().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
-  updatedAt: z.date()
+  updatedAt: z.date(),
 })
 
 /**
  * Áp dụng cho Response của api GET('profile') và GET('users/:userId')
  */
-export const GetUserProfileResSchema = z.object({
-  message: z.string(),
-  data: UserSchema.omit({
-    password: true,
-    totpSecret: true
+export const GetUserProfileResSchema = UserSchema.omit({
+  password: true,
+  totpSecret: true,
+}).extend({
+  role: RoleSchema.pick({
+    id: true,
+    name: true,
   }).extend({
-    role: RoleSchema.pick({
-      id: true,
-      name: true
-    }).extend({
-      permissions: z.array(
-        PermissionSchema.pick({
-          id: true,
-          name: true,
-          module: true,
-          path: true,
-          method: true
-        })
-      )
-    })
-  })
+    permissions: z.array(
+      PermissionSchema.pick({
+        id: true,
+        name: true,
+        module: true,
+        path: true,
+        method: true,
+      }),
+    ),
+  }),
 })
 
 /**
  * Áp dụng cho Response của api PUT('profile') và PUT('users/:userId')
  */
-export const UpdateProfileResSchema = z.object({
-  message: z.string(),
-  data: UserSchema.omit({
-    password: true,
-    totpSecret: true
-  })
+export const UpdateProfileResSchema = UserSchema.omit({
+  password: true,
+  totpSecret: true,
 })
 
 export type UserType = z.infer<typeof UserSchema>

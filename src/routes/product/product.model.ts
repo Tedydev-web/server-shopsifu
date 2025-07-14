@@ -6,8 +6,6 @@ import { ProductTranslationSchema } from 'src/shared/models/shared-product-trans
 import { ProductSchema, VariantsType } from 'src/shared/models/shared-product.model'
 import { SKUSchema } from 'src/shared/models/shared-sku.model'
 import { z } from 'zod'
-import { PaginationResponseSchema } from 'src/shared/models/pagination.model'
-import { PaginationQuerySchema } from 'src/shared/models/request.model'
 
 function generateSKUs(variants: VariantsType) {
   // Hàm hỗ trợ để tạo tất cả tổ hợp
@@ -33,17 +31,31 @@ function generateSKUs(variants: VariantsType) {
 /**
  * Dành cho client và guest
  */
-export const GetProductsQuerySchema = PaginationQuerySchema.extend({
+export const GetProductsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().default(10),
+  name: z.string().optional(),
   brandIds: z
-    .string()
-    .transform((val) => val.split(',').map(Number))
+    .preprocess((value) => {
+      if (typeof value === 'string') {
+        return [Number(value)]
+      }
+      return value
+    }, z.array(z.coerce.number().int().positive()))
     .optional(),
   categories: z
-    .string()
-    .transform((val) => val.split(',').map(Number))
+    .preprocess((value) => {
+      if (typeof value === 'string') {
+        return [Number(value)]
+      }
+      return value
+    }, z.array(z.coerce.number().int().positive()))
     .optional(),
-  minPrice: z.coerce.number().optional(),
-  maxPrice: z.coerce.number().optional()
+  minPrice: z.coerce.number().positive().optional(),
+  maxPrice: z.coerce.number().positive().optional(),
+  createdById: z.coerce.number().int().positive().optional(),
+  orderBy: z.enum([OrderBy.Asc, OrderBy.Desc]).default(OrderBy.Desc),
+  sortBy: z.enum([SortBy.CreatedAt, SortBy.Price, SortBy.Sale]).default(SortBy.CreatedAt)
 })
 
 /**
@@ -54,11 +66,21 @@ export const GetManageProductsQuerySchema = GetProductsQuerySchema.extend({
   createdById: z.coerce.number().int().positive()
 })
 
-const ListProductItemSchema = ProductSchema.extend({
-  productTranslations: z.array(ProductTranslationSchema)
+export const GetProductsResSchema = z.object({
+  data: z.array(
+    ProductSchema.extend({
+      productTranslations: z.array(ProductTranslationSchema)
+    })
+  ),
+  metadata: z.object({
+    totalItems: z.number(),
+    page: z.number(),
+    limit: z.number(),
+    totalPages: z.number(),
+    hasNext: z.boolean(),
+    hasPrev: z.boolean()
+  })
 })
-
-export const GetProductsResSchema = PaginationResponseSchema(ListProductItemSchema)
 
 export const GetProductParamsSchema = z
   .object({
