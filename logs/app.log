@@ -1,2 +1,3 @@
 {"level":30,"time":1752484048694,"pid":37258,"hostname":"MBP-TedyDev","req":{"method":"POST","url":"/auth/login","query":{},"params":{"path":["auth","login"]}},"res":{"statusCode":200},"responseTime":142,"msg":"request completed"}
 {"level":30,"time":1752484052402,"pid":37258,"hostname":"MBP-TedyDev","req":{"method":"POST","url":"/auth/login","query":{},"params":{"path":["auth","login"]}},"res":{"statusCode":200},"responseTime":108,"msg":"request completed"}
+{"level":30,"time":1752485572528,"pid":41497,"hostname":"MBP-TedyDev","req":{"method":"POST","url":"/auth/login","query":{},"params":{"path":["auth","login"]}},"res":{"statusCode":200},"responseTime":161,"msg":"request completed"}

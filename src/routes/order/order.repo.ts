@@ -220,16 +220,27 @@ export class OrderRepo {
             }
           })
           for (const item of cartItems) {
-            await tx.sKU.update({
-              where: {
-                id: item.sku.id
-              },
-              data: {
-                stock: {
-                  decrement: item.quantity
+            await tx.sKU
+              .update({
+                where: {
+                  id: item.sku.id,
+                  updatedAt: item.sku.updatedAt, // Đảm bảo không có ai cập nhật SKU trong khi chúng ta đang xử lý
+                  stock: {
+                    gte: item.quantity // Đảm bảo số lượng tồn kho đủ để trừ
+                  }
+                },
+                data: {
+                  stock: {
+                    decrement: item.quantity
+                  }
                 }
-              }
-            })
+              })
+              .catch((e) => {
+                if (isNotFoundPrismaError(e)) {
+                  throw VersionConflictException
+                }
+                throw e
+              })
           }
           await this.orderProducer.addCancelPaymentJob(payment.id)
           return [payment.id, orders]
