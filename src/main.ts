@@ -7,11 +7,14 @@ import envConfig from 'src/shared/config'
 import { COOKIE_DEFINITIONS } from './shared/constants/cookie.constant'
 import helmet from 'helmet'
 import compression from 'compression'
+import { WebsocketAdapter } from './websockets/websocket.adapter'
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule)
   app.use(helmet())
   app.use(compression())
+
+  app.useWebSocketAdapter(new WebsocketAdapter(app))
   // CORS configuration
   app.enableCors({
     origin: ['https://localhost:8000', 'https://shopsifu.live'],
