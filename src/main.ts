@@ -8,11 +8,15 @@ import { COOKIE_DEFINITIONS } from './shared/constants/cookie.constant'
 import helmet from 'helmet'
 import compression from 'compression'
 import { WebsocketAdapter } from './websockets/websocket.adapter'
+import { LoggingInterceptor } from './shared/interceptor/logging.interceptor'
+import { ConsoleLogger, Logger } from '@nestjs/common'
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule)
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true })
+  app.useLogger(app.get(Logger))
   app.use(helmet())
   app.use(compression())
+  // app.useGlobalInterceptors(new LoggingInterceptor())
 
   const websocketAdapter = new WebsocketAdapter(app)
   await websocketAdapter.connectToRedis()
