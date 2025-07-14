@@ -6,3 +6,7 @@
 **/.cursorignore
 **/.env
 **/draft
+# Logs
+**/logs
+
+/upload
