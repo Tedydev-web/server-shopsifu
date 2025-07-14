@@ -2,7 +2,8 @@ import {
   NotFoundException,
   UnprocessableEntityException,
   UnauthorizedException as NestUnauthorizedException,
-  ForbiddenException as NestForbiddenException
+  ForbiddenException as NestForbiddenException,
+  ConflictException
 } from '@nestjs/common'
 
 export const NotFoundRecordException = new NotFoundException('global.global.error.NOT_FOUND_RECORD')
@@ -32,3 +33,5 @@ export const InsufficientPermissionsException = new NestForbiddenException(
 export const SessionNotFoundException = new NotFoundException('global.global.error.SESSION_NOT_FOUND')
 
 export const TokenBlacklistedException = new NestUnauthorizedException('global.global.error.TOKEN_BLACKLISTED')
+
+export const VersionConflictException = new ConflictException('Error.VersionConflict')
