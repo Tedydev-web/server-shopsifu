@@ -27,6 +27,7 @@ import { PaymentConsumer } from 'src/queues/payment.consumer'
 import { CSRFMiddleware } from './shared/middleware/csrf.middleware'
 import envConfig from './shared/config'
 import { WebsocketModule } from './websockets/websocket.module'
+import { ReviewModule } from './routes/review/review.module'
 
 @Module({
   imports: [
@@ -66,7 +67,8 @@ import { WebsocketModule } from './websockets/websocket.module'
     CartModule,
     OrderModule,
     PaymentModule,
-    WebsocketModule
+    WebsocketModule,
+    ReviewModule
   ],
   providers: [
     {
