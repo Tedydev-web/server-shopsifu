@@ -14,8 +14,8 @@ async function bootstrap() {
   const router = server.router
   const permissionsInDb = await prisma.permission.findMany({
     where: {
-      deletedAt: null,
-    },
+      deletedAt: null
+    }
   })
   const availableRoutes: { path: string; method: keyof typeof HTTPMethod; name: string; module: string }[] =
     router.stack
@@ -28,7 +28,7 @@ async function bootstrap() {
             path,
             method,
             name: method + ' ' + path,
-            module: moduleName,
+            module: moduleName
           }
         }
       })
@@ -53,9 +53,9 @@ async function bootstrap() {
     const deleteResult = await prisma.permission.deleteMany({
       where: {
         id: {
-          in: permissionsToDelete.map((item) => item.id),
-        },
-      },
+          in: permissionsToDelete.map((item) => item.id)
+        }
+      }
     })
     console.log('Deleted permissions:', deleteResult.count)
   } else {
@@ -67,9 +67,19 @@ async function bootstrap() {
   })
   // Thêm các routes này dưới dạng permissions database
   if (routesToAdd.length > 0) {
+    const validHTTPMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD']
+    const permissionsData = routesToAdd.map((item) => ({
+      method: item.method,
+      path: item.path,
+      name: item.name,
+      module: item.module
+    }))
+    // Lọc bỏ các permission có method không hợp lệ (ví dụ: 'ACL')
+    const filteredPermissions = permissionsData.filter((p) => validHTTPMethods.includes(p.method))
+
     const permissionsToAdd = await prisma.permission.createMany({
-      data: routesToAdd,
-      skipDuplicates: true,
+      data: filteredPermissions,
+      skipDuplicates: true
     })
     console.log('Added permissions:', permissionsToAdd.count)
   } else {
@@ -79,8 +89,8 @@ async function bootstrap() {
   // Lấy lại permissions trong database sau khi thêm mới (hoặc bị xóa)
   const updatedPermissionsInDb = await prisma.permission.findMany({
     where: {
-      deletedAt: null,
-    },
+      deletedAt: null
+    }
   })
   const adminPermissionIds = updatedPermissionsInDb.map((item) => ({ id: item.id }))
   const sellerPermissionIds = updatedPermissionsInDb
@@ -93,7 +103,7 @@ async function bootstrap() {
   await Promise.all([
     updateRole(adminPermissionIds, RoleName.Admin),
     updateRole(sellerPermissionIds, RoleName.Seller),
-    updateRole(clientPermissionIds, RoleName.Client),
+    updateRole(clientPermissionIds, RoleName.Client)
   ])
   process.exit(0)
 }
@@ -103,18 +113,18 @@ const updateRole = async (permissionIds: { id: number }[], roleName: string) => 
   const role = await prisma.role.findFirstOrThrow({
     where: {
       name: roleName,
-      deletedAt: null,
-    },
+      deletedAt: null
+    }
   })
   await prisma.role.update({
     where: {
-      id: role.id,
+      id: role.id
     },
     data: {
       permissions: {
-        set: permissionIds,
-      },
-    },
+        set: permissionIds
+      }
+    }
   })
 }
 bootstrap()
