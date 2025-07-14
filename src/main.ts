@@ -14,7 +14,10 @@ async function bootstrap() {
   app.use(helmet())
   app.use(compression())
 
-  app.useWebSocketAdapter(new WebsocketAdapter(app))
+  const websocketAdapter = new WebsocketAdapter(app)
+  await websocketAdapter.connectToRedis()
+  app.useWebSocketAdapter(websocketAdapter)
+
   // CORS configuration
   app.enableCors({
     origin: ['https://localhost:8000', 'https://shopsifu.live'],
