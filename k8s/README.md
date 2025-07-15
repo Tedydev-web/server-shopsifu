@@ -22,10 +22,10 @@ Simple 2-file Kubernetes setup for NestJS Starter.
 
 3. **Access the app**:
    ```bash
-   kubectl port-forward service/shopsifu-service 3001:80 -n shopsifu
+   kubectl port-forward service/shopsifu-service 3000:80 -n shopsifu
    ```
 
-   Visit: http://localhost:3001
+   Visit: http://localhost:3000
 
 ## What's Included
 

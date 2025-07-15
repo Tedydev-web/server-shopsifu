@@ -14,7 +14,7 @@ metadata:
   namespace: shopsifu
 data:
   NODE_ENV: 'production'
-  HTTP_PORT: '3001'
+  HTTP_PORT: '3000'
   DATABASE_URL: 'postgresql://postgres:password@postgres:5432/nestjs_starter'
   REDIS_HOST: 'redis'
   REDIS_PORT: '6379'
@@ -127,7 +127,7 @@ spec:
         - name: app
           image: ghcr.io/hmake98/shopsifu:latest
           ports:
-            - containerPort: 3001
+            - containerPort: 3000
           envFrom:
             - configMapRef:
                 name: app-config
@@ -154,5 +154,5 @@ spec:
     app: nestjs-app
   ports:
     - port: 80
-      targetPort: 3001
+      targetPort: 3000
   type: LoadBalancer

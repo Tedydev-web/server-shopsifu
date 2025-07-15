@@ -22,10 +22,10 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { BullModule } from '@nestjs/bullmq'
 import { CacheModule } from '@nestjs/cache-manager'
 import { LoggerModule } from 'nestjs-pino'
-import pino from 'pino'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { createKeyv } from '@keyv/redis'
 import configs from 'src/shared/config'
+import { createLoggerConfig } from './config/logger.config'
 
 const sharedServices = [
   PrismaService,
@@ -63,38 +63,10 @@ const sharedServices = [
       expandVariables: true
     }),
 
-    LoggerModule.forRoot({
-      pinoHttp: {
-        serializers: {
-          req(req: any) {
-            return {
-              method: req.method,
-              url: req.url,
-              query: req.query,
-              params: req.params
-            }
-          },
-          res(res: any) {
-            return {
-              statusCode: res.statusCode
-            }
-          }
-        },
-        stream: pino.destination({
-          dest: path.resolve('logs/app.log'),
-          sync: false, // Asynchronous logging
-          mkdir: true // Create the directory if it doesn't exist
-        })
-      }
-    }),
-
-    // Configuration - Global
-    ConfigModule.forRoot({
-      load: configs,
-      isGlobal: true,
-      cache: true,
-      envFilePath: ['.env'],
-      expandVariables: true
+    LoggerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: createLoggerConfig
     }),
 
     // Schedule Module - Cronjobs

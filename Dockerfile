@@ -32,7 +32,7 @@ RUN chown -R nestjs:nodejs /app
 USER nestjs
 
 # Expose port
-EXPOSE 3001
+EXPOSE 3000
 
 # Start development server
 CMD ["yarn", "dev"]

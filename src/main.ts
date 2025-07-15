@@ -30,7 +30,8 @@ async function bootstrap(): Promise<void> {
     app.use(helmet())
     app.use(compression())
     app.useLogger(logger)
-    app.enableCors(config.getOrThrow('app.cors'))
+    app.enableCors(config.get('app.cors'))
+    app.use(cookieParser())
     app.set('trust proxy', 'loopback') // Trust requests from the loopback address
 
     // Websocket
@@ -39,7 +40,6 @@ async function bootstrap(): Promise<void> {
     app.useWebSocketAdapter(websocketAdapter)
 
     // Cookie parser middleware
-    app.use(cookieParser())
 
     // app.enableVersioning({
     //   type: VersioningType.URI,

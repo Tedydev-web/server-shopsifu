@@ -15,6 +15,6 @@ kubectl get pods -n shopsifu
 
 echo ""
 echo "📋 To access your app:"
-echo "kubectl port-forward service/shopsifu-service 3001:80 -n shopsifu"
+echo "kubectl port-forward service/shopsifu-service 3000:80 -n shopsifu"
 echo ""
-echo "Then visit: http://localhost:3001"
+echo "Then visit: http://localhost:3000"

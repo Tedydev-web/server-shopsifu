@@ -1,28 +1,30 @@
 {
-  "name": "ecom",
-  "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "name": "Shopsifu",
+  "version": "1.0.0",
+  "description": "Shopsifu",
+  "author": "TedyDev",
   "private": true,
-  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.0.0",
+    "yarn": ">=1.22.0"
+  },
   "scripts": {
     "prebuild": "rimraf dist",
     "build": "nest build",
     "start": "node dist/main",
     "dev": "nest start --watch",
     "debug": "nest start --debug --watch",
-    "init-seed-data": "ts-node initialScript",
-    "create-permissions": "ts-node initialScript/create-permissions.ts",
     "update:package": "npx npm-check-updates -u",
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "migrate:prod": "prisma migrate deploy",
     "studio": "prisma studio",
-    "format": "prettier --write \"src/**/*.ts\" \"emails/**/*.tsx\"",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" \"emails/**/*.tsx\" --fix",
+    "seed:email": "nestjs-command seed:emails",
+    "rollback:email": "nestjs-command rollback:emails",
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "jest --config test/jest.json --runInBand --passWithNoTests --forceExit",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --config test/jest.json --runInBand",
-    "prepare": "husky"
+    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --config test/jest.json --runInBand"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.775.0",
@@ -49,6 +51,8 @@
     "bullmq": "^5.56.2",
     "cache-manager": "^7.0.1",
     "cache-manager-ioredis": "^2.1.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
     "compression": "^1.8.0",
     "cookie-parser": "^1.4.7",
     "csrf-csrf": "^4.0.3",
@@ -58,6 +62,7 @@
     "googleapis": "^146.0.0",
     "helmet": "^8.1.0",
     "ioredis": "^5.6.1",
+    "keyv": "^5.3.4",
     "mime-types": "^3.0.1",
     "ms": "^2.1.3",
     "nestjs-i18n": "^10.5.1",
@@ -65,6 +70,7 @@
     "nestjs-zod": "^4.3.1",
     "otpauth": "^9.3.6",
     "otplib": "^12.0.1",
+    "pino": "^9.7.0",
     "pino-http": "^10.5.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
@@ -74,9 +80,11 @@
     "resend": "^4.1.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
+    "socket.io-adapter": "^2.5.5",
     "ua-parser-js": "^2.0.4",
     "uuid": "^11.1.0",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "pino-pretty": "^13.0.0"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",
@@ -118,21 +126,10 @@
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
   },
-  "jest": {
-    "moduleFileExtensions": [
-      "js",
-      "json",
-      "ts"
-    ],
-    "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
-    "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
-    },
-    "collectCoverageFrom": [
-      "**/*.(t|j)s"
-    ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+  "lint-staged": {
+    "{src,test}/**/*.{ts,js,json}": [
+      "prettier --write",
+      "eslint --fix"
+    ]
   }
 }

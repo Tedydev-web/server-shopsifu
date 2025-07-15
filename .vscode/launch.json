@@ -5,7 +5,9 @@
       "type": "node",
       "request": "launch",
       "name": "Debug NestJS",
-      "args": ["${workspaceFolder}/src/main.ts"],
+      "args": [
+        "${workspaceFolder}/src/main.ts"
+      ],
       "runtimeArgs": [
         "--nolazy",
         "-r",
@@ -13,13 +15,17 @@
         "-r",
         "tsconfig-paths/register"
       ],
-      "sourceMaps": true,
+      "autoAttachChildProcesses": true,
       "envFile": "${workspaceFolder}/.env",
       "cwd": "${workspaceRoot}",
       "console": "integratedTerminal",
       "restart": true,
-      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
-      "skipFiles": ["<node_internals>/**"],
+      "outFiles": [
+        "${workspaceFolder}/dist/**/*.js"
+      ],
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
     },
   ]
 }
