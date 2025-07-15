@@ -3,7 +3,6 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 import { HashingService } from './services/hashing.service'
 import { TokenService } from './services/token.service'
 import { CookieService } from './services/cookie.service'
-import { CSRFService } from './services/csrf.service'
 import { JwtModule } from '@nestjs/jwt'
 import { AccessTokenGuard } from 'src/shared/guards/access-token.guard'
 import { PaymentAPIKeyGuard } from 'src/shared/guards/payment-api-key.guard'
@@ -16,13 +15,23 @@ import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { S3Service } from 'src/shared/services/s3.service'
 import { SharedPaymentRepository } from './repositories/shared-payment.repo'
 import { SharedWebsocketRepository } from './repositories/shared-websocket.repo'
+import path from 'path'
+import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
+import { ThrottlerModule } from '@nestjs/throttler'
+import { ScheduleModule } from '@nestjs/schedule'
+import { BullModule } from '@nestjs/bullmq'
+import { CacheModule } from '@nestjs/cache-manager'
+import { LoggerModule } from 'nestjs-pino'
+import pino from 'pino'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { createKeyv } from '@keyv/redis'
+import configs from 'src/shared/config'
 
 const sharedServices = [
   PrismaService,
   HashingService,
   TokenService,
   CookieService,
-  CSRFService,
   EmailService,
   SharedUserRepository,
   TwoFactorService,
@@ -44,6 +53,102 @@ const sharedServices = [
     }
   ],
   exports: sharedServices,
-  imports: [JwtModule]
+  imports: [
+    // Configuration - Global
+    ConfigModule.forRoot({
+      load: configs,
+      isGlobal: true,
+      cache: true,
+      envFilePath: ['.env'],
+      expandVariables: true
+    }),
+
+    LoggerModule.forRoot({
+      pinoHttp: {
+        serializers: {
+          req(req: any) {
+            return {
+              method: req.method,
+              url: req.url,
+              query: req.query,
+              params: req.params
+            }
+          },
+          res(res: any) {
+            return {
+              statusCode: res.statusCode
+            }
+          }
+        },
+        stream: pino.destination({
+          dest: path.resolve('logs/app.log'),
+          sync: false, // Asynchronous logging
+          mkdir: true // Create the directory if it doesn't exist
+        })
+      }
+    }),
+
+    // Configuration - Global
+    ConfigModule.forRoot({
+      load: configs,
+      isGlobal: true,
+      cache: true,
+      envFilePath: ['.env'],
+      expandVariables: true
+    }),
+
+    // Schedule Module - Cronjobs
+    ScheduleModule.forRoot(),
+
+    // Internationalization - I18n
+    I18nModule.forRoot({
+      fallbackLanguage: 'en',
+      loaderOptions: {
+        path: path.resolve('src/shared/languages/'),
+        watch: true
+      },
+      resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
+      typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts')
+    }),
+
+    CacheModule.registerAsync({
+      isGlobal: true,
+      useFactory: () => {
+        return {
+          stores: [createKeyv(process.env.REDIS_URL)]
+        }
+      }
+    }),
+
+    // Queue Management - Bull/Redis
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        connection: {
+          host: configService.get('redis.host'),
+          port: Number(configService.get('redis.port')),
+          password: configService.get('redis.password')
+        }
+      }),
+      inject: [ConfigService]
+    }),
+
+    // Rate Limiting - Throttler
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          name: 'short',
+          ttl: 60000, // 1 minute
+          limit: 5
+        },
+        {
+          name: 'long',
+          ttl: 120000, // 2 minutes
+          limit: 7
+        }
+      ]
+    }),
+    JwtModule
+  ]
 })
 export class SharedModule {}

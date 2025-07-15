@@ -3,10 +3,9 @@ import { AuthService } from './auth.service'
 import { AuthController } from './auth.controller'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { GoogleService } from 'src/routes/auth/google.service'
-import { CookieController } from './cookie.controller'
 
 @Module({
   providers: [AuthService, AuthRepository, GoogleService],
-  controllers: [AuthController, CookieController]
+  controllers: [AuthController]
 })
 export class AuthModule {}

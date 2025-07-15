@@ -11,10 +11,10 @@ echo "✅ Deployed! Checking status..."
 
 # Wait a bit and show status
 sleep 5
-kubectl get pods -n nestjs-starter
+kubectl get pods -n shopsifu
 
 echo ""
 echo "📋 To access your app:"
-echo "kubectl port-forward service/nestjs-starter-service 3001:80 -n nestjs-starter"
+echo "kubectl port-forward service/shopsifu-service 3001:80 -n shopsifu"
 echo ""
 echo "Then visit: http://localhost:3001"

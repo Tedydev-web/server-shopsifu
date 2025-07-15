@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
-import envConfig from 'src/shared/config'
 import {
   AccessTokenPayload,
   AccessTokenPayloadCreate,
@@ -11,14 +11,17 @@ import { v4 as uuidv4 } from 'uuid'
 
 @Injectable()
 export class TokenService {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService
+  ) {}
 
   signAccessToken(payload: AccessTokenPayloadCreate): string {
     return this.jwtService.sign(
       { ...payload, uuid: uuidv4() },
       {
-        secret: process.env.AUTH_ACCESS_TOKEN_SECRET,
-        expiresIn: process.env.AUTH_ACCESS_TOKEN_EXP,
+        secret: this.configService.get('auth.accessToken.secret'),
+        expiresIn: this.configService.get('auth.accessToken.tokenExp'),
         algorithm: 'HS256'
       }
     )
@@ -28,8 +31,8 @@ export class TokenService {
     return this.jwtService.sign(
       { ...payload, uuid: uuidv4() },
       {
-        secret: process.env.AUTH_REFRESH_TOKEN_SECRET,
-        expiresIn: process.env.AUTH_REFRESH_TOKEN_EXP,
+        secret: this.configService.get('auth.refreshToken.secret'),
+        expiresIn: this.configService.get('auth.refreshToken.tokenExp'),
         algorithm: 'HS256'
       }
     )
@@ -37,13 +40,13 @@ export class TokenService {
 
   verifyAccessToken(token: string): Promise<AccessTokenPayload> {
     return this.jwtService.verifyAsync(token, {
-      secret: process.env.AUTH_ACCESS_TOKEN_SECRET
+      secret: this.configService.get('auth.accessToken.secret')
     })
   }
 
   verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
     return this.jwtService.verifyAsync(token, {
-      secret: process.env.AUTH_REFRESH_TOKEN_SECRET
+      secret: this.configService.get('auth.refreshToken.secret')
     })
   }
 

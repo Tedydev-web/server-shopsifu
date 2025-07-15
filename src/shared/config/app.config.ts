@@ -6,13 +6,13 @@ import { APP_ENVIRONMENT } from 'src/shared/enums/app.enum'
 
 export default registerAs('app', (): Record<string, any> => {
   const corsOrigins = process.env.APP_CORS_ORIGINS
-    ? process.env.APP_CORS_ORIGINS.split(',').map((origin) => origin.trim())
+    ? process.env.APP_CORS_ORIGINS.split(',').map((origin: string): string => origin.trim())
     : ['*']
 
   const corsConfig: CorsOptions = {
     origin: corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'x-csrf-token', 'X-CSRF-Token'],
     credentials: true,
     exposedHeaders: ['Content-Range', 'X-Content-Range']
   }
@@ -30,7 +30,7 @@ export default registerAs('app', (): Record<string, any> => {
 
   return {
     env: process.env.NODE_ENV ?? APP_ENVIRONMENT.LOCAL,
-    name: process.env.APP_NAME ?? 'nestjs-starter',
+    name: process.env.APP_NAME ?? 'shopsifu',
 
     versioning: {
       enable: process.env.HTTP_VERSIONING_ENABLE === 'true',

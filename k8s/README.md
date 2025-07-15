@@ -11,7 +11,7 @@ Simple 2-file Kubernetes setup for NestJS Starter.
 
 1. **Update the Docker image** in `deployment.yaml`:
    ```yaml
-   image: your-registry/nestjs-starter:latest
+   image: your-registry/shopsifu:latest
    ```
 
 2. **Deploy**:
@@ -22,7 +22,7 @@ Simple 2-file Kubernetes setup for NestJS Starter.
 
 3. **Access the app**:
    ```bash
-   kubectl port-forward service/nestjs-starter-service 3001:80 -n nestjs-starter
+   kubectl port-forward service/shopsifu-service 3001:80 -n shopsifu
    ```
 
    Visit: http://localhost:3001
@@ -39,13 +39,13 @@ Simple 2-file Kubernetes setup for NestJS Starter.
 
 ```bash
 # Check status
-kubectl get pods -n nestjs-starter
+kubectl get pods -n shopsifu
 
 # View logs
-kubectl logs -f deployment/nestjs-app -n nestjs-starter
+kubectl logs -f deployment/nestjs-app -n shopsifu
 
 # Delete everything
-kubectl delete namespace nestjs-starter
+kubectl delete namespace shopsifu
 ```
 
 That's it! 🎉
