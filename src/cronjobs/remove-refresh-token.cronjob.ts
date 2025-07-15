@@ -12,9 +12,9 @@ export class RemoveRefreshTokenCronjob {
     const refreshTokens = await this.prismaService.refreshToken.deleteMany({
       where: {
         expiresAt: {
-          lt: new Date(),
-        },
-      },
+          lt: new Date()
+        }
+      }
     })
     this.logger.debug(`Removed ${refreshTokens.count} expired refresh tokens.`)
   }

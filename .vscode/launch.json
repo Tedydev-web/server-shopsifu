@@ -16,7 +16,6 @@
         "tsconfig-paths/register"
       ],
       "autoAttachChildProcesses": true,
-      "envFile": "${workspaceFolder}/.env",
       "cwd": "${workspaceRoot}",
       "console": "integratedTerminal",
       "restart": true,

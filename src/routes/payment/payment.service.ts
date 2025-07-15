@@ -13,13 +13,13 @@ export class PaymentService {
   server: Server
   constructor(
     private readonly paymentRepo: PaymentRepo,
-    private readonly sharedWebsocketRepository: SharedWebsocketRepository,
+    private readonly sharedWebsocketRepository: SharedWebsocketRepository
   ) {}
 
   async receiver(body: WebhookPaymentBodyType) {
     const userId = await this.paymentRepo.receiver(body)
     this.server.to(generateRoomUserId(userId)).emit('payment', {
-      status: 'success',
+      status: 'success'
     })
     // try {
     //   const websockets = await this.sharedWebsocketRepository.findMany(userId)
@@ -32,7 +32,7 @@ export class PaymentService {
     //   console.log(error)
     // }
     return {
-      message: 'Payment received successfully',
+      message: 'Payment received successfully'
     }
   }
 }

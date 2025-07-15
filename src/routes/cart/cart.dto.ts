@@ -5,7 +5,7 @@ import {
   DeleteCartBodySchema,
   GetCartItemParamsSchema,
   GetCartResSchema,
-  UpdateCartItemBodySchema,
+  UpdateCartItemBodySchema
 } from 'src/routes/cart/cart.model'
 
 export class CartItemDTO extends createZodDto(CartItemSchema) {}

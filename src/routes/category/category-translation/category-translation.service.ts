@@ -5,7 +5,7 @@ import { CategoryTranslationRepo } from 'src/routes/category/category-translatio
 import { CategoryTranslationAlreadyExistsException } from 'src/routes/category/category-translation/category-translation.error'
 import {
   CreateCategoryTranslationBodyType,
-  UpdateCategoryTranslationBodyType,
+  UpdateCategoryTranslationBodyType
 } from 'src/routes/category/category-translation/category-translation.model'
 
 @Injectable()
@@ -24,7 +24,7 @@ export class CategoryTranslationService {
     try {
       return await this.categoryTranslationRepo.create({
         createdById,
-        data,
+        data
       })
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -37,7 +37,7 @@ export class CategoryTranslationService {
   async update({
     id,
     data,
-    updatedById,
+    updatedById
   }: {
     id: number
     data: UpdateCategoryTranslationBodyType
@@ -47,7 +47,7 @@ export class CategoryTranslationService {
       const category = await this.categoryTranslationRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
       return category
     } catch (error) {
@@ -65,10 +65,10 @@ export class CategoryTranslationService {
     try {
       await this.categoryTranslationRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

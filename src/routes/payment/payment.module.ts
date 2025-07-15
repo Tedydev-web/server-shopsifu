@@ -9,10 +9,10 @@ import { PAYMENT_QUEUE_NAME } from 'src/shared/constants/queue.constant'
 @Module({
   imports: [
     BullModule.registerQueue({
-      name: PAYMENT_QUEUE_NAME,
-    }),
+      name: PAYMENT_QUEUE_NAME
+    })
   ],
   providers: [PaymentService, PaymentRepo, PaymentProducer],
-  controllers: [PaymentController],
+  controllers: [PaymentController]
 })
 export class PaymentModule {}

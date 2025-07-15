@@ -3,7 +3,7 @@ import {
   GetCategoryTranslationDetailResType,
   CreateCategoryTranslationBodyType,
   CategoryTranslationType,
-  UpdateCategoryTranslationBodyType,
+  UpdateCategoryTranslationBodyType
 } from 'src/routes/category/category-translation/category-translation.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
@@ -15,14 +15,14 @@ export class CategoryTranslationRepo {
     return this.prismaService.categoryTranslation.findUnique({
       where: {
         id,
-        deletedAt: null,
-      },
+        deletedAt: null
+      }
     })
   }
 
   create({
     createdById,
-    data,
+    data
   }: {
     createdById: number | null
     data: CreateCategoryTranslationBodyType
@@ -30,15 +30,15 @@ export class CategoryTranslationRepo {
     return this.prismaService.categoryTranslation.create({
       data: {
         ...data,
-        createdById,
-      },
+        createdById
+      }
     })
   }
 
   async update({
     id,
     updatedById,
-    data,
+    data
   }: {
     id: number
     updatedById: number
@@ -47,40 +47,40 @@ export class CategoryTranslationRepo {
     return this.prismaService.categoryTranslation.update({
       where: {
         id,
-        deletedAt: null,
+        deletedAt: null
       },
       data: {
         ...data,
-        updatedById,
-      },
+        updatedById
+      }
     })
   }
 
   delete(
     {
       id,
-      deletedById,
+      deletedById
     }: {
       id: number
       deletedById: number
     },
-    isHard?: boolean,
+    isHard?: boolean
   ): Promise<CategoryTranslationType> {
     return isHard
       ? this.prismaService.categoryTranslation.delete({
           where: {
-            id,
-          },
+            id
+          }
         })
       : this.prismaService.categoryTranslation.update({
           where: {
             id,
-            deletedAt: null,
+            deletedAt: null
           },
           data: {
             deletedAt: new Date(),
-            deletedById,
-          },
+            deletedById
+          }
         })
   }
 }

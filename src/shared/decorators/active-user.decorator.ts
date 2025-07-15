@@ -7,5 +7,5 @@ export const ActiveUser = createParamDecorator(
     const request = context.switchToHttp().getRequest()
     const user: AccessTokenPayload | undefined = request[REQUEST_USER_KEY]
     return field ? user?.[field] : user
-  },
+  }
 )

@@ -3,7 +3,7 @@ import {
   CreateBrandTranslationBodySchema,
   GetBrandTranslationDetailResSchema,
   GetBrandTranslationParamsSchema,
-  UpdateBrandTranslationBodySchema,
+  UpdateBrandTranslationBodySchema
 } from 'src/routes/brand/brand-translation/brand-translation.model'
 
 export class GetBrandTranslationDetailResDTO extends createZodDto(GetBrandTranslationDetailResSchema) {}

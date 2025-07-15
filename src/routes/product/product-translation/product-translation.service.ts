@@ -5,7 +5,7 @@ import { ProductTranslationRepo } from 'src/routes/product/product-translation/p
 import { ProductTranslationAlreadyExistsException } from 'src/routes/product/product-translation/product-translation.error'
 import {
   CreateProductTranslationBodyType,
-  UpdateProductTranslationBodyType,
+  UpdateProductTranslationBodyType
 } from 'src/routes/product/product-translation/product-translation.model'
 
 @Injectable()
@@ -24,7 +24,7 @@ export class ProductTranslationService {
     try {
       return await this.productTranslationRepo.create({
         createdById,
-        data,
+        data
       })
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -39,7 +39,7 @@ export class ProductTranslationService {
       const product = await this.productTranslationRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
       return product
     } catch (error) {
@@ -57,10 +57,10 @@ export class ProductTranslationService {
     try {
       await this.productTranslationRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

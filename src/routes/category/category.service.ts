@@ -12,14 +12,14 @@ export class CategoryService {
   findAll(parentCategoryId?: number | null) {
     return this.categoryRepo.findAll({
       parentCategoryId,
-      languageId: I18nContext.current()?.lang as string,
+      languageId: I18nContext.current()?.lang as string
     })
   }
 
   async findById(id: number) {
     const category = await this.categoryRepo.findById({
       id,
-      languageId: I18nContext.current()?.lang as string,
+      languageId: I18nContext.current()?.lang as string
     })
     if (!category) {
       throw NotFoundRecordException
@@ -30,7 +30,7 @@ export class CategoryService {
   create({ data, createdById }: { data: CreateCategoryBodyType; createdById: number }) {
     return this.categoryRepo.create({
       createdById,
-      data,
+      data
     })
   }
 
@@ -39,7 +39,7 @@ export class CategoryService {
       const category = await this.categoryRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
       return category
     } catch (error) {
@@ -54,10 +54,10 @@ export class CategoryService {
     try {
       await this.categoryRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

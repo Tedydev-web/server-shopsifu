@@ -10,15 +10,15 @@ export class SharedPaymentRepository {
   async cancelPaymentAndOrder(paymentId: number) {
     const payment = await this.prismaService.payment.findUnique({
       where: {
-        id: paymentId,
+        id: paymentId
       },
       include: {
         orders: {
           include: {
-            items: true,
-          },
-        },
-      },
+            items: true
+          }
+        }
+      }
     })
     if (!payment) {
       throw Error('Payment not found')
@@ -29,14 +29,14 @@ export class SharedPaymentRepository {
       const updateOrder$ = tx.order.updateMany({
         where: {
           id: {
-            in: orders.map((order) => order.id),
+            in: orders.map((order) => order.id)
           },
           status: OrderStatus.PENDING_PAYMENT,
-          deletedAt: null,
+          deletedAt: null
         },
         data: {
-          status: OrderStatus.CANCELLED,
-        },
+          status: OrderStatus.CANCELLED
+        }
       })
 
       const updateSkus$ = Promise.all(
@@ -45,24 +45,24 @@ export class SharedPaymentRepository {
           .map((item) =>
             tx.sKU.update({
               where: {
-                id: item.skuId as number,
+                id: item.skuId as number
               },
               data: {
                 stock: {
-                  increment: item.quantity,
-                },
-              },
-            }),
-          ),
+                  increment: item.quantity
+                }
+              }
+            })
+          )
       )
 
       const updatePayment$ = tx.payment.update({
         where: {
-          id: paymentId,
+          id: paymentId
         },
         data: {
-          status: PaymentStatus.FAILED,
-        },
+          status: PaymentStatus.FAILED
+        }
       })
       return await Promise.all([updateOrder$, updateSkus$, updatePayment$])
     })

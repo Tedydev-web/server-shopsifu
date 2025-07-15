@@ -13,7 +13,7 @@ export class LanguageService {
     const data = await this.languageRepo.findAll()
     return {
       data,
-      totalItems: data.length,
+      totalItems: data.length
     }
   }
 
@@ -29,7 +29,7 @@ export class LanguageService {
     try {
       return await this.languageRepo.create({
         createdById,
-        data,
+        data
       })
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -44,7 +44,7 @@ export class LanguageService {
       const language = await this.languageRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
       return language
     } catch (error) {
@@ -60,7 +60,7 @@ export class LanguageService {
       // hard delete
       await this.languageRepo.delete(id, true)
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

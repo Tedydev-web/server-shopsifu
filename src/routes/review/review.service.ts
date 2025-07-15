@@ -19,7 +19,7 @@ export class ReviewService {
     return this.reviewRepository.update({
       userId,
       reviewId,
-      body,
+      body
     })
   }
 }

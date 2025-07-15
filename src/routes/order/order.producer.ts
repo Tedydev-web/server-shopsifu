@@ -12,14 +12,14 @@ export class OrderProducer {
     return this.paymentQueue.add(
       CANCEL_PAYMENT_JOB_NAME,
       {
-        paymentId,
+        paymentId
       },
       {
         delay: 1000 * 60 * 60 * 24, // delay 24h
         jobId: generateCancelPaymentJobId(paymentId),
         removeOnComplete: true,
-        removeOnFail: true,
-      },
+        removeOnFail: true
+      }
     )
   }
 }

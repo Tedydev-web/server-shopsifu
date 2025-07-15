@@ -7,5 +7,5 @@ export const ActiveRolePermissions = createParamDecorator(
     const request = context.switchToHttp().getRequest()
     const rolePermissions: RolePermissionsType | undefined = request[REQUEST_ROLE_PERMISSIONS]
     return field ? rolePermissions?.[field] : rolePermissions
-  },
+  }
 )

@@ -9,12 +9,12 @@ import { isUniqueConstraintPrismaError } from 'src/shared/helpers'
 export class ProfileService {
   constructor(
     private readonly sharedUserRepository: SharedUserRepository,
-    private readonly hashingService: HashingService,
+    private readonly hashingService: HashingService
   ) {}
 
   async getProfile(userId: number) {
     const user = await this.sharedUserRepository.findUniqueIncludeRolePermissions({
-      id: userId,
+      id: userId
     })
 
     if (!user) {
@@ -30,8 +30,8 @@ export class ProfileService {
         { id: userId },
         {
           ...body,
-          updatedById: userId,
-        },
+          updatedById: userId
+        }
       )
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -45,7 +45,7 @@ export class ProfileService {
     try {
       const { password, newPassword } = body
       const user = await this.sharedUserRepository.findUnique({
-        id: userId,
+        id: userId
       })
       if (!user) {
         throw NotFoundRecordException
@@ -60,11 +60,11 @@ export class ProfileService {
         { id: userId },
         {
           password: hashedPassword,
-          updatedById: userId,
-        },
+          updatedById: userId
+        }
       )
       return {
-        message: 'Password changed successfully',
+        message: 'Password changed successfully'
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {

@@ -21,7 +21,7 @@ export class ProductService {
       name: props.query.name,
       createdById: props.query.createdById,
       orderBy: props.query.orderBy,
-      sortBy: props.query.sortBy,
+      sortBy: props.query.sortBy
     })
     return data
   }
@@ -30,7 +30,7 @@ export class ProductService {
     const product = await this.productRepo.getDetail({
       productId: props.productId,
       languageId: I18nContext.current()?.lang as string,
-      isPublic: true,
+      isPublic: true
     })
     if (!product) {
       throw NotFoundRecordException

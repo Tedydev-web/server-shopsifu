@@ -13,7 +13,7 @@ export class CartService {
       userId,
       languageId: I18nContext.current()?.lang as string,
       page: query.page,
-      limit: query.limit,
+      limit: query.limit
     })
   }
 
@@ -25,14 +25,14 @@ export class CartService {
     return this.cartRepo.update({
       userId,
       body,
-      cartItemId,
+      cartItemId
     })
   }
 
   async deleteCart(userId: number, body: DeleteCartBodyType) {
     const { count } = await this.cartRepo.delete(userId, body)
     return {
-      message: `${count} item(s) deleted from cart`,
+      message: `${count} item(s) deleted from cart`
     }
   }
 }

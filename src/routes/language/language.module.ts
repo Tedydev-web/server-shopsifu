@@ -5,6 +5,6 @@ import { LanguageService } from 'src/routes/language/language.service'
 
 @Module({
   providers: [LanguageService, LanguageRepo],
-  controllers: [LanguageController],
+  controllers: [LanguageController]
 })
 export class LanguageModule {}

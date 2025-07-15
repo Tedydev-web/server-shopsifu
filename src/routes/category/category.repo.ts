@@ -4,7 +4,7 @@ import {
   GetAllCategoriesResType,
   UpdateCategoryBodyType,
   CategoryType,
-  CategoryIncludeTranslationType,
+  CategoryIncludeTranslationType
 } from 'src/routes/category/category.model'
 import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
@@ -15,7 +15,7 @@ export class CategoryRepo {
 
   async findAll({
     parentCategoryId,
-    languageId,
+    languageId
   }: {
     parentCategoryId?: number | null
     languageId: string
@@ -23,21 +23,21 @@ export class CategoryRepo {
     const categories = await this.prismaService.category.findMany({
       where: {
         deletedAt: null,
-        parentCategoryId: parentCategoryId ?? null,
+        parentCategoryId: parentCategoryId ?? null
       },
       include: {
         categoryTranslations: {
-          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId },
-        },
+          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId }
+        }
       },
       orderBy: {
-        createdAt: 'desc',
-      },
+        createdAt: 'desc'
+      }
     })
 
     return {
       data: categories,
-      totalItems: categories.length,
+      totalItems: categories.length
     }
   }
 
@@ -45,19 +45,19 @@ export class CategoryRepo {
     return this.prismaService.category.findUnique({
       where: {
         id,
-        deletedAt: null,
+        deletedAt: null
       },
       include: {
         categoryTranslations: {
-          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId },
-        },
-      },
+          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId }
+        }
+      }
     })
   }
 
   create({
     createdById,
-    data,
+    data
   }: {
     createdById: number | null
     data: CreateCategoryBodyType
@@ -65,20 +65,20 @@ export class CategoryRepo {
     return this.prismaService.category.create({
       data: {
         ...data,
-        createdById,
+        createdById
       },
       include: {
         categoryTranslations: {
-          where: { deletedAt: null },
-        },
-      },
+          where: { deletedAt: null }
+        }
+      }
     })
   }
 
   async update({
     id,
     updatedById,
-    data,
+    data
   }: {
     id: number
     updatedById: number
@@ -87,45 +87,45 @@ export class CategoryRepo {
     return this.prismaService.category.update({
       where: {
         id,
-        deletedAt: null,
+        deletedAt: null
       },
       data: {
         ...data,
-        updatedById,
+        updatedById
       },
       include: {
         categoryTranslations: {
-          where: { deletedAt: null },
-        },
-      },
+          where: { deletedAt: null }
+        }
+      }
     })
   }
 
   delete(
     {
       id,
-      deletedById,
+      deletedById
     }: {
       id: number
       deletedById: number
     },
-    isHard?: boolean,
+    isHard?: boolean
   ): Promise<CategoryType> {
     return isHard
       ? this.prismaService.category.delete({
           where: {
-            id,
-          },
+            id
+          }
         })
       : this.prismaService.category.update({
           where: {
             id,
-            deletedAt: null,
+            deletedAt: null
           },
           data: {
             deletedAt: new Date(),
-            deletedById,
-          },
+            deletedById
+          }
         })
   }
 }

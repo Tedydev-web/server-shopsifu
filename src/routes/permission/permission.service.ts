@@ -3,7 +3,7 @@ import { PermissionRepo } from 'src/routes/permission/permission.repo'
 import {
   CreatePermissionBodyType,
   GetPermissionsQueryType,
-  UpdatePermissionBodyType,
+  UpdatePermissionBodyType
 } from 'src/routes/permission/permission.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
@@ -15,7 +15,7 @@ import { Cache } from 'cache-manager'
 export class PermissionService {
   constructor(
     private permissionRepo: PermissionRepo,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {}
 
   async list(pagination: GetPermissionsQueryType) {
@@ -35,7 +35,7 @@ export class PermissionService {
     try {
       return await this.permissionRepo.create({
         createdById,
-        data,
+        data
       })
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -50,7 +50,7 @@ export class PermissionService {
       const permission = await this.permissionRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
       const { roles } = permission
       await this.deleteCachedRole(roles)
@@ -70,12 +70,12 @@ export class PermissionService {
     try {
       const permission = await this.permissionRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       const { roles } = permission
       await this.deleteCachedRole(roles)
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
@@ -90,7 +90,7 @@ export class PermissionService {
       roles.map((role) => {
         const cacheKey = `role:${role.id}`
         return this.cacheManager.del(cacheKey)
-      }),
+      })
     )
   }
 }

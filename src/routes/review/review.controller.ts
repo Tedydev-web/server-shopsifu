@@ -9,7 +9,7 @@ import {
   GetReviewsDTO,
   GetReviewsParamsDTO,
   UpdateReviewBodyDTO,
-  UpdateReviewResDTO,
+  UpdateReviewResDTO
 } from 'src/routes/review/review.dto'
 import { PaginationQueryDTO } from 'src/shared/dtos/request.dto'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
@@ -36,12 +36,12 @@ export class ReviewController {
   changePassword(
     @Body() body: UpdateReviewBodyDTO,
     @ActiveUser('userId') userId: number,
-    @Param() params: GetReviewDetailParamsDTO,
+    @Param() params: GetReviewDetailParamsDTO
   ) {
     return this.reviewService.update({
       userId,
       body,
-      reviewId: params.reviewId,
+      reviewId: params.reviewId
     })
   }
 }

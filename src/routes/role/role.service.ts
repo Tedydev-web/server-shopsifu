@@ -12,7 +12,7 @@ import { Cache } from 'cache-manager'
 export class RoleService {
   constructor(
     private roleRepo: RoleRepo,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {}
 
   async list(pagination: GetRolesQueryType) {
@@ -32,7 +32,7 @@ export class RoleService {
     try {
       const role = await this.roleRepo.create({
         createdById,
-        data,
+        data
       })
       return role
     } catch (error) {
@@ -64,7 +64,7 @@ export class RoleService {
       const updatedRole = await this.roleRepo.update({
         id,
         updatedById,
-        data,
+        data
       })
       await this.cacheManager.del(`role:${updatedRole.id}`) // Xóa cache của role đã cập nhật
       return updatedRole
@@ -84,11 +84,11 @@ export class RoleService {
       await this.verifyRole(id)
       await this.roleRepo.delete({
         id,
-        deletedById,
+        deletedById
       })
       await this.cacheManager.del(`role:${id}`) // Xóa cache của role đã xóa
       return {
-        message: 'Delete successfully',
+        message: 'Delete successfully'
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

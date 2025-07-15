@@ -9,10 +9,10 @@ import { OrderProducer } from 'src/routes/order/order.producer'
 @Module({
   imports: [
     BullModule.registerQueue({
-      name: PAYMENT_QUEUE_NAME,
-    }),
+      name: PAYMENT_QUEUE_NAME
+    })
   ],
   providers: [OrderService, OrderRepo, OrderProducer],
-  controllers: [OrderController],
+  controllers: [OrderController]
 })
 export class OrderModule {}

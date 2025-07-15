@@ -5,16 +5,15 @@ import { ZodError } from 'zod'
 const CustomZodValidationPipe = createZodValidationPipe({
   // provide custom validation exception factory
   createValidationException: (error: ZodError) => {
-    console.log()
     return new UnprocessableEntityException(
-      error.errors.map((error) => {
+      error.issues.map((error) => {
         return {
           ...error,
-          path: error.path.join('.'),
+          path: error.path.join('.')
         }
-      }),
+      })
     )
-  },
+  }
 })
 
 export default CustomZodValidationPipe

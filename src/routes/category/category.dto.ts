@@ -5,7 +5,7 @@ import {
   GetCategoryParamsSchema,
   GetAllCategoriesResSchema,
   UpdateCategoryBodySchema,
-  GetAllCategoriesQuerySchema,
+  GetAllCategoriesQuerySchema
 } from 'src/routes/category/category.model'
 
 export class GetAllCategoriesResDTO extends createZodDto(GetAllCategoriesResSchema) {}
