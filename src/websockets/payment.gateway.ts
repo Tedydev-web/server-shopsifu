@@ -1,13 +1,5 @@
-import {
-  MessageBody,
-  OnGatewayConnection,
-  OnGatewayDisconnect,
-  OnGatewayInit,
-  SubscribeMessage,
-  WebSocketGateway,
-  WebSocketServer
-} from '@nestjs/websockets'
-import { Server, Socket } from 'socket.io'
+import { MessageBody, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
+import { Server } from 'socket.io'
 
 @WebSocketGateway({ namespace: 'payment' })
 export class PaymentGateway {

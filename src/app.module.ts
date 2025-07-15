@@ -25,6 +25,7 @@ import { WebsocketModule } from 'src/websockets/websocket.module'
 import { ThrottlerBehindProxyGuard } from 'src/shared/guards/throttler-behind-proxy.guard'
 import { ReviewModule } from 'src/routes/review/review.module'
 import { RemoveRefreshTokenCronjob } from 'src/cronjobs/remove-refresh-token.cronjob'
+import { TransformInterceptor } from 'src/shared/interceptor/transform.interceptor'
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { RemoveRefreshTokenCronjob } from 'src/cronjobs/remove-refresh-token.cro
       provide: APP_PIPE,
       useClass: CustomZodValidationPipe
     },
+    { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
     {
       provide: APP_FILTER,

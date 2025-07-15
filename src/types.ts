@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-namespace */
-
 import { ProductTranslationType } from 'src/shared/models/shared-product-translation.model'
 import { VariantsType } from 'src/shared/models/shared-product.model'
 

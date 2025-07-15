@@ -14,21 +14,21 @@ export class MediaService {
           .uploadedFile({
             filename: 'images/' + file.filename,
             filepath: file.path,
-            contentType: file.mimetype
+            contentType: file.mimetype,
           })
           .then((res) => {
             return { url: res.Location }
           })
-      })
+      }),
     )
     // Xóa file sau khi upload lên S3
     await Promise.all(
       files.map((file) => {
         return unlink(file.path)
-      })
+      }),
     )
     return {
-      data: result
+      data: result,
     }
   }
 
@@ -38,7 +38,7 @@ export class MediaService {
     const url = presignedUrl.split('?')[0]
     return {
       presignedUrl,
-      url
+      url,
     }
   }
 }

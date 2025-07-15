@@ -2,19 +2,24 @@ import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nes
 import { Observable } from 'rxjs'
 import { map } from 'rxjs/operators'
 
-export interface Response<T> {
-  data: T
-}
-
 @Injectable()
-export class TransformInterceptor<T> implements NestInterceptor<T, Response<T>> {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<Response<T>> {
+export class TransformInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     return next.handle().pipe(
       map((data) => {
         const ctx = context.switchToHttp()
         const response = ctx.getResponse()
         const statusCode = response.statusCode
-        return { data, statusCode }
+        const message = response.locals?.message || 'Thành công'
+        const timestamp = new Date().toISOString()
+        // Nếu là array thì trả về items, nếu là object thì spread ra ngoài, nếu là primitive thì bọc trong data
+        if (Array.isArray(data)) {
+          return { statusCode, message, timestamp, items: data }
+        }
+        if (typeof data === 'object' && data !== null) {
+          return { statusCode, message, timestamp, ...data }
+        }
+        return { statusCode, message, timestamp, data }
       })
     )
   }

@@ -6,7 +6,6 @@ import { SharedWebsocketRepository } from 'src/shared/repositories/shared-websoc
 import { TokenService } from 'src/shared/services/token.service'
 import { createAdapter } from '@socket.io/redis-adapter'
 import { createClient } from 'redis'
-import envConfig from 'src/shared/config'
 
 const namespaces = ['/', 'payment', 'chat']
 export class WebsocketAdapter extends IoAdapter {

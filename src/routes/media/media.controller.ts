@@ -38,7 +38,7 @@ export class MediaController {
       new ParseFilePipeWithUnlink({
         validators: [
           new MaxFileSizeValidator({ maxSize: 1 * 1024 * 1024 }), // 5MB
-          new FileTypeValidator({ fileType: /(jpg|jpeg|png|webp)$/ })
+          new FileTypeValidator({ fileType: /(jpg|jpeg|png|webp)$/, skipMagicNumbersValidation: true })
         ]
       })
     )

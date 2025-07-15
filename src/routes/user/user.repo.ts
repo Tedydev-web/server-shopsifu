@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { CreateUserBodyType, GetUsersQueryType, GetUsersResType, UpdateUserBodyType } from 'src/routes/user/user.model'
+import { CreateUserBodyType, GetUsersQueryType, GetUsersResType } from 'src/routes/user/user.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { UserType } from 'src/shared/models/shared-user.model'
 
