@@ -46,6 +46,8 @@ COPY --from=builder --chown=nestjs:nodejs /app/yarn.lock ./
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /app/prisma ./prisma
 
+RUN chown -R nestjs:nodejs /app
+
 # Switch to non-root user
 USER nestjs
 
