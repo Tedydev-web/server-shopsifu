@@ -16,12 +16,7 @@ export class TransformInterceptor implements NestInterceptor {
           const { message, ...rest } = data
           data = rest
         }
-        if (
-          typeof data === 'object' &&
-          data !== null &&
-          'data' in data &&
-          ('totalItems' in data || 'metadata' in data)
-        ) {
+        if (typeof data === 'object' && data !== null && 'data' in data) {
           return { statusCode, message, timestamp, ...data }
         }
         return { statusCode, message, timestamp, data }

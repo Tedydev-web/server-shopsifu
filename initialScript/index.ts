@@ -30,13 +30,13 @@ const main = async () => {
       name: RoleName.Admin
     }
   })
-  const hashedPassword = await hashingService.hash(process.env.ADMIN_PASSWORD)
+  const hashedPassword = await hashingService.hash(process.env.ADMIN_PASSWORD as string)
   const adminUser = await prisma.user.create({
     data: {
-      email: process.env.ADMIN_EMAIL,
+      email: process.env.ADMIN_EMAIL as string,
       password: hashedPassword,
-      name: process.env.ADMIN_NAME,
-      phoneNumber: process.env.ADMIN_PHONE_NUMBER,
+      name: process.env.ADMIN_NAME as string,
+      phoneNumber: process.env.ADMIN_PHONE_NUMBER as string,
       roleId: adminRole.id
     }
   })
