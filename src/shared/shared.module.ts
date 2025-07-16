@@ -106,19 +106,17 @@ const sharedServices = [
     }),
 
     // Rate Limiting - Throttler
-    ThrottlerModule.forRoot({
-      throttlers: [
-        {
-          name: 'short',
-          ttl: 60000, // 1 minute
-          limit: 5
-        },
-        {
-          name: 'long',
-          ttl: 120000, // 2 minutes
-          limit: 7
-        }
-      ]
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: configService.get('app.throttle.ttl'),
+            limit: configService.get('app.throttle.limit')
+          }
+        ]
+      }),
+      inject: [ConfigService]
     }),
     JwtModule
   ]
