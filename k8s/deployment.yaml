@@ -111,17 +111,17 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nestjs-app
+  name: shopsifu-app
   namespace: shopsifu
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: nestjs-app
+      app: shopsifu-app
   template:
     metadata:
       labels:
-        app: nestjs-app
+        app: shopsifu-app
     spec:
       containers:
         - name: app
@@ -151,7 +151,7 @@ metadata:
   namespace: shopsifu
 spec:
   selector:
-    app: nestjs-app
+    app: shopsifu-app
   ports:
     - port: 80
       targetPort: 3000

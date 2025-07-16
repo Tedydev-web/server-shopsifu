@@ -42,7 +42,7 @@ Simple 2-file Kubernetes setup for NestJS Starter.
 kubectl get pods -n shopsifu
 
 # View logs
-kubectl logs -f deployment/nestjs-app -n shopsifu
+kubectl logs -f deployment/shopsifu-app -n shopsifu
 
 # Delete everything
 kubectl delete namespace shopsifu

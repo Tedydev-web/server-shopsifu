@@ -4,7 +4,8 @@
 **/dist
 **/.cursor
 **/.cursorignore
-**/.env
+*.env
+*.env.docker
 **/draft
 # Logs
 **/logs
