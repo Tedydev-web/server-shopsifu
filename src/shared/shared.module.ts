@@ -17,7 +17,7 @@ import { SharedPaymentRepository } from './repositories/shared-payment.repo'
 import { SharedWebsocketRepository } from './repositories/shared-websocket.repo'
 import path from 'path'
 import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
-import { ThrottlerModule } from '@nestjs/throttler'
+import { Resolvable, ThrottlerGuard, ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler'
 import { ScheduleModule } from '@nestjs/schedule'
 import { BullModule } from '@nestjs/bullmq'
 import { CacheModule } from '@nestjs/cache-manager'
@@ -108,11 +108,11 @@ const sharedServices = [
     // Rate Limiting - Throttler
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService): ThrottlerModuleOptions => ({
         throttlers: [
           {
-            ttl: configService.get('app.throttle.ttl'),
-            limit: configService.get('app.throttle.limit')
+            ttl: configService.get('app.throttle.ttl') as Resolvable<number>,
+            limit: configService.get('app.throttle.limit') as Resolvable<number>
           }
         ]
       }),
