@@ -10,9 +10,12 @@ export class TransformInterceptor implements NestInterceptor {
         const ctx = context.switchToHttp()
         const response = ctx.getResponse()
         const statusCode = response.statusCode
-        const message = response.locals?.message || 'Thành công'
+        const message = data?.message || 'Thành công'
         const timestamp = new Date().toISOString()
-        // Spread ra ngoài nếu có 'data' và 'totalItems' hoặc 'metadata' (trường hợp pagination)
+        if (data?.message) {
+          const { message, ...rest } = data
+          data = rest
+        }
         if (
           typeof data === 'object' &&
           data !== null &&
@@ -21,7 +24,6 @@ export class TransformInterceptor implements NestInterceptor {
         ) {
           return { statusCode, message, timestamp, ...data }
         }
-        // Còn lại tất cả đều bọc vào data (object, array, primitive)
         return { statusCode, message, timestamp, data }
       })
     )
