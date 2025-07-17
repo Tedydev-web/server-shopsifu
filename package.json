@@ -4,10 +4,7 @@
   "description": "Shopsifu",
   "author": "TedyDev",
   "private": true,
-  "engines": {
-    "node": ">=20.0.0",
-    "yarn": ">=1.22.0"
-  },
+
   "scripts": {
     "prebuild": "rimraf dist",
     "build": "nest build",
@@ -15,7 +12,9 @@
     "dev": "nest start --watch",
     "dev:docker": "git fetch origin develop && git reset --hard origin/develop && docker compose up -d --build",
     "debug": "nest start --debug --watch",
-    "update:package": "npx npm-check-updates -u && npm install",
+    "update:package": "npx npm-check-updates -u",
+    "clean:package": "rm -rf node_modules && sleep 5 && npm install",
+    "pull": "rm -rf src prisma initialScript node_modules && sleep 5 && git fetch origin develop && git reset --hard origin/develop && sleep 3 && npm install && npm run generate && npm run dev",
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "migrate:prod": "prisma migrate deploy",
