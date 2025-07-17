@@ -7,7 +7,10 @@ import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class ProductService {
-  constructor(private productRepo: ProductRepo, private i18n: I18nService<I18nTranslations>) {}
+  constructor(
+    private productRepo: ProductRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   async list(props: { query: GetProductsQueryType }) {
     const data = await this.productRepo.list({

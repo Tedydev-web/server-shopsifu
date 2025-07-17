@@ -4,37 +4,37 @@ import { UnauthorizedException, UnprocessableEntityException } from '@nestjs/com
 export const InvalidOTPException = new UnprocessableEntityException([
   {
     message: 'Error.InvalidOTP',
-    path: 'code',
-  },
+    path: 'code'
+  }
 ])
 
 export const OTPExpiredException = new UnprocessableEntityException([
   {
     message: 'Error.OTPExpired',
-    path: 'code',
-  },
+    path: 'code'
+  }
 ])
 
 export const FailedToSendOTPException = new UnprocessableEntityException([
   {
     message: 'Error.FailedToSendOTP',
-    path: 'code',
-  },
+    path: 'code'
+  }
 ])
 
 // Email related errors
 export const EmailAlreadyExistsException = new UnprocessableEntityException([
   {
     message: 'Error.EmailAlreadyExists',
-    path: 'email',
-  },
+    path: 'email'
+  }
 ])
 
 export const EmailNotFoundException = new UnprocessableEntityException([
   {
     message: 'Error.EmailNotFound',
-    path: 'email',
-  },
+    path: 'email'
+  }
 ])
 
 // Auth token related errors
@@ -47,31 +47,31 @@ export const GoogleUserInfoError = new Error('Error.FailedToGetGoogleUserInfo')
 export const InvalidTOTPException = new UnprocessableEntityException([
   {
     message: 'Error.InvalidTOTP',
-    path: 'totpCode',
-  },
+    path: 'totpCode'
+  }
 ])
 
 export const TOTPAlreadyEnabledException = new UnprocessableEntityException([
   {
     message: 'Error.TOTPAlreadyEnabled',
-    path: 'totpCode',
-  },
+    path: 'totpCode'
+  }
 ])
 
 export const TOTPNotEnabledException = new UnprocessableEntityException([
   {
     message: 'Error.TOTPNotEnabled',
-    path: 'totpCode',
-  },
+    path: 'totpCode'
+  }
 ])
 
 export const InvalidTOTPAndCodeException = new UnprocessableEntityException([
   {
     message: 'Error.InvalidTOTPAndCode',
-    path: 'totpCode',
+    path: 'totpCode'
   },
   {
     message: 'Error.InvalidTOTPAndCode',
-    path: 'code',
-  },
+    path: 'code'
+  }
 ])

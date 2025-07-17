@@ -5,7 +5,6 @@ import { PaymentProducer } from 'src/routes/payment/payment.producer'
 import { OrderStatus } from 'src/shared/constants/order.constant'
 import { PREFIX_PAYMENT_CODE } from 'src/shared/constants/other.constant'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
-import { MessageResType } from 'src/shared/models/response.model'
 import { OrderIncludeProductSKUSnapshotType } from 'src/shared/models/shared-order.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 

@@ -11,7 +11,16 @@ const rules = tsEslint.configs.recommended
 export default [
   eslintConfigPrettier,
   {
-    ignores: ['.github/*', '.husky/*', 'coverage/*', 'dist/*', 'docs/*', 'node_modules/*', '**/**/*.json']
+    ignores: [
+      '.github/*',
+      '.husky/*',
+      'coverage/*',
+      'dist/*',
+      'docs/*',
+      'node_modules/*',
+      '**/**/*.json',
+      'src/shared/languages/generated/i18n.generated.ts'
+    ]
   },
   {
     name: 'ts/default',

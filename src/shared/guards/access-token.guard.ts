@@ -5,7 +5,7 @@ import {
   ExecutionContext,
   UnauthorizedException,
   ForbiddenException,
-  Inject,
+  Inject
 } from '@nestjs/common'
 import { Cache } from 'cache-manager'
 import { keyBy } from 'lodash'
@@ -28,7 +28,7 @@ export class AccessTokenGuard implements CanActivate {
   constructor(
     private readonly tokenService: TokenService,
     private readonly prismaService: PrismaService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -75,15 +75,15 @@ export class AccessTokenGuard implements CanActivate {
           where: {
             id: roleId,
             deletedAt: null,
-            isActive: true,
+            isActive: true
           },
           include: {
             permissions: {
               where: {
-                deletedAt: null,
-              },
-            },
-          },
+                deletedAt: null
+              }
+            }
+          }
         })
         .catch(() => {
           throw new ForbiddenException()
@@ -91,7 +91,7 @@ export class AccessTokenGuard implements CanActivate {
 
       const permissionObject = keyBy(
         role.permissions,
-        (permission) => `${permission.path}:${permission.method}`,
+        (permission) => `${permission.path}:${permission.method}`
       ) as CachedRole['permissions']
       cachedRole = { ...role, permissions: permissionObject }
       await this.cacheManager.set(cacheKey, cachedRole, 1000 * 60 * 60) // Cache for 1 hour
