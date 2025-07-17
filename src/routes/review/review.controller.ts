@@ -27,7 +27,7 @@ export class ReviewController {
 
   @Post()
   @ZodSerializerDto(CreateReviewResDTO)
-  updateReview(@Body() body: CreateReviewBodyDTO, @ActiveUser('userId') userId: number) {
+  updateReview(@Body() body: CreateReviewBodyDTO, @ActiveUser('userId') userId: string) {
     return this.reviewService.create(userId, body)
   }
 
@@ -35,7 +35,7 @@ export class ReviewController {
   @ZodSerializerDto(UpdateReviewResDTO)
   changePassword(
     @Body() body: UpdateReviewBodyDTO,
-    @ActiveUser('userId') userId: number,
+    @ActiveUser('userId') userId: string,
     @Param() params: GetReviewDetailParamsDTO
   ) {
     return this.reviewService.update({

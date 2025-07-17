@@ -12,13 +12,13 @@ export class ProfileController {
 
   @Get()
   @ZodSerializerDto(GetUserProfileResDTO)
-  getProfile(@ActiveUser('userId') userId: number) {
+  getProfile(@ActiveUser('userId') userId: string) {
     return this.profileService.getProfile(userId)
   }
 
   @Put()
   @ZodSerializerDto(UpdateProfileResDTO)
-  updateProfile(@Body() body: UpdateMeBodyDTO, @ActiveUser('userId') userId: number) {
+  updateProfile(@Body() body: UpdateMeBodyDTO, @ActiveUser('userId') userId: string) {
     return this.profileService.updateProfile({
       userId,
       body
@@ -27,7 +27,7 @@ export class ProfileController {
 
   @Put('change-password')
   @ZodSerializerDto(MessageResDTO)
-  changePassword(@Body() body: ChangePasswordBodyDTO, @ActiveUser('userId') userId: number) {
+  changePassword(@Body() body: ChangePasswordBodyDTO, @ActiveUser('userId') userId: string) {
     return this.profileService.changePassword({
       userId,
       body

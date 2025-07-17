@@ -23,7 +23,7 @@ export class LanguageRepo {
     })
   }
 
-  create({ createdById, data }: { createdById: number; data: CreateLanguageBodyType }): Promise<LanguageType> {
+  create({ createdById, data }: { createdById: string; data: CreateLanguageBodyType }): Promise<LanguageType> {
     return this.prismaService.language.create({
       data: {
         ...data,
@@ -38,7 +38,7 @@ export class LanguageRepo {
     data
   }: {
     id: string
-    updatedById: number
+    updatedById: string
     data: UpdateLanguageBodyType
   }): Promise<LanguageType> {
     return this.prismaService.language.update({

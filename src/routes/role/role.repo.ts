@@ -43,7 +43,7 @@ export class RoleRepo {
     }
   }
 
-  findById(id: number): Promise<RoleWithPermissionsType | null> {
+  findById(id: string): Promise<RoleWithPermissionsType | null> {
     return this.prismaService.role.findUnique({
       where: {
         id,
@@ -59,7 +59,7 @@ export class RoleRepo {
     })
   }
 
-  create({ createdById, data }: { createdById: number | null; data: CreateRoleBodyType }): Promise<RoleType> {
+  create({ createdById, data }: { createdById: string | null; data: CreateRoleBodyType }): Promise<RoleType> {
     return this.prismaService.role.create({
       data: {
         ...data,
@@ -73,8 +73,8 @@ export class RoleRepo {
     updatedById,
     data
   }: {
-    id: number
-    updatedById: number
+    id: string
+    updatedById: string
     data: UpdateRoleBodyType
   }): Promise<RoleType> {
     // Kiểm tra nếu có bất cứ permissionId nào mà đã soft delete thì không cho phép cập nhật
@@ -122,8 +122,8 @@ export class RoleRepo {
       id,
       deletedById
     }: {
-      id: number
-      deletedById: number
+      id: string
+      deletedById: string
     },
     isHard?: boolean
   ): Promise<RoleType> {

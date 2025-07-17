@@ -34,7 +34,7 @@ export class RoleController {
 
   @Post()
   @ZodSerializerDto(CreateRoleResDTO)
-  create(@Body() body: CreateRoleBodyDTO, @ActiveUser('userId') userId: number) {
+  create(@Body() body: CreateRoleBodyDTO, @ActiveUser('userId') userId: string) {
     return this.roleService.create({
       data: body,
       createdById: userId
@@ -43,7 +43,7 @@ export class RoleController {
 
   @Put(':roleId')
   @ZodSerializerDto(GetRoleDetailResDTO)
-  update(@Body() body: UpdateRoleBodyDTO, @Param() params: GetRoleParamsDTO, @ActiveUser('userId') userId: number) {
+  update(@Body() body: UpdateRoleBodyDTO, @Param() params: GetRoleParamsDTO, @ActiveUser('userId') userId: string) {
     return this.roleService.update({
       data: body,
       id: params.roleId,
@@ -53,7 +53,7 @@ export class RoleController {
 
   @Delete(':roleId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetRoleParamsDTO, @ActiveUser('userId') userId: number) {
+  delete(@Param() params: GetRoleParamsDTO, @ActiveUser('userId') userId: string) {
     return this.roleService.delete({
       id: params.roleId,
       deletedById: userId

@@ -32,18 +32,18 @@ export const VariantsSchema = z.array(VariantSchema).superRefine((variants, ctx)
 })
 
 export const ProductSchema = z.object({
-  id: z.number(),
+  id: z.string(),
   publishedAt: z.coerce.date().nullable(),
   name: z.string().trim().max(500),
   basePrice: z.number().min(0),
   virtualPrice: z.number().min(0),
-  brandId: z.number().positive(),
+  brandId: z.string(),
   images: z.array(z.string()),
   variants: VariantsSchema, // Json field represented as a record
 
-  createdById: z.number().nullable(),
-  updatedById: z.number().nullable(),
-  deletedById: z.number().nullable(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  deletedById: z.string().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
   updatedAt: z.date()

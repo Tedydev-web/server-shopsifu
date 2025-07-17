@@ -12,7 +12,7 @@ import {
 export class ProductTranslationService {
   constructor(private productTranslationRepo: ProductTranslationRepo) {}
 
-  async findById(id: number) {
+  async findById(id: string) {
     const product = await this.productTranslationRepo.findById(id)
     if (!product) {
       throw NotFoundRecordException
@@ -20,7 +20,7 @@ export class ProductTranslationService {
     return product
   }
 
-  async create({ data, createdById }: { data: CreateProductTranslationBodyType; createdById: number }) {
+  async create({ data, createdById }: { data: CreateProductTranslationBodyType; createdById: string }) {
     try {
       return await this.productTranslationRepo.create({
         createdById,
@@ -34,7 +34,7 @@ export class ProductTranslationService {
     }
   }
 
-  async update({ id, data, updatedById }: { id: number; data: UpdateProductTranslationBodyType; updatedById: number }) {
+  async update({ id, data, updatedById }: { id: string; data: UpdateProductTranslationBodyType; updatedById: string }) {
     try {
       const product = await this.productTranslationRepo.update({
         id,
@@ -53,7 +53,7 @@ export class ProductTranslationService {
     }
   }
 
-  async delete({ id, deletedById }: { id: number; deletedById: number }) {
+  async delete({ id, deletedById }: { id: string; deletedById: string }) {
     try {
       await this.productTranslationRepo.delete({
         id,

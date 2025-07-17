@@ -42,7 +42,7 @@ export class PermissionRepo {
     }
   }
 
-  findById(id: number): Promise<PermissionType | null> {
+  findById(id: string): Promise<PermissionType | null> {
     return this.prismaService.permission.findUnique({
       where: {
         id,
@@ -55,7 +55,7 @@ export class PermissionRepo {
     createdById,
     data
   }: {
-    createdById: number | null
+    createdById: string | null
     data: CreatePermissionBodyType
   }): Promise<PermissionType> {
     return this.prismaService.permission.create({
@@ -71,10 +71,10 @@ export class PermissionRepo {
     updatedById,
     data
   }: {
-    id: number
-    updatedById: number
+    id: string
+    updatedById: string
     data: UpdatePermissionBodyType
-  }): Promise<PermissionType & { roles: { id: number }[] }> {
+  }): Promise<PermissionType & { roles: { id: string }[] }> {
     return this.prismaService.permission.update({
       where: {
         id,
@@ -95,11 +95,11 @@ export class PermissionRepo {
       id,
       deletedById
     }: {
-      id: number
-      deletedById: number
+      id: string
+      deletedById: string
     },
     isHard?: boolean
-  ): Promise<PermissionType & { roles: { id: number }[] }> {
+  ): Promise<PermissionType & { roles: { id: string }[] }> {
     return isHard
       ? this.prismaService.permission.delete({
           where: {

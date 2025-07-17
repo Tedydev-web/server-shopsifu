@@ -22,7 +22,7 @@ export const GetPermissionsQuerySchema = z
 
 export const GetPermissionParamsSchema = z
   .object({
-    permissionId: z.coerce.number() // Phải thêm coerce để chuyển từ string sang number
+    permissionId: z.string()
   })
   .strict()
 

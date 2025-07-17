@@ -153,13 +153,13 @@ export class AuthController {
   // Vì GET có thể được kích hoạt thông qua URL trên trình duyệt, POST thì không
   @Post('2fa/setup')
   @ZodSerializerDto(TwoFactorSetupResDTO)
-  setupTwoFactorAuth(@Body() _: EmptyBodyDTO, @ActiveUser('userId') userId: number) {
+  setupTwoFactorAuth(@Body() _: EmptyBodyDTO, @ActiveUser('userId') userId: string) {
     return this.authService.setupTwoFactorAuth(userId)
   }
 
   @Post('2fa/disable')
   @ZodSerializerDto(MessageResDTO)
-  disableTwoFactorAuth(@Body() body: DisableTwoFactorBodyDTO, @ActiveUser('userId') userId: number) {
+  disableTwoFactorAuth(@Body() body: DisableTwoFactorBodyDTO, @ActiveUser('userId') userId: string) {
     return this.authService.disableTwoFactorAuth({
       ...body,
       userId

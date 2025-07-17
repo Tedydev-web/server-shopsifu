@@ -1,16 +1,16 @@
 import { z } from 'zod'
 
 export const SKUSchema = z.object({
-  id: z.number(),
+  id: z.string(),
   value: z.string().trim(),
   price: z.number().min(0),
   stock: z.number().min(0),
   image: z.string(),
-  productId: z.number(),
+  productId: z.string(),
 
-  createdById: z.number(),
-  updatedById: z.number().nullable(),
-  deletedById: z.number().nullable(),
+  createdById: z.string(),
+  updatedById: z.string().nullable(),
+  deletedById: z.string().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
   updatedAt: z.date()

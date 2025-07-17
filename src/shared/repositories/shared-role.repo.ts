@@ -5,8 +5,8 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class SharedRoleRepository {
-  private clientRoleId: number | null = null
-  private adminRoleId: number | null = null
+  private clientRoleId: string | null = null
+  private adminRoleId: string | null = null
 
   constructor(private readonly prismaService: PrismaService) {}
 

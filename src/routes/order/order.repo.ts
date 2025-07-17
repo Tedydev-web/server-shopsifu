@@ -30,7 +30,7 @@ export class OrderRepo {
     private orderProducer: OrderProducer,
     private readonly configService: ConfigService
   ) {}
-  async list(userId: number, query: GetOrderListQueryType): Promise<GetOrderListResType> {
+  async list(userId: string, query: GetOrderListQueryType): Promise<GetOrderListResType> {
     const { page, limit, status } = query
     const skip = (page - 1) * limit
     const take = limit
@@ -70,10 +70,10 @@ export class OrderRepo {
   }
 
   async create(
-    userId: number,
+    userId: string,
     body: CreateOrderBodyType
   ): Promise<{
-    paymentId: number
+    paymentId: string
     orders: CreateOrderResType['orders']
   }> {
     // 1. Kiểm tra xem tất cả cartItemIds có tồn tại trong cơ sở dữ liệu hay không
@@ -101,7 +101,7 @@ export class OrderRepo {
     const locks = await Promise.all(skuIds.map((skuId) => redlock.acquire([`lock:sku:${skuId}`], 3000))) // Giữ khóa trong 3 giây
 
     try {
-      const [paymentId, orders] = await this.prismaService.$transaction<[number, CreateOrderResType['orders']]>(
+      const [paymentId, orders] = await this.prismaService.$transaction<[string, CreateOrderResType['orders']]>(
         async (tx) => {
           // await tx.$queryRaw`SELECT * FROM "SKU" WHERE id IN (${Prisma.join(skuIds)}) FOR UPDATE`
           const cartItems = await tx.cartItem.findMany({
@@ -149,7 +149,7 @@ export class OrderRepo {
           }
 
           // 4. Kiểm tra xem các skuId trong cartItem gửi lên có thuộc về shopid gửi lên không
-          const cartItemMap = new Map<number, (typeof cartItems)[0]>()
+          const cartItemMap = new Map<string, (typeof cartItems)[0]>()
           cartItems.forEach((item) => {
             cartItemMap.set(item.id, item)
           })
@@ -263,7 +263,7 @@ export class OrderRepo {
     }
   }
 
-  async detail(userId: number, orderid: number): Promise<GetOrderDetailResType> {
+  async detail(userId: string, orderid: string): Promise<GetOrderDetailResType> {
     const order = await this.prismaService.order.findUnique({
       where: {
         id: orderid,
@@ -280,7 +280,7 @@ export class OrderRepo {
     return order
   }
 
-  async cancel(userId: number, orderId: number): Promise<CancelOrderResType> {
+  async cancel(userId: string, orderId: string): Promise<CancelOrderResType> {
     try {
       const order = await this.prismaService.order.findUniqueOrThrow({
         where: {

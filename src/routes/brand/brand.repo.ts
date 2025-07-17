@@ -52,7 +52,7 @@ export class BrandRepo {
     }
   }
 
-  findById(id: number, languageId: string): Promise<BrandIncludeTranslationType | null> {
+  findById(id: string, languageId: string): Promise<BrandIncludeTranslationType | null> {
     return this.prismaService.brand.findUnique({
       where: {
         id,
@@ -70,7 +70,7 @@ export class BrandRepo {
     createdById,
     data
   }: {
-    createdById: number | null
+    createdById: string | null
     data: CreateBrandBodyType
   }): Promise<BrandIncludeTranslationType> {
     return this.prismaService.brand.create({
@@ -91,8 +91,8 @@ export class BrandRepo {
     updatedById,
     data
   }: {
-    id: number
-    updatedById: number
+    id: string
+    updatedById: string
     data: UpdateBrandBodyType
   }): Promise<BrandIncludeTranslationType> {
     return this.prismaService.brand.update({
@@ -117,8 +117,8 @@ export class BrandRepo {
       id,
       deletedById
     }: {
-      id: number
-      deletedById: number
+      id: string
+      deletedById: string
     },
     isHard?: boolean
   ): Promise<BrandType> {

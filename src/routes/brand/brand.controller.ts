@@ -33,7 +33,7 @@ export class BrandController {
 
   @Post()
   @ZodSerializerDto(GetBrandDetailResDTO)
-  create(@Body() body: CreateBrandBodyDTO, @ActiveUser('userId') userId: number) {
+  create(@Body() body: CreateBrandBodyDTO, @ActiveUser('userId') userId: string) {
     return this.brandService.create({
       data: body,
       createdById: userId
@@ -42,7 +42,7 @@ export class BrandController {
 
   @Put(':brandId')
   @ZodSerializerDto(GetBrandDetailResDTO)
-  update(@Body() body: UpdateBrandBodyDTO, @Param() params: GetBrandParamsDTO, @ActiveUser('userId') userId: number) {
+  update(@Body() body: UpdateBrandBodyDTO, @Param() params: GetBrandParamsDTO, @ActiveUser('userId') userId: string) {
     return this.brandService.update({
       data: body,
       id: params.brandId,
@@ -52,7 +52,7 @@ export class BrandController {
 
   @Delete(':brandId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetBrandParamsDTO, @ActiveUser('userId') userId: number) {
+  delete(@Param() params: GetBrandParamsDTO, @ActiveUser('userId') userId: string) {
     return this.brandService.delete({
       id: params.brandId,
       deletedById: userId

@@ -27,7 +27,7 @@ export const GetRolesQuerySchema = z
 
 export const GetRoleParamsSchema = z
   .object({
-    roleId: z.coerce.number()
+    roleId: z.string()
   })
   .strict()
 
@@ -47,7 +47,7 @@ export const UpdateRoleBodySchema = RoleSchema.pick({
   isActive: true
 })
   .extend({
-    permissionIds: z.array(z.number())
+    permissionIds: z.array(z.string())
   })
   .strict()
 

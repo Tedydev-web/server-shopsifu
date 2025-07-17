@@ -9,14 +9,14 @@ import { I18nContext } from 'nestjs-i18n'
 export class CategoryService {
   constructor(private categoryRepo: CategoryRepo) {}
 
-  findAll(parentCategoryId?: number | null) {
+  findAll(parentCategoryId?: string | null) {
     return this.categoryRepo.findAll({
       parentCategoryId,
       languageId: I18nContext.current()?.lang as string
     })
   }
 
-  async findById(id: number) {
+  async findById(id: string) {
     const category = await this.categoryRepo.findById({
       id,
       languageId: I18nContext.current()?.lang as string
@@ -27,14 +27,14 @@ export class CategoryService {
     return category
   }
 
-  create({ data, createdById }: { data: CreateCategoryBodyType; createdById: number }) {
+  create({ data, createdById }: { data: CreateCategoryBodyType; createdById: string }) {
     return this.categoryRepo.create({
       createdById,
       data
     })
   }
 
-  async update({ id, data, updatedById }: { id: number; data: UpdateCategoryBodyType; updatedById: number }) {
+  async update({ id, data, updatedById }: { id: string; data: UpdateCategoryBodyType; updatedById: string }) {
     try {
       const category = await this.categoryRepo.update({
         id,
@@ -50,7 +50,7 @@ export class CategoryService {
     }
   }
 
-  async delete({ id, deletedById }: { id: number; deletedById: number }) {
+  async delete({ id, deletedById }: { id: string; deletedById: string }) {
     try {
       await this.categoryRepo.delete({
         id,

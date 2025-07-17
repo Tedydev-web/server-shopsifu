@@ -3,20 +3,20 @@ import { UserSchema } from 'src/shared/models/shared-user.model'
 import { z } from 'zod'
 
 export const ReviewMediaSchema = z.object({
-  id: z.number().int(),
+  id: z.string(),
   url: z.string().max(1000),
   type: z.enum([MediaType.IMAGE, MediaType.VIDEO]),
-  reviewId: z.number().int(),
+  reviewId: z.string(),
   createdAt: z.date()
 })
 
 export const ReviewSchema = z.object({
-  id: z.number().int(),
+  id: z.string(),
   content: z.string(),
   rating: z.number().int().min(0).max(5),
-  orderId: z.number().int(),
-  productId: z.number().int(),
-  userId: z.number().int(),
+  orderId: z.string(),
+  productId: z.string(),
+  userId: z.string(),
   updateCount: z.number().int(),
   createdAt: z.date(),
   updatedAt: z.date()
@@ -61,10 +61,10 @@ export const GetReviewsSchema = z.object({
 
 export const UpdateReviewBodySchema = CreateReviewBodySchema
 export const GetReviewsParamsSchema = z.object({
-  productId: z.coerce.number().int().positive()
+  productId: z.string()
 })
 export const GetReviewDetailParamsSchema = z.object({
-  reviewId: z.coerce.number().int().positive()
+  reviewId: z.string()
 })
 
 export type ReviewType = z.infer<typeof ReviewSchema>

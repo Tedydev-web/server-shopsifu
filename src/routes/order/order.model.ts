@@ -3,12 +3,12 @@ import { OrderSchema, OrderStatusSchema } from 'src/shared/models/shared-order.m
 import { z } from 'zod'
 
 export const ProductSKUSnapshotSchema = z.object({
-  id: z.number(),
-  productId: z.number().nullable(),
+  id: z.string(),
+  productId: z.string().nullable(),
   productName: z.string(),
   productTranslations: z.array(
     z.object({
-      id: z.number(),
+      id: z.string(),
       name: z.string(),
       description: z.string(),
       languageId: z.string()
@@ -17,8 +17,8 @@ export const ProductSKUSnapshotSchema = z.object({
   skuPrice: z.number(),
   image: z.string(),
   skuValue: z.string(),
-  skuId: z.number().nullable(),
-  orderId: z.number().nullable(),
+  skuId: z.string().nullable(),
+  orderId: z.string().nullable(),
   quantity: z.number(),
 
   createdAt: z.date()
@@ -57,24 +57,24 @@ export const GetOrderDetailResSchema = OrderSchema.extend({
 export const CreateOrderBodySchema = z
   .array(
     z.object({
-      shopId: z.number(),
+      shopId: z.string(),
       receiver: z.object({
         name: z.string(),
         phone: z.string().min(9).max(20),
         address: z.string()
       }),
-      cartItemIds: z.array(z.number()).min(1)
+      cartItemIds: z.array(z.string()).min(1)
     })
   )
   .min(1)
 
-export const CreateOrderResSchema = z.object({ orders: z.array(OrderSchema), paymentId: z.number() })
+export const CreateOrderResSchema = z.object({ orders: z.array(OrderSchema), paymentId: z.string() })
 export const CancelOrderBodySchema = z.object({})
 export const CancelOrderResSchema = OrderSchema
 
 export const GetOrderParamsSchema = z
   .object({
-    orderId: z.coerce.number().int().positive()
+    orderId: z.string()
   })
   .strict()
 

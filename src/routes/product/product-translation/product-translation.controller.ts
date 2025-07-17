@@ -22,7 +22,7 @@ export class ProductTranslationController {
 
   @Post()
   @ZodSerializerDto(GetProductTranslationDetailResDTO)
-  create(@Body() body: CreateProductTranslationBodyDTO, @ActiveUser('userId') userId: number) {
+  create(@Body() body: CreateProductTranslationBodyDTO, @ActiveUser('userId') userId: string) {
     return this.productTranslationService.create({
       data: body,
       createdById: userId
@@ -34,7 +34,7 @@ export class ProductTranslationController {
   update(
     @Body() body: UpdateProductTranslationBodyDTO,
     @Param() params: GetProductTranslationParamsDTO,
-    @ActiveUser('userId') userId: number
+    @ActiveUser('userId') userId: string
   ) {
     return this.productTranslationService.update({
       data: body,
@@ -45,7 +45,7 @@ export class ProductTranslationController {
 
   @Delete(':productTranslationId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetProductTranslationParamsDTO, @ActiveUser('userId') userId: number) {
+  delete(@Param() params: GetProductTranslationParamsDTO, @ActiveUser('userId') userId: string) {
     return this.productTranslationService.delete({
       id: params.productTranslationId,
       deletedById: userId

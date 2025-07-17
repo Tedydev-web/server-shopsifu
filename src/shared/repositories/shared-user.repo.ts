@@ -6,7 +6,7 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 
 type UserIncludeRolePermissionsType = UserType & { role: RoleType & { permissions: PermissionType[] } }
 
-export type WhereUniqueUserType = { id: number } | { email: string }
+export type WhereUniqueUserType = { id: string } | { email: string }
 
 @Injectable()
 export class SharedUserRepository {
@@ -41,7 +41,7 @@ export class SharedUserRepository {
     })
   }
 
-  update(where: { id: number }, data: Partial<UserType>): Promise<UserType | null> {
+  update(where: { id: string }, data: Partial<UserType>): Promise<UserType | null> {
     return this.prismaService.user.update({
       where: {
         ...where,

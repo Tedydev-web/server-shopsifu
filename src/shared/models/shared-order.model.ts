@@ -11,32 +11,32 @@ export const OrderStatusSchema = z.enum([
 ])
 
 export const OrderSchema = z.object({
-  id: z.number(),
-  userId: z.number(),
+  id: z.string(),
+  userId: z.string(),
   status: OrderStatusSchema,
   receiver: z.object({
     name: z.string(),
     phone: z.string(),
     address: z.string()
   }),
-  shopId: z.number().nullable(),
-  paymentId: z.number(),
+  shopId: z.string().nullable(),
+  paymentId: z.string(),
 
-  createdById: z.number().nullable(),
-  updatedById: z.number().nullable(),
-  deletedById: z.number().nullable(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  deletedById: z.string().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
   updatedAt: z.date()
 })
 
 export const ProductSKUSnapshotSchema = z.object({
-  id: z.number(),
-  productId: z.number().nullable(),
+  id: z.string(),
+  productId: z.string().nullable(),
   productName: z.string(),
   productTranslations: z.array(
     z.object({
-      id: z.number(),
+      id: z.string(),
       name: z.string(),
       description: z.string(),
       languageId: z.string()
@@ -45,8 +45,8 @@ export const ProductSKUSnapshotSchema = z.object({
   skuPrice: z.number(),
   image: z.string(),
   skuValue: z.string(),
-  skuId: z.number().nullable(),
-  orderId: z.number().nullable(),
+  skuId: z.string().nullable(),
+  orderId: z.string().nullable(),
   quantity: z.number(),
 
   createdAt: z.date()

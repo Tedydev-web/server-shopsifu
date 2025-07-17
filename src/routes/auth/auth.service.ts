@@ -310,7 +310,7 @@ export class AuthService {
     }
   }
 
-  async setupTwoFactorAuth(userId: number) {
+  async setupTwoFactorAuth(userId: string) {
     // 1. Lấy thông tin user, kiểm tra xem user có tồn tại hay không, và xem họ đã bật 2FA chưa
     const user = await this.sharedUserRepository.findUnique({
       id: userId
@@ -332,7 +332,7 @@ export class AuthService {
     }
   }
 
-  async disableTwoFactorAuth(data: DisableTwoFactorBodyType & { userId: number }) {
+  async disableTwoFactorAuth(data: DisableTwoFactorBodyType & { userId: string }) {
     const { userId, totpCode, code } = data
     // 1. Lấy thông tin user, kiểm tra xem user có tồn tại hay không, và xem họ đã bật 2FA chưa
     const user = await this.sharedUserRepository.findUnique({ id: userId })

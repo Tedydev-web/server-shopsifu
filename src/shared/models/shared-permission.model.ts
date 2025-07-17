@@ -2,7 +2,7 @@ import { HTTPMethod } from 'src/shared/constants/role.constant'
 import { z } from 'zod'
 
 export const PermissionSchema = z.object({
-  id: z.number(),
+  id: z.string(),
   name: z.string().max(500),
   description: z.string(),
   module: z.string().max(500),
@@ -16,9 +16,9 @@ export const PermissionSchema = z.object({
     HTTPMethod.OPTIONS,
     HTTPMethod.HEAD
   ]),
-  createdById: z.number().nullable(),
-  updatedById: z.number().nullable(),
-  deletedById: z.number().nullable(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  deletedById: z.string().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
   updatedAt: z.date()

@@ -5,17 +5,17 @@ import { UserSchema } from 'src/shared/models/shared-user.model'
 import { z } from 'zod'
 
 export const CartItemSchema = z.object({
-  id: z.number(),
+  id: z.string(),
   quantity: z.number().int().positive(),
-  skuId: z.number(),
-  userId: z.number(),
+  skuId: z.string(),
+  userId: z.string(),
 
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date()
 })
 
 export const GetCartItemParamsSchema = z.object({
-  cartItemId: z.coerce.number().int().positive()
+  cartItemId: z.string()
 })
 
 export const CartItemDetailSchema = z.object({
@@ -79,7 +79,7 @@ export const UpdateCartItemBodySchema = AddToCartBodySchema
 
 export const DeleteCartBodySchema = z
   .object({
-    cartItemIds: z.array(z.number().int().positive())
+    cartItemIds: z.array(z.string())
   })
   .strict()
 

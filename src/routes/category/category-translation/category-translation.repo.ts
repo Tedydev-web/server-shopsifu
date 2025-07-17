@@ -11,7 +11,7 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 export class CategoryTranslationRepo {
   constructor(private prismaService: PrismaService) {}
 
-  findById(id: number): Promise<GetCategoryTranslationDetailResType | null> {
+  findById(id: string): Promise<GetCategoryTranslationDetailResType | null> {
     return this.prismaService.categoryTranslation.findUnique({
       where: {
         id,
@@ -24,7 +24,7 @@ export class CategoryTranslationRepo {
     createdById,
     data
   }: {
-    createdById: number | null
+    createdById: string | null
     data: CreateCategoryTranslationBodyType
   }): Promise<CategoryTranslationType> {
     return this.prismaService.categoryTranslation.create({
@@ -40,8 +40,8 @@ export class CategoryTranslationRepo {
     updatedById,
     data
   }: {
-    id: number
-    updatedById: number
+    id: string
+    updatedById: string
     data: UpdateCategoryTranslationBodyType
   }): Promise<CategoryTranslationType> {
     return this.prismaService.categoryTranslation.update({
@@ -61,8 +61,8 @@ export class CategoryTranslationRepo {
       id,
       deletedById
     }: {
-      id: number
-      deletedById: number
+      id: string
+      deletedById: string
     },
     isHard?: boolean
   ): Promise<CategoryTranslationType> {

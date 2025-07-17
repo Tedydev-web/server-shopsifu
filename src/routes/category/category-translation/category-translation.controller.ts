@@ -22,7 +22,7 @@ export class CategoryTranslationController {
 
   @Post()
   @ZodSerializerDto(GetCategoryTranslationDetailResDTO)
-  create(@Body() body: CreateCategoryTranslationBodyDTO, @ActiveUser('userId') userId: number) {
+  create(@Body() body: CreateCategoryTranslationBodyDTO, @ActiveUser('userId') userId: string) {
     return this.categoryTranslationService.create({
       data: body,
       createdById: userId
@@ -34,7 +34,7 @@ export class CategoryTranslationController {
   update(
     @Body() body: UpdateCategoryTranslationBodyDTO,
     @Param() params: GetCategoryTranslationParamsDTO,
-    @ActiveUser('userId') userId: number
+    @ActiveUser('userId') userId: string
   ) {
     return this.categoryTranslationService.update({
       data: body,
@@ -45,7 +45,7 @@ export class CategoryTranslationController {
 
   @Delete(':categoryTranslationId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetCategoryTranslationParamsDTO, @ActiveUser('userId') userId: number) {
+  delete(@Param() params: GetCategoryTranslationParamsDTO, @ActiveUser('userId') userId: string) {
     return this.categoryTranslationService.delete({
       id: params.categoryTranslationId,
       deletedById: userId

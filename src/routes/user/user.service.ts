@@ -30,7 +30,7 @@ export class UserService {
     return this.userRepo.list(pagination)
   }
 
-  async findById(id: number) {
+  async findById(id: string) {
     const user = await this.sharedUserRepository.findUniqueIncludeRolePermissions({
       id
     })
@@ -46,7 +46,7 @@ export class UserService {
     createdByRoleName
   }: {
     data: CreateUserBodyType
-    createdById: number
+    createdById: string
     createdByRoleName: string
   }) {
     try {
@@ -103,9 +103,9 @@ export class UserService {
     updatedById,
     updatedByRoleName
   }: {
-    id: number
+    id: string
     data: UpdateUserBodyType
-    updatedById: number
+    updatedById: string
     updatedByRoleName: string
   }) {
     try {
@@ -145,7 +145,7 @@ export class UserService {
     }
   }
 
-  private async getRoleIdByUserId(userId: number) {
+  private async getRoleIdByUserId(userId: string) {
     const currentUser = await this.sharedUserRepository.findUnique({
       id: userId
     })
@@ -155,13 +155,13 @@ export class UserService {
     return currentUser.roleId
   }
 
-  private verifyYourself({ userAgentId, userTargetId }: { userAgentId: number; userTargetId: number }) {
+  private verifyYourself({ userAgentId, userTargetId }: { userAgentId: string; userTargetId: string }) {
     if (userAgentId === userTargetId) {
       throw CannotUpdateOrDeleteYourselfException
     }
   }
 
-  async delete({ id, deletedById, deletedByRoleName }: { id: number; deletedById: number; deletedByRoleName: string }) {
+  async delete({ id, deletedById, deletedByRoleName }: { id: string; deletedById: string; deletedByRoleName: string }) {
     try {
       // Không thể xóa chính mình
       this.verifyYourself({

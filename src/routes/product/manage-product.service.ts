@@ -23,9 +23,9 @@ export class ManageProductService {
     roleNameRequest,
     createdById
   }: {
-    userIdRequest: number
+    userIdRequest: string
     roleNameRequest: string
-    createdById: number | undefined | null
+    createdById: string | undefined | null
   }) {
     if (userIdRequest !== createdById && roleNameRequest !== RoleName.Admin) {
       throw new ForbiddenException()
@@ -36,7 +36,7 @@ export class ManageProductService {
   /**
    * @description: Xem danh sách sản phẩm của một shop, bắt buộc phải truyền query param là `createdById`
    */
-  async list(props: { query: GetManageProductsQueryType; userIdRequest: number; roleNameRequest: string }) {
+  async list(props: { query: GetManageProductsQueryType; userIdRequest: string; roleNameRequest: string }) {
     this.validatePrivilege({
       userIdRequest: props.userIdRequest,
       roleNameRequest: props.roleNameRequest,
@@ -59,7 +59,7 @@ export class ManageProductService {
     return data
   }
 
-  async getDetail(props: { productId: number; userIdRequest: number; roleNameRequest: string }) {
+  async getDetail(props: { productId: string; userIdRequest: string; roleNameRequest: string }) {
     const product = await this.productRepo.getDetail({
       productId: props.productId,
       languageId: I18nContext.current()?.lang as string
@@ -76,7 +76,7 @@ export class ManageProductService {
     return product
   }
 
-  create({ data, createdById }: { data: CreateProductBodyType; createdById: number }) {
+  create({ data, createdById }: { data: CreateProductBodyType; createdById: string }) {
     return this.productRepo.create({
       createdById,
       data
@@ -89,9 +89,9 @@ export class ManageProductService {
     updatedById,
     roleNameRequest
   }: {
-    productId: number
+    productId: string
     data: UpdateProductBodyType
-    updatedById: number
+    updatedById: string
     roleNameRequest: string
   }) {
     const product = await this.productRepo.findById(productId)
@@ -123,8 +123,8 @@ export class ManageProductService {
     deletedById,
     roleNameRequest
   }: {
-    productId: number
-    deletedById: number
+    productId: string
+    deletedById: string
     roleNameRequest: string
   }) {
     const product = await this.productRepo.findById(productId)

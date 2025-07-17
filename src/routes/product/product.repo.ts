@@ -31,11 +31,11 @@ export class ProductRepo {
     limit: number
     page: number
     name?: string
-    brandIds?: number[]
-    categories?: number[]
+    brandIds?: string[]
+    categories?: string[]
     minPrice?: number
     maxPrice?: number
-    createdById?: number
+    createdById?: string
     isPublic?: boolean
     languageId: string
     orderBy: OrderByType
@@ -134,7 +134,7 @@ export class ProductRepo {
     }
   }
 
-  findById(productId: number): Promise<ProductType | null> {
+  findById(productId: string): Promise<ProductType | null> {
     return this.prismaService.product.findUnique({
       where: {
         id: productId,
@@ -148,7 +148,7 @@ export class ProductRepo {
     languageId,
     isPublic
   }: {
-    productId: number
+    productId: string
     languageId: string
     isPublic?: boolean
   }): Promise<GetProductDetailResType | null> {
@@ -203,7 +203,7 @@ export class ProductRepo {
     createdById,
     data
   }: {
-    createdById: number
+    createdById: string
     data: CreateProductBodyType
   }): Promise<GetProductDetailResType> {
     const { skus, categories, ...productData } = data
@@ -256,8 +256,8 @@ export class ProductRepo {
     updatedById,
     data
   }: {
-    id: number
-    updatedById: number
+    id: string
+    updatedById: string
     data: UpdateProductBodyType
   }): Promise<ProductType> {
     const { skus: dataSkus, categories, ...productData } = data
@@ -331,7 +331,7 @@ export class ProductRepo {
       ...skusToUpdate.map((sku) =>
         this.prismaService.sKU.update({
           where: {
-            id: sku.id as number
+            id: sku.id as string
           },
           data: {
             value: sku.value,
@@ -356,8 +356,8 @@ export class ProductRepo {
       id,
       deletedById
     }: {
-      id: number
-      deletedById: number
+      id: string
+      deletedById: string
     },
     isHard?: boolean
   ): Promise<ProductType> {

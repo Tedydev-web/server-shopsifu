@@ -22,7 +22,7 @@ export class BrandTranslationController {
 
   @Post()
   @ZodSerializerDto(GetBrandTranslationDetailResDTO)
-  create(@Body() body: CreateBrandTranslationBodyDTO, @ActiveUser('userId') userId: number) {
+  create(@Body() body: CreateBrandTranslationBodyDTO, @ActiveUser('userId') userId: string) {
     return this.brandTranslationService.create({
       data: body,
       createdById: userId
@@ -34,7 +34,7 @@ export class BrandTranslationController {
   update(
     @Body() body: UpdateBrandTranslationBodyDTO,
     @Param() params: GetBrandTranslationParamsDTO,
-    @ActiveUser('userId') userId: number
+    @ActiveUser('userId') userId: string
   ) {
     return this.brandTranslationService.update({
       data: body,
@@ -45,7 +45,7 @@ export class BrandTranslationController {
 
   @Delete(':brandTranslationId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetBrandTranslationParamsDTO, @ActiveUser('userId') userId: number) {
+  delete(@Param() params: GetBrandTranslationParamsDTO, @ActiveUser('userId') userId: string) {
     return this.brandTranslationService.delete({
       id: params.brandTranslationId,
       deletedById: userId

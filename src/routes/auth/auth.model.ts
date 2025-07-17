@@ -29,7 +29,7 @@ export const RegisterResSchema = UserSchema.omit({
 })
 
 export const VerificationCodeSchema = z.object({
-  id: z.number(),
+  id: z.string(),
   email: z.string().email(),
   code: z.string().length(6),
   type: z.enum([
@@ -84,8 +84,8 @@ export const RefreshTokenResSchema = z.object({
 })
 
 export const DeviceSchema = z.object({
-  id: z.number(),
-  userId: z.number(),
+  id: z.string(),
+  userId: z.string(),
   userAgent: z.string(),
   ip: z.string(),
   lastActive: z.date(),
@@ -95,19 +95,19 @@ export const DeviceSchema = z.object({
 
 export const RefreshTokenSchema = z.object({
   token: z.string(),
-  userId: z.number(),
-  deviceId: z.number(),
+  userId: z.string(),
+  deviceId: z.string(),
   expiresAt: z.date(),
   createdAt: z.date()
 })
 
 export const RoleSchema = z.object({
-  id: z.number(),
+  id: z.string(),
   name: z.string(),
   description: z.string(),
   isActive: z.boolean(),
-  createdById: z.number().nullable(),
-  updatedById: z.number().nullable(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
   updatedAt: z.date()

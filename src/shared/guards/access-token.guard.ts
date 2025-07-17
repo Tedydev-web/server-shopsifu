@@ -64,10 +64,10 @@ export class AccessTokenGuard implements CanActivate {
       throw new UnauthorizedException('Error.MissingAccessToken')
     }
     return accessToken
-  }
+}
 
   private async validateUserPermission(decodedAccessToken: AccessTokenPayload, request: any): Promise<void> {
-    const roleId: number = decodedAccessToken.roleId
+    const roleId: string = decodedAccessToken.roleId
     const path: string = request.route.path
     const method = request.method as keyof typeof HTTPMethod
     const cacheKey = `role:${roleId}`

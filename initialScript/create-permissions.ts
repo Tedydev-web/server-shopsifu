@@ -108,7 +108,7 @@ async function bootstrap() {
   process.exit(0)
 }
 
-const updateRole = async (permissionIds: { id: number }[], roleName: string) => {
+const updateRole = async (permissionIds: { id: string }[], roleName: string) => {
   // Cập nhật lại các permissions trong Admin Role
   const role = await prisma.role.findFirstOrThrow({
     where: {

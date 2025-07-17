@@ -38,22 +38,22 @@ export const GetProductsQuerySchema = z.object({
   brandIds: z
     .preprocess((value) => {
       if (typeof value === 'string') {
-        return [Number(value)]
+        return [value]
       }
       return value
-    }, z.array(z.coerce.number().int().positive()))
+    }, z.array(z.string()))
     .optional(),
   categories: z
     .preprocess((value) => {
       if (typeof value === 'string') {
-        return [Number(value)]
+        return [value]
       }
       return value
-    }, z.array(z.coerce.number().int().positive()))
+    }, z.array(z.string()))
     .optional(),
   minPrice: z.coerce.number().positive().optional(),
   maxPrice: z.coerce.number().positive().optional(),
-  createdById: z.coerce.number().int().positive().optional(),
+  createdById: z.string().optional(),
   orderBy: z.enum([OrderBy.Asc, OrderBy.Desc]).default(OrderBy.Desc),
   sortBy: z.enum([SortBy.CreatedAt, SortBy.Price, SortBy.Sale]).default(SortBy.CreatedAt)
 })
@@ -63,7 +63,7 @@ export const GetProductsQuerySchema = z.object({
  */
 export const GetManageProductsQuerySchema = GetProductsQuerySchema.extend({
   isPublic: z.preprocess((value) => value === 'true', z.boolean()).optional(),
-  createdById: z.coerce.number().int().positive()
+  createdById: z.string()
 })
 
 export const GetProductsResSchema = z.object({
@@ -84,7 +84,7 @@ export const GetProductsResSchema = z.object({
 
 export const GetProductParamsSchema = z
   .object({
-    productId: z.coerce.number().int().positive()
+    productId: z.string()
   })
   .strict()
 
@@ -105,7 +105,7 @@ export const CreateProductBodySchema = ProductSchema.pick({
   variants: true
 })
   .extend({
-    categories: z.array(z.coerce.number().int().positive()),
+    categories: z.array(z.string()),
     skus: z.array(UpsertSKUBodySchema)
   })
   .strict()

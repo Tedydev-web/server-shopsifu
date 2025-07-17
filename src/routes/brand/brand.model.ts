@@ -15,7 +15,7 @@ export const GetBrandsResSchema = z.object({
 
 export const GetBrandParamsSchema = z
   .object({
-    brandId: z.coerce.number().int().positive()
+    brandId: z.string()
   })
   .strict()
 

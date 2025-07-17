@@ -12,7 +12,7 @@ import {
 export class CategoryTranslationService {
   constructor(private categoryTranslationRepo: CategoryTranslationRepo) {}
 
-  async findById(id: number) {
+  async findById(id: string) {
     const category = await this.categoryTranslationRepo.findById(id)
     if (!category) {
       throw NotFoundRecordException
@@ -20,7 +20,7 @@ export class CategoryTranslationService {
     return category
   }
 
-  async create({ data, createdById }: { data: CreateCategoryTranslationBodyType; createdById: number }) {
+  async create({ data, createdById }: { data: CreateCategoryTranslationBodyType; createdById: string }) {
     try {
       return await this.categoryTranslationRepo.create({
         createdById,
@@ -39,9 +39,9 @@ export class CategoryTranslationService {
     data,
     updatedById
   }: {
-    id: number
+    id: string
     data: UpdateCategoryTranslationBodyType
-    updatedById: number
+    updatedById: string
   }) {
     try {
       const category = await this.categoryTranslationRepo.update({
@@ -61,7 +61,7 @@ export class CategoryTranslationService {
     }
   }
 
-  async delete({ id, deletedById }: { id: number; deletedById: number }) {
+  async delete({ id, deletedById }: { id: string; deletedById: string }) {
     try {
       await this.categoryTranslationRepo.delete({
         id,

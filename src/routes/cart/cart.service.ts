@@ -8,7 +8,7 @@ import { PaginationQueryType } from 'src/shared/models/request.model'
 export class CartService {
   constructor(private readonly cartRepo: CartRepo) {}
 
-  getCart(userId: number, query: PaginationQueryType) {
+  getCart(userId: string, query: PaginationQueryType) {
     return this.cartRepo.list({
       userId,
       languageId: I18nContext.current()?.lang as string,
@@ -17,11 +17,11 @@ export class CartService {
     })
   }
 
-  addToCart(userId: number, body: AddToCartBodyType) {
+  addToCart(userId: string, body: AddToCartBodyType) {
     return this.cartRepo.create(userId, body)
   }
 
-  updateCartItem({ userId, body, cartItemId }: { userId: number; cartItemId: number; body: UpdateCartItemBodyType }) {
+  updateCartItem({ userId, body, cartItemId }: { userId: string; cartItemId: string; body: UpdateCartItemBodyType }) {
     return this.cartRepo.update({
       userId,
       body,
@@ -29,7 +29,7 @@ export class CartService {
     })
   }
 
-  async deleteCart(userId: number, body: DeleteCartBodyType) {
+  async deleteCart(userId: string, body: DeleteCartBodyType) {
     const { count } = await this.cartRepo.delete(userId, body)
     return {
       message: `${count} item(s) deleted from cart`

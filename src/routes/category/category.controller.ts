@@ -33,7 +33,7 @@ export class CategoryController {
 
   @Post()
   @ZodSerializerDto(GetCategoryDetailResDTO)
-  create(@Body() body: CreateCategoryBodyDTO, @ActiveUser('userId') userId: number) {
+  create(@Body() body: CreateCategoryBodyDTO, @ActiveUser('userId') userId: string) {
     return this.categoryService.create({
       data: body,
       createdById: userId
@@ -45,7 +45,7 @@ export class CategoryController {
   update(
     @Body() body: UpdateCategoryBodyDTO,
     @Param() params: GetCategoryParamsDTO,
-    @ActiveUser('userId') userId: number
+    @ActiveUser('userId') userId: string
   ) {
     return this.categoryService.update({
       data: body,
@@ -56,7 +56,7 @@ export class CategoryController {
 
   @Delete(':categoryId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetCategoryParamsDTO, @ActiveUser('userId') userId: number) {
+  delete(@Param() params: GetCategoryParamsDTO, @ActiveUser('userId') userId: string) {
     return this.categoryService.delete({
       id: params.categoryId,
       deletedById: userId

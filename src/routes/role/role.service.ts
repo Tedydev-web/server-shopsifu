@@ -20,7 +20,7 @@ export class RoleService {
     return data
   }
 
-  async findById(id: number) {
+  async findById(id: string) {
     const role = await this.roleRepo.findById(id)
     if (!role) {
       throw NotFoundRecordException
@@ -28,7 +28,7 @@ export class RoleService {
     return role
   }
 
-  async create({ data, createdById }: { data: CreateRoleBodyType; createdById: number }) {
+  async create({ data, createdById }: { data: CreateRoleBodyType; createdById: string }) {
     try {
       const role = await this.roleRepo.create({
         createdById,
@@ -46,7 +46,7 @@ export class RoleService {
   /**
    * Kiểm tra xem role có phải là 1 trong 3 role cơ bản không
    */
-  private async verifyRole(roleId: number) {
+  private async verifyRole(roleId: string) {
     const role = await this.roleRepo.findById(roleId)
     if (!role) {
       throw NotFoundRecordException
@@ -58,7 +58,7 @@ export class RoleService {
     }
   }
 
-  async update({ id, data, updatedById }: { id: number; data: UpdateRoleBodyType; updatedById: number }) {
+  async update({ id, data, updatedById }: { id: string; data: UpdateRoleBodyType; updatedById: string }) {
     try {
       await this.verifyRole(id)
       const updatedRole = await this.roleRepo.update({
@@ -79,7 +79,7 @@ export class RoleService {
     }
   }
 
-  async delete({ id, deletedById }: { id: number; deletedById: number }) {
+  async delete({ id, deletedById }: { id: string; deletedById: string }) {
     try {
       await this.verifyRole(id)
       await this.roleRepo.delete({

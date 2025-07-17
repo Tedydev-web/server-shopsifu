@@ -29,7 +29,7 @@ export class LanguageController {
 
   @Post()
   @ZodSerializerDto(GetLanguageDetailResDTO)
-  create(@Body() body: CreateLanguageBodyDTO, @ActiveUser('userId') userId: number) {
+  create(@Body() body: CreateLanguageBodyDTO, @ActiveUser('userId') userId: string) {
     return this.languageService.create({
       data: body,
       createdById: userId
@@ -44,7 +44,7 @@ export class LanguageController {
   update(
     @Body() body: UpdateLanguageBodyDTO,
     @Param() params: GetLanguageParamsDTO,
-    @ActiveUser('userId') userId: number
+    @ActiveUser('userId') userId: string
   ) {
     return this.languageService.update({
       data: body,

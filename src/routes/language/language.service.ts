@@ -25,7 +25,7 @@ export class LanguageService {
     return language
   }
 
-  async create({ data, createdById }: { data: CreateLanguageBodyType; createdById: number }) {
+  async create({ data, createdById }: { data: CreateLanguageBodyType; createdById: string }) {
     try {
       return await this.languageRepo.create({
         createdById,
@@ -39,7 +39,7 @@ export class LanguageService {
     }
   }
 
-  async update({ id, data, updatedById }: { id: string; data: UpdateLanguageBodyType; updatedById: number }) {
+  async update({ id, data, updatedById }: { id: string; data: UpdateLanguageBodyType; updatedById: string }) {
     try {
       const language = await this.languageRepo.update({
         id,

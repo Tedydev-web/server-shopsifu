@@ -23,7 +23,7 @@ export class PermissionService {
     return data
   }
 
-  async findById(id: number) {
+  async findById(id: string) {
     const permission = await this.permissionRepo.findById(id)
     if (!permission) {
       throw NotFoundRecordException
@@ -31,7 +31,7 @@ export class PermissionService {
     return permission
   }
 
-  async create({ data, createdById }: { data: CreatePermissionBodyType; createdById: number }) {
+  async create({ data, createdById }: { data: CreatePermissionBodyType; createdById: string }) {
     try {
       return await this.permissionRepo.create({
         createdById,
@@ -45,7 +45,7 @@ export class PermissionService {
     }
   }
 
-  async update({ id, data, updatedById }: { id: number; data: UpdatePermissionBodyType; updatedById: number }) {
+  async update({ id, data, updatedById }: { id: string; data: UpdatePermissionBodyType; updatedById: string }) {
     try {
       const permission = await this.permissionRepo.update({
         id,
@@ -66,7 +66,7 @@ export class PermissionService {
     }
   }
 
-  async delete({ id, deletedById }: { id: number; deletedById: number }) {
+  async delete({ id, deletedById }: { id: string; deletedById: string }) {
     try {
       const permission = await this.permissionRepo.delete({
         id,
@@ -85,7 +85,7 @@ export class PermissionService {
     }
   }
 
-  deleteCachedRole(roles: { id: number }[]) {
+  deleteCachedRole(roles: { id: string }[]) {
     return Promise.all(
       roles.map((role) => {
         const cacheKey = `role:${role.id}`

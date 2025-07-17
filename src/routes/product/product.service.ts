@@ -26,7 +26,7 @@ export class ProductService {
     return data
   }
 
-  async getDetail(props: { productId: number }) {
+  async getDetail(props: { productId: string }) {
     const product = await this.productRepo.getDetail({
       productId: props.productId,
       languageId: I18nContext.current()?.lang as string,

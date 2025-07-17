@@ -5,14 +5,14 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 export class SharedWebsocketRepository {
   constructor(private readonly prismaService: PrismaService) {}
 
-  findMany(userId: number) {
+  findMany(userId: string) {
     return this.prismaService.websocket.findMany({
       where: {
         userId
       }
     })
   }
-  create(data: { id: string; userId: number }) {
+  create(data: { id: string; userId: string }) {
     return this.prismaService.websocket.create({
       data: {
         id: data.id,

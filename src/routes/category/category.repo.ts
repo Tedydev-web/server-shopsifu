@@ -17,7 +17,7 @@ export class CategoryRepo {
     parentCategoryId,
     languageId
   }: {
-    parentCategoryId?: number | null
+    parentCategoryId?: string | null
     languageId: string
   }): Promise<GetAllCategoriesResType> {
     const categories = await this.prismaService.category.findMany({
@@ -41,7 +41,7 @@ export class CategoryRepo {
     }
   }
 
-  findById({ id, languageId }: { id: number; languageId: string }): Promise<CategoryIncludeTranslationType | null> {
+  findById({ id, languageId }: { id: string; languageId: string }): Promise<CategoryIncludeTranslationType | null> {
     return this.prismaService.category.findUnique({
       where: {
         id,
@@ -59,7 +59,7 @@ export class CategoryRepo {
     createdById,
     data
   }: {
-    createdById: number | null
+    createdById: string | null
     data: CreateCategoryBodyType
   }): Promise<CategoryIncludeTranslationType> {
     return this.prismaService.category.create({
@@ -80,8 +80,8 @@ export class CategoryRepo {
     updatedById,
     data
   }: {
-    id: number
-    updatedById: number
+    id: string
+    updatedById: string
     data: UpdateCategoryBodyType
   }): Promise<CategoryIncludeTranslationType> {
     return this.prismaService.category.update({
@@ -106,8 +106,8 @@ export class CategoryRepo {
       id,
       deletedById
     }: {
-      id: number
-      deletedById: number
+      id: string
+      deletedById: string
     },
     isHard?: boolean
   ): Promise<CategoryType> {

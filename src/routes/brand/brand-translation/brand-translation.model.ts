@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 export const GetBrandTranslationParamsSchema = z
   .object({
-    brandTranslationId: z.coerce.number().int().positive()
+    brandTranslationId: z.string()
   })
   .strict()
 export const GetBrandTranslationDetailResSchema = BrandTranslationSchema

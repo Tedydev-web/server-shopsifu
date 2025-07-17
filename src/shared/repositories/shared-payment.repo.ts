@@ -7,7 +7,7 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 export class SharedPaymentRepository {
   constructor(private readonly prismaService: PrismaService) {}
 
-  async cancelPaymentAndOrder(paymentId: number) {
+  async cancelPaymentAndOrder(paymentId: string) {
     const payment = await this.prismaService.payment.findUnique({
       where: {
         id: paymentId
@@ -45,7 +45,7 @@ export class SharedPaymentRepository {
           .map((item) =>
             tx.sKU.update({
               where: {
-                id: item.skuId as number
+                id: item.skuId as string
               },
               data: {
                 stock: {

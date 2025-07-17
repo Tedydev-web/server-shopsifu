@@ -15,7 +15,7 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 export class ReviewRepository {
   constructor(private readonly prismaService: PrismaService) {}
 
-  async list(productId: number, pagination: PaginationQueryType): Promise<GetReviewsType> {
+  async list(productId: string, pagination: PaginationQueryType): Promise<GetReviewsType> {
     const skip = (pagination.page - 1) * pagination.limit
     const take = pagination.limit
 
@@ -59,7 +59,7 @@ export class ReviewRepository {
     }
   }
 
-  private async validateOrder({ orderId, userId }: { orderId: number; userId: number }) {
+  private async validateOrder({ orderId, userId }: { orderId: string; userId: string }) {
     const order = await this.prismaService.order.findUnique({
       where: {
         id: orderId,
@@ -78,7 +78,7 @@ export class ReviewRepository {
     return order
   }
 
-  private async validateUpdateReview({ reviewId, userId }: { reviewId: number; userId: number }) {
+  private async validateUpdateReview({ reviewId, userId }: { reviewId: string; userId: string }) {
     const review = await this.prismaService.review.findUnique({
       where: {
         id: reviewId,
@@ -94,7 +94,7 @@ export class ReviewRepository {
     return review
   }
 
-  async create(userId: number, body: CreateReviewBodyType): Promise<CreateReviewResType> {
+  async create(userId: string, body: CreateReviewBodyType): Promise<CreateReviewResType> {
     const { content, medias, productId, orderId, rating } = body
     await this.validateOrder({
       orderId,
@@ -145,8 +145,8 @@ export class ReviewRepository {
     reviewId,
     body
   }: {
-    userId: number
-    reviewId: number
+    userId: string
+    reviewId: string
     body: UpdateReviewBodyType
   }): Promise<UpdateReviewResType> {
     const { content, medias, productId, orderId, rating } = body

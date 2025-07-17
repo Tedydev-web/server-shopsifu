@@ -2,14 +2,14 @@ import { CategoryTranslationSchema } from 'src/shared/models/shared-category-tra
 import { z } from 'zod'
 
 export const CategorySchema = z.object({
-  id: z.number(),
-  parentCategoryId: z.number().nullable(),
+  id: z.string(),
+  parentCategoryId: z.string().nullable(),
   name: z.string(),
   logo: z.string().nullable(),
 
-  createdById: z.number().nullable(),
-  updatedById: z.number().nullable(),
-  deletedById: z.number().nullable(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  deletedById: z.string().nullable(),
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
   updatedAt: z.date()

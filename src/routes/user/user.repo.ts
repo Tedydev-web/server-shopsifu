@@ -40,7 +40,7 @@ export class UserRepo {
     }
   }
 
-  create({ createdById, data }: { createdById: number | null; data: CreateUserBodyType }): Promise<UserType> {
+  create({ createdById, data }: { createdById: string | null; data: CreateUserBodyType }): Promise<UserType> {
     return this.prismaService.user.create({
       data: {
         ...data,
@@ -54,8 +54,8 @@ export class UserRepo {
       id,
       deletedById
     }: {
-      id: number
-      deletedById: number
+      id: string
+      deletedById: string
     },
     isHard?: boolean
   ): Promise<UserType> {

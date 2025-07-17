@@ -12,7 +12,7 @@ export class ProfileService {
     private readonly hashingService: HashingService
   ) {}
 
-  async getProfile(userId: number) {
+  async getProfile(userId: string) {
     const user = await this.sharedUserRepository.findUniqueIncludeRolePermissions({
       id: userId
     })
@@ -24,7 +24,7 @@ export class ProfileService {
     return user
   }
 
-  async updateProfile({ userId, body }: { userId: number; body: UpdateMeBodyType }) {
+  async updateProfile({ userId, body }: { userId: string; body: UpdateMeBodyType }) {
     try {
       return await this.sharedUserRepository.update(
         { id: userId },
@@ -41,7 +41,7 @@ export class ProfileService {
     }
   }
 
-  async changePassword({ userId, body }: { userId: number; body: Omit<ChangePasswordBodyType, 'confirmNewPassword'> }) {
+  async changePassword({ userId, body }: { userId: string; body: Omit<ChangePasswordBodyType, 'confirmNewPassword'> }) {
     try {
       const { password, newPassword } = body
       const user = await this.sharedUserRepository.findUnique({

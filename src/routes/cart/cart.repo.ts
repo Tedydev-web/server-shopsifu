@@ -30,9 +30,9 @@ export class CartRepo {
     userId,
     isCreate
   }: {
-    skuId: number
+    skuId: string
     quantity: number
-    userId: number
+    userId: string
     isCreate: boolean
   }): Promise<SKUSchemaType> {
     const [cartItem, sku] = await Promise.all([
@@ -81,7 +81,7 @@ export class CartRepo {
     page,
     limit
   }: {
-    userId: number
+    userId: string
     languageId: string
     limit: number
     page: number
@@ -89,7 +89,7 @@ export class CartRepo {
     const skip = (page - 1) * limit
     const take = limit
     // Đếm tổng số nhóm sản phẩm
-    const totalItems$ = this.prismaService.$queryRaw<{ createdById: number }[]>`
+    const totalItems$ = this.prismaService.$queryRaw<{ createdById: string }[]>`
       SELECT
         "Product"."createdById"
       FROM "CartItem"
@@ -182,7 +182,7 @@ export class CartRepo {
     }
   }
 
-  async create(userId: number, body: AddToCartBodyType): Promise<CartItemType> {
+  async create(userId: string, body: AddToCartBodyType): Promise<CartItemType> {
     await this.validateSKU({
       skuId: body.skuId,
       quantity: body.quantity,
@@ -215,8 +215,8 @@ export class CartRepo {
     body,
     cartItemId
   }: {
-    userId: number
-    cartItemId: number
+    userId: string
+    cartItemId: string
     body: UpdateCartItemBodyType
   }): Promise<CartItemType> {
     await this.validateSKU({
@@ -245,7 +245,7 @@ export class CartRepo {
       })
   }
 
-  delete(userId: number, body: DeleteCartBodyType): Promise<{ count: number }> {
+  delete(userId: string, body: DeleteCartBodyType): Promise<{ count: number }> {
     return this.prismaService.cartItem.deleteMany({
       where: {
         id: {

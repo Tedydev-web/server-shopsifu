@@ -40,7 +40,7 @@ export class ManageProductController {
 
   @Post()
   @ZodSerializerDto(GetProductDetailResDTO)
-  create(@Body() body: CreateProductBodyDTO, @ActiveUser('userId') userId: number) {
+  create(@Body() body: CreateProductBodyDTO, @ActiveUser('userId') userId: string) {
     return this.manageProductService.create({
       data: body,
       createdById: userId

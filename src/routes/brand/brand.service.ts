@@ -15,7 +15,7 @@ export class BrandService {
     return data
   }
 
-  async findById(id: number) {
+  async findById(id: string) {
     const brand = await this.brandRepo.findById(id, I18nContext.current()?.lang as string)
     if (!brand) {
       throw NotFoundRecordException
@@ -23,14 +23,14 @@ export class BrandService {
     return brand
   }
 
-  create({ data, createdById }: { data: CreateBrandBodyType; createdById: number }) {
+  create({ data, createdById }: { data: CreateBrandBodyType; createdById: string }) {
     return this.brandRepo.create({
       createdById,
       data
     })
   }
 
-  async update({ id, data, updatedById }: { id: number; data: UpdateBrandBodyType; updatedById: number }) {
+  async update({ id, data, updatedById }: { id: string; data: UpdateBrandBodyType; updatedById: string }) {
     try {
       const brand = await this.brandRepo.update({
         id,
@@ -46,7 +46,7 @@ export class BrandService {
     }
   }
 
-  async delete({ id, deletedById }: { id: number; deletedById: number }) {
+  async delete({ id, deletedById }: { id: string; deletedById: string }) {
     try {
       await this.brandRepo.delete({
         id,

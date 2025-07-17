@@ -25,10 +25,10 @@ export const generateRandomFilename = (filename: string) => {
   return `${uuidv4()}${ext}`
 }
 
-export const generateCancelPaymentJobId = (paymentId: number) => {
+export const generateCancelPaymentJobId = (paymentId: string) => {
   return `paymentId-${paymentId}`
 }
 
-export const generateRoomUserId = (userId: number) => {
+export const generateRoomUserId = (userId: string) => {
   return `userId-${userId}`
 }

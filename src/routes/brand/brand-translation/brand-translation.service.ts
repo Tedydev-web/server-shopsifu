@@ -12,7 +12,7 @@ import {
 export class BrandTranslationService {
   constructor(private brandTranslationRepo: BrandTranslationRepo) {}
 
-  async findById(id: number) {
+  async findById(id: string) {
     const brand = await this.brandTranslationRepo.findById(id)
     if (!brand) {
       throw NotFoundRecordException
@@ -20,7 +20,7 @@ export class BrandTranslationService {
     return brand
   }
 
-  async create({ data, createdById }: { data: CreateBrandTranslationBodyType; createdById: number }) {
+  async create({ data, createdById }: { data: CreateBrandTranslationBodyType; createdById: string }) {
     try {
       return await this.brandTranslationRepo.create({
         createdById,
@@ -34,7 +34,7 @@ export class BrandTranslationService {
     }
   }
 
-  async update({ id, data, updatedById }: { id: number; data: UpdateBrandTranslationBodyType; updatedById: number }) {
+  async update({ id, data, updatedById }: { id: string; data: UpdateBrandTranslationBodyType; updatedById: string }) {
     try {
       const brand = await this.brandTranslationRepo.update({
         id,
@@ -53,7 +53,7 @@ export class BrandTranslationService {
     }
   }
 
-  async delete({ id, deletedById }: { id: number; deletedById: number }) {
+  async delete({ id, deletedById }: { id: string; deletedById: string }) {
     try {
       await this.brandTranslationRepo.delete({
         id,

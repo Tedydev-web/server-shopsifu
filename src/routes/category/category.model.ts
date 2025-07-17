@@ -7,12 +7,12 @@ export const GetAllCategoriesResSchema = z.object({
 })
 
 export const GetAllCategoriesQuerySchema = z.object({
-  parentCategoryId: z.coerce.number().int().positive().optional()
+  parentCategoryId: z.string().optional()
 })
 
 export const GetCategoryParamsSchema = z
   .object({
-    categoryId: z.coerce.number().int().positive()
+    categoryId: z.string()
   })
   .strict()
 

@@ -19,25 +19,25 @@ export class OrderController {
 
   @Get()
   @ZodSerializerDto(GetOrderListResDTO)
-  getCart(@ActiveUser('userId') userId: number, @Query() query: GetOrderListQueryDTO) {
+  getCart(@ActiveUser('userId') userId: string, @Query() query: GetOrderListQueryDTO) {
     return this.orderService.list(userId, query)
   }
 
   @Post()
   @ZodSerializerDto(CreateOrderResDTO)
-  create(@ActiveUser('userId') userId: number, @Body() body: CreateOrderBodyDTO) {
+  create(@ActiveUser('userId') userId: string, @Body() body: CreateOrderBodyDTO) {
     return this.orderService.create(userId, body)
   }
 
   @Get(':orderId')
   @ZodSerializerDto(GetOrderDetailResDTO)
-  detail(@ActiveUser('userId') userId: number, @Param() param: GetOrderParamsDTO) {
+  detail(@ActiveUser('userId') userId: string, @Param() param: GetOrderParamsDTO) {
     return this.orderService.detail(userId, param.orderId)
   }
 
   @Put(':orderId')
   @ZodSerializerDto(CancelOrderResDTO)
-  cancel(@ActiveUser('userId') userId: number, @Param() param: GetOrderParamsDTO, @Body() _: CancelOrderBodyDTO) {
+  cancel(@ActiveUser('userId') userId: string, @Param() param: GetOrderParamsDTO, @Body() _: CancelOrderBodyDTO) {
     return this.orderService.cancel(userId, param.orderId)
   }
 }

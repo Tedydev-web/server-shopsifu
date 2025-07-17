@@ -53,7 +53,7 @@ export class AuthRepository {
 
   async findUniqueVerificationCode(
     uniqueValue:
-      | { id: number }
+      | { id: string }
       | {
           email_type: {
             email: string
@@ -66,7 +66,7 @@ export class AuthRepository {
     })
   }
 
-  createRefreshToken(data: { token: string; userId: number; expiresAt: Date; deviceId: number }) {
+  createRefreshToken(data: { token: string; userId: string; expiresAt: Date; deviceId: string }) {
     return this.prismaService.refreshToken.create({
       data
     })
@@ -107,7 +107,7 @@ export class AuthRepository {
     })
   }
 
-  updateDevice(deviceId: number, data: Partial<DeviceType>): Promise<DeviceType> {
+  updateDevice(deviceId: string, data: Partial<DeviceType>): Promise<DeviceType> {
     return this.prismaService.device.update({
       where: {
         id: deviceId
@@ -124,7 +124,7 @@ export class AuthRepository {
 
   deleteVerificationCode(
     uniqueValue:
-      | { id: number }
+      | { id: string }
       | {
           email_type: {
             email: string

@@ -7,15 +7,15 @@ import { PaginationQueryType } from 'src/shared/models/request.model'
 export class ReviewService {
   constructor(private readonly reviewRepository: ReviewRepository) {}
 
-  list(productId: number, pagination: PaginationQueryType) {
+  list(productId: string, pagination: PaginationQueryType) {
     return this.reviewRepository.list(productId, pagination)
   }
 
-  async create(userId: number, body: CreateReviewBodyType) {
+  async create(userId: string, body: CreateReviewBodyType) {
     return this.reviewRepository.create(userId, body)
   }
 
-  async update({ userId, reviewId, body }: { userId: number; reviewId: number; body: UpdateReviewBodyType }) {
+  async update({ userId, reviewId, body }: { userId: string; reviewId: string; body: UpdateReviewBodyType }) {
     return this.reviewRepository.update({
       userId,
       reviewId,

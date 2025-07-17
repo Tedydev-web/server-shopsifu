@@ -16,16 +16,16 @@ export class PaymentRepo {
     private readonly paymentProducer: PaymentProducer
   ) {}
 
-  private getTotalPrice(orders: OrderIncludeProductSKUSnapshotType[]): number {
+  private getTotalPrice(orders: OrderIncludeProductSKUSnapshotType[]): string {
     return orders.reduce((total, order) => {
       const orderTotal = order.items.reduce((totalPrice, productSku) => {
         return totalPrice + productSku.skuPrice * productSku.quantity
       }, 0)
       return total + orderTotal
-    }, 0)
+    }, '0')
   }
 
-  async receiver(body: WebhookPaymentBodyType): Promise<number> {
+  async receiver(body: WebhookPaymentBodyType): Promise<string> {
     // 1. Thêm thông tin giao dịch vào DB
     // Tham khảo: https://docs.sepay.vn/lap-trinh-webhooks.html
     let amountIn = 0
@@ -63,9 +63,9 @@ export class PaymentRepo {
 
       // 2. Kiểm tra nội dung chuyển khoản và tổng số tiền có khớp hay không
       const paymentId = body.code
-        ? Number(body.code.split(PREFIX_PAYMENT_CODE)[1])
-        : Number(body.content?.split(PREFIX_PAYMENT_CODE)[1])
-      if (isNaN(paymentId)) {
+        ? body.code.split(PREFIX_PAYMENT_CODE)[1]
+        : body.content?.split(PREFIX_PAYMENT_CODE)[1]
+      if (!paymentId) {
         throw new BadRequestException('Cannot get payment id from content')
       }
 
@@ -87,7 +87,7 @@ export class PaymentRepo {
       const userId = payment.orders[0].userId
       const { orders } = payment
       const totalPrice = this.getTotalPrice(orders)
-      if (totalPrice !== body.transferAmount) {
+      if (totalPrice !== body.transferAmount.toString()) {
         throw new BadRequestException(`Price not match, expected ${totalPrice} but got ${body.transferAmount}`)
       }
 
