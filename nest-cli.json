@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
@@ -10,11 +11,6 @@
       }
     },
     "deleteOutDir": true,
-    "assets": [
-      {
-        "include": "languages/**/*",
-        "watchAssets": true
-      }
-    ]
+    "assets": [{ "include": "src/shared/languages/**/*", "watchAssets": true, "outDir": "dist/src/shared/languages" }]
   }
 }

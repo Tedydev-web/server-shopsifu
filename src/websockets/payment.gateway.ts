@@ -1,5 +1,13 @@
-import { MessageBody, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
-import { Server } from 'socket.io'
+import {
+  MessageBody,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  OnGatewayInit,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets'
+import { Server, Socket } from 'socket.io'
 
 @WebSocketGateway({ namespace: 'payment' })
 export class PaymentGateway {
@@ -21,7 +29,7 @@ export class PaymentGateway {
   @SubscribeMessage('send-money')
   handleEvent(@MessageBody() data: string): string {
     this.server.emit('receive-money', {
-      data: `Money: ${data}`
+      data: `Money: ${data}`,
     })
     return data
   }

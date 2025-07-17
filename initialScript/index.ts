@@ -1,6 +1,7 @@
 import { HashingService } from 'src/shared/services/hashing.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { RoleName } from 'src/shared/constants/role.constant'
+import { UserStatus } from 'src/shared/constants/auth.constant'
 const prisma = new PrismaService()
 const hashingService = new HashingService()
 const main = async () => {
@@ -37,7 +38,8 @@ const main = async () => {
       password: hashedPassword,
       name: process.env.ADMIN_NAME as string,
       phoneNumber: process.env.ADMIN_PHONE_NUMBER as string,
-      roleId: adminRole.id
+      roleId: adminRole.id,
+      status: UserStatus.ACTIVE
     }
   })
   return {

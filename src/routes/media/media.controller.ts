@@ -9,7 +9,7 @@ import {
   Post,
   Res,
   UploadedFiles,
-  UseInterceptors
+  UseInterceptors,
 } from '@nestjs/common'
 import { FilesInterceptor } from '@nestjs/platform-express'
 import { Response } from 'express'
@@ -29,9 +29,9 @@ export class MediaController {
   @UseInterceptors(
     FilesInterceptor('files', 100, {
       limits: {
-        fileSize: 5 * 1024 * 1024 // 1MB
-      }
-    })
+        fileSize: 5 * 1024 * 1024, // 1MB
+      },
+    }),
   )
   uploadFile(
     @UploadedFiles(
@@ -42,7 +42,7 @@ export class MediaController {
         ]
       })
     )
-    files: Array<Express.Multer.File>
+    files: Array<Express.Multer.File>,
   ) {
     return this.mediaService.uploadFile(files)
     // return files.map((file) => ({

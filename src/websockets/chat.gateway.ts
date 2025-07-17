@@ -9,7 +9,7 @@ export class ChatGateway {
   @SubscribeMessage('send-message')
   handleEvent(@MessageBody() data: string): string {
     this.server.emit('receive-message', {
-      data: `Hello ${data}`
+      data: `Hello ${data}`,
     })
     return data
   }

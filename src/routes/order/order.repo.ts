@@ -20,14 +20,15 @@ import { OrderProducer } from 'src/routes/order/order.producer'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { VersionConflictException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
-import { redlock } from 'src/shared/redis'
+import { ConfigService } from '@nestjs/config'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class OrderRepo {
   constructor(
     private readonly prismaService: PrismaService,
-    private orderProducer: OrderProducer
+    private orderProducer: OrderProducer,
+    private readonly configService: ConfigService
   ) {}
   async list(userId: number, query: GetOrderListQueryType): Promise<GetOrderListResType> {
     const { page, limit, status } = query
@@ -96,6 +97,7 @@ export class OrderRepo {
     const skuIds = cartItemsForSKUId.map((cartItem) => cartItem.skuId)
 
     // Lock tất cả các SKU cần mua
+    const redlock = this.configService.get('redis.redlock')
     const locks = await Promise.all(skuIds.map((skuId) => redlock.acquire([`lock:sku:${skuId}`], 3000))) // Giữ khóa trong 3 giây
 
     try {
