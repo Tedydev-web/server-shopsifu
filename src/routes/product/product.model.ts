@@ -67,6 +67,7 @@ export const GetManageProductsQuerySchema = GetProductsQuerySchema.extend({
 })
 
 export const GetProductsResSchema = z.object({
+  message: z.string().optional(),
   data: z.array(
     ProductSchema.extend({
       productTranslations: z.array(ProductTranslationSchema)
@@ -88,11 +89,14 @@ export const GetProductParamsSchema = z
   })
   .strict()
 
-export const GetProductDetailResSchema = ProductSchema.extend({
-  productTranslations: z.array(ProductTranslationSchema),
-  skus: z.array(SKUSchema),
-  categories: z.array(CategoryIncludeTranslationSchema),
-  brand: BrandIncludeTranslationSchema
+export const GetProductDetailResSchema = z.object({
+  data: ProductSchema.extend({
+    productTranslations: z.array(ProductTranslationSchema),
+    skus: z.array(SKUSchema),
+    categories: z.array(CategoryIncludeTranslationSchema),
+    brand: BrandIncludeTranslationSchema
+  }),
+  message: z.string().optional()
 })
 
 export const CreateProductBodySchema = ProductSchema.pick({

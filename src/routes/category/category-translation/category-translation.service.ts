@@ -7,25 +7,37 @@ import {
   CreateCategoryTranslationBodyType,
   UpdateCategoryTranslationBodyType
 } from 'src/routes/category/category-translation/category-translation.model'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class CategoryTranslationService {
-  constructor(private categoryTranslationRepo: CategoryTranslationRepo) {}
+  constructor(
+    private categoryTranslationRepo: CategoryTranslationRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   async findById(id: string) {
     const category = await this.categoryTranslationRepo.findById(id)
     if (!category) {
       throw NotFoundRecordException
     }
-    return category
+    return {
+      message: this.i18n.t('category.categoryTranslation.success.GET_DETAIL_SUCCESS'),
+      data: category
+    }
   }
 
   async create({ data, createdById }: { data: CreateCategoryTranslationBodyType; createdById: string }) {
     try {
-      return await this.categoryTranslationRepo.create({
+      const category = await this.categoryTranslationRepo.create({
         createdById,
         data
       })
+      return {
+        message: this.i18n.t('category.categoryTranslation.success.CREATE_SUCCESS'),
+        data: category
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw CategoryTranslationAlreadyExistsException
@@ -49,7 +61,10 @@ export class CategoryTranslationService {
         updatedById,
         data
       })
-      return category
+      return {
+        message: this.i18n.t('category.categoryTranslation.success.UPDATE_SUCCESS'),
+        data: category
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw CategoryTranslationAlreadyExistsException
@@ -68,7 +83,7 @@ export class CategoryTranslationService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('category.categoryTranslation.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

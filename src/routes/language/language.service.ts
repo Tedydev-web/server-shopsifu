@@ -4,14 +4,20 @@ import { CreateLanguageBodyType, UpdateLanguageBodyType } from 'src/routes/langu
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { LanguageAlreadyExistsException } from 'src/routes/language/language.error'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class LanguageService {
-  constructor(private languageRepo: LanguageRepo) {}
+  constructor(
+    private languageRepo: LanguageRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   async findAll() {
     const data = await this.languageRepo.findAll()
     return {
+      message: this.i18n.t('language.language.success.GET_SUCCESS'),
       data,
       totalItems: data.length
     }
@@ -22,7 +28,10 @@ export class LanguageService {
     if (!language) {
       throw NotFoundRecordException
     }
-    return language
+    return {
+      message: this.i18n.t('language.language.success.GET_DETAIL_SUCCESS'),
+      data: language
+    }
   }
 
   async create({ data, createdById }: { data: CreateLanguageBodyType; createdById: string }) {
@@ -46,7 +55,10 @@ export class LanguageService {
         updatedById,
         data
       })
-      return language
+      return {
+        message: this.i18n.t('language.language.success.UPDATE_SUCCESS'),
+        data: language
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -60,7 +72,7 @@ export class LanguageService {
       // hard delete
       await this.languageRepo.delete(id, true)
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('language.language.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

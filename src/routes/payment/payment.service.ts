@@ -5,6 +5,8 @@ import { SharedWebsocketRepository } from 'src/shared/repositories/shared-websoc
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
 import { Server } from 'socket.io'
 import { generateRoomUserId } from 'src/shared/helpers'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 @WebSocketGateway({ namespace: 'payment' })
@@ -13,7 +15,8 @@ export class PaymentService {
   server: Server
   constructor(
     private readonly paymentRepo: PaymentRepo,
-    private readonly sharedWebsocketRepository: SharedWebsocketRepository
+    private readonly sharedWebsocketRepository: SharedWebsocketRepository,
+    private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   async receiver(body: WebhookPaymentBodyType) {
@@ -32,7 +35,7 @@ export class PaymentService {
     //   console.log(error)
     // }
     return {
-      message: 'Payment received successfully'
+      message: this.i18n.t('payment.payment.success.RECEIVER_SUCCESS')
     }
   }
 }

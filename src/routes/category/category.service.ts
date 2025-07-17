@@ -4,16 +4,26 @@ import { CreateCategoryBodyType, UpdateCategoryBodyType } from 'src/routes/categ
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext } from 'nestjs-i18n'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class CategoryService {
-  constructor(private categoryRepo: CategoryRepo) {}
+  constructor(
+    private categoryRepo: CategoryRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
-  findAll(parentCategoryId?: string | null) {
-    return this.categoryRepo.findAll({
+  async findAll(parentCategoryId?: string | null) {
+    const data = await this.categoryRepo.findAll({
       parentCategoryId,
       languageId: I18nContext.current()?.lang as string
     })
+    return {
+      message: this.i18n.t('category.category.success.GET_SUCCESS'),
+      data: data.data,
+      totalItems: data.totalItems
+    }
   }
 
   async findById(id: string) {
@@ -24,14 +34,21 @@ export class CategoryService {
     if (!category) {
       throw NotFoundRecordException
     }
-    return category
+    return {
+      message: this.i18n.t('category.category.success.GET_DETAIL_SUCCESS'),
+      data: category
+    }
   }
 
-  create({ data, createdById }: { data: CreateCategoryBodyType; createdById: string }) {
-    return this.categoryRepo.create({
+  async create({ data, createdById }: { data: CreateCategoryBodyType; createdById: string }) {
+    const category = await this.categoryRepo.create({
       createdById,
       data
     })
+    return {
+      message: this.i18n.t('category.category.success.CREATE_SUCCESS'),
+      data: category
+    }
   }
 
   async update({ id, data, updatedById }: { id: string; data: UpdateCategoryBodyType; updatedById: string }) {
@@ -41,7 +58,10 @@ export class CategoryService {
         updatedById,
         data
       })
-      return category
+      return {
+        message: this.i18n.t('category.category.success.UPDATE_SUCCESS'),
+        data: category
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -57,7 +77,7 @@ export class CategoryService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('category.category.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

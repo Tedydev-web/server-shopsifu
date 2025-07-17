@@ -7,7 +7,10 @@ export const GetProductTranslationParamsSchema = z
   })
   .strict()
 
-export const GetProductTranslationDetailResSchema = ProductTranslationSchema
+export const GetProductTranslationDetailResSchema = z.object({
+  data: ProductTranslationSchema,
+  message: z.string().optional()
+})
 
 export const CreateProductTranslationBodySchema = ProductTranslationSchema.pick({
   productId: true,

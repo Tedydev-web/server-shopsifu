@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { Response, Request } from 'express'
+import { Response } from 'express'
 import { ConfigService } from '@nestjs/config'
 
 @Injectable()
@@ -18,20 +18,6 @@ export class CookieService {
 
     res.cookie(this.configService.getOrThrow('cookie.accessToken.name'), accessToken, accessTokenOptions)
     res.cookie(this.configService.getOrThrow('cookie.refreshToken.name'), refreshToken, refreshTokenOptions)
-  }
-
-  /**
-   * Get access token from cookies
-   */
-  getAccessTokenFromCookie(req: Request): string | null {
-    return req.cookies[this.configService.getOrThrow('cookie.accessToken.name')] || null
-  }
-
-  /**
-   * Get refresh token from cookies
-   */
-  getRefreshTokenFromCookie(req: Request): string | null {
-    return req.cookies[this.configService.getOrThrow('cookie.refreshToken.name')] || null
   }
 
   /**

@@ -36,18 +36,22 @@ export const CreateReviewBodySchema = ReviewSchema.pick({
   )
 })
 
-export const CreateReviewResSchema = ReviewSchema.extend({
-  medias: z.array(ReviewMediaSchema),
-  user: UserSchema.pick({
-    id: true,
-    name: true,
-    avatar: true
+export const CreateReviewResSchema = z.object({
+  message: z.string().optional(),
+  data: ReviewSchema.extend({
+    medias: z.array(ReviewMediaSchema),
+    user: UserSchema.pick({
+      id: true,
+      name: true,
+      avatar: true
+    })
   })
 })
 
 export const UpdateReviewResSchema = CreateReviewResSchema
 
 export const GetReviewsSchema = z.object({
+  message: z.string().optional(),
   data: z.array(CreateReviewResSchema),
   metadata: z.object({
     totalItems: z.number(),

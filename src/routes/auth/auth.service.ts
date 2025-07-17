@@ -13,9 +13,7 @@ import { generateOTP, isNotFoundPrismaError, isUniqueConstraintPrismaError } fro
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from 'src/shared/services/token.service'
-import { CookieService } from 'src/shared/services/cookie.service'
 import ms from 'ms'
-
 import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import { EmailService } from 'src/shared/services/email.service'
 import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
@@ -35,6 +33,9 @@ import {
 import { TwoFactorService } from 'src/shared/services/2fa.service'
 import { InvalidPasswordException } from 'src/shared/error'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
+import { ConfigService } from '@nestjs/config'
+import { CookieService } from 'src/shared/services/cookie.service'
+import { Response } from 'express'
 
 @Injectable()
 export class AuthService {
@@ -45,8 +46,9 @@ export class AuthService {
     private readonly sharedUserRepository: SharedUserRepository,
     private readonly emailService: EmailService,
     private readonly tokenService: TokenService,
-    private readonly cookieService: CookieService,
-    private readonly twoFactorService: TwoFactorService
+    private readonly twoFactorService: TwoFactorService,
+    private readonly configService: ConfigService,
+    private readonly cookieService: CookieService
   ) {}
 
   async validateVerificationCode({ email, type }: { email: string; type: TypeOfVerificationCodeType }) {
@@ -112,7 +114,7 @@ export class AuthService {
       email: body.email,
       code,
       type: body.type,
-      expiresAt: addMilliseconds(new Date(), (ms as any)(process.env.OTP_EXP))
+      expiresAt: addMilliseconds(new Date(), ms(this.configService.get('auth.otp.expiresIn')))
     })
     // 3. Gửi mã OTP
     const { error } = await this.emailService.sendOTP({
@@ -125,7 +127,7 @@ export class AuthService {
     return { message: 'Gửi mã OTP thành công' }
   }
 
-  async login(body: LoginBodyType & { userAgent: string; ip: string }) {
+  async login(body: LoginBodyType & { userAgent: string; ip: string }, res: Response) {
     // 1. Lấy thông tin user, kiểm tra user có tồn tại hay không, mật khẩu có đúng không
     const user = await this.authRepository.findUniqueUserIncludeRole({
       email: body.email
@@ -179,7 +181,12 @@ export class AuthService {
       roleName: user.role.name
     })
 
-    return tokens
+    this.cookieService.setAuthCookies(res, tokens.accessToken, tokens.refreshToken)
+
+    return {
+      message: 'Đăng nhập thành công',
+      data: user
+    }
   }
 
   async generateTokens({ userId, deviceId, roleId, roleName }: AccessTokenPayloadCreate) {
@@ -204,7 +211,7 @@ export class AuthService {
     return { accessToken, refreshToken }
   }
 
-  async refreshToken({ userAgent, ip }: { userAgent: string; ip: string }, refreshToken: string) {
+  async refreshToken({ refreshToken, userAgent, ip }: RefreshTokenBodyType & { userAgent: string; ip: string }) {
     try {
       // 1. Kiểm tra refreshToken có hợp lệ không
       const { userId } = await this.tokenService.verifyRefreshToken(refreshToken)
@@ -236,13 +243,7 @@ export class AuthService {
       // 5. Tạo mới accessToken và refreshToken
       const $tokens = this.generateTokens({ userId, roleId, roleName, deviceId })
       const [, , tokens] = await Promise.all([$updateDevice, $deleteRefreshToken, $tokens])
-      return {
-        ...tokens,
-        userId,
-        deviceId,
-        roleId,
-        roleName
-      }
+      return tokens
     } catch (error) {
       if (error instanceof HttpException) {
         throw error

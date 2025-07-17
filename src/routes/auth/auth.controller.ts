@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Req, Res } from '@nestjs/common'
-import { Response, Request } from 'express'
+import { Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
   DisableTwoFactorBodyDTO,
@@ -18,20 +18,20 @@ import {
 
 import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleService } from 'src/routes/auth/google.service'
-
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { EmptyBodyDTO } from 'src/shared/dtos/request.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { ConfigService } from '@nestjs/config'
 import { CookieService } from 'src/shared/services/cookie.service'
-import { UnauthorizedException } from '@nestjs/common'
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly googleService: GoogleService,
+    private readonly configService: ConfigService,
     private readonly cookieService: CookieService
   ) {}
 
@@ -57,58 +57,35 @@ export class AuthController {
     @Body() body: LoginBodyDTO,
     @UserAgent() userAgent: string,
     @Ip() ip: string,
-    @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ) {
-    const { accessToken, refreshToken } = await this.authService.login({
-      ...body,
-      userAgent,
-      ip
-    })
-    this.cookieService.setAuthCookies(res, accessToken, refreshToken)
-    return { message: 'Đăng nhập thành công' }
+    return this.authService.login(
+      {
+        ...body,
+        userAgent,
+        ip
+      },
+      res
+    )
   }
 
   @Post('refresh-token')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(RefreshTokenResDTO)
-  async refreshToken(
-    @UserAgent() userAgent: string,
-    @Ip() ip: string,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response
-  ) {
-    const refreshTokenFromCookie = this.cookieService.getRefreshTokenFromCookie(req)
-    if (!refreshTokenFromCookie) {
-      throw new UnauthorizedException('Refresh token not found')
-    }
-
-    const data = await this.authService.refreshToken(
-      {
-        userAgent,
-        ip
-      },
-      refreshTokenFromCookie
-    )
-
-    this.cookieService.setAuthCookies(res, data.accessToken, data.refreshToken)
-
-    return { message: 'Làm mới token thành công' }
+  refreshToken(@Body() body: RefreshTokenBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
+    return this.authService.refreshToken({
+      refreshToken: body.refreshToken,
+      userAgent,
+      ip
+    })
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const refreshTokenFromCookie = this.cookieService.getRefreshTokenFromCookie(req)
-    if (!refreshTokenFromCookie) {
-      throw new UnauthorizedException('Refresh token not found')
-    }
-    await this.authService.logout(refreshTokenFromCookie)
-    this.cookieService.clearAuthCookies(res)
-
-    return { message: 'Đăng xuất thành công' }
+  logout(@Body() body: LogoutBodyDTO) {
+    return this.authService.logout(body.refreshToken)
   }
 
   @Get('google-link')
@@ -129,16 +106,15 @@ export class AuthController {
         code,
         state
       })
-
-      this.cookieService.setAuthCookies(res, data.accessToken, data.refreshToken)
-
-      return res.redirect(`${process.env.GOOGLE_CLIENT_REDIRECT_URI}?success=true`)
+      return res.redirect(
+        `${this.configService.get('auth.google.client.redirectUri')}?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`
+      )
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : 'Đã xảy ra lỗi khi đăng nhập bằng Google, vui lòng thử lại bằng cách khác'
-      return res.redirect(`${process.env.GOOGLE_CLIENT_REDIRECT_URI}?errorMessage=${message}`)
+      return res.redirect(`${this.configService.get('auth.google.client.redirectUri')}?errorMessage=${message}`)
     }
   }
 

@@ -2,6 +2,7 @@ import { PermissionSchema } from 'src/shared/models/shared-permission.model'
 import { z } from 'zod'
 
 export const GetPermissionsResSchema = z.object({
+  message: z.string().optional(),
   data: z.array(PermissionSchema),
   metadata: z.object({
     totalItems: z.number(),
@@ -26,7 +27,10 @@ export const GetPermissionParamsSchema = z
   })
   .strict()
 
-export const GetPermissionDetailResSchema = PermissionSchema
+export const GetPermissionDetailResSchema = z.object({
+  message: z.string().optional(),
+  data: PermissionSchema
+})
 
 export const CreatePermissionBodySchema = PermissionSchema.pick({
   name: true,

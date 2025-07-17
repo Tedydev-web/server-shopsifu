@@ -7,6 +7,7 @@ export const RoleWithPermissionsSchema = RoleSchema.extend({
 })
 
 export const GetRolesResSchema = z.object({
+  message: z.string().optional(),
   data: z.array(RoleSchema),
   metadata: z.object({
     totalItems: z.number(),
@@ -31,7 +32,10 @@ export const GetRoleParamsSchema = z
   })
   .strict()
 
-export const GetRoleDetailResSchema = RoleWithPermissionsSchema
+export const GetRoleDetailResSchema = z.object({
+  message: z.string().optional(),
+  data: RoleWithPermissionsSchema
+})
 
 export const CreateRoleBodySchema = RoleSchema.pick({
   name: true,
@@ -39,7 +43,10 @@ export const CreateRoleBodySchema = RoleSchema.pick({
   isActive: true
 }).strict()
 
-export const CreateRoleResSchema = RoleSchema
+export const CreateRoleResSchema = z.object({
+  message: z.string().optional(),
+  data: RoleSchema
+})
 
 export const UpdateRoleBodySchema = RoleSchema.pick({
   name: true,

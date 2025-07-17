@@ -6,7 +6,10 @@ export const GetCategoryTranslationParamsSchema = z
     categoryTranslationId: z.string()
   })
   .strict()
-export const GetCategoryTranslationDetailResSchema = CategoryTranslationSchema
+export const GetCategoryTranslationDetailResSchema = z.object({
+  data: CategoryTranslationSchema,
+  message: z.string().optional()
+})
 export const CreateCategoryTranslationBodySchema = CategoryTranslationSchema.pick({
   categoryId: true,
   languageId: true,

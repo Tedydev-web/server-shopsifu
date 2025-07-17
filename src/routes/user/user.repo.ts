@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { CreateUserBodyType, GetUsersQueryType, GetUsersResType } from 'src/routes/user/user.model'
+import { CreateUserBodyType, GetUsersQueryType, GetUsersResType, UpdateUserBodyType } from 'src/routes/user/user.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { UserType } from 'src/shared/models/shared-user.model'
 
@@ -8,8 +8,8 @@ export class UserRepo {
   constructor(private prismaService: PrismaService) {}
 
   async list(pagination: GetUsersQueryType): Promise<GetUsersResType> {
-    const skip = (pagination.page - 1) * pagination.limit
-    const take = pagination.limit
+    const skip = ((pagination.page || 1) - 1) * (pagination.limit || 10)
+    const take = pagination.limit || 10
     const [totalItems, data] = await Promise.all([
       this.prismaService.user.count({
         where: {
@@ -31,11 +31,11 @@ export class UserRepo {
       data,
       metadata: {
         totalItems,
-        page: pagination.page,
-        limit: pagination.limit,
-        totalPages: Math.ceil(totalItems / pagination.limit),
-        hasNext: pagination.page < Math.ceil(totalItems / pagination.limit),
-        hasPrev: pagination.page > 1
+        page: pagination.page || 1,
+        limit: pagination.limit || 10,
+        totalPages: Math.ceil(totalItems / (pagination.limit || 10)),
+        hasNext: (pagination.page || 1) < Math.ceil(totalItems / (pagination.limit || 10)),
+        hasPrev: (pagination.page || 1) > 1
       }
     }
   }

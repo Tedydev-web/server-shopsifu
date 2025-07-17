@@ -2,6 +2,7 @@ import { CategoryIncludeTranslationSchema, CategorySchema } from 'src/shared/mod
 import { z } from 'zod'
 
 export const GetAllCategoriesResSchema = z.object({
+  message: z.string().optional(),
   data: z.array(CategorySchema),
   totalItems: z.number()
 })
@@ -16,7 +17,10 @@ export const GetCategoryParamsSchema = z
   })
   .strict()
 
-export const GetCategoryDetailResSchema = CategoryIncludeTranslationSchema
+export const GetCategoryDetailResSchema = z.object({
+  data: CategoryIncludeTranslationSchema,
+  message: z.string().optional()
+})
 
 export const CreateCategoryBodySchema = CategorySchema.pick({
   name: true,

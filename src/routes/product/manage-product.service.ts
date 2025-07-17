@@ -3,17 +3,20 @@ import { ProductRepo } from 'src/routes/product/product.repo'
 import {
   CreateProductBodyType,
   GetManageProductsQueryType,
-  GetProductsQueryType,
   UpdateProductBodyType
 } from 'src/routes/product/product.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
-import { I18nContext } from 'nestjs-i18n'
+import { I18nContext, I18nService } from 'nestjs-i18n'
 import { RoleName } from 'src/shared/constants/role.constant'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class ManageProductService {
-  constructor(private productRepo: ProductRepo) {}
+  constructor(
+    private productRepo: ProductRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   /**
    * Kiểm tra nếu người dùng không phải là người tạo sản phẩm hoặc admin thì không cho tiếp tục
@@ -56,7 +59,11 @@ export class ManageProductService {
       orderBy: props.query.orderBy,
       sortBy: props.query.sortBy
     })
-    return data
+    return {
+      message: this.i18n.t('product.product.success.GET_SUCCESS'),
+      data: data.data,
+      metadata: data.metadata
+    }
   }
 
   async getDetail(props: { productId: string; userIdRequest: string; roleNameRequest: string }) {
@@ -71,16 +78,23 @@ export class ManageProductService {
     this.validatePrivilege({
       userIdRequest: props.userIdRequest,
       roleNameRequest: props.roleNameRequest,
-      createdById: product.createdById
+      createdById: product.data.createdById
     })
-    return product
+    return {
+      message: this.i18n.t('product.product.success.GET_DETAIL_SUCCESS'),
+      data: product.data
+    }
   }
 
-  create({ data, createdById }: { data: CreateProductBodyType; createdById: string }) {
-    return this.productRepo.create({
+  async create({ data, createdById }: { data: CreateProductBodyType; createdById: string }) {
+    const product = await this.productRepo.create({
       createdById,
       data
     })
+    return {
+      message: this.i18n.t('product.product.success.CREATE_SUCCESS'),
+      data: product
+    }
   }
 
   async update({
@@ -109,7 +123,10 @@ export class ManageProductService {
         updatedById,
         data
       })
-      return updatedProduct
+      return {
+        message: this.i18n.t('product.product.success.UPDATE_SUCCESS'),
+        data: updatedProduct
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -142,7 +159,7 @@ export class ManageProductService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('product.product.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

@@ -19,6 +19,7 @@ export const GetCartItemParamsSchema = z.object({
 })
 
 export const CartItemDetailSchema = z.object({
+  message: z.string().optional(),
   shop: UserSchema.pick({
     id: true,
     name: true,
@@ -59,6 +60,7 @@ export const CartItemDetailSchema = z.object({
 })
 
 export const GetCartResSchema = z.object({
+  message: z.string().optional(),
   data: z.array(CartItemDetailSchema),
   metadata: z.object({
     totalItems: z.number(),

@@ -25,6 +25,7 @@ export const ProductSKUSnapshotSchema = z.object({
 })
 
 export const GetOrderListResSchema = z.object({
+  message: z.string().optional(),
   data: z.array(
     OrderSchema.extend({
       items: z.array(ProductSKUSnapshotSchema)
@@ -51,6 +52,7 @@ export const GetOrderListQuerySchema = PaginationQuerySchema.extend({
 })
 
 export const GetOrderDetailResSchema = OrderSchema.extend({
+  message: z.string().optional(),
   items: z.array(ProductSKUSnapshotSchema)
 })
 
@@ -68,9 +70,16 @@ export const CreateOrderBodySchema = z
   )
   .min(1)
 
-export const CreateOrderResSchema = z.object({ orders: z.array(OrderSchema), paymentId: z.string() })
+export const CreateOrderResSchema = z.object({
+  message: z.string().optional(),
+  orders: z.array(OrderSchema),
+  paymentId: z.string()
+})
 export const CancelOrderBodySchema = z.object({})
-export const CancelOrderResSchema = OrderSchema
+export const CancelOrderResSchema = z.object({
+  message: z.string().optional(),
+  data: OrderSchema
+})
 
 export const GetOrderParamsSchema = z
   .object({

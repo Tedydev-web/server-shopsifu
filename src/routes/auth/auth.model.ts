@@ -1,4 +1,5 @@
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
+import { RoleSchema } from 'src/shared/models/shared-role.model'
 import { UserSchema } from 'src/shared/models/shared-user.model'
 import { z } from 'zod'
 
@@ -74,14 +75,19 @@ export const LoginBodySchema = UserSchema.pick({
   })
 
 export const LoginResSchema = z.object({
-  message: z.string()
+  message: z.string().optional(),
+  data: UserSchema.omit({ password: true, totpSecret: true }).extend({
+    role: RoleSchema.pick({ id: true, name: true })
+  })
 })
 
-export const RefreshTokenBodySchema = z.object({}).strict()
+export const RefreshTokenBodySchema = z
+  .object({
+    refreshToken: z.string()
+  })
+  .strict()
 
-export const RefreshTokenResSchema = z.object({
-  message: z.string()
-})
+export const RefreshTokenResSchema = LoginResSchema
 
 export const DeviceSchema = z.object({
   id: z.string(),
@@ -99,18 +105,6 @@ export const RefreshTokenSchema = z.object({
   deviceId: z.string(),
   expiresAt: z.date(),
   createdAt: z.date()
-})
-
-export const RoleSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  description: z.string(),
-  isActive: z.boolean(),
-  createdById: z.string().nullable(),
-  updatedById: z.string().nullable(),
-  deletedAt: z.date().nullable(),
-  createdAt: z.date(),
-  updatedAt: z.date()
 })
 
 export const LogoutBodySchema = RefreshTokenBodySchema

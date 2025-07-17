@@ -3,6 +3,7 @@ import { UserSchema } from 'src/shared/models/shared-user.model'
 import { RoleSchema } from 'src/shared/models/shared-role.model'
 
 export const GetUsersResSchema = z.object({
+  message: z.string().optional(),
   data: z.array(
     UserSchema.omit({ password: true, totpSecret: true }).extend({
       role: RoleSchema.pick({
@@ -44,7 +45,7 @@ export const CreateUserBodySchema = UserSchema.pick({
   roleId: true
 }).strict()
 
-export const UpdateUserBodySchema = CreateUserBodySchema
+export const UpdateUserBodySchema = CreateUserBodySchema.partial()
 
 export type GetUsersResType = z.infer<typeof GetUsersResSchema>
 export type GetUsersQueryType = z.infer<typeof GetUsersQuerySchema>

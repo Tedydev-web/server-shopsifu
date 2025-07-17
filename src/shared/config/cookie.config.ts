@@ -1,4 +1,5 @@
 import { registerAs } from '@nestjs/config'
+import ms from 'ms'
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
@@ -16,8 +17,7 @@ export default registerAs(
           (IS_PRODUCTION ? 'strict' : 'lax'),
         path: process.env.COOKIE_ACCESS_TOKEN_PATH || '/',
         domain: process.env.COOKIE_ACCESS_TOKEN_DOMAIN || undefined,
-        maxAge: parseInt(process.env.COOKIE_ACCESS_TOKEN_MAX_AGE || '900000'), // 15 phút default
-        expires: new Date(Date.now() + parseInt(process.env.COOKIE_ACCESS_TOKEN_MAX_AGE || '900000'))
+        maxAge: ms(process.env.AUTH_ACCESS_TOKEN_EXP || '1d') // 1 ngày mặc định
       }
     },
 
@@ -32,8 +32,7 @@ export default registerAs(
           (IS_PRODUCTION ? 'strict' : 'lax'),
         path: process.env.COOKIE_REFRESH_TOKEN_PATH || '/',
         domain: process.env.COOKIE_REFRESH_TOKEN_DOMAIN || undefined,
-        maxAge: parseInt(process.env.COOKIE_REFRESH_TOKEN_MAX_AGE || '604800000'), // 7 ngày default
-        expires: new Date(Date.now() + parseInt(process.env.COOKIE_REFRESH_TOKEN_MAX_AGE || '604800000'))
+        maxAge: ms(process.env.AUTH_REFRESH_TOKEN_EXP || '7d') // 7 ngày mặc định
       }
     },
 
@@ -47,8 +46,7 @@ export default registerAs(
           (process.env.COOKIE_CSRF_TOKEN_SAME_SITE as 'strict' | 'lax' | 'none') || (IS_PRODUCTION ? 'strict' : 'lax'),
         path: process.env.COOKIE_CSRF_TOKEN_PATH || '/',
         domain: process.env.COOKIE_CSRF_TOKEN_DOMAIN || undefined,
-        maxAge: parseInt(process.env.COOKIE_CSRF_TOKEN_MAX_AGE || '3600000'), // 1 giờ default
-        expires: new Date(Date.now() + parseInt(process.env.COOKIE_CSRF_TOKEN_MAX_AGE || '3600000'))
+        maxAge: ms(process.env.AUTH_CSRF_TOKEN_EXP || '1h') // 1 giờ default
       }
     }
   })

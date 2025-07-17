@@ -7,17 +7,25 @@ import {
   CreateProductTranslationBodyType,
   UpdateProductTranslationBodyType
 } from 'src/routes/product/product-translation/product-translation.model'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class ProductTranslationService {
-  constructor(private productTranslationRepo: ProductTranslationRepo) {}
+  constructor(
+    private productTranslationRepo: ProductTranslationRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   async findById(id: string) {
     const product = await this.productTranslationRepo.findById(id)
     if (!product) {
       throw NotFoundRecordException
     }
-    return product
+    return {
+      message: this.i18n.t('product.productTranslation.success.GET_DETAIL_SUCCESS'),
+      data: product
+    }
   }
 
   async create({ data, createdById }: { data: CreateProductTranslationBodyType; createdById: string }) {
@@ -41,7 +49,10 @@ export class ProductTranslationService {
         updatedById,
         data
       })
-      return product
+      return {
+        message: this.i18n.t('product.productTranslation.success.UPDATE_SUCCESS'),
+        data: product
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw ProductTranslationAlreadyExistsException
@@ -60,7 +71,7 @@ export class ProductTranslationService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('product.productTranslation.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

@@ -222,6 +222,13 @@ export type I18nTranslations = {
             };
         };
     };
+    "payment": {
+        "payment": {
+            "success": {
+                "RECEIVER_SUCCESS": string;
+            };
+        };
+    };
     "permission": {
         "permission": {
             "success": {
@@ -243,12 +250,13 @@ export type I18nTranslations = {
                 "CREATE_SUCCESS": string;
                 "UPDATE_SUCCESS": string;
                 "DELETE_SUCCESS": string;
-                "GET_PRODUCTS": string;
-                "GET_PRODUCT_DETAIL": string;
+                "GET_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
             };
             "error": {
                 "NOT_FOUND": string;
                 "BRAND_NOT_FOUND": string;
+                "CATEGORY_NOT_FOUND": string;
             };
         };
         "productTranslation": {
@@ -263,6 +271,7 @@ export type I18nTranslations = {
                 "ALREADY_EXISTS": string;
                 "PRODUCT_NOT_FOUND": string;
                 "LANGUAGE_NOT_FOUND": string;
+                "CATEGORY_NOT_FOUND": string;
             };
         };
     };
@@ -277,6 +286,15 @@ export type I18nTranslations = {
             "INVALID_PASSWORD": string;
             "UPDATE_FAILED": string;
             "CHANGE_PASSWORD_FAILED": string;
+        };
+    };
+    "review": {
+        "review": {
+            "success": {
+                "GET_SUCCESS": string;
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+            };
         };
     };
     "role": {
@@ -300,20 +318,22 @@ export type I18nTranslations = {
         };
     };
     "user": {
-        "success": {
-            "CREATE_SUCCESS": string;
-            "UPDATE_SUCCESS": string;
-            "DELETE_SUCCESS": string;
-            "GET_LIST_SUCCESS": string;
-            "GET_DETAIL_SUCCESS": string;
-        };
-        "error": {
-            "NOT_FOUND": string;
-            "ALREADY_EXISTS": string;
-            "CANNOT_DELETE": string;
-            "CANNOT_UPDATE_ADMIN_USER": string;
-            "CANNOT_DELETE_ADMIN_USER": string;
-            "ROLE_NOT_FOUND": string;
+        "user": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+                "GET_SUCCESS": string;
+                "GET_DETAIL_SUCCESS": string;
+            };
+            "error": {
+                "NOT_FOUND": string;
+                "ALREADY_EXISTS": string;
+                "CANNOT_DELETE": string;
+                "CANNOT_UPDATE_ADMIN_USER": string;
+                "CANNOT_DELETE_ADMIN_USER": string;
+                "ROLE_NOT_FOUND": string;
+            };
         };
     };
 };

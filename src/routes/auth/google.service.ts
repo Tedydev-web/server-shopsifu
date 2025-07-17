@@ -5,10 +5,10 @@ import { GoogleAuthStateType } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { AuthService } from 'src/routes/auth/auth.service'
 import { GoogleUserInfoError } from 'src/routes/auth/auth.error'
-
 import { HashingService } from 'src/shared/services/hashing.service'
 import { v4 as uuidv4 } from 'uuid'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
+import { ConfigService } from '@nestjs/config'
 
 @Injectable()
 export class GoogleService {
@@ -17,12 +17,13 @@ export class GoogleService {
     private readonly authRepository: AuthRepository,
     private readonly hashingService: HashingService,
     private readonly sharedRoleRepository: SharedRoleRepository,
-    private readonly authService: AuthService
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService
   ) {
     this.oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI
+      this.configService.get('auth.google.client.id'),
+      this.configService.get('auth.google.client.secret'),
+      this.configService.get('auth.google.client.redirectUriGoogleCallback')
     )
   }
   getAuthorizationUrl({ userAgent, ip }: GoogleAuthStateType) {
@@ -98,13 +99,7 @@ export class GoogleService {
         roleId: user.roleId,
         roleName: user.role.name
       })
-      return {
-        ...authTokens,
-        userId: user.id,
-        deviceId: device.id,
-        roleId: user.roleId,
-        roleName: user.role.name
-      }
+      return authTokens
     } catch (error) {
       console.error('Error in googleCallback', error)
       throw error

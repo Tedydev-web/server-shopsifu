@@ -10,17 +10,24 @@ import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared
 import { PermissionAlreadyExistsException } from 'src/routes/permission/permission.error'
 import { CACHE_MANAGER } from '@nestjs/cache-manager'
 import { Cache } from 'cache-manager'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class PermissionService {
   constructor(
     private permissionRepo: PermissionRepo,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   async list(pagination: GetPermissionsQueryType) {
     const data = await this.permissionRepo.list(pagination)
-    return data
+    return {
+      message: this.i18n.t('permission.permission.success.GET_SUCCESS'),
+      data: data.data,
+      metadata: data.metadata
+    }
   }
 
   async findById(id: string) {
@@ -28,15 +35,22 @@ export class PermissionService {
     if (!permission) {
       throw NotFoundRecordException
     }
-    return permission
+    return {
+      message: this.i18n.t('permission.permission.success.GET_DETAIL_SUCCESS'),
+      data: permission
+    }
   }
 
   async create({ data, createdById }: { data: CreatePermissionBodyType; createdById: string }) {
     try {
-      return await this.permissionRepo.create({
+      const permission = await this.permissionRepo.create({
         createdById,
         data
       })
+      return {
+        message: this.i18n.t('permission.permission.success.CREATE_SUCCESS'),
+        data: permission
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw PermissionAlreadyExistsException
@@ -54,7 +68,10 @@ export class PermissionService {
       })
       const { roles } = permission
       await this.deleteCachedRole(roles)
-      return permission
+      return {
+        message: this.i18n.t('permission.permission.success.UPDATE_SUCCESS'),
+        data: permission
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -75,7 +92,7 @@ export class PermissionService {
       const { roles } = permission
       await this.deleteCachedRole(roles)
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('permission.permission.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

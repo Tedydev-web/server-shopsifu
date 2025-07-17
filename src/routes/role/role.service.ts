@@ -7,17 +7,24 @@ import { ProhibitedActionOnBaseRoleException, RoleAlreadyExistsException } from 
 import { RoleName } from 'src/shared/constants/role.constant'
 import { CACHE_MANAGER } from '@nestjs/cache-manager'
 import { Cache } from 'cache-manager'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class RoleService {
   constructor(
     private roleRepo: RoleRepo,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   async list(pagination: GetRolesQueryType) {
     const data = await this.roleRepo.list(pagination)
-    return data
+    return {
+      message: this.i18n.t('role.role.success.GET_SUCCESS'),
+      data: data.data,
+      metadata: data.metadata
+    }
   }
 
   async findById(id: string) {
@@ -25,7 +32,10 @@ export class RoleService {
     if (!role) {
       throw NotFoundRecordException
     }
-    return role
+    return {
+      message: this.i18n.t('role.role.success.GET_DETAIL_SUCCESS'),
+      data: role
+    }
   }
 
   async create({ data, createdById }: { data: CreateRoleBodyType; createdById: string }) {
@@ -34,7 +44,10 @@ export class RoleService {
         createdById,
         data
       })
-      return role
+      return {
+        message: this.i18n.t('role.role.success.CREATE_SUCCESS'),
+        data: role
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw RoleAlreadyExistsException
@@ -67,7 +80,10 @@ export class RoleService {
         data
       })
       await this.cacheManager.del(`role:${updatedRole.id}`) // Xóa cache của role đã cập nhật
-      return updatedRole
+      return {
+        message: this.i18n.t('role.role.success.UPDATE_SUCCESS'),
+        data: updatedRole
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw NotFoundRecordException
@@ -88,7 +104,7 @@ export class RoleService {
       })
       await this.cacheManager.del(`role:${id}`) // Xóa cache của role đã xóa
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('role.role.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
