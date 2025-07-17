@@ -11,12 +11,12 @@ export class AuthenticationGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly accessTokenGuard: AccessTokenGuard,
-    private readonly paymentApiKeyGuard: PaymentAPIKeyGuard
+    private readonly paymentApiKeyGuard: PaymentAPIKeyGuard,
   ) {
     this.authTypeGuardMap = {
       [AuthType.Bearer]: this.accessTokenGuard,
       [AuthType.PaymentAPIKey]: this.paymentApiKeyGuard,
-      [AuthType.None]: { canActivate: () => true }
+      [AuthType.None]: { canActivate: () => true },
     }
   }
 
@@ -32,7 +32,7 @@ export class AuthenticationGuard implements CanActivate {
     return (
       this.reflector.getAllAndOverride<AuthTypeDecoratorPayload | undefined>(AUTH_TYPE_KEY, [
         context.getHandler(),
-        context.getClass()
+        context.getClass(),
       ]) ?? { authTypes: [AuthType.Bearer], options: { condition: ConditionGuard.And } }
     )
   }
@@ -54,7 +54,7 @@ export class AuthenticationGuard implements CanActivate {
     if (lastError instanceof HttpException) {
       throw lastError
     }
-    throw new UnauthorizedException()
+    throw new UnauthorizedException('Error.Unauthorized')
   }
 
   private async handleAndCondition(guards: CanActivate[], context: ExecutionContext) {
@@ -62,13 +62,13 @@ export class AuthenticationGuard implements CanActivate {
     for (const guard of guards) {
       try {
         if (!(await guard.canActivate(context))) {
-          throw new UnauthorizedException()
+          throw new UnauthorizedException('Error.Unauthorized')
         }
       } catch (error) {
         if (error instanceof HttpException) {
           throw error
         }
-        throw new UnauthorizedException()
+        throw new UnauthorizedException('Error.Unauthorized')
       }
     }
     return true

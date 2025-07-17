@@ -5,7 +5,7 @@ import {
   ExecutionContext,
   UnauthorizedException,
   ForbiddenException,
-  Inject
+  Inject,
 } from '@nestjs/common'
 import { Cache } from 'cache-manager'
 import { keyBy } from 'lodash'
@@ -28,7 +28,7 @@ export class AccessTokenGuard implements CanActivate {
   constructor(
     private readonly tokenService: TokenService,
     private readonly prismaService: PrismaService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -42,7 +42,7 @@ export class AccessTokenGuard implements CanActivate {
   }
 
   private async extractAndValidateToken(request: any): Promise<AccessTokenPayload> {
-    const accessToken = this.extractAccessToken(request)
+    const accessToken = this.extractAccessTokenFromHeader(request)
     try {
       const decodedAccessToken = await this.tokenService.verifyAccessToken(accessToken)
 
@@ -53,18 +53,13 @@ export class AccessTokenGuard implements CanActivate {
     }
   }
 
-  private extractAccessToken(request: any): string {
-    // Ưu tiên lấy từ header Authorization
-    let accessToken = request.headers.authorization?.split(' ')[1]
-    // Nếu không có, lấy từ cookie
-    if (!accessToken && request.cookies) {
-      accessToken = request.cookies['access_token']
-    }
+  private extractAccessTokenFromHeader(request: any): string {
+    const accessToken = request.cookies['access_token']
     if (!accessToken) {
       throw new UnauthorizedException('Error.MissingAccessToken')
     }
     return accessToken
-}
+  }
 
   private async validateUserPermission(decodedAccessToken: AccessTokenPayload, request: any): Promise<void> {
     const roleId: string = decodedAccessToken.roleId
@@ -74,21 +69,21 @@ export class AccessTokenGuard implements CanActivate {
     // 1. Thử lấy từ cache
     let cachedRole = await this.cacheManager.get<CachedRole>(cacheKey)
     // 2. Nếu không có trong cache, thì truy vấn từ cơ sở dữ liệu
-    if (cachedRole === undefined) {
+    if (cachedRole === null) {
       const role = await this.prismaService.role
         .findUniqueOrThrow({
           where: {
             id: roleId,
             deletedAt: null,
-            isActive: true
+            isActive: true,
           },
           include: {
             permissions: {
               where: {
-                deletedAt: null
-              }
-            }
-          }
+                deletedAt: null,
+              },
+            },
+          },
         })
         .catch(() => {
           throw new ForbiddenException()
@@ -96,7 +91,7 @@ export class AccessTokenGuard implements CanActivate {
 
       const permissionObject = keyBy(
         role.permissions,
-        (permission) => `${permission.path}:${permission.method}`
+        (permission) => `${permission.path}:${permission.method}`,
       ) as CachedRole['permissions']
       cachedRole = { ...role, permissions: permissionObject }
       await this.cacheManager.set(cacheKey, cachedRole, 1000 * 60 * 60) // Cache for 1 hour
@@ -105,7 +100,7 @@ export class AccessTokenGuard implements CanActivate {
     }
 
     // 3. Kiểm tra quyền truy cập
-    const canAccess: Permission | undefined = cachedRole?.permissions[`${path}:${method}`]
+    const canAccess: Permission | undefined = cachedRole.permissions[`${path}:${method}`]
     if (!canAccess) {
       throw new ForbiddenException()
     }
