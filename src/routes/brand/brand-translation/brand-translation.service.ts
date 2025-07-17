@@ -7,25 +7,37 @@ import {
   CreateBrandTranslationBodyType,
   UpdateBrandTranslationBodyType
 } from 'src/routes/brand/brand-translation/brand-translation.model'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 export class BrandTranslationService {
-  constructor(private brandTranslationRepo: BrandTranslationRepo) {}
+  constructor(
+    private brandTranslationRepo: BrandTranslationRepo,
+    private i18n: I18nService<I18nTranslations>
+  ) {}
 
   async findById(id: string) {
     const brand = await this.brandTranslationRepo.findById(id)
     if (!brand) {
       throw NotFoundRecordException
     }
-    return brand
+    return {
+      message: this.i18n.t('brand.brandTranslation.success.GET_DETAIL_SUCCESS'),
+      data: brand
+    }
   }
 
   async create({ data, createdById }: { data: CreateBrandTranslationBodyType; createdById: string }) {
     try {
-      return await this.brandTranslationRepo.create({
+      const brand = await this.brandTranslationRepo.create({
         createdById,
         data
       })
+      return {
+        message: this.i18n.t('brand.brandTranslation.success.CREATE_SUCCESS'),
+        data: brand
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw BrandTranslationAlreadyExistsException
@@ -41,7 +53,10 @@ export class BrandTranslationService {
         updatedById,
         data
       })
-      return brand
+      return {
+        message: this.i18n.t('brand.brandTranslation.success.UPDATE_SUCCESS'),
+        data: brand
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw BrandTranslationAlreadyExistsException
@@ -60,7 +75,7 @@ export class BrandTranslationService {
         deletedById
       })
       return {
-        message: 'Delete successfully'
+        message: this.i18n.t('brand.brandTranslation.success.DELETE_SUCCESS')
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

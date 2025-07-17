@@ -2,6 +2,7 @@ import { BrandIncludeTranslationSchema, BrandSchema } from 'src/shared/models/sh
 import { z } from 'zod'
 
 export const GetBrandsResSchema = z.object({
+  message: z.string().optional(),
   data: z.array(BrandIncludeTranslationSchema),
   metadata: z.object({
     totalItems: z.number(),
@@ -19,12 +20,17 @@ export const GetBrandParamsSchema = z
   })
   .strict()
 
-export const GetBrandDetailResSchema = BrandIncludeTranslationSchema
+export const GetBrandDetailResSchema = z.object({
+  message: z.string().optional(),
+  data: BrandIncludeTranslationSchema
+})
 
 export const CreateBrandBodySchema = BrandSchema.pick({
   name: true,
   logo: true
-}).strict()
+})
+  .partial()
+  .strict()
 
 export const UpdateBrandBodySchema = CreateBrandBodySchema
 
