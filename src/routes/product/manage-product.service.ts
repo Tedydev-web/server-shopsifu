@@ -93,7 +93,7 @@ export class ManageProductService {
     })
     return {
       message: this.i18n.t('product.product.success.CREATE_SUCCESS'),
-      data: product
+      data: product.data
     }
   }
 

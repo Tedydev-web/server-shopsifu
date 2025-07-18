@@ -27,7 +27,4 @@ export const DiscountSchema = z.object({
   updatedAt: z.date()
 })
 
-export type DiscountTypeEnum = keyof typeof DiscountType
-export type DiscountStatusEnum = keyof typeof DiscountStatus
-export type DiscountApplyTypeEnum = keyof typeof DiscountApplyType
 export type DiscountSchemaType = z.infer<typeof DiscountSchema>

@@ -29,7 +29,8 @@ export class ProductService {
     })
     return {
       message: this.i18n.t('product.product.success.GET_SUCCESS'),
-      data: data.data
+      data: data.data,
+      metadata: data.metadata
     }
   }
 
@@ -44,7 +45,7 @@ export class ProductService {
     }
     return {
       message: this.i18n.t('product.product.success.GET_DETAIL_SUCCESS'),
-      data: product
+      data: product.data
     }
   }
 }

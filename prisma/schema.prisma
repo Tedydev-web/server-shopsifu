@@ -93,6 +93,7 @@ model User {
   receivedMessages            Message[]             @relation("ToUser")
   webSockets                  Websocket[]
   discounts                   Discount[]
+  shopDiscounts               Discount[]            @relation("Shop")
   createdDiscounts            Discount[]            @relation("DiscountCreatedBy")
   updatedDiscounts            Discount[]            @relation("DiscountUpdatedBy")
   deletedDiscounts            Discount[]            @relation("DiscountDeletedBy")
@@ -248,9 +249,11 @@ model Product {
   deletedById String?
   deletedBy   User?   @relation("ProductDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  Discount   Discount? @relation(fields: [discountId], references: [id])
+  discountId String?
 
   @@index([deletedAt])
 }
@@ -433,28 +436,28 @@ model ProductSKUSnapshot {
 }
 
 model Discount {
-  id          String       @id @default(uuid())
-  name        String       @db.VarChar(500)
-  description String       @db.VarChar(1000)
-  type        DiscountType @default(FIX_AMOUNT)
-  value       Int
-  code        String       @unique @db.VarChar(100)
-  startDate   DateTime
-  endDate     DateTime
-  maxUsed     Int
-  usesCount   Int          @default(0)
-
-  usersUsed String[]
-
+  id             String            @id @default(uuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name           String            @db.VarChar(500)
+  description    String            @db.VarChar(1000)
+  type           DiscountType      @default(FIX_AMOUNT)
+  value          Int
+  code           String            @unique @db.VarChar(100)
+  startDate      DateTime
+  endDate        DateTime
+  maxUses        Int
+  usesCount      Int               @default(0)
+  usersUsed      String[]
   maxUsesPerUser Int
   minOrderValue  Int
-  shopId         String
-  shop           User              @relation(fields: [shopId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  shopId         String?
+  shop           User?             @relation("Shop", fields: [shopId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
   status         DiscountStatus    @default(DRAFT)
   appliesTo      DiscountApplyType @default(ALL)
-  productIds     String[] // Danh sách productId được áp dụng
-
-  orders Order[]
+  products       Product[]
 
   createdById String?
   createdBy   User?   @relation("DiscountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -468,31 +471,24 @@ model Discount {
   updatedAt DateTime  @updatedAt
 
   @@index([deletedAt])
-  @@index([shopId, deletedAt])
   @@index([status, deletedAt])
   @@index([startDate, endDate])
-  @@index([code, deletedAt])
-  @@index([appliesTo, shopId])
 }
 
 model Order {
-  id       String               @id @default(uuid())
-  userId   String
-  user     User                 @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  status   OrderStatus
-  items    ProductSKUSnapshot[]
-  products Product[]
-  reviews  Review[]
-
-  discountId String?
-  discount   Discount? @relation(fields: [discountId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-
+  id        String               @id @default(uuid())
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  status    OrderStatus
+  items     ProductSKUSnapshot[]
+  products  Product[]
+  reviews   Review[]
   /// [Receiver]
   receiver  Json
   shopId    String?
-  shop      User?   @relation("Shop", fields: [shopId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  shop      User?                @relation("Shop", fields: [shopId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   paymentId String
-  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment   Payment              @relation(fields: [paymentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   createdById String?
   createdBy   User?   @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -507,7 +503,6 @@ model Order {
 
   @@index([deletedAt])
   @@index([status, deletedAt])
-  @@index([discountId])
 }
 
 model Payment {
