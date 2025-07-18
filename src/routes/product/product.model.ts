@@ -102,6 +102,7 @@ export const GetProductDetailResSchema = z.object({
 export const CreateProductBodySchema = ProductSchema.pick({
   publishedAt: true,
   name: true,
+  description: true,
   basePrice: true,
   virtualPrice: true,
   brandId: true,
