@@ -303,7 +303,9 @@ export class OrderRepo {
           updatedById: userId
         }
       })
-      return updatedOrder
+      return {
+        data: updatedOrder
+      }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
         throw OrderNotFoundException

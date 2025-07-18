@@ -24,7 +24,7 @@ export class CategoryTranslationService {
     }
     return {
       message: this.i18n.t('category.categoryTranslation.success.GET_DETAIL_SUCCESS'),
-      data: category
+      data: category.data
     }
   }
 

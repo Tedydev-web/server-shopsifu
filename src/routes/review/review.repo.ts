@@ -47,7 +47,7 @@ export class ReviewRepository {
       })
     ])
     return {
-      data,
+      data: data.map((review) => ({ data: review })),
       metadata: {
         totalItems,
         page: pagination.page,
@@ -134,8 +134,10 @@ export class ReviewRepository {
         }))
       })
       return {
-        ...review,
-        medias: reviewMedias
+        data: {
+          ...review,
+          medias: reviewMedias
+        }
       }
     })
   }
@@ -199,8 +201,10 @@ export class ReviewRepository {
         }))
       })
       return {
-        ...review,
-        medias: reviewMedias
+        data: {
+          ...review,
+          medias: reviewMedias
+        }
       }
     })
   }

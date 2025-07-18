@@ -12,12 +12,14 @@ export class BrandTranslationRepo {
   constructor(private prismaService: PrismaService) {}
 
   findById(id: string): Promise<GetBrandTranslationDetailResType | null> {
-    return this.prismaService.brandTranslation.findUnique({
-      where: {
-        id,
-        deletedAt: null
-      }
-    })
+    return this.prismaService.brandTranslation
+      .findUnique({
+        where: {
+          id,
+          deletedAt: null
+        }
+      })
+      .then((result) => (result ? { data: result } : null))
   }
 
   create({

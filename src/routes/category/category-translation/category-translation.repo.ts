@@ -12,12 +12,14 @@ export class CategoryTranslationRepo {
   constructor(private prismaService: PrismaService) {}
 
   findById(id: string): Promise<GetCategoryTranslationDetailResType | null> {
-    return this.prismaService.categoryTranslation.findUnique({
-      where: {
-        id,
-        deletedAt: null
-      }
-    })
+    return this.prismaService.categoryTranslation
+      .findUnique({
+        where: {
+          id,
+          deletedAt: null
+        }
+      })
+      .then((result) => (result ? { data: result } : null))
   }
 
   create({

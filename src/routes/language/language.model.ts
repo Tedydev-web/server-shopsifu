@@ -23,8 +23,8 @@ export const GetLanguageParamsSchema = z
   .strict()
 
 export const GetLanguageDetailResSchema = z.object({
-  data: LanguageSchema,
-  message: z.string().optional()
+  message: z.string().optional(),
+  data: LanguageSchema
 })
 
 export const CreateLanguageBodySchema = LanguageSchema.pick({

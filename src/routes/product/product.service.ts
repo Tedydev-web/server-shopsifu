@@ -29,8 +29,7 @@ export class ProductService {
     })
     return {
       message: this.i18n.t('product.product.success.GET_SUCCESS'),
-      data: data.data,
-      metadata: data.metadata
+      data: data.data
     }
   }
 

@@ -8,8 +8,8 @@ export const GetProductTranslationParamsSchema = z
   .strict()
 
 export const GetProductTranslationDetailResSchema = z.object({
-  data: ProductTranslationSchema,
-  message: z.string().optional()
+  message: z.string().optional(),
+  data: ProductTranslationSchema
 })
 
 export const CreateProductTranslationBodySchema = ProductTranslationSchema.pick({

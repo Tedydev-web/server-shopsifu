@@ -36,10 +36,14 @@ export class LanguageService {
 
   async create({ data, createdById }: { data: CreateLanguageBodyType; createdById: string }) {
     try {
-      return await this.languageRepo.create({
+      const language = await this.languageRepo.create({
         createdById,
         data
       })
+      return {
+        message: this.i18n.t('language.language.success.CREATE_SUCCESS'),
+        data: language
+      }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw LanguageAlreadyExistsException

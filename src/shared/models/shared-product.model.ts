@@ -40,7 +40,7 @@ export const ProductSchema = z.object({
   brandId: z.string(),
   images: z.array(z.string()),
   variants: VariantsSchema, // Json field represented as a record
-
+  description: z.string().max(1000),
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),
   deletedById: z.string().nullable(),

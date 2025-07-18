@@ -143,7 +143,7 @@ export class ProductRepo {
     })
   }
 
-  getDetail({
+  async getDetail({
     productId,
     languageId,
     isPublic
@@ -167,39 +167,41 @@ export class ProductRepo {
         OR: [{ publishedAt: null }, { publishedAt: { gt: new Date() } }]
       }
     }
-    return this.prismaService.product.findUnique({
-      where,
-      include: {
-        productTranslations: {
-          where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null }
-        },
-        skus: {
-          where: {
-            deletedAt: null
-          }
-        },
-        brand: {
-          include: {
-            brandTranslations: {
-              where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null }
-            }
-          }
-        },
-        categories: {
-          where: {
-            deletedAt: null
+    return this.prismaService.product
+      .findUnique({
+        where,
+        include: {
+          productTranslations: {
+            where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null }
           },
-          include: {
-            categoryTranslations: {
-              where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null }
+          skus: {
+            where: {
+              deletedAt: null
+            }
+          },
+          brand: {
+            include: {
+              brandTranslations: {
+                where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null }
+              }
+            }
+          },
+          categories: {
+            where: {
+              deletedAt: null
+            },
+            include: {
+              categoryTranslations: {
+                where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null }
+              }
             }
           }
         }
-      }
-    })
+      })
+      .then((product) => (product ? { data: product } : null))
   }
 
-  create({
+  async create({
     createdById,
     data
   }: {
@@ -207,48 +209,50 @@ export class ProductRepo {
     data: CreateProductBodyType
   }): Promise<GetProductDetailResType> {
     const { skus, categories, ...productData } = data
-    return this.prismaService.product.create({
-      data: {
-        createdById,
-        ...productData,
-        categories: {
-          connect: categories.map((category) => ({ id: category }))
-        },
-        skus: {
-          createMany: {
-            data: skus.map((sku) => ({
-              ...sku,
-              createdById
-            }))
-          }
-        }
-      },
-      include: {
-        productTranslations: {
-          where: { deletedAt: null }
-        },
-        skus: {
-          where: { deletedAt: null }
-        },
-        brand: {
-          include: {
-            brandTranslations: {
-              where: { deletedAt: null }
-            }
-          }
-        },
-        categories: {
-          where: {
-            deletedAt: null
+    return this.prismaService.product
+      .create({
+        data: {
+          createdById,
+          ...productData,
+          categories: {
+            connect: categories.map((category) => ({ id: category }))
           },
-          include: {
-            categoryTranslations: {
-              where: { deletedAt: null }
+          skus: {
+            createMany: {
+              data: skus.map((sku) => ({
+                ...sku,
+                createdById
+              }))
+            }
+          }
+        },
+        include: {
+          productTranslations: {
+            where: { deletedAt: null }
+          },
+          skus: {
+            where: { deletedAt: null }
+          },
+          brand: {
+            include: {
+              brandTranslations: {
+                where: { deletedAt: null }
+              }
+            }
+          },
+          categories: {
+            where: {
+              deletedAt: null
+            },
+            include: {
+              categoryTranslations: {
+                where: { deletedAt: null }
+              }
             }
           }
         }
-      }
-    })
+      })
+      .then((product) => ({ data: product }))
   }
 
   async update({

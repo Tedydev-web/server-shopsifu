@@ -90,17 +90,18 @@ export const GetProductParamsSchema = z
   .strict()
 
 export const GetProductDetailResSchema = z.object({
+  message: z.string().optional(),
   data: ProductSchema.extend({
     productTranslations: z.array(ProductTranslationSchema),
     skus: z.array(SKUSchema),
     categories: z.array(CategoryIncludeTranslationSchema),
     brand: BrandIncludeTranslationSchema
-  }),
-  message: z.string().optional()
+  })
 })
 
 export const CreateProductBodySchema = ProductSchema.pick({
   publishedAt: true,
+  description: true,
   name: true,
   basePrice: true,
   virtualPrice: true,

@@ -11,13 +11,15 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 export class ProductTranslationRepo {
   constructor(private prismaService: PrismaService) {}
 
-  findById(id: string): Promise<GetProductTranslationDetailResType | null> {
-    return this.prismaService.productTranslation.findUnique({
-      where: {
-        id,
-        deletedAt: null
-      }
-    })
+  async findById(id: string): Promise<GetProductTranslationDetailResType | null> {
+    return this.prismaService.productTranslation
+      .findUnique({
+        where: {
+          id,
+          deletedAt: null
+        }
+      })
+      .then((result) => (result ? { data: result } : null))
   }
 
   create({
