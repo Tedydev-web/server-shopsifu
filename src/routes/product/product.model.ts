@@ -144,6 +144,10 @@ export const CreateProductBodySchema = ProductSchema.pick({
   })
 
 export const UpdateProductBodySchema = CreateProductBodySchema
+export const UpdateProductResSchema = z.object({
+  message: z.string().optional(),
+  data: ProductSchema
+})
 
 export type GetProductsResType = z.infer<typeof GetProductsResSchema>
 export type GetProductsQueryType = z.infer<typeof GetProductsQuerySchema>
@@ -152,3 +156,4 @@ export type GetProductDetailResType = z.infer<typeof GetProductDetailResSchema>
 export type CreateProductBodyType = z.infer<typeof CreateProductBodySchema>
 export type GetProductParamsType = z.infer<typeof GetProductParamsSchema>
 export type UpdateProductBodyType = z.infer<typeof UpdateProductBodySchema>
+export type UpdateProductResType = z.infer<typeof UpdateProductResSchema>

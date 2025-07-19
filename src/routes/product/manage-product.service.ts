@@ -118,19 +118,14 @@ export class ManageProductService {
       createdById: product.createdById
     })
     try {
-      await this.productRepo.update({
+      const updatedProduct = await this.productRepo.update({
         id: productId,
         updatedById,
         data
       })
-      const productDetail = await this.productRepo.getDetail({
-        productId,
-        languageId: I18nContext.current()?.lang as string
-      })
-      if (!productDetail) throw NotFoundRecordException
       return {
         message: this.i18n.t('product.product.success.UPDATE_SUCCESS'),
-        data: productDetail.data
+        data: updatedProduct
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {

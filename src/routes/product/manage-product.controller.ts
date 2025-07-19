@@ -7,8 +7,8 @@ import {
   GetProductDetailResDTO,
   GetProductParamsDTO,
   GetProductsResDTO,
-  ProductDTO,
-  UpdateProductBodyDTO
+  UpdateProductBodyDTO,
+  UpdateProductResDTO
 } from 'src/routes/product/product.dto'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
@@ -48,7 +48,7 @@ export class ManageProductController {
   }
 
   @Put(':productId')
-  @ZodSerializerDto(GetProductDetailResDTO)
+  @ZodSerializerDto(UpdateProductResDTO)
   update(
     @Body() body: UpdateProductBodyDTO,
     @Param() params: GetProductParamsDTO,
