@@ -12,13 +12,22 @@ export class TransformInterceptor implements NestInterceptor {
         const statusCode = response.statusCode
         const message = data?.message || 'Thành công'
         const timestamp = new Date().toISOString()
+
         if (data?.message) {
           const { message, ...rest } = data
           data = rest
         }
+
+        // Kiểm tra nếu response có cấu trúc { data, metadata } thì giữ nguyên
+        if (typeof data === 'object' && data !== null && 'data' in data && 'metadata' in data) {
+          return { statusCode, message, timestamp, ...data }
+        }
+
+        // Xử lý trường hợp chỉ có data
         if (typeof data === 'object' && data !== null && 'data' in data) {
           data = data.data
         }
+
         const isEmptyObject =
           typeof data === 'object' && data !== null && Object.keys(data).length === 0 && data.constructor === Object
         if (data === undefined || data === null || isEmptyObject) {

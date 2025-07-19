@@ -48,7 +48,7 @@ export class ManageProductController {
   }
 
   @Put(':productId')
-  @ZodSerializerDto(ProductDTO)
+  @ZodSerializerDto(GetProductDetailResDTO)
   update(
     @Body() body: UpdateProductBodyDTO,
     @Param() params: GetProductParamsDTO,
