@@ -133,29 +133,43 @@ jobs:
           curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK"
 
   notify-develop:
-    name: Notify Develop Push
-    runs-on: ubuntu-latest
-    if: github.ref_name == 'develop'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  name: Notify Develop Push
+  runs-on: ubuntu-latest
+  if: github.ref_name == 'develop'
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Fetch toàn bộ lịch sử commit để đảm bảo git log hoạt động
 
-      - name: Get commit list
-        run: |
-          echo "COMMIT_LOG<<EOF" >> $GITHUB_ENV
-          git log --pretty=format:'- [`%h`](https://github.com/${{ github.repository }}/commit/%H) %s — _%an_' ${{ github.event.before }}..${{ github.sha }} >> $GITHUB_ENV
+    - name: Check commit range
+      id: check_commit
+      run: |
+        if [ -z "${{ github.event.before }}" ] || ! git rev-parse --verify ${{ github.event.before }} >/dev/null 2>&1; then
+          echo "No valid previous commit found, using current commit only"
+          echo "commit_range=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "commit_log=No previous commits available for comparison" >> $GITHUB_OUTPUT
+        else
+          echo "commit_range=${{ github.event.before }}..${{ github.sha }}" >> $GITHUB_OUTPUT
+          COMMIT_LOG=$(git log --pretty=format:'- [`%h`](https://github.com/${{ github.repository }}/commit/%H) %s — _%an_' ${{ github.event.before }}..${{ github.sha }} || echo "No new commits found")
+          echo "commit_log<<EOF" >> $GITHUB_ENV
+          echo "$COMMIT_LOG" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
+        fi
+      shell: /usr/bin/bash -e {0}
 
-      - name: Send Discord Notification
-        uses: Ilshidur/action-discord@master
-        with:
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}
-          message: |
-            @everyone
-            🧪 **Commit mới trên nhánh `develop`**
-            **Người thực hiện:** `${{ github.actor }}`
-            **Danh sách commit:**
-            ${{ env.COMMIT_LOG }}
+    - name: Send Discord Notification
+      uses: Ilshidur/action-discord@master
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      with:
+        webhook: ${{ secrets.DISCORD_WEBHOOK }}
+        message: |
+          @everyone
+          🧪 **Commit mới trên nhánh `develop`**
+          **Người thực hiện:** `${{ github.actor }}`
+          **Danh sách commit:**
+          ${{ env.commit_log }}
 
 permissions:
   contents: write
