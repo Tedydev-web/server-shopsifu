@@ -1,85 +1,201 @@
-name: Build and Deploy
+name: CI/CD Pipeline
 
 on:
-    push:
-        branches: [main, master, staging]
-
-env:
-    REGISTRY: ghcr.io
-    IMAGE_NAME: ${{ github.repository }}
+  push:
+    branches: [master, develop]
+  workflow_dispatch:
+    inputs:
+      manual_rollback:
+        description: 'Commit SHA hoặc tag để rollback'
+        required: false
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
+  build:
+    name: Build & Test
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-        permissions:
-            contents: read
-            packages: write
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
 
-        outputs:
-            image-tag: ${{ steps.meta.outputs.tags }}
-            image-digest: ${{ steps.build.outputs.digest }}
+      - name: Install dependencies
+        run: npm ci
 
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
+      - name: Build
+        run: npm run build
 
-            - name: Log in to Container Registry
-              uses: docker/login-action@v3
-              with:
-                  registry: ${{ env.REGISTRY }}
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
+  deploy:
+    name: Deploy to Production
+    if: github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      NODE_ENV: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            - name: Extract metadata
-              id: meta
-              uses: docker/metadata-action@v5
-              with:
-                  images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-                  tags: |
-                      type=ref,event=branch
-                      type=ref,event=pr
-                      type=sha,prefix={{branch}}-
-                      type=raw,value=latest,enable={{is_default_branch}}
+      - name: Deploy via SSH & PM2
+        id: ssh_deploy
+        run: |
+          sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} << 'EOF'
+            set -euo pipefail
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            cd ${{ secrets.STAGING_PATH_PROJECT }}
+            git fetch origin master && git reset --hard origin/master
+            npm ci
+            [ -d dist ] || npm run build
+            pm2 restart server-shopsifu || pm2 start dist/index.js --name server-shopsifu
+            STATUS=$(pm2 jlist | jq -r '.[] | select(.name == "server-shopsifu") | .pm2_env.status')
+            echo "$STATUS" > status.txt
+            [ "$STATUS" = "online" ] || exit 2
+          EOF
 
-            - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v3
+      - name: Get Commit Info
+        id: commit_info
+        run: |
+          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "commit_message=$(git log -1 --pretty=%B | grep -v '^-')" >> $GITHUB_OUTPUT
 
-            - name: Build and push Docker image
-              id: build
-              uses: docker/build-push-action@v5
-              with:
-                  context: .
-                  file: ./ci/Dockerfile.prod
-                  push: true
-                  tags: ${{ steps.meta.outputs.tags }}
-                  labels: ${{ steps.meta.outputs.labels }}
-                  cache-from: type=gha
-                  cache-to: type=gha,mode=max
-                  platforms: linux/amd64,linux/arm64
+      - name: Send Discord Notification
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          STATUS: ${{ job.status }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          COMMIT_SHA: ${{ steps.commit_info.outputs.commit_sha }}
+          COMMIT_MESSAGE: ${{ steps.commit_info.outputs.commit_message }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
+          ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
+          RUN_STARTED_AT=$(date -d "${{ github.run_started_at }}" +%s)
+          JSON=$(jq -n \
+            --arg status "$STATUS" \
+            --arg icon "$ICON" \
+            --arg branch "$BRANCH" \
+            --arg commit "$COMMIT" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg commit_message "$COMMIT_MESSAGE" \
+            --arg actor "$ACTOR" \
+            --arg repo "$REPO" \
+            --arg run_id "$RUN_ID" \
+            --arg color "$COLOR" \
+            --arg started_at "$RUN_STARTED_AT" \
+            '{
+              embeds: [{
+                title: "🚀 TRIỂN KHAI Production",
+                color: ($color | tonumber),
+                fields: [
+                  { name: "Trạng thái", value: "\($icon) \($status)", inline: true },
+                  { name: "Nhánh", value: "`\($branch)`", inline: true },
+                  { name: "Commit", value: "[`\($commit)`](https://github.com/\($repo)/commit/\($commit))", inline: false },
+                  { name: "Commit SHA", value: "`\($commit_sha)`", inline: false },
+                  { name: "Message", value: $commit_message, inline: false },
+                  { name: "Người thực hiện", value: "`\($actor)`", inline: true },
+                  { name: "Thời gian", value: "<t:\($started_at):R>", inline: true }
+                ],
+                url: "https://github.com/\($repo)/actions/runs/\($run_id)"
+              }]
+            }')
+          curl -s -H "Content-Type: application/json" -X POST -d "$JSON" "$DISCORD_WEBHOOK"
 
-    deploy-staging:
-        needs: build
-        runs-on: ubuntu-latest
-        if: github.ref == 'refs/heads/staging'
+  notify-develop:
+    name: Notify New Commit on Develop
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Commit Info
+        id: commit_info
+        run: |
+          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "commit_message=$(git log -1 --pretty=%B | grep -v '^-')" >> $GITHUB_OUTPUT
 
-        steps:
-            - name: Deploy to staging
-              run: |
-                  echo "Deploying to staging environment..."
-                  echo "Image: ${{ needs.build.outputs.image-tag }}"
-                  # Add your staging deployment commands here
-                  # Example: kubectl, docker-compose, or API calls to your hosting provider
+      - name: Send Discord Notification
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ steps.commit_info.outputs.commit_sha }}
+          COMMIT_MESSAGE: ${{ steps.commit_info.outputs.commit_message }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          JSON=$(jq -n \
+            --arg branch "$BRANCH" \
+            --arg commit "$COMMIT" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg commit_message "$COMMIT_MESSAGE" \
+            --arg actor "$ACTOR" \
+            --arg repo "$REPO" \
+            '{
+              embeds: [{
+                title: "🛎️ Commit mới trên `develop`",
+                color: 15844367,
+                fields: [
+                  { name: "Nhánh", value: "`\($branch)`", inline: true },
+                  { name: "Commit", value: "[`\($commit)`](https://github.com/\($repo)/commit/\($commit))", inline: false },
+                  { name: "SHA", value: "`\($commit_sha)`", inline: false },
+                  { name: "Message", value: $commit_message, inline: false },
+                  { name: "Người commit", value: "`\($actor)`", inline: true }
+                ]
+              }]
+            }')
+          curl -s -H "Content-Type: application/json" -X POST -d "$JSON" "$DISCORD_WEBHOOK"
 
-    deploy-production:
-        needs: build
-        runs-on: ubuntu-latest
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+  rollback-auto:
+    name: Auto Rollback
+    if: needs.deploy.result == 'failure'
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rollback Previous
+        run: |
+          sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} << 'EOF'
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            cd ${{ secrets.STAGING_PATH_PROJECT }}
+            git reset --hard HEAD~1
+            npm ci
+            [ -d dist ] || npm run build
+            pm2 restart server-shopsifu || pm2 start dist/index.js --name server-shopsifu
+          EOF
 
-        steps:
-            - name: Deploy to production
-              run: |
-                  echo "Deploying to production environment..."
-                  echo "Image: ${{ needs.build.outputs.image-tag }}"
-                  # Add your production deployment commands here
-                  # Example: kubectl, docker-compose, or API calls to your hosting provider
+  manual-rollback:
+    name: Manual Rollback
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.manual_rollback
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Specific Commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.manual_rollback }}
+
+      - name: Re-deploy
+        run: |
+          sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} << 'EOF'
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            cd ${{ secrets.STAGING_PATH_PROJECT }}
+            git reset --hard ${{ github.event.inputs.manual_rollback }}
+            npm ci
+            [ -d dist ] || npm run build
+            pm2 restart server-shopsifu || pm2 start dist/index.js --name server-shopsifu
+          EOF
+
+permissions:
+  contents: write
