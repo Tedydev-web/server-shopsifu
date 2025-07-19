@@ -64,7 +64,8 @@ jobs:
         id: commit_info
         run: |
           echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          echo "commit_message=$(git log -1 --pretty=%B | grep -v '^-')" >> $GITHUB_OUTPUT
+          COMMIT_MSG=$(git log -1 --pretty=%B | grep -v '^-')
+          echo "commit_message=$COMMIT_MSG" >> $GITHUB_OUTPUT
 
       - name: Send Discord Notification
         if: always()
@@ -127,49 +128,6 @@ jobs:
           echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
           COMMIT_MSG=$(git log -1 --pretty=%B | grep -v '^-')
           echo "commit_message=$COMMIT_MSG" >> $GITHUB_OUTPUT
-
-      - name: Send Discord Notification
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          BRANCH: ${{ github.ref_name }}
-          COMMIT: ${{ github.sha }}
-          ACTOR: ${{ github.actor }}
-          REPO: ${{ github.repository }}
-          COMMIT_SHA: ${{ steps.commit_info.outputs.commit_sha }}
-          COMMIT_MESSAGE: ${{ steps.commit_info.outputs.commit_message }}
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
-          JSON=$(jq -n \
-            --arg branch "$BRANCH" \
-            --arg commit "$COMMIT" \
-            --arg commit_sha "$COMMIT_SHA" \
-            --arg commit_message "$COMMIT_MESSAGE" \
-            --arg actor "$ACTOR" \
-            --arg repo "$REPO" \
-            '{
-              embeds: [{
-                title: "🛎️ Commit mới trên `develop`",
-                color: 15844367,
-                fields: [
-                  { name: "Nhánh", value: "`\($branch)`", inline: true },
-                  { name: "Commit", value: "[`\($commit)`](https://github.com/\($repo)/commit/\($commit))", inline: false },
-                  { name: "SHA", value: "`\($commit_sha)`", inline: false },
-                  { name: "Message", value: $commit_message, inline: false },
-                  { name: "Người commit", value: "`\($actor)`", inline: true }
-                ]
-              }]
-            }')
-          curl -s -H "Content-Type: application/json" -X POST -d "$JSON" "$DISCORD_WEBHOOK"
-
-    name: Notify New Commit on Develop
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Get Commit Info
-        id: commit_info
-        run: |
-          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          echo "commit_message=$(git log -1 --pretty=%B | grep -v '^-')" >> $GITHUB_OUTPUT
 
       - name: Send Discord Notification
         env:
