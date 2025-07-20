@@ -1,0 +1,17 @@
+{
+  "media": {
+    "success": {
+      "UPLOAD_SUCCESS": "Tải lên file thành công",
+      "GET_PRESIGNED_URL_SUCCESS": "Lấy URL ký trước thành công",
+      "DELETE_SUCCESS": "Xóa file thành công"
+    },
+    "error": {
+      "UPLOAD_FAILED": "Tải lên file thất bại.",
+      "FILE_NOT_FOUND": "File không tồn tại.",
+      "INVALID_FILE_TYPE": "Loại file không hợp lệ.",
+      "FILE_TOO_LARGE": "File quá lớn.",
+      "PRESIGNED_URL_FAILED": "Tạo URL ký trước thất bại.",
+      "S3_ERROR": "Lỗi khi tương tác với S3."
+    }
+  }
+}

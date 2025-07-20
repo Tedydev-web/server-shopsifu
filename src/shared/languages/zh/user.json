@@ -1,0 +1,19 @@
+{
+  "user": {
+    "success": {
+      "CREATE_SUCCESS": "Tạo người dùng thành công",
+      "UPDATE_SUCCESS": "Cập nhật người dùng thành công",
+      "DELETE_SUCCESS": "Xóa người dùng thành công",
+      "GET_SUCCESS": "Lấy danh sách người dùng thành công",
+      "GET_DETAIL_SUCCESS": "Lấy chi tiết người dùng thành công"
+    },
+    "error": {
+      "NOT_FOUND": "Người dùng không tồn tại.",
+      "ALREADY_EXISTS": "Mã người dùng này đã tồn tại.",
+      "CANNOT_DELETE": "Không thể xóa người dùng này vì đang được sử dụng.",
+      "CANNOT_UPDATE_ADMIN_USER": "Không thể cập nhật người dùng admin.",
+      "CANNOT_DELETE_ADMIN_USER": "Không thể xóa người dùng admin.",
+      "ROLE_NOT_FOUND": "Vai trò không tồn tại."
+    }
+  }
+}

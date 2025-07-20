@@ -1,0 +1,15 @@
+{
+  "permission": {
+    "success": {
+      "CREATE_SUCCESS": "Tạo quyền thành công",
+      "UPDATE_SUCCESS": "Cập nhật quyền thành công",
+      "DELETE_SUCCESS": "Xóa quyền thành công",
+      "GET_SUCCESS": "Lấy danh sách quyền thành công",
+      "GET_DETAIL_SUCCESS": "Lấy chi tiết quyền thành công"
+    },
+    "error": {
+      "NOT_FOUND": "Quyền không tồn tại.",
+      "ALREADY_EXISTS": "Quyền với đường dẫn và phương thức này đã tồn tại."
+    }
+  }
+}

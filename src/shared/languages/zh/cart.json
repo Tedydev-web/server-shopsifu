@@ -1,0 +1,18 @@
+{
+  "cart": {
+    "success": {
+      "CREATE_SUCCESS": "Tạo giỏ hàng thành công",
+      "UPDATE_SUCCESS": "Cập nhật giỏ hàng thành công",
+      "DELETE_SUCCESS": "Xóa giỏ hàng thành công",
+      "GET_SUCCESS": "Lấy danh sách giỏ hàng thành công",
+      "GET_DETAIL_SUCCESS": "Lấy chi tiết giỏ hàng thành công"
+    },
+    "error": {
+      "SKU_NOT_FOUND": "SKU không tồn tại.",
+      "SKU_OUT_OF_STOCK": "Sản phẩm đã hết hàng.",
+      "PRODUCT_NOT_FOUND": "Sản phẩm không tồn tại.",
+      "CART_ITEM_NOT_FOUND": "Giỏ hàng không tồn tại.",
+      "INVALID_QUANTITY": "Số lượng không hợp lệ."
+    }
+  }
+}

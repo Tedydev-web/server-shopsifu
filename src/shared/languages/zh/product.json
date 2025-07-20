@@ -1,0 +1,32 @@
+{
+  "product": {
+    "success": {
+      "CREATE_SUCCESS": "Tạo sản phẩm thành công",
+      "UPDATE_SUCCESS": "Cập nhật sản phẩm thành công",
+      "DELETE_SUCCESS": "Xóa sản phẩm thành công",
+      "GET_SUCCESS": "Lấy danh sách sản phẩm thành công",
+      "GET_DETAIL_SUCCESS": "Lấy chi tiết sản phẩm thành công"
+    },
+    "error": {
+      "NOT_FOUND": "Sản phẩm không tồn tại.",
+      "BRAND_NOT_FOUND": "Thương hiệu không tồn tại.",
+      "CATEGORY_NOT_FOUND": "Danh mục không tồn tại."
+    }
+  },
+
+  "productTranslation": {
+    "success": {
+      "CREATE_SUCCESS": "Tạo bản dịch sản phẩm thành công",
+      "UPDATE_SUCCESS": "Cập nhật bản dịch sản phẩm thành công",
+      "DELETE_SUCCESS": "Xóa bản dịch sản phẩm thành công",
+      "GET_DETAIL_SUCCESS": "Lấy chi tiết bản dịch sản phẩm thành công"
+    },
+    "error": {
+      "NOT_FOUND": "Bản dịch sản phẩm không tồn tại.",
+      "ALREADY_EXISTS": "Bản dịch sản phẩm này đã tồn tại.",
+      "PRODUCT_NOT_FOUND": "Sản phẩm không tồn tại.",
+      "LANGUAGE_NOT_FOUND": "Ngôn ngữ không tồn tại.",
+      "CATEGORY_NOT_FOUND": "Danh mục không tồn tại."
+    }
+  }
+}

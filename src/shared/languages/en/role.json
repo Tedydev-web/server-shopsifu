@@ -1,0 +1,20 @@
+{
+  "role": {
+    "success": {
+      "CREATE_SUCCESS": "Tạo vai trò thành công",
+      "UPDATE_SUCCESS": "Cập nhật vai trò thành công",
+      "DELETE_SUCCESS": "Xóa vai trò thành công",
+      "GET_SUCCESS": "Lấy danh sách vai trò thành công",
+      "GET_DETAIL_SUCCESS": "Lấy chi tiết vai trò thành công"
+    },
+    "error": {
+      "NOT_FOUND": "Vai trò không tồn tại.",
+      "ALREADY_EXISTS": "Tên vai trò này đã được sử dụng.",
+      "DELETED_PERMISSION_INCLUDED": "Một hoặc nhiều quyền được chỉ định không tồn tại hoặc đã bị xóa.",
+      "OPERATION_FAILED": "Thao tác thất bại",
+      "CANNOT_UPDATE_DEFAULT_ROLE": "Không thể chỉnh sửa vai trò hệ thống.",
+      "CANNOT_DELETE_DEFAULT_ROLE": "Không thể xóa vai trò hệ thống.",
+      "PROHIBITED_ACTION_ON_BASE_ROLE": "Không thể thực hiện hành động này trên vai trò cơ bản."
+    }
+  }
+}

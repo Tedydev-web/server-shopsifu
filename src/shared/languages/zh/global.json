@@ -1,0 +1,22 @@
+{
+  "global": {
+    "success": {
+      "GET_SUCCESS": "Lấy danh sách thành công",
+      "GET_DETAIL_SUCCESS": "Lấy chi tiết thành công",
+      "CREATE_SUCCESS": "Tạo thành công",
+      "UPDATE_SUCCESS": "Cập nhật thành công",
+      "DELETE_SUCCESS": "Xóa thành công"
+    },
+    "error": {
+      "NOT_FOUND_RECORD": "Không tìm thấy bản ghi",
+      "INVALID_PASSWORD": "Mật khẩu không hợp lệ",
+      "UNAUTHORIZED": "Truy cập không được phép",
+      "FORBIDDEN": "Truy cập bị cấm",
+      "SESSION_NOT_FOUND": "Session không tồn tại",
+      "TOKEN_BLACKLISTED": "Token đã bị vô hiệu hóa",
+      "USER_NOT_ACTIVE": "Tài khoản chưa được kích hoạt",
+      "INSUFFICIENT_PERMISSIONS": "Quyền truy cập không đủ",
+      "MISSING_ACCESS_TOKEN": "Token truy cập không tồn tại"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "category": {
+    "success": {
+      "CREATE_SUCCESS": "Tạo danh mục thành công",
+      "UPDATE_SUCCESS": "Cập nhật danh mục thành công",
+      "DELETE_SUCCESS": "Xóa danh mục thành công",
+      "GET_SUCCESS": "Lấy danh sách danh mục thành công",
+      "GET_DETAIL_SUCCESS": "Lấy chi tiết danh mục thành công"
+    },
+    "error": {
+      "NOT_FOUND": "Danh mục không tồn tại.",
+      "ALREADY_EXISTS": "Mã danh mục này đã tồn tại.",
+      "CANNOT_DELETE": "Không thể xóa danh mục này vì đang được sử dụng."
+    }
+  },
+  "categoryTranslation": {
+    "success": {
+      "CREATE_SUCCESS": "Tạo bản dịch danh mục thành công",
+      "UPDATE_SUCCESS": "Cập nhật bản dịch danh mục thành công",
+      "DELETE_SUCCESS": "Xóa bản dịch danh mục thành công",
+      "GET_DETAIL_SUCCESS": "Lấy chi tiết bản dịch danh mục thành công"
+    },
+    "error": {
+      "NOT_FOUND": "Bản dịch danh mục không tồn tại.",
+      "ALREADY_EXISTS": "Bản dịch danh mục này đã tồn tại.",
+      "CATEGORY_NOT_FOUND": "Danh mục không tồn tại.",
+      "LANGUAGE_NOT_FOUND": "Ngôn ngữ không tồn tại."
+    }
+  }
+}

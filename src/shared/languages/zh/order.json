@@ -1,0 +1,23 @@
+{
+  "order": {
+    "success": {
+      "CREATE_SUCCESS": "Tạo đơn hàng thành công",
+      "UPDATE_SUCCESS": "Cập nhật đơn hàng thành công",
+      "DELETE_SUCCESS": "Xóa đơn hàng thành công",
+      "GET_SUCCESS": "Lấy danh sách đơn hàng thành công",
+      "GET_DETAIL_SUCCESS": "Lấy chi tiết đơn hàng thành công",
+      "CANCEL_SUCCESS": "Hủy đơn hàng thành công"
+    },
+    "error": {
+      "NOT_FOUND": "Đơn hàng không tồn tại.",
+      "ALREADY_EXISTS": "Đơn hàng này đã tồn tại.",
+      "CANNOT_CANCEL": "Không thể hủy đơn hàng này.",
+      "INVALID_STATUS": "Trạng thái đơn hàng không hợp lệ.",
+      "INSUFFICIENT_STOCK": "Sản phẩm không đủ số lượng trong kho.",
+      "PRODUCT_NOT_FOUND": "Sản phẩm không tồn tại.",
+      "NOT_FOUND_CART_ITEM": "Giỏ hàng không tồn tại.",
+      "SKU_NOT_BELONG_TO_SHOP": "SKU không thuộc shop.",
+      "OUT_OF_STOCK_SKU": "Sản phẩm đã hết hàng."
+    }
+  }
+}

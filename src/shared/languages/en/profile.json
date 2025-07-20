@@ -1,0 +1,13 @@
+{
+  "success": {
+    "GET_PROFILE": "Lấy thông tin profile thành công",
+    "UPDATE_PROFILE": "Cập nhật profile thành công",
+    "CHANGE_PASSWORD": "Đổi mật khẩu thành công"
+  },
+  "error": {
+    "NOT_FOUND": "Không tìm thấy profile",
+    "INVALID_PASSWORD": "Mật khẩu hiện tại không đúng",
+    "UPDATE_FAILED": "Cập nhật profile thất bại",
+    "CHANGE_PASSWORD_FAILED": "Đổi mật khẩu thất bại"
+  }
+}

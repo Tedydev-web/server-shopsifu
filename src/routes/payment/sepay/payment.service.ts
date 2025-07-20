@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
-import { PaymentRepo } from 'src/routes/payment/payment.repo'
-import { WebhookPaymentBodyType } from 'src/routes/payment/payment.model'
+import { PaymentRepo } from 'src/routes/payment/sepay/payment.repo'
+import { WebhookPaymentBodyType } from 'src/routes/payment/sepay/payment.model'
 import { SharedWebsocketRepository } from 'src/shared/repositories/shared-websocket.repo'
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
 import { Server } from 'socket.io'

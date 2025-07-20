@@ -1,0 +1,9 @@
+{
+  "review": {
+    "success": {
+      "GET_SUCCESS": "Lấy danh sách đánh giá thành công",
+      "CREATE_SUCCESS": "Tạo đánh giá thành công",
+      "UPDATE_SUCCESS": "Cập nhật đánh giá thành công"
+    }
+  }
+}
