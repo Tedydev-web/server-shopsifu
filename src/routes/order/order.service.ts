@@ -32,7 +32,7 @@ export class OrderService {
     const result = await this.orderRepo.cancel(userId, orderId)
     return {
       message: this.i18n.t('order.order.success.CANCEL_SUCCESS'),
-      data: result
+      data: result.data
     }
   }
 

@@ -1,6 +1,9 @@
+import { DiscountType, DiscountStatus, DiscountApplyType } from 'src/shared/constants/discount.constant'
 import { z } from 'zod'
-import { DiscountApplyType, DiscountStatus, DiscountType } from '../constants/discount.constant'
 
+/**
+ * Schema cho entity Discount mapping với Prisma model
+ */
 export const DiscountSchema = z.object({
   id: z.string(),
   name: z.string().max(500),
@@ -8,17 +11,19 @@ export const DiscountSchema = z.object({
   type: z.enum([DiscountType.FIX_AMOUNT, DiscountType.PERCENTAGE]),
   value: z.number().int(),
   code: z.string().max(100),
-  startDate: z.date(),
-  endDate: z.date(),
-  maxUsed: z.number().int(),
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date(),
+  maxUses: z.number().int(),
   usesCount: z.number().int(),
   usersUsed: z.array(z.string()),
   maxUsesPerUser: z.number().int(),
   minOrderValue: z.number().int(),
-  shopId: z.string(),
+  canSaveBeforeStart: z.boolean().default(false),
+  isPublic: z.boolean().default(true),
+  shopId: z.string().nullable(),
   status: z.enum([DiscountStatus.DRAFT, DiscountStatus.INACTIVE, DiscountStatus.ACTIVE, DiscountStatus.EXPIRED]),
   appliesTo: z.enum([DiscountApplyType.ALL, DiscountApplyType.SPECIFIC]),
-  productIds: z.array(z.string()),
+  // products: z.array(z.string()), // Liên kết nhiều sản phẩm, sẽ dùng ở DTO chi tiết
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),
   deletedById: z.string().nullable(),
@@ -27,4 +32,4 @@ export const DiscountSchema = z.object({
   updatedAt: z.date()
 })
 
-export type DiscountSchemaType = z.infer<typeof DiscountSchema>
+export type DiscountTypeSchema = z.infer<typeof DiscountSchema>

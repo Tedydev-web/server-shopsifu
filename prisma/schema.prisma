@@ -449,6 +449,9 @@ model Discount {
   maxUsesPerUser Int
   minOrderValue  Int
 
+  canSaveBeforeStart Boolean @default(false)
+  isPublic           Boolean @default(true)
+
   shopId String?
   shop   User?   @relation("Shop", fields: [shopId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 

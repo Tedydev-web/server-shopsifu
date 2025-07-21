@@ -5,7 +5,6 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
 import CustomZodValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import { HttpExceptionFilter } from 'src/shared/filters/http-exception.filter'
-import { LanguageModule } from 'src/routes/language/language.module'
 import { PermissionModule } from 'src/routes/permission/permission.module'
 import { RoleModule } from 'src/routes/role/role.module'
 import { ProfileModule } from 'src/routes/profile/profile.module'
@@ -32,7 +31,6 @@ import { TransformInterceptor } from 'src/shared/interceptor/transform.intercept
     WebsocketModule,
     SharedModule,
     AuthModule,
-    LanguageModule,
     PermissionModule,
     RoleModule,
     ProfileModule,

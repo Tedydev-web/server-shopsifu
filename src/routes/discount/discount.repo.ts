@@ -1,37 +1,92 @@
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { DiscountSchemaType } from 'src/shared/models/shared-discount.model'
-import { CreateDiscountBodyType, GetDiscountDetailResType } from './discount.model'
-import { DiscountStatus } from 'src/shared/constants/discount.constant'
+import { DiscountTypeSchema } from 'src/shared/models/shared-discount.model'
+import { DiscountListQueryType } from './discount.model'
 
 @Injectable()
 export class DiscountRepo {
   constructor(private readonly prismaService: PrismaService) {}
 
-  // 1. Generator Discount Code [SELLER | ADMIN]
-  // 2. Get Discount Amount [CLIENT]
-  // 3. Get All Discounts Code [CLIENT | SELLER]
-  // 4. Verify Discount Code [CLIENT]
-  // 5. Delete Discount Code [SELLER | ADMIN]
-  // 6. Cancel Discount Code [CLIENT]
+  async findById(id: string) {
+    return this.prismaService.discount.findUnique({
+      where: { id, deletedAt: null }
+    })
+  }
+
+  async list(query: DiscountListQueryType & { shopId?: string }) {
+    const { page = 1, limit = 10, shopId, isPublic, status, search } = query
+    const where: any = { deletedAt: null }
+    if (shopId) where.shopId = shopId
+    if (typeof isPublic === 'boolean') where.isPublic = isPublic
+    if (status) where.status = status
+    if (search) where.name = { contains: search, mode: 'insensitive' }
+
+    const skip = (page - 1) * limit
+    const [totalItems, data] = await Promise.all([
+      this.prismaService.discount.count({ where }),
+      this.prismaService.discount.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          products: { select: { id: true } } // <--- Lấy kèm danh sách productId
+        }
+      })
+    ])
+    const totalPages = Math.ceil(totalItems / limit)
+    return {
+      data,
+      metadata: {
+        totalItems,
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1
+      }
+    }
+  }
 
   async create({
     createdById,
     data
   }: {
     createdById: string | null
-    data: CreateDiscountBodyType
-  }): Promise<GetDiscountDetailResType> {
-    // Kiểm tra
-    if (new Date() < new Date(data.startDate) || new Date() > new Date(data.endDate)) {
-      throw new BadRequestException('Ngày bắt đầu và ngày kết thúc không hợp lệ')
-    }
-
+    data: Omit<DiscountTypeSchema, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'usesCount' | 'usersUsed'>
+  }) {
     return this.prismaService.discount.create({
       data: {
         ...data,
-        createdById
+        createdById: createdById ?? undefined,
+        usesCount: 0,
+        usersUsed: [],
+        shopId: data.shopId ?? undefined,
+        canSaveBeforeStart: data.canSaveBeforeStart ?? false,
+        isPublic: data.isPublic ?? true,
+        updatedById: undefined,
+        deletedById: undefined
       }
+    })
+  }
+
+  async update({ id, updatedById, data }: { id: string; updatedById: string; data: Partial<DiscountTypeSchema> }) {
+    return this.prismaService.discount.update({
+      where: { id, deletedAt: null },
+      data: {
+        ...data,
+        updatedById
+      }
+    })
+  }
+
+  async delete({ id, deletedById }: { id: string; deletedById: string }, isHard?: boolean) {
+    if (isHard) {
+      return this.prismaService.discount.delete({ where: { id } })
+    }
+    return this.prismaService.discount.update({
+      where: { id, deletedAt: null },
+      data: { deletedAt: new Date(), deletedById }
     })
   }
 }

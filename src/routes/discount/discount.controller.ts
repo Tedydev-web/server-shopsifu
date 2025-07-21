@@ -1,88 +1,81 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req } from '@nestjs/common'
 import { DiscountService } from './discount.service'
 import {
   CreateDiscountBodyDTO,
-  GetDiscountDetailResDTO,
-  GetDiscountParamsDTO,
-  GetDiscountsQueryDTO,
-  GetDiscountsResDTO,
-  UpdateDiscountBodyDTO
+  DiscountDetailResDTO,
+  DiscountListQueryDTO,
+  DiscountListResDTO,
+  DiscountParamsDTO,
+  UpdateDiscountBodyDTO,
+  VerifyDiscountBodyDTO
 } from './discount.dto'
-import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
-import { ZodSerializerDto } from 'nestjs-zod'
+import { Request } from 'express'
 
 @Controller('discounts')
 export class DiscountController {
   constructor(private readonly discountService: DiscountService) {}
 
   /**
-   * Tạo mã giảm giá (Shop/Admin)
+   * ADMIN/SELLER: Tạo mới discount
    */
   @Post()
-  @ZodSerializerDto(GetDiscountDetailResDTO)
-  create(@Body() body: CreateDiscountBodyDTO, @ActiveUser('userId') userId: string) {
-    // Nếu là shop thì shopId = userId, nếu là admin thì cần truyền shopId trong body hoặc xử lý phân quyền ở service
-    const shopId = userId
-    return this.discountService.createDiscount({ ...body, shopId, createdById: userId })
+  async create(@Body() body: CreateDiscountBodyDTO, @Req() req: Request) {
+    const { userId, roleName } = req['user'] || {}
+    return this.discountService.create({ data: body, createdById: userId, roleName })
   }
 
   /**
-   * Lấy danh sách mã giảm giá (User/Shop)
+   * ADMIN/SELLER/CLIENT: Lấy danh sách discount (filter, phân trang)
    */
   @Get()
-  @ZodSerializerDto(GetDiscountsResDTO)
-  list(@Query() query: GetDiscountsQueryDTO) {
-    return this.discountService.getDiscounts(query)
+  async list(@Query() query: DiscountListQueryDTO, @Req() req: Request) {
+    const { userId, roleName } = req['user'] || {}
+    return this.discountService.list({ ...query, userId, roleName })
   }
 
   /**
-   * Lấy chi tiết mã giảm giá
+   * ADMIN/SELLER/CLIENT: Lấy chi tiết discount
    */
   @Get(':discountId')
-  @ZodSerializerDto(GetDiscountDetailResDTO)
-  detail(@Param() params: GetDiscountParamsDTO) {
-    return this.discountService.getDiscountDetail(params.discountId)
+  async detail(@Param() params: DiscountParamsDTO, @Req() req: Request) {
+    const { userId, roleName } = req['user'] || {}
+    return this.discountService.detail({ id: params.discountId, userId, roleName })
   }
 
   /**
-   * Cập nhật mã giảm giá
+   * ADMIN/SELLER: Cập nhật discount
    */
   @Put(':discountId')
-  @ZodSerializerDto(GetDiscountDetailResDTO)
-  update(
-    @Param() params: GetDiscountParamsDTO,
-    @Body() body: UpdateDiscountBodyDTO,
-    @ActiveUser('userId') userId: string
-  ) {
-    return this.discountService.updateDiscount(params.discountId, body, userId)
+  async update(@Param() params: DiscountParamsDTO, @Body() body: UpdateDiscountBodyDTO, @Req() req: Request) {
+    const { userId, roleName } = req['user'] || {}
+    return this.discountService.update({ id: params.discountId, data: body, updatedById: userId, roleName })
   }
 
   /**
-   * Xóa mã giảm giá (Shop/Admin)
+   * ADMIN/SELLER: Xóa discount (mềm/hard)
    */
   @Delete(':discountId')
-  @ZodSerializerDto(GetDiscountDetailResDTO)
-  delete(@Param() params: GetDiscountParamsDTO, @ActiveUser('userId') userId: string) {
-    return this.discountService.deleteDiscount(params.discountId, userId)
+  async delete(@Param() params: DiscountParamsDTO, @Req() req: Request) {
+    const { userId, roleName } = req['user'] || {}
+    return this.discountService.delete({ id: params.discountId, deletedById: userId, roleName })
   }
 
   /**
-   * Lấy danh sách sản phẩm theo mã giảm giá
+   * CLIENT/GUEST: Lấy voucher khả dụng cho cart/order
    */
-  @Get('by-code/:code/products')
-  getProductsByDiscountCode(@Param('code') code: string) {
-    return this.discountService.getProductsByDiscountCode(code)
+  @Get('available')
+  async getAvailableDiscounts(@Query() query: any, @Req() req: Request) {
+    const { userId } = req['user'] || {}
+    return this.discountService.getAvailableDiscounts({ ...query, userId })
   }
 
   /**
-   * Tính toán số tiền giảm giá cho user
+   * CLIENT: Verify/apply voucher cho đơn hàng
    */
-  @Get('amount')
-  getDiscountAmount(
-    @Query('code') code: string,
-    @Query('userId') userId: string,
-    @Query('orderValue') orderValue: number
-  ) {
-    return this.discountService.getDiscountAmount({ code, userId, orderValue: Number(orderValue) })
+  @Post('verify')
+  async verifyDiscounts(@Body() body: any, @Req() req: Request) {
+    const { userId } = req['user'] || {}
+    // Đảm bảo truyền cart (danh sách sản phẩm trong đơn hàng) vào service
+    return this.discountService.verifyDiscounts({ ...body, userId, cart: body.cart || [] })
   }
 }

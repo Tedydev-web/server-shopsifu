@@ -5,7 +5,6 @@ import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import {
   AddToCartBodyDTO,
   AddToCartResDTO,
-  CartItemDTO,
   DeleteCartBodyDTO,
   GetCartItemParamsDTO,
   GetCartResDTO,
