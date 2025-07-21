@@ -92,7 +92,7 @@ model User {
   sentMessages                Message[]             @relation("FromUser")
   receivedMessages            Message[]             @relation("ToUser")
   webSockets                  Websocket[]
-  shopDiscounts               Discount[]            @relation("Shop")
+  shopDiscounts               Discount[]            @relation("ShopDiscounts")
   createdDiscounts            Discount[]            @relation("DiscountCreatedBy")
   updatedDiscounts            Discount[]            @relation("DiscountUpdatedBy")
   deletedDiscounts            Discount[]            @relation("DiscountDeletedBy")
@@ -248,11 +248,10 @@ model Product {
   deletedById String?
   deletedBy   User?   @relation("ProductDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  deletedAt  DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  Discount   Discount? @relation(fields: [discountId], references: [id])
-  discountId String?
+  deletedAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  discounts Discount[]
 
   @@index([deletedAt])
 }
@@ -453,7 +452,7 @@ model Discount {
   isPublic           Boolean @default(true)
 
   shopId String?
-  shop   User?   @relation("Shop", fields: [shopId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  shop   User?   @relation("ShopDiscounts", fields: [shopId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   status    DiscountStatus    @default(DRAFT)
   appliesTo DiscountApplyType @default(ALL)
@@ -469,6 +468,7 @@ model Discount {
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+  userId    String?
 
   @@index([deletedAt])
   @@index([status, deletedAt])

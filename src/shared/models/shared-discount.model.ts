@@ -23,7 +23,7 @@ export const DiscountSchema = z.object({
   shopId: z.string().nullable(),
   status: z.enum([DiscountStatus.DRAFT, DiscountStatus.INACTIVE, DiscountStatus.ACTIVE, DiscountStatus.EXPIRED]),
   appliesTo: z.enum([DiscountApplyType.ALL, DiscountApplyType.SPECIFIC]),
-  // products: z.array(z.string()), // Liên kết nhiều sản phẩm, sẽ dùng ở DTO chi tiết
+  products: z.array(z.string()).optional(),
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),
   deletedById: z.string().nullable(),

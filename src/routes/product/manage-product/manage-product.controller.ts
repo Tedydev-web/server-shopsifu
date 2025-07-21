@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
-import { ManageProductService } from 'src/routes/product/manage-product.service'
+import { ManageProductService } from 'src/routes/product/manage-product/manage-product.service'
 import {
   CreateProductBodyDTO,
   GetManageProductsQueryDTO,

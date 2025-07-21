@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { DiscountTypeSchema } from 'src/shared/models/shared-discount.model'
-import { DiscountListQueryType } from './discount.model'
+import { GetManageDiscountsQueryType } from './discount.model'
 
 @Injectable()
 export class DiscountRepo {
@@ -9,14 +9,22 @@ export class DiscountRepo {
 
   async findById(id: string) {
     return this.prismaService.discount.findUnique({
-      where: { id, deletedAt: null }
+      where: { id, deletedAt: null },
+      include: {
+        products: true
+      }
     })
   }
 
-  async list(query: DiscountListQueryType & { shopId?: string }) {
+  async list(query: GetManageDiscountsQueryType) {
     const { page = 1, limit = 10, shopId, isPublic, status, search } = query
     const where: any = { deletedAt: null }
-    if (shopId) where.shopId = shopId
+
+    if (shopId === null) {
+      where.shopId = null
+    } else if (shopId) {
+      where.shopId = shopId
+    }
     if (typeof isPublic === 'boolean') where.isPublic = isPublic
     if (status) where.status = status
     if (search) where.name = { contains: search, mode: 'insensitive' }
@@ -30,7 +38,7 @@ export class DiscountRepo {
         skip,
         take: limit,
         include: {
-          products: { select: { id: true } } // <--- Lấy kèm danh sách productId
+          products: true
         }
       })
     ])
@@ -48,34 +56,40 @@ export class DiscountRepo {
     }
   }
 
-  async create({
-    createdById,
-    data
-  }: {
-    createdById: string | null
-    data: Omit<DiscountTypeSchema, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'usesCount' | 'usersUsed'>
-  }) {
-    return this.prismaService.discount.create({
-      data: {
-        ...data,
-        createdById: createdById ?? undefined,
-        usesCount: 0,
-        usersUsed: [],
-        shopId: data.shopId ?? undefined,
-        canSaveBeforeStart: data.canSaveBeforeStart ?? false,
-        isPublic: data.isPublic ?? true,
-        updatedById: undefined,
-        deletedById: undefined
+  async findByCode(code: string) {
+    return this.prismaService.discount.findFirst({
+      where: { code, deletedAt: null },
+      include: {
+        products: true
       }
     })
   }
 
-  async update({ id, updatedById, data }: { id: string; updatedById: string; data: Partial<DiscountTypeSchema> }) {
+  async create({ createdById, data }: { createdById: string; data: any }) {
+    const { products, ...discountData } = data
+    return this.prismaService.discount.create({
+      data: {
+        ...discountData,
+        createdById,
+        products: products && products.length > 0 ? { connect: products.map((id: string) => ({ id })) } : undefined
+      },
+      include: {
+        products: true
+      }
+    })
+  }
+
+  async update({ id, updatedById, data }: { id: string; updatedById: string; data: any }) {
+    const { products, ...discountData } = data
     return this.prismaService.discount.update({
       where: { id, deletedAt: null },
       data: {
-        ...data,
-        updatedById
+        ...discountData,
+        updatedById,
+        products: products ? { set: products.map((id: string) => ({ id })) } : undefined
+      },
+      include: {
+        products: true
       }
     })
   }

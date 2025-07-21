@@ -1,81 +1,48 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req } from '@nestjs/common'
-import { DiscountService } from './discount.service'
+import { Controller, Get, Param, Query, Post, Body } from '@nestjs/common'
+import { SkipThrottle } from '@nestjs/throttler'
+import { ZodSerializerDto } from 'nestjs-zod'
 import {
-  CreateDiscountBodyDTO,
-  DiscountDetailResDTO,
-  DiscountListQueryDTO,
-  DiscountListResDTO,
-  DiscountParamsDTO,
-  UpdateDiscountBodyDTO,
-  VerifyDiscountBodyDTO
+  GetAvailableDiscountsResDTO,
+  GetDiscountDetailResDTO,
+  GetDiscountParamsDTO,
+  GetDiscountsQueryDTO,
+  GetDiscountsResDTO,
+  VerifyDiscountBodyDTO,
+  VerifyDiscountResDTO
 } from './discount.dto'
-import { Request } from 'express'
+import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { DiscountService } from './discount.service'
 
+@SkipThrottle()
 @Controller('discounts')
+@IsPublic()
 export class DiscountController {
   constructor(private readonly discountService: DiscountService) {}
 
-  /**
-   * ADMIN/SELLER: Tạo mới discount
-   */
-  @Post()
-  async create(@Body() body: CreateDiscountBodyDTO, @Req() req: Request) {
-    const { userId, roleName } = req['user'] || {}
-    return this.discountService.create({ data: body, createdById: userId, roleName })
-  }
-
-  /**
-   * ADMIN/SELLER/CLIENT: Lấy danh sách discount (filter, phân trang)
-   */
   @Get()
-  async list(@Query() query: DiscountListQueryDTO, @Req() req: Request) {
-    const { userId, roleName } = req['user'] || {}
-    return this.discountService.list({ ...query, userId, roleName })
+  @ZodSerializerDto(GetDiscountsResDTO)
+  list(@Query() query: GetDiscountsQueryDTO) {
+    return this.discountService.list(query)
   }
 
-  /**
-   * ADMIN/SELLER/CLIENT: Lấy chi tiết discount
-   */
-  @Get(':discountId')
-  async detail(@Param() params: DiscountParamsDTO, @Req() req: Request) {
-    const { userId, roleName } = req['user'] || {}
-    return this.discountService.detail({ id: params.discountId, userId, roleName })
-  }
-
-  /**
-   * ADMIN/SELLER: Cập nhật discount
-   */
-  @Put(':discountId')
-  async update(@Param() params: DiscountParamsDTO, @Body() body: UpdateDiscountBodyDTO, @Req() req: Request) {
-    const { userId, roleName } = req['user'] || {}
-    return this.discountService.update({ id: params.discountId, data: body, updatedById: userId, roleName })
-  }
-
-  /**
-   * ADMIN/SELLER: Xóa discount (mềm/hard)
-   */
-  @Delete(':discountId')
-  async delete(@Param() params: DiscountParamsDTO, @Req() req: Request) {
-    const { userId, roleName } = req['user'] || {}
-    return this.discountService.delete({ id: params.discountId, deletedById: userId, roleName })
-  }
-
-  /**
-   * CLIENT/GUEST: Lấy voucher khả dụng cho cart/order
-   */
+  @SkipThrottle({ default: false })
   @Get('available')
-  async getAvailableDiscounts(@Query() query: any, @Req() req: Request) {
-    const { userId } = req['user'] || {}
+  @ZodSerializerDto(GetAvailableDiscountsResDTO)
+  async getAvailableDiscounts(@Query() query: GetDiscountsQueryDTO, @ActiveUser('userId') userId?: string) {
     return this.discountService.getAvailableDiscounts({ ...query, userId })
   }
 
-  /**
-   * CLIENT: Verify/apply voucher cho đơn hàng
-   */
+  @SkipThrottle({ default: false })
+  @Get(':discountId')
+  @ZodSerializerDto(GetDiscountDetailResDTO)
+  findById(@Param() params: GetDiscountParamsDTO) {
+    return this.discountService.getDetail(params.discountId)
+  }
+
   @Post('verify')
-  async verifyDiscounts(@Body() body: any, @Req() req: Request) {
-    const { userId } = req['user'] || {}
-    // Đảm bảo truyền cart (danh sách sản phẩm trong đơn hàng) vào service
-    return this.discountService.verifyDiscounts({ ...body, userId, cart: body.cart || [] })
+  @ZodSerializerDto(VerifyDiscountResDTO)
+  async verifyDiscounts(@Body() body: VerifyDiscountBodyDTO, @ActiveUser('userId') userId?: string) {
+    return this.discountService.verifyDiscounts({ ...body, userId })
   }
 }
