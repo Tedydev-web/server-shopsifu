@@ -92,7 +92,6 @@ model User {
   sentMessages                Message[]             @relation("FromUser")
   receivedMessages            Message[]             @relation("ToUser")
   webSockets                  Websocket[]
-  discounts                   Discount[]
   shopDiscounts               Discount[]            @relation("Shop")
   createdDiscounts            Discount[]            @relation("DiscountCreatedBy")
   updatedDiscounts            Discount[]            @relation("DiscountUpdatedBy")
@@ -436,28 +435,26 @@ model ProductSKUSnapshot {
 }
 
 model Discount {
-  id             String            @id @default(uuid())
-  userId         String
-  user           User              @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  name           String            @db.VarChar(500)
-  description    String            @db.VarChar(1000)
-  type           DiscountType      @default(FIX_AMOUNT)
+  id             String       @id @default(uuid())
+  name           String       @db.VarChar(500)
+  description    String       @db.VarChar(1000)
+  type           DiscountType @default(FIX_AMOUNT)
   value          Int
-  code           String            @unique @db.VarChar(100)
+  code           String       @unique @db.VarChar(100)
   startDate      DateTime
   endDate        DateTime
   maxUses        Int
-  usesCount      Int               @default(0)
+  usesCount      Int          @default(0)
   usersUsed      String[]
   maxUsesPerUser Int
   minOrderValue  Int
 
-  shopId         String?
-  shop           User?             @relation("Shop", fields: [shopId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  shopId String?
+  shop   User?   @relation("Shop", fields: [shopId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  status         DiscountStatus    @default(DRAFT)
-  appliesTo      DiscountApplyType @default(ALL)
-  products       Product[]
+  status    DiscountStatus    @default(DRAFT)
+  appliesTo DiscountApplyType @default(ALL)
+  products  Product[]
 
   createdById String?
   createdBy   User?   @relation("DiscountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)

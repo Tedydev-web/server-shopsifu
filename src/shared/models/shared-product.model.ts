@@ -35,7 +35,7 @@ export const ProductSchema = z.object({
   id: z.string(),
   publishedAt: z.coerce.date().nullable(),
   name: z.string().trim().max(500),
-  description: z.string(),
+  description: z.string().default(''),
   basePrice: z.number().min(0),
   virtualPrice: z.number().min(0),
   brandId: z.string(),

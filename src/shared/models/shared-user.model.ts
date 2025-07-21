@@ -28,7 +28,8 @@ export const GetUserProfileResSchema = z.object({
   message: z.string().optional(),
   data: UserSchema.omit({
     password: true,
-    totpSecret: true
+    totpSecret: true,
+    roleId: true
   }).extend({
     role: RoleSchema.pick({
       id: true,

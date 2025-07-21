@@ -4,7 +4,7 @@ export const ProductTranslationSchema = z.object({
   id: z.string(),
   productId: z.string(),
   name: z.string().max(500),
-  description: z.string().max(1000),
+  description: z.string().default(''),
   languageId: z.string(),
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),

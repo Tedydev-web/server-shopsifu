@@ -4,6 +4,7 @@ import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import {
   AddToCartBodyDTO,
+  AddToCartResDTO,
   CartItemDTO,
   DeleteCartBodyDTO,
   GetCartItemParamsDTO,
@@ -24,13 +25,13 @@ export class CartController {
   }
 
   @Post()
-  @ZodSerializerDto(CartItemDTO)
+  @ZodSerializerDto(AddToCartResDTO)
   addToCart(@Body() body: AddToCartBodyDTO, @ActiveUser('userId') userId: string) {
     return this.cartService.addToCart(userId, body)
   }
 
   @Put(':cartItemId')
-  @ZodSerializerDto(CartItemDTO)
+  @ZodSerializerDto(AddToCartResDTO)
   updateCartItem(
     @ActiveUser('userId') userId: string,
     @Param() param: GetCartItemParamsDTO,
