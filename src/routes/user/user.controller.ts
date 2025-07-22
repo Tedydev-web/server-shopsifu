@@ -13,6 +13,7 @@ import { ActiveRolePermissions } from 'src/shared/decorators/active-role-permiss
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { GetUserProfileResDTO, UpdateProfileResDTO } from 'src/shared/dtos/shared-user.dto'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Controller('users')
 export class UserController {
@@ -37,13 +38,13 @@ export class UserController {
   @ZodSerializerDto(CreateUserResDTO)
   create(
     @Body() body: CreateUserBodyDTO,
-    @ActiveUser('userId') userId: string,
+    @ActiveUser() user: AccessTokenPayload,
     @ActiveRolePermissions('name') roleName: string
   ) {
     return this.userService.create({
       data: body,
-      createdById: userId,
-      createdByRoleName: roleName
+      user,
+      roleName
     })
   }
 
@@ -52,14 +53,14 @@ export class UserController {
   update(
     @Body() body: UpdateUserBodyDTO,
     @Param() params: GetUserParamsDTO,
-    @ActiveUser('userId') userId: string,
+    @ActiveUser() user: AccessTokenPayload,
     @ActiveRolePermissions('name') roleName: string
   ) {
     return this.userService.update({
       data: body,
       id: params.userId,
-      updatedById: userId,
-      updatedByRoleName: roleName
+      user,
+      roleName
     })
   }
 
@@ -67,13 +68,13 @@ export class UserController {
   @ZodSerializerDto(MessageResDTO)
   delete(
     @Param() params: GetUserParamsDTO,
-    @ActiveUser('userId') userId: string,
+    @ActiveUser() user: AccessTokenPayload,
     @ActiveRolePermissions('name') roleName: string
   ) {
     return this.userService.delete({
       id: params.userId,
-      deletedById: userId,
-      deletedByRoleName: roleName
+      user,
+      roleName
     })
   }
 }

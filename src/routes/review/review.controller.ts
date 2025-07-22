@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { ReviewService } from './review.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import {
   CreateReviewBodyDTO,
   CreateReviewResDTO,
@@ -27,21 +28,17 @@ export class ReviewController {
 
   @Post()
   @ZodSerializerDto(CreateReviewResDTO)
-  updateReview(@Body() body: CreateReviewBodyDTO, @ActiveUser('userId') userId: string) {
-    return this.reviewService.create(userId, body)
+  createReview(@Body() body: CreateReviewBodyDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.reviewService.create(user, body)
   }
 
   @Put(':reviewId')
   @ZodSerializerDto(UpdateReviewResDTO)
-  changePassword(
+  updateReview(
     @Body() body: UpdateReviewBodyDTO,
-    @ActiveUser('userId') userId: string,
+    @ActiveUser() user: AccessTokenPayload,
     @Param() params: GetReviewDetailParamsDTO
   ) {
-    return this.reviewService.update({
-      userId,
-      body,
-      reviewId: params.reviewId
-    })
+    return this.reviewService.update({ user, body, reviewId: params.reviewId })
   }
 }

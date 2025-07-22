@@ -9,6 +9,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager'
 import { Cache } from 'cache-manager'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class RoleService {
@@ -38,10 +39,10 @@ export class RoleService {
     }
   }
 
-  async create({ data, createdById }: { data: CreateRoleBodyType; createdById: string }) {
+  async create({ data, user }: { data: CreateRoleBodyType; user: AccessTokenPayload }) {
     try {
       const role = await this.roleRepo.create({
-        createdById,
+        createdById: user.userId,
         data
       })
       return {
@@ -71,12 +72,12 @@ export class RoleService {
     }
   }
 
-  async update({ id, data, updatedById }: { id: string; data: UpdateRoleBodyType; updatedById: string }) {
+  async update({ id, data, user }: { id: string; data: UpdateRoleBodyType; user: AccessTokenPayload }) {
     try {
       await this.verifyRole(id)
       const updatedRole = await this.roleRepo.update({
         id,
-        updatedById,
+        updatedById: user.userId,
         data
       })
       await this.cacheManager.del(`role:${updatedRole.id}`) // Xóa cache của role đã cập nhật
@@ -95,12 +96,12 @@ export class RoleService {
     }
   }
 
-  async delete({ id, deletedById }: { id: string; deletedById: string }) {
+  async delete({ id, user }: { id: string; user: AccessTokenPayload }) {
     try {
       await this.verifyRole(id)
       await this.roleRepo.delete({
         id,
-        deletedById
+        deletedById: user.userId
       })
       await this.cacheManager.del(`role:${id}`) // Xóa cache của role đã xóa
       return {

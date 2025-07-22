@@ -18,6 +18,7 @@ import { HashingService } from 'src/shared/services/hashing.service'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class UserService {
@@ -49,26 +50,17 @@ export class UserService {
     }
   }
 
-  async create({
-    data,
-    createdById,
-    createdByRoleName
-  }: {
-    data: CreateUserBodyType
-    createdById: string
-    createdByRoleName: string
-  }) {
+  async create({ data, user, roleName }: { data: CreateUserBodyType; user: AccessTokenPayload; roleName: string }) {
     try {
       // Chỉ có admin agent mới có quyền tạo user với role là admin
       await this.verifyRole({
-        roleNameAgent: createdByRoleName,
+        roleNameAgent: roleName,
         roleIdTarget: data.roleId
       })
       // Hash the password
       const hashedPassword = await this.hashingService.hash(data.password || '')
-
-      const user = await this.userRepo.create({
-        createdById,
+      const userCreated = await this.userRepo.create({
+        createdById: user.userId,
         data: {
           ...data,
           password: hashedPassword
@@ -76,7 +68,7 @@ export class UserService {
       })
       return {
         message: this.i18n.t('user.user.success.CREATE_SUCCESS'),
-        data: user
+        data: userCreated
       }
     } catch (error) {
       if (isForeignKeyConstraintPrismaError(error)) {
@@ -111,33 +103,32 @@ export class UserService {
   async update({
     id,
     data,
-    updatedById,
-    updatedByRoleName
+    user,
+    roleName
   }: {
     id: string
     data: UpdateUserBodyType
-    updatedById: string
-    updatedByRoleName: string
+    user: AccessTokenPayload
+    roleName: string
   }) {
     try {
       // Không thể cập nhật chính mình
       this.verifyYourself({
-        userAgentId: updatedById,
+        userAgentId: user.userId,
         userTargetId: id
       })
-
       // Lấy roleId ban đầu của người được update để kiểm tra xem liệu người update có quyền update không
       // Không dùng data.roleId vì dữ liệu này có thể bị cố tình truyền sai
       const roleIdTarget = await this.getRoleIdByUserId(id)
       await this.verifyRole({
-        roleNameAgent: updatedByRoleName,
+        roleNameAgent: roleName,
         roleIdTarget
       })
       const updatedUser = await this.sharedUserRepository.update(
         { id },
         {
           ...data,
-          updatedById
+          updatedById: user.userId
         }
       )
       return {
@@ -174,21 +165,21 @@ export class UserService {
     }
   }
 
-  async delete({ id, deletedById, deletedByRoleName }: { id: string; deletedById: string; deletedByRoleName: string }) {
+  async delete({ id, user, roleName }: { id: string; user: AccessTokenPayload; roleName: string }) {
     try {
       // Không thể xóa chính mình
       this.verifyYourself({
-        userAgentId: deletedById,
+        userAgentId: user.userId,
         userTargetId: id
       })
       const roleIdTarget = await this.getRoleIdByUserId(id)
       await this.verifyRole({
-        roleNameAgent: deletedByRoleName,
+        roleNameAgent: roleName,
         roleIdTarget
       })
       await this.userRepo.delete({
         id,
-        deletedById
+        deletedById: user.userId
       })
       return {
         message: this.i18n.t('user.user.success.DELETE_SUCCESS')

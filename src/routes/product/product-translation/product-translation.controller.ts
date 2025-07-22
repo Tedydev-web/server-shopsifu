@@ -9,6 +9,7 @@ import {
 import { ProductTranslationService } from 'src/routes/product/product-translation/product-translation.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Controller('product-translations')
 export class ProductTranslationController {
@@ -22,11 +23,8 @@ export class ProductTranslationController {
 
   @Post()
   @ZodSerializerDto(GetProductTranslationDetailResDTO)
-  create(@Body() body: CreateProductTranslationBodyDTO, @ActiveUser('userId') userId: string) {
-    return this.productTranslationService.create({
-      data: body,
-      createdById: userId
-    })
+  create(@Body() body: CreateProductTranslationBodyDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.productTranslationService.create({ data: body, user })
   }
 
   @Put(':productTranslationId')
@@ -34,21 +32,14 @@ export class ProductTranslationController {
   update(
     @Body() body: UpdateProductTranslationBodyDTO,
     @Param() params: GetProductTranslationParamsDTO,
-    @ActiveUser('userId') userId: string
+    @ActiveUser() user: AccessTokenPayload
   ) {
-    return this.productTranslationService.update({
-      data: body,
-      id: params.productTranslationId,
-      updatedById: userId
-    })
+    return this.productTranslationService.update({ data: body, id: params.productTranslationId, user })
   }
 
   @Delete(':productTranslationId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetProductTranslationParamsDTO, @ActiveUser('userId') userId: string) {
-    return this.productTranslationService.delete({
-      id: params.productTranslationId,
-      deletedById: userId
-    })
+  delete(@Param() params: GetProductTranslationParamsDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.productTranslationService.delete({ id: params.productTranslationId, user })
   }
 }

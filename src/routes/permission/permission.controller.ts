@@ -11,6 +11,7 @@ import {
 import { PermissionService } from 'src/routes/permission/permission.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Controller('permissions')
 export class PermissionController {
@@ -19,10 +20,7 @@ export class PermissionController {
   @Get()
   @ZodSerializerDto(GetPermissionsResDTO)
   list(@Query() query: GetPermissionsQueryDTO) {
-    return this.permissionService.list({
-      page: query.page,
-      limit: query.limit
-    })
+    return this.permissionService.list({ page: query.page, limit: query.limit })
   }
 
   @Get(':permissionId')
@@ -33,11 +31,8 @@ export class PermissionController {
 
   @Post()
   @ZodSerializerDto(GetPermissionDetailResDTO)
-  create(@Body() body: CreatePermissionBodyDTO, @ActiveUser('userId') userId: string) {
-    return this.permissionService.create({
-      data: body,
-      createdById: userId
-    })
+  create(@Body() body: CreatePermissionBodyDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.permissionService.create({ data: body, user })
   }
 
   @Put(':permissionId')
@@ -45,21 +40,14 @@ export class PermissionController {
   update(
     @Body() body: UpdatePermissionBodyDTO,
     @Param() params: GetPermissionParamsDTO,
-    @ActiveUser('userId') userId: string
+    @ActiveUser() user: AccessTokenPayload
   ) {
-    return this.permissionService.update({
-      data: body,
-      id: params.permissionId,
-      updatedById: userId
-    })
+    return this.permissionService.update({ data: body, id: params.permissionId, user })
   }
 
   @Delete(':permissionId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetPermissionParamsDTO, @ActiveUser('userId') userId: string) {
-    return this.permissionService.delete({
-      id: params.permissionId,
-      deletedById: userId
-    })
+  delete(@Param() params: GetPermissionParamsDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.permissionService.delete({ id: params.permissionId, user })
   }
 }

@@ -10,6 +10,7 @@ import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { RoleName } from 'src/shared/constants/role.constant'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class ManageProductService {
@@ -39,10 +40,10 @@ export class ManageProductService {
   /**
    * @description: Xem danh sách sản phẩm của một shop, bắt buộc phải truyền query param là `createdById`
    */
-  async list(props: { query: GetManageProductsQueryType; userIdRequest: string; roleNameRequest: string }) {
+  async list(props: { query: GetManageProductsQueryType; user: AccessTokenPayload }) {
     this.validatePrivilege({
-      userIdRequest: props.userIdRequest,
-      roleNameRequest: props.roleNameRequest,
+      userIdRequest: props.user.userId,
+      roleNameRequest: props.user.roleName,
       createdById: props.query.createdById
     })
     const data = await this.productRepo.list({
@@ -66,7 +67,7 @@ export class ManageProductService {
     }
   }
 
-  async getDetail(props: { productId: string; userIdRequest: string; roleNameRequest: string }) {
+  async getDetail(props: { productId: string; user: AccessTokenPayload }) {
     const product = await this.productRepo.getDetail({
       productId: props.productId,
       languageId: I18nContext.current()?.lang as string
@@ -76,8 +77,8 @@ export class ManageProductService {
       throw NotFoundRecordException
     }
     this.validatePrivilege({
-      userIdRequest: props.userIdRequest,
-      roleNameRequest: props.roleNameRequest,
+      userIdRequest: props.user.userId,
+      roleNameRequest: props.user.roleName,
       createdById: product.data.createdById
     })
     return {
@@ -86,9 +87,9 @@ export class ManageProductService {
     }
   }
 
-  async create({ data, createdById }: { data: CreateProductBodyType; createdById: string }) {
+  async create({ data, user }: { data: CreateProductBodyType; user: AccessTokenPayload }) {
     const product = await this.productRepo.create({
-      createdById,
+      createdById: user.userId,
       data
     })
     return {
@@ -100,27 +101,25 @@ export class ManageProductService {
   async update({
     productId,
     data,
-    updatedById,
-    roleNameRequest
+    user
   }: {
     productId: string
     data: UpdateProductBodyType
-    updatedById: string
-    roleNameRequest: string
+    user: AccessTokenPayload
   }) {
     const product = await this.productRepo.findById(productId)
     if (!product) {
       throw NotFoundRecordException
     }
     this.validatePrivilege({
-      userIdRequest: updatedById,
-      roleNameRequest,
+      userIdRequest: user.userId,
+      roleNameRequest: user.roleName,
       createdById: product.createdById
     })
     try {
       const updatedProduct = await this.productRepo.update({
         id: productId,
-        updatedById,
+        updatedById: user.userId,
         data
       })
       return {
@@ -135,28 +134,20 @@ export class ManageProductService {
     }
   }
 
-  async delete({
-    productId,
-    deletedById,
-    roleNameRequest
-  }: {
-    productId: string
-    deletedById: string
-    roleNameRequest: string
-  }) {
+  async delete({ productId, user }: { productId: string; user: AccessTokenPayload }) {
     const product = await this.productRepo.findById(productId)
     if (!product) {
       throw NotFoundRecordException
     }
     this.validatePrivilege({
-      userIdRequest: deletedById,
-      roleNameRequest,
+      userIdRequest: user.userId,
+      roleNameRequest: user.roleName,
       createdById: product.createdById
     })
     try {
       await this.productRepo.delete({
         id: productId,
-        deletedById
+        deletedById: user.userId
       })
       return {
         message: this.i18n.t('product.product.success.DELETE_SUCCESS')

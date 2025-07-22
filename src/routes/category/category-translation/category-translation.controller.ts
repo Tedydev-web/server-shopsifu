@@ -9,6 +9,7 @@ import {
 import { CategoryTranslationService } from 'src/routes/category/category-translation/category-translation.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Controller('category-translations')
 export class CategoryTranslationController {
@@ -22,11 +23,8 @@ export class CategoryTranslationController {
 
   @Post()
   @ZodSerializerDto(GetCategoryTranslationDetailResDTO)
-  create(@Body() body: CreateCategoryTranslationBodyDTO, @ActiveUser('userId') userId: string) {
-    return this.categoryTranslationService.create({
-      data: body,
-      createdById: userId
-    })
+  create(@Body() body: CreateCategoryTranslationBodyDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.categoryTranslationService.create({ data: body, user })
   }
 
   @Put(':categoryTranslationId')
@@ -34,21 +32,14 @@ export class CategoryTranslationController {
   update(
     @Body() body: UpdateCategoryTranslationBodyDTO,
     @Param() params: GetCategoryTranslationParamsDTO,
-    @ActiveUser('userId') userId: string
+    @ActiveUser() user: AccessTokenPayload
   ) {
-    return this.categoryTranslationService.update({
-      data: body,
-      id: params.categoryTranslationId,
-      updatedById: userId
-    })
+    return this.categoryTranslationService.update({ data: body, id: params.categoryTranslationId, user })
   }
 
   @Delete(':categoryTranslationId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetCategoryTranslationParamsDTO, @ActiveUser('userId') userId: string) {
-    return this.categoryTranslationService.delete({
-      id: params.categoryTranslationId,
-      deletedById: userId
-    })
+  delete(@Param() params: GetCategoryTranslationParamsDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.categoryTranslationService.delete({ id: params.categoryTranslationId, user })
   }
 }

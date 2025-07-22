@@ -6,6 +6,7 @@ import { HashingService } from 'src/shared/services/hashing.service'
 import { isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class ProfileService {
@@ -15,33 +16,33 @@ export class ProfileService {
     private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
-  async getProfile(userId: string) {
-    const user = await this.sharedUserRepository.findUniqueIncludeRolePermissions({
-      id: userId
+  async getProfile(user: AccessTokenPayload) {
+    const userData = await this.sharedUserRepository.findUniqueIncludeRolePermissions({
+      id: user.userId
     })
 
-    if (!user) {
+    if (!userData) {
       throw NotFoundRecordException
     }
 
     return {
       message: this.i18n.t('profile.success.GET_PROFILE'),
-      data: user
+      data: userData
     }
   }
 
-  async updateProfile({ userId, body }: { userId: string; body: UpdateMeBodyType }) {
+  async updateProfile({ user, body }: { user: AccessTokenPayload; body: UpdateMeBodyType }) {
     try {
-      const user = await this.sharedUserRepository.update(
-        { id: userId },
+      const userData = await this.sharedUserRepository.update(
+        { id: user.userId },
         {
           ...body,
-          updatedById: userId
+          updatedById: user.userId
         }
       )
       return {
         message: this.i18n.t('profile.success.UPDATE_PROFILE'),
-        data: user
+        data: userData
       }
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -51,26 +52,32 @@ export class ProfileService {
     }
   }
 
-  async changePassword({ userId, body }: { userId: string; body: Omit<ChangePasswordBodyType, 'confirmNewPassword'> }) {
+  async changePassword({
+    user,
+    body
+  }: {
+    user: AccessTokenPayload
+    body: Omit<ChangePasswordBodyType, 'confirmNewPassword'>
+  }) {
     try {
       const { password, newPassword } = body
-      const user = await this.sharedUserRepository.findUnique({
-        id: userId
+      const userData = await this.sharedUserRepository.findUnique({
+        id: user.userId
       })
-      if (!user) {
+      if (!userData) {
         throw NotFoundRecordException
       }
-      const isPasswordMatch = await this.hashingService.compare(password, user.password)
+      const isPasswordMatch = await this.hashingService.compare(password, userData.password)
       if (!isPasswordMatch) {
         throw InvalidPasswordException
       }
       const hashedPassword = await this.hashingService.hash(newPassword)
 
       await this.sharedUserRepository.update(
-        { id: userId },
+        { id: user.userId },
         {
           password: hashedPassword,
-          updatedById: userId
+          updatedById: user.userId
         }
       )
       return {

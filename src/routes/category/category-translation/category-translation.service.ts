@@ -9,6 +9,7 @@ import {
 } from 'src/routes/category/category-translation/category-translation.model'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class CategoryTranslationService {
@@ -28,10 +29,10 @@ export class CategoryTranslationService {
     }
   }
 
-  async create({ data, createdById }: { data: CreateCategoryTranslationBodyType; createdById: string }) {
+  async create({ data, user }: { data: CreateCategoryTranslationBodyType; user: AccessTokenPayload }) {
     try {
       const category = await this.categoryTranslationRepo.create({
-        createdById,
+        createdById: user.userId,
         data
       })
       return {
@@ -46,19 +47,11 @@ export class CategoryTranslationService {
     }
   }
 
-  async update({
-    id,
-    data,
-    updatedById
-  }: {
-    id: string
-    data: UpdateCategoryTranslationBodyType
-    updatedById: string
-  }) {
+  async update({ id, data, user }: { id: string; data: UpdateCategoryTranslationBodyType; user: AccessTokenPayload }) {
     try {
       const category = await this.categoryTranslationRepo.update({
         id,
-        updatedById,
+        updatedById: user.userId,
         data
       })
       return {
@@ -76,11 +69,11 @@ export class CategoryTranslationService {
     }
   }
 
-  async delete({ id, deletedById }: { id: string; deletedById: string }) {
+  async delete({ id, user }: { id: string; user: AccessTokenPayload }) {
     try {
       await this.categoryTranslationRepo.delete({
         id,
-        deletedById
+        deletedById: user.userId
       })
       return {
         message: this.i18n.t('category.categoryTranslation.success.DELETE_SUCCESS')

@@ -12,6 +12,7 @@ import {
 import { RoleService } from 'src/routes/role/role.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Controller('roles')
 export class RoleController {
@@ -34,29 +35,19 @@ export class RoleController {
 
   @Post()
   @ZodSerializerDto(CreateRoleResDTO)
-  create(@Body() body: CreateRoleBodyDTO, @ActiveUser('userId') userId: string) {
-    return this.roleService.create({
-      data: body,
-      createdById: userId
-    })
+  create(@Body() body: CreateRoleBodyDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.roleService.create({ data: body, user })
   }
 
   @Put(':roleId')
   @ZodSerializerDto(GetRoleDetailResDTO)
-  update(@Body() body: UpdateRoleBodyDTO, @Param() params: GetRoleParamsDTO, @ActiveUser('userId') userId: string) {
-    return this.roleService.update({
-      data: body,
-      id: params.roleId,
-      updatedById: userId
-    })
+  update(@Body() body: UpdateRoleBodyDTO, @Param() params: GetRoleParamsDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.roleService.update({ data: body, id: params.roleId, user })
   }
 
   @Delete(':roleId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetRoleParamsDTO, @ActiveUser('userId') userId: string) {
-    return this.roleService.delete({
-      id: params.roleId,
-      deletedById: userId
-    })
+  delete(@Param() params: GetRoleParamsDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.roleService.delete({ id: params.roleId, user })
   }
 }

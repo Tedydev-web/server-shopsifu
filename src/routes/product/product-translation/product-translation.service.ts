@@ -9,6 +9,7 @@ import {
 } from 'src/routes/product/product-translation/product-translation.model'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class ProductTranslationService {
@@ -28,10 +29,10 @@ export class ProductTranslationService {
     }
   }
 
-  async create({ data, createdById }: { data: CreateProductTranslationBodyType; createdById: string }) {
+  async create({ data, user }: { data: CreateProductTranslationBodyType; user: AccessTokenPayload }) {
     try {
       return await this.productTranslationRepo.create({
-        createdById,
+        createdById: user.userId,
         data
       })
     } catch (error) {
@@ -42,11 +43,11 @@ export class ProductTranslationService {
     }
   }
 
-  async update({ id, data, updatedById }: { id: string; data: UpdateProductTranslationBodyType; updatedById: string }) {
+  async update({ id, data, user }: { id: string; data: UpdateProductTranslationBodyType; user: AccessTokenPayload }) {
     try {
       const product = await this.productTranslationRepo.update({
         id,
-        updatedById,
+        updatedById: user.userId,
         data
       })
       return {
@@ -64,11 +65,11 @@ export class ProductTranslationService {
     }
   }
 
-  async delete({ id, deletedById }: { id: string; deletedById: string }) {
+  async delete({ id, user }: { id: string; user: AccessTokenPayload }) {
     try {
       await this.productTranslationRepo.delete({
         id,
-        deletedById
+        deletedById: user.userId
       })
       return {
         message: this.i18n.t('product.productTranslation.success.DELETE_SUCCESS')

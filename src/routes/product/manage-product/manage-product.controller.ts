@@ -21,30 +21,19 @@ export class ManageProductController {
   @Get()
   @ZodSerializerDto(GetProductsResDTO)
   list(@Query() query: GetManageProductsQueryDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.manageProductService.list({
-      query,
-      roleNameRequest: user.roleName,
-      userIdRequest: user.userId
-    })
+    return this.manageProductService.list({ query, user })
   }
 
   @Get(':productId')
   @ZodSerializerDto(GetProductDetailResDTO)
   findById(@Param() params: GetProductParamsDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.manageProductService.getDetail({
-      productId: params.productId,
-      roleNameRequest: user.roleName,
-      userIdRequest: user.userId
-    })
+    return this.manageProductService.getDetail({ productId: params.productId, user })
   }
 
   @Post()
   @ZodSerializerDto(GetProductDetailResDTO)
-  create(@Body() body: CreateProductBodyDTO, @ActiveUser('userId') userId: string) {
-    return this.manageProductService.create({
-      data: body,
-      createdById: userId
-    })
+  create(@Body() body: CreateProductBodyDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.manageProductService.create({ data: body, user })
   }
 
   @Put(':productId')
@@ -54,21 +43,12 @@ export class ManageProductController {
     @Param() params: GetProductParamsDTO,
     @ActiveUser() user: AccessTokenPayload
   ) {
-    return this.manageProductService.update({
-      data: body,
-      productId: params.productId,
-      updatedById: user.userId,
-      roleNameRequest: user.roleName
-    })
+    return this.manageProductService.update({ data: body, productId: params.productId, user })
   }
 
   @Delete(':productId')
   @ZodSerializerDto(MessageResDTO)
   delete(@Param() params: GetProductParamsDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.manageProductService.delete({
-      productId: params.productId,
-      deletedById: user.userId,
-      roleNameRequest: user.roleName
-    })
+    return this.manageProductService.delete({ productId: params.productId, user })
   }
 }

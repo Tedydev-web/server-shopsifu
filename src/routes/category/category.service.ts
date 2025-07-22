@@ -6,6 +6,7 @@ import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { I18nContext } from 'nestjs-i18n'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class CategoryService {
@@ -40,9 +41,9 @@ export class CategoryService {
     }
   }
 
-  async create({ data, createdById }: { data: CreateCategoryBodyType; createdById: string }) {
+  async create({ data, user }: { data: CreateCategoryBodyType; user: AccessTokenPayload }) {
     const category = await this.categoryRepo.create({
-      createdById,
+      createdById: user.userId,
       data
     })
     return {
@@ -51,11 +52,11 @@ export class CategoryService {
     }
   }
 
-  async update({ id, data, updatedById }: { id: string; data: UpdateCategoryBodyType; updatedById: string }) {
+  async update({ id, data, user }: { id: string; data: UpdateCategoryBodyType; user: AccessTokenPayload }) {
     try {
       const category = await this.categoryRepo.update({
         id,
-        updatedById,
+        updatedById: user.userId,
         data
       })
       return {
@@ -70,11 +71,11 @@ export class CategoryService {
     }
   }
 
-  async delete({ id, deletedById }: { id: string; deletedById: string }) {
+  async delete({ id, user }: { id: string; user: AccessTokenPayload }) {
     try {
       await this.categoryRepo.delete({
         id,
-        deletedById
+        deletedById: user.userId
       })
       return {
         message: this.i18n.t('category.category.success.DELETE_SUCCESS')

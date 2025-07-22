@@ -12,6 +12,7 @@ import {
 } from 'src/routes/order/order.dto'
 import { OrderService } from 'src/routes/order/order.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Controller('orders')
 export class OrderController {
@@ -19,25 +20,25 @@ export class OrderController {
 
   @Get()
   @ZodSerializerDto(GetOrderListResDTO)
-  getCart(@ActiveUser('userId') userId: string, @Query() query: GetOrderListQueryDTO) {
-    return this.orderService.list(userId, query)
+  getCart(@ActiveUser() user: AccessTokenPayload, @Query() query: GetOrderListQueryDTO) {
+    return this.orderService.list(user, query)
   }
 
   @Post()
   @ZodSerializerDto(CreateOrderResDTO)
-  create(@ActiveUser('userId') userId: string, @Body() body: CreateOrderBodyDTO) {
-    return this.orderService.create(userId, body)
+  create(@ActiveUser() user: AccessTokenPayload, @Body() body: CreateOrderBodyDTO) {
+    return this.orderService.create(user, body)
   }
 
   @Get(':orderId')
   @ZodSerializerDto(GetOrderDetailResDTO)
-  detail(@ActiveUser('userId') userId: string, @Param() param: GetOrderParamsDTO) {
-    return this.orderService.detail(userId, param.orderId)
+  detail(@ActiveUser() user: AccessTokenPayload, @Param() param: GetOrderParamsDTO) {
+    return this.orderService.detail(user, param.orderId)
   }
 
   @Put(':orderId')
   @ZodSerializerDto(CancelOrderResDTO)
-  cancel(@ActiveUser('userId') userId: string, @Param() param: GetOrderParamsDTO, @Body() _: CancelOrderBodyDTO) {
-    return this.orderService.cancel(userId, param.orderId)
+  cancel(@ActiveUser() user: AccessTokenPayload, @Param() param: GetOrderParamsDTO, @Body() _: CancelOrderBodyDTO) {
+    return this.orderService.cancel(user, param.orderId)
   }
 }

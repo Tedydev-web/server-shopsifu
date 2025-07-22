@@ -12,6 +12,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager'
 import { Cache } from 'cache-manager'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class PermissionService {
@@ -41,10 +42,10 @@ export class PermissionService {
     }
   }
 
-  async create({ data, createdById }: { data: CreatePermissionBodyType; createdById: string }) {
+  async create({ data, user }: { data: CreatePermissionBodyType; user: AccessTokenPayload }) {
     try {
       const permission = await this.permissionRepo.create({
-        createdById,
+        createdById: user.userId,
         data
       })
       return {
@@ -59,11 +60,11 @@ export class PermissionService {
     }
   }
 
-  async update({ id, data, updatedById }: { id: string; data: UpdatePermissionBodyType; updatedById: string }) {
+  async update({ id, data, user }: { id: string; data: UpdatePermissionBodyType; user: AccessTokenPayload }) {
     try {
       const permission = await this.permissionRepo.update({
         id,
-        updatedById,
+        updatedById: user.userId,
         data
       })
       const { roles } = permission
@@ -83,11 +84,11 @@ export class PermissionService {
     }
   }
 
-  async delete({ id, deletedById }: { id: string; deletedById: string }) {
+  async delete({ id, user }: { id: string; user: AccessTokenPayload }) {
     try {
       const permission = await this.permissionRepo.delete({
         id,
-        deletedById
+        deletedById: user.userId
       })
       const { roles } = permission
       await this.deleteCachedRole(roles)
