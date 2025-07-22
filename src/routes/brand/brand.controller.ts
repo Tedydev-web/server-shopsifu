@@ -12,6 +12,7 @@ import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { PaginationQueryDTO } from 'src/shared/dtos/request.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Controller('brands')
 export class BrandController {
@@ -33,29 +34,19 @@ export class BrandController {
 
   @Post()
   @ZodSerializerDto(GetBrandDetailResDTO)
-  create(@Body() body: CreateBrandBodyDTO, @ActiveUser('userId') userId: string) {
-    return this.brandService.create({
-      data: body,
-      createdById: userId
-    })
+  create(@Body() body: CreateBrandBodyDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.brandService.create({ data: body, user })
   }
 
   @Put(':brandId')
   @ZodSerializerDto(GetBrandDetailResDTO)
-  update(@Body() body: UpdateBrandBodyDTO, @Param() params: GetBrandParamsDTO, @ActiveUser('userId') userId: string) {
-    return this.brandService.update({
-      data: body,
-      id: params.brandId,
-      updatedById: userId
-    })
+  update(@Body() body: UpdateBrandBodyDTO, @Param() params: GetBrandParamsDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.brandService.update({ data: body, id: params.brandId, user })
   }
 
   @Delete(':brandId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetBrandParamsDTO, @ActiveUser('userId') userId: string) {
-    return this.brandService.delete({
-      id: params.brandId,
-      deletedById: userId
-    })
+  delete(@Param() params: GetBrandParamsDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.brandService.delete({ id: params.brandId, user })
   }
 }

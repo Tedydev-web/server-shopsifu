@@ -6,6 +6,7 @@ import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { PaginationQueryType } from 'src/shared/models/request.model'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class BrandService {
@@ -34,9 +35,9 @@ export class BrandService {
     }
   }
 
-  async create({ data, createdById }: { data: CreateBrandBodyType; createdById: string }) {
+  async create({ data, user }: { data: CreateBrandBodyType; user: AccessTokenPayload }) {
     const brand = await this.brandRepo.create({
-      createdById,
+      createdById: user.userId,
       data
     })
     return {
@@ -45,11 +46,11 @@ export class BrandService {
     }
   }
 
-  async update({ id, data, updatedById }: { id: string; data: UpdateBrandBodyType; updatedById: string }) {
+  async update({ id, data, user }: { id: string; data: UpdateBrandBodyType; user: AccessTokenPayload }) {
     try {
       const brand = await this.brandRepo.update({
         id,
-        updatedById,
+        updatedById: user.userId,
         data
       })
       return {
@@ -64,11 +65,11 @@ export class BrandService {
     }
   }
 
-  async delete({ id, deletedById }: { id: string; deletedById: string }) {
+  async delete({ id, user }: { id: string; user: AccessTokenPayload }) {
     try {
       await this.brandRepo.delete({
         id,
-        deletedById
+        deletedById: user.userId
       })
       return {
         message: this.i18n.t('brand.brand.success.DELETE_SUCCESS')

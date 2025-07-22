@@ -1,5 +1,8 @@
 import { DiscountType, DiscountStatus, DiscountApplyType } from 'src/shared/constants/discount.constant'
 import { z } from 'zod'
+import { ProductSchema } from 'src/shared/models/shared-product.model'
+import { CategorySchema } from './shared-category.model'
+import { BrandSchema } from './shared-brand.model'
 
 /**
  * Schema cho entity Discount mapping với Prisma model
@@ -14,16 +17,19 @@ export const DiscountSchema = z.object({
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   maxUses: z.number().int(),
-  usesCount: z.number().int(),
+  usesCount: z.number().int().default(0),
   usersUsed: z.array(z.string()),
-  maxUsesPerUser: z.number().int(),
-  minOrderValue: z.number().int(),
+  maxUsesPerUser: z.number().int().default(0),
+  minOrderValue: z.number().int().default(0),
+  maxDiscountValue: z.number().int().nullable().optional(),
   canSaveBeforeStart: z.boolean().default(false),
   isPublic: z.boolean().default(true),
   shopId: z.string().nullable(),
   status: z.enum([DiscountStatus.DRAFT, DiscountStatus.INACTIVE, DiscountStatus.ACTIVE, DiscountStatus.EXPIRED]),
-  appliesTo: z.enum([DiscountApplyType.ALL, DiscountApplyType.SPECIFIC]),
-  products: z.array(z.string()).optional(),
+  appliesTo: z.nativeEnum(DiscountApplyType).default(DiscountApplyType.ALL),
+  products: z.lazy(() => z.array(ProductSchema).optional()),
+  categories: z.lazy(() => z.array(CategorySchema).optional()),
+  brands: z.lazy(() => z.array(BrandSchema).optional()),
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),
   deletedById: z.string().nullable(),
@@ -32,4 +38,4 @@ export const DiscountSchema = z.object({
   updatedAt: z.date()
 })
 
-export type DiscountTypeSchema = z.infer<typeof DiscountSchema>
+export type DiscountType = z.infer<typeof DiscountSchema>

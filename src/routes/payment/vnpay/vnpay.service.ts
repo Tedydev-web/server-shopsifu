@@ -26,32 +26,32 @@ export class VnpayService {
         const params: Record<string, string> = {
             vnp_Version: '2.1.0',
             vnp_Command: 'pay',
-            vnp_TmnCode: tmnCode,
+            vnp_TmnCode: tmnCode || '',
             vnp_Locale: 'vn',
             vnp_CurrCode: 'VND',
             vnp_TxnRef: orderId,
             vnp_OrderInfo: `Thanh toan don hang ${orderId}`,
             vnp_OrderType: 'other',
             vnp_Amount: (amount * 100).toString(),
-            vnp_ReturnUrl: returnUrl,
+            vnp_ReturnUrl: returnUrl || '',
             vnp_IpAddr: ip,
             vnp_CreateDate: createDate,
         }
 
         const sorted = Object.fromEntries(Object.entries(params).sort());
         const signData = qs.stringify(sorted, { encode: false });
-        const signature = crypto.createHmac('sha512', secret).update(signData).digest('hex');
+        const signature = crypto.createHmac('sha512', secret || '').update(signData).digest('hex');
 
         return `${payUrl}?${signData}&vnp_SecureHash=${signature}`;
     }
 
     validateCallback(query: any): boolean {
         const { vnp_SecureHash, ...rest } = query;
-        const secret = this.config.get('VNP_HASHSECRET');
+        const secret = this.config.get('VNP_HASHSECRET') || '';
 
         const sorted = Object.fromEntries(Object.entries(rest).sort());
         const signData = qs.stringify(sorted, { encode: false });
-        const hash = crypto.createHmac('sha512', secret).update(signData).digest('hex');
+        const hash = crypto.createHmac('sha512', secret || '').update(signData).digest('hex');
 
         return hash === vnp_SecureHash;
     }

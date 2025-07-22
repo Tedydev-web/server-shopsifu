@@ -1,0 +1,14 @@
+{
+  "discount": {
+    "success": {
+      "CREATE_SUCCESS": "Tạo mã giảm giá thành công.",
+      "UPDATE_SUCCESS": "Cập nhật mã giảm giá thành công.",
+      "DELETE_SUCCESS": "Xóa mã giảm giá thành công."
+    },
+    "error": {
+      "CODE_EXISTS": "Mã giảm giá đã tồn tại.",
+      "NOT_FOUND": "Không tìm thấy mã giảm giá.",
+      "FORBIDDEN": "Bạn không có quyền thao tác với mã giảm giá này."
+    }
+  }
+}

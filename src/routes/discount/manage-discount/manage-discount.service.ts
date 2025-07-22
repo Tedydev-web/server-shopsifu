@@ -1,25 +1,35 @@
 import { ForbiddenException, Injectable } from '@nestjs/common'
+import { I18nService } from 'nestjs-i18n'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { DiscountRepo } from 'src/routes/discount/discount.repo'
 import {
   CreateDiscountBodyType,
   GetManageDiscountsQueryType,
   UpdateDiscountBodyType
 } from 'src/routes/discount/discount.model'
-import { NotFoundRecordException } from 'src/shared/error'
-import { isNotFoundPrismaError } from 'src/shared/helpers'
-import { I18nService } from 'nestjs-i18n'
+import {
+  DiscountCodeAlreadyExistsException,
+  DiscountNotFoundException,
+  DiscountForbiddenException
+} from 'src/routes/discount/discount.error'
 import { RoleName } from 'src/shared/constants/role.constant'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
-import { DiscountRepo } from '../discount.repo'
+import { SharedDiscountRepo } from 'src/shared/repositories/shared-discount.repo'
+import { Prisma } from '@prisma/client'
+import { NotFoundRecordException } from 'src/shared/error'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class ManageDiscountService {
   constructor(
-    private discountRepo: DiscountRepo,
-    private i18n: I18nService<I18nTranslations>
+    private readonly discountRepo: DiscountRepo,
+    private readonly sharedDiscountRepo: SharedDiscountRepo,
+    private readonly i18n: I18nService<I18nTranslations>,
+    private readonly prismaService: PrismaService
   ) {}
 
   /**
-   * Kiểm tra nếu người dùng không phải là người tạo discount hoặc admin thì không cho tiếp tục
+   * Kiểm tra quyền thao tác trên discount (chủ sở hữu hoặc admin)
    */
   validatePrivilege({
     userIdRequest,
@@ -28,139 +38,149 @@ export class ManageDiscountService {
   }: {
     userIdRequest: string
     roleNameRequest: string
-    shopId: string | undefined | null
+    shopId: string | null | undefined
   }) {
-    if (roleNameRequest !== RoleName.Admin && userIdRequest !== shopId) {
-      throw new ForbiddenException()
+    if (userIdRequest !== shopId && roleNameRequest !== RoleName.Admin) {
+      throw DiscountForbiddenException
     }
     return true
   }
 
-  async list(props: { query: GetManageDiscountsQueryType; userIdRequest: string; roleNameRequest: string }) {
-    if (props.roleNameRequest === RoleName.Seller) {
-      props.query.shopId = props.userIdRequest
-    }
-    const data = await this.discountRepo.list(props.query)
-    return {
-      message: this.i18n.t('global.global.success.GET_SUCCESS'),
-      data: data.data.map((d) => ({ ...d, products: d.products?.map((p) => p.id) ?? [] })),
-      metadata: data.metadata
+  /**
+   * Kiểm tra seller chỉ được áp dụng discount cho sản phẩm của mình
+   */
+  private async validateProductOwnership(productIds: string[], sellerId: string) {
+    if (!productIds || productIds.length === 0) return
+    const products = await this.prismaService.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, createdById: true }
+    })
+    if (products.length !== productIds.length || products.some((p) => p.createdById !== sellerId)) {
+      throw DiscountForbiddenException
     }
   }
 
-  async getDetail(props: { discountId: string; userIdRequest: string; roleNameRequest: string }) {
-    const discount = await this.discountRepo.findById(props.discountId)
+  /**
+   * Kiểm tra mã discount đã tồn tại chưa
+   */
+  private async validateDiscountExistence(code: string) {
+    const existing = await this.sharedDiscountRepo.findByCode(code)
+    if (existing) {
+      throw DiscountCodeAlreadyExistsException
+    }
+  }
 
+  /**
+   * Danh sách discount quản lý
+   */
+  async list({ query, user }: { query: GetManageDiscountsQueryType; user: AccessTokenPayload }) {
+    if (user.roleName === RoleName.Seller) {
+      query.shopId = user.userId
+    }
+    // Admin có thể xem tất cả
+    const result = await this.discountRepo.list(query)
+    return {
+      message: this.i18n.t('discount.discount.success.GET_SUCCESS' as any),
+      data: result.data.map((d) => this.mapToResponse(d).data),
+      metadata: result.metadata
+    }
+  }
+
+  /**
+   * Lấy chi tiết discount
+   */
+  async findById(id: string, user: AccessTokenPayload) {
+    const discount = await this.sharedDiscountRepo.findById(id)
     if (!discount) {
-      throw NotFoundRecordException
+      throw DiscountNotFoundException
     }
-    this.validatePrivilege({
-      userIdRequest: props.userIdRequest,
-      roleNameRequest: props.roleNameRequest,
-      shopId: discount.shopId
-    })
-    return {
-      message: this.i18n.t('global.global.success.GET_DETAIL_SUCCESS'),
-      data: { ...discount, products: discount.products?.map((p) => p.id) ?? [] }
+    this.validatePrivilege({ userIdRequest: user.userId, roleNameRequest: user.roleName, shopId: discount.shopId })
+    return this.mapToResponse(discount)
+  }
+
+  /**
+   * Tạo mới discount
+   */
+  async create({ data, user }: { data: CreateDiscountBodyType; user: AccessTokenPayload }) {
+    await this.validateDiscountExistence(data.code)
+    const dataTemp: any = { ...data }
+    if (user.roleName === RoleName.Seller) {
+      dataTemp.shopId = user.userId
+      await this.validateProductOwnership(data.products ?? [], user.userId)
+    }
+    try {
+      const discount = await this.discountRepo.create({
+        createdById: user.userId,
+        data: dataTemp
+      })
+      return this.mapToResponse(discount, this.i18n.t('discount.discount.success.CREATE_SUCCESS' as any))
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw DiscountCodeAlreadyExistsException
+      }
+      throw err
     }
   }
 
-  async create({
-    data,
-    createdById,
-    roleName
-  }: {
-    data: CreateDiscountBodyType
-    createdById: string
-    roleName: string
-  }) {
-    const dataTemp: CreateDiscountBodyType = { ...data }
-    if (roleName === RoleName.Seller) {
-      dataTemp.shopId = createdById
-    }
-
-    const discount = await this.discountRepo.create({
-      createdById,
-      data: dataTemp
-    })
-    return {
-      message: this.i18n.t('global.global.success.CREATE_SUCCESS'),
-      data: { ...discount, products: discount.products?.map((p) => p.id) ?? [] }
-    }
-  }
-
-  async update({
-    discountId,
-    data,
-    updatedById,
-    roleNameRequest
-  }: {
-    discountId: string
-    data: UpdateDiscountBodyType
-    updatedById: string
-    roleNameRequest: string
-  }) {
-    const discount = await this.discountRepo.findById(discountId)
+  /**
+   * Cập nhật discount
+   */
+  async update({ id, data, user }: { id: string; data: UpdateDiscountBodyType; user: AccessTokenPayload }) {
+    const discount = await this.sharedDiscountRepo.findById(id)
     if (!discount) {
-      throw NotFoundRecordException
+      throw DiscountNotFoundException
     }
-    this.validatePrivilege({
-      userIdRequest: updatedById,
-      roleNameRequest,
-      shopId: discount.shopId
-    })
+    this.validatePrivilege({ userIdRequest: user.userId, roleNameRequest: user.roleName, shopId: discount.shopId })
+    if (data.code) {
+      const existing = await this.sharedDiscountRepo.findByCode(data.code)
+      if (existing && existing.id !== id) {
+        throw DiscountCodeAlreadyExistsException
+      }
+    }
+    if (user.roleName === RoleName.Seller && data.products) {
+      await this.validateProductOwnership(data.products, user.userId)
+    }
     try {
       const updatedDiscount = await this.discountRepo.update({
-        id: discountId,
-        updatedById,
-        data: {
-          ...data,
-          products: data.products ?? []
-        }
+        id,
+        updatedById: user.userId,
+        data
       })
-      return {
-        message: this.i18n.t('global.global.success.UPDATE_SUCCESS'),
-        data: { ...updatedDiscount, products: updatedDiscount.products?.map((p) => p.id) ?? [] }
+      return this.mapToResponse(updatedDiscount, this.i18n.t('discount.discount.success.UPDATE_SUCCESS' as any))
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw DiscountCodeAlreadyExistsException
       }
-    } catch (error) {
-      if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
-      }
-      throw error
+      throw err
     }
   }
 
-  async delete({
-    discountId,
-    deletedById,
-    roleNameRequest
-  }: {
-    discountId: string
-    deletedById: string
-    roleNameRequest: string
-  }) {
-    const discount = await this.discountRepo.findById(discountId)
+  /**
+   * Xóa discount
+   */
+  async delete(id: string, user: AccessTokenPayload) {
+    const discount = await this.sharedDiscountRepo.findById(id)
     if (!discount) {
-      throw NotFoundRecordException
+      throw DiscountNotFoundException
     }
-    this.validatePrivilege({
-      userIdRequest: deletedById,
-      roleNameRequest,
-      shopId: discount.shopId
-    })
-    try {
-      await this.discountRepo.delete({
-        id: discountId,
-        deletedById
-      })
-      return {
-        message: this.i18n.t('global.global.success.DELETE_SUCCESS')
+    this.validatePrivilege({ userIdRequest: user.userId, roleNameRequest: user.roleName, shopId: discount.shopId })
+    await this.discountRepo.delete({ id, deletedById: user.userId })
+    return { message: this.i18n.t('discount.discount.success.DELETE_SUCCESS' as any) }
+  }
+
+  /**
+   * Chuẩn hóa response trả về (chỉ trả về id cho các quan hệ)
+   */
+  private mapToResponse(discount: any, message?: string) {
+    const { products, categories, brands, ...rest } = discount
+    return {
+      ...(message ? { message } : {}),
+      data: {
+        ...rest,
+        products: products.map((p: any) => p.id),
+        categories: categories.map((c: any) => c.id),
+        brands: brands.map((b: any) => b.id)
       }
-    } catch (error) {
-      if (isNotFoundPrismaError(error)) {
-        throw NotFoundRecordException
-      }
-      throw error
     }
   }
 }

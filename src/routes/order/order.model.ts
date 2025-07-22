@@ -65,7 +65,8 @@ export const CreateOrderBodySchema = z
         phone: z.string().min(9).max(20),
         address: z.string()
       }),
-      cartItemIds: z.array(z.string()).min(1)
+      cartItemIds: z.array(z.string()).min(1),
+      discountCodes: z.array(z.string()).optional()
     })
   )
   .min(1)
@@ -73,8 +74,8 @@ export const CreateOrderBodySchema = z
 export const CreateOrderResSchema = z.object({
   message: z.string().optional(),
   data: z.object({
-    orders: z.array(OrderSchema),
-    paymentId: z.string()
+  orders: z.array(OrderSchema),
+  paymentId: z.string()
   })
 })
 export const CancelOrderBodySchema = z.object({})

@@ -9,6 +9,7 @@ import {
 import { BrandTranslationService } from 'src/routes/brand/brand-translation/brand-translation.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Controller('brand-translations')
 export class BrandTranslationController {
@@ -22,11 +23,8 @@ export class BrandTranslationController {
 
   @Post()
   @ZodSerializerDto(GetBrandTranslationDetailResDTO)
-  create(@Body() body: CreateBrandTranslationBodyDTO, @ActiveUser('userId') userId: string) {
-    return this.brandTranslationService.create({
-      data: body,
-      createdById: userId
-    })
+  create(@Body() body: CreateBrandTranslationBodyDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.brandTranslationService.create({ data: body, user })
   }
 
   @Put(':brandTranslationId')
@@ -34,21 +32,14 @@ export class BrandTranslationController {
   update(
     @Body() body: UpdateBrandTranslationBodyDTO,
     @Param() params: GetBrandTranslationParamsDTO,
-    @ActiveUser('userId') userId: string
+    @ActiveUser() user: AccessTokenPayload
   ) {
-    return this.brandTranslationService.update({
-      data: body,
-      id: params.brandTranslationId,
-      updatedById: userId
-    })
+    return this.brandTranslationService.update({ data: body, id: params.brandTranslationId, user })
   }
 
   @Delete(':brandTranslationId')
   @ZodSerializerDto(MessageResDTO)
-  delete(@Param() params: GetBrandTranslationParamsDTO, @ActiveUser('userId') userId: string) {
-    return this.brandTranslationService.delete({
-      id: params.brandTranslationId,
-      deletedById: userId
-    })
+  delete(@Param() params: GetBrandTranslationParamsDTO, @ActiveUser() user: AccessTokenPayload) {
+    return this.brandTranslationService.delete({ id: params.brandTranslationId, user })
   }
 }

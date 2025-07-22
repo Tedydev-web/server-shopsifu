@@ -34,12 +34,13 @@ model Language {
 }
 
 model User {
-  id          String  @id @default(uuid())
+  id          String    @id @default(uuid())
   email       String
-  name        String  @db.VarChar(500)
-  password    String  @db.VarChar(500)
-  phoneNumber String  @db.VarChar(50)
-  avatar      String? @db.VarChar(1000)
+  name        String    @db.VarChar(500)
+  password    String    @db.VarChar(500)
+  phoneNumber String    @db.VarChar(50)
+  avatar      String?   @db.VarChar(1000)
+  dateOfBirth DateTime?
 
   // Này có thể dùng để thực hiện chức năng quên mật khẩu, đăng nhập 2 bước
   totpSecret                  String?               @db.VarChar(1000)
@@ -297,9 +298,11 @@ model Category {
   deletedById String?
   deletedBy   User?   @relation("CategoryDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  Discount   Discount? @relation(fields: [discountId], references: [id])
+  discountId String?
 
   @@index([deletedAt])
 }
@@ -368,9 +371,11 @@ model Brand {
   deletedById String?
   deletedBy   User?   @relation("BrandDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  Discount   Discount? @relation(fields: [discountId], references: [id])
+  discountId String?
 
   @@index([deletedAt])
 }
@@ -434,29 +439,34 @@ model ProductSKUSnapshot {
 }
 
 model Discount {
-  id             String       @id @default(uuid())
-  name           String       @db.VarChar(500)
-  description    String       @db.VarChar(1000)
-  type           DiscountType @default(FIX_AMOUNT)
-  value          Int
-  code           String       @unique @db.VarChar(100)
-  startDate      DateTime
-  endDate        DateTime
-  maxUses        Int
-  usesCount      Int          @default(0)
-  usersUsed      String[]
-  maxUsesPerUser Int
-  minOrderValue  Int
-
-  canSaveBeforeStart Boolean @default(false)
-  isPublic           Boolean @default(true)
-
-  shopId String?
-  shop   User?   @relation("ShopDiscounts", fields: [shopId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  id                 String       @id @default(uuid())
+  name               String       @db.VarChar(500)
+  description        String       @db.VarChar(1000)
+  type               DiscountType @default(FIX_AMOUNT)
+  value              Int
+  code               String       @unique @db.VarChar(100)
+  startDate          DateTime
+  endDate            DateTime
+  maxUses            Int          @default(0) // 0 is unlimited
+  usesCount          Int          @default(0)
+  usersUsed          String[]
+  maxUsesPerUser     Int          @default(0) // 0 is unlimited
+  minOrderValue      Int          @default(0)
+  maxDiscountValue   Int? // For percentage discounts, null means no limit
+  canSaveBeforeStart Boolean      @default(false)
+  isPublic           Boolean      @default(true)
+  shopId             String?
+  shop               User?        @relation("ShopDiscounts", fields: [shopId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   status    DiscountStatus    @default(DRAFT)
   appliesTo DiscountApplyType @default(ALL)
   products  Product[]
+
+  categories     Category[]
+  brands         Brand[]
+  userConditions Json?
+
+  appliedDiscounts AppliedDiscount[]
 
   createdById String?
   createdBy   User?   @relation("DiscountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -489,6 +499,8 @@ model Order {
   shop      User?                @relation("Shop", fields: [shopId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   paymentId String
   payment   Payment              @relation(fields: [paymentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  appliedDiscounts AppliedDiscount[]
 
   createdById String?
   createdBy   User?   @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -638,4 +650,23 @@ enum DiscountStatus {
 enum DiscountApplyType {
   ALL
   SPECIFIC
+}
+
+model AppliedDiscount {
+  id         String   @id @default(uuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  discountId String
+  discount   Discount @relation(fields: [discountId], references: [id])
+
+  // Snapshot of discount details at time of order
+  code           String
+  type           DiscountType
+  value          Int
+  discountAmount Int // The actual amount saved
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([discountId])
 }

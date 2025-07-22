@@ -1,25 +1,18 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { DiscountTypeSchema } from 'src/shared/models/shared-discount.model'
-import { GetManageDiscountsQueryType } from './discount.model'
+import { GetManageDiscountsQueryType, CreateDiscountBodyType, UpdateDiscountBodyType } from './discount.model'
+import { DiscountType } from 'src/shared/models/shared-discount.model'
 
 @Injectable()
 export class DiscountRepo {
   constructor(private readonly prismaService: PrismaService) {}
 
-  async findById(id: string) {
-    return this.prismaService.discount.findUnique({
-      where: { id, deletedAt: null },
-      include: {
-        products: true
-      }
-    })
-  }
-
-  async list(query: GetManageDiscountsQueryType) {
+  /**
+   * Danh sách discount (có phân trang, filter)
+   */
+  async list(query: GetManageDiscountsQueryType): Promise<{ data: DiscountType[]; metadata: any }> {
     const { page = 1, limit = 10, shopId, isPublic, status, search } = query
     const where: any = { deletedAt: null }
-
     if (shopId === null) {
       where.shopId = null
     } else if (shopId) {
@@ -28,7 +21,6 @@ export class DiscountRepo {
     if (typeof isPublic === 'boolean') where.isPublic = isPublic
     if (status) where.status = status
     if (search) where.name = { contains: search, mode: 'insensitive' }
-
     const skip = (page - 1) * limit
     const [totalItems, data] = await Promise.all([
       this.prismaService.discount.count({ where }),
@@ -38,7 +30,9 @@ export class DiscountRepo {
         skip,
         take: limit,
         include: {
-          products: true
+          products: true,
+          categories: true,
+          brands: true
         }
       })
     ])
@@ -56,45 +50,79 @@ export class DiscountRepo {
     }
   }
 
-  async findByCode(code: string) {
-    return this.prismaService.discount.findFirst({
-      where: { code, deletedAt: null },
-      include: {
-        products: true
-      }
-    })
-  }
-
-  async create({ createdById, data }: { createdById: string; data: any }) {
-    const { products, ...discountData } = data
+  /**
+   * Tạo mới discount
+   */
+  async create({ createdById, data }: { createdById: string; data: CreateDiscountBodyType }): Promise<DiscountType> {
+    const { products, categories, brands, ...discountData } = data
     return this.prismaService.discount.create({
       data: {
         ...discountData,
         createdById,
-        products: products && products.length > 0 ? { connect: products.map((id: string) => ({ id })) } : undefined
+        products: products && products.length > 0 ? { connect: products.map((id) => ({ id })) } : undefined,
+        categories: categories && categories.length > 0 ? { connect: categories.map((id) => ({ id })) } : undefined,
+        brands: brands && brands.length > 0 ? { connect: brands.map((id) => ({ id })) } : undefined
       },
       include: {
-        products: true
+        products: true,
+        categories: {
+          where: { deletedAt: null },
+          include: {
+            categoryTranslations: { where: { deletedAt: null } }
+          }
+        },
+        brands: {
+          include: {
+            brandTranslations: { where: { deletedAt: null } }
+          }
+        }
       }
     })
   }
 
-  async update({ id, updatedById, data }: { id: string; updatedById: string; data: any }) {
-    const { products, ...discountData } = data
+  /**
+   * Cập nhật discount
+   */
+  async update({
+    id,
+    updatedById,
+    data
+  }: {
+    id: string
+    updatedById: string
+    data: UpdateDiscountBodyType
+  }): Promise<DiscountType> {
+    const { products, categories, brands, ...discountData } = data
     return this.prismaService.discount.update({
       where: { id, deletedAt: null },
       data: {
         ...discountData,
         updatedById,
-        products: products ? { set: products.map((id: string) => ({ id })) } : undefined
+        products: products ? { set: products.map((id) => ({ id })) } : undefined,
+        categories: categories ? { set: categories.map((id) => ({ id })) } : undefined,
+        brands: brands ? { set: brands.map((id) => ({ id })) } : undefined
       },
       include: {
-        products: true
+        products: true,
+        categories: {
+          where: { deletedAt: null },
+          include: {
+            categoryTranslations: { where: { deletedAt: null } }
+          }
+        },
+        brands: {
+          include: {
+            brandTranslations: { where: { deletedAt: null } }
+          }
+        }
       }
     })
   }
 
-  async delete({ id, deletedById }: { id: string; deletedById: string }, isHard?: boolean) {
+  /**
+   * Xóa mềm hoặc xóa cứng discount
+   */
+  async delete({ id, deletedById }: { id: string; deletedById: string }, isHard?: boolean): Promise<DiscountType> {
     if (isHard) {
       return this.prismaService.discount.delete({ where: { id } })
     }

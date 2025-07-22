@@ -144,6 +144,20 @@ export type I18nTranslations = {
             "DEVICE_REVOKE_FAILED": string;
         };
     };
+    "discount": {
+        "discount": {
+            "success": {
+                "CREATE_SUCCESS": string;
+                "UPDATE_SUCCESS": string;
+                "DELETE_SUCCESS": string;
+            };
+            "error": {
+                "CODE_EXISTS": string;
+                "NOT_FOUND": string;
+                "FORBIDDEN": string;
+            };
+        };
+    };
     "global": {
         "global": {
             "success": {
