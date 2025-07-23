@@ -82,29 +82,7 @@ export const CreateDiscountBodySchema = DiscountSchema.pick({
     }
   })
 
-const UpdateDiscountBodyBaseSchema = DiscountSchema.pick({
-  name: true,
-  description: true,
-  type: true,
-  value: true,
-  code: true,
-  startDate: true,
-  endDate: true,
-  maxUses: true,
-  maxUsesPerUser: true,
-  minOrderValue: true,
-  maxDiscountValue: true,
-  isPublic: true,
-  appliesTo: true
-})
-  .extend({
-    productIds: z.array(z.string()).optional(),
-    categoryIds: z.array(z.string()).optional(),
-    brandIds: z.array(z.string()).optional()
-  })
-  .strict()
-
-export const UpdateDiscountBodySchema = UpdateDiscountBodyBaseSchema.partial()
+export const UpdateDiscountBodySchema = CreateDiscountBodySchema
 
 export const UpdateDiscountResSchema = z.object({
   message: z.string().optional(),
@@ -119,3 +97,26 @@ export type GetDiscountDetailResType = z.infer<typeof GetDiscountDetailResSchema
 export type CreateDiscountBodyType = z.infer<typeof CreateDiscountBodySchema>
 export type UpdateDiscountBodyType = z.infer<typeof UpdateDiscountBodySchema>
 export type UpdateDiscountResType = z.infer<typeof UpdateDiscountResSchema>
+
+// Schema cho body
+export const GetAvailableDiscountsBodySchema = z.object({
+  cartItemIds: z.array(z.string()).min(1)
+})
+
+// Schema cho response
+export const GetAvailableDiscountsResSchema = z.object({
+  message: z.string().optional(),
+  data: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().nullable().optional(),
+      type: z.string(),
+      value: z.number(),
+      code: z.string(),
+      maxDiscountValue: z.number().nullable().optional(),
+      minOrderValue: z.number(),
+      appliesTo: z.string()
+    })
+  )
+})

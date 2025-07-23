@@ -1,8 +1,5 @@
 import { DiscountType, DiscountStatus, DiscountApplyType } from 'src/shared/constants/discount.constant'
 import { z } from 'zod'
-import { ProductSchema } from 'src/shared/models/shared-product.model'
-import { CategorySchema } from './shared-category.model'
-import { BrandSchema } from './shared-brand.model'
 
 /**
  * Schema cho entity Discount mapping với Prisma model

@@ -32,3 +32,16 @@ export const generateCancelPaymentJobId = (paymentId: string) => {
 export const generateRoomUserId = (userId: string) => {
   return `userId-${userId}`
 }
+
+export function calculateDiscountAmount(discount: any, orderTotal: number): number {
+  let discountAmount = 0
+  if (discount.type === 'FIX_AMOUNT') {
+    discountAmount = discount.value
+  } else if (discount.type === 'PERCENTAGE') {
+    discountAmount = Math.floor(orderTotal * (discount.value / 100))
+    if (discount.maxDiscountValue && discountAmount > discount.maxDiscountValue) {
+      discountAmount = discount.maxDiscountValue
+    }
+  }
+  return Math.min(discountAmount, orderTotal)
+}

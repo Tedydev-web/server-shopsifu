@@ -1,6 +1,5 @@
-import { OrderIncludeProductSKUSnapshotAndDiscountSchema } from './../../../shared/models/shared-order.model'
 import { BadRequestException, Injectable } from '@nestjs/common'
-import { Payment, PaymentStatus } from '@prisma/client'
+import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { parse } from 'date-fns'
 import { WebhookPaymentBodyType } from 'src/routes/payment/sepay/payment.model'
 import { PaymentProducer } from 'src/routes/payment/sepay/payment.producer'

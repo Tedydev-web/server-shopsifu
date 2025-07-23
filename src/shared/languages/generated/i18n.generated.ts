@@ -150,6 +150,8 @@ export type I18nTranslations = {
                 "CREATE_SUCCESS": string;
                 "UPDATE_SUCCESS": string;
                 "DELETE_SUCCESS": string;
+                "CALCULATE_SUCCESS": string;
+                "GET_AVAILABLE_SUCCESS": string;
             };
             "error": {
                 "CODE_EXISTS": string;
@@ -222,6 +224,7 @@ export type I18nTranslations = {
                 "GET_SUCCESS": string;
                 "GET_DETAIL_SUCCESS": string;
                 "CANCEL_SUCCESS": string;
+                "CALCULATE_SUCCESS": string;
             };
             "error": {
                 "NOT_FOUND": string;

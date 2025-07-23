@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
-import { OrderStatus, Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+import { OrderStatus } from 'src/shared/constants/order.constant'
 import {
   CannotCancelOrderException,
   NotFoundCartItemException,
@@ -19,18 +20,16 @@ import {
 import { OrderProducer } from 'src/routes/order/order.producer'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { VersionConflictException } from 'src/shared/error'
-import { isNotFoundPrismaError } from 'src/shared/helpers'
+import { calculateDiscountAmount, isNotFoundPrismaError } from 'src/shared/helpers'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { DiscountService } from 'src/routes/discount/discount.service'
 
 @Injectable()
 export class OrderRepo {
   constructor(
     private readonly prismaService: PrismaService,
     private orderProducer: OrderProducer,
-    private readonly configService: ConfigService,
-    private readonly discountService: DiscountService
+    private readonly configService: ConfigService
   ) {}
   async list(userId: string, query: GetOrderListQueryType): Promise<GetOrderListResType> {
     const { page, limit, status } = query
@@ -205,7 +204,7 @@ export class OrderRepo {
 
               // Tính toán giá trị giảm giá cho từng mã
               for (const discount of discounts) {
-                const discountAmount = this.discountService.calculateDiscountAmount(discount, orderSubTotal)
+                const discountAmount = calculateDiscountAmount(discount, orderSubTotal)
 
                 // Chuẩn bị dữ liệu để tạo DiscountSnapshot
                 appliedDiscountsToCreate.push({

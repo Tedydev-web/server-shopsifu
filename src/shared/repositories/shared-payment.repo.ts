@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { OrderStatus } from '@prisma/client'
+import { OrderStatus } from 'src/shared/constants/order.constant'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
 

@@ -6,7 +6,8 @@
       "DELETE_SUCCESS": "Xóa đơn hàng thành công",
       "GET_SUCCESS": "Lấy danh sách đơn hàng thành công",
       "GET_DETAIL_SUCCESS": "Lấy chi tiết đơn hàng thành công",
-      "CANCEL_SUCCESS": "Hủy đơn hàng thành công"
+      "CANCEL_SUCCESS": "Hủy đơn hàng thành công",
+      "CALCULATE_SUCCESS": "Tính toán đơn hàng thành công"
     },
     "error": {
       "NOT_FOUND": "Đơn hàng không tồn tại.",

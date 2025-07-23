@@ -7,7 +7,9 @@ import {
   GetDiscountsQuerySchema,
   GetDiscountsResSchema,
   UpdateDiscountBodySchema,
-  UpdateDiscountResSchema
+  UpdateDiscountResSchema,
+  GetAvailableDiscountsBodySchema,
+  GetAvailableDiscountsResSchema
 } from 'src/routes/discount/discount.model'
 import { DiscountSchema } from 'src/shared/models/shared-discount.model'
 
@@ -28,3 +30,7 @@ export class CreateDiscountBodyDTO extends createZodDto(CreateDiscountBodySchema
 export class UpdateDiscountBodyDTO extends createZodDto(UpdateDiscountBodySchema) {}
 
 export class UpdateDiscountResDTO extends createZodDto(UpdateDiscountResSchema) {}
+
+export class GetAvailableDiscountsBodyDTO extends createZodDto(GetAvailableDiscountsBodySchema) {}
+
+export class GetAvailableDiscountsResDTO extends createZodDto(GetAvailableDiscountsResSchema) {}

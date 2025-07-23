@@ -3,7 +3,9 @@
     "success": {
       "CREATE_SUCCESS": "Tạo mã giảm giá thành công.",
       "UPDATE_SUCCESS": "Cập nhật mã giảm giá thành công.",
-      "DELETE_SUCCESS": "Xóa mã giảm giá thành công."
+      "DELETE_SUCCESS": "Xóa mã giảm giá thành công.",
+      "CALCULATE_SUCCESS": "Tính toán giá trị giảm giá thành công.",
+      "GET_AVAILABLE_SUCCESS": "Lấy danh sách mã giảm giá khả dụng thành công."
     },
     "error": {
       "CODE_EXISTS": "Mã giảm giá đã tồn tại.",
