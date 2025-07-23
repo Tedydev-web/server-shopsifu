@@ -97,7 +97,6 @@ export const CreateDiscountBodySchema = DiscountSchema.pick({
   maxUses: true,
   maxUsesPerUser: true,
   minOrderValue: true,
-  canSaveBeforeStart: true,
   isPublic: true,
   status: true,
   appliesTo: true,

@@ -65,17 +65,8 @@ export class DiscountRepo {
       },
       include: {
         products: true,
-        categories: {
-          where: { deletedAt: null },
-          include: {
-            categoryTranslations: { where: { deletedAt: null } }
-          }
-        },
-        brands: {
-          include: {
-            brandTranslations: { where: { deletedAt: null } }
-          }
-        }
+        categories: true,
+        brands: true
       }
     })
   }
@@ -104,17 +95,8 @@ export class DiscountRepo {
       },
       include: {
         products: true,
-        categories: {
-          where: { deletedAt: null },
-          include: {
-            categoryTranslations: { where: { deletedAt: null } }
-          }
-        },
-        brands: {
-          include: {
-            brandTranslations: { where: { deletedAt: null } }
-          }
-        }
+        categories: true,
+        brands: true
       }
     })
   }

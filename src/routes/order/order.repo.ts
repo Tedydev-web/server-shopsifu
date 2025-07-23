@@ -22,17 +22,13 @@ import { VersionConflictException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { SharedDiscountRepo } from 'src/shared/repositories/shared-discount.repo'
-import { DiscountHelperService } from 'src/shared/services/discount-helper.service'
 
 @Injectable()
 export class OrderRepo {
   constructor(
     private readonly prismaService: PrismaService,
     private orderProducer: OrderProducer,
-    private readonly configService: ConfigService,
-    private readonly sharedDiscountRepo: SharedDiscountRepo,
-    private readonly discountHelperService: DiscountHelperService
+    private readonly configService: ConfigService
   ) {}
   async list(userId: string, query: GetOrderListQueryType): Promise<GetOrderListResType> {
     const { page, limit, status } = query
@@ -87,26 +83,26 @@ export class OrderRepo {
     // 5. Tạo order
     // 6. Xóa cartItem
     const allBodyCartItemIds = body.map((item) => item.cartItemIds).flat()
-    const allDiscountCodes = body.flatMap((item) => item.discountCodes || [])
-
-    const [cartItemsForSKUId, discounts] = await Promise.all([
-      this.prismaService.cartItem.findMany({
-        where: { id: { in: allBodyCartItemIds }, userId },
-        select: { skuId: true }
-      }),
-      this.prismaService.discount.findMany({
-        where: { code: { in: allDiscountCodes }, deletedAt: null, status: 'ACTIVE' }
-      })
-    ])
-
+    const cartItemsForSKUId = await this.prismaService.cartItem.findMany({
+      where: {
+        id: {
+          in: allBodyCartItemIds
+        },
+        userId
+      },
+      select: {
+        skuId: true
+      }
+    })
     const skuIds = cartItemsForSKUId.map((cartItem) => cartItem.skuId)
+
+    // Lock tất cả các SKU cần mua
     const redlock = this.configService.get('redis.redlock')
-    const locks = await Promise.all(skuIds.map((skuId) => redlock.acquire([`lock:sku:${skuId}`], 3000)))
+    const locks = await Promise.all(skuIds.map((skuId) => redlock.acquire([`lock:sku:${skuId}`], 3000))) // Giữ khóa trong 3 giây
 
     try {
       const [paymentId, orders] = await this.prismaService.$transaction<[string, CreateOrderResType['data']['orders']]>(
         async (tx) => {
-          const user = await tx.user.findUnique({ where: { id: userId } })
           // await tx.$queryRaw`SELECT * FROM "SKU" WHERE id IN (${Prisma.join(skuIds)}) FOR UPDATE`
           const cartItems = await tx.cartItem.findMany({
             where: {
@@ -179,39 +175,6 @@ export class OrderRepo {
           })
           const orders: CreateOrderResType['data']['orders'] = []
           for (const item of body) {
-            const orderCartItems = cartItems.filter((ci) => item.cartItemIds.includes(ci.id))
-            const orderValue = orderCartItems.reduce((sum, ci) => sum + ci.sku.price * ci.quantity, 0)
-            const orderDiscounts = discounts.filter((d) => item.discountCodes?.includes(d.code))
-
-            let totalDiscountAmount = 0
-            const appliedDiscountsToCreate: any[] = []
-
-            for (const discount of orderDiscounts) {
-              const reason = await this.discountHelperService.checkDiscountAvailable({
-                discount,
-                orderValue,
-                user,
-                cart: orderCartItems.map((ci) => ({
-                  productId: ci.sku.productId,
-                  quantity: ci.quantity,
-                  price: ci.sku.price,
-                  shopId: ci.sku.createdById
-                }))
-              })
-
-              if (!reason) {
-                const discountAmount = this.discountHelperService.calculateDiscountAmount(discount, orderValue)
-                totalDiscountAmount += discountAmount
-                appliedDiscountsToCreate.push({
-                  discountId: discount.id,
-                  code: discount.code,
-                  type: discount.type,
-                  value: discount.value,
-                  discountAmount
-                })
-              }
-            }
-
             const order = await tx.order.create({
               data: {
                 userId,
@@ -221,30 +184,38 @@ export class OrderRepo {
                 shopId: item.shopId,
                 paymentId: payment.id,
                 items: {
-                  create: orderCartItems.map((cartItem) => ({
-                    productName: cartItem.sku.product.name,
-                    skuPrice: cartItem.sku.price,
-                    image: cartItem.sku.image,
-                    skuId: cartItem.sku.id,
-                    skuValue: cartItem.sku.value,
-                    quantity: cartItem.quantity,
-                    productId: cartItem.sku.product.id,
-                    productTranslations: cartItem.sku.product.productTranslations.map((t) => ({ ...t }))
-                  }))
+                  create: item.cartItemIds.map((cartItemId) => {
+                    const cartItem = cartItemMap.get(cartItemId)!
+                    return {
+                      productName: cartItem.sku.product.name,
+                      skuPrice: cartItem.sku.price,
+                      image: cartItem.sku.image,
+                      skuId: cartItem.sku.id,
+                      skuValue: cartItem.sku.value,
+                      quantity: cartItem.quantity,
+                      productId: cartItem.sku.product.id,
+                      productTranslations: cartItem.sku.product.productTranslations.map((translation) => {
+                        return {
+                          id: translation.id,
+                          name: translation.name,
+                          description: translation.description,
+                          languageId: translation.languageId
+                        }
+                      })
+                    }
+                  })
                 },
                 products: {
-                  connect: orderCartItems.map((ci) => ({ id: ci.sku.product.id }))
-                },
-                appliedDiscounts: {
-                  create: appliedDiscountsToCreate
+                  connect: item.cartItemIds.map((cartItemId) => {
+                    const cartItem = cartItemMap.get(cartItemId)!
+                    return {
+                      id: cartItem.sku.product.id
+                    }
+                  })
                 }
               }
             })
             orders.push(order)
-
-            for (const appliedDiscount of appliedDiscountsToCreate) {
-              await this.sharedDiscountRepo.applyUsage(appliedDiscount.discountId, userId)
-            }
           }
 
           await tx.cartItem.deleteMany({
@@ -310,30 +281,36 @@ export class OrderRepo {
   }
 
   async cancel(userId: string, orderId: string): Promise<CancelOrderResType> {
-    const order = await this.prismaService.order.findUnique({
-      where: { id: orderId, userId, deletedAt: null },
-      include: { appliedDiscounts: true }
-    })
-
-    if (!order) {
-      throw OrderNotFoundException
-    }
-    if (order.status !== OrderStatus.PENDING_PAYMENT) {
-      throw CannotCancelOrderException
-    }
-
-    await this.prismaService.$transaction(async (tx) => {
-      for (const appliedDiscount of order.appliedDiscounts) {
-        await this.sharedDiscountRepo.releaseUsage(appliedDiscount.discountId, userId)
-      }
-
-      await tx.order.update({
-        where: { id: orderId },
-        data: { status: OrderStatus.CANCELLED, updatedById: userId }
+    try {
+      const order = await this.prismaService.order.findUniqueOrThrow({
+        where: {
+          id: orderId,
+          userId,
+          deletedAt: null
+        }
       })
-    })
-
-    const updatedOrder = await this.detail(userId, orderId)
-    return { data: updatedOrder }
+      if (order.status !== OrderStatus.PENDING_PAYMENT) {
+        throw CannotCancelOrderException
+      }
+      const updatedOrder = await this.prismaService.order.update({
+        where: {
+          id: orderId,
+          userId,
+          deletedAt: null
+        },
+        data: {
+          status: OrderStatus.CANCELLED,
+          updatedById: userId
+        }
+      })
+      return {
+        data: updatedOrder
+      }
+    } catch (error) {
+      if (isNotFoundPrismaError(error)) {
+        throw OrderNotFoundException
+      }
+      throw error
+    }
   }
 }
