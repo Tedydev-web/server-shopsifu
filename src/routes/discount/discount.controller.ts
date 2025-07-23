@@ -9,7 +9,7 @@ import { GetAvailableDiscountsBodyDTO, GetAvailableDiscountsResDTO } from './dis
 export class DiscountController {
   constructor(private readonly discountService: DiscountService) {}
 
-  @Post('available-for-checkout')
+  @Post('available')
   @ZodSerializerDto(GetAvailableDiscountsResDTO)
   getAvailableForCheckout(@Body() body: GetAvailableDiscountsBodyDTO, @ActiveUser() user: AccessTokenPayload) {
     return this.discountService.getAvailableForCheckout({ cartItemIds: body.cartItemIds, userId: user.userId })

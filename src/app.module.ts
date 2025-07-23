@@ -26,9 +26,12 @@ import { ReviewModule } from 'src/routes/review/review.module'
 import { RemoveRefreshTokenCronjob } from 'src/cronjobs/remove-refresh-token.cronjob'
 import { TransformInterceptor } from 'src/shared/interceptor/transform.interceptor'
 import { DiscountModule } from 'src/routes/discount/discount.module'
+import { ExpireDiscountCronjob } from 'src/cronjobs/expire-discount.cronjob'
+import { ScheduleModule } from '@nestjs/schedule'
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     WebsocketModule,
     SharedModule,
     AuthModule,
@@ -65,7 +68,8 @@ import { DiscountModule } from 'src/routes/discount/discount.module'
       useClass: ThrottlerBehindProxyGuard
     },
     PaymentConsumer,
-    RemoveRefreshTokenCronjob
+    RemoveRefreshTokenCronjob,
+    ExpireDiscountCronjob
   ]
 })
 export class AppModule {}

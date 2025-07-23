@@ -30,6 +30,21 @@ export class OrderService {
   }
 
   async create(user: AccessTokenPayload, body: CreateOrderBodyType) {
+    for (const shop of body) {
+      if (shop.discountCodes && Array.isArray(shop.discountCodes)) {
+        for (const discountCode of shop.discountCodes) {
+          const discount = await this.prismaService.discount.findUnique({ where: { code: discountCode } })
+          if (!discount) throw DiscountNotFoundException
+          // Kiểm tra maxUsesPerUser
+          if (discount.maxUsesPerUser && discount.maxUsesPerUser > 0) {
+            const usedCount = await this.prismaService.discountSnapshot.count({
+              where: { discountId: discount.id, order: { userId: user.userId } }
+            })
+            if (usedCount >= discount.maxUsesPerUser) throw DiscountUsageLimitExceededException
+          }
+        }
+      }
+    }
     const result = await this.orderRepo.create(user.userId, body)
     return {
       message: this.i18n.t('order.order.success.CREATE_SUCCESS'),
@@ -53,17 +68,11 @@ export class OrderService {
     }
   }
 
-  async calculate(_user: AccessTokenPayload, body: CalculateOrderBodyType) {
+  async calculate(user: AccessTokenPayload, body: CalculateOrderBodyType) {
     // Lấy cartItems
     const cartItems = await this.prismaService.cartItem.findMany({
-      where: { id: { in: body.cartItemIds } },
-      include: {
-        sku: {
-          include: {
-            product: true
-          }
-        }
-      }
+      where: { id: { in: body.cartItemIds }, userId: user.userId },
+      include: { sku: true }
     })
     if (!cartItems.length) throw DiscountNotFoundException
 
@@ -99,14 +108,19 @@ export class OrderService {
     })
     if (!discounts.length) throw DiscountNotFoundException
 
-    discounts.forEach((discount) => {
-      if (discount.maxUses > 0 && discount.usesCount >= discount.maxUses) {
-        throw DiscountUsageLimitExceededException
+    if (body.discountCodes && Array.isArray(body.discountCodes)) {
+      for (const discountCode of body.discountCodes) {
+        const discount = await this.prismaService.discount.findUnique({ where: { code: discountCode } })
+        if (!discount) throw DiscountNotFoundException
+        // Kiểm tra maxUsesPerUser
+        if (discount.maxUsesPerUser && discount.maxUsesPerUser > 0) {
+          const usedCount = await this.prismaService.discountSnapshot.count({
+            where: { discountId: discount.id, order: { userId: user.userId } }
+          })
+          if (usedCount >= discount.maxUsesPerUser) throw DiscountUsageLimitExceededException
+        }
       }
-      if (discount.endDate && new Date() > discount.endDate) {
-        throw DiscountExpiredException
-      }
-    })
+    }
 
     const appliedDiscounts = discounts.map((discount) => {
       const discountAmount = calculateDiscountAmount(discount, subTotal)
