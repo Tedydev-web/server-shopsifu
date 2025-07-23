@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
-import { CreateOrderBodyType, GetOrderListQueryType } from 'src/routes/order/order.model'
+import { CreateOrderBodyType, GetOrderListQueryType, CalculateOrderBodyType } from 'src/routes/order/order.model'
 import { OrderRepo } from 'src/routes/order/order.repo'
+import { DiscountService } from 'src/routes/discount/discount.service'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
@@ -9,6 +10,7 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 export class OrderService {
   constructor(
     private readonly orderRepo: OrderRepo,
+    private readonly discountService: DiscountService,
     private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
@@ -43,5 +45,10 @@ export class OrderService {
       message: this.i18n.t('order.order.success.GET_DETAIL_SUCCESS'),
       data: result
     }
+  }
+
+  async calculate(_user: AccessTokenPayload, body: CalculateOrderBodyType) {
+    const result = await this.discountService.calculateOrder(body.cartItemIds, body.discountCodes || [])
+    return result
   }
 }

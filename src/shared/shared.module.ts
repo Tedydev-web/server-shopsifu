@@ -15,7 +15,6 @@ import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { S3Service } from 'src/shared/services/s3.service'
 import { SharedPaymentRepository } from './repositories/shared-payment.repo'
 import { SharedWebsocketRepository } from './repositories/shared-websocket.repo'
-import { SharedDiscountRepo } from 'src/shared/repositories/shared-discount.repo'
 import path from 'path'
 import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
 import { Resolvable, ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler'
@@ -27,7 +26,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { createKeyv } from '@keyv/redis'
 import configs from 'src/shared/config'
 import { createLoggerConfig } from './config/logger.config'
-import { DiscountHelperService } from './services/discount-helper.service'
 
 const sharedServices = [
   PrismaService,
@@ -35,13 +33,11 @@ const sharedServices = [
   TokenService,
   CookieService,
   EmailService,
-  DiscountHelperService,
   SharedUserRepository,
   TwoFactorService,
   SharedRoleRepository,
   SharedPaymentRepository,
   SharedWebsocketRepository,
-  SharedDiscountRepo,
   S3Service
 ]
 

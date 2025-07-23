@@ -1,28 +1,6 @@
 import { PaginationQuerySchema } from 'src/shared/models/request.model'
-import { OrderSchema, OrderStatusSchema } from 'src/shared/models/shared-order.model'
+import { OrderSchema, OrderStatusSchema, ProductSKUSnapshotSchema } from 'src/shared/models/shared-order.model'
 import { z } from 'zod'
-
-export const ProductSKUSnapshotSchema = z.object({
-  id: z.string(),
-  productId: z.string().nullable(),
-  productName: z.string(),
-  productTranslations: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      description: z.string(),
-      languageId: z.string()
-    })
-  ),
-  skuPrice: z.number(),
-  image: z.string(),
-  skuValue: z.string(),
-  skuId: z.string().nullable(),
-  orderId: z.string().nullable(),
-  quantity: z.number(),
-
-  createdAt: z.date()
-})
 
 export const GetOrderListResSchema = z.object({
   message: z.string().optional(),
@@ -65,10 +43,39 @@ export const CreateOrderBodySchema = z
         phone: z.string().min(9).max(20),
         address: z.string()
       }),
-      cartItemIds: z.array(z.string()).min(1)
+      cartItemIds: z.array(z.string()).min(1),
+      discountCodes: z.array(z.string()).optional()
     })
   )
   .min(1)
+
+// Thêm schema cho API calculate
+export const CalculateOrderBodySchema = z.object({
+  cartItemIds: z.array(z.string()).min(1),
+  discountCodes: z.array(z.string()).optional()
+})
+
+export const CalculateOrderResSchema = z.object({
+  message: z.string().optional(),
+  data: z.object({
+    subTotal: z.number(),
+    shippingFee: z.number(),
+    directDiscount: z.number(),
+    discounts: z.array(
+      z.object({
+        code: z.string(),
+        name: z.string(),
+        amount: z.number()
+      })
+    ),
+    grandTotal: z.number()
+  })
+})
+
+// Thêm schema cho API get available discounts
+export const GetAvailableDiscountsBodySchema = z.object({
+  cartItemIds: z.array(z.string()).min(1)
+})
 
 export const CreateOrderResSchema = z.object({
   message: z.string().optional(),
@@ -96,3 +103,6 @@ export type GetOrderParamsType = z.infer<typeof GetOrderParamsSchema>
 export type CreateOrderBodyType = z.infer<typeof CreateOrderBodySchema>
 export type CreateOrderResType = z.infer<typeof CreateOrderResSchema>
 export type CancelOrderResType = z.infer<typeof CancelOrderResSchema>
+export type CalculateOrderBodyType = z.infer<typeof CalculateOrderBodySchema>
+export type CalculateOrderResType = z.infer<typeof CalculateOrderResSchema>
+export type GetAvailableDiscountsBodyType = z.infer<typeof GetAvailableDiscountsBodySchema>

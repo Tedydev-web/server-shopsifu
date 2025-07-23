@@ -22,13 +22,15 @@ import { VersionConflictException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { DiscountService } from 'src/routes/discount/discount.service'
 
 @Injectable()
 export class OrderRepo {
   constructor(
     private readonly prismaService: PrismaService,
     private orderProducer: OrderProducer,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly discountService: DiscountService
   ) {}
   async list(userId: string, query: GetOrderListQueryType): Promise<GetOrderListResType> {
     const { page, limit, status } = query
@@ -175,6 +177,70 @@ export class OrderRepo {
           })
           const orders: CreateOrderResType['data']['orders'] = []
           for (const item of body) {
+            // Tính tổng giá trị đơn hàng trước khi áp dụng discount
+            const orderSubTotal = item.cartItemIds.reduce((sum, cartItemId) => {
+              const cartItem = cartItemMap.get(cartItemId)!
+              return sum + cartItem.sku.price * cartItem.quantity
+            }, 0)
+
+            // Xử lý discount nếu có
+            const appliedDiscountsToCreate: any[] = []
+
+            if (item.discountCodes && item.discountCodes.length > 0) {
+              // Lấy thông tin các discount
+              const discounts = await tx.discount.findMany({
+                where: {
+                  code: { in: item.discountCodes },
+                  status: 'ACTIVE',
+                  startDate: { lte: new Date() },
+                  endDate: { gte: new Date() },
+                  deletedAt: null
+                },
+                include: {
+                  products: { select: { id: true } },
+                  categories: { select: { id: true } },
+                  brands: { select: { id: true } }
+                }
+              })
+
+              // Tính toán giá trị giảm giá cho từng mã
+              for (const discount of discounts) {
+                const discountAmount = this.discountService.calculateDiscountAmount(discount, orderSubTotal)
+
+                // Chuẩn bị dữ liệu để tạo DiscountSnapshot
+                appliedDiscountsToCreate.push({
+                  name: discount.name,
+                  description: discount.description,
+                  type: discount.type,
+                  value: discount.value,
+                  code: discount.code,
+                  maxDiscountValue: discount.maxDiscountValue,
+                  discountAmount: discountAmount,
+                  minOrderValue: discount.minOrderValue,
+                  isPublic: discount.isPublic,
+                  appliesTo: discount.appliesTo,
+                  targetInfo:
+                    discount.appliesTo === 'SPECIFIC'
+                      ? {
+                          productIds: discount.products.map((p) => p.id),
+                          categoryIds: discount.categories.map((c) => c.id),
+                          brandIds: discount.brands.map((b) => b.id)
+                        }
+                      : null,
+                  discountId: discount.id
+                })
+
+                // Cập nhật số lượt sử dụng discount
+                await tx.discount.update({
+                  where: { id: discount.id },
+                  data: {
+                    usesCount: { increment: 1 },
+                    usersUsed: { push: userId }
+                  }
+                })
+              }
+            }
+
             const order = await tx.order.create({
               data: {
                 userId,
@@ -215,6 +281,17 @@ export class OrderRepo {
                 }
               }
             })
+
+            // Tạo các DiscountSnapshot
+            for (const discountData of appliedDiscountsToCreate) {
+              await tx.discountSnapshot.create({
+                data: {
+                  ...discountData,
+                  orderId: order.id
+                }
+              })
+            }
+
             orders.push(order)
           }
 

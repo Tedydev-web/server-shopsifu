@@ -8,7 +8,9 @@ import {
   GetOrderDetailResDTO,
   GetOrderListQueryDTO,
   GetOrderListResDTO,
-  GetOrderParamsDTO
+  GetOrderParamsDTO,
+  CalculateOrderBodyDTO,
+  CalculateOrderResDTO
 } from 'src/routes/order/order.dto'
 import { OrderService } from 'src/routes/order/order.service'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
@@ -40,5 +42,11 @@ export class OrderController {
   @ZodSerializerDto(CancelOrderResDTO)
   cancel(@ActiveUser() user: AccessTokenPayload, @Param() param: GetOrderParamsDTO, @Body() _: CancelOrderBodyDTO) {
     return this.orderService.cancel(user, param.orderId)
+  }
+
+  @Post('calculate')
+  @ZodSerializerDto(CalculateOrderResDTO)
+  calculate(@ActiveUser() user: AccessTokenPayload, @Body() body: CalculateOrderBodyDTO) {
+    return this.orderService.calculate(user, body)
   }
 }

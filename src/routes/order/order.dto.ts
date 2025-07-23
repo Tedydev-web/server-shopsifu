@@ -7,7 +7,9 @@ import {
   GetOrderDetailResSchema,
   GetOrderListQuerySchema,
   GetOrderListResSchema,
-  GetOrderParamsSchema
+  GetOrderParamsSchema,
+  CalculateOrderBodySchema,
+  CalculateOrderResSchema
 } from 'src/routes/order/order.model'
 
 export class GetOrderListResDTO extends createZodDto(GetOrderListResSchema) {}
@@ -25,3 +27,7 @@ export class CreateOrderResDTO extends createZodDto(CreateOrderResSchema) {}
 export class CancelOrderResDTO extends createZodDto(CancelOrderResSchema) {}
 
 export class GetOrderParamsDTO extends createZodDto(GetOrderParamsSchema) {}
+
+export class CalculateOrderBodyDTO extends createZodDto(CalculateOrderBodySchema) {}
+
+export class CalculateOrderResDTO extends createZodDto(CalculateOrderResSchema) {}

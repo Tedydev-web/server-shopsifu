@@ -14,7 +14,6 @@ import {
 } from 'src/routes/discount/discount.error'
 import { RoleName } from 'src/shared/constants/role.constant'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
-import { SharedDiscountRepo } from 'src/shared/repositories/shared-discount.repo'
 import { Prisma } from '@prisma/client'
 import { NotFoundRecordException } from 'src/shared/error'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
@@ -23,7 +22,6 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 export class ManageDiscountService {
   constructor(
     private readonly discountRepo: DiscountRepo,
-    private readonly sharedDiscountRepo: SharedDiscountRepo,
     private readonly i18n: I18nService<I18nTranslations>,
     private readonly prismaService: PrismaService
   ) {}
@@ -64,7 +62,9 @@ export class ManageDiscountService {
    * Kiểm tra mã discount đã tồn tại chưa
    */
   private async validateDiscountExistence(code: string) {
-    const existing = await this.sharedDiscountRepo.findByCode(code)
+    const existing = await this.prismaService.discount.findUnique({
+      where: { code }
+    })
     if (existing) {
       throw DiscountCodeAlreadyExistsException
     }
