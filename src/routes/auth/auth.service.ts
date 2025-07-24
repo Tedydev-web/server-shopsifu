@@ -4,7 +4,6 @@ import {
   DisableTwoFactorBodyType,
   ForgotPasswordBodyType,
   LoginBodyType,
-  RefreshTokenBodyType,
   RegisterBodyType,
   SendOTPBodyType
 } from 'src/routes/auth/auth.model'
@@ -211,7 +210,17 @@ export class AuthService {
     return { accessToken, refreshToken }
   }
 
-  async refreshToken({ refreshToken, userAgent, ip }: RefreshTokenBodyType & { userAgent: string; ip: string }) {
+  async refreshToken({
+    refreshToken,
+    userAgent,
+    ip,
+    res
+  }: {
+    refreshToken: string
+    userAgent: string
+    ip: string
+    res: Response
+  }) {
     try {
       // 1. Kiểm tra refreshToken có hợp lệ không
       const { userId } = await this.tokenService.verifyRefreshToken(refreshToken)
@@ -220,8 +229,6 @@ export class AuthService {
         token: refreshToken
       })
       if (!refreshTokenInDb) {
-        // Trường hợp đã refresh token rồi, hãy thông báo cho user biết
-        // refresh token của họ đã bị đánh cắp
         throw RefreshTokenAlreadyUsedException
       }
       const {
@@ -231,19 +238,17 @@ export class AuthService {
           role: { name: roleName }
         }
       } = refreshTokenInDb
-      // 3. Cập nhật device
       const $updateDevice = this.authRepository.updateDevice(deviceId, {
         ip,
         userAgent
       })
-      // 4. Xóa refreshToken cũ
       const $deleteRefreshToken = this.authRepository.deleteRefreshToken({
         token: refreshToken
       })
-      // 5. Tạo mới accessToken và refreshToken
       const $tokens = this.generateTokens({ userId, roleId, roleName, deviceId })
       const [, , tokens] = await Promise.all([$updateDevice, $deleteRefreshToken, $tokens])
-      return tokens
+      this.cookieService.setAuthCookies(res, tokens.accessToken, tokens.refreshToken)
+      return { message: 'Làm mới token thành công' }
     } catch (error) {
       if (error instanceof HttpException) {
         throw error

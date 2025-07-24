@@ -81,12 +81,6 @@ export const LoginResSchema = z.object({
   })
 })
 
-export const RefreshTokenBodySchema = z
-  .object({
-    refreshToken: z.string()
-  })
-  .strict()
-
 export const RefreshTokenResSchema = LoginResSchema
 
 export const DeviceSchema = z.object({
@@ -107,7 +101,7 @@ export const RefreshTokenSchema = z.object({
   createdAt: z.date()
 })
 
-export const LogoutBodySchema = RefreshTokenBodySchema
+export const LogoutBodySchema = RefreshTokenSchema
 
 export const GoogleAuthStateSchema = DeviceSchema.pick({
   userAgent: true,
@@ -169,10 +163,9 @@ export type SendOTPBodyType = z.infer<typeof SendOTPBodySchema>
 export type LoginBodyType = z.infer<typeof LoginBodySchema>
 export type LoginResType = z.infer<typeof LoginResSchema>
 export type RefreshTokenType = z.infer<typeof RefreshTokenSchema>
-export type RefreshTokenBodyType = z.infer<typeof RefreshTokenBodySchema>
 export type RefreshTokenResType = LoginResType
 export type DeviceType = z.infer<typeof DeviceSchema>
-export type LogoutBodyType = RefreshTokenBodyType
+export type LogoutBodyType = z.infer<typeof RefreshTokenSchema>
 export type GoogleAuthStateType = z.infer<typeof GoogleAuthStateSchema>
 export type GetAuthorizationUrlResType = z.infer<typeof GetAuthorizationUrlResSchema>
 export type ForgotPasswordBodyType = z.infer<typeof ForgotPasswordBodySchema>

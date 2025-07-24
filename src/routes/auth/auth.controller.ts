@@ -1,5 +1,5 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Res } from '@nestjs/common'
-import { Response } from 'express'
+import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Res, Req } from '@nestjs/common'
+import { Response, Request } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
   DisableTwoFactorBodyDTO,
@@ -8,7 +8,6 @@ import {
   LoginBodyDTO,
   LoginResDTO,
   LogoutBodyDTO,
-  RefreshTokenBodyDTO,
   RefreshTokenResDTO,
   RegisterBodyDTO,
   RegisterResDTO,
@@ -72,20 +71,32 @@ export class AuthController {
   @Post('refresh-token')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(RefreshTokenResDTO)
-  refreshToken(@Body() body: RefreshTokenBodyDTO, @UserAgent() userAgent: string, @Ip() ip: string) {
+  @ZodSerializerDto(MessageResDTO)
+  refreshToken(
+    @Req() req: Request,
+    @UserAgent() userAgent: string,
+    @Ip() ip: string,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    const refreshToken = req.cookies?.refresh_token
     return this.authService.refreshToken({
-      refreshToken: body.refreshToken,
+      refreshToken,
       userAgent,
-      ip
+      ip,
+      res
     })
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(MessageResDTO)
-  logout(@Body() body: LogoutBodyDTO) {
-    return this.authService.logout(body.refreshToken)
+  logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    // Lấy đúng tên cookie refresh_token
+    const refreshToken = req.cookies?.refresh_token
+    // Xóa cookie phía client
+    res.cookie('access_token', '', { maxAge: 0, httpOnly: true, secure: true, sameSite: 'none' })
+    res.cookie('refresh_token', '', { maxAge: 0, httpOnly: true, secure: true, sameSite: 'none' })
+    return this.authService.logout(refreshToken)
   }
 
   @Get('google-link')

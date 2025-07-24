@@ -67,7 +67,7 @@ jobs:
             git fetch origin master && git reset --hard origin/master
             npm ci
             [ -d dist ] || npm run build
-            pm2 restart server-shopsifu || pm2 start dist/index.js --name server-shopsifu
+            pm2 restart server-shopsifu
             sleep 5
             STATUS=$(pm2 jlist | jq -r '.[] | select(.name == "server-shopsifu") | .pm2_env.status')
             echo "$STATUS" > /tmp/app_status.txt
