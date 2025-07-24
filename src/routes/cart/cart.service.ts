@@ -36,7 +36,15 @@ export class CartService {
     }
   }
 
-  async updateCartItem({ user, body, cartItemId }: { user: AccessTokenPayload; cartItemId: string; body: UpdateCartItemBodyType }) {
+  async updateCartItem({
+    user,
+    body,
+    cartItemId
+  }: {
+    user: AccessTokenPayload
+    cartItemId: string
+    body: UpdateCartItemBodyType
+  }) {
     const cartItem = await this.cartRepo.update({
       userId: user.userId,
       body,

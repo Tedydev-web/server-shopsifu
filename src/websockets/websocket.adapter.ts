@@ -7,7 +7,6 @@ import { TokenService } from 'src/shared/services/token.service'
 import { createAdapter } from '@socket.io/redis-adapter'
 import { createClient } from 'redis'
 
-const namespaces = ['/', 'payment', 'chat']
 export class WebsocketAdapter extends IoAdapter {
   private readonly sharedWebsocketRepository: SharedWebsocketRepository
   private readonly tokenService: TokenService
@@ -46,12 +45,6 @@ export class WebsocketAdapter extends IoAdapter {
         .then(() => {})
         .catch(() => {})
     })
-    // namespaces.forEach((item) => {
-    //   server.of(item).use(authMiddleware)
-    // })
-    // server.use(authMiddleware)
-    // server.of('payment').use(authMiddleware)
-    // server.of('chat').use(authMiddleware)
     return server
   }
 
@@ -67,13 +60,7 @@ export class WebsocketAdapter extends IoAdapter {
     try {
       const { userId } = await this.tokenService.verifyAccessToken(accessToken)
       await socket.join(generateRoomUserId(userId))
-      // await this.sharedWebsocketRepository.create({
-      //   id: socket.id,
-      //   userId,
-      // })
-      // socket.on('disconnect', async () => {
-      //   await this.sharedWebsocketRepository.delete(socket.id).catch(() => {})
-      // })
+
       next()
     } catch (error) {
       next(error)

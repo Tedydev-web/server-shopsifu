@@ -6,11 +6,7 @@ import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { calculateDiscountAmount } from 'src/shared/helpers'
-import {
-  DiscountNotFoundException,
-  DiscountUsageLimitExceededException,
-  DiscountExpiredException
-} from 'src/routes/discount/discount.error'
+import { DiscountNotFoundException, DiscountUsageLimitExceededException } from 'src/routes/discount/discount.error'
 
 @Injectable()
 export class OrderService {
