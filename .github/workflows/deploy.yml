@@ -89,7 +89,7 @@ jobs:
           # Xử lý dữ liệu trên runner
           PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json 2>/dev/null || echo "Không tìm thấy process server-shopsifu")
           echo "pm2_info=$PM2_INFO" >> $GITHUB_OUTPUT
-          PM2_LOGS=$(grep -v '\[TAILING\]' /tmp/pm2_logs.txt | tail -n 50 || echo "Không có log ứng dụng")
+          PM2_LOGS=$(grep -v '\[TAILING\]' /tmp/pm2_logs.txt | tail -n 500 || echo "Không có log ứng dụng")
           echo "pm2_logs=$PM2_LOGS" >> $GITHUB_OUTPUT
 
       - name: Tag Release
