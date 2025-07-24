@@ -16,6 +16,7 @@ import {
 import { RoleName } from 'src/shared/constants/role.constant'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { VoucherType, DisplayType } from 'src/shared/constants/discount.constant'
 
 @Injectable()
 export class ManageDiscountService {
@@ -100,13 +101,31 @@ export class ManageDiscountService {
     await this.validateDiscountExistence(data.code)
     let dataToCreate: any = { ...data }
     if (user.roleName === RoleName.Seller) {
+      // Tự động sinh prefix code
+      const shop = await this.prismaService.user.findUnique({ where: { id: user.userId } })
+      const prefix = shop?.name?.substring(0, 4).toUpperCase() || 'SHOP'
+      if (!data.code.startsWith(prefix)) {
+        throw DiscountCodeAlreadyExistsException // hoặc custom exception cho prefix sai
+      }
       dataToCreate = {
         ...dataToCreate,
+        code: data.code,
         shopId: user.userId,
         categoryIds: undefined,
-        brandIds: undefined
+        brandIds: undefined,
+        voucherType: VoucherType.SHOP,
+        displayType: DisplayType.PUBLIC,
+        isPlatform: false
       }
       await this.validateProductOwnership(data.productIds, user.userId)
+    }
+    // Validate code: regex, độ dài, prefix (Admin cũng nên kiểm tra nếu tạo cho shop)
+    if (!/^[A-Z0-9]{4,9}$/.test(dataToCreate.code)) {
+      throw DiscountCodeAlreadyExistsException // hoặc custom exception cho code không hợp lệ
+    }
+    // Nếu là Admin, validate isPlatform: chỉ Admin được phép tạo isPlatform=true
+    if (user.roleName !== RoleName.Admin && dataToCreate.isPlatform) {
+      throw DiscountForbiddenException
     }
     const discount = await this.discountRepo.create({
       createdById: user.userId,

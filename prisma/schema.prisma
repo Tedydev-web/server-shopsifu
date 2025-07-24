@@ -446,16 +446,16 @@ model DiscountSnapshot {
   id               String       @id @default(uuid())
   name             String       @db.VarChar(500)
   description      String?      @db.VarChar(1000)
-  type             DiscountType
+  discountType     DiscountType
   value            Int
   code             String       @db.VarChar(100)
   maxDiscountValue Int?
   discountAmount   Int // Số tiền thực tế đã giảm
 
-  minOrderValue Int
-  isPublic      Boolean
-  appliesTo     DiscountApplyType
-  targetInfo    Json? // thông tin đối tượng áp dụng
+  minOrderValue     Int
+  isPlatform        Boolean
+  discountApplyType DiscountApplyType
+  targetInfo        Json? // thông tin đối tượng áp dụng
 
   discountId String?
   discount   Discount? @relation(fields: [discountId], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -474,7 +474,7 @@ model Discount {
   id               String       @id @default(uuid())
   name             String       @db.VarChar(500)
   description      String?      @default("")
-  type             DiscountType @default(FIX_AMOUNT)
+  discountType     DiscountType @default(FIX_AMOUNT)
   value            Int
   code             String       @unique @db.VarChar(100)
   startDate        DateTime
@@ -485,13 +485,17 @@ model Discount {
   maxUsesPerUser   Int          @default(0) // 0 is unlimited
   minOrderValue    Int          @default(0)
   maxDiscountValue Int? // Đối với chiết khấu theo tỷ lệ phần trăm, null có nghĩa là không giới hạn
-  isPublic         Boolean      @default(true)
   shopId           String?
   shop             User?        @relation("ShopDiscounts", fields: [shopId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  status    DiscountStatus    @default(DRAFT)
-  appliesTo DiscountApplyType @default(ALL)
-  products  Product[]
+  // Thêm các trường mới
+  voucherType VoucherType @default(SHOP) // Loại mã: toàn shop hoặc sản phẩm
+  displayType DisplayType @default(PUBLIC) // Hiển thị công khai hay riêng tư
+  isPlatform  Boolean     @default(false) // Voucher sàn (true) hay không
+
+  discountStatus    DiscountStatus    @default(DRAFT)
+  discountApplyType DiscountApplyType @default(ALL)
+  products          Product[]
 
   categories Category[]
   brands     Brand[]
@@ -509,7 +513,7 @@ model Discount {
   updatedAt DateTime  @updatedAt
 
   @@index([deletedAt])
-  @@index([status, deletedAt])
+  @@index([discountStatus, deletedAt])
   @@index([startDate, endDate])
 }
 
@@ -676,4 +680,14 @@ enum DiscountStatus {
 enum DiscountApplyType {
   ALL
   SPECIFIC
+}
+
+enum VoucherType {
+  SHOP
+  PRODUCT
+}
+
+enum DisplayType {
+  PUBLIC
+  PRIVATE
 }

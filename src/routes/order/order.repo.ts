@@ -23,6 +23,7 @@ import { VersionConflictException } from 'src/shared/error'
 import { calculateDiscountAmount, isNotFoundPrismaError } from 'src/shared/helpers'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { DiscountApplyType, DiscountStatus } from 'src/shared/constants/discount.constant'
 
 @Injectable()
 export class OrderRepo {
@@ -190,7 +191,7 @@ export class OrderRepo {
               const discounts = await tx.discount.findMany({
                 where: {
                   code: { in: item.discountCodes },
-                  status: 'ACTIVE',
+                  discountStatus: DiscountStatus.ACTIVE,
                   startDate: { lte: new Date() },
                   endDate: { gte: new Date() },
                   deletedAt: null
@@ -210,16 +211,16 @@ export class OrderRepo {
                 appliedDiscountsToCreate.push({
                   name: discount.name,
                   description: discount.description,
-                  type: discount.type,
+                  type: discount.discountType,
                   value: discount.value,
                   code: discount.code,
                   maxDiscountValue: discount.maxDiscountValue,
                   discountAmount: discountAmount,
                   minOrderValue: discount.minOrderValue,
-                  isPublic: discount.isPublic,
-                  appliesTo: discount.appliesTo,
+                  isPlatform: discount.isPlatform,
+                  discountApplyType: discount.discountApplyType,
                   targetInfo:
-                    discount.appliesTo === 'SPECIFIC'
+                    discount.discountApplyType === DiscountApplyType.SPECIFIC
                       ? {
                           productIds: discount.products.map((p) => p.id),
                           categoryIds: discount.categories.map((c) => c.id),

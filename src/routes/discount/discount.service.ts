@@ -40,10 +40,10 @@ export class DiscountService {
 
     // 3. Lọc discount phù hợp với các sản phẩm trong giỏ
     const availableDiscounts = discounts.filter((discount) => {
-      if (discount.appliesTo === DiscountApplyType.ALL) {
+      if (discount.discountApplyType === DiscountApplyType.ALL) {
         return true
       }
-      if (discount.appliesTo === DiscountApplyType.SPECIFIC) {
+      if (discount.discountApplyType === DiscountApplyType.SPECIFIC) {
         return this.checkDiscountTargetMatch(discount, cartItems)
       }
       return false
@@ -55,12 +55,12 @@ export class DiscountService {
         id: discount.id,
         name: discount.name,
         description: discount.description,
-        type: discount.type,
+        discountType: discount.discountType,
         value: discount.value,
         code: discount.code,
         maxDiscountValue: discount.maxDiscountValue,
         minOrderValue: discount.minOrderValue,
-        appliesTo: discount.appliesTo
+        discountApplyType: discount.discountApplyType
       }))
     }
   }

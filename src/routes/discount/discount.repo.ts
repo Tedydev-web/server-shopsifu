@@ -3,7 +3,6 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { DiscountStatus } from 'src/shared/constants/discount.constant'
 import { GetManageDiscountsQueryType, CreateDiscountBodyType, UpdateDiscountBodyType } from './discount.model'
-import { DiscountType } from 'src/shared/models/shared-discount.model'
 
 @Injectable()
 export class DiscountRepo {
@@ -20,7 +19,7 @@ export class DiscountRepo {
     const where: Prisma.DiscountWhereInput = {
       deletedAt: null,
       ...(query.shopId && { shopId: query.shopId }),
-      ...(query.status && { status: query.status }),
+      ...(query.status && { discountStatus: query.status }),
       ...(query.search && {
         OR: [
           { name: { contains: query.search, mode: 'insensitive' } },
@@ -60,7 +59,7 @@ export class DiscountRepo {
   /**
    * Tìm discount theo ID
    */
-  findById(discountId: string): Promise<DiscountType | null> {
+  async findById(discountId: string) {
     return this.prismaService.discount.findUnique({
       where: {
         id: discountId,
@@ -182,7 +181,7 @@ export class DiscountRepo {
   /**
    * Xóa discount (soft delete)
    */
-  async delete({ id, deletedById }: { id: string; deletedById: string }): Promise<DiscountType> {
+  async delete({ id, deletedById }: { id: string; deletedById: string }) {
     return this.prismaService.discount.update({
       where: {
         id,
@@ -204,7 +203,7 @@ export class DiscountRepo {
 
     return await this.prismaService.discount.findMany({
       where: {
-        status: DiscountStatus.ACTIVE,
+        discountStatus: DiscountStatus.ACTIVE,
         startDate: { lte: now },
         endDate: { gte: now },
         minOrderValue: { lte: subtotal },
@@ -214,7 +213,7 @@ export class DiscountRepo {
           { usesCount: { lt: this.prismaService.discount.fields.maxUses } }
         ],
         ...(userId && {
-          OR: [{ isPublic: true }, { shopId: userId }]
+          OR: [{ isPlatform: true }, { shopId: userId }]
         })
       },
       include: {
@@ -232,7 +231,7 @@ export class DiscountRepo {
     return await this.prismaService.discount.findMany({
       where: {
         code: { in: codes },
-        status: DiscountStatus.ACTIVE,
+        discountStatus: DiscountStatus.ACTIVE,
         startDate: { lte: new Date() },
         endDate: { gte: new Date() },
         deletedAt: null

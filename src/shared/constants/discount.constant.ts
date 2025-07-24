@@ -14,3 +14,13 @@ export const DiscountApplyType = {
   ALL: 'ALL',
   SPECIFIC: 'SPECIFIC'
 } as const
+
+export const VoucherType = {
+  SHOP: 'SHOP',
+  PRODUCT: 'PRODUCT'
+} as const
+
+export const DisplayType = {
+  PUBLIC: 'PUBLIC',
+  PRIVATE: 'PRIVATE'
+} as const

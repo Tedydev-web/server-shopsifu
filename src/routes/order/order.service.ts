@@ -7,6 +7,7 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { calculateDiscountAmount } from 'src/shared/helpers'
 import { DiscountNotFoundException, DiscountUsageLimitExceededException } from 'src/routes/discount/discount.error'
+import { DiscountStatus } from 'src/shared/constants/discount.constant'
 
 @Injectable()
 export class OrderService {
@@ -91,7 +92,7 @@ export class OrderService {
     const discounts = await this.prismaService.discount.findMany({
       where: {
         code: { in: body.discountCodes },
-        status: 'ACTIVE',
+        discountStatus: DiscountStatus.ACTIVE,
         startDate: { lte: new Date() },
         endDate: { gte: new Date() },
         deletedAt: null

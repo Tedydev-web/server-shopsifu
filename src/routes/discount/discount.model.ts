@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
-import { DiscountStatus } from 'src/shared/constants/discount.constant'
+import { DiscountStatus, DiscountType } from 'src/shared/constants/discount.constant'
 import { DiscountSchema } from 'src/shared/models/shared-discount.model'
+import { VoucherType } from 'src/shared/constants/discount.constant'
 
 /**
  * Dành cho client và guest
@@ -53,7 +54,7 @@ export const GetDiscountDetailResSchema = z.object({
 export const CreateDiscountBodySchema = DiscountSchema.pick({
   name: true,
   description: true,
-  type: true,
+  discountType: true,
   value: true,
   code: true,
   startDate: true,
@@ -62,22 +63,65 @@ export const CreateDiscountBodySchema = DiscountSchema.pick({
   maxUsesPerUser: true,
   minOrderValue: true,
   maxDiscountValue: true,
-  isPublic: true,
-  appliesTo: true
+  discountApplyType: true,
+  voucherType: true,
+  displayType: true,
+  isPlatform: true
 })
   .extend({
     productIds: z.array(z.string()).optional(),
     categoryIds: z.array(z.string()).optional(),
-    brandIds: z.array(z.string()).optional()
+    brandIds: z.array(z.string()).optional(),
+    // Thêm trường để validate radio giới hạn mức giảm tối đa
+    hasMaxDiscountLimit: z.boolean().optional()
   })
   .strict()
-  .superRefine(({ startDate, endDate }, ctx) => {
-    // Kiểm tra ngày kết thúc phải sau ngày bắt đầu
-    if (endDate && startDate && new Date(endDate) <= new Date(startDate)) {
+  .superRefine((data, ctx) => {
+    // Validate ngày kết thúc phải sau ngày bắt đầu
+    if (data.endDate && data.startDate && new Date(data.endDate) <= new Date(data.startDate)) {
       ctx.addIssue({
         code: 'custom',
         path: ['endDate'],
         message: 'Ngày kết thúc phải sau ngày bắt đầu'
+      })
+    }
+    // Validate voucherType
+    if (data.voucherType === VoucherType.SHOP && data.productIds && data.productIds.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['productIds'],
+        message: 'Voucher toàn shop không được chọn sản phẩm cụ thể'
+      })
+    }
+    if (data.voucherType === VoucherType.PRODUCT && (!data.productIds || data.productIds.length === 0)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['productIds'],
+        message: 'Voucher sản phẩm phải chọn ít nhất 1 sản phẩm'
+      })
+    }
+    // Validate maxDiscountValue
+    if (data.discountType === DiscountType.PERCENTAGE) {
+      if (data.hasMaxDiscountLimit && (data.maxDiscountValue === null || data.maxDiscountValue === undefined)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['maxDiscountValue'],
+          message: 'Phải nhập mức giảm tối đa khi chọn giới hạn'
+        })
+      }
+      if (!data.hasMaxDiscountLimit && data.maxDiscountValue) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['maxDiscountValue'],
+          message: 'Không nhập mức giảm tối đa khi không giới hạn'
+        })
+      }
+    }
+    if (data.discountType === DiscountType.FIX_AMOUNT && data.maxDiscountValue) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['maxDiscountValue'],
+        message: 'Không nhập mức giảm tối đa cho loại giảm giá theo số tiền'
       })
     }
   })

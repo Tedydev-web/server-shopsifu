@@ -1,14 +1,17 @@
-import { DiscountType, DiscountStatus, DiscountApplyType } from 'src/shared/constants/discount.constant'
+import {
+  DiscountType,
+  DiscountStatus,
+  DiscountApplyType,
+  DisplayType,
+  VoucherType
+} from 'src/shared/constants/discount.constant'
 import { z } from 'zod'
 
-/**
- * Schema cho entity Discount mapping với Prisma model
- */
 export const DiscountSchema = z.object({
   id: z.string(),
   name: z.string().max(500),
   description: z.string().nullable().optional(),
-  type: z.enum([DiscountType.FIX_AMOUNT, DiscountType.PERCENTAGE]),
+  discountType: z.enum([DiscountType.FIX_AMOUNT, DiscountType.PERCENTAGE]).default(DiscountType.FIX_AMOUNT),
   value: z.number().int(),
   code: z.string().max(100),
   startDate: z.coerce.date(),
@@ -19,10 +22,14 @@ export const DiscountSchema = z.object({
   maxUsesPerUser: z.number().int().default(0),
   minOrderValue: z.number().int().default(0),
   maxDiscountValue: z.number().int().nullable().optional(),
-  isPublic: z.boolean().default(true),
   shopId: z.string().nullable(),
-  status: z.enum([DiscountStatus.DRAFT, DiscountStatus.INACTIVE, DiscountStatus.ACTIVE, DiscountStatus.EXPIRED]),
-  appliesTo: z.nativeEnum(DiscountApplyType).default(DiscountApplyType.ALL),
+  voucherType: z.enum([VoucherType.SHOP, VoucherType.PRODUCT]).default(VoucherType.SHOP),
+  displayType: z.enum([DisplayType.PUBLIC, DisplayType.PRIVATE]).default(DisplayType.PUBLIC),
+  isPlatform: z.boolean().default(false),
+  discountStatus: z
+    .enum([DiscountStatus.DRAFT, DiscountStatus.INACTIVE, DiscountStatus.ACTIVE, DiscountStatus.EXPIRED])
+    .default(DiscountStatus.DRAFT),
+  discountApplyType: z.enum([DiscountApplyType.ALL, DiscountApplyType.SPECIFIC]).default(DiscountApplyType.ALL),
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),
   deletedById: z.string().nullable(),

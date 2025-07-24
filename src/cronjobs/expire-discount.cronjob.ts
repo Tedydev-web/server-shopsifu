@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { DiscountStatus } from 'src/shared/constants/discount.constant'
 
 @Injectable()
 export class ExpireDiscountCronjob {
@@ -14,9 +15,9 @@ export class ExpireDiscountCronjob {
     const result = await this.prisma.discount.updateMany({
       where: {
         endDate: { lt: now },
-        status: 'ACTIVE'
+        discountStatus: DiscountStatus.ACTIVE
       },
-      data: { status: 'EXPIRED' }
+      data: { discountStatus: DiscountStatus.EXPIRED }
     })
     if (result.count > 0) {
       this.logger.log(`Đã cập nhật ${result.count} discount hết hạn thành EXPIRED.`)
