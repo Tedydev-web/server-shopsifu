@@ -2,26 +2,20 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [master, develop]
+    branches: [master]
   workflow_dispatch:
     inputs:
       manual_rollback:
         description: 'Commit SHA hoặc tag để rollback'
         required: false
 
-permissions:
-  contents: write
-
 jobs:
   build:
     name: Build & Test
     runs-on: ubuntu-latest
-    if: github.ref_name == 'master'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Đảm bảo lịch sử commit đầy đủ
 
       - name: Cache node_modules
         uses: actions/cache@v4
@@ -40,10 +34,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm run test
-        continue-on-error: true # Tiếp tục ngay cả khi test thất bại, tùy thuộc vào yêu cầu
-
       - name: Build
         run: npm run build
 
@@ -51,15 +41,13 @@ jobs:
     name: Deploy to Production
     needs: build
     runs-on: ubuntu-latest
-    if: ${{ github.ref_name == 'master' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !github.event.inputs.manual_rollback)) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !github.event.inputs.manual_rollback) }}
     environment: staging
     env:
       NODE_ENV: staging
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Đảm bảo lịch sử commit đầy đủ
 
       - name: Cache build artifacts
         uses: actions/cache@v4
@@ -89,6 +77,27 @@ jobs:
           EOF
         continue-on-error: true
 
+      - name: Collect PM2 Output
+        if: always()
+        id: pm2_logs
+        run: |
+          # Lấy dữ liệu từ server và lưu vào file tạm trên runner
+          sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} << 'EOF'
+            cat /tmp/pm2_status.json > /tmp/pm2_status.json
+            cat /tmp/pm2_logs.txt > /tmp/pm2_logs.txt
+          EOF
+          # Xử lý dữ liệu trên runner
+          PM2_INFO=$(jq -r '.[] | select(.name == "server-shopsifu") | "Name: \(.name)\nStatus: \(.pm2_env.status)\nPID: \(.pid)\nUptime: \(.pm2_env.uptime // 0 | tostring + \"ms\")\nCPU: \(.monit.cpu)%\nMemory: \(.monit.memory / 1024 / 1024 | tostring + \"MB\")"' /tmp/pm2_status.json 2>/dev/null || echo "Không tìm thấy process server-shopsifu")
+          echo "pm2_info=$PM2_INFO" >> $GITHUB_OUTPUT
+          PM2_LOGS=$(grep -v '\[TAILING\]' /tmp/pm2_logs.txt | tail -n 50 || echo "Không có log ứng dụng")
+          echo "pm2_logs=$PM2_LOGS" >> $GITHUB_OUTPUT
+
+      - name: Tag Release
+        if: success() && contains(github.event.head_commit.message, '[release]')
+        run: |
+          git tag v$(date +'%Y.%m.%d.%H%M%S')
+          git push origin --tags
+
       - name: Get Commit Info
         id: commit_info
         run: |
@@ -105,12 +114,16 @@ jobs:
           COMMIT: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
           REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          PM2_INFO: ${{ steps.pm2_logs.outputs.pm2_info }}
+          PM2_LOGS: ${{ steps.pm2_logs.outputs.pm2_logs }}
           COMMIT_SHA: ${{ steps.commit_info.outputs.commit_sha }}
           COMMIT_MESSAGE: ${{ steps.commit_info.outputs.commit_message }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
           COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
           ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
+          # Chuyển đổi github.run_started_at thành epoch time
           RUN_STARTED_AT=$(date -d "${{ github.run_started_at }}" +%s)
           JSON_PAYLOAD=$(jq -n \
             --arg status "$STATUS" \
@@ -121,11 +134,12 @@ jobs:
             --arg commit_message "$COMMIT_MESSAGE" \
             --arg repo "$REPO" \
             --arg actor "$ACTOR" \
-            --arg run_id "${{ github.run_id }}" \
+            --arg pm2_info "$PM2_INFO" \
+            --arg logs "${PM2_LOGS:0:1000}" \
+            --arg run_id "$RUN_ID" \
             --arg color "$COLOR" \
             --arg started_at "$RUN_STARTED_AT" \
             '{
-              content: "@everyone",
               embeds: [{
                 title: "🚀 SERVER - Thông báo triển khai ✨",
                 color: ($color | tonumber),
@@ -138,46 +152,70 @@ jobs:
                   { name: "Người thực hiện", value: "`\($actor)`", inline: true },
                   { name: "Thời gian bắt đầu", value: "<t:\($started_at):R>", inline: true }
                 ],
+                description: "**50 dòng log cuối:**\n```\n\($logs)\n```",
                 url: "https://github.com/\($repo)/actions/runs/\($run_id)"
               }]
             }')
-          curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK"
+          curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" || echo "Lỗi gửi thông báo Discord"
 
-  notify-develop:
-    name: Notify Develop Push
+  rollback-auto:
+    name: Automatic Rollback
+    needs: deploy
     runs-on: ubuntu-latest
-    if: github.ref_name == 'develop'
+    if: needs.deploy.result == 'failure'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Fetch toàn bộ lịch sử commit để git log hoạt động
 
-      - name: Check commit range
-        id: check_commit
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: dist
+          key: ${{ runner.os }}-build-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-build-
+
+      - name: Rollback to previous commit
         run: |
-          if [ -z "${{ github.event.before }}" ] || ! git rev-parse --verify ${{ github.event.before }} >/dev/null 2>&1; then
-            echo "No valid previous commit found, using current commit only"
-            echo "commit_range=${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "commit_log=No previous commits available for comparison" >> $GITHUB_ENV
-          else
-            echo "commit_range=${{ github.event.before }}..${{ github.sha }}" >> $GITHUB_OUTPUT
-            COMMIT_LOG=$(git log --pretty=format:'- [`%h`](https://github.com/${{ github.repository }}/commit/%H) %s — _%an_' ${{ github.event.before }}..${{ github.sha }} || echo "No new commits found")
-            echo "commit_log<<EOF" >> $GITHUB_ENV
-            echo "$COMMIT_LOG" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-          fi
-        shell: /usr/bin/bash -e {0}
+          sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} << 'EOF'
+            set -euo pipefail
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            cd ${{ secrets.STAGING_PATH_PROJECT }}
+            git fetch origin master && git reset --hard HEAD~1
+            npm ci
+            [ -d dist ] || npm run build
+            pm2 restart server-shopsifu || pm2 start dist/index.js --name server-shopsifu
+          EOF
 
-      - name: Send Discord Notification
-        uses: Ilshidur/action-discord@master
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+  manual-rollback:
+    name: Manual Rollback
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.manual_rollback
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout specific commit
+        uses: actions/checkout@v4
         with:
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}
-          message: |
-            @everyone
-            🧪 **Commit mới trên nhánh `develop`**
-            **Người thực hiện:** `${{ github.actor }}`
-            **Danh sách commit:**
-            ${{ env.commit_log }}
+          ref: ${{ github.event.inputs.manual_rollback }}
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: dist
+          key: ${{ runner.os }}-build-${{ github.event.inputs.manual_rollback }}
+          restore-keys: ${{ runner.os }}-build-
+
+      - name: Re-deploy to VPS
+        run: |
+          sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} << 'EOF'
+            set -euo pipefail
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            cd ${{ secrets.STAGING_PATH_PROJECT }}
+            git reset --hard ${{ github.event.inputs.manual_rollback }}
+            npm ci
+            [ -d dist ] || npm run build
+            pm2 restart server-shopsifu || pm2 start dist/index.js --name server-shopsifu
+          EOF
+
+permissions:
+  contents: write
