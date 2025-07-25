@@ -7,7 +7,34 @@ import {
   DiscountApplyType,
   VoucherType
 } from 'src/shared/constants/discount.constant'
-import { DiscountSchema } from 'src/shared/models/shared-discount.model'
+
+export const DiscountSchema = z.object({
+  id: z.string(),
+  name: z.string().max(500),
+  description: z.string().nullable().optional(),
+  discountType: z.nativeEnum(DiscountType).default(DiscountType.FIX_AMOUNT),
+  value: z.number().int(),
+  code: z.string().max(100),
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date(),
+  maxUses: z.number().int(),
+  usesCount: z.number().int().default(0),
+  usersUsed: z.array(z.string()),
+  maxUsesPerUser: z.number().int().default(0),
+  minOrderValue: z.number().int().default(0),
+  maxDiscountValue: z.number().int().nullable().optional(),
+  voucherType: z.nativeEnum(VoucherType).default(VoucherType.SHOP),
+  displayType: z.nativeEnum(DisplayType).default(DisplayType.PUBLIC),
+  isPlatform: z.boolean().default(false),
+  discountStatus: z.nativeEnum(DiscountStatus).default(DiscountStatus.DRAFT),
+  discountApplyType: z.nativeEnum(DiscountApplyType).default(DiscountApplyType.ALL),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  deletedById: z.string().nullable(),
+  deletedAt: z.date().nullable(),
+  createdAt: z.date(),
+  updatedAt: z.date()
+})
 
 /**
  * Dành cho client và guest
@@ -74,6 +101,7 @@ export const CreateDiscountBodySchema = DiscountSchema.pick({
   isPlatform: true
 })
   .extend({
+    shopId: z.string().optional(),
     productIds: z.array(z.string()).optional(),
     categoryIds: z.array(z.string()).optional(),
     brandIds: z.array(z.string()).optional()
@@ -87,21 +115,10 @@ export const UpdateDiscountResSchema = z.object({
   data: DiscountSchema
 })
 
-export type GetDiscountsQueryType = z.infer<typeof GetDiscountsQuerySchema>
-export type GetManageDiscountsQueryType = z.infer<typeof GetManageDiscountsQuerySchema>
-export type GetDiscountsResType = z.infer<typeof GetDiscountsResSchema>
-export type GetDiscountParamsType = z.infer<typeof GetDiscountParamsSchema>
-export type GetDiscountDetailResType = z.infer<typeof GetDiscountDetailResSchema>
-export type CreateDiscountBodyType = z.infer<typeof CreateDiscountBodySchema>
-export type UpdateDiscountBodyType = z.infer<typeof UpdateDiscountBodySchema>
-export type UpdateDiscountResType = z.infer<typeof UpdateDiscountResSchema>
-
-// Schema cho body
 export const GetAvailableDiscountsBodySchema = z.object({
   cartItemIds: z.array(z.string()).min(1)
 })
 
-// Schema cho response
 export const GetAvailableDiscountsResSchema = z.object({
   message: z.string().optional(),
   data: z.array(
@@ -123,3 +140,12 @@ export const GetAvailableDiscountsResSchema = z.object({
     })
   )
 })
+
+export type GetDiscountsQueryType = z.infer<typeof GetDiscountsQuerySchema>
+export type GetManageDiscountsQueryType = z.infer<typeof GetManageDiscountsQuerySchema>
+export type GetDiscountsResType = z.infer<typeof GetDiscountsResSchema>
+export type GetDiscountParamsType = z.infer<typeof GetDiscountParamsSchema>
+export type GetDiscountDetailResType = z.infer<typeof GetDiscountDetailResSchema>
+export type CreateDiscountBodyType = z.infer<typeof CreateDiscountBodySchema>
+export type UpdateDiscountBodyType = z.infer<typeof UpdateDiscountBodySchema>
+export type UpdateDiscountResType = z.infer<typeof UpdateDiscountResSchema>

@@ -7,8 +7,6 @@ import {
   GetAuthorizationUrlResDTO,
   LoginBodyDTO,
   LoginResDTO,
-  LogoutBodyDTO,
-  RefreshTokenResDTO,
   RegisterBodyDTO,
   RegisterResDTO,
   SendOTPBodyDTO,

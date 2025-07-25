@@ -11,7 +11,7 @@ import {
   GetAvailableDiscountsBodySchema,
   GetAvailableDiscountsResSchema
 } from 'src/routes/discount/discount.model'
-import { DiscountSchema } from 'src/shared/models/shared-discount.model'
+import { DiscountSchema } from 'src/routes/discount/discount.model'
 
 export class DiscountDTO extends createZodDto(DiscountSchema) {}
 

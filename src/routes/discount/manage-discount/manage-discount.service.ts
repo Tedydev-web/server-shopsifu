@@ -21,7 +21,7 @@ import {
 import { RoleName } from 'src/shared/constants/role.constant'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { VoucherType, DisplayType, DiscountType } from 'src/shared/constants/discount.constant'
+import { VoucherType, DiscountType } from 'src/shared/constants/discount.constant'
 
 @Injectable()
 export class ManageDiscountService {
@@ -31,9 +31,6 @@ export class ManageDiscountService {
     private readonly prismaService: PrismaService
   ) {}
 
-  /**
-   * JSDoc for validatePrivilege
-   */
   private validatePrivilege({
     userIdRequest,
     roleNameRequest,
@@ -48,9 +45,6 @@ export class ManageDiscountService {
     }
   }
 
-  /**
-   * JSDoc for validateProductOwnership
-   */
   private async validateProductOwnership(productIds: string[] | undefined, sellerId: string) {
     if (!productIds || productIds.length === 0) return
     const products = await this.prismaService.product.findMany({
@@ -62,9 +56,6 @@ export class ManageDiscountService {
     }
   }
 
-  /**
-   * JSDoc for validateDiscountExistence
-   */
   private async validateDiscountExistence(code: string, excludeId?: string) {
     const existing = await this.prismaService.discount.findUnique({
       where: { code }
@@ -74,9 +65,6 @@ export class ManageDiscountService {
     }
   }
 
-  /**
-   * JSDoc for validateDiscountLogic
-   */
   private validateDiscountLogic(data: CreateDiscountBodyType | UpdateDiscountBodyType) {
     const { startDate, endDate, voucherType, productIds, discountType, maxDiscountValue, code } = data
 
@@ -101,9 +89,6 @@ export class ManageDiscountService {
     }
   }
 
-  /**
-   * JSDoc for list
-   */
   async list({ query, user }: { query: GetManageDiscountsQueryType; user: AccessTokenPayload }) {
     if (user.roleName === RoleName.Seller) {
       query.shopId = user.userId
@@ -116,9 +101,6 @@ export class ManageDiscountService {
     }
   }
 
-  /**
-   * JSDoc for findById
-   */
   async findById(id: string, user: AccessTokenPayload) {
     const discount = await this.discountRepo.getDetail(id)
     if (!discount) throw DiscountNotFoundException
@@ -130,9 +112,6 @@ export class ManageDiscountService {
     return discount
   }
 
-  /**
-   * JSDoc for create
-   */
   async create({ data, user }: { data: CreateDiscountBodyType; user: AccessTokenPayload }) {
     await this.validateDiscountExistence(data.code)
     this.validateDiscountLogic(data)
@@ -148,7 +127,7 @@ export class ManageDiscountService {
       await this.validateProductOwnership(data.productIds, user.userId)
       return this.discountRepo.create({
         createdById: user.userId,
-        data: { ...dataToCreate, isPlatform: false }
+        data: { ...dataToCreate, shopId: user.userId, isPlatform: false }
       })
     }
 
@@ -167,9 +146,6 @@ export class ManageDiscountService {
     }
   }
 
-  /**
-   * JSDoc for update
-   */
   async update({ id, data, user }: { id: string; data: UpdateDiscountBodyType; user: AccessTokenPayload }) {
     const discount = await this.discountRepo.findById(id)
     if (!discount) throw DiscountNotFoundException
@@ -200,9 +176,6 @@ export class ManageDiscountService {
     }
   }
 
-  /**
-   * JSDoc for delete
-   */
   async delete(id: string, user: AccessTokenPayload) {
     const discount = await this.discountRepo.findById(id)
     if (!discount) throw DiscountNotFoundException
