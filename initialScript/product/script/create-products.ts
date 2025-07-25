@@ -93,7 +93,7 @@ async function batchCreateBrands(brandNames: string[], creatorUserId: string) {
     await prisma.brand.createMany({
       data: newBrandNames.map((name) => ({
         name,
-        logo: '',
+        logo: 'https://shopsifu.s3.ap-southeast-1.amazonaws.com/images/b7de950e-43bd-4f32-b266-d24c080c7a1e.png',
         createdById: creatorUserId
       })),
       skipDuplicates: true
