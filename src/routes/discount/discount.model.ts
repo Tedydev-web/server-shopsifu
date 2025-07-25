@@ -1,8 +1,13 @@
 import { z } from 'zod'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
-import { DiscountStatus, DiscountType } from 'src/shared/constants/discount.constant'
+import {
+  DiscountStatus,
+  DiscountType,
+  DisplayType,
+  DiscountApplyType,
+  VoucherType
+} from 'src/shared/constants/discount.constant'
 import { DiscountSchema } from 'src/shared/models/shared-discount.model'
-import { VoucherType } from 'src/shared/constants/discount.constant'
 
 /**
  * Dành cho client và guest
@@ -71,60 +76,9 @@ export const CreateDiscountBodySchema = DiscountSchema.pick({
   .extend({
     productIds: z.array(z.string()).optional(),
     categoryIds: z.array(z.string()).optional(),
-    brandIds: z.array(z.string()).optional(),
-    // Thêm trường để validate radio giới hạn mức giảm tối đa
-    hasMaxDiscountLimit: z.boolean().optional()
+    brandIds: z.array(z.string()).optional()
   })
   .strict()
-  .superRefine((data, ctx) => {
-    // Validate ngày kết thúc phải sau ngày bắt đầu
-    if (data.endDate && data.startDate && new Date(data.endDate) <= new Date(data.startDate)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['endDate'],
-        message: 'Ngày kết thúc phải sau ngày bắt đầu'
-      })
-    }
-    // Validate voucherType
-    if (data.voucherType === VoucherType.SHOP && data.productIds && data.productIds.length > 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['productIds'],
-        message: 'Voucher toàn shop không được chọn sản phẩm cụ thể'
-      })
-    }
-    if (data.voucherType === VoucherType.PRODUCT && (!data.productIds || data.productIds.length === 0)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['productIds'],
-        message: 'Voucher sản phẩm phải chọn ít nhất 1 sản phẩm'
-      })
-    }
-    // Validate maxDiscountValue
-    if (data.discountType === DiscountType.PERCENTAGE) {
-      if (data.hasMaxDiscountLimit && (data.maxDiscountValue === null || data.maxDiscountValue === undefined)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['maxDiscountValue'],
-          message: 'Phải nhập mức giảm tối đa khi chọn giới hạn'
-        })
-      }
-      if (!data.hasMaxDiscountLimit && data.maxDiscountValue) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['maxDiscountValue'],
-          message: 'Không nhập mức giảm tối đa khi không giới hạn'
-        })
-      }
-    }
-    if (data.discountType === DiscountType.FIX_AMOUNT && data.maxDiscountValue) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['maxDiscountValue'],
-        message: 'Không nhập mức giảm tối đa cho loại giảm giá theo số tiền'
-      })
-    }
-  })
 
 export const UpdateDiscountBodySchema = CreateDiscountBodySchema
 
@@ -154,13 +108,18 @@ export const GetAvailableDiscountsResSchema = z.object({
     z.object({
       id: z.string(),
       name: z.string(),
-      description: z.string().nullable().optional(),
-      type: z.string(),
+      description: z.string().nullable(),
+      discountType: z.nativeEnum(DiscountType),
       value: z.number(),
       code: z.string(),
-      maxDiscountValue: z.number().nullable().optional(),
+      maxDiscountValue: z.number().nullable(),
+      discountAmount: z.number().optional(),
       minOrderValue: z.number(),
-      appliesTo: z.string()
+      isPlatform: z.boolean().optional(),
+      voucherType: z.nativeEnum(VoucherType).optional(),
+      displayType: z.nativeEnum(DisplayType).optional(),
+      discountApplyType: z.nativeEnum(DiscountApplyType).optional(),
+      targetInfo: z.any().nullable().optional()
     })
   )
 })

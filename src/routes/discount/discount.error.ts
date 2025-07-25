@@ -47,3 +47,38 @@ export const DiscountExpiredException = new UnprocessableEntityException([
     path: 'code'
   }
 ])
+
+export const InvalidDiscountDateRangeException = new UnprocessableEntityException([
+  {
+    message: 'discount.discount.error.INVALID_DATE_RANGE',
+    path: 'endDate'
+  }
+])
+
+export const ShopVoucherWithProductsException = new UnprocessableEntityException([
+  {
+    message: 'discount.discount.error.SHOP_VOUCHER_WITH_PRODUCTS',
+    path: 'productIds'
+  }
+])
+
+export const ProductVoucherWithoutProductsException = new UnprocessableEntityException([
+  {
+    message: 'discount.discount.error.PRODUCT_VOUCHER_WITHOUT_PRODUCTS',
+    path: 'productIds'
+  }
+])
+
+export const InvalidMaxDiscountValueException = new UnprocessableEntityException([
+  {
+    message: 'discount.discount.error.INVALID_MAX_DISCOUNT_VALUE',
+    path: 'maxDiscountValue'
+  }
+])
+
+export const InvalidDiscountCodeFormatException = new UnprocessableEntityException([
+  {
+    message: 'discount.discount.error.INVALID_CODE_FORMAT',
+    path: 'code'
+  }
+])

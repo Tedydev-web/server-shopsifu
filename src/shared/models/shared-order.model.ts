@@ -1,6 +1,6 @@
 import { OrderStatus } from 'src/shared/constants/order.constant'
 import { z } from 'zod'
-import { DiscountApplyType, DiscountType } from '../constants/discount.constant'
+import { DiscountApplyType, DiscountType, VoucherType, DisplayType } from 'src/shared/constants/discount.constant'
 
 export const OrderStatusSchema = z.enum([
   OrderStatus.PENDING_PAYMENT,
@@ -53,27 +53,28 @@ export const ProductSKUSnapshotSchema = z.object({
   createdAt: z.date()
 })
 
+/**
+ * Snapshot mã giảm giá tại thời điểm áp dụng cho đơn hàng
+ */
 export const DiscountSnapshotSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.nativeEnum(DiscountType),
+  description: z.string().nullable(),
+  discountType: z.nativeEnum(DiscountType),
   value: z.number(),
   code: z.string(),
   maxDiscountValue: z.number().nullable(),
   discountAmount: z.number(),
-
   minOrderValue: z.number(),
-  isPublic: z.boolean(),
-  appliesTo: z.nativeEnum(DiscountApplyType),
-  targetInfo: z.any().nullable(),
-
+  isPlatform: z.boolean(),
+  voucherType: z.nativeEnum(VoucherType),
+  displayType: z.nativeEnum(DisplayType),
+  discountApplyType: z.nativeEnum(DiscountApplyType),
+  targetInfo: z.any().nullable(), // { productIds: string[], categoryIds: string[], brandIds: string[] }
   discountId: z.string().nullable(),
-  discount: z.any().nullable(),
-
   orderId: z.string().nullable(),
-  order: z.any().nullable(),
-
-  createdAt: z.date()
+  createdAt: z.date(),
+  updatedAt: z.date()
 })
 
 export const OrderIncludeProductSKUSnapshotAndDiscountSchema = OrderSchema.extend({

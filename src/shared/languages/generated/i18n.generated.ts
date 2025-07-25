@@ -148,6 +148,7 @@ export type I18nTranslations = {
         "discount": {
             "success": {
                 "CREATE_SUCCESS": string;
+                "GET_SUCCESS": string;
                 "UPDATE_SUCCESS": string;
                 "DELETE_SUCCESS": string;
                 "CALCULATE_SUCCESS": string;
@@ -157,6 +158,14 @@ export type I18nTranslations = {
                 "CODE_EXISTS": string;
                 "NOT_FOUND": string;
                 "FORBIDDEN": string;
+                "PRODUCT_OWNERSHIP": string;
+                "USAGE_LIMIT_EXCEEDED": string;
+                "EXPIRED": string;
+                "INVALID_DATE_RANGE": string;
+                "SHOP_VOUCHER_WITH_PRODUCTS": string;
+                "PRODUCT_VOUCHER_WITHOUT_PRODUCTS": string;
+                "INVALID_MAX_DISCOUNT_VALUE": string;
+                "INVALID_CODE_FORMAT": string;
             };
         };
     };

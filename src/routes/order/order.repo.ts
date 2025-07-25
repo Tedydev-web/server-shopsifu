@@ -218,6 +218,8 @@ export class OrderRepo {
                   discountAmount: discountAmount,
                   minOrderValue: discount.minOrderValue,
                   isPlatform: discount.isPlatform,
+                  voucherType: discount.voucherType,
+                  displayType: discount.displayType,
                   discountApplyType: discount.discountApplyType,
                   targetInfo:
                     discount.discountApplyType === DiscountApplyType.SPECIFIC

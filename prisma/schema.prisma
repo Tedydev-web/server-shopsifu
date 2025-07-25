@@ -443,24 +443,25 @@ model CartItem {
 }
 
 model DiscountSnapshot {
-  id               String       @id @default(uuid())
-  name             String       @db.VarChar(500)
-  description      String?      @db.VarChar(1000)
-  discountType     DiscountType
-  value            Int
-  code             String       @db.VarChar(100)
-  maxDiscountValue Int?
-  discountAmount   Int // Số tiền thực tế đã giảm
+  id                String            @id @default(uuid())
+  name              String            @db.VarChar(500) // Tên mã giảm giá tại thời điểm áp dụng
+  description       String?           @db.VarChar(1000) // Mô tả mã giảm giá tại thời điểm áp dụng
+  discountType      DiscountType // Loại giảm giá (FIX_AMOUNT, PERCENTAGE)
+  value             Int // Giá trị giảm giá (số tiền hoặc %)
+  code              String            @db.VarChar(100) // Mã code giảm giá
+  maxDiscountValue  Int? // Mức giảm tối đa (nếu có, chỉ áp dụng cho PERCENTAGE)
+  discountAmount    Int // Số tiền thực tế đã giảm cho đơn hàng này
+  minOrderValue     Int // Giá trị đơn hàng tối thiểu để áp dụng
+  isPlatform        Boolean // Voucher sàn hay không
+  voucherType       VoucherType // Loại voucher (SHOP, PRODUCT)
+  displayType       DisplayType // Hiển thị công khai hay riêng tư
+  discountApplyType DiscountApplyType // Áp dụng cho tất cả hay chỉ định
+  targetInfo        Json? // { productIds: string[], categoryIds: string[], brandIds: string[] } - đối tượng áp dụng cụ thể
 
-  minOrderValue     Int
-  isPlatform        Boolean
-  discountApplyType DiscountApplyType
-  targetInfo        Json? // thông tin đối tượng áp dụng
-
-  discountId String?
+  discountId String? // Tham chiếu về Discount gốc
   discount   Discount? @relation(fields: [discountId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  orderId String?
+  orderId String? // Tham chiếu về Order
   order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   createdAt DateTime @default(now())

@@ -11,12 +11,17 @@ import {
   DiscountCodeAlreadyExistsException,
   DiscountNotFoundException,
   DiscountForbiddenException,
-  DiscountProductOwnershipException
+  DiscountProductOwnershipException,
+  InvalidDiscountDateRangeException,
+  ShopVoucherWithProductsException,
+  ProductVoucherWithoutProductsException,
+  InvalidMaxDiscountValueException,
+  InvalidDiscountCodeFormatException
 } from 'src/routes/discount/discount.error'
 import { RoleName } from 'src/shared/constants/role.constant'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { VoucherType, DisplayType } from 'src/shared/constants/discount.constant'
+import { VoucherType, DisplayType, DiscountType } from 'src/shared/constants/discount.constant'
 
 @Injectable()
 export class ManageDiscountService {
@@ -27,7 +32,7 @@ export class ManageDiscountService {
   ) {}
 
   /**
-   * Kiểm tra quyền thao tác trên discount (chủ sở hữu hoặc admin)
+   * JSDoc for validatePrivilege
    */
   private validatePrivilege({
     userIdRequest,
@@ -44,7 +49,7 @@ export class ManageDiscountService {
   }
 
   /**
-   * Kiểm tra seller chỉ được áp dụng discount cho sản phẩm của mình
+   * JSDoc for validateProductOwnership
    */
   private async validateProductOwnership(productIds: string[] | undefined, sellerId: string) {
     if (!productIds || productIds.length === 0) return
@@ -58,7 +63,7 @@ export class ManageDiscountService {
   }
 
   /**
-   * Kiểm tra mã discount đã tồn tại chưa
+   * JSDoc for validateDiscountExistence
    */
   private async validateDiscountExistence(code: string, excludeId?: string) {
     const existing = await this.prismaService.discount.findUnique({
@@ -70,7 +75,34 @@ export class ManageDiscountService {
   }
 
   /**
-   * Danh sách discount quản lý
+   * JSDoc for validateDiscountLogic
+   */
+  private validateDiscountLogic(data: CreateDiscountBodyType | UpdateDiscountBodyType) {
+    const { startDate, endDate, voucherType, productIds, discountType, maxDiscountValue, code } = data
+
+    if (endDate <= startDate) {
+      throw InvalidDiscountDateRangeException
+    }
+
+    if (voucherType === VoucherType.SHOP && productIds && productIds.length > 0) {
+      throw ShopVoucherWithProductsException
+    }
+
+    if (voucherType === VoucherType.PRODUCT && (!productIds || productIds.length === 0)) {
+      throw ProductVoucherWithoutProductsException
+    }
+
+    if (discountType === DiscountType.FIX_AMOUNT && maxDiscountValue) {
+      throw InvalidMaxDiscountValueException
+    }
+
+    if (!/^[A-Z0-9]{4,9}$/.test(code)) {
+      throw InvalidDiscountCodeFormatException
+    }
+  }
+
+  /**
+   * JSDoc for list
    */
   async list({ query, user }: { query: GetManageDiscountsQueryType; user: AccessTokenPayload }) {
     if (user.roleName === RoleName.Seller) {
@@ -78,102 +110,104 @@ export class ManageDiscountService {
     }
     const result = await this.discountRepo.list(query)
     return {
-      message: this.i18n.t('discount.discount.success.GET_SUCCESS' as any),
+      message: this.i18n.t('discount.discount.success.GET_SUCCESS'),
       data: result.data,
       metadata: result.metadata
     }
   }
 
   /**
-   * Lấy chi tiết discount
+   * JSDoc for findById
    */
   async findById(id: string, user: AccessTokenPayload) {
-    const discount = await this.discountRepo.findById(id)
+    const discount = await this.discountRepo.getDetail(id)
     if (!discount) throw DiscountNotFoundException
-    this.validatePrivilege({ userIdRequest: user.userId, roleNameRequest: user.roleName, shopId: discount.shopId })
-    return { data: discount }
+    this.validatePrivilege({
+      userIdRequest: user.userId,
+      roleNameRequest: user.roleName,
+      shopId: discount.data.shopId
+    })
+    return discount
   }
 
   /**
-   * Tạo mới discount
+   * JSDoc for create
    */
   async create({ data, user }: { data: CreateDiscountBodyType; user: AccessTokenPayload }) {
     await this.validateDiscountExistence(data.code)
-    let dataToCreate: any = { ...data }
+    this.validateDiscountLogic(data)
+
+    const dataToCreate: CreateDiscountBodyType = { ...data }
+
     if (user.roleName === RoleName.Seller) {
-      // Tự động sinh prefix code
       const shop = await this.prismaService.user.findUnique({ where: { id: user.userId } })
       const prefix = shop?.name?.substring(0, 4).toUpperCase() || 'SHOP'
       if (!data.code.startsWith(prefix)) {
-        throw DiscountCodeAlreadyExistsException // hoặc custom exception cho prefix sai
-      }
-      dataToCreate = {
-        ...dataToCreate,
-        code: data.code,
-        shopId: user.userId,
-        categoryIds: undefined,
-        brandIds: undefined,
-        voucherType: VoucherType.SHOP,
-        displayType: DisplayType.PUBLIC,
-        isPlatform: false
+        throw InvalidDiscountCodeFormatException
       }
       await this.validateProductOwnership(data.productIds, user.userId)
+      return this.discountRepo.create({
+        createdById: user.userId,
+        data: { ...dataToCreate, isPlatform: false }
+      })
     }
-    // Validate code: regex, độ dài, prefix (Admin cũng nên kiểm tra nếu tạo cho shop)
-    if (!/^[A-Z0-9]{4,9}$/.test(dataToCreate.code)) {
-      throw DiscountCodeAlreadyExistsException // hoặc custom exception cho code không hợp lệ
-    }
-    // Nếu là Admin, validate isPlatform: chỉ Admin được phép tạo isPlatform=true
-    if (user.roleName !== RoleName.Admin && dataToCreate.isPlatform) {
+
+    if (user.roleName !== RoleName.Admin && data.isPlatform) {
       throw DiscountForbiddenException
     }
+
     const discount = await this.discountRepo.create({
       createdById: user.userId,
       data: dataToCreate
     })
+
     return {
-      message: this.i18n.t('discount.discount.success.CREATE_SUCCESS' as any),
-      data: discount
+      message: this.i18n.t('discount.discount.success.CREATE_SUCCESS'),
+      data: discount.data
     }
   }
 
   /**
-   * Cập nhật discount
+   * JSDoc for update
    */
   async update({ id, data, user }: { id: string; data: UpdateDiscountBodyType; user: AccessTokenPayload }) {
     const discount = await this.discountRepo.findById(id)
     if (!discount) throw DiscountNotFoundException
+
     this.validatePrivilege({ userIdRequest: user.userId, roleNameRequest: user.roleName, shopId: discount.shopId })
-    if (data.code) await this.validateDiscountExistence(data.code, id)
-    let dataToUpdate: any = { ...data }
+
+    if (data.code) {
+      await this.validateDiscountExistence(data.code, id)
+    }
+
+    this.validateDiscountLogic(data)
+
+    const dataToUpdate: UpdateDiscountBodyType = { ...data }
+
     if (user.roleName === RoleName.Seller) {
-      dataToUpdate = {
-        ...dataToUpdate,
-        categoryIds: undefined,
-        brandIds: undefined,
-        shopId: undefined
-      }
       await this.validateProductOwnership(data.productIds, user.userId)
     }
+
     const updatedDiscount = await this.discountRepo.update({
       id,
       updatedById: user.userId,
       data: dataToUpdate
     })
+
     return {
-      message: this.i18n.t('discount.discount.success.UPDATE_SUCCESS' as any),
+      message: this.i18n.t('discount.discount.success.UPDATE_SUCCESS'),
       data: updatedDiscount
     }
   }
 
   /**
-   * Xóa discount
+   * JSDoc for delete
    */
   async delete(id: string, user: AccessTokenPayload) {
     const discount = await this.discountRepo.findById(id)
     if (!discount) throw DiscountNotFoundException
     this.validatePrivilege({ userIdRequest: user.userId, roleNameRequest: user.roleName, shopId: discount.shopId })
     await this.discountRepo.delete({ id, deletedById: user.userId })
-    return { message: this.i18n.t('discount.discount.success.DELETE_SUCCESS' as any) }
+    return { message: this.i18n.t('discount.discount.success.DELETE_SUCCESS') }
   }
 }

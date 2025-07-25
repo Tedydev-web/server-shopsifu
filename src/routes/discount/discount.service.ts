@@ -59,8 +59,20 @@ export class DiscountService {
         value: discount.value,
         code: discount.code,
         maxDiscountValue: discount.maxDiscountValue,
+        discountAmount: 0, // Chưa tính toán ở bước này, sẽ tính khi đặt hàng
         minOrderValue: discount.minOrderValue,
-        discountApplyType: discount.discountApplyType
+        isPlatform: discount.isPlatform,
+        voucherType: discount.voucherType,
+        displayType: discount.displayType,
+        discountApplyType: discount.discountApplyType,
+        targetInfo:
+          discount.discountApplyType === DiscountApplyType.SPECIFIC
+            ? {
+                productIds: discount.products?.map((p: any) => p.id) || [],
+                categoryIds: discount.categories?.map((c: any) => c.id) || [],
+                brandIds: discount.brands?.map((b: any) => b.id) || []
+              }
+            : null
       }))
     }
   }
