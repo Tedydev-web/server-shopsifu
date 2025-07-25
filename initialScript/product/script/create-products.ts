@@ -76,24 +76,42 @@ async function batchCreateBrands(brandNames: string[], creatorUserId: string) {
 
   const uniqueBrandNames = [...new Set(brandNames.map((name) => name || DEFAULT_BRAND_NAME))]
 
-  // Kiểm tra brands đã tồn tại
+  // Đường dẫn logo mặc định
+  const DEFAULT_BRAND_LOGO =
+    'https://shopsifu.s3.ap-southeast-1.amazonaws.com/images/b7de950e-43bd-4f32-b266-d24c080c7a1e.png'
+
+  // Lấy tất cả brands hiện có trong DB (chưa bị xóa)
   const existingBrands = await prisma.brand.findMany({
     where: {
-      name: { in: uniqueBrandNames },
       deletedAt: null
     },
     select: { id: true, name: true }
   })
 
   const existingBrandNames = new Set(existingBrands.map((b) => b.name))
-  const newBrandNames = uniqueBrandNames.filter((name) => !existingBrandNames.has(name))
+  const seedBrandNames = new Set(uniqueBrandNames)
 
-  // Tạo brands mới
+  // Xóa (soft delete) brands có trong DB nhưng không có trong seed
+  const brandsToDelete = existingBrands.filter((b) => !seedBrandNames.has(b.name))
+  if (brandsToDelete.length > 0) {
+    await prisma.brand.updateMany({
+      where: {
+        id: { in: brandsToDelete.map((b) => b.id) }
+      },
+      data: {
+        deletedAt: new Date()
+      }
+    })
+    console.log(`🗑️  Soft deleted ${brandsToDelete.length} brands không còn trong seed`)
+  }
+
+  // Thêm brands mới có trong seed nhưng chưa có trong DB
+  const newBrandNames = uniqueBrandNames.filter((name) => !existingBrandNames.has(name))
   if (newBrandNames.length > 0) {
     await prisma.brand.createMany({
       data: newBrandNames.map((name) => ({
         name,
-        logo: 'https://shopsifu.s3.ap-southeast-1.amazonaws.com/images/b7de950e-43bd-4f32-b266-d24c080c7a1e.png',
+        logo: DEFAULT_BRAND_LOGO,
         createdById: creatorUserId
       })),
       skipDuplicates: true
@@ -101,7 +119,7 @@ async function batchCreateBrands(brandNames: string[], creatorUserId: string) {
     console.log(`✅ Created ${newBrandNames.length} new brands`)
   }
 
-  // Lấy tất cả brands sau khi tạo
+  // Lấy lại tất cả brands sau khi cập nhật
   const allBrands = await prisma.brand.findMany({
     where: {
       name: { in: uniqueBrandNames },
