@@ -28,6 +28,7 @@ import { TransformInterceptor } from 'src/shared/interceptor/transform.intercept
 import { DiscountModule } from 'src/routes/discount/discount.module'
 import { ExpireDiscountCronjob } from 'src/cronjobs/expire-discount.cronjob'
 import { ScheduleModule } from '@nestjs/schedule'
+import { LanguageModule } from 'src/routes/language/language.module'
 
 @Module({
   imports: [
@@ -50,7 +51,8 @@ import { ScheduleModule } from '@nestjs/schedule'
     OrderModule,
     PaymentModule,
     ReviewModule,
-    DiscountModule
+    DiscountModule,
+    LanguageModule
   ],
   providers: [
     {
