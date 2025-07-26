@@ -60,7 +60,8 @@ interface ProcessedProduct {
   validImages: string[]
   validVideos: string[]
   variants: Array<{ value: string; options: string[] }> // Giữ nguyên cấu trúc cũ
-  metadata: any // Metadata riêng biệt
+  specifications: Array<{ name: string; value: string }> // Specifications riêng biệt
+  metadata: any // Metadata khác (không bao gồm specifications)
   skus: Array<{
     value: string
     price: number
@@ -310,14 +311,17 @@ function generateEnhancedVariants(
   return baseVariants
 }
 
-// Generate product metadata separately
+// Generate product specifications separately
+function generateProductSpecifications(product?: ShopeeProduct): Array<{ name: string; value: string }> {
+  if (!product || !product['Product Specifications']) return []
+  return product['Product Specifications']
+}
+
+// Generate product metadata separately (không bao gồm specifications)
 function generateProductMetadata(product?: ShopeeProduct): any {
   if (!product) return null
 
   return {
-    // Product specifications
-    specifications: product['Product Specifications'] || [],
-
     // Shopee metrics
     metrics: {
       shopeeRating: product.rating || 0,
@@ -470,7 +474,8 @@ async function processProductsBatch(
       const variants = generateEnhancedVariants(product.variations, product.product_variation, product)
       const skus = generateSKUs(variants, product.final_price, product.stock, [...validImages, ...validVideos])
 
-      // Generate metadata
+      // Generate specifications and metadata separately
+      const specifications = generateProductSpecifications(product)
       const metadata = generateProductMetadata(product)
 
       processedProducts.push({
@@ -480,6 +485,7 @@ async function processProductsBatch(
         validImages,
         validVideos,
         variants,
+        specifications,
         metadata,
         skus,
         reviews
@@ -645,7 +651,8 @@ async function batchCreateProducts(
         const createdProducts: Array<{ id: string; name: string }> = []
 
         for (const processed of chunk) {
-          const { shopeeData, brandId, categoryId, validImages, validVideos, variants, metadata } = processed
+          const { shopeeData, brandId, categoryId, validImages, validVideos, variants, specifications, metadata } =
+            processed
 
           // Combine images and videos
           const allMedia = [...validImages, ...validVideos]
@@ -654,12 +661,13 @@ async function batchCreateProducts(
           const product = await tx.product.create({
             data: {
               name: shopeeData.title,
-              description: JSON.stringify(metadata), // Store metadata in description
+              description: JSON.stringify(metadata), // Store metadata (không bao gồm specifications)
               basePrice: shopeeData.final_price,
               virtualPrice: shopeeData.initial_price,
               brandId,
               images: allMedia, // Include both images and videos
-              variants, // Enhanced variants with full metadata
+              variants, // Enhanced variants
+              specifications, // Store specifications in dedicated field
               createdById: creatorUserId,
               publishedAt: shopeeData.is_available ? new Date() : null,
               categories: {
@@ -756,7 +764,7 @@ async function batchCreateProducts(
             productId: product.id,
             languageId: VIETNAMESE_LANGUAGE_ID,
             name: processed.shopeeData.title,
-            description: JSON.stringify(processed.metadata), // Store metadata in description
+            description: JSON.stringify(processed.metadata), // Store metadata (không bao gồm specifications)
             createdById: creatorUserId
           })
         }
@@ -1025,9 +1033,7 @@ async function importProductsOptimized() {
       console.log('\n✅ Import completed successfully!')
       console.log(`📊 Enhanced data imported:`)
       console.log(`   🎬 Videos: ${processedProducts.reduce((sum, p) => sum + p.validVideos.length, 0)}`)
-      console.log(
-        `   📋 Product specs: ${processedProducts.reduce((sum, p) => sum + (p.shopeeData['Product Specifications']?.length || 0), 0)}`
-      )
+      console.log(`   📋 Product specs: ${processedProducts.reduce((sum, p) => sum + p.specifications.length, 0)}`)
       console.log(`   🏪 Seller info: ${processedProducts.filter((p) => p.shopeeData.seller_name).length}`)
       console.log(`   📊 Metrics: ${processedProducts.filter((p) => p.shopeeData.rating > 0).length}`)
       console.log(`   📝 Reviews: ${reviewResult.success}`)

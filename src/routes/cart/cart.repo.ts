@@ -128,6 +128,7 @@ export class CartRepo {
                 'brandId', "Product"."brandId",
                 'images', "Product"."images",
                 'variants', "Product"."variants",
+                'specifications', "Product"."specifications",
                 'productTranslations', COALESCE((
                   SELECT json_agg(
                     jsonb_build_object(

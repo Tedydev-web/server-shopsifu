@@ -252,6 +252,8 @@ model Product {
   publishedAt         DateTime?
   /// [Variants]
   variants            Json
+  /// [ProductSpecifications]
+  specifications      Json?
   virtualPrice        Float
   description         String               @default("")
   discountId          String?

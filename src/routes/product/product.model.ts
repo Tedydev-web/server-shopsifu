@@ -107,7 +107,8 @@ export const CreateProductBodySchema = ProductSchema.pick({
   virtualPrice: true,
   brandId: true,
   images: true,
-  variants: true
+  variants: true,
+  specifications: true
 })
   .extend({
     categories: z.array(z.string()),
