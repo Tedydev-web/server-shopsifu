@@ -22,8 +22,9 @@
     "studio": "prisma studio",
 
     "seed:email": "nestjs-command seed:emails",
+    "seed": "ts-node -r tsconfig-paths/register initialScript/init/init-data.ts && ts-node -r tsconfig-paths/register initialScript/permission/create-permissions.ts && ts-node -r tsconfig-paths/register initialScript/product/script/create-products.ts",
     "init-seed-data": "ts-node -r tsconfig-paths/register initialScript/init/init-data.ts",
-    "create-permissions": "ts-node -r tsconfig-paths/register initialScript/permissions/create-permissions.ts",
+    "create-permissions": "ts-node -r tsconfig-paths/register initialScript/permission/create-permissions.ts",
     "analyze:products": "ts-node -r tsconfig-paths/register initialScript/product/script/analyze-products.ts",
     "clear-products": "ts-node -r tsconfig-paths/register initialScript/product/script/clear-products.ts",
     "create-products": "ts-node -r tsconfig-paths/register initialScript/product/script/create-products.ts",

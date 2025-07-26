@@ -1,4 +1,5 @@
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { PrismaClient } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -52,7 +53,7 @@ interface ProcessedProduct {
 
 const DEFAULT_BRAND_NAME = 'No Brand'
 const VIETNAMESE_LANGUAGE_ID = 'vi'
-const BATCH_SIZE = 826 // Import all valid products
+const BATCH_SIZE = 1000 // Import all valid products
 
 // Validation function với logic giống analyze script
 function validateProduct(product: ShopeeProduct): { isValid: boolean; reason?: string } {
@@ -71,7 +72,8 @@ function validateProduct(product: ShopeeProduct): { isValid: boolean; reason?: s
 }
 
 // Batch create brands
-async function batchCreateBrands(brandNames: string[], creatorUserId: string) {
+async function batchCreateBrands(brandNames: string[], creatorUserId: string, tx?: any) {
+  const prismaClient = tx || prisma
   console.log(`🏷️  Processing ${brandNames.length} unique brands...`)
 
   const uniqueBrandNames = [...new Set(brandNames.map((name) => name || DEFAULT_BRAND_NAME))]
@@ -81,7 +83,7 @@ async function batchCreateBrands(brandNames: string[], creatorUserId: string) {
     'https://shopsifu.s3.ap-southeast-1.amazonaws.com/images/b7de950e-43bd-4f32-b266-d24c080c7a1e.png'
 
   // Lấy tất cả brands hiện có trong DB (chưa bị xóa)
-  const existingBrands = await prisma.brand.findMany({
+  const existingBrands = await prismaClient.brand.findMany({
     where: {
       deletedAt: null
     },
@@ -94,7 +96,7 @@ async function batchCreateBrands(brandNames: string[], creatorUserId: string) {
   // Xóa (soft delete) brands có trong DB nhưng không có trong seed
   const brandsToDelete = existingBrands.filter((b) => !seedBrandNames.has(b.name))
   if (brandsToDelete.length > 0) {
-    await prisma.brand.updateMany({
+    await prismaClient.brand.updateMany({
       where: {
         id: { in: brandsToDelete.map((b) => b.id) }
       },
@@ -108,7 +110,7 @@ async function batchCreateBrands(brandNames: string[], creatorUserId: string) {
   // Thêm brands mới có trong seed nhưng chưa có trong DB
   const newBrandNames = uniqueBrandNames.filter((name) => !existingBrandNames.has(name))
   if (newBrandNames.length > 0) {
-    await prisma.brand.createMany({
+    await prismaClient.brand.createMany({
       data: newBrandNames.map((name) => ({
         name,
         logo: DEFAULT_BRAND_LOGO,
@@ -120,7 +122,7 @@ async function batchCreateBrands(brandNames: string[], creatorUserId: string) {
   }
 
   // Lấy lại tất cả brands sau khi cập nhật
-  const allBrands = await prisma.brand.findMany({
+  const allBrands = await prismaClient.brand.findMany({
     where: {
       name: { in: uniqueBrandNames },
       deletedAt: null
@@ -139,7 +141,8 @@ async function batchCreateBrands(brandNames: string[], creatorUserId: string) {
 }
 
 // Batch create categories (2-level only)
-async function batchCreateCategories(breadcrumbs: string[][], creatorUserId: string) {
+async function batchCreateCategories(breadcrumbs: string[][], creatorUserId: string, tx?: any) {
+  const prismaClient = tx || prisma
   console.log(`📁 Processing categories from ${breadcrumbs.length} products...`)
 
   const categorySet = new Set<string>()
@@ -164,7 +167,7 @@ async function batchCreateCategories(breadcrumbs: string[][], creatorUserId: str
   const uniqueCategoryNames = [...categorySet]
 
   // Get existing categories
-  const existingCategories = await prisma.category.findMany({
+  const existingCategories = await prismaClient.category.findMany({
     where: {
       name: { in: uniqueCategoryNames },
       deletedAt: null
@@ -185,7 +188,7 @@ async function batchCreateCategories(breadcrumbs: string[][], creatorUserId: str
   const newParentCategories = parentCategories.filter((name) => !existingCategoryNames.has(name))
 
   if (newParentCategories.length > 0) {
-    await prisma.category.createMany({
+    await prismaClient.category.createMany({
       data: newParentCategories.map((name) => ({
         name,
         createdById: creatorUserId
@@ -196,7 +199,7 @@ async function batchCreateCategories(breadcrumbs: string[][], creatorUserId: str
   }
 
   // Refresh categories after creating parents
-  const updatedCategories = await prisma.category.findMany({
+  const updatedCategories = await prismaClient.category.findMany({
     where: {
       name: { in: uniqueCategoryNames },
       deletedAt: null
@@ -225,7 +228,7 @@ async function batchCreateCategories(breadcrumbs: string[][], creatorUserId: str
   }
 
   if (childCategoriesToCreate.length > 0) {
-    await prisma.category.createMany({
+    await prismaClient.category.createMany({
       data: childCategoriesToCreate.map((cat) => ({
         ...cat,
         createdById: creatorUserId
@@ -236,7 +239,7 @@ async function batchCreateCategories(breadcrumbs: string[][], creatorUserId: str
   }
 
   // Final category map
-  const finalCategories = await prisma.category.findMany({
+  const finalCategories = await prismaClient.category.findMany({
     where: {
       name: { in: uniqueCategoryNames },
       deletedAt: null
@@ -316,12 +319,23 @@ function generateSKUs(
   const variantOptions = variants.map((v) => v.options)
   const combinations = cartesianProduct(variantOptions)
 
+  // Tối ưu hóa phân phối stock và image
+  const totalCombinations = combinations.length
+  const stockPerSku = Math.max(1, Math.floor(stock / totalCombinations))
+  const remainingStock = stock - stockPerSku * totalCombinations
+
   combinations.forEach((combination, index) => {
+    // Phân phối stock đều cho các SKU, phần dư sẽ được cộng vào SKU đầu tiên
+    const skuStock = index === 0 ? stockPerSku + remainingStock : stockPerSku
+
+    // Phân phối image theo round-robin để đảm bảo tất cả images được sử dụng
+    const imageIndex = index % Math.max(1, images.length)
+
     skus.push({
       value: combination.join(' - '),
       price: basePrice,
-      stock: Math.floor(stock / combinations.length),
-      image: images[index % images.length] || images[0] || ''
+      stock: skuStock,
+      image: images[imageIndex] || images[0] || ''
     })
   })
 
@@ -398,13 +412,24 @@ async function batchCreateProducts(
 
   // Process in smaller chunks to avoid transaction timeout
   const chunkSize = 10
+  const skuBatchSize = 5000 // Batch size cho SKUs nếu số lượng quá lớn
+
+  // Tối ưu hóa database settings cho bulk operations
+  await prisma.$executeRaw`SET work_mem = '16MB'`
+  await prisma.$executeRaw`SET maintenance_work_mem = '256MB'`
+  await prisma.$executeRaw`SET synchronous_commit = off`
+
   for (let i = 0; i < processedProducts.length; i += chunkSize) {
     const chunk = processedProducts.slice(i, i + chunkSize)
+    const startTime = Date.now()
 
     try {
       await prisma.$transaction(async (tx) => {
+        // Step 1: Create all products first
+        const createdProducts: Array<{ id: string; name: string }> = []
+
         for (const processed of chunk) {
-          const { shopeeData, brandId, categoryId, validImages, variants, skus } = processed
+          const { shopeeData, brandId, categoryId, validImages, variants } = processed
 
           // Create product
           const product = await tx.product.create({
@@ -421,31 +446,119 @@ async function batchCreateProducts(
               categories: {
                 connect: { id: categoryId }
               }
-            }
+            },
+            select: { id: true, name: true }
           })
 
-          // Create SKUs
-          await tx.sKU.createMany({
-            data: skus.map((sku) => ({
+          createdProducts.push(product)
+        }
+
+        const productCreationTime = Date.now() - startTime
+        console.log(`✅ Created ${createdProducts.length} products in ${productCreationTime}ms`)
+
+        // Step 2: Prepare all SKUs data for bulk insert
+        const allSkusData: Array<{
+          value: string
+          price: number
+          stock: number
+          image: string
+          productId: string
+          createdById: string
+        }> = []
+
+        for (let j = 0; j < chunk.length; j++) {
+          const processed = chunk[j]
+          const product = createdProducts[j]
+
+          // Add all SKUs for this product to the bulk array
+          processed.skus.forEach((sku) => {
+            allSkusData.push({
               ...sku,
               productId: product.id,
               createdById: creatorUserId
-            }))
+            })
           })
-
-          // Create translation
-          await tx.productTranslation.create({
-            data: {
-              productId: product.id,
-              languageId: VIETNAMESE_LANGUAGE_ID,
-              name: shopeeData.title,
-              description: shopeeData['Product Description'] || '',
-              createdById: creatorUserId
-            }
-          })
-
-          successCount++
         }
+
+        // Step 3: Bulk insert all SKUs in batches if needed
+        if (allSkusData.length > 0) {
+          const skuStartTime = Date.now()
+
+          if (allSkusData.length <= skuBatchSize) {
+            // Insert tất cả SKUs trong một lần
+            await tx.sKU.createMany({
+              data: allSkusData,
+              skipDuplicates: true
+            })
+            const skuTime = Date.now() - skuStartTime
+            console.log(
+              `✅ Bulk inserted ${allSkusData.length} SKUs in ${skuTime}ms (${Math.round((allSkusData.length / skuTime) * 1000)} SKUs/sec)`
+            )
+          } else {
+            // Chia nhỏ SKUs thành các batch nhỏ hơn
+            let skuInsertedCount = 0
+            for (let k = 0; k < allSkusData.length; k += skuBatchSize) {
+              const skuBatch = allSkusData.slice(k, k + skuBatchSize)
+              const batchStartTime = Date.now()
+
+              await tx.sKU.createMany({
+                data: skuBatch,
+                skipDuplicates: true
+              })
+
+              const batchTime = Date.now() - batchStartTime
+              skuInsertedCount += skuBatch.length
+              console.log(
+                `✅ Bulk inserted SKU batch ${Math.floor(k / skuBatchSize) + 1}: ${skuBatch.length} SKUs in ${batchTime}ms`
+              )
+            }
+
+            const totalSkuTime = Date.now() - skuStartTime
+            console.log(
+              `✅ Total SKUs inserted: ${skuInsertedCount} in ${totalSkuTime}ms (${Math.round((skuInsertedCount / totalSkuTime) * 1000)} SKUs/sec)`
+            )
+          }
+        }
+
+        // Step 4: Create all product translations
+        const allTranslationsData: Array<{
+          productId: string
+          languageId: string
+          name: string
+          description: string
+          createdById: string
+        }> = []
+
+        for (let j = 0; j < chunk.length; j++) {
+          const processed = chunk[j]
+          const product = createdProducts[j]
+
+          allTranslationsData.push({
+            productId: product.id,
+            languageId: VIETNAMESE_LANGUAGE_ID,
+            name: processed.shopeeData.title,
+            description: processed.shopeeData['Product Description'] || '',
+            createdById: creatorUserId
+          })
+        }
+
+        // Step 5: Bulk insert all translations
+        if (allTranslationsData.length > 0) {
+          const translationStartTime = Date.now()
+
+          await tx.productTranslation.createMany({
+            data: allTranslationsData,
+            skipDuplicates: true
+          })
+
+          const translationTime = Date.now() - translationStartTime
+          console.log(`✅ Bulk inserted ${allTranslationsData.length} product translations in ${translationTime}ms`)
+        }
+
+        const totalTime = Date.now() - startTime
+        console.log(`⏱️  Total chunk processing time: ${totalTime}ms`)
+
+        successCount += chunk.length
       })
 
       if (i % 50 === 0) {
@@ -459,6 +572,11 @@ async function batchCreateProducts(
       console.error(`🔍 Error: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
+
+  // Reset database settings
+  await prisma.$executeRaw`SET work_mem = '4MB'`
+  await prisma.$executeRaw`SET maintenance_work_mem = '64MB'`
+  await prisma.$executeRaw`SET synchronous_commit = on`
 
   return { success: successCount, failed: failedCount }
 }
@@ -600,17 +718,25 @@ async function importProductsOptimized() {
     const productsToImport = newProducts.slice(0, BATCH_SIZE)
     console.log(`🎯 Importing ${productsToImport.length} products (batch size: ${BATCH_SIZE})`)
 
-    // Step 1: Batch create brands
-    const brandNames = productsToImport.map((p) => p.brand || DEFAULT_BRAND_NAME)
-    const brandMap = await batchCreateBrands(brandNames, creatorUser.id)
-
-    // Step 2: Batch create categories
-    const breadcrumbs = productsToImport.map((p) => p.breadcrumb)
-    const categoryMap = await batchCreateCategories(breadcrumbs, creatorUser.id)
+    // Step 1 & 2: Batch create brands & categories trong transaction
+    let brandMap: Map<string, string>
+    let categoryMap: Map<string, string>
+    await prisma.$transaction(async (tx) => {
+      brandMap = await batchCreateBrands(
+        productsToImport.map((p) => p.brand || DEFAULT_BRAND_NAME),
+        creatorUser.id,
+        tx
+      )
+      categoryMap = await batchCreateCategories(
+        productsToImport.map((p) => p.breadcrumb),
+        creatorUser.id,
+        tx
+      )
+    })
 
     // Step 3: Process products
     console.log('🔄 Processing products...')
-    const processedProducts = await processProductsBatch(productsToImport, brandMap, categoryMap)
+    const processedProducts = await processProductsBatch(productsToImport, brandMap!, categoryMap!)
     console.log(`✅ Successfully processed: ${processedProducts.length}/${productsToImport.length} products`)
 
     // Step 4: Batch create products
@@ -625,8 +751,8 @@ async function importProductsOptimized() {
     console.log(`📥 Attempted import: ${productsToImport.length}`)
     console.log(`✅ Successfully imported: ${result.success}`)
     console.log(`❌ Failed to import: ${result.failed}`)
-    console.log(`🏷️  Brands created/used: ${brandMap.size}`)
-    console.log(`📁 Categories created/used: ${categoryMap.size}`)
+    console.log(`🏷️  Brands created/used: ${brandMap!.size}`)
+    console.log(`📁 Categories created/used: ${categoryMap!.size}`)
 
     if (result.success > 0) {
       console.log('\n✅ Import completed successfully!')
