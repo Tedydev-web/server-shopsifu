@@ -33,10 +33,10 @@ model Language {
 
 model User {
   id                          String                @id @default(uuid())
-  email                       String
+  email                       String                @unique
   name                        String                @db.VarChar(500)
   password                    String                @db.VarChar(500)
-  phoneNumber                 String                @db.VarChar(50)
+  phoneNumber                 String                @unique @db.VarChar(50)
   avatar                      String?               @db.VarChar(1000)
   totpSecret                  String?               @db.VarChar(1000)
   status                      UserStatus            @default(INACTIVE)
@@ -108,6 +108,7 @@ model User {
   UserAddress                 UserAddress[]
 
   @@index([deletedAt])
+  @@index([status])
 }
 
 model UserTranslation {
@@ -153,6 +154,10 @@ model Device {
   isActive      Boolean        @default(true)
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   refreshTokens RefreshToken[]
+
+  @@index([userId])
+  @@index([isActive])
+  @@index([lastActive])
 }
 
 model RefreshToken {
@@ -250,7 +255,7 @@ model Product {
   virtualPrice        Float
   description         String               @default("")
   discountId          String?
-  brand               Brand                @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  brand               Brand                @relation(fields: [brandId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   createdBy           User                 @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: Cascade, onUpdate: NoAction)
   deletedBy           User?                @relation("ProductDeletedBy", fields: [deletedById], references: [id], onUpdate: NoAction)
   Discount            Discount?            @relation(fields: [discountId], references: [id])
@@ -263,6 +268,9 @@ model Product {
   orders              Order[]              @relation("OrderToProduct")
 
   @@index([deletedAt])
+  @@index([brandId])
+  @@index([createdById])
+  @@index([publishedAt])
 }
 
 model ProductSKUSnapshot {
@@ -351,6 +359,8 @@ model CategoryTranslation {
   updatedBy   User?     @relation("CategoryTranslationUpdatedBy", fields: [updatedById], references: [id], onUpdate: NoAction)
 
   @@index([deletedAt])
+  @@index([categoryId])
+  @@index([languageId])
 }
 
 model Brand {
@@ -393,6 +403,8 @@ model BrandTranslation {
   updatedBy   User?     @relation("BrandTranslationUpdatedBy", fields: [updatedById], references: [id], onUpdate: NoAction)
 
   @@index([deletedAt])
+  @@index([brandId])
+  @@index([languageId])
 }
 
 model CartItem {
@@ -474,6 +486,9 @@ model Discount {
   @@index([deletedAt])
   @@index([discountStatus, deletedAt])
   @@index([startDate, endDate])
+  @@index([code])
+  @@index([shopId])
+  @@index([createdById])
 }
 
 model Order {
@@ -493,7 +508,7 @@ model Order {
   discounts   DiscountSnapshot[]
   createdBy   User?                @relation("OrderCreatedBy", fields: [createdById], references: [id], onUpdate: NoAction)
   deletedBy   User?                @relation("OrderDeletedBy", fields: [deletedById], references: [id], onUpdate: NoAction)
-  payment     Payment              @relation(fields: [paymentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment     Payment              @relation(fields: [paymentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   shop        User?                @relation("Shop", fields: [shopId], references: [id], onUpdate: NoAction)
   updatedBy   User?                @relation("OrderUpdatedBy", fields: [updatedById], references: [id], onUpdate: NoAction)
   user        User                 @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -503,6 +518,9 @@ model Order {
 
   @@index([deletedAt])
   @@index([status, deletedAt])
+  @@index([userId])
+  @@index([shopId])
+  @@index([createdAt])
 }
 
 model Payment {
@@ -511,6 +529,9 @@ model Payment {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   orders    Order[]
+
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Websocket {
@@ -538,6 +559,8 @@ model Review {
   @@unique([orderId, productId])
   @@index([userId])
   @@index([productId])
+  @@index([rating])
+  @@index([createdAt])
 }
 
 model ReviewMedia {
@@ -559,6 +582,10 @@ model Message {
 
   readAt    DateTime?
   createdAt DateTime  @default(now())
+
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([createdAt])
 }
 
 model Address {

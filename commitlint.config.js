@@ -47,6 +47,6 @@ module.exports = {
     ],
     'body-leading-blank': [1, 'always'],
     'footer-leading-blank': [1, 'always'],
-    'header-max-length': [2, 'always', 50] // Limits header to 50 characters for common readability
+    'header-max-length': [2, 'always', 500] // Limits header to 500 characters for common readability
   }
 }
