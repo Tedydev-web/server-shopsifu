@@ -1,148 +1,216 @@
-import { PrismaService } from 'src/shared/services/prisma.service'
 import { PrismaClient } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
+import { HashingService } from 'src/shared/services/hashing.service'
 
-const prisma = new PrismaService()
+// COPY operations for optimized bulk inserts
+async function copyUsers(
+  users: Array<{
+    email: string
+    name: string
+    password: string
+    phoneNumber: string
+    avatar: string
+    status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED'
+    roleId: string
+    createdById: string
+    createdAt: Date
+    updatedAt: Date
+  }>,
+  tx: PrismaClient
+): Promise<void> {
+  if (users.length === 0) return
 
-interface ShopeeProduct {
-  id: string
-  title: string
-  rating: number
-  reviews: number
-  initial_price: number
-  final_price: number
-  currency: string
-  stock: number
-  image: string[]
-  video?: string[]
-  seller_name: string
-  seller_id: string
-  breadcrumb: string[]
-  'Product Specifications'?: Array<{ name: string; value: string }>
-  'Product Description': string
-  seller_rating: number
-  brand?: string
-  category_id: string
-  variations?: Array<{ name: string; variations: string[] }> | null
-  product_variation?: Array<{ name: string; value: string | null }>
-  product_ratings?: Array<{
-    customer_name: string
-    rating_stars: number
-    review: string
-    review_date: string
-    review_likes?: number
-    review_media?: string[]
-  }>
-  is_available: boolean
-  // Additional fields from JSON
-  url?: string
-  favorite?: number
-  sold?: number
-  seller_products?: number
-  seller_followers?: number
-  shop_url?: string
-  seller_chats_responded_percentage?: number
-  seller_chat_time_reply?: string
-  seller_joined_date?: string
-  domain?: string
-  category_url?: string
-  flash_sale?: boolean
-  flash_sale_time?: string | null
-  vouchers?: any
-  gmv_cal?: any
+  // Sử dụng createMany thay vì raw SQL để tránh SQL injection
+  await tx.user.createMany({
+    data: users,
+    skipDuplicates: true
+  })
 }
 
-interface ProcessedProduct {
-  shopeeData: ShopeeProduct
-  brandId: string
-  categoryId: string
-  validImages: string[]
-  validVideos: string[]
-  variants: Array<{ value: string; options: string[] }> // Giữ nguyên cấu trúc cũ
-  specifications: Array<{ name: string; value: string }> // Specifications riêng biệt
-  metadata: any // Metadata khác (không bao gồm specifications)
+async function copyAddresses(
+  addresses: Array<{
+    name: string
+    recipient?: string
+    phoneNumber?: string
+    province: string
+    district: string
+    ward: string
+    street: string
+    addressType: 'HOME' | 'OFFICE' | 'OTHER'
+    createdById: string
+    createdAt: Date
+    updatedAt: Date
+  }>,
+  tx: PrismaClient
+): Promise<void> {
+  if (addresses.length === 0) return
+
+  await tx.address.createMany({
+    data: addresses
+  })
+}
+
+async function copyUserAddresses(
+  userAddresses: Array<{
+    userId: string
+    addressId: string
+    createdAt: Date
+    updatedAt: Date
+  }>,
+  tx: PrismaClient
+): Promise<void> {
+  if (userAddresses.length === 0) return
+
+  await tx.userAddress.createMany({
+    data: userAddresses,
+    skipDuplicates: true
+  })
+}
+
+async function copyProducts(
+  products: Array<{
+    name: string
+    description: string
+    basePrice: number
+    virtualPrice: number
+    brandId: string
+    images: string[]
+    variants: any
+    specifications: any
+    createdById: string
+    publishedAt?: Date | null
+    createdAt: Date
+    updatedAt: Date
+  }>,
+  tx: PrismaClient
+): Promise<string[]> {
+  if (products.length === 0) return []
+
+  // Sử dụng createMany và sau đó query để lấy IDs
+  await tx.product.createMany({
+    data: products
+  })
+
+  // Lấy IDs của products vừa tạo
+  const createdProducts = await tx.product.findMany({
+    where: {
+      name: { in: products.map((p) => p.name) },
+      createdById: products[0].createdById
+    },
+    select: { id: true, name: true },
+    orderBy: { createdAt: 'desc' },
+    take: products.length
+  })
+
+  return createdProducts.map((p) => p.id)
+}
+
+async function copySKUs(
   skus: Array<{
     value: string
     price: number
     stock: number
     image: string
-  }>
+    productId: string
+    createdById: string
+    createdAt: Date
+    updatedAt: Date
+  }>,
+  tx: PrismaClient
+): Promise<void> {
+  if (skus.length === 0) return
+
+  await tx.sKU.createMany({
+    data: skus
+  })
+}
+
+async function copyProductTranslations(
+  translations: Array<{
+    productId: string
+    languageId: string
+    name: string
+    description: string
+    createdById: string
+    createdAt: Date
+    updatedAt: Date
+  }>,
+  tx: PrismaClient
+): Promise<void> {
+  if (translations.length === 0) return
+
+  await tx.productTranslation.createMany({
+    data: translations
+  })
+}
+
+async function copyReviews(
   reviews: Array<{
-    clientName: string
     rating: number
     content: string
-    date: string
-    likes?: number
-    media?: string[]
-  }>
+    userId: string
+    productId: string
+    orderId: string
+    createdById: string
+    createdAt: Date
+    updatedAt: Date
+  }>,
+  tx: PrismaClient
+): Promise<string[]> {
+  if (reviews.length === 0) return []
+
+  await tx.review.createMany({
+    data: reviews
+  })
+
+  // Lấy IDs của reviews vừa tạo
+  const createdReviews = await tx.review.findMany({
+    where: {
+      productId: { in: reviews.map((r) => r.productId) },
+      orderId: { in: reviews.map((r) => r.orderId) }
+    },
+    select: { id: true },
+    orderBy: { createdAt: 'desc' },
+    take: reviews.length
+  })
+
+  return createdReviews.map((r) => r.id)
 }
 
-// New interfaces for user management
-interface SellerData {
-  sellerId: string
-  sellerName: string
-  email: string
-  password: string
-  phoneNumber: string
-  avatar: string
-  status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED'
-  role: 'SELLER'
-  shopeeData: {
-    rating: number
-    products: number
-    followers: number
-    responseRate: number
-    replyTime: string
-    joinedDate: string
-    shopUrl: string
-  }
+async function copyReviewMedia(
+  media: Array<{
+    url: string
+    type: 'IMAGE' | 'VIDEO'
+    reviewId: string
+    createdAt: Date
+    updatedAt: Date
+  }>,
+  tx: PrismaClient
+): Promise<void> {
+  if (media.length === 0) return
+
+  await tx.reviewMedia.createMany({
+    data: media
+  })
 }
 
-interface CustomerData {
-  clientName: string
-  email: string
-  password: string
-  phoneNumber: string
-  avatar: string
-  status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED'
-  role: 'CLIENT'
-}
+// Configuration constants
+const CONFIG = {
+  BATCH_SIZE: 10000, // Tăng batch size để xử lý nhiều hơn
+  SKU_BATCH_SIZE: 20000, // Tăng SKU batch size
+  CHUNK_SIZE: 1000, // Tăng chunk size để giảm số lần gọi database
+  PARALLEL_CHUNKS: 8, // Tăng số chunk song song
+  COPY_BATCH_SIZE: 20000, // Tăng batch size cho COPY operations
+  DEFAULT_BRAND_NAME: 'No Brand',
+  VIETNAMESE_LANGUAGE_ID: 'vi',
+  DEFAULT_AVATAR: 'https://shopsifu.s3.ap-southeast-1.amazonaws.com/images/b7de950e-43bd-4f32-b266-d24c080c7a1e.png',
+  VIETNAMESE_PHONE_PREFIXES: ['032', '033', '034', '035', '036', '037', '038', '039']
+} as const
 
-interface AddressData {
-  province: string
-  district: string
-  ward: string
-  street: string
-  addressType: 'HOME' | 'OFFICE' | 'OTHER'
-  recipient?: string
-  phoneNumber?: string
-}
-
-const DEFAULT_BRAND_NAME = 'No Brand'
-const VIETNAMESE_LANGUAGE_ID = 'vi'
-const BATCH_SIZE = 1000 // Import all valid products
-
-// Utility functions for user management
-function generateVietnamesePhone(): string {
-  const prefixes = ['032', '033', '034', '035', '036', '037', '038', '039']
-  const prefix = prefixes[Math.floor(Math.random() * prefixes.length)]
-  const suffix = Math.floor(Math.random() * 10000000)
-    .toString()
-    .padStart(7, '0')
-  return `+84${prefix}${suffix}`
-}
-
-function generateEmail(type: 'seller' | 'client', index: number): string {
-  return `${type}${index}.shopsifu.ecommerce@gmail.com`
-}
-
-function generatePassword(type: 'seller' | 'client'): string {
-  return `${type.charAt(0).toUpperCase() + type.slice(1)}1@@`
-}
-
-// Vietnamese addresses for fake data
+// Vietnamese address data
 const VIETNAMESE_ADDRESSES: AddressData[] = [
+  // Giữ nguyên dữ liệu địa chỉ từ file gốc
   {
     province: 'Hà Nội',
     district: 'Cầu Giấy',
@@ -190,478 +258,533 @@ const VIETNAMESE_ADDRESSES: AddressData[] = [
   }
 ]
 
-// Validation function với logic giống analyze script
+// Interfaces (giữ nguyên từ file gốc)
+interface ShopeeProduct {
+  id: string
+  title: string
+  rating: number
+  reviews: number
+  initial_price: number
+  final_price: number
+  currency: string
+  stock: number
+  image: string[]
+  video?: string[]
+  seller_name: string
+  seller_id: string
+  breadcrumb: string[]
+  'Product Specifications'?: Array<{ name: string; value: string }>
+  'Product Description': string
+  seller_rating: number
+  brand?: string
+  category_id: string
+  variations?: Array<{ name: string; variations: string[] }> | null
+  product_variation?: Array<{ name: string; value: string | null }>
+  product_ratings?: Array<{
+    customer_name: string
+    rating_stars: number
+    review: string
+    review_date: string
+    review_likes?: number
+    review_media?: string[]
+  }>
+  is_available: boolean
+  url?: string
+  favorite?: number
+  sold?: number
+  seller_products?: number
+  seller_followers?: number
+  shop_url?: string
+  seller_chats_responded_percentage?: number
+  seller_chat_time_reply?: string
+  seller_joined_date?: string
+  domain?: string
+  category_url?: string
+  flash_sale?: boolean
+  flash_sale_time?: string | null
+  vouchers?: any
+  gmv_cal?: any
+}
+
+interface ProcessedProduct {
+  shopeeData: ShopeeProduct
+  brandId: string
+  categoryId: string
+  sellerId: string
+  validImages: string[]
+  validVideos: string[]
+  variants: Array<{ value: string; options: string[] }>
+  specifications: Array<{ name: string; value: string }>
+  metadata: any
+  skus: Array<{ value: string; price: number; stock: number; image: string }>
+  reviews: Array<{
+    clientName: string
+    rating: number
+    content: string
+    date: string
+    likes?: number
+    media?: string[]
+  }>
+}
+
+interface SellerData {
+  sellerId: string
+  sellerName: string
+  email: string
+  password: string
+  phoneNumber: string
+  avatar: string
+  status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED'
+  role: 'SELLER'
+  shopeeData: {
+    rating: number
+    products: number
+    followers: number
+    responseRate: number
+    replyTime: string
+    joinedDate: string
+    shopUrl: string
+  }
+}
+
+interface CustomerData {
+  clientName: string
+  email: string
+  password: string
+  phoneNumber: string
+  avatar: string
+  status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED'
+  role: 'CLIENT'
+}
+
+interface AddressData {
+  province: string
+  district: string
+  ward: string
+  street: string
+  addressType: 'HOME' | 'OFFICE' | 'OTHER'
+  recipient?: string
+  phoneNumber?: string
+}
+
+const prisma = new PrismaClient({
+  log: [
+    {
+      emit: 'stdout',
+      level: 'error'
+    },
+    {
+      emit: 'stdout',
+      level: 'warn'
+    }
+  ],
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL
+    }
+  }
+})
+const hashingService = new HashingService()
+
+// Utility functions
+function generateVietnamesePhone(): string {
+  const prefix = CONFIG.VIETNAMESE_PHONE_PREFIXES[Math.floor(Math.random() * CONFIG.VIETNAMESE_PHONE_PREFIXES.length)]
+  const suffix = Math.floor(Math.random() * 10000000)
+    .toString()
+    .padStart(7, '0')
+  return `+84${prefix}${suffix}`
+}
+
+function generateEmail(type: 'seller' | 'client', index: number): string {
+  return `${type}${index}.shopsifu.ecommerce@gmail.com`
+}
+
+function generatePassword(type: 'seller' | 'client'): string {
+  return `${type.charAt(0).toUpperCase() + type.slice(1)}1@@`
+}
+
 function validateProduct(product: ShopeeProduct): { isValid: boolean; reason?: string } {
   if (!product.id) return { isValid: false, reason: 'Missing ID' }
-  if (!product.title || product.title.trim() === '') return { isValid: false, reason: 'Missing title' }
+  if (!product.title?.trim()) return { isValid: false, reason: 'Missing title' }
   if (!product.final_price || product.final_price <= 0) return { isValid: false, reason: 'Invalid price' }
-  if (product.stock === undefined || product.stock === null || product.stock < 0)
-    return { isValid: false, reason: 'Invalid stock' }
+  if (product.stock == null || product.stock < 0) return { isValid: false, reason: 'Invalid stock' }
   if (!product.breadcrumb || product.breadcrumb.length < 2) return { isValid: false, reason: 'Invalid breadcrumb' }
-  if (!product.image || product.image.length === 0) return { isValid: false, reason: 'No images' }
-
-  const validImages = product.image.filter((img) => img && img.startsWith('http'))
-  if (validImages.length === 0) return { isValid: false, reason: 'No valid images' }
-
+  if (!product.image?.length) return { isValid: false, reason: 'No images' }
+  if (!product.image.some((img) => img?.startsWith('http'))) return { isValid: false, reason: 'No valid images' }
   return { isValid: true }
 }
 
-// Batch create brands
-async function batchCreateBrands(brandNames: string[], creatorUserId: string, tx?: any) {
-  const prismaClient = tx || prisma
-  console.log(`🏷️  Processing ${brandNames.length} unique brands...`)
+async function ensureLanguageExists(creatorUserId: string): Promise<void> {
+  if (!(await prisma.language.findUnique({ where: { id: CONFIG.VIETNAMESE_LANGUAGE_ID } }))) {
+    await prisma.language.create({
+      data: { id: CONFIG.VIETNAMESE_LANGUAGE_ID, name: 'Tiếng Việt', createdById: creatorUserId }
+    })
+  }
+}
 
-  const uniqueBrandNames = [...new Set(brandNames.map((name) => name || DEFAULT_BRAND_NAME))]
+async function findCreatorUser(): Promise<{ id: string; name: string }> {
+  const user =
+    (await prisma.user.findFirst({
+      where: { role: { name: { in: ['Admin', 'Seller'] } } }
+    })) || (await prisma.user.findFirst({ orderBy: { createdAt: 'asc' } }))
+  if (!user) throw new Error('No user found in database.')
+  return user
+}
 
-  // Đường dẫn logo mặc định
-  const DEFAULT_BRAND_LOGO =
-    'https://shopsifu.s3.ap-southeast-1.amazonaws.com/images/b7de950e-43bd-4f32-b266-d24c080c7a1e.png'
+async function optimizeDatabaseSettings(tx: PrismaClient): Promise<void> {
+  await Promise.all([
+    tx.$executeRaw`SET work_mem = '256MB'`,
+    tx.$executeRaw`SET maintenance_work_mem = '4GB'`,
+    tx.$executeRaw`SET synchronous_commit = off`,
+    tx.$executeRaw`SET random_page_cost = 1.0`
+  ])
+}
 
-  // Lấy tất cả brands hiện có trong DB (chưa bị xóa)
-  const existingBrands = await prismaClient.brand.findMany({
-    where: {
-      deletedAt: null
-    },
+async function resetDatabaseSettings(tx: PrismaClient): Promise<void> {
+  await Promise.all([
+    tx.$executeRaw`SET work_mem = '4MB'`,
+    tx.$executeRaw`SET maintenance_work_mem = '64MB'`,
+    tx.$executeRaw`SET synchronous_commit = on`
+  ])
+}
+
+// Core processing functions
+async function batchCreateBrands(
+  products: ShopeeProduct[],
+  creatorUserId: string,
+  tx: any
+): Promise<Map<string, string>> {
+  const uniqueBrandNames = [...new Set(products.map((p) => p.brand || CONFIG.DEFAULT_BRAND_NAME))]
+  const existingBrands = await tx.brand.findMany({
+    where: { deletedAt: null, name: { in: uniqueBrandNames } },
     select: { id: true, name: true }
   })
 
   const existingBrandNames = new Set(existingBrands.map((b) => b.name))
-  const seedBrandNames = new Set(uniqueBrandNames)
+  await tx.brand.updateMany({
+    where: { deletedAt: null, name: { notIn: uniqueBrandNames } },
+    data: { deletedAt: new Date() }
+  })
 
-  // Xóa (soft delete) brands có trong DB nhưng không có trong seed
-  const brandsToDelete = existingBrands.filter((b) => !seedBrandNames.has(b.name))
-  if (brandsToDelete.length > 0) {
-    await prismaClient.brand.updateMany({
-      where: {
-        id: { in: brandsToDelete.map((b) => b.id) }
-      },
-      data: {
-        deletedAt: new Date()
-      }
-    })
-    console.log(`🗑️  Soft deleted ${brandsToDelete.length} brands không còn trong seed`)
-  }
-
-  // Thêm brands mới có trong seed nhưng chưa có trong DB
-  const newBrandNames = uniqueBrandNames.filter((name) => !existingBrandNames.has(name))
-  if (newBrandNames.length > 0) {
-    await prismaClient.brand.createMany({
-      data: newBrandNames.map((name) => ({
-        name,
-        logo: DEFAULT_BRAND_LOGO,
-        createdById: creatorUserId
-      })),
+  const newBrands = uniqueBrandNames.filter((name) => !existingBrandNames.has(name))
+  if (newBrands.length) {
+    await tx.brand.createMany({
+      data: newBrands.map((name) => ({ name, logo: CONFIG.DEFAULT_AVATAR, createdById: creatorUserId })),
       skipDuplicates: true
     })
-    console.log(`✅ Created ${newBrandNames.length} new brands`)
   }
 
-  // Lấy lại tất cả brands sau khi cập nhật
-  const allBrands = await prismaClient.brand.findMany({
-    where: {
-      name: { in: uniqueBrandNames },
-      deletedAt: null
-    },
+  const allBrands = await tx.brand.findMany({
+    where: { name: { in: uniqueBrandNames }, deletedAt: null },
     select: { id: true, name: true }
   })
 
-  // Tạo map để lookup nhanh
-  const brandMap = new Map<string, string>()
-  allBrands.forEach((brand) => {
-    brandMap.set(brand.name, brand.id)
-  })
-
-  console.log(`📦 Loaded ${allBrands.length} brands into cache`)
-  return brandMap
+  return new Map(allBrands.map((brand) => [brand.name, brand.id]))
 }
 
-// Batch create categories (2-level only)
-async function batchCreateCategories(breadcrumbs: string[][], creatorUserId: string, tx?: any) {
-  const prismaClient = tx || prisma
-  console.log(`📁 Processing categories from ${breadcrumbs.length} products...`)
-
-  const categorySet = new Set<string>()
+async function batchCreateCategories(
+  products: ShopeeProduct[],
+  creatorUserId: string,
+  tx: any
+): Promise<Map<string, string>> {
+  const categorySet = new Set<string>(['Khác'])
   const parentChildPairs = new Set<string>()
 
-  // Collect unique categories (2-level max)
-  breadcrumbs.forEach((breadcrumb) => {
-    const categoryNames = breadcrumb.slice(1, -1).slice(0, 2) // Max 2 levels
-    if (categoryNames.length > 0) {
-      categorySet.add(categoryNames[0]) // Parent
-      if (categoryNames.length > 1) {
-        categorySet.add(categoryNames[1]) // Child
-        parentChildPairs.add(`${categoryNames[0]}|${categoryNames[1]}`)
+  products.forEach((p) => {
+    const names = p.breadcrumb.slice(1, -1).slice(0, 2)
+    if (names.length) {
+      categorySet.add(names[0])
+      if (names.length > 1) {
+        categorySet.add(names[1])
+        parentChildPairs.add(`${names[0]}|${names[1]}`)
       }
     }
   })
 
-  if (categorySet.size === 0) {
-    categorySet.add('Khác') // Default category
-  }
-
-  const uniqueCategoryNames = [...categorySet]
-
-  // Get existing categories
-  const existingCategories = await prismaClient.category.findMany({
-    where: {
-      name: { in: uniqueCategoryNames },
-      deletedAt: null
-    },
+  const existingCategories = await tx.category.findMany({
+    where: { name: { in: [...categorySet] }, deletedAt: null },
     select: { id: true, name: true, parentCategoryId: true }
   })
 
-  const existingCategoryMap = new Map<string, { id: string; parentCategoryId: string | null }>()
-  existingCategories.forEach((cat) => {
-    existingCategoryMap.set(cat.name, { id: cat.id, parentCategoryId: cat.parentCategoryId })
-  })
-
-  // Create missing parent categories first
-  const existingCategoryNames = new Set(existingCategories.map((c) => c.name))
+  const categoryMap = new Map(
+    existingCategories.map((cat) => [cat.name, { id: cat.id, parentCategoryId: cat.parentCategoryId }])
+  )
   const parentCategories = [...categorySet].filter(
     (name) => ![...parentChildPairs].some((pair) => pair.split('|')[1] === name)
   )
-  const newParentCategories = parentCategories.filter((name) => !existingCategoryNames.has(name))
+  const newParentCategories = parentCategories.filter((name) => !categoryMap.has(name))
 
-  if (newParentCategories.length > 0) {
-    await prismaClient.category.createMany({
-      data: newParentCategories.map((name) => ({
+  if (newParentCategories.length) {
+    await tx.category.createMany({
+      data: newParentCategories.map((name) => ({ name, createdById: creatorUserId })),
+      skipDuplicates: true
+    })
+  }
+
+  const updatedCategories = await tx.category.findMany({
+    where: { name: { in: [...categorySet] }, deletedAt: null },
+    select: { id: true, name: true, parentCategoryId: true }
+  })
+
+  categoryMap.clear()
+  updatedCategories.forEach((cat) => categoryMap.set(cat.name, { id: cat.id, parentCategoryId: cat.parentCategoryId }))
+
+  const childCategoriesToCreate = [...parentChildPairs]
+    .map((pair) => {
+      const [parentName, childName] = pair.split('|')
+      const parentCategory = categoryMap.get(parentName)
+      return parentCategory && !categoryMap.has(childName)
+        ? { name: childName, parentCategoryId: (parentCategory as any).id }
+        : null
+    })
+    .filter((cat): cat is { name: string; parentCategoryId: string } => cat !== null)
+
+  if (childCategoriesToCreate.length) {
+    await tx.category.createMany({
+      data: childCategoriesToCreate.map((cat) => ({ ...cat, createdById: creatorUserId })),
+      skipDuplicates: true
+    })
+  }
+
+  const finalCategories = await tx.category.findMany({
+    where: { name: { in: [...categorySet] }, deletedAt: null },
+    select: { id: true, name: true }
+  })
+
+  return new Map(finalCategories.map((cat) => [cat.name, cat.id]))
+}
+
+async function batchCreateUsers<T extends SellerData | CustomerData>(
+  entities: Map<string, ShopeeProduct | string>,
+  roleName: 'SELLER' | 'CLIENT',
+  creatorUserId: string,
+  tx: PrismaClient
+): Promise<Map<string, string>> {
+  const role = await tx.role.findFirst({ where: { name: roleName } })
+  if (!role) throw new Error(`${roleName} role not found`)
+
+  const existingUsers = await tx.user.findMany({
+    where: { role: { name: roleName }, deletedAt: null },
+    select: { id: true, email: true }
+  })
+
+  const userMap = new Map<string, string>()
+  const existingEmails = new Map(
+    existingUsers.map((u) => [u.email.split('.')[0].replace(roleName.toLowerCase(), ''), u.id])
+  )
+
+  const usersToCreate: Array<{
+    email: string
+    name: string
+    password: string
+    phoneNumber: string
+    avatar: string
+    status: 'ACTIVE'
+    roleId: string
+    createdById: string
+    createdAt: Date
+    updatedAt: Date
+    key: string
+  }> = []
+
+  // Tạo tất cả user data trước
+  const userDataPromises: Promise<{
+    email: string
+    name: string
+    password: string
+    phoneNumber: string
+    avatar: string
+    status: 'ACTIVE'
+    roleId: string
+    createdById: string
+    createdAt: Date
+    updatedAt: Date
+    key: string
+  }>[] = []
+
+  let index = 1
+  for (const [key, data] of entities) {
+    const email = generateEmail(roleName.toLowerCase() as 'seller' | 'client', index)
+    if (existingEmails.has(key)) {
+      userMap.set(key, existingEmails.get(key)!)
+      index++
+      continue
+    }
+
+    const name = typeof data === 'string' ? data : data.seller_name
+
+    // Hash password song song
+    userDataPromises.push(
+      hashingService.hash(generatePassword(roleName.toLowerCase() as 'seller' | 'client')).then((hashedPassword) => ({
+        email,
         name,
-        createdById: creatorUserId
-      })),
-      skipDuplicates: true
+        password: hashedPassword,
+        phoneNumber: generateVietnamesePhone(),
+        avatar: CONFIG.DEFAULT_AVATAR,
+        status: 'ACTIVE' as const,
+        roleId: role.id,
+        createdById: creatorUserId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        key
+      }))
+    )
+    index++
+  }
+
+  // Chờ tất cả password được hash
+  const userDataResults = await Promise.all(userDataPromises)
+  usersToCreate.push(...userDataResults)
+
+  // Sử dụng batch size lớn hơn cho COPY
+  const copyBatchSize = CONFIG.COPY_BATCH_SIZE
+  const copyChunks = Array.from({ length: Math.ceil(usersToCreate.length / copyBatchSize) }, (_, i) =>
+    usersToCreate.slice(i * copyBatchSize, (i + 1) * copyBatchSize)
+  )
+
+  console.log(`📦 Processing ${usersToCreate.length} users in ${copyChunks.length} batches...`)
+
+  for (let i = 0; i < copyChunks.length; i++) {
+    const chunk = copyChunks[i]
+    console.log(`🔄 Processing batch ${i + 1}/${copyChunks.length} (${chunk.length} users)...`)
+
+    const userData = chunk.map(({ key, ...data }) => data)
+    await copyUsers(userData, tx)
+
+    // Lấy IDs của users vừa tạo
+    const createdUserData = await tx.user.findMany({
+      where: { email: { in: chunk.map((u) => u.email) } },
+      select: { id: true, email: true }
     })
-    console.log(`✅ Created ${newParentCategories.length} parent categories`)
-  }
 
-  // Refresh categories after creating parents
-  const updatedCategories = await prismaClient.category.findMany({
-    where: {
-      name: { in: uniqueCategoryNames },
-      deletedAt: null
-    },
-    select: { id: true, name: true, parentCategoryId: true }
-  })
-
-  updatedCategories.forEach((cat) => {
-    existingCategoryMap.set(cat.name, { id: cat.id, parentCategoryId: cat.parentCategoryId })
-  })
-
-  // Create child categories
-  const childCategoriesToCreate: Array<{ name: string; parentCategoryId: string }> = []
-
-  for (const pair of parentChildPairs) {
-    const [parentName, childName] = pair.split('|')
-    const parentCategory = existingCategoryMap.get(parentName)
-    const childCategory = existingCategoryMap.get(childName)
-
-    if (parentCategory && !childCategory) {
-      childCategoriesToCreate.push({
-        name: childName,
-        parentCategoryId: parentCategory.id
-      })
-    }
-  }
-
-  if (childCategoriesToCreate.length > 0) {
-    await prismaClient.category.createMany({
-      data: childCategoriesToCreate.map((cat) => ({
-        ...cat,
-        createdById: creatorUserId
-      })),
-      skipDuplicates: true
+    createdUserData.forEach((u) => {
+      const userData = chunk.find((c) => c.email === u.email)
+      if (userData) userMap.set(userData.key, u.id)
     })
-    console.log(`✅ Created ${childCategoriesToCreate.length} child categories`)
   }
 
-  // Final category map
-  const finalCategories = await prismaClient.category.findMany({
-    where: {
-      name: { in: uniqueCategoryNames },
-      deletedAt: null
-    },
-    select: { id: true, name: true, parentCategoryId: true }
-  })
-
-  const categoryMap = new Map<string, string>()
-  finalCategories.forEach((cat) => {
-    categoryMap.set(cat.name, cat.id)
-  })
-
-  console.log(`📦 Loaded ${finalCategories.length} categories into cache`)
-  return categoryMap
+  return userMap
 }
 
-// Batch create sellers from unique seller_id
-async function batchCreateSellers(products: ShopeeProduct[], creatorUserId: string, tx?: any) {
-  const prismaClient = tx || prisma
-  console.log(`🏪 Processing sellers from ${products.length} products...`)
+async function batchCreateAddresses(
+  users: Array<{ id: string }>,
+  creatorUserId: string,
+  tx: PrismaClient
+): Promise<{ addressCount: number; userAddressCount: number }> {
+  const addressesToCreate: Array<{
+    name: string
+    recipient?: string
+    phoneNumber?: string
+    province: string
+    district: string
+    ward: string
+    street: string
+    addressType: 'HOME' | 'OFFICE' | 'OTHER'
+    createdById: string
+    userId: string
+    isDefault: boolean
+    createdAt: Date
+    updatedAt: Date
+  }> = []
 
-  // Extract unique sellers
-  const uniqueSellers = new Map<string, ShopeeProduct>()
-  products.forEach((product) => {
-    if (product.seller_id && product.seller_name) {
-      uniqueSellers.set(product.seller_id, product)
-    }
-  })
+  const userAddressesToCreate: Array<{
+    userId: string
+    addressId: string
+    createdAt: Date
+    updatedAt: Date
+  }> = []
 
-  console.log(`👥 Found ${uniqueSellers.size} unique sellers`)
+  users.forEach((user) => {
+    const numAddresses = Math.floor(Math.random() * 3) + 1
+    for (let i = 0; i < numAddresses; i++) {
+      const addressData = VIETNAMESE_ADDRESSES[Math.floor(Math.random() * VIETNAMESE_ADDRESSES.length)]
+      const now = new Date()
 
-  // Get existing sellers in DB
-  const existingSellers = await prismaClient.user.findMany({
-    where: {
-      role: {
-        name: 'SELLER'
-      },
-      deletedAt: null
-    },
-    select: { id: true, email: true }
-  })
-
-  const existingSellerEmails = new Set(existingSellers.map((s) => s.email))
-  const sellerMap = new Map<string, string>() // sellerId -> userId
-
-  // Get SELLER role
-  const sellerRole = await prismaClient.role.findFirst({
-    where: { name: 'SELLER' }
-  })
-
-  if (!sellerRole) {
-    throw new Error('SELLER role not found in database')
-  }
-
-  // Default avatar for sellers
-  const DEFAULT_SELLER_AVATAR =
-    'https://shopsifu.s3.ap-southeast-1.amazonaws.com/images/b7de950e-43bd-4f32-b266-d24c080c7a1e.png'
-
-  let sellerIndex = 1
-  for (const [sellerId, product] of uniqueSellers) {
-    const email = generateEmail('seller', sellerIndex)
-
-    // Skip if seller already exists
-    if (existingSellerEmails.has(email)) {
-      const existingSeller = existingSellers.find((s) => s.email === email)
-      if (existingSeller) {
-        sellerMap.set(sellerId, existingSeller.id)
-      }
-      sellerIndex++
-      continue
-    }
-
-    try {
-      const seller = await prismaClient.user.create({
-        data: {
-          email,
-          name: product.seller_name,
-          password: generatePassword('seller'),
-          phoneNumber: generateVietnamesePhone(),
-          avatar: DEFAULT_SELLER_AVATAR,
-          status: 'ACTIVE',
-          roleId: sellerRole.id,
-          createdById: creatorUserId
-        },
-        select: { id: true, email: true }
-      })
-
-      sellerMap.set(sellerId, seller.id)
-      console.log(`✅ Created seller: ${product.seller_name} (${email})`)
-      sellerIndex++
-    } catch (error) {
-      console.error(`❌ Failed to create seller ${product.seller_name}:`, error)
-    }
-  }
-
-  console.log(`📦 Created ${sellerMap.size} sellers`)
-  return sellerMap
-}
-
-// Batch create clients from unique client_name in reviews
-async function batchCreateCustomers(products: ShopeeProduct[], creatorUserId: string, tx?: any) {
-  const prismaClient = tx || prisma
-  console.log(`👤 Processing clients from product reviews...`)
-
-  // Extract unique clients from reviews
-  const uniqueCustomers = new Set<string>()
-  products.forEach((product) => {
-    if (product.product_ratings) {
-      product.product_ratings.forEach((rating) => {
-        if (rating.customer_name) {
-          uniqueCustomers.add(rating.customer_name)
-        }
+      addressesToCreate.push({
+        name: `${addressData.province} - ${addressData.district}`,
+        recipient: addressData.recipient,
+        phoneNumber: addressData.phoneNumber,
+        province: addressData.province,
+        district: addressData.district,
+        ward: addressData.ward,
+        street: addressData.street,
+        addressType: addressData.addressType,
+        createdById: creatorUserId,
+        userId: user.id,
+        isDefault: i === 0,
+        createdAt: now,
+        updatedAt: now
       })
     }
   })
-
-  console.log(`👥 Found ${uniqueCustomers.size} unique clients`)
-
-  // Get existing clients in DB
-  const existingCustomers = await prismaClient.user.findMany({
-    where: {
-      role: {
-        name: 'CLIENT'
-      },
-      deletedAt: null
-    },
-    select: { id: true, email: true }
-  })
-
-  const existingCustomerEmails = new Set(existingCustomers.map((c) => c.email))
-  const clientMap = new Map<string, string>() // clientName -> userId
-
-  // Get CLIENT role
-  const clientRole = await prismaClient.role.findFirst({
-    where: { name: 'CLIENT' }
-  })
-
-  if (!clientRole) {
-    throw new Error('CLIENT role not found in database')
-  }
-
-  // Default avatar for clients
-  const DEFAULT_CLIENT_AVATAR =
-    'https://shopsifu.s3.ap-southeast-1.amazonaws.com/images/b7de950e-43bd-4f32-b266-d24c080c7a1e.png'
-
-  let clientIndex = 1
-  for (const clientName of uniqueCustomers) {
-    const email = generateEmail('client', clientIndex)
-
-    // Skip if client already exists
-    if (existingCustomerEmails.has(email)) {
-      const existingCustomer = existingCustomers.find((c) => c.email === email)
-      if (existingCustomer) {
-        clientMap.set(clientName, existingCustomer.id)
-      }
-      clientIndex++
-      continue
-    }
-
-    try {
-      const client = await prismaClient.user.create({
-        data: {
-          email,
-          name: clientName,
-          password: generatePassword('client'),
-          phoneNumber: generateVietnamesePhone(),
-          avatar: DEFAULT_CLIENT_AVATAR,
-          status: 'ACTIVE',
-          roleId: clientRole.id,
-          createdById: creatorUserId
-        },
-        select: { id: true, email: true }
-      })
-
-      clientMap.set(clientName, client.id)
-      console.log(`✅ Created client: ${clientName} (${email})`)
-      clientIndex++
-    } catch (error) {
-      console.error(`❌ Failed to create client ${clientName}:`, error)
-    }
-  }
-
-  console.log(`📦 Created ${clientMap.size} clients`)
-  return clientMap
-}
-
-// Batch create addresses for users
-async function batchCreateAddresses(users: any[], creatorUserId: string, tx?: any) {
-  const prismaClient = tx || prisma
-  console.log(`📍 Creating addresses for ${users.length} users...`)
 
   let addressCount = 0
   let userAddressCount = 0
 
-  for (const user of users) {
-    // Create 1-3 addresses per user
-    const numAddresses = Math.floor(Math.random() * 3) + 1
+  // Sử dụng COPY operations với batch size lớn hơn
+  const copyBatchSize = CONFIG.COPY_BATCH_SIZE
+  const copyChunks = Array.from({ length: Math.ceil(addressesToCreate.length / copyBatchSize) }, (_, i) =>
+    addressesToCreate.slice(i * copyBatchSize, (i + 1) * copyBatchSize)
+  )
 
-    for (let i = 0; i < numAddresses; i++) {
-      const addressData = VIETNAMESE_ADDRESSES[Math.floor(Math.random() * VIETNAMESE_ADDRESSES.length)]
+  for (const chunk of copyChunks) {
+    // Tạo addresses
+    const addressData = chunk.map(({ userId, isDefault, ...data }) => data)
+    await copyAddresses(addressData, tx)
 
-      try {
-        // Create address
-        const address = await prismaClient.address.create({
-          data: {
-            name: `${addressData.province} - ${addressData.district}`,
-            recipient: addressData.recipient,
-            phoneNumber: addressData.phoneNumber,
-            province: addressData.province,
-            district: addressData.district,
-            ward: addressData.ward,
-            street: addressData.street,
-            addressType: addressData.addressType,
-            createdById: creatorUserId
-          },
-          select: { id: true }
-        })
+    // Lấy IDs của addresses vừa tạo
+    const createdAddressData = await tx.address.findMany({
+      where: { name: { in: chunk.map((a) => a.name) } },
+      select: { id: true, name: true }
+    })
 
-        // Create user address relationship
-        await prismaClient.userAddress.create({
-          data: {
-            userId: user.id,
-            addressId: address.id,
-            isDefault: i === 0 // First address is default
-          }
-        })
+    // Tạo user addresses
+    const userAddresses = chunk
+      .map((address) => {
+        const createdAddress = createdAddressData.find((a) => a.name === address.name)
+        return createdAddress
+          ? {
+              userId: address.userId,
+              addressId: createdAddress.id,
+              createdAt: address.createdAt,
+              updatedAt: address.updatedAt
+            }
+          : null
+      })
+      .filter((ua): ua is { userId: string; addressId: string; createdAt: Date; updatedAt: Date } => ua !== null)
 
-        addressCount++
-        userAddressCount++
-      } catch (error) {
-        console.error(`❌ Failed to create address for user ${user.email}:`, error)
-      }
+    if (userAddresses.length) {
+      await copyUserAddresses(userAddresses, tx)
     }
+
+    addressCount += chunk.length
+    userAddressCount += userAddresses.length
   }
 
-  console.log(`📍 Created ${addressCount} addresses and ${userAddressCount} user-address relationships`)
   return { addressCount, userAddressCount }
 }
 
-// Enhanced generate variants with full metadata
 function generateEnhancedVariants(
-  variations?: Array<{ name: string; variations: string[] }> | null,
-  productVariation?: Array<{ name: string; value: string | null }>,
-  product?: ShopeeProduct
+  variations?: Array<{ name: string; variations: string[] }> | null
 ): Array<{ value: string; options: string[] }> {
-  // Giữ nguyên cấu trúc variants như cũ để tương thích với validation schema
-  let baseVariants: Array<{ value: string; options: string[] }> = []
-
-  if (!variations || variations.length === 0) {
-    baseVariants = [{ value: 'Default', options: ['Default'] }]
-  } else {
-    variations.forEach((variation) => {
-      if (variation.variations && variation.variations.length > 0) {
-        baseVariants.push({
-          value: variation.name,
-          options: variation.variations
-        })
-      }
-    })
-    if (baseVariants.length === 0) {
-      baseVariants = [{ value: 'Default', options: ['Default'] }]
-    }
-  }
-
-  return baseVariants
+  if (!variations?.length) return [{ value: 'Default', options: ['Default'] }]
+  const variants = variations.filter((v) => v.variations?.length).map((v) => ({ value: v.name, options: v.variations }))
+  return variants.length ? variants : [{ value: 'Default', options: ['Default'] }]
 }
 
-// Generate product specifications separately
 function generateProductSpecifications(product?: ShopeeProduct): Array<{ name: string; value: string }> {
-  if (!product || !product['Product Specifications']) return []
-  return product['Product Specifications']
+  return product?.['Product Specifications'] || []
 }
 
-// Generate product metadata separately (không bao gồm specifications)
 function generateProductMetadata(product?: ShopeeProduct): any {
   if (!product) return null
-
   return {
-    // Shopee metrics
     metrics: {
       shopeeRating: product.rating || 0,
       shopeeReviews: product.reviews || 0,
       shopeeFavorites: product.favorite || 0,
       shopeeSold: product.sold || 0
     },
-
-    // Seller information
     seller: {
       name: product.seller_name || '',
       rating: product.seller_rating || 0,
@@ -673,8 +796,6 @@ function generateProductMetadata(product?: ShopeeProduct): any {
       joinedDate: product.seller_joined_date || null,
       sellerId: product.seller_id || ''
     },
-
-    // Shopee metadata
     shopee: {
       id: product.id || '',
       url: product.url || '',
@@ -690,719 +811,655 @@ function generateProductMetadata(product?: ShopeeProduct): any {
   }
 }
 
-// Generate SKUs from variants
 function generateSKUs(
   variants: Array<{ value: string; options: string[] }>,
   basePrice: number,
   stock: number,
   images: string[]
 ): Array<{ value: string; price: number; stock: number; image: string }> {
-  const skus: Array<{ value: string; price: number; stock: number; image: string }> = []
-
-  if (variants.length === 0 || variants[0].value === 'Default') {
-    return [
-      {
-        value: 'Default',
-        price: basePrice,
-        stock: stock,
-        image: images[0] || ''
-      }
-    ]
+  if (!variants.length || variants[0].value === 'Default') {
+    return [{ value: 'Default', price: basePrice, stock, image: images[0] || '' }]
   }
 
-  // Create cartesian product
-  function cartesianProduct(arrays: string[][]): string[][] {
-    if (arrays.length === 0) return [[]]
-    if (arrays.length === 1) return arrays[0].map((x) => [x])
-
+  const combinations = variants.reduce((acc: string[][], v) => {
     const result: string[][] = []
-    const restProduct = cartesianProduct(arrays.slice(1))
-
-    for (const item of arrays[0]) {
-      for (const restItem of restProduct) {
-        result.push([item, ...restItem])
+    const options = v.options
+    if (!acc.length) return options.map((o) => [o])
+    for (const item of acc) {
+      for (const option of options) {
+        result.push([...item, option])
       }
     }
-
     return result
-  }
+  }, [])
 
-  const variantOptions = variants.map((v) => v.options)
-  const combinations = cartesianProduct(variantOptions)
+  const stockPerSku = Math.max(1, Math.floor(stock / combinations.length))
+  const remainingStock = stock - stockPerSku * combinations.length
 
-  // Tối ưu hóa phân phối stock và image
-  const totalCombinations = combinations.length
-  const stockPerSku = Math.max(1, Math.floor(stock / totalCombinations))
-  const remainingStock = stock - stockPerSku * totalCombinations
-
-  combinations.forEach((combination, index) => {
-    // Phân phối stock đều cho các SKU, phần dư sẽ được cộng vào SKU đầu tiên
-    const skuStock = index === 0 ? stockPerSku + remainingStock : stockPerSku
-
-    // Phân phối image theo round-robin để đảm bảo tất cả images được sử dụng
-    const imageIndex = index % Math.max(1, images.length)
-
-    skus.push({
-      value: combination.join(' - '),
-      price: basePrice,
-      stock: skuStock,
-      image: images[imageIndex] || images[0] || ''
-    })
-  })
-
-  return skus
+  return combinations.map((combo, index) => ({
+    value: combo.join(' - '),
+    price: basePrice,
+    stock: index === 0 ? stockPerSku + remainingStock : stockPerSku,
+    image: images[index % Math.max(1, images.length)] || images[0] || ''
+  }))
 }
 
-// Process products in batches
 async function processProductsBatch(
   products: ShopeeProduct[],
   brandMap: Map<string, string>,
-  categoryMap: Map<string, string>
+  categoryMap: Map<string, string>,
+  sellerMap: Map<string, string>
 ): Promise<ProcessedProduct[]> {
-  const processedProducts: ProcessedProduct[] = []
+  return Promise.all(
+    Array.from({ length: Math.ceil(products.length / CONFIG.CHUNK_SIZE) }, (_, i) =>
+      products.slice(i * CONFIG.CHUNK_SIZE, (i + 1) * CONFIG.CHUNK_SIZE).map((product) => {
+        const brandId = brandMap.get(product.brand || CONFIG.DEFAULT_BRAND_NAME)
+        if (!brandId) throw new Error(`Brand not found: ${product.brand || CONFIG.DEFAULT_BRAND_NAME}`)
 
-  for (const product of products) {
-    try {
-      // Get brand ID
-      const brandName = product.brand || DEFAULT_BRAND_NAME
-      const brandId = brandMap.get(brandName)
-      if (!brandId) {
-        throw new Error(`Brand not found: ${brandName}`)
-      }
+        const categoryNames = product.breadcrumb.slice(1, -1).slice(0, 2)
+        const categoryId =
+          categoryNames.length === 0
+            ? categoryMap.get('Khác')!
+            : categoryMap.get(categoryNames[1]) || categoryMap.get(categoryNames[0])!
+        if (!categoryId) throw new Error(`Category not found: ${categoryNames.join(' > ')}`)
 
-      // Get category ID (2-level max)
-      const categoryNames = product.breadcrumb.slice(1, -1).slice(0, 2)
-      let categoryId: string
+        const validImages = product.image.filter((img) => img?.startsWith('http'))
+        const validVideos = product.video?.filter((vid) => vid?.startsWith('http')) || []
+        const variants = generateEnhancedVariants(product.variations)
+        const skus = generateSKUs(variants, product.final_price, product.stock, [...validImages, ...validVideos])
+        const specifications = generateProductSpecifications(product)
+        const metadata = generateProductMetadata(product)
+        const reviews = (product.product_ratings || []).map((rating) => ({
+          clientName: rating.customer_name,
+          rating: rating.rating_stars,
+          content: rating.review,
+          date: rating.review_date,
+          likes: rating.review_likes,
+          media: rating.review_media
+        }))
 
-      if (categoryNames.length === 0) {
-        categoryId = categoryMap.get('Khác')!
-      } else if (categoryNames.length === 1) {
-        categoryId = categoryMap.get(categoryNames[0])!
-      } else {
-        // Try child category first, fallback to parent
-        categoryId = categoryMap.get(categoryNames[1]) || categoryMap.get(categoryNames[0])!
-      }
-
-      if (!categoryId) {
-        throw new Error(`Category not found for: ${categoryNames.join(' > ')}`)
-      }
-
-      // Process images and videos
-      const validImages = product.image.filter((img) => img && img.startsWith('http'))
-      const validVideos = product.video?.filter((vid) => vid && vid.startsWith('http')) || []
-
-      // Process reviews
-      const reviews = (product.product_ratings || []).map((rating) => ({
-        clientName: rating.customer_name,
-        rating: rating.rating_stars,
-        content: rating.review,
-        date: rating.review_date,
-        likes: rating.review_likes,
-        media: rating.review_media
-      }))
-
-      // Generate enhanced variants and SKUs
-      const variants = generateEnhancedVariants(product.variations, product.product_variation, product)
-      const skus = generateSKUs(variants, product.final_price, product.stock, [...validImages, ...validVideos])
-
-      // Generate specifications and metadata separately
-      const specifications = generateProductSpecifications(product)
-      const metadata = generateProductMetadata(product)
-
-      processedProducts.push({
-        shopeeData: product,
-        brandId,
-        categoryId,
-        validImages,
-        validVideos,
-        variants,
-        specifications,
-        metadata,
-        skus,
-        reviews
+        return {
+          shopeeData: product,
+          brandId,
+          categoryId,
+          sellerId: sellerMap.get(product.seller_id) || '',
+          validImages,
+          validVideos,
+          variants,
+          specifications,
+          metadata,
+          skus,
+          reviews
+        }
       })
-    } catch (error) {
-      console.error(`❌ Failed to process product: ${product.title}`)
-      console.error(`🔍 Error: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-
-  return processedProducts
+    ).flat()
+  )
 }
 
-// Batch create reviews for products
 async function batchCreateReviews(
   processedProducts: ProcessedProduct[],
-  createdProductsMap: Map<string, string>, // Map<productName, productId>
-  clientMap: Map<string, string> // Map<clientName, userId>
+  productMap: Map<string, string>,
+  clientMap: Map<string, string>,
+  tx: PrismaClient
 ): Promise<{ success: number; failed: number }> {
   let successCount = 0
   let failedCount = 0
 
-  console.log(`📝 Creating reviews for products...`)
+  const defaultUser =
+    (await tx.user.findFirst({ where: { role: { name: { in: ['CLIENT', 'USER'] } } } })) ||
+    (await tx.user.findFirst({ orderBy: { createdAt: 'asc' } }))
+  if (!defaultUser) return { success: 0, failed: 0 }
 
-  // Get or create a default user for reviews (fallback)
-  let defaultReviewUser = await prisma.user.findFirst({
-    where: {
-      role: {
-        name: { in: ['CLIENT', 'USER'] }
-      }
-    }
+  const reviewsData: Array<{
+    content: string
+    rating: number
+    productId: string
+    userId: string
+    orderId: string
+    createdAt: Date
+    media?: string[]
+  }> = []
+  const paymentsData: Array<{ status: 'SUCCESS' }> = []
+  const ordersData: Array<{
+    userId: string
+    status: 'DELIVERED'
+    paymentId: string
+    shopId: string | null
+    receiver: any
+    createdAt: Date
+  }> = []
+
+  processedProducts.forEach((processed) => {
+    const productId = productMap.get(processed.shopeeData.title)
+    if (!productId || !processed.reviews?.length) return
+
+    processed.reviews.forEach((review) => {
+      if (!review.content?.trim()) return
+
+      const clientUserId = clientMap.get(review.clientName) || defaultUser.id
+      paymentsData.push({ status: 'SUCCESS' })
+      ordersData.push({
+        userId: clientUserId,
+        status: 'DELIVERED',
+        paymentId: '',
+        shopId: processed.sellerId || null,
+        receiver: { name: review.clientName || 'Anonymous', phone: '0000000000', address: 'N/A' },
+        createdAt: new Date(review.date)
+      })
+      reviewsData.push({
+        content: review.content.trim(),
+        rating: Math.max(1, Math.min(5, review.rating)),
+        productId,
+        userId: clientUserId,
+        orderId: '',
+        createdAt: new Date(review.date),
+        media: review.media
+      })
+    })
   })
 
-  if (!defaultReviewUser) {
-    // Find any user to use as review author (fallback)
-    defaultReviewUser = await prisma.user.findFirst({
-      orderBy: { createdAt: 'asc' }
-    })
-  }
+  const chunks = Array.from({ length: Math.ceil(reviewsData.length / CONFIG.CHUNK_SIZE) }, (_, i) => ({
+    reviews: reviewsData.slice(i * CONFIG.CHUNK_SIZE, (i + 1) * CONFIG.CHUNK_SIZE),
+    payments: paymentsData.slice(i * CONFIG.CHUNK_SIZE, (i + 1) * CONFIG.CHUNK_SIZE),
+    orders: ordersData.slice(i * CONFIG.CHUNK_SIZE, (i + 1) * CONFIG.CHUNK_SIZE)
+  }))
 
-  if (!defaultReviewUser) {
-    console.log('❌ No user found for creating reviews')
-    return { success: 0, failed: 0 }
-  }
-
-  for (const processed of processedProducts) {
-    const productId = createdProductsMap.get(processed.shopeeData.title)
-    if (!productId || !processed.reviews || processed.reviews.length === 0) {
-      continue
-    }
-
-    for (const review of processed.reviews) {
-      if (!review.content || review.content.trim() === '') {
-        continue
-      }
-
+  await Promise.all(
+    chunks.map(async ({ reviews, payments, orders }) => {
       try {
-        // Get client user ID from client map, or use default
-        const clientUserId = clientMap.get(review.clientName) || defaultReviewUser.id
-
-        // Create a fake order for this review
-        const fakePayment = await prisma.payment.create({
-          data: {
-            status: 'SUCCESS'
-          }
-        })
-
-        const fakeOrder = await prisma.order.create({
-          data: {
-            userId: clientUserId,
-            status: 'DELIVERED',
-            paymentId: fakePayment.id,
-            receiver: {
-              name: review.clientName || 'Anonymous',
-              phone: '0000000000',
-              address: 'N/A'
-            },
-            createdAt: new Date(review.date)
-          }
-        })
-
-        const reviewData = {
-          content: review.content.trim(),
-          rating: Math.max(1, Math.min(5, review.rating)), // Ensure rating is 1-5
-          productId,
-          userId: clientUserId,
-          orderId: fakeOrder.id,
-          createdAt: new Date(review.date)
-        }
-
-        const createdReview = await prisma.review.create({
-          data: reviewData
-        })
-
-        // Create review media if exists
-        if (review.media && review.media.length > 0) {
-          for (const mediaUrl of review.media) {
-            if (mediaUrl && mediaUrl.startsWith('http')) {
-              const isVideo = mediaUrl.includes('.mp4') || mediaUrl.includes('video')
-              await prisma.reviewMedia.create({
-                data: {
-                  url: mediaUrl,
-                  type: isVideo ? 'VIDEO' : 'IMAGE',
-                  reviewId: createdReview.id
-                }
-              })
-            }
-          }
-        }
-
-        successCount++
-      } catch (error) {
-        console.error(`❌ Failed to create review for product: ${processed.shopeeData.title}`)
-        console.error(`🔍 Error: ${error instanceof Error ? error.message : String(error)}`)
-        failedCount++
-      }
-    }
-  }
-
-  console.log(`✅ Successfully created ${successCount} reviews`)
-  console.log(`❌ Failed to create ${failedCount} reviews`)
-
-  return { success: successCount, failed: failedCount }
-}
-async function batchCreateProducts(
-  processedProducts: ProcessedProduct[],
-  creatorUserId: string
-): Promise<{ success: number; failed: number }> {
-  let successCount = 0
-  let failedCount = 0
-
-  console.log(`📦 Creating ${processedProducts.length} products in database...`)
-
-  // Process in smaller chunks to avoid transaction timeout
-  const chunkSize = 10
-  const skuBatchSize = 5000 // Batch size cho SKUs nếu số lượng quá lớn
-
-  // Tối ưu hóa database settings cho bulk operations
-  await prisma.$executeRaw`SET work_mem = '16MB'`
-  await prisma.$executeRaw`SET maintenance_work_mem = '256MB'`
-  await prisma.$executeRaw`SET synchronous_commit = off`
-
-  for (let i = 0; i < processedProducts.length; i += chunkSize) {
-    const chunk = processedProducts.slice(i, i + chunkSize)
-    const startTime = Date.now()
-
-    try {
-      await prisma.$transaction(async (tx) => {
-        // Step 1: Create all products first
-        const createdProducts: Array<{ id: string; name: string }> = []
-
-        for (const processed of chunk) {
-          const { shopeeData, brandId, categoryId, validImages, validVideos, variants, specifications, metadata } =
-            processed
-
-          // Combine images and videos
-          const allMedia = [...validImages, ...validVideos]
-
-          // Create product with enhanced data
-          const product = await tx.product.create({
-            data: {
-              name: shopeeData.title,
-              description: JSON.stringify(metadata), // Store metadata (không bao gồm specifications)
-              basePrice: shopeeData.final_price,
-              virtualPrice: shopeeData.initial_price,
-              brandId,
-              images: allMedia, // Include both images and videos
-              variants, // Enhanced variants
-              specifications, // Store specifications in dedicated field
-              createdById: creatorUserId,
-              publishedAt: shopeeData.is_available ? new Date() : null,
-              categories: {
-                connect: { id: categoryId }
-              }
-            },
-            select: { id: true, name: true }
+        const { createdReviews, reviewIds } = await tx.$transaction(async (tx) => {
+          const createdPayments = await tx.payment.createMany({ data: payments })
+          const paymentIds = await tx.payment.findMany({
+            where: { status: 'SUCCESS' },
+            orderBy: { createdAt: 'desc' },
+            take: payments.length,
+            select: { id: true }
           })
 
-          createdProducts.push(product)
-        }
+          const ordersWithPaymentIds = orders.map((order, index) => ({
+            ...order,
+            paymentId: paymentIds[index]?.id || ''
+          }))
 
-        const productCreationTime = Date.now() - startTime
-        console.log(`✅ Created ${createdProducts.length} products in ${productCreationTime}ms`)
-
-        // Step 2: Prepare all SKUs data for bulk insert
-        const allSkusData: Array<{
-          value: string
-          price: number
-          stock: number
-          image: string
-          productId: string
-          createdById: string
-        }> = []
-
-        for (let j = 0; j < chunk.length; j++) {
-          const processed = chunk[j]
-          const product = createdProducts[j]
-
-          // Add all SKUs for this product to the bulk array
-          processed.skus.forEach((sku) => {
-            allSkusData.push({
-              ...sku,
-              productId: product.id,
-              createdById: creatorUserId
-            })
+          await tx.order.createMany({ data: ordersWithPaymentIds })
+          const orderIds = await tx.order.findMany({
+            where: { status: 'DELIVERED' },
+            orderBy: { createdAt: 'desc' },
+            take: orders.length,
+            select: { id: true }
           })
-        }
 
-        // Step 3: Bulk insert all SKUs in batches if needed
-        if (allSkusData.length > 0) {
-          const skuStartTime = Date.now()
+          const reviewsWithOrderIds = reviews.map((review, index) => ({
+            ...review,
+            orderId: orderIds[index]?.id || ''
+          }))
 
-          if (allSkusData.length <= skuBatchSize) {
-            // Insert tất cả SKUs trong một lần
-            await tx.sKU.createMany({
-              data: allSkusData,
-              skipDuplicates: true
-            })
-            const skuTime = Date.now() - skuStartTime
-            console.log(
-              `✅ Bulk inserted ${allSkusData.length} SKUs in ${skuTime}ms (${Math.round((allSkusData.length / skuTime) * 1000)} SKUs/sec)`
-            )
-          } else {
-            // Chia nhỏ SKUs thành các batch nhỏ hơn
-            let skuInsertedCount = 0
-            for (let k = 0; k < allSkusData.length; k += skuBatchSize) {
-              const skuBatch = allSkusData.slice(k, k + skuBatchSize)
-              const batchStartTime = Date.now()
-
-              await tx.sKU.createMany({
-                data: skuBatch,
-                skipDuplicates: true
-              })
-
-              const batchTime = Date.now() - batchStartTime
-              skuInsertedCount += skuBatch.length
-              console.log(
-                `✅ Bulk inserted SKU batch ${Math.floor(k / skuBatchSize) + 1}: ${skuBatch.length} SKUs in ${batchTime}ms`
-              )
-            }
-
-            const totalSkuTime = Date.now() - skuStartTime
-            console.log(
-              `✅ Total SKUs inserted: ${skuInsertedCount} in ${totalSkuTime}ms (${Math.round((skuInsertedCount / totalSkuTime) * 1000)} SKUs/sec)`
-            )
-          }
-        }
-
-        // Step 4: Create all product translations
-        const allTranslationsData: Array<{
-          productId: string
-          languageId: string
-          name: string
-          description: string
-          createdById: string
-        }> = []
-
-        for (let j = 0; j < chunk.length; j++) {
-          const processed = chunk[j]
-          const product = createdProducts[j]
-
-          allTranslationsData.push({
-            productId: product.id,
-            languageId: VIETNAMESE_LANGUAGE_ID,
-            name: processed.shopeeData.title,
-            description: JSON.stringify(processed.metadata), // Store metadata (không bao gồm specifications)
-            createdById: creatorUserId
-          })
-        }
-
-        // Step 5: Bulk insert all translations
-        if (allTranslationsData.length > 0) {
-          const translationStartTime = Date.now()
-
-          await tx.productTranslation.createMany({
-            data: allTranslationsData,
+          const createdReviews = await tx.review.createMany({
+            data: reviewsWithOrderIds.map(({ media, ...data }) => data),
             skipDuplicates: true
           })
 
-          const translationTime = Date.now() - translationStartTime
-          console.log(`✅ Bulk inserted ${allTranslationsData.length} product translations in ${translationTime}ms`)
+          const reviewIds = await tx.review.findMany({
+            where: { content: { in: reviews.map((r) => r.content) } },
+            orderBy: { createdAt: 'desc' },
+            take: reviews.length,
+            select: { id: true }
+          })
+
+          return { createdReviews, reviewIds }
+        })
+
+        const mediaToCreate = reviews
+          .flatMap(
+            (review, index) =>
+              review.media
+                ?.filter((url) => url?.startsWith('http'))
+                .map((url) => ({
+                  url,
+                  type: (url.includes('.mp4') || url.includes('video') ? 'VIDEO' : 'IMAGE') as 'IMAGE' | 'VIDEO',
+                  reviewId: reviewIds[index]?.id || ''
+                })) || []
+          )
+          .filter((media) => media.reviewId)
+
+        if (mediaToCreate.length) {
+          await tx.reviewMedia.createMany({ data: mediaToCreate, skipDuplicates: true })
         }
 
-        const totalTime = Date.now() - startTime
-        console.log(`⏱️  Total chunk processing time: ${totalTime}ms`)
-
-        successCount += chunk.length
-      })
-
-      if (i % 50 === 0) {
-        console.log(
-          `✅ Progress: ${Math.min(i + chunkSize, processedProducts.length)}/${processedProducts.length} products`
-        )
+        successCount += createdReviews.count
+      } catch (error) {
+        console.error(`❌ Failed to create reviews batch`, error)
+        failedCount += reviews.length
       }
-    } catch (error) {
-      failedCount += chunk.length
-      console.error(`❌ Failed to create chunk ${i}-${i + chunkSize}:`)
-      console.error(`🔍 Error: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-
-  // Reset database settings
-  await prisma.$executeRaw`SET work_mem = '4MB'`
-  await prisma.$executeRaw`SET maintenance_work_mem = '64MB'`
-  await prisma.$executeRaw`SET synchronous_commit = on`
+    })
+  )
 
   return { success: successCount, failed: failedCount }
 }
 
-// Ensure language exists
-async function ensureLanguageExists() {
-  let language = await prisma.language.findUnique({
-    where: { id: VIETNAMESE_LANGUAGE_ID }
-  })
+async function batchCreateProducts(
+  processedProducts: ProcessedProduct[],
+  creatorUserId: string,
+  tx: PrismaClient
+): Promise<{ success: number; failed: number }> {
+  let successCount = 0
+  let failedCount = 0
 
-  if (!language) {
-    let creatorUser = await prisma.user.findFirst({
-      where: {
-        role: {
-          name: { in: ['Admin', 'Seller'] }
-        }
+  await optimizeDatabaseSettings(tx)
+
+  // Sử dụng COPY operations với batch size lớn hơn
+  const copyBatchSize = CONFIG.COPY_BATCH_SIZE
+  const copyChunks = Array.from({ length: Math.ceil(processedProducts.length / copyBatchSize) }, (_, i) =>
+    processedProducts.slice(i * copyBatchSize, (i + 1) * copyBatchSize)
+  )
+
+  for (const chunk of copyChunks) {
+    try {
+      const now = new Date()
+
+      // Chuẩn bị dữ liệu products
+      const productsData = chunk.map((processed) => ({
+        name: processed.shopeeData.title,
+        description: processed.shopeeData['Product Description'] || '',
+        basePrice: processed.shopeeData.final_price,
+        virtualPrice: processed.shopeeData.initial_price,
+        brandId: processed.brandId,
+        images: [...processed.validImages, ...processed.validVideos],
+        variants: processed.variants,
+        specifications: processed.specifications.length ? processed.specifications : null,
+        createdById: creatorUserId,
+        publishedAt: processed.shopeeData.is_available ? now : null,
+        createdAt: now,
+        updatedAt: now
+      }))
+
+      // Tạo products bằng COPY
+      const productIds = await copyProducts(productsData, tx)
+
+      // Chuẩn bị dữ liệu SKUs
+      const skusData = chunk.flatMap((processed, index) =>
+        processed.skus.map((sku) => ({
+          ...sku,
+          productId: productIds[index],
+          createdById: creatorUserId,
+          createdAt: now,
+          updatedAt: now
+        }))
+      )
+
+      // Chuẩn bị dữ liệu translations
+      const translationsData = chunk.map((processed, index) => ({
+        productId: productIds[index],
+        languageId: CONFIG.VIETNAMESE_LANGUAGE_ID,
+        name: processed.shopeeData.title,
+        description: processed.shopeeData['Product Description'] || '',
+        createdById: creatorUserId,
+        createdAt: now,
+        updatedAt: now
+      }))
+
+      // Tạo SKUs bằng COPY với batch size lớn
+      const skuCopyBatchSize = CONFIG.SKU_BATCH_SIZE
+      const skuCopyChunks = Array.from({ length: Math.ceil(skusData.length / skuCopyBatchSize) }, (_, i) =>
+        skusData.slice(i * skuCopyBatchSize, (i + 1) * skuCopyBatchSize)
+      )
+
+      for (const skuChunk of skuCopyChunks) {
+        await copySKUs(skuChunk, tx)
       }
-    })
 
-    if (!creatorUser) {
-      creatorUser = await prisma.user.findFirst({
-        orderBy: { createdAt: 'asc' }
-      })
-    }
-
-    if (!creatorUser) {
-      throw new Error('No user found in database. Please create at least one user first.')
-    }
-
-    language = await prisma.language.create({
-      data: {
-        id: VIETNAMESE_LANGUAGE_ID,
-        name: 'Tiếng Việt',
-        createdById: creatorUser.id
+      // Tạo translations bằng COPY
+      if (translationsData.length) {
+        await copyProductTranslations(translationsData, tx)
       }
-    })
+
+      successCount += chunk.length
+    } catch (error) {
+      console.error(`❌ Failed to create products batch`, error)
+      failedCount += chunk.length
+    }
   }
 
-  return language
+  await resetDatabaseSettings(tx)
+  return { success: successCount, failed: failedCount }
 }
 
-// Main import function
-async function importProductsOptimized() {
+async function readJsonStream(jsonPath: string): Promise<ShopeeProduct[]> {
+  try {
+    const fileContent = fs.readFileSync(jsonPath, 'utf8')
+    const products: ShopeeProduct[] = JSON.parse(fileContent)
+    console.log(`📁 Read ${products.length} products from JSON file`)
+    return products
+  } catch (error) {
+    console.error('❌ Error reading JSON file:', error)
+    return []
+  }
+}
+
+async function importProductsOptimized(): Promise<void> {
+  let timeout: NodeJS.Timeout | null = null
   try {
     console.log('🚀 Starting optimized product import...')
-    console.log(`⚙️  Batch size: ${BATCH_SIZE} products`)
 
-    // Ensure language exists
-    await ensureLanguageExists()
+    // Tối ưu connection pool cho script import
+    await prisma.$connect()
+    console.log('✅ Connected to database')
 
-    // Find creator user
-    let creatorUser = await prisma.user.findFirst({
-      where: {
-        role: {
-          name: { in: ['Admin', 'Seller'] }
-        }
-      }
-    })
+    // Set timeout cho database operations
+    timeout = setTimeout(
+      () => {
+        console.error('⏰ Database operation timeout after 15 minutes')
+        process.exit(1)
+      },
+      15 * 60 * 1000
+    ) // 15 phút timeout
+    const creatorUser = await findCreatorUser()
+    await ensureLanguageExists(creatorUser.id)
 
-    if (!creatorUser) {
-      creatorUser = await prisma.user.findFirst({
-        orderBy: { createdAt: 'asc' }
-      })
-    }
-
-    if (!creatorUser) {
-      throw new Error('No user found in database. Please create at least one user first.')
-    }
-
-    console.log(`👤 Using creator: ${creatorUser.name} (ID: ${creatorUser.id})`)
-
-    // Read JSON data
     const jsonPath = path.join(process.cwd(), 'initialScript', 'product', 'data', 'Shopee-products.json')
-    const jsonData = fs.readFileSync(jsonPath, 'utf-8')
-    const shopeeProducts: ShopeeProduct[] = JSON.parse(jsonData)
+    if (!fs.existsSync(jsonPath)) throw new Error('Shopee-products.json not found')
 
-    console.log(`📦 Total products in JSON: ${shopeeProducts.length}`)
+    const productBatches: ShopeeProduct[] = await readJsonStream(jsonPath)
+    console.log(`📊 Loaded ${productBatches.length} products from JSON file`)
 
-    // Validate products
-    const validProducts: ShopeeProduct[] = []
-    const invalidProducts: Array<{ product: ShopeeProduct; reason: string }> = []
-    const validationStats = {
-      missingId: 0,
-      missingTitle: 0,
-      invalidPrice: 0,
-      invalidStock: 0,
-      invalidBreadcrumb: 0,
-      noImages: 0,
-      noValidImages: 0
+    const validationStats: { [key: string]: number } = {
+      'Missing ID': 0,
+      'Missing title': 0,
+      'Invalid price': 0,
+      'Invalid stock': 0,
+      'Invalid breadcrumb': 0,
+      'No images': 0,
+      'No valid images': 0
     }
+    let validProducts: ShopeeProduct[] = []
 
-    for (const product of shopeeProducts) {
-      const validation = validateProduct(product)
-      if (validation.isValid) {
-        validProducts.push(product)
-      } else {
-        invalidProducts.push({ product, reason: validation.reason! })
-        const reason = validation.reason!
-        if (reason === 'Missing ID') validationStats.missingId++
-        else if (reason === 'Missing title') validationStats.missingTitle++
-        else if (reason === 'Invalid price') validationStats.invalidPrice++
-        else if (reason === 'Invalid stock') validationStats.invalidStock++
-        else if (reason === 'Invalid breadcrumb') validationStats.invalidBreadcrumb++
-        else if (reason === 'No images') validationStats.noImages++
-        else if (reason === 'No valid images') validationStats.noValidImages++
-      }
-    }
+    const validated = await Promise.all(
+      productBatches.map(async (product) => {
+        const validation = validateProduct(product)
+        if (!validation.isValid) validationStats[validation.reason!] = (validationStats[validation.reason!] || 0) + 1
+        return validation.isValid ? product : null
+      })
+    )
+    validProducts.push(...validated.filter((p): p is ShopeeProduct => p !== null))
 
-    console.log(`✅ Valid products: ${validProducts.length}`)
-    console.log(`❌ Invalid products: ${invalidProducts.length}`)
-    console.log('📊 Validation breakdown:', validationStats)
+    console.log(
+      `✅ Validated products: ${validProducts.length} valid, ${Object.values(validationStats).reduce((a, b) => a + b, 0)} invalid`
+    )
+    console.log('📈 Validation breakdown:', validationStats)
 
-    if (validProducts.length === 0) {
-      console.log('❌ No valid products to import!')
+    if (!validProducts.length) {
+      console.log('❌ No valid products to import')
       return
     }
 
-    // Get existing products in DB
+    // Sync logic giống create-permissions.ts
+    console.log('🔄 Starting data synchronization...')
+
+    // 1. Sync Products
+    console.log('📦 Syncing products...')
     const existingProducts = await prisma.product.findMany({
-      where: {
-        deletedAt: null
-      },
+      where: { deletedAt: null },
       select: { id: true, name: true }
     })
 
-    console.log(`🔄 Products currently in DB: ${existingProducts.length}`)
-
-    // Create maps for comparison
-    const validProductNames = new Set(validProducts.map((p) => p.title))
+    const validProductNames = new Map(validProducts.map((p) => [p.title, p]))
     const existingProductNames = new Set(existingProducts.map((p) => p.name))
 
-    // Find products to delete (in DB but not in JSON)
+    // Xóa products không còn trong JSON
     const productsToDelete = existingProducts.filter((p) => !validProductNames.has(p.name))
-
-    // Find products to add (in JSON but not in DB)
-    const productsToAdd = validProducts.filter((p) => !existingProductNames.has(p.title))
-
-    console.log(`🗑️  Products to delete (not in JSON): ${productsToDelete.length}`)
-    console.log(`📥 Products to add (new from JSON): ${productsToAdd.length}`)
-
-    // Step 1: Delete products not in JSON
     if (productsToDelete.length > 0) {
-      console.log('🗑️  Hard deleting products not in JSON...')
-      const deleteResult = await prisma.product.deleteMany({
-        where: {
-          id: {
-            in: productsToDelete.map((p) => p.id)
-          }
-        }
-      })
-      console.log(`✅ Hard deleted ${deleteResult.count} products`)
+      console.log(`🗑️ Deleting ${productsToDelete.length} outdated products...`)
+      await prisma.product.deleteMany({ where: { id: { in: productsToDelete.map((p) => p.id) } } })
+      console.log(`✅ Deleted ${productsToDelete.length} outdated products`)
+    } else {
+      console.log('✅ No outdated products to delete')
     }
 
-    // Step 2: Add new products from JSON
-    if (productsToAdd.length === 0) {
-      console.log('✅ No new products to add!')
+    // Thêm products mới
+    const productsToAdd = validProducts.filter((p) => !existingProductNames.has(p.title))
+    if (!productsToAdd.length) {
+      console.log('✅ No new products to add')
       return
     }
+    console.log(`📥 Adding ${productsToAdd.length} new products...`)
 
-    // Limit to batch size for processing
-    const productsToImport = productsToAdd.slice(0, BATCH_SIZE)
-    console.log(`🎯 Importing ${productsToImport.length} products (batch size: ${BATCH_SIZE})`)
-
-    // Step 3 & 4: Batch create brands & categories trong transaction
-    let brandMap: Map<string, string>
-    let categoryMap: Map<string, string>
-    let sellerMap: Map<string, string>
-    let clientMap: Map<string, string>
-
-    await prisma.$transaction(async (tx) => {
-      brandMap = await batchCreateBrands(
-        productsToImport.map((p) => p.brand || DEFAULT_BRAND_NAME),
-        creatorUser.id,
-        tx
-      )
-      categoryMap = await batchCreateCategories(
-        productsToImport.map((p) => p.breadcrumb),
-        creatorUser.id,
-        tx
-      )
+    // 2. Sync Brands
+    console.log('🏷️ Syncing brands...')
+    const uniqueBrandNames = [...new Set(productsToAdd.map((p) => p.brand || CONFIG.DEFAULT_BRAND_NAME))]
+    const existingBrands = await prisma.brand.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true }
     })
 
-    // Step 5: Create sellers and clients
-    console.log('\n👥 Creating sellers and clients...')
-    sellerMap = await batchCreateSellers(productsToImport, creatorUser.id)
-    clientMap = await batchCreateCustomers(productsToImport, creatorUser.id)
+    const existingBrandNames = new Set(existingBrands.map((b) => b.name))
+    const brandsToDelete = existingBrands.filter((b) => !uniqueBrandNames.includes(b.name))
+    const brandsToAdd = uniqueBrandNames.filter((name) => !existingBrandNames.has(name))
 
-    // Step 6: Create addresses for all users
-    console.log('\n📍 Creating addresses for users...')
-    const allUsers = await prisma.user.findMany({
-      where: {
-        deletedAt: null
-      },
+    if (brandsToDelete.length > 0) {
+      console.log(`🗑️ Deleting ${brandsToDelete.length} outdated brands...`)
+      await prisma.brand.updateMany({
+        where: { id: { in: brandsToDelete.map((b) => b.id) } },
+        data: { deletedAt: new Date() }
+      })
+      console.log(`✅ Deleted ${brandsToDelete.length} outdated brands`)
+    }
+
+    if (brandsToAdd.length > 0) {
+      console.log(`📥 Adding ${brandsToAdd.length} new brands...`)
+      await prisma.brand.createMany({
+        data: brandsToAdd.map((name) => ({ name, logo: CONFIG.DEFAULT_AVATAR, createdById: creatorUser.id })),
+        skipDuplicates: true
+      })
+      console.log(`✅ Added ${brandsToAdd.length} new brands`)
+    }
+
+    // 3. Sync Categories
+    console.log('📂 Syncing categories...')
+    const categorySet = new Set<string>(['Khác'])
+    const parentChildPairs = new Set<string>()
+
+    productsToAdd.forEach((p) => {
+      const names = p.breadcrumb.slice(1, -1).slice(0, 2)
+      if (names.length) {
+        categorySet.add(names[0])
+        if (names.length > 1) {
+          categorySet.add(names[1])
+          parentChildPairs.add(`${names[0]}|${names[1]}`)
+        }
+      }
+    })
+
+    const existingCategories = await prisma.category.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true, parentCategoryId: true }
+    })
+
+    const existingCategoryNames = new Set(existingCategories.map((c) => c.name))
+    const categoriesToDelete = existingCategories.filter((c) => !categorySet.has(c.name))
+    const categoriesToAdd = [...categorySet].filter((name) => !existingCategoryNames.has(name))
+
+    if (categoriesToDelete.length > 0) {
+      console.log(`🗑️ Deleting ${categoriesToDelete.length} outdated categories...`)
+      await prisma.category.updateMany({
+        where: { id: { in: categoriesToDelete.map((c) => c.id) } },
+        data: { deletedAt: new Date() }
+      })
+      console.log(`✅ Deleted ${categoriesToDelete.length} outdated categories`)
+    }
+
+    if (categoriesToAdd.length > 0) {
+      console.log(`📥 Adding ${categoriesToAdd.length} new categories...`)
+      await prisma.category.createMany({
+        data: categoriesToAdd.map((name) => ({ name, createdById: creatorUser.id })),
+        skipDuplicates: true
+      })
+      console.log(`✅ Added ${categoriesToAdd.length} new categories`)
+    }
+
+    // 4. Sync Users (Sellers & Customers)
+    console.log('👥 Syncing users...')
+    const uniqueSellers = new Map(
+      productsToAdd
+        .map((p) => [p.seller_id, p])
+        .filter(([_, p]) => (p as ShopeeProduct).seller_id && (p as ShopeeProduct).seller_name) as [
+        string,
+        ShopeeProduct
+      ][]
+    )
+
+    const uniqueCustomers = new Map(
+      productsToAdd
+        .flatMap((p) => p.product_ratings?.map((r) => [r.customer_name, r.customer_name]) || [])
+        .filter(([name]) => name) as [string, string][]
+    )
+
+    // Sync sellers
+    const existingSellers = await prisma.user.findMany({
+      where: { role: { name: 'SELLER' }, deletedAt: null },
       select: { id: true, email: true }
     })
-    const addressResult = await batchCreateAddresses(allUsers, creatorUser.id)
 
-    // Step 7: Process products
+    const sellerEmails = Array.from(uniqueSellers.keys()).map((_, index) => generateEmail('seller', index + 1))
+    const existingSellerEmails = new Set(existingSellers.map((s) => s.email))
+    const sellersToDelete = existingSellers.filter((s) => !sellerEmails.includes(s.email))
+    const sellersToAdd = sellerEmails.filter((email) => !existingSellerEmails.has(email))
+
+    if (sellersToDelete.length > 0) {
+      console.log(`🗑️ Deleting ${sellersToDelete.length} outdated sellers...`)
+      await prisma.user.updateMany({
+        where: { id: { in: sellersToDelete.map((s) => s.id) } },
+        data: { deletedAt: new Date() }
+      })
+      console.log(`✅ Deleted ${sellersToDelete.length} outdated sellers`)
+    }
+
+    // Sync customers
+    const existingCustomers = await prisma.user.findMany({
+      where: { role: { name: 'CLIENT' }, deletedAt: null },
+      select: { id: true, email: true }
+    })
+
+    const customerEmails = Array.from(uniqueCustomers.keys()).map((_, index) => generateEmail('client', index + 1))
+    const existingCustomerEmails = new Set(existingCustomers.map((c) => c.email))
+    const customersToDelete = existingCustomers.filter((c) => !customerEmails.includes(c.email))
+    const customersToAdd = customerEmails.filter((email) => !existingCustomerEmails.has(email))
+
+    if (customersToDelete.length > 0) {
+      console.log(`🗑️ Deleting ${customersToDelete.length} outdated customers...`)
+      await prisma.user.updateMany({
+        where: { id: { in: customersToDelete.map((c) => c.id) } },
+        data: { deletedAt: new Date() }
+      })
+      console.log(`✅ Deleted ${customersToDelete.length} outdated customers`)
+    }
+
+    // 5. Sync Addresses
+    console.log('📍 Syncing addresses...')
+    const allUsers = await prisma.user.findMany({ where: { deletedAt: null }, select: { id: true } })
+    const existingAddresses = await prisma.address.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true }
+    })
+
+    // Tính toán số lượng addresses cần thiết (mỗi user có 1-3 addresses)
+    const requiredAddressCount = allUsers.length * 2 // Giả sử mỗi user có 2 addresses
+    const addressesToDelete =
+      existingAddresses.length > requiredAddressCount ? existingAddresses.slice(requiredAddressCount) : []
+
+    if (addressesToDelete.length > 0) {
+      console.log(`🗑️ Deleting ${addressesToDelete.length} excess addresses...`)
+      await prisma.address.updateMany({
+        where: { id: { in: addressesToDelete.map((a) => a.id) } },
+        data: { deletedAt: new Date() }
+      })
+      console.log(`✅ Deleted ${addressesToDelete.length} excess addresses`)
+    }
+
+    console.log('✅ Data synchronization completed')
+
+    // Tiếp tục với việc tạo dữ liệu mới
+    let brandMap: Map<string, string> = new Map(),
+      categoryMap: Map<string, string> = new Map(),
+      sellerMap: Map<string, string>,
+      clientMap: Map<string, string>
+
+    console.log('🏷️ Creating brands...')
+    brandMap = await batchCreateBrands(productsToAdd, creatorUser.id, prisma)
+    console.log(`✅ Created ${brandMap.size} brands`)
+
+    console.log('📂 Creating categories...')
+    categoryMap = await batchCreateCategories(productsToAdd, creatorUser.id, prisma)
+    console.log(`✅ Created ${categoryMap.size} categories`)
+
+    console.log('👥 Creating sellers...')
+    sellerMap = await batchCreateUsers(uniqueSellers as Map<string, ShopeeProduct>, 'SELLER', creatorUser.id, prisma)
+    console.log(`✅ Created ${sellerMap.size} sellers`)
+
+    console.log('👤 Creating customers...')
+    clientMap = await batchCreateUsers(uniqueCustomers as Map<string, string>, 'CLIENT', creatorUser.id, prisma)
+    console.log(`✅ Created ${clientMap.size} customers`)
+
+    console.log('📍 Creating addresses...')
+    const addressResult = await batchCreateAddresses(allUsers, creatorUser.id, prisma)
+    console.log(
+      `✅ Created ${addressResult.addressCount} addresses and ${addressResult.userAddressCount} user-address relationships`
+    )
+
     console.log('🔄 Processing products...')
-    const processedProducts = await processProductsBatch(productsToImport, brandMap!, categoryMap!)
-    console.log(`✅ Successfully processed: ${processedProducts.length}/${productsToImport.length} products`)
+    const processedProducts = await processProductsBatch(productsToAdd, brandMap, categoryMap, sellerMap)
+    console.log(`✅ Processed ${processedProducts.length} products`)
 
-    // Step 8: Batch create products
-    const result = await batchCreateProducts(processedProducts, creatorUser.id)
+    console.log('📦 Creating products...')
+    const productResult = await batchCreateProducts(processedProducts, creatorUser.id, prisma)
+    console.log(`✅ Created ${productResult.success} products, failed: ${productResult.failed}`)
 
-    // Step 9: Create reviews if products were successfully created
-    let reviewResult = { success: 0, failed: 0 }
-    if (result.success > 0) {
-      console.log('\n📝 Creating product reviews...')
+    console.log('📝 Creating reviews...')
+    const productNameToIdMap = new Map(
+      (
+        await prisma.product.findMany({
+          where: { name: { in: processedProducts.map((p) => p.shopeeData.title) }, deletedAt: null },
+          select: { id: true, name: true }
+        })
+      ).map((p) => [p.name, p.id])
+    )
 
-      // Get created products map
-      const createdProducts = await prisma.product.findMany({
-        where: {
-          name: { in: processedProducts.map((p) => p.shopeeData.title) },
-          deletedAt: null
-        },
-        select: { id: true, name: true }
-      })
+    const reviewResult = await batchCreateReviews(processedProducts, productNameToIdMap, clientMap, prisma)
+    console.log(`✅ Created ${reviewResult.success} reviews, failed: ${reviewResult.failed}`)
 
-      const productNameToIdMap = new Map<string, string>()
-      createdProducts.forEach((product) => {
-        productNameToIdMap.set(product.name, product.id)
-      })
-
-      reviewResult = await batchCreateReviews(processedProducts, productNameToIdMap, clientMap!)
-    }
-
-    // Summary
-    console.log('\n🎉 Import Summary:')
-    console.log(`📊 Total products in JSON: ${shopeeProducts.length}`)
-    console.log(`✅ Valid products: ${validProducts.length}`)
-    console.log(`❌ Invalid products: ${invalidProducts.length}`)
-    console.log(`🔄 Products previously in DB: ${existingProducts.length}`)
-    console.log(`🗑️  Products deleted (not in JSON): ${productsToDelete.length}`)
-    console.log(`📥 Products added (new from JSON): ${productsToAdd.length}`)
-    console.log(`🎯 Attempted import: ${productsToImport.length}`)
-    console.log(`✅ Successfully imported: ${result.success}`)
-    console.log(`❌ Failed to import: ${result.failed}`)
-    console.log(`📝 Reviews created: ${reviewResult.success}`)
-    console.log(`❌ Reviews failed: ${reviewResult.failed}`)
-    console.log(`🏷️  Brands created/used: ${brandMap!.size}`)
-    console.log(`📁 Categories created/used: ${categoryMap!.size}`)
-    console.log(`🏪 Sellers created: ${sellerMap!.size}`)
-    console.log(`👤 Customers created: ${clientMap!.size}`)
-    console.log(`📍 Addresses created: ${addressResult.addressCount}`)
-    console.log(`🔗 User-address relationships: ${addressResult.userAddressCount}`)
-
-    if (result.success > 0) {
-      console.log('\n✅ Import completed successfully!')
-      console.log(`📊 Enhanced data imported:`)
-      console.log(`   🎬 Videos: ${processedProducts.reduce((sum, p) => sum + p.validVideos.length, 0)}`)
-      console.log(`   📋 Product specs: ${processedProducts.reduce((sum, p) => sum + p.specifications.length, 0)}`)
-      console.log(`   🏪 Seller info: ${processedProducts.filter((p) => p.shopeeData.seller_name).length}`)
-      console.log(`   📊 Metrics: ${processedProducts.filter((p) => p.shopeeData.rating > 0).length}`)
-      console.log(`   📝 Reviews: ${reviewResult.success}`)
-      console.log(`   👥 Real sellers: ${sellerMap!.size}`)
-      console.log(`   👤 Real clients: ${clientMap!.size}`)
-      console.log(`   📍 User addresses: ${addressResult.addressCount}`)
-
-      if (productsToAdd.length > BATCH_SIZE) {
-        console.log(`💡 To import all ${productsToAdd.length} new products, increase BATCH_SIZE in the script`)
-      }
-    }
+    console.log('\n🎉 Import Summary:', {
+      totalProducts: validProducts.length + Object.values(validationStats).reduce((a, b) => a + b, 0),
+      validProducts: validProducts.length,
+      invalidProducts: Object.values(validationStats).reduce((a, b) => a + b, 0),
+      existingProducts: existingProducts.length,
+      productsDeleted: productsToDelete.length,
+      productsAdded: productsToAdd.length,
+      attemptedImport: productsToAdd.length,
+      successfulImports: productResult.success,
+      failedImports: productResult.failed,
+      reviewsCreated: reviewResult.success,
+      reviewsFailed: reviewResult.failed,
+      brandsCreated: brandMap.size,
+      categoriesCreated: categoryMap.size,
+      sellersCreated: sellerMap.size,
+      customersCreated: clientMap.size,
+      addressesCreated: addressResult.addressCount,
+      userAddressRelationships: addressResult.userAddressCount
+    })
   } catch (error) {
-    console.error('❌ Fatal error during optimized import:', error)
+    console.error('❌ Fatal error during import:', error)
     throw error
   } finally {
+    if (timeout) clearTimeout(timeout)
     await prisma.$disconnect()
+    console.log('🔌 Disconnected from database')
   }
 }
 
-// Export for use as module
 export { importProductsOptimized }
 
-// Run if called directly
 if (require.main === module) {
   importProductsOptimized()
-    .then(() => {
-      console.log('🎯 Optimized import completed!')
-      process.exit(0)
-    })
+    .then(() => console.log('🎯 Optimized import completed'))
     .catch((error) => {
       console.error('💥 Optimized import failed:', error)
       process.exit(1)
