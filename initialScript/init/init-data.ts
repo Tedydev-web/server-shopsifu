@@ -1,7 +1,7 @@
 import { HashingService } from 'src/shared/services/hashing.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { RoleName } from 'src/shared/constants/role.constant'
-import { UserStatus } from 'src/shared/constants/auth.constant'
+import { UserStatus } from 'src/shared/constants/user.constant'
 const prisma = new PrismaService()
 const hashingService = new HashingService()
 const main = async () => {

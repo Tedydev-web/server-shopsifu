@@ -1,8 +1,14 @@
 import { Injectable } from '@nestjs/common'
 import { PermissionType } from 'src/shared/models/shared-permission.model'
 import { RoleType } from 'src/shared/models/shared-role.model'
-import { UserType } from 'src/shared/models/shared-user.model'
+import { UserType, AddressType } from 'src/shared/models/shared-user.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import {
+  CreateAddressBodyType,
+  UpdateAddressBodyType,
+  GetUserAddressesResType,
+  GetUserAddressDetailResType
+} from 'src/routes/profile/profile.model'
 
 type UserIncludeRolePermissionsType = UserType & { role: RoleType & { permissions: PermissionType[] } }
 
@@ -21,7 +27,9 @@ export class SharedUserRepository {
     })
   }
 
-  findUniqueIncludeRolePermissions(where: WhereUniqueUserType): Promise<UserIncludeRolePermissionsType | null> {
+  findUniqueIncludeRolePermissions(
+    where: WhereUniqueUserType
+  ): Promise<(UserIncludeRolePermissionsType & { orders: any[] }) | null> {
     return this.prismaService.user.findFirst({
       where: {
         ...where,
@@ -36,6 +44,10 @@ export class SharedUserRepository {
               }
             }
           }
+        },
+        orders: {
+          where: { deletedAt: null },
+          include: { items: true }
         }
       }
     })
@@ -48,6 +60,201 @@ export class SharedUserRepository {
         deletedAt: null
       },
       data
+    })
+  }
+
+  // ==================== ADDRESS MANAGEMENT METHODS ====================
+
+  async listAddressesByUserId(userId: string): Promise<GetUserAddressesResType['data']> {
+    const userAddresses = await this.prismaService.userAddress.findMany({
+      where: {
+        userId,
+        address: {
+          deletedAt: null
+        }
+      },
+      include: {
+        address: true
+      },
+      orderBy: {
+        isDefault: 'desc'
+      }
+    })
+
+    return userAddresses.map((userAddress) => ({
+      ...userAddress.address,
+      recipient: userAddress.address.recipient || undefined,
+      phoneNumber: userAddress.address.phoneNumber || undefined,
+      isDefault: userAddress.isDefault
+    }))
+  }
+
+  async findAddressById(addressId: string, userId: string): Promise<GetUserAddressDetailResType['data'] | null> {
+    const userAddress = await this.prismaService.userAddress.findFirst({
+      where: {
+        addressId,
+        userId,
+        address: {
+          deletedAt: null
+        }
+      },
+      include: {
+        address: true
+      }
+    })
+
+    if (!userAddress) {
+      return null
+    }
+
+    return {
+      ...userAddress.address,
+      recipient: userAddress.address.recipient || undefined,
+      phoneNumber: userAddress.address.phoneNumber || undefined,
+      isDefault: userAddress.isDefault
+    }
+  }
+
+  async createAddress(data: CreateAddressBodyType, userId: string): Promise<GetUserAddressDetailResType['data']> {
+    return this.prismaService.$transaction(async (tx) => {
+      // Lấy thông tin user để làm default cho recipient và phoneNumber nếu không được truyền
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { name: true, phoneNumber: true }
+      })
+
+      if (!user) {
+        throw new Error('User not found')
+      }
+
+      // Nếu không truyền recipient hoặc phoneNumber, lấy từ user profile
+      const addressData = {
+        ...data,
+        recipient: data.recipient || user.name,
+        phoneNumber: data.phoneNumber || user.phoneNumber,
+        createdById: userId
+      }
+
+      const address = await tx.address.create({
+        data: addressData
+      })
+
+      const isDefault = data.addressType === 'HOME'
+      if (isDefault) {
+        // Unset other default addresses for this user
+        await tx.userAddress.updateMany({
+          where: {
+            userId,
+            isDefault: true
+          },
+          data: {
+            isDefault: false
+          }
+        })
+      }
+
+      const userAddress = await tx.userAddress.create({
+        data: {
+          userId,
+          addressId: address.id,
+          isDefault
+        },
+        include: {
+          address: true
+        }
+      })
+
+      return {
+        ...userAddress.address,
+        recipient: userAddress.address.recipient || undefined,
+        phoneNumber: userAddress.address.phoneNumber || undefined,
+        isDefault: userAddress.isDefault
+      }
+    })
+  }
+
+  async updateAddress(
+    addressId: string,
+    data: UpdateAddressBodyType,
+    userId: string
+  ): Promise<GetUserAddressDetailResType['data']> {
+    // Verify user owns this address
+    const userAddress = await this.prismaService.userAddress.findFirst({
+      where: {
+        addressId,
+        userId,
+        address: {
+          deletedAt: null
+        }
+      }
+    })
+
+    if (!userAddress) {
+      throw new Error('Address not found or access denied')
+    }
+
+    const address = await this.prismaService.address.update({
+      where: {
+        id: addressId,
+        deletedAt: null
+      },
+      data: {
+        ...data,
+        updatedById: userId
+      }
+    })
+
+    return {
+      ...address,
+      recipient: address.recipient || undefined,
+      phoneNumber: address.phoneNumber || undefined,
+      isDefault: userAddress.isDefault
+    }
+  }
+
+  async deleteAddress(addressId: string, userId: string): Promise<AddressType> {
+    // Verify user owns this address
+    const userAddress = await this.prismaService.userAddress.findFirst({
+      where: {
+        addressId,
+        userId,
+        address: {
+          deletedAt: null
+        }
+      }
+    })
+
+    if (!userAddress) {
+      throw new Error('Address not found or access denied')
+    }
+
+    return this.prismaService.$transaction(async (tx) => {
+      // Soft delete the address
+      const address = await tx.address.update({
+        where: {
+          id: addressId
+        },
+        data: {
+          deletedAt: new Date(),
+          deletedById: userId
+        }
+      })
+
+      // Remove the user-address relationship
+      await tx.userAddress.delete({
+        where: {
+          userId_addressId: {
+            userId,
+            addressId
+          }
+        }
+      })
+
+      return {
+        ...address,
+        recipient: address.recipient || undefined,
+        phoneNumber: address.phoneNumber || undefined
+      }
     })
   }
 }

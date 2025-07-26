@@ -306,12 +306,26 @@ export type I18nTranslations = {
             "GET_PROFILE": string;
             "UPDATE_PROFILE": string;
             "CHANGE_PASSWORD": string;
+            "GET_ADDRESSES": string;
+            "GET_ADDRESS_DETAIL": string;
+            "CREATE_ADDRESS": string;
+            "UPDATE_ADDRESS": string;
+            "DELETE_ADDRESS": string;
+            "SET_DEFAULT_ADDRESS": string;
+            "GET_STATISTICS": string;
         };
         "error": {
             "NOT_FOUND": string;
             "INVALID_PASSWORD": string;
             "UPDATE_FAILED": string;
             "CHANGE_PASSWORD_FAILED": string;
+            "ADDRESS_NOT_FOUND": string;
+            "ADDRESS_ACCESS_DENIED": string;
+            "CREATE_ADDRESS_FAILED": string;
+            "UPDATE_ADDRESS_FAILED": string;
+            "DELETE_ADDRESS_FAILED": string;
+            "SET_DEFAULT_ADDRESS_FAILED": string;
+            "GET_STATISTICS_FAILED": string;
         };
     };
     "review": {

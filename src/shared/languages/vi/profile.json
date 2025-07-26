@@ -2,12 +2,26 @@
   "success": {
     "GET_PROFILE": "Lấy thông tin profile thành công",
     "UPDATE_PROFILE": "Cập nhật profile thành công",
-    "CHANGE_PASSWORD": "Đổi mật khẩu thành công"
+    "CHANGE_PASSWORD": "Đổi mật khẩu thành công",
+    "GET_ADDRESSES": "Lấy danh sách địa chỉ thành công",
+    "GET_ADDRESS_DETAIL": "Lấy chi tiết địa chỉ thành công",
+    "CREATE_ADDRESS": "Tạo địa chỉ thành công",
+    "UPDATE_ADDRESS": "Cập nhật địa chỉ thành công",
+    "DELETE_ADDRESS": "Xóa địa chỉ thành công",
+    "SET_DEFAULT_ADDRESS": "Đặt địa chỉ mặc định thành công",
+    "GET_STATISTICS": "Lấy thống kê thành công"
   },
   "error": {
     "NOT_FOUND": "Không tìm thấy profile",
     "INVALID_PASSWORD": "Mật khẩu hiện tại không đúng",
     "UPDATE_FAILED": "Cập nhật profile thất bại",
-    "CHANGE_PASSWORD_FAILED": "Đổi mật khẩu thất bại"
+    "CHANGE_PASSWORD_FAILED": "Đổi mật khẩu thất bại",
+    "ADDRESS_NOT_FOUND": "Không tìm thấy địa chỉ",
+    "ADDRESS_ACCESS_DENIED": "Không có quyền truy cập địa chỉ này",
+    "CREATE_ADDRESS_FAILED": "Tạo địa chỉ thất bại",
+    "UPDATE_ADDRESS_FAILED": "Cập nhật địa chỉ thất bại",
+    "DELETE_ADDRESS_FAILED": "Xóa địa chỉ thất bại",
+    "SET_DEFAULT_ADDRESS_FAILED": "Đặt địa chỉ mặc định thất bại",
+    "GET_STATISTICS_FAILED": "Lấy thống kê thất bại"
   }
 }

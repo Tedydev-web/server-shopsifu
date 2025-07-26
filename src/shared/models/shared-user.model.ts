@@ -1,4 +1,4 @@
-import { UserStatus } from 'src/shared/constants/auth.constant'
+import { AddressType, UserStatus } from 'src/shared/constants/user.constant'
 import { PermissionSchema } from 'src/shared/models/shared-permission.model'
 import { RoleSchema } from 'src/shared/models/shared-role.model'
 import { z } from 'zod'
@@ -13,6 +13,24 @@ export const UserSchema = z.object({
   totpSecret: z.string().nullable(),
   status: z.enum([UserStatus.ACTIVE, UserStatus.INACTIVE, UserStatus.BLOCKED]),
   roleId: z.string(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  deletedById: z.string().nullable(),
+  deletedAt: z.date().nullable(),
+  createdAt: z.date(),
+  updatedAt: z.date()
+})
+
+export const AddressSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(500),
+  recipient: z.string().min(1).max(500).optional(),
+  phoneNumber: z.string().min(9).max(15).optional(),
+  province: z.string().min(1).max(200),
+  district: z.string().min(1).max(200),
+  ward: z.string().min(1).max(200),
+  street: z.string().min(1).max(500),
+  addressType: z.nativeEnum(AddressType),
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),
   deletedById: z.string().nullable(),
@@ -44,6 +62,16 @@ export const GetUserProfileResSchema = z.object({
           method: true
         })
       )
+    }),
+    addresses: z.array(
+      AddressSchema.extend({
+        isDefault: z.boolean()
+      })
+    ),
+    statistics: z.object({
+      totalOrders: z.number(),
+      totalSpent: z.number(),
+      memberSince: z.date()
     })
   })
 })
@@ -60,5 +88,6 @@ export const UpdateProfileResSchema = z.object({
 })
 
 export type UserType = z.infer<typeof UserSchema>
+export type AddressType = z.infer<typeof AddressSchema>
 export type GetUserProfileResType = z.infer<typeof GetUserProfileResSchema>
 export type UpdateProfileResType = z.infer<typeof UpdateProfileResSchema>
