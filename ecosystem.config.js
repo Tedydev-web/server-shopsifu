@@ -4,7 +4,7 @@ module.exports = {
       name: 'server-shopsifu',
       script: './dist/src/main.js',
       watch: 'false',
-      instances: '10',
+      instances: '11',
       exec_mode: 'cluster',
       env: {
         NODE_ENV: 'development'
