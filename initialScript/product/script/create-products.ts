@@ -694,31 +694,53 @@ async function importProductsOptimized() {
       return
     }
 
-    // Check existing products
+    // Get existing products in DB
     const existingProducts = await prisma.product.findMany({
       where: {
-        name: { in: validProducts.map((p) => p.title) },
         deletedAt: null
       },
-      select: { name: true }
+      select: { id: true, name: true }
     })
 
+    console.log(`🔄 Products currently in DB: ${existingProducts.length}`)
+
+    // Create maps for comparison
+    const validProductNames = new Set(validProducts.map((p) => p.title))
     const existingProductNames = new Set(existingProducts.map((p) => p.name))
-    const newProducts = validProducts.filter((p) => !existingProductNames.has(p.title))
 
-    console.log(`🔄 Products already in DB: ${existingProducts.length}`)
-    console.log(`📥 New products to import: ${newProducts.length}`)
+    // Find products to delete (in DB but not in JSON)
+    const productsToDelete = existingProducts.filter((p) => !validProductNames.has(p.name))
 
-    if (newProducts.length === 0) {
-      console.log('✅ All valid products already imported!')
+    // Find products to add (in JSON but not in DB)
+    const productsToAdd = validProducts.filter((p) => !existingProductNames.has(p.title))
+
+    console.log(`🗑️  Products to delete (not in JSON): ${productsToDelete.length}`)
+    console.log(`📥 Products to add (new from JSON): ${productsToAdd.length}`)
+
+    // Step 1: Delete products not in JSON
+    if (productsToDelete.length > 0) {
+      console.log('🗑️  Hard deleting products not in JSON...')
+      const deleteResult = await prisma.product.deleteMany({
+        where: {
+          id: {
+            in: productsToDelete.map((p) => p.id)
+          }
+        }
+      })
+      console.log(`✅ Hard deleted ${deleteResult.count} products`)
+    }
+
+    // Step 2: Add new products from JSON
+    if (productsToAdd.length === 0) {
+      console.log('✅ No new products to add!')
       return
     }
 
-    // Limit to batch size for testing
-    const productsToImport = newProducts.slice(0, BATCH_SIZE)
+    // Limit to batch size for processing
+    const productsToImport = productsToAdd.slice(0, BATCH_SIZE)
     console.log(`🎯 Importing ${productsToImport.length} products (batch size: ${BATCH_SIZE})`)
 
-    // Step 1 & 2: Batch create brands & categories trong transaction
+    // Step 3 & 4: Batch create brands & categories trong transaction
     let brandMap: Map<string, string>
     let categoryMap: Map<string, string>
     await prisma.$transaction(async (tx) => {
@@ -734,12 +756,12 @@ async function importProductsOptimized() {
       )
     })
 
-    // Step 3: Process products
+    // Step 5: Process products
     console.log('🔄 Processing products...')
     const processedProducts = await processProductsBatch(productsToImport, brandMap!, categoryMap!)
     console.log(`✅ Successfully processed: ${processedProducts.length}/${productsToImport.length} products`)
 
-    // Step 4: Batch create products
+    // Step 6: Batch create products
     const result = await batchCreateProducts(processedProducts, creatorUser.id)
 
     // Summary
@@ -747,8 +769,10 @@ async function importProductsOptimized() {
     console.log(`📊 Total products in JSON: ${shopeeProducts.length}`)
     console.log(`✅ Valid products: ${validProducts.length}`)
     console.log(`❌ Invalid products: ${invalidProducts.length}`)
-    console.log(`🔄 Already in DB: ${existingProducts.length}`)
-    console.log(`📥 Attempted import: ${productsToImport.length}`)
+    console.log(`🔄 Products previously in DB: ${existingProducts.length}`)
+    console.log(`🗑️  Products deleted (not in JSON): ${productsToDelete.length}`)
+    console.log(`📥 Products added (new from JSON): ${productsToAdd.length}`)
+    console.log(`🎯 Attempted import: ${productsToImport.length}`)
     console.log(`✅ Successfully imported: ${result.success}`)
     console.log(`❌ Failed to import: ${result.failed}`)
     console.log(`🏷️  Brands created/used: ${brandMap!.size}`)
@@ -756,8 +780,8 @@ async function importProductsOptimized() {
 
     if (result.success > 0) {
       console.log('\n✅ Import completed successfully!')
-      if (newProducts.length > BATCH_SIZE) {
-        console.log(`💡 To import all ${newProducts.length} products, increase BATCH_SIZE in the script`)
+      if (productsToAdd.length > BATCH_SIZE) {
+        console.log(`💡 To import all ${productsToAdd.length} new products, increase BATCH_SIZE in the script`)
       }
     }
   } catch (error) {
