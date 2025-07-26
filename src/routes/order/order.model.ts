@@ -29,9 +29,11 @@ export const GetOrderListQuerySchema = PaginationQuerySchema.extend({
   status: OrderStatusSchema.optional()
 })
 
-export const GetOrderDetailResSchema = OrderSchema.extend({
+export const GetOrderDetailResSchema = z.object({
   message: z.string().optional(),
-  items: z.array(ProductSKUSnapshotSchema)
+  data: OrderSchema.extend({
+    items: z.array(ProductSKUSnapshotSchema)
+  })
 })
 
 export const CreateOrderBodySchema = z

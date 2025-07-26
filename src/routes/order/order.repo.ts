@@ -356,7 +356,9 @@ export class OrderRepo {
     if (!order) {
       throw OrderNotFoundException
     }
-    return order
+    return {
+      data: order
+    }
   }
 
   async cancel(userId: string, orderId: string): Promise<CancelOrderResType> {

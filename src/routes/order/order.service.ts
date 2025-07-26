@@ -61,7 +61,7 @@ export class OrderService {
     const result = await this.orderRepo.detail(user.userId, orderId)
     return {
       message: this.i18n.t('order.order.success.GET_DETAIL_SUCCESS'),
-      data: result
+      data: result.data
     }
   }
 
