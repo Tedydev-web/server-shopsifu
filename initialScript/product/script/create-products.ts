@@ -197,11 +197,11 @@ async function copyReviewMedia(
 
 // Configuration constants
 const CONFIG = {
-  BATCH_SIZE: 10000, // Tăng batch size để xử lý nhiều hơn
-  SKU_BATCH_SIZE: 20000, // Tăng SKU batch size
-  CHUNK_SIZE: 1000, // Tăng chunk size để giảm số lần gọi database
-  PARALLEL_CHUNKS: 8, // Tăng số chunk song song
-  COPY_BATCH_SIZE: 20000, // Tăng batch size cho COPY operations
+  BATCH_SIZE: 15000, // Tăng batch size để xử lý nhiều hơn
+  SKU_BATCH_SIZE: 25000, // Tăng SKU batch size
+  CHUNK_SIZE: 1500, // Tăng chunk size để giảm số lần gọi database
+  PARALLEL_CHUNKS: 12, // Tăng số chunk song song
+  COPY_BATCH_SIZE: 25000, // Tăng batch size cho COPY operations
   DEFAULT_BRAND_NAME: 'No Brand',
   VIETNAMESE_LANGUAGE_ID: 'vi',
   DEFAULT_AVATAR: 'https://shopsifu.s3.ap-southeast-1.amazonaws.com/images/b7de950e-43bd-4f32-b266-d24c080c7a1e.png',
@@ -432,12 +432,26 @@ async function findCreatorUser(): Promise<{ id: string; name: string }> {
 }
 
 async function optimizeDatabaseSettings(tx: PrismaClient): Promise<void> {
+  console.log('🔧 Optimizing database settings for bulk operations...')
+
   await Promise.all([
-    tx.$executeRaw`SET work_mem = '256MB'`,
-    tx.$executeRaw`SET maintenance_work_mem = '4GB'`,
+    // Tăng work_mem để xử lý sort và hash operations
+    tx.$executeRaw`SET work_mem = '512MB'`,
+    // Tăng maintenance_work_mem cho bulk operations
+    tx.$executeRaw`SET maintenance_work_mem = '8GB'`,
+    // Tắt synchronous_commit để tăng tốc độ
     tx.$executeRaw`SET synchronous_commit = off`,
-    tx.$executeRaw`SET random_page_cost = 1.0`
+    // Giảm random_page_cost vì dữ liệu được cache tốt
+    tx.$executeRaw`SET random_page_cost = 1.0`,
+    // Tăng temp_buffers cho temporary operations
+    tx.$executeRaw`SET temp_buffers = '256MB'`,
+    // Tăng hash_mem_multiplier cho hash operations
+    tx.$executeRaw`SET hash_mem_multiplier = 2.0`,
+    // Tắt autocommit để batch transactions
+    tx.$executeRaw`SET autocommit = off`
   ])
+
+  console.log('✅ Database settings optimized')
 }
 
 async function resetDatabaseSettings(tx: PrismaClient): Promise<void> {
@@ -636,31 +650,49 @@ async function batchCreateUsers<T extends SellerData | CustomerData>(
   const userDataResults = await Promise.all(userDataPromises)
   usersToCreate.push(...userDataResults)
 
-  // Sử dụng batch size lớn hơn cho COPY
-  const copyBatchSize = CONFIG.COPY_BATCH_SIZE
-  const copyChunks = Array.from({ length: Math.ceil(usersToCreate.length / copyBatchSize) }, (_, i) =>
-    usersToCreate.slice(i * copyBatchSize, (i + 1) * copyBatchSize)
+  // Hash passwords song song với batch lớn hơn
+  const passwordPromises = usersToCreate.map(async (user) => {
+    const hashedPassword = await hashingService.hash(user.password)
+    return { ...user, password: hashedPassword }
+  })
+
+  const usersWithHashedPasswords = await Promise.all(passwordPromises)
+  console.log(`🔐 Hashed ${usersWithHashedPasswords.length} passwords`)
+
+  // Sử dụng batch lớn hơn để giảm số lần gọi database
+  const copyBatchSize = CONFIG.COPY_BATCH_SIZE * 2 // Tăng gấp đôi batch size cho users
+  const copyChunks = Array.from({ length: Math.ceil(usersWithHashedPasswords.length / copyBatchSize) }, (_, i) =>
+    usersWithHashedPasswords.slice(i * copyBatchSize, (i + 1) * copyBatchSize)
   )
 
-  console.log(`📦 Processing ${usersToCreate.length} users in ${copyChunks.length} batches...`)
+  console.log(`📦 Processing ${copyChunks.length} user batches with size ${copyBatchSize}`)
 
   for (let i = 0; i < copyChunks.length; i++) {
     const chunk = copyChunks[i]
-    console.log(`🔄 Processing batch ${i + 1}/${copyChunks.length} (${chunk.length} users)...`)
-
     const userData = chunk.map(({ key, ...data }) => data)
+
+    console.log(`👥 Creating batch ${i + 1}/${copyChunks.length} with ${chunk.length} users...`)
     await copyUsers(userData, tx)
 
-    // Lấy IDs của users vừa tạo
-    const createdUserData = await tx.user.findMany({
-      where: { email: { in: chunk.map((u) => u.email) } },
+    // Tìm users vừa tạo để lấy IDs
+    const createdUsers = await tx.user.findMany({
+      where: {
+        email: { in: userData.map((u) => u.email) },
+        role: { name: roleName },
+        deletedAt: null
+      },
       select: { id: true, email: true }
     })
 
-    createdUserData.forEach((u) => {
-      const userData = chunk.find((c) => c.email === u.email)
-      if (userData) userMap.set(userData.key, u.id)
+    // Cập nhật userMap
+    chunk.forEach((userWithKey) => {
+      const createdUser = createdUsers.find((u) => u.email === userWithKey.email)
+      if (createdUser) {
+        userMap.set(userWithKey.key, createdUser.id)
+      }
     })
+
+    console.log(`✅ Created ${createdUsers.length} users in batch ${i + 1}`)
   }
 
   return userMap
