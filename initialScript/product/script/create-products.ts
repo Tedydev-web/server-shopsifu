@@ -35,6 +35,22 @@ interface ShopeeProduct {
     review_media?: string[]
   }>
   is_available: boolean
+  // Additional fields from JSON
+  url?: string
+  favorite?: number
+  sold?: number
+  seller_products?: number
+  seller_followers?: number
+  shop_url?: string
+  seller_chats_responded_percentage?: number
+  seller_chat_time_reply?: string
+  seller_joined_date?: string
+  domain?: string
+  category_url?: string
+  flash_sale?: boolean
+  flash_sale_time?: string | null
+  vouchers?: any
+  gmv_cal?: any
 }
 
 interface ProcessedProduct {
@@ -42,12 +58,22 @@ interface ProcessedProduct {
   brandId: string
   categoryId: string
   validImages: string[]
-  variants: Array<{ value: string; options: string[] }>
+  validVideos: string[]
+  variants: Array<{ value: string; options: string[] }> // Giữ nguyên cấu trúc cũ
+  metadata: any // Metadata riêng biệt
   skus: Array<{
     value: string
     price: number
     stock: number
     image: string
+  }>
+  reviews: Array<{
+    customerName: string
+    rating: number
+    content: string
+    date: string
+    likes?: number
+    media?: string[]
   }>
 }
 
@@ -256,27 +282,77 @@ async function batchCreateCategories(breadcrumbs: string[][], creatorUserId: str
   return categoryMap
 }
 
-// Generate variants from Shopee data
-function generateVariants(
+// Enhanced generate variants with full metadata
+function generateEnhancedVariants(
   variations?: Array<{ name: string; variations: string[] }> | null,
-  productVariation?: Array<{ name: string; value: string | null }>
+  productVariation?: Array<{ name: string; value: string | null }>,
+  product?: ShopeeProduct
 ): Array<{ value: string; options: string[] }> {
+  // Giữ nguyên cấu trúc variants như cũ để tương thích với validation schema
+  let baseVariants: Array<{ value: string; options: string[] }> = []
+
   if (!variations || variations.length === 0) {
-    return [{ value: 'Default', options: ['Default'] }]
+    baseVariants = [{ value: 'Default', options: ['Default'] }]
+  } else {
+    variations.forEach((variation) => {
+      if (variation.variations && variation.variations.length > 0) {
+        baseVariants.push({
+          value: variation.name,
+          options: variation.variations
+        })
+      }
+    })
+    if (baseVariants.length === 0) {
+      baseVariants = [{ value: 'Default', options: ['Default'] }]
+    }
   }
 
-  const variants: Array<{ value: string; options: string[] }> = []
+  return baseVariants
+}
 
-  variations.forEach((variation) => {
-    if (variation.variations && variation.variations.length > 0) {
-      variants.push({
-        value: variation.name,
-        options: variation.variations
-      })
+// Generate product metadata separately
+function generateProductMetadata(product?: ShopeeProduct): any {
+  if (!product) return null
+
+  return {
+    // Product specifications
+    specifications: product['Product Specifications'] || [],
+
+    // Shopee metrics
+    metrics: {
+      shopeeRating: product.rating || 0,
+      shopeeReviews: product.reviews || 0,
+      shopeeFavorites: product.favorite || 0,
+      shopeeSold: product.sold || 0
+    },
+
+    // Seller information
+    seller: {
+      name: product.seller_name || '',
+      rating: product.seller_rating || 0,
+      totalProducts: product.seller_products || 0,
+      followers: product.seller_followers || 0,
+      url: product.shop_url || '',
+      chatsResponseRate: product.seller_chats_responded_percentage || 0,
+      avgReplyTime: product.seller_chat_time_reply || '',
+      joinedDate: product.seller_joined_date || null,
+      sellerId: product.seller_id || ''
+    },
+
+    // Shopee metadata
+    shopee: {
+      id: product.id || '',
+      url: product.url || '',
+      categoryId: product.category_id || '',
+      currency: product.currency || 'VND',
+      domain: product.domain || '',
+      categoryUrl: product.category_url || '',
+      flashSale: product.flash_sale || false,
+      flashSaleTime: product.flash_sale_time || null,
+      vouchers: product.vouchers || null,
+      gmvCal: product.gmv_cal || null
     }
-  })
-
-  return variants.length > 0 ? variants : [{ value: 'Default', options: ['Default'] }]
+  }
 }
 
 // Generate SKUs from variants
@@ -376,20 +452,37 @@ async function processProductsBatch(
         throw new Error(`Category not found for: ${categoryNames.join(' > ')}`)
       }
 
-      // Process images
+      // Process images and videos
       const validImages = product.image.filter((img) => img && img.startsWith('http'))
+      const validVideos = product.video?.filter((vid) => vid && vid.startsWith('http')) || []
 
-      // Generate variants and SKUs
-      const variants = generateVariants(product.variations, product.product_variation)
-      const skus = generateSKUs(variants, product.final_price, product.stock, validImages)
+      // Process reviews
+      const reviews = (product.product_ratings || []).map((rating) => ({
+        customerName: rating.customer_name,
+        rating: rating.rating_stars,
+        content: rating.review,
+        date: rating.review_date,
+        likes: rating.review_likes,
+        media: rating.review_media
+      }))
+
+      // Generate enhanced variants and SKUs
+      const variants = generateEnhancedVariants(product.variations, product.product_variation, product)
+      const skus = generateSKUs(variants, product.final_price, product.stock, [...validImages, ...validVideos])
+
+      // Generate metadata
+      const metadata = generateProductMetadata(product)
 
       processedProducts.push({
         shopeeData: product,
         brandId,
         categoryId,
         validImages,
+        validVideos,
         variants,
-        skus
+        metadata,
+        skus,
+        reviews
       })
     } catch (error) {
       console.error(`❌ Failed to process product: ${product.title}`)
@@ -400,7 +493,130 @@ async function processProductsBatch(
   return processedProducts
 }
 
-// Batch create products in transaction
+// Batch create reviews for products
+async function batchCreateReviews(
+  processedProducts: ProcessedProduct[],
+  createdProductsMap: Map<string, string>, // Map<productName, productId>
+  creatorUserId: string
+): Promise<{ success: number; failed: number }> {
+  let successCount = 0
+  let failedCount = 0
+
+  console.log(`📝 Creating reviews for products...`)
+
+  // Get or create a default user for reviews (since we don't have real users)
+  let reviewUser = await prisma.user.findFirst({
+    where: {
+      role: {
+        name: { in: ['Customer', 'User'] }
+      }
+    }
+  })
+
+  if (!reviewUser) {
+    // Find any user to use as review author
+    reviewUser = await prisma.user.findFirst({
+      orderBy: { createdAt: 'asc' }
+    })
+  }
+
+  if (!reviewUser) {
+    console.log('❌ No user found for creating reviews')
+    return { success: 0, failed: 0 }
+  }
+
+  // Create fake orders for reviews
+  const allReviewsData: Array<{
+    content: string
+    rating: number
+    productId: string
+    userId: string
+    orderId: string
+    createdAt: Date
+  }> = []
+
+  const allReviewMediaData: Array<{
+    url: string
+    type: 'IMAGE' | 'VIDEO'
+    reviewId: string
+  }> = []
+
+  for (const processed of processedProducts) {
+    const productId = createdProductsMap.get(processed.shopeeData.title)
+    if (!productId || !processed.reviews || processed.reviews.length === 0) {
+      continue
+    }
+
+    for (const review of processed.reviews) {
+      if (!review.content || review.content.trim() === '') {
+        continue
+      }
+
+      try {
+        // Create a fake order for this review
+        const fakePayment = await prisma.payment.create({
+          data: {
+            status: 'SUCCESS'
+          }
+        })
+
+        const fakeOrder = await prisma.order.create({
+          data: {
+            userId: reviewUser.id,
+            status: 'DELIVERED',
+            paymentId: fakePayment.id,
+            receiver: {
+              name: review.customerName || 'Anonymous',
+              phone: '0000000000',
+              address: 'N/A'
+            },
+            createdAt: new Date(review.date)
+          }
+        })
+
+        const reviewData = {
+          content: review.content.trim(),
+          rating: Math.max(1, Math.min(5, review.rating)), // Ensure rating is 1-5
+          productId,
+          userId: reviewUser.id,
+          orderId: fakeOrder.id,
+          createdAt: new Date(review.date)
+        }
+
+        const createdReview = await prisma.review.create({
+          data: reviewData
+        })
+
+        // Create review media if exists
+        if (review.media && review.media.length > 0) {
+          for (const mediaUrl of review.media) {
+            if (mediaUrl && mediaUrl.startsWith('http')) {
+              const isVideo = mediaUrl.includes('.mp4') || mediaUrl.includes('video')
+              await prisma.reviewMedia.create({
+                data: {
+                  url: mediaUrl,
+                  type: isVideo ? 'VIDEO' : 'IMAGE',
+                  reviewId: createdReview.id
+                }
+              })
+            }
+          }
+        }
+
+        successCount++
+      } catch (error) {
+        console.error(`❌ Failed to create review for product: ${processed.shopeeData.title}`)
+        console.error(`🔍 Error: ${error instanceof Error ? error.message : String(error)}`)
+        failedCount++
+      }
+    }
+  }
+
+  console.log(`✅ Successfully created ${successCount} reviews`)
+  console.log(`❌ Failed to create ${failedCount} reviews`)
+
+  return { success: successCount, failed: failedCount }
+}
 async function batchCreateProducts(
   processedProducts: ProcessedProduct[],
   creatorUserId: string
@@ -429,18 +645,21 @@ async function batchCreateProducts(
         const createdProducts: Array<{ id: string; name: string }> = []
 
         for (const processed of chunk) {
-          const { shopeeData, brandId, categoryId, validImages, variants } = processed
+          const { shopeeData, brandId, categoryId, validImages, validVideos, variants, metadata } = processed
 
-          // Create product
+          // Combine images and videos
+          const allMedia = [...validImages, ...validVideos]
+
+          // Create product with enhanced data
           const product = await tx.product.create({
             data: {
               name: shopeeData.title,
-              description: shopeeData['Product Description'] || '',
+              description: JSON.stringify(metadata), // Store metadata in description
               basePrice: shopeeData.final_price,
               virtualPrice: shopeeData.initial_price,
               brandId,
-              images: validImages,
-              variants,
+              images: allMedia, // Include both images and videos
+              variants, // Enhanced variants with full metadata
               createdById: creatorUserId,
               publishedAt: shopeeData.is_available ? new Date() : null,
               categories: {
@@ -537,7 +756,7 @@ async function batchCreateProducts(
             productId: product.id,
             languageId: VIETNAMESE_LANGUAGE_ID,
             name: processed.shopeeData.title,
-            description: processed.shopeeData['Product Description'] || '',
+            description: JSON.stringify(processed.metadata), // Store metadata in description
             createdById: creatorUserId
           })
         }
@@ -764,6 +983,28 @@ async function importProductsOptimized() {
     // Step 6: Batch create products
     const result = await batchCreateProducts(processedProducts, creatorUser.id)
 
+    // Step 7: Create reviews if products were successfully created
+    let reviewResult = { success: 0, failed: 0 }
+    if (result.success > 0) {
+      console.log('\n📝 Creating product reviews...')
+
+      // Get created products map
+      const createdProducts = await prisma.product.findMany({
+        where: {
+          name: { in: processedProducts.map((p) => p.shopeeData.title) },
+          deletedAt: null
+        },
+        select: { id: true, name: true }
+      })
+
+      const productNameToIdMap = new Map<string, string>()
+      createdProducts.forEach((product) => {
+        productNameToIdMap.set(product.name, product.id)
+      })
+
+      reviewResult = await batchCreateReviews(processedProducts, productNameToIdMap, creatorUser.id)
+    }
+
     // Summary
     console.log('\n🎉 Import Summary:')
     console.log(`📊 Total products in JSON: ${shopeeProducts.length}`)
@@ -775,11 +1016,22 @@ async function importProductsOptimized() {
     console.log(`🎯 Attempted import: ${productsToImport.length}`)
     console.log(`✅ Successfully imported: ${result.success}`)
     console.log(`❌ Failed to import: ${result.failed}`)
+    console.log(`📝 Reviews created: ${reviewResult.success}`)
+    console.log(`❌ Reviews failed: ${reviewResult.failed}`)
     console.log(`🏷️  Brands created/used: ${brandMap!.size}`)
     console.log(`📁 Categories created/used: ${categoryMap!.size}`)
 
     if (result.success > 0) {
       console.log('\n✅ Import completed successfully!')
+      console.log(`📊 Enhanced data imported:`)
+      console.log(`   🎬 Videos: ${processedProducts.reduce((sum, p) => sum + p.validVideos.length, 0)}`)
+      console.log(
+        `   📋 Product specs: ${processedProducts.reduce((sum, p) => sum + (p.shopeeData['Product Specifications']?.length || 0), 0)}`
+      )
+      console.log(`   🏪 Seller info: ${processedProducts.filter((p) => p.shopeeData.seller_name).length}`)
+      console.log(`   📊 Metrics: ${processedProducts.filter((p) => p.shopeeData.rating > 0).length}`)
+      console.log(`   📝 Reviews: ${reviewResult.success}`)
+
       if (productsToAdd.length > BATCH_SIZE) {
         console.log(`💡 To import all ${productsToAdd.length} new products, increase BATCH_SIZE in the script`)
       }
