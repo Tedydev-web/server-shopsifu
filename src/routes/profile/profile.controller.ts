@@ -12,8 +12,7 @@ import {
   GetUserAddressesResDTO,
   GetUserAddressDetailResDTO,
   CreateAddressResDTO,
-  UpdateAddressResDTO,
-  GetUserStatisticsResDTO
+  UpdateAddressResDTO
 } from './profile.dto'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'

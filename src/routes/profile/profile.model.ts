@@ -38,6 +38,9 @@ export const CreateAddressBodySchema = AddressSchema.omit({
     recipient: true,
     phoneNumber: true
   })
+  .extend({
+    isDefault: z.boolean().optional().default(false)
+  })
   .strict()
 
 export const UpdateAddressBodySchema = CreateAddressBodySchema.partial().strict()

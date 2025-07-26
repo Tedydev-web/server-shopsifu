@@ -128,20 +128,26 @@ export class SharedUserRepository {
       }
 
       // Nếu không truyền recipient hoặc phoneNumber, lấy từ user profile
-      const addressData = {
-        ...data,
+      const addressData: any = {
+        name: data.name,
+        addressType: data.addressType,
+        createdById: userId,
         recipient: data.recipient || user.name,
-        phoneNumber: data.phoneNumber || user.phoneNumber,
-        createdById: userId
+        phoneNumber: data.phoneNumber || user.phoneNumber
       }
+      if (data.province) addressData.province = data.province
+      if (data.district) addressData.district = data.district
+      if (data.ward) addressData.ward = data.ward
+      if (data.street) addressData.street = data.street
 
       const address = await tx.address.create({
         data: addressData
       })
 
-      const isDefault = data.addressType === 'HOME'
-      if (isDefault) {
-        // Unset other default addresses for this user
+      // Xử lý isDefault - ưu tiên giá trị client truyền lên
+      let isDefault = false
+      if (data.isDefault === true) {
+        // Nếu client truyền isDefault: true, unset các địa chỉ mặc định khác
         await tx.userAddress.updateMany({
           where: {
             userId,
@@ -151,6 +157,22 @@ export class SharedUserRepository {
             isDefault: false
           }
         })
+        isDefault = true
+      } else if (data.isDefault === false) {
+        // Nếu client truyền isDefault: false, giữ nguyên
+        isDefault = false
+      } else if (data.addressType === 'HOME') {
+        // Chỉ áp dụng logic cũ khi client không truyền isDefault
+        await tx.userAddress.updateMany({
+          where: {
+            userId,
+            isDefault: true
+          },
+          data: {
+            isDefault: false
+          }
+        })
+        isDefault = true
       }
 
       const userAddress = await tx.userAddress.create({
@@ -193,6 +215,40 @@ export class SharedUserRepository {
       throw new Error('Address not found or access denied')
     }
 
+    // Xử lý isDefault khi cập nhật
+    if (data.isDefault) {
+      // Unset các địa chỉ mặc định khác
+      await this.prismaService.userAddress.updateMany({
+        where: {
+          userId,
+          isDefault: true,
+          NOT: { addressId }
+        },
+        data: {
+          isDefault: false
+        }
+      })
+      // Đặt địa chỉ này là mặc định
+      await this.prismaService.userAddress.update({
+        where: {
+          id: userAddress.id
+        },
+        data: {
+          isDefault: true
+        }
+      })
+    } else if (data.isDefault === false) {
+      // Nếu truyền false thì bỏ mặc định địa chỉ này
+      await this.prismaService.userAddress.update({
+        where: {
+          id: userAddress.id
+        },
+        data: {
+          isDefault: false
+        }
+      })
+    }
+
     const address = await this.prismaService.address.update({
       where: {
         id: addressId,
@@ -204,11 +260,17 @@ export class SharedUserRepository {
       }
     })
 
+    // Lấy lại trạng thái isDefault mới nhất
+    const updatedUserAddress = await this.prismaService.userAddress.findUnique({
+      where: { id: userAddress.id },
+      include: { address: true }
+    })
+
     return {
       ...address,
       recipient: address.recipient || undefined,
       phoneNumber: address.phoneNumber || undefined,
-      isDefault: userAddress.isDefault
+      isDefault: updatedUserAddress?.isDefault ?? false
     }
   }
 
