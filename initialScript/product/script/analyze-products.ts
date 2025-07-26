@@ -23,7 +23,7 @@ interface ShopeeProduct {
   variations?: Array<{ name: string; variations: string[] }> | null
   product_variation?: Array<{ name: string; value: string | null }>
   product_ratings?: Array<{
-    customer_name: string
+    client_name: string
     rating_stars: number
     review: string
     review_date: string
