@@ -404,13 +404,104 @@ function generatePassword(type: 'seller' | 'client'): string {
 }
 
 function validateProduct(product: ShopeeProduct): { isValid: boolean; reason?: string } {
-  if (!product.id) return { isValid: false, reason: 'Missing ID' }
+  // Kiểm tra các trường bắt buộc
+  if (!product.id?.trim()) return { isValid: false, reason: 'Missing ID' }
   if (!product.title?.trim()) return { isValid: false, reason: 'Missing title' }
   if (!product.final_price || product.final_price <= 0) return { isValid: false, reason: 'Invalid price' }
   if (product.stock == null || product.stock < 0) return { isValid: false, reason: 'Invalid stock' }
   if (!product.breadcrumb || product.breadcrumb.length < 2) return { isValid: false, reason: 'Invalid breadcrumb' }
   if (!product.image?.length) return { isValid: false, reason: 'No images' }
   if (!product.image.some((img) => img?.startsWith('http'))) return { isValid: false, reason: 'No valid images' }
+
+  // Kiểm tra seller info
+  if (!product.seller_id?.trim()) return { isValid: false, reason: 'Missing seller ID' }
+  if (!product.seller_name?.trim()) return { isValid: false, reason: 'Missing seller name' }
+
+  // Kiểm tra title length (tránh quá dài)
+  if (product.title.length > 500) return { isValid: false, reason: 'Title too long' }
+
+  // Kiểm tra price hợp lý
+  if (product.final_price > 1000000000) return { isValid: false, reason: 'Price too high' }
+
+  // Kiểm tra stock hợp lý
+  if (product.stock > 1000000000) return { isValid: false, reason: 'Stock too high' }
+
+  // Kiểm tra rating hợp lệ
+  if (product.rating < 0 || product.rating > 5) return { isValid: false, reason: 'Invalid rating' }
+
+  // Kiểm tra reviews count hợp lệ
+  if (product.reviews < 0) return { isValid: false, reason: 'Invalid reviews count' }
+
+  // Kiểm tra currency
+  if (!product.currency || !['VND', 'USD'].includes(product.currency)) {
+    return { isValid: false, reason: 'Invalid currency' }
+  }
+
+  // Kiểm tra brand name length
+  if (product.brand && product.brand.length > 100) {
+    return { isValid: false, reason: 'Brand name too long' }
+  }
+
+  // Kiểm tra description length
+  if (product['Product Description'] && product['Product Description'].length > 10000) {
+    return { isValid: false, reason: 'Description too long' }
+  }
+
+  // Kiểm tra image URLs hợp lệ
+  const invalidImages = product.image.filter((img) => !img?.startsWith('http') || img.length > 1000)
+  if (invalidImages.length > 0) return { isValid: false, reason: 'Invalid image URLs' }
+
+  // Kiểm tra video URLs hợp lệ (nếu có)
+  if (product.video) {
+    const invalidVideos = product.video.filter((vid) => !vid?.startsWith('http') || vid.length > 1000)
+    if (invalidVideos.length > 0) return { isValid: false, reason: 'Invalid video URLs' }
+  }
+
+  // Kiểm tra breadcrumb hợp lệ
+  const invalidBreadcrumb = product.breadcrumb.filter((item) => !item?.trim() || item.length > 200)
+  if (invalidBreadcrumb.length > 0) return { isValid: false, reason: 'Invalid breadcrumb items' }
+
+  // Kiểm tra specifications hợp lệ
+  if (product['Product Specifications']) {
+    const invalidSpecs = product['Product Specifications'].filter(
+      (spec) => !spec.name?.trim() || spec.name.length > 200 || !spec.value?.trim() || spec.value.length > 1000
+    )
+    if (invalidSpecs.length > 0) return { isValid: false, reason: 'Invalid specifications' }
+  }
+
+  // Kiểm tra variations hợp lệ
+  if (product.variations) {
+    const invalidVariations = product.variations.filter(
+      (variation) =>
+        !variation.name?.trim() ||
+        variation.name.length > 200 ||
+        !variation.variations?.length ||
+        variation.variations.some((v) => !v?.trim() || v.length > 200)
+    )
+    if (invalidVariations.length > 0) return { isValid: false, reason: 'Invalid variations' }
+  }
+
+  // Kiểm tra product_variation hợp lệ
+  if (product.product_variation) {
+    const invalidProductVariations = product.product_variation.filter((pv) => !pv.name?.trim() || pv.name.length > 200)
+    if (invalidProductVariations.length > 0) return { isValid: false, reason: 'Invalid product variations' }
+  }
+
+  // Kiểm tra reviews hợp lệ
+  if (product.product_ratings) {
+    const invalidReviews = product.product_ratings.filter(
+      (review) =>
+        !review.customer_name?.trim() ||
+        review.customer_name.length > 200 ||
+        review.rating_stars < 1 ||
+        review.rating_stars > 5 ||
+        !review.review?.trim() ||
+        review.review.length > 5000 ||
+        !review.review_date?.trim()
+    )
+    if (invalidReviews.length > 0) return { isValid: false, reason: 'Invalid reviews' }
+  }
+
   return { isValid: true }
 }
 
@@ -821,27 +912,83 @@ function generateSKUs(
     return [{ value: 'Default', price: basePrice, stock, image: images[0] || '' }]
   }
 
-  const combinations = variants.reduce((acc: string[][], v) => {
+  // Validation: Kiểm tra variants hợp lệ
+  const validVariants = variants.filter(
+    (v) => v.value?.trim() && v.options?.length && v.options.every((opt) => opt?.trim())
+  )
+
+  if (!validVariants.length) {
+    return [{ value: 'Default', price: basePrice, stock, image: images[0] || '' }]
+  }
+
+  // Tạo tất cả combinations có thể
+  const combinations = validVariants.reduce((acc: string[][], v) => {
     const result: string[][] = []
-    const options = v.options
-    if (!acc.length) return options.map((o) => [o])
-    for (const item of acc) {
+    const options = v.options.filter((opt) => opt?.trim()) // Lọc bỏ options rỗng
+
+    if (acc.length === 0) {
+      return options.map((opt) => [opt])
+    }
+
+    for (const existing of acc) {
       for (const option of options) {
-        result.push([...item, option])
+        result.push([...existing, option])
       }
     }
     return result
   }, [])
 
-  const stockPerSku = Math.max(1, Math.floor(stock / combinations.length))
-  const remainingStock = stock - stockPerSku * combinations.length
+  // Validation: Kiểm tra số lượng combinations hợp lý
+  if (combinations.length > 100) {
+    console.warn(`⚠️ Too many SKU combinations (${combinations.length}), limiting to 100`)
+    combinations.splice(100)
+  }
 
-  return combinations.map((combo, index) => ({
-    value: combo.join(' - '),
-    price: basePrice,
-    stock: index === 0 ? stockPerSku + remainingStock : stockPerSku,
-    image: images[index % Math.max(1, images.length)] || images[0] || ''
-  }))
+  // Tạo SKUs với validation
+  const skus: Array<{ value: string; price: number; stock: number; image: string }> = []
+  const usedValues = new Set<string>() // Để tránh trùng variant
+
+  for (let i = 0; i < combinations.length; i++) {
+    const combination = combinations[i]
+    const value = combination.join(' - ')
+
+    // Kiểm tra trùng variant
+    if (usedValues.has(value)) {
+      console.warn(`⚠️ Duplicate variant detected: ${value}, skipping`)
+      continue
+    }
+    usedValues.add(value)
+
+    // Tính toán price và stock cho từng SKU
+    const priceVariation = Math.random() * 0.2 - 0.1 // ±10% variation
+    const price = Math.max(1, Math.round(basePrice * (1 + priceVariation)))
+
+    const stockVariation = Math.random() * 0.5 + 0.5 // 50-100% of base stock
+    const skuStock = Math.max(0, Math.round(stock * stockVariation))
+
+    // Chọn image cho SKU
+    const imageIndex = i % images.length
+    const image = images[imageIndex] || images[0] || ''
+
+    skus.push({
+      value: value.length > 200 ? value.substring(0, 200) : value, // Giới hạn độ dài
+      price,
+      stock: skuStock,
+      image
+    })
+  }
+
+  // Đảm bảo có ít nhất 1 SKU
+  if (skus.length === 0) {
+    skus.push({
+      value: 'Default',
+      price: basePrice,
+      stock,
+      image: images[0] || ''
+    })
+  }
+
+  return skus
 }
 
 async function processProductsBatch(
@@ -905,134 +1052,188 @@ async function batchCreateReviews(
   let successCount = 0
   let failedCount = 0
 
-  const defaultUser =
-    (await tx.user.findFirst({ where: { role: { name: { in: ['CLIENT', 'USER'] } } } })) ||
-    (await tx.user.findFirst({ orderBy: { createdAt: 'asc' } }))
-  if (!defaultUser) return { success: 0, failed: 0 }
-
-  const reviewsData: Array<{
-    content: string
+  const allReviews: Array<{
     rating: number
+    content: string
+    userId: string
     productId: string
-    userId: string
     orderId: string
+    createdById: string
     createdAt: Date
-    media?: string[]
-  }> = []
-  const paymentsData: Array<{ status: 'SUCCESS' }> = []
-  const ordersData: Array<{
-    userId: string
-    status: 'DELIVERED'
-    paymentId: string
-    shopId: string | null
-    receiver: any
-    createdAt: Date
+    updatedAt: Date
   }> = []
 
-  processedProducts.forEach((processed) => {
-    const productId = productMap.get(processed.shopeeData.title)
-    if (!productId || !processed.reviews?.length) return
+  const allReviewMedia: Array<{
+    url: string
+    type: 'IMAGE' | 'VIDEO'
+    reviewId: string
+    createdAt: Date
+    updatedAt: Date
+  }> = []
 
-    processed.reviews.forEach((review) => {
-      if (!review.content?.trim()) return
-
-      const clientUserId = clientMap.get(review.clientName) || defaultUser.id
-      paymentsData.push({ status: 'SUCCESS' })
-      ordersData.push({
-        userId: clientUserId,
-        status: 'DELIVERED',
-        paymentId: '',
-        shopId: processed.sellerId || null,
-        receiver: { name: review.clientName || 'Anonymous', phone: '0000000000', address: 'N/A' },
-        createdAt: new Date(review.date)
-      })
-      reviewsData.push({
-        content: review.content.trim(),
-        rating: Math.max(1, Math.min(5, review.rating)),
-        productId,
-        userId: clientUserId,
-        orderId: '',
-        createdAt: new Date(review.date),
-        media: review.media
-      })
-    })
+  // Validation: Kiểm tra trùng lặp reviews trong database
+  const existingReviews = await tx.review.findMany({
+    select: { id: true, content: true, userId: true, productId: true }
   })
 
-  const chunks = Array.from({ length: Math.ceil(reviewsData.length / CONFIG.CHUNK_SIZE) }, (_, i) => ({
-    reviews: reviewsData.slice(i * CONFIG.CHUNK_SIZE, (i + 1) * CONFIG.CHUNK_SIZE),
-    payments: paymentsData.slice(i * CONFIG.CHUNK_SIZE, (i + 1) * CONFIG.CHUNK_SIZE),
-    orders: ordersData.slice(i * CONFIG.CHUNK_SIZE, (i + 1) * CONFIG.CHUNK_SIZE)
-  }))
-
-  await Promise.all(
-    chunks.map(async ({ reviews, payments, orders }) => {
-      try {
-        const { createdReviews, reviewIds } = await tx.$transaction(async (tx) => {
-          const createdPayments = await tx.payment.createMany({ data: payments })
-          const paymentIds = await tx.payment.findMany({
-            where: { status: 'SUCCESS' },
-            orderBy: { createdAt: 'desc' },
-            take: payments.length,
-            select: { id: true }
-          })
-
-          const ordersWithPaymentIds = orders.map((order, index) => ({
-            ...order,
-            paymentId: paymentIds[index]?.id || ''
-          }))
-
-          await tx.order.createMany({ data: ordersWithPaymentIds })
-          const orderIds = await tx.order.findMany({
-            where: { status: 'DELIVERED' },
-            orderBy: { createdAt: 'desc' },
-            take: orders.length,
-            select: { id: true }
-          })
-
-          const reviewsWithOrderIds = reviews.map((review, index) => ({
-            ...review,
-            orderId: orderIds[index]?.id || ''
-          }))
-
-          const createdReviews = await tx.review.createMany({
-            data: reviewsWithOrderIds.map(({ media, ...data }) => data),
-            skipDuplicates: true
-          })
-
-          const reviewIds = await tx.review.findMany({
-            where: { content: { in: reviews.map((r) => r.content) } },
-            orderBy: { createdAt: 'desc' },
-            take: reviews.length,
-            select: { id: true }
-          })
-
-          return { createdReviews, reviewIds }
-        })
-
-        const mediaToCreate = reviews
-          .flatMap(
-            (review, index) =>
-              review.media
-                ?.filter((url) => url?.startsWith('http'))
-                .map((url) => ({
-                  url,
-                  type: (url.includes('.mp4') || url.includes('video') ? 'VIDEO' : 'IMAGE') as 'IMAGE' | 'VIDEO',
-                  reviewId: reviewIds[index]?.id || ''
-                })) || []
-          )
-          .filter((media) => media.reviewId)
-
-        if (mediaToCreate.length) {
-          await tx.reviewMedia.createMany({ data: mediaToCreate, skipDuplicates: true })
-        }
-
-        successCount += createdReviews.count
-      } catch (error) {
-        console.error(`❌ Failed to create reviews batch`, error)
-        failedCount += reviews.length
-      }
-    })
+  const existingReviewKey = new Set(
+    existingReviews.map((r) => `${r.userId}-${r.productId}-${r.content.substring(0, 50)}`)
   )
+
+  for (const processed of processedProducts) {
+    const productId = productMap.get(processed.shopeeData.title)
+    if (!productId) continue
+
+    // Validation: Kiểm tra reviews hợp lệ
+    const validReviews = processed.reviews.filter((review) => {
+      // Kiểm tra dữ liệu cơ bản
+      if (!review.clientName?.trim()) {
+        console.warn(`⚠️ Review missing client name for product ${processed.shopeeData.title}, skipping`)
+        return false
+      }
+      if (!review.content?.trim()) {
+        console.warn(`⚠️ Review missing content for product ${processed.shopeeData.title}, skipping`)
+        return false
+      }
+      if (review.rating < 1 || review.rating > 5) {
+        console.warn(
+          `⚠️ Review has invalid rating ${review.rating} for product ${processed.shopeeData.title}, skipping`
+        )
+        return false
+      }
+      if (review.content.length > 5000) {
+        console.warn(`⚠️ Review content too long for product ${processed.shopeeData.title}, skipping`)
+        return false
+      }
+
+      // Kiểm tra trùng lặp
+      const clientId = clientMap.get(review.clientName)
+      if (!clientId) {
+        console.warn(`⚠️ Review client not found: ${review.clientName}, skipping`)
+        return false
+      }
+
+      const reviewKey = `${clientId}-${productId}-${review.content.substring(0, 50)}`
+      if (existingReviewKey.has(reviewKey)) {
+        console.warn(`⚠️ Duplicate review detected for product ${processed.shopeeData.title}, skipping`)
+        return false
+      }
+
+      existingReviewKey.add(reviewKey)
+      return true
+    })
+
+    for (const review of validReviews) {
+      const clientId = clientMap.get(review.clientName)
+      if (!clientId) continue
+
+      // Tạo fake payment trước
+      const fakePayment = await tx.payment.create({
+        data: {
+          status: 'SUCCESS',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      })
+
+      // Tạo fake order cho review với paymentId
+      const fakeOrder = await tx.order.create({
+        data: {
+          userId: clientId,
+          status: 'DELIVERED',
+          receiver: {
+            name: review.clientName,
+            phone: generateVietnamesePhone(),
+            address: 'Fake address for review'
+          },
+          shopId: processed.sellerId,
+          paymentId: fakePayment.id,
+          createdById: clientId,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      })
+
+      const now = new Date()
+      allReviews.push({
+        rating: review.rating,
+        content: review.content,
+        userId: clientId,
+        productId,
+        orderId: fakeOrder.id,
+        createdById: clientId,
+        createdAt: now,
+        updatedAt: now
+      })
+    }
+  }
+
+  // Tạo reviews theo batch
+  const reviewBatchSize = CONFIG.COPY_BATCH_SIZE
+  const reviewBatches = Array.from({ length: Math.ceil(allReviews.length / reviewBatchSize) }, (_, i) =>
+    allReviews.slice(i * reviewBatchSize, (i + 1) * reviewBatchSize)
+  )
+
+  for (const batch of reviewBatches) {
+    if (batch.length === 0) continue
+
+    try {
+      const reviewIds = await copyReviews(batch, tx)
+
+      // Tạo review media nếu có
+      for (let i = 0; i < batch.length; i++) {
+        const review = batch[i]
+        const reviewId = reviewIds[i]
+        if (!reviewId) continue
+
+        const processed = processedProducts.find((p) => productMap.get(p.shopeeData.title) === review.productId)
+
+        if (processed) {
+          const reviewData = processed.reviews.find(
+            (r) => clientMap.get(r.clientName) === review.userId && r.content === review.content
+          )
+
+          if (reviewData?.media?.length) {
+            const mediaToCreate = reviewData.media
+              .filter((url) => url?.startsWith('http'))
+              .slice(0, 5) // Giới hạn 5 media per review
+              .map((url) => ({
+                url,
+                type: (url.includes('.mp4') || url.includes('video') ? 'VIDEO' : 'IMAGE') as 'IMAGE' | 'VIDEO',
+                reviewId,
+                createdAt: review.createdAt,
+                updatedAt: review.updatedAt
+              }))
+
+            if (mediaToCreate.length > 0) {
+              allReviewMedia.push(...mediaToCreate)
+            }
+          }
+        }
+      }
+
+      successCount += batch.length
+    } catch (error) {
+      console.error(`❌ Failed to create reviews batch:`, error)
+      failedCount += batch.length
+    }
+  }
+
+  // Tạo review media theo batch
+  const mediaBatchSize = CONFIG.COPY_BATCH_SIZE
+  const mediaBatches = Array.from({ length: Math.ceil(allReviewMedia.length / mediaBatchSize) }, (_, i) =>
+    allReviewMedia.slice(i * mediaBatchSize, (i + 1) * mediaBatchSize)
+  )
+
+  for (const batch of mediaBatches) {
+    if (batch.length === 0) continue
+
+    try {
+      await copyReviewMedia(batch, tx)
+    } catch (error) {
+      console.error(`❌ Failed to create review media batch:`, error)
+    }
+  }
 
   return { success: successCount, failed: failedCount }
 }
@@ -1047,47 +1248,144 @@ async function batchCreateProducts(
 
   await optimizeDatabaseSettings(tx)
 
-  // Sử dụng COPY operations với batch size lớn hơn
-  const copyBatchSize = CONFIG.COPY_BATCH_SIZE
-  const copyChunks = Array.from({ length: Math.ceil(processedProducts.length / copyBatchSize) }, (_, i) =>
-    processedProducts.slice(i * copyBatchSize, (i + 1) * copyBatchSize)
+  const chunkSize = CONFIG.CHUNK_SIZE
+  const chunks = Array.from({ length: Math.ceil(processedProducts.length / chunkSize) }, (_, i) =>
+    processedProducts.slice(i * chunkSize, (i + 1) * chunkSize)
   )
 
-  for (const chunk of copyChunks) {
+  for (const chunk of chunks) {
     try {
-      const now = new Date()
+      console.log(`🔄 Processing chunk of ${chunk.length} products...`)
 
-      // Chuẩn bị dữ liệu products
+      // Validation: Kiểm tra trùng lặp trong database
+      const productNames = chunk.map((p) => p.shopeeData.title)
+      const existingProducts = await tx.product.findMany({
+        where: {
+          name: { in: productNames },
+          deletedAt: null
+        },
+        select: { id: true, name: true }
+      })
+
+      const existingProductNames = new Set(existingProducts.map((p) => p.name))
+      const duplicateProducts = chunk.filter((p) => existingProductNames.has(p.shopeeData.title))
+
+      if (duplicateProducts.length > 0) {
+        console.warn(
+          `⚠️ Found ${duplicateProducts.length} duplicate products, skipping:`,
+          duplicateProducts.map((p) => p.shopeeData.title).slice(0, 5)
+        )
+        chunk.splice(0, duplicateProducts.length)
+      }
+
+      if (chunk.length === 0) {
+        console.log('✅ No valid products to create in this chunk')
+        continue
+      }
+
+      const now = new Date()
       const productsData = chunk.map((processed) => ({
         name: processed.shopeeData.title,
         description: processed.shopeeData['Product Description'] || '',
         basePrice: processed.shopeeData.final_price,
         virtualPrice: processed.shopeeData.initial_price,
         brandId: processed.brandId,
-        images: [...processed.validImages, ...processed.validVideos],
+        images: processed.validImages,
         variants: processed.variants,
-        specifications: processed.specifications.length ? processed.specifications : null,
+        specifications: processed.specifications,
         createdById: creatorUserId,
         publishedAt: processed.shopeeData.is_available ? now : null,
         createdAt: now,
         updatedAt: now
       }))
 
-      // Tạo products bằng COPY
-      const productIds = await copyProducts(productsData, tx)
+      // Validation: Kiểm tra dữ liệu trước khi tạo
+      const validProductsData = productsData.filter((product) => {
+        if (!product.name?.trim()) {
+          console.warn(`⚠️ Product missing name, skipping`)
+          return false
+        }
+        if (product.basePrice <= 0) {
+          console.warn(`⚠️ Product ${product.name} has invalid price: ${product.basePrice}, skipping`)
+          return false
+        }
+        if (!product.brandId) {
+          console.warn(`⚠️ Product ${product.name} missing brandId, skipping`)
+          return false
+        }
+        if (!product.images?.length) {
+          console.warn(`⚠️ Product ${product.name} missing images, skipping`)
+          return false
+        }
+        return true
+      })
 
-      // Chuẩn bị dữ liệu SKUs
-      const skusData = chunk.flatMap((processed, index) =>
-        processed.skus.map((sku) => ({
+      if (validProductsData.length === 0) {
+        console.log('✅ No valid products to create in this chunk after validation')
+        continue
+      }
+
+      const productIds = await copyProducts(validProductsData, tx)
+
+      // Tạo SKUs với validation
+      const allSkusData: Array<{
+        value: string
+        price: number
+        stock: number
+        image: string
+        productId: string
+        createdById: string
+        createdAt: Date
+        updatedAt: Date
+      }> = []
+
+      for (let i = 0; i < chunk.length; i++) {
+        const processed = chunk[i]
+        const productId = productIds[i]
+
+        if (!productId) continue
+
+        // Validation: Kiểm tra SKUs trước khi tạo
+        const skus = processed.skus.filter((sku) => {
+          if (!sku.value?.trim()) {
+            console.warn(`⚠️ SKU missing value for product ${processed.shopeeData.title}, skipping`)
+            return false
+          }
+          if (sku.price <= 0) {
+            console.warn(`⚠️ SKU ${sku.value} has invalid price: ${sku.price}, skipping`)
+            return false
+          }
+          if (sku.stock < 0) {
+            console.warn(`⚠️ SKU ${sku.value} has invalid stock: ${sku.stock}, skipping`)
+            return false
+          }
+          return true
+        })
+
+        const skusData = skus.map((sku) => ({
           ...sku,
-          productId: productIds[index],
+          productId,
           createdById: creatorUserId,
           createdAt: now,
           updatedAt: now
         }))
+
+        allSkusData.push(...skusData)
+      }
+
+      // Tạo SKUs theo batch
+      const skuCopyBatchSize = CONFIG.SKU_BATCH_SIZE
+      const skuCopyChunks = Array.from({ length: Math.ceil(allSkusData.length / skuCopyBatchSize) }, (_, i) =>
+        allSkusData.slice(i * skuCopyBatchSize, (i + 1) * skuCopyBatchSize)
       )
 
-      // Chuẩn bị dữ liệu translations
+      for (const skuChunk of skuCopyChunks) {
+        if (skuChunk.length > 0) {
+          await copySKUs(skuChunk, tx)
+        }
+      }
+
+      // Tạo translations
       const translationsData = chunk.map((processed, index) => ({
         productId: productIds[index],
         languageId: CONFIG.VIETNAMESE_LANGUAGE_ID,
@@ -1098,22 +1396,12 @@ async function batchCreateProducts(
         updatedAt: now
       }))
 
-      // Tạo SKUs bằng COPY với batch size lớn
-      const skuCopyBatchSize = CONFIG.SKU_BATCH_SIZE
-      const skuCopyChunks = Array.from({ length: Math.ceil(skusData.length / skuCopyBatchSize) }, (_, i) =>
-        skusData.slice(i * skuCopyBatchSize, (i + 1) * skuCopyBatchSize)
-      )
-
-      for (const skuChunk of skuCopyChunks) {
-        await copySKUs(skuChunk, tx)
-      }
-
-      // Tạo translations bằng COPY
       if (translationsData.length) {
         await copyProductTranslations(translationsData, tx)
       }
 
       successCount += chunk.length
+      console.log(`✅ Successfully processed ${chunk.length} products`)
     } catch (error) {
       console.error(`❌ Failed to create products batch`, error)
       failedCount += chunk.length
@@ -1209,8 +1497,47 @@ async function importProductsOptimized(): Promise<void> {
     const productsToDelete = existingProducts.filter((p) => !validProductNames.has(p.name))
     if (productsToDelete.length > 0) {
       console.log(`🗑️ Deleting ${productsToDelete.length} outdated products...`)
-      await prisma.product.deleteMany({ where: { id: { in: productsToDelete.map((p) => p.id) } } })
-      console.log(`✅ Deleted ${productsToDelete.length} outdated products`)
+
+      // Xóa reviews trước để tránh foreign key constraint
+      const productIdsToDelete = productsToDelete.map((p) => p.id)
+      console.log(`🗑️ Deleting reviews for ${productIdsToDelete.length} products...`)
+
+      // Xóa review media trước
+      await prisma.reviewMedia.deleteMany({
+        where: {
+          review: {
+            productId: { in: productIdsToDelete }
+          }
+        }
+      })
+
+      // Xóa reviews
+      await prisma.review.deleteMany({
+        where: {
+          productId: { in: productIdsToDelete }
+        }
+      })
+
+      // Xóa SKUs
+      await prisma.sKU.deleteMany({
+        where: {
+          productId: { in: productIdsToDelete }
+        }
+      })
+
+      // Xóa product translations
+      await prisma.productTranslation.deleteMany({
+        where: {
+          productId: { in: productIdsToDelete }
+        }
+      })
+
+      // Cuối cùng xóa products
+      await prisma.product.deleteMany({
+        where: { id: { in: productIdsToDelete } }
+      })
+
+      console.log(`✅ Deleted ${productsToDelete.length} outdated products and related data`)
     } else {
       console.log('✅ No outdated products to delete')
     }
