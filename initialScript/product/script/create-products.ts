@@ -446,9 +446,9 @@ async function optimizeDatabaseSettings(tx: PrismaClient): Promise<void> {
     // Tăng temp_buffers cho temporary operations
     tx.$executeRaw`SET temp_buffers = '256MB'`,
     // Tăng hash_mem_multiplier cho hash operations
-    tx.$executeRaw`SET hash_mem_multiplier = 2.0`,
-    // Tắt autocommit để batch transactions
-    tx.$executeRaw`SET autocommit = off`
+    tx.$executeRaw`SET hash_mem_multiplier = 2.0`
+    // PostgreSQL không có autocommit parameter như MySQL
+    // Transaction được quản lý bởi Prisma
   ])
 
   console.log('✅ Database settings optimized')
