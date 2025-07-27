@@ -32,14 +32,12 @@ async function bootstrap(): Promise<void> {
     app.useLogger(logger)
     app.enableCors(config.get('app.cors'))
     app.use(cookieParser())
-    app.set('trust proxy', 'loopback') // Trust requests from the loopback address
+    app.set('trust proxy', 'loopback')
 
     // Websocket
     const websocketAdapter = new WebsocketAdapter(app)
     await websocketAdapter.connectToRedis()
     app.useWebSocketAdapter(websocketAdapter)
-
-    // Cookie parser middleware
 
     // app.enableVersioning({
     //   type: VersioningType.URI,

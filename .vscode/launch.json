@@ -4,16 +4,24 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Debug NestJS",
+      "name": "Shopsifu Debug",
       "args": [
         "${workspaceFolder}/src/main.ts"
       ],
+      // "runtimeArgs": [
+      //   "--nolazy",
+      //   "-r",
+      //   "ts-node/register",
+      //   "-r",
+      //   "tsconfig-paths/register"
+      // ],
       "runtimeArgs": [
         "--nolazy",
         "-r",
-        "ts-node/register",
-        "-r",
-        "tsconfig-paths/register"
+        "run",
+        "debug",
+        "--",
+        "--inspect-brk"
       ],
       "autoAttachChildProcesses": true,
       "cwd": "${workspaceRoot}",
@@ -25,6 +33,7 @@
       "skipFiles": [
         "<node_internals>/**"
       ],
+      "runtimeExecutable": "npm",
     },
   ]
 }
