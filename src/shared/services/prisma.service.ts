@@ -28,7 +28,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           url: process.env.DATABASE_URL
         }
       }
-      // Tối ưu connection pooling cho 32GB RAM
+      // Tối ưu connection pooling cho production
       // Số connection tối đa = 200 (theo cấu hình PostgreSQL)
       // Pool size = 20% của max_connections = 40
       // Min pool size = 5 để đảm bảo luôn có connection sẵn
