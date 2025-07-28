@@ -36,7 +36,8 @@ module.exports = {
         'db',
         'ui',
         'perf',
-        'security'
+        'security',
+        'structure'
       ]
     ],
     'scope-empty': [2, 'never'], // Requires a scope to always be present
