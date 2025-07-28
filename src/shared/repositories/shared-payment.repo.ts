@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { OrderStatus } from 'src/shared/constants/order.constant'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { OrderIncludeProductSKUSnapshotAndDiscountType } from '../models/shared-order.model'
 
 @Injectable()
 export class SharedPaymentRepository {
@@ -66,5 +67,25 @@ export class SharedPaymentRepository {
       })
       return await Promise.all([updateOrder$, updateSkus$, updatePayment$])
     })
+  }
+
+  getTotalPrice(orders: OrderIncludeProductSKUSnapshotAndDiscountType[]): string {
+    return orders
+      .reduce((total, order) => {
+        // Tính tổng tiền sản phẩm
+        const productTotal = order.items.reduce((totalPrice: number, productSku: any) => {
+          return totalPrice + productSku.skuPrice * productSku.quantity
+        }, 0)
+
+        // Tính tổng giảm giá từ DiscountSnapshot
+        const discountTotal =
+          order.discounts?.reduce((totalDiscount: number, discount: any) => {
+            return totalDiscount + discount.discountAmount
+          }, 0) || 0
+
+        // Cộng vào tổng (đã trừ giảm giá)
+        return total + (productTotal - discountTotal)
+      }, 0)
+      .toString()
   }
 }

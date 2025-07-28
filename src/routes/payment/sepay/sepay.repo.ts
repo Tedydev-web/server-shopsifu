@@ -5,35 +5,16 @@ import { WebhookPaymentBodyType } from 'src/routes/payment/sepay/sepay.model'
 import { PaymentProducer } from 'src/shared/producers/payment.producer'
 import { OrderStatus } from 'src/shared/constants/order.constant'
 import { PREFIX_PAYMENT_CODE } from 'src/shared/constants/other.constant'
-import { OrderIncludeProductSKUSnapshotAndDiscountType } from 'src/shared/models/shared-order.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { SharedPaymentRepository } from 'src/shared/repositories/shared-payment.repo'
 
 @Injectable()
 export class SepayRepo {
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly paymentProducer: PaymentProducer
+    private readonly paymentProducer: PaymentProducer,
+    private readonly sharedPaymentRepository: SharedPaymentRepository
   ) {}
-
-  private getTotalPrice(orders: OrderIncludeProductSKUSnapshotAndDiscountType[]): string {
-    return orders
-      .reduce((total, order) => {
-        // Tính tổng tiền sản phẩm
-        const productTotal = order.items.reduce((totalPrice: number, productSku: any) => {
-          return totalPrice + productSku.skuPrice * productSku.quantity
-        }, 0)
-
-        // Tính tổng giảm giá từ DiscountSnapshot
-        const discountTotal =
-          order.discounts?.reduce((totalDiscount: number, discount: any) => {
-            return totalDiscount + discount.discountAmount
-          }, 0) || 0
-
-        // Cộng vào tổng (đã trừ giảm giá)
-        return total + (productTotal - discountTotal)
-      }, 0)
-      .toString()
-  }
 
   async receiver(body: WebhookPaymentBodyType): Promise<string> {
     // 1. Thêm thông tin giao dịch vào DB
@@ -99,7 +80,7 @@ export class SepayRepo {
 
       const userId = payment.orders[0].userId
       const { orders } = payment
-      const totalPrice = this.getTotalPrice(orders)
+      const totalPrice = this.sharedPaymentRepository.getTotalPrice(orders)
 
       if (totalPrice !== body.transferAmount.toString()) {
         throw new BadRequestException(`Price not match, expected ${totalPrice} but got ${body.transferAmount}`)
