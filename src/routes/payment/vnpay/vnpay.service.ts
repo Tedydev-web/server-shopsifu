@@ -1,62 +1,50 @@
 import { Injectable } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
-import * as dotenv from 'dotenv'
-import * as crypto from 'crypto'
-import * as qs from 'qs'
-
-dotenv.config()
+import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
+import { Server } from 'socket.io'
+import { VNPayRepo } from 'src/routes/payment/vnpay/vnpay.repo'
+import {
+  CreateVNPayPaymentUrlType,
+  VNPayReturnUrlType,
+  VNPayIpnType,
+  CreateVNPayPaymentUrlResType
+} from 'src/routes/payment/vnpay/vnpay.model'
+import { SharedWebsocketRepository } from 'src/shared/repositories/shared-websocket.repo'
+import { I18nService } from 'nestjs-i18n'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { generateRoomUserId } from 'src/shared/helpers'
 
 @Injectable()
-export class VnpayService {
-  constructor(private readonly config: ConfigService) {}
+@WebSocketGateway({ namespace: 'payment' })
+export class VNPayService {
+  @WebSocketServer()
+  server: Server
 
-  createPaymentUrl(orderId: string, amount: number, ip: string): string {
-    const tmnCode = process.env.VNP_TMNCODE
-    const secret = process.env.VNP_HASHSECRET
-    const returnUrl = process.env.VNP_RETURN_URL
-    const payUrl = process.env.VNP_URL
+  constructor(
+    private readonly vnpayRepo: VNPayRepo,
+    private readonly sharedWebsocketRepository: SharedWebsocketRepository,
+    private readonly i18n: I18nService<I18nTranslations>
+  ) {}
 
-    const createDate = new Date()
-      .toISOString()
-      .replace(/[-:.TZ]/g, '')
-      .slice(0, 14)
-
-    const params: Record<string, string> = {
-      vnp_Version: '2.1.0',
-      vnp_Command: 'pay',
-      vnp_TmnCode: tmnCode || '',
-      vnp_Locale: 'vn',
-      vnp_CurrCode: 'VND',
-      vnp_TxnRef: orderId,
-      vnp_OrderInfo: `Thanh toan don hang ${orderId}`,
-      vnp_OrderType: 'other',
-      vnp_Amount: (amount * 100).toString(),
-      vnp_ReturnUrl: returnUrl || '',
-      vnp_IpAddr: ip,
-      vnp_CreateDate: createDate
-    }
-
-    const sorted = Object.fromEntries(Object.entries(params).sort())
-    const signData = qs.stringify(sorted, { encode: false })
-    const signature = crypto
-      .createHmac('sha512', secret || '')
-      .update(signData)
-      .digest('hex')
-
-    return `${payUrl}?${signData}&vnp_SecureHash=${signature}`
+  async createPaymentUrl(body: CreateVNPayPaymentUrlType): Promise<CreateVNPayPaymentUrlResType> {
+    const paymentUrl = this.vnpayRepo.createPaymentUrl(body)
+    return { paymentUrl }
   }
 
-  validateCallback(query: any): boolean {
-    const { vnp_SecureHash, ...rest } = query
-    const secret = this.config.get('VNP_HASHSECRET') || ''
+  async handleReturnUrl(query: VNPayReturnUrlType) {
+    const userId = await this.vnpayRepo.handleReturnUrl(query)
 
-    const sorted = Object.fromEntries(Object.entries(rest).sort())
-    const signData = qs.stringify(sorted, { encode: false })
-    const hash = crypto
-      .createHmac('sha512', secret || '')
-      .update(signData)
-      .digest('hex')
+    // Send WebSocket notification
+    this.server.to(generateRoomUserId(userId)).emit('payment', {
+      status: 'success',
+      gateway: 'vnpay'
+    })
 
-    return hash === vnp_SecureHash
+    return {
+      message: this.i18n.t('payment.payment.success.RETURN_URL_SUCCESS')
+    }
+  }
+
+  async handleIpnCall(body: VNPayIpnType) {
+    return this.vnpayRepo.handleIpnCall(body)
   }
 }

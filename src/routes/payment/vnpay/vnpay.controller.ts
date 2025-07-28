@@ -1,32 +1,34 @@
-// vnpay.controller.ts
-import { Controller, Get, Query, Req, Res } from '@nestjs/common'
-import { VnpayService } from './vnpay.service'
-import { Request, Response } from 'express'
+import { Controller, Post, Get, Body, Query } from '@nestjs/common'
+import { VNPayService } from './vnpay.service'
+import { CreateVNPayPaymentUrlDTO, CreateVNPayPaymentUrlResDTO, VNPayReturnUrlDTO, VNPayIpnDTO } from './vnpay.dto'
+import { ZodSerializerDto } from 'nestjs-zod'
+import { MessageResDTO } from 'src/shared/dtos/response.dto'
 
-@Controller('vnpay')
-export class VnpayController {
-  constructor(private vnpayService: VnpayService) {}
+@Controller('payment/vnpay')
+export class VNPayController {
+  constructor(private readonly vnpayService: VNPayService) {}
 
-  @Get('create-paymentUrl')
-  createPayment(@Query('orderId') orderId: string, @Query('amount') amount: number, @Req() req: Request) {
-    const ip = req.ip || '127.0.0.1'
-    const url = this.vnpayService.createPaymentUrl(orderId, Number(amount), ip)
-    return { url }
+  @Post('create-url')
+  @ZodSerializerDto(CreateVNPayPaymentUrlResDTO)
+  createPaymentUrl(@Body() body: CreateVNPayPaymentUrlDTO) {
+    return this.vnpayService.createPaymentUrl(body)
   }
 
-  @Get('vnpay-return')
-  async vnpayReturn(@Query() query: any, @Res() res: Response) {
-    const isValid = this.vnpayService.validateCallback(query)
+  @Get('return')
+  @ZodSerializerDto(MessageResDTO)
+  handleReturnUrl(@Query() query: VNPayReturnUrlDTO) {
+    return this.vnpayService.handleReturnUrl(query)
+  }
 
-    if (isValid) {
-      const orderId = query.vnp_TxnRef
-      // cập nhật đơn hàng thành paid ở đây
-      console.log(`✅ Payment for order ${orderId} is valid.`)
+  @Post('ipn')
+  @ZodSerializerDto(MessageResDTO)
+  handleIpnCall(@Body() body: VNPayIpnDTO) {
+    return this.vnpayService.handleIpnCall(body)
+  }
 
-      return res.redirect(`http://localhost:3000/success`)
-    } else {
-      console.log(`❌ Invalid callback`)
-      return res.redirect(`http://localhost:3000/fail`)
-    }
+  @Get('test')
+  @ZodSerializerDto(MessageResDTO)
+  test() {
+    return { message: 'VNPayController is working!' }
   }
 }

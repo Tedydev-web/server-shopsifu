@@ -1,8 +1,18 @@
 import { Module } from '@nestjs/common'
-import { VnpayService } from './vnpay.service'
+import { VNPayController } from './vnpay.controller'
+import { VNPayService } from './vnpay.service'
+import { VNPayRepo } from './vnpay.repo'
+import { PaymentProducer } from 'src/shared/producers/payment.producer'
+import { BullModule } from '@nestjs/bullmq'
+import { PAYMENT_QUEUE_NAME } from 'src/shared/constants/queue.constant'
 
 @Module({
-  providers: [VnpayService],
-  exports: [VnpayService]
+  imports: [
+    BullModule.registerQueue({
+      name: PAYMENT_QUEUE_NAME
+    })
+  ],
+  providers: [VNPayService, VNPayRepo, PaymentProducer],
+  controllers: [VNPayController]
 })
-export class VnpayModule {}
+export class VNPayModule {}

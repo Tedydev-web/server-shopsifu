@@ -1,25 +1,21 @@
 import { z } from 'zod'
-import { PaymentGateway } from 'src/shared/constants/payment.constant'
+import { VNPayLocale, VNPayProductCode } from 'src/shared/constants/payment.constant'
 
-export const PaymentTransactionSchema = z.object({
-  id: z.string(),
-  gateway: z.string(),
-  transactionDate: z.date(),
-  accountNumber: z.string().nullable(),
-  subAccount: z.string().nullable(),
-  amountIn: z.number(),
-  amountOut: z.number(),
-  accumulated: z.number(),
-  code: z.string().nullable(),
-  transactionContent: z.string().nullable(),
-  referenceNumber: z.string().nullable(),
-  body: z.string().nullable(),
-  createdAt: z.date()
+export const CreateVNPayPaymentUrlSchema = z.object({
+  vnp_Amount: z.number(),
+  vnp_IpAddr: z.string(),
+  vnp_TxnRef: z.string(),
+  vnp_OrderInfo: z.string(),
+  vnp_OrderType: z.nativeEnum(VNPayProductCode).default(VNPayProductCode.OTHER),
+  vnp_ReturnUrl: z.string(),
+  vnp_Locale: z.nativeEnum(VNPayLocale).default(VNPayLocale.VN),
+  vnp_BankCode: z.string().optional()
 })
 
-export type PaymentTransactionType = z.infer<typeof PaymentTransactionSchema>
+export const CreateVNPayPaymentUrlResSchema = z.object({
+  paymentUrl: z.string().url()
+})
 
-// VNPay specific schemas
 export const VNPayReturnUrlSchema = z.object({
   vnp_Amount: z.string(),
   vnp_BankCode: z.string().optional(),
@@ -50,16 +46,7 @@ export const VNPayIpnSchema = z.object({
   vnp_SecureHash: z.string()
 })
 
+export type CreateVNPayPaymentUrlType = z.infer<typeof CreateVNPayPaymentUrlSchema>
+export type CreateVNPayPaymentUrlResType = z.infer<typeof CreateVNPayPaymentUrlResSchema>
 export type VNPayReturnUrlType = z.infer<typeof VNPayReturnUrlSchema>
 export type VNPayIpnType = z.infer<typeof VNPayIpnSchema>
-
-// Payment schema with gateway support
-export const PaymentSchema = z.object({
-  id: z.string(),
-  status: z.string(),
-  gateway: z.nativeEnum(PaymentGateway).default(PaymentGateway.SEPAY),
-  createdAt: z.date(),
-  updatedAt: z.date()
-})
-
-export type PaymentType = z.infer<typeof PaymentSchema>

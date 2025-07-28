@@ -4,7 +4,7 @@ import z from 'zod'
  * https://docs.sepay.vn/tich-hop-webhooks.html
  */
 export const WebhookPaymentBodySchema = z.object({
-  id: z.string(), // ID giao dịch trên SePay
+  id: z.number(), // ID giao dịch trên SePay
   gateway: z.string(), // Brand name của ngân hàng
   transactionDate: z.string(), // Thời gian xảy ra giao dịch phía ngân hàng
   accountNumber: z.string().nullable(), // Số tài khoản ngân hàng

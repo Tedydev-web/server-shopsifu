@@ -1,7 +1,8 @@
 {
   "payment": {
     "success": {
-      "RECEIVER_SUCCESS": "Thanh toán thành công"
+      "RECEIVER_SUCCESS": "Thanh toán thành công",
+      "RETURN_URL_SUCCESS": "Xác thực URL trả về thành công"
     }
   }
 }
