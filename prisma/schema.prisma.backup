@@ -534,14 +534,12 @@ model Order {
 model Payment {
   id        String        @id @default(uuid())
   status    PaymentStatus
-  gateway   String        @default("sepay") @db.VarChar(50)
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   orders    Order[]
 
   @@index([status])
   @@index([createdAt])
-  @@index([gateway])
 }
 
 model Websocket {
