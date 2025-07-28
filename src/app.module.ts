@@ -19,7 +19,7 @@ import { ProductTranslationModule } from 'src/routes/product/product-translation
 import { CartModule } from 'src/routes/cart/cart.module'
 import { OrderModule } from 'src/routes/order/order.module'
 import { SepayModule } from 'src/routes/payment/sepay/sepay.module'
-import { PaymentConsumer } from 'src/queues/payment.consumer'
+import { PaymentConsumer } from 'src/shared/queues/payment.consumer'
 import { WebsocketModule } from 'src/websockets/websocket.module'
 import { ThrottlerBehindProxyGuard } from 'src/shared/guards/throttler-behind-proxy.guard'
 import { ReviewModule } from 'src/routes/review/review.module'
