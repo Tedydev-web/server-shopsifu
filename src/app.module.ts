@@ -18,7 +18,7 @@ import { ProductModule } from 'src/routes/product/product.module'
 import { ProductTranslationModule } from 'src/routes/product/product-translation/product-translation.module'
 import { CartModule } from 'src/routes/cart/cart.module'
 import { OrderModule } from 'src/routes/order/order.module'
-import { PaymentModule } from 'src/routes/payment/sepay/payment.module'
+import { SepayModule } from 'src/routes/payment/sepay/sepay.module'
 import { PaymentConsumer } from 'src/queues/payment.consumer'
 import { WebsocketModule } from 'src/websockets/websocket.module'
 import { ThrottlerBehindProxyGuard } from 'src/shared/guards/throttler-behind-proxy.guard'
@@ -49,7 +49,7 @@ import { LanguageModule } from 'src/routes/language/language.module'
     ProductTranslationModule,
     CartModule,
     OrderModule,
-    PaymentModule,
+    SepayModule,
     ReviewModule,
     DiscountModule,
     LanguageModule

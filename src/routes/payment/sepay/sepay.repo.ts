@@ -1,15 +1,15 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { parse } from 'date-fns'
-import { WebhookPaymentBodyType } from 'src/routes/payment/sepay/payment.model'
-import { PaymentProducer } from 'src/routes/payment/sepay/payment.producer'
+import { WebhookPaymentBodyType } from 'src/routes/payment/sepay/sepay.model'
+import { PaymentProducer } from 'src/shared/producers/payment.producer'
 import { OrderStatus } from 'src/shared/constants/order.constant'
 import { PREFIX_PAYMENT_CODE } from 'src/shared/constants/other.constant'
 import { OrderIncludeProductSKUSnapshotAndDiscountType } from 'src/shared/models/shared-order.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
-export class PaymentRepo {
+export class SepayRepo {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly paymentProducer: PaymentProducer

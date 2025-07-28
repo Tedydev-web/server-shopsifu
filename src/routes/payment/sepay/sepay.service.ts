@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
-import { PaymentRepo } from 'src/routes/payment/sepay/payment.repo'
-import { WebhookPaymentBodyType } from 'src/routes/payment/sepay/payment.model'
+import { SepayRepo } from 'src/routes/payment/sepay/sepay.repo'
+import { WebhookPaymentBodyType } from 'src/routes/payment/sepay/sepay.model'
 import { SharedWebsocketRepository } from 'src/shared/repositories/shared-websocket.repo'
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
 import { Server } from 'socket.io'
@@ -10,17 +10,17 @@ import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
 @WebSocketGateway({ namespace: 'payment' })
-export class PaymentService {
+export class SepayService {
   @WebSocketServer()
   server: Server
   constructor(
-    private readonly paymentRepo: PaymentRepo,
+    private readonly sepayRepo: SepayRepo,
     private readonly sharedWebsocketRepository: SharedWebsocketRepository,
     private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
   async receiver(body: WebhookPaymentBodyType) {
-    const userId = await this.paymentRepo.receiver(body)
+    const userId = await this.sepayRepo.receiver(body)
     this.server.to(generateRoomUserId(userId)).emit('payment', {
       status: 'success'
     })
