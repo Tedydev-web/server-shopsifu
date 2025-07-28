@@ -26,6 +26,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { createKeyv } from '@keyv/redis'
 import configs from 'src/shared/config'
 import { createLoggerConfig } from './config/logger.config'
+import { PaymentProducer } from './producers/payment.producer'
+import { PAYMENT_QUEUE_NAME } from './constants/queue.constant'
 
 const sharedServices = [
   PrismaService,
@@ -38,7 +40,8 @@ const sharedServices = [
   SharedRoleRepository,
   SharedPaymentRepository,
   SharedWebsocketRepository,
-  S3Service
+  S3Service,
+  PaymentProducer
 ]
 
 @Global()
@@ -103,6 +106,11 @@ const sharedServices = [
         }
       }),
       inject: [ConfigService]
+    }),
+
+    // Payment Queue
+    BullModule.registerQueue({
+      name: PAYMENT_QUEUE_NAME
     }),
 
     // Rate Limiting - Throttler

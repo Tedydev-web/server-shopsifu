@@ -170,9 +170,13 @@ export class OrderRepo {
 
           // 5. Tạo order và xóa cartItem trong transaction để đảm bảo tính toàn vẹn dữ liệu
 
+          // Determine payment gateway from the first item (all items should have same gateway)
+          const paymentGateway = body[0].paymentGateway || 'sepay'
+
           const payment = await tx.payment.create({
             data: {
-              status: PaymentStatus.PENDING
+              status: PaymentStatus.PENDING,
+              gateway: paymentGateway
             }
           })
           const orders: CreateOrderResType['data']['orders'] = []
