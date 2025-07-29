@@ -19,12 +19,24 @@ import {
   VNPayTransactionNotFoundException,
   VNPayServiceUnavailableException
 } from './vnpay.error'
+import { VNPayRepo } from './vnpay.repo'
+import { SharedWebsocketRepository } from 'src/shared/repositories/shared-websocket.repo'
+import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
+import { Server } from 'socket.io'
+import { generateRoomUserId } from 'src/shared/helpers'
+import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
 @Injectable()
+@WebSocketGateway({ namespace: 'payment' })
 export class VNPayService {
+  @WebSocketServer()
+  server: Server
+
   constructor(
     private readonly vnpayService: VnpayService,
-    private readonly i18n: I18nService
+    private readonly i18n: I18nService<I18nTranslations>,
+    private readonly vnpayRepo: VNPayRepo,
+    private readonly sharedWebsocketRepository: SharedWebsocketRepository
   ) {}
 
   /**
@@ -35,7 +47,7 @@ export class VNPayService {
     try {
       const banks = await this.vnpayService.getBankList()
       return {
-        message: this.i18n.t('payment.vnpay.success.GET_BANK_LIST_SUCCESS'),
+        message: this.i18n.t('payment.payment.vnpay.success.GET_BANK_LIST_SUCCESS'),
         data: banks.map((bank) => ({
           bankCode: bank.bank_code,
           bankName: bank.bank_name,
@@ -105,6 +117,17 @@ export class VNPayService {
     try {
       const verify = await this.vnpayService.verifyReturnUrl(queryData)
 
+      // Nếu xác thực thành công và thanh toán thành công, xử lý webhook
+      if (verify.isSuccess && verify.isVerified && verify.vnp_ResponseCode === '00') {
+        const userId = await this.vnpayRepo.processVNPayWebhook(queryData)
+
+        // Gửi thông báo qua WebSocket
+        this.server.to(generateRoomUserId(userId)).emit('payment', {
+          status: 'success',
+          gateway: 'vnpay'
+        })
+      }
+
       return {
         data: {
           isSuccess: verify.isSuccess,
@@ -133,6 +156,17 @@ export class VNPayService {
   async verifyIpnCall(ipnData: VNPayReturnUrlType): Promise<VNPayVerifyResType> {
     try {
       const verify = await this.vnpayService.verifyIpnCall(ipnData)
+
+      // Nếu xác thực thành công và thanh toán thành công, xử lý webhook
+      if (verify.isSuccess && verify.isVerified && verify.vnp_ResponseCode === '00') {
+        const userId = await this.vnpayRepo.processVNPayWebhook(ipnData)
+
+        // Gửi thông báo qua WebSocket
+        this.server.to(generateRoomUserId(userId)).emit('payment', {
+          status: 'success',
+          gateway: 'vnpay'
+        })
+      }
 
       return {
         data: {

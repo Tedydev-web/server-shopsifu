@@ -35,7 +35,9 @@
       }
     },
     "sepay": {
-      "success": {},
+      "success": {
+        "RECEIVER_SUCCESS": "Nhận thanh toán thành công"
+      },
       "error": {}
     }
   }

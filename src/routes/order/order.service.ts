@@ -8,15 +8,13 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 import { calculateDiscountAmount } from 'src/shared/helpers'
 import { DiscountNotFoundException, DiscountUsageLimitExceededException } from 'src/routes/discount/discount.error'
 import { DiscountStatus } from 'src/shared/constants/discount.constant'
-import { SepayQRService } from 'src/shared/services/sepay-qr.service'
 
 @Injectable()
 export class OrderService {
   constructor(
     private readonly orderRepo: OrderRepo,
     private readonly i18n: I18nService<I18nTranslations>,
-    private readonly prismaService: PrismaService,
-    private readonly sepayQRService: SepayQRService
+    private readonly prismaService: PrismaService
   ) {}
 
   async list(user: AccessTokenPayload, query: GetOrderListQueryType) {
@@ -29,23 +27,6 @@ export class OrderService {
   }
 
   async create(user: AccessTokenPayload, body: CreateOrderBodyType) {
-    // Tính toán grandTotal cho từng shop order để validate
-    const ordersWithGrandTotal = await Promise.all(
-      body.map(async (shopOrder) => {
-        // Gọi hàm calculate để tính grandTotal
-        const calculateResult = await this.calculate(user, {
-          cartItemIds: shopOrder.cartItemIds,
-          discountCodes: shopOrder.discountCodes || []
-        })
-
-        return {
-          ...shopOrder,
-          calculatedGrandTotal: calculateResult.data.grandTotal
-        }
-      })
-    )
-
-    // Validate discount codes trước khi tạo order
     for (const shop of body) {
       if (shop.discountCodes && Array.isArray(shop.discountCodes)) {
         for (const discountCode of shop.discountCodes) {
@@ -61,35 +42,10 @@ export class OrderService {
         }
       }
     }
-
-    // Tạo order với body gốc (không bao gồm calculatedGrandTotal)
     const result = await this.orderRepo.create(user.userId, body)
-
-    // Tính tổng tiền từ các orders đã tính toán
-    const totalAmount = ordersWithGrandTotal.reduce((sum, order) => sum + order.calculatedGrandTotal, 0)
-
-    console.log('Debug - ordersWithGrandTotal:', JSON.stringify(ordersWithGrandTotal, null, 2))
-    console.log('Debug - totalAmount:', totalAmount)
-    console.log('Debug - totalAmount type:', typeof totalAmount)
-    console.log('Debug - result.paymentId:', result.paymentId)
-
-    // Validate totalAmount
-    if (totalAmount <= 0) {
-      console.error('Error: totalAmount is invalid:', totalAmount)
-      throw new Error('Invalid total amount for payment')
-    }
-
-    // Tạo QR code với số tiền chính xác
-    const sepayQR = this.sepayQRService.generateQRCode(result.paymentId, totalAmount)
-
-    console.log('Debug - sepayQR:', sepayQR)
-
     return {
       message: this.i18n.t('order.order.success.CREATE_SUCCESS'),
-      data: {
-        ...result,
-        sepay_qr: sepayQR
-      }
+      data: result
     }
   }
 

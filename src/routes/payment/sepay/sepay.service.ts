@@ -35,7 +35,7 @@ export class SepayService {
     //   console.log(error)
     // }
     return {
-      message: this.i18n.t('payment.payment.success.RECEIVER_SUCCESS')
+      message: this.i18n.t('payment.payment.sepay.success.RECEIVER_SUCCESS')
     }
   }
 }

@@ -1,9 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
-import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { parse } from 'date-fns'
 import { WebhookPaymentBodyType } from 'src/routes/payment/sepay/sepay.model'
 import { PaymentProducer } from 'src/shared/producers/payment.producer'
-import { OrderStatus } from 'src/shared/constants/order.constant'
 import { PREFIX_PAYMENT_CODE } from 'src/shared/constants/other.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { SharedPaymentRepository } from 'src/shared/repositories/shared-payment.repo'
@@ -62,44 +60,21 @@ export class SepayRepo {
         throw new BadRequestException('Cannot get payment id from content')
       }
 
-      const payment = await tx.payment.findUnique({
-        where: { id: paymentId },
-        include: {
-          orders: {
-            include: {
-              items: true,
-              discounts: true
-            }
-          }
-        }
-      })
-
-      if (!payment) {
-        throw new BadRequestException(`Cannot find payment with id ${paymentId}`)
-      }
+      // 3. Validate và tìm payment với orders
+      const payment = await this.sharedPaymentRepository.validateAndFindPayment(paymentId)
 
       const userId = payment.orders[0].userId
       const { orders } = payment
-      const totalPrice = this.sharedPaymentRepository.getTotalPrice(orders)
 
-      if (totalPrice !== body.transferAmount.toString()) {
-        throw new BadRequestException(`Price not match, expected ${totalPrice} but got ${body.transferAmount}`)
-      }
+      // 4. Validate số tiền
+      this.sharedPaymentRepository.validatePaymentAmount(
+        orders,
+        this.sharedPaymentRepository.getTotalPrice(orders),
+        body.transferAmount
+      )
 
-      // 3. Cập nhật trạng thái đơn hàng
-      await Promise.all([
-        tx.payment.update({
-          where: { id: paymentId },
-          data: { status: PaymentStatus.SUCCESS }
-        }),
-        tx.order.updateMany({
-          where: {
-            id: { in: orders.map((order) => order.id) }
-          },
-          data: { status: OrderStatus.PENDING_PICKUP }
-        }),
-        this.paymentProducer.removeJob(paymentId)
-      ])
+      // 5. Cập nhật trạng thái payment và orders
+      await this.sharedPaymentRepository.updatePaymentAndOrdersOnSuccess(paymentId, orders)
 
       return userId
     })

@@ -251,7 +251,43 @@ export type I18nTranslations = {
     "payment": {
         "payment": {
             "vnpay": {
-                "success": {};
+                "success": {
+                    "GET_BANK_LIST_SUCCESS": string;
+                    "CREATE_PAYMENT_SUCCESS": string;
+                    "VERIFY_RETURN_SUCCESS": string;
+                    "VERIFY_IPN_SUCCESS": string;
+                    "QUERY_DR_SUCCESS": string;
+                    "REFUND_SUCCESS": string;
+                };
+                "error": {
+                    "VNPAY_INVALID_CHECKSUM": string;
+                    "VNPAY_INVALID_AMOUNT": string;
+                    "VNPAY_INVALID_ORDER_ID": string;
+                    "VNPAY_INVALID_TRANSACTION": string;
+                    "VNPAY_DUPLICATE_REQUEST": string;
+                    "VNPAY_REFUND_ALREADY_PROCESSED": string;
+                    "VNPAY_TRANSACTION_NOT_FOUND": string;
+                    "VNPAY_INVALID_BANK_CODE": string;
+                    "VNPAY_INVALID_CURRENCY": string;
+                    "VNPAY_INVALID_LOCALE": string;
+                    "VNPAY_INVALID_ORDER_TYPE": string;
+                    "VNPAY_INVALID_IP_ADDRESS": string;
+                    "VNPAY_INVALID_RETURN_URL": string;
+                    "VNPAY_INVALID_IPN_URL": string;
+                    "VNPAY_INVALID_TRANSACTION_DATE": string;
+                    "VNPAY_INVALID_CREATE_DATE": string;
+                    "VNPAY_INVALID_REQUEST_ID": string;
+                    "VNPAY_INVALID_TRANSACTION_TYPE": string;
+                    "VNPAY_INVALID_CREATE_BY": string;
+                    "VNPAY_SERVICE_UNAVAILABLE": string;
+                    "VNPAY_TIMEOUT": string;
+                    "VNPAY_NETWORK_ERROR": string;
+                };
+            };
+            "sepay": {
+                "success": {
+                    "RECEIVER_SUCCESS": string;
+                };
                 "error": {};
             };
         };
