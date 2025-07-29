@@ -38,7 +38,7 @@ export class VNPayRepo {
           transactionDate: new Date(),
           accountNumber: vnpayData.vnp_BankCode,
           subAccount: vnpayData.vnp_BankTranNo,
-          amountIn: Number(vnpayData.vnp_Amount),
+          amountIn: Number(vnpayData.vnp_Amount) / 100, // VNPay trả về số tiền theo đơn vị xu, chia cho 100
           amountOut: 0,
           accumulated: 0,
           code: vnpayData.vnp_TxnRef,
@@ -61,11 +61,12 @@ export class VNPayRepo {
       const userId = payment.orders[0].userId
       const { orders } = payment
 
-      // 4. Validate số tiền
+      // 4. Validate số tiền (VNPay trả về số tiền theo đơn vị xu, chia cho 100)
+      const actualAmount = Number(vnpayData.vnp_Amount) / 100
       this.sharedPaymentRepository.validatePaymentAmount(
         orders,
         this.sharedPaymentRepository.getTotalPrice(orders),
-        vnpayData.vnp_Amount
+        actualAmount
       )
 
       // 5. Cập nhật trạng thái payment và orders

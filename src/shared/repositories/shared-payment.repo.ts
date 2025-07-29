@@ -49,7 +49,10 @@ export class SharedPaymentRepository {
     actualAmount: string | number
   ) {
     const totalPrice = this.getTotalPrice(orders)
-    if (totalPrice !== actualAmount.toString()) {
+    const expectedAmountNum = parseFloat(expectedAmount)
+    const actualAmountNum = parseFloat(actualAmount.toString())
+
+    if (Math.abs(expectedAmountNum - actualAmountNum) > 0.01) {
       throw new BadRequestException(`Price not match, expected ${totalPrice} but got ${actualAmount}`)
     }
   }

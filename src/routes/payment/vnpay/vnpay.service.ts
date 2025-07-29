@@ -25,6 +25,7 @@ import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
 import { Server } from 'socket.io'
 import { generateRoomUserId } from 'src/shared/helpers'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+import { PREFIX_PAYMENT_CODE } from 'src/shared/constants/other.constant'
 
 @Injectable()
 @WebSocketGateway({ namespace: 'payment' })
@@ -68,15 +69,27 @@ export class VNPayService {
    */
   async createPayment(paymentData: CreateVNPayPaymentBodyType): Promise<CreateVNPayPaymentResType> {
     try {
+      // Sử dụng payment ID thay vì order ID
+      const paymentId = paymentData.orderId // orderId ở đây thực chất là payment ID
+
+      // Thêm prefix vào orderInfo và orderId để có thể trích xuất payment ID sau này
+      const orderInfoWithPrefix = `${PREFIX_PAYMENT_CODE}${paymentId}`
+      const orderIdWithPrefix = `${PREFIX_PAYMENT_CODE}${paymentId}`
+
       const buildPaymentData: any = {
         vnp_Amount: paymentData.amount,
-        vnp_OrderInfo: paymentData.orderInfo,
-        vnp_TxnRef: paymentData.orderId,
+        vnp_OrderInfo: orderInfoWithPrefix,
+        vnp_TxnRef: orderIdWithPrefix,
         vnp_IpAddr: paymentData.ipAddr,
         vnp_ReturnUrl: paymentData.returnUrl,
         vnp_Locale: paymentData.locale,
         vnp_CurrCode: paymentData.currency,
         vnp_OrderType: paymentData.orderType
+      }
+
+      // Thêm IPN URL nếu có
+      if (paymentData.ipnUrl) {
+        buildPaymentData.vnp_IpnUrl = paymentData.ipnUrl
       }
 
       // Thêm các field tùy chọn nếu có
