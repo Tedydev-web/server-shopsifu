@@ -7,8 +7,8 @@
   "scripts": {
     "prebuild": "rimraf dist",
     "build": "nest build",
-    "start": "node dist/src/main",
-    "start:prod": "node dist/src/main",
+    "start": "node dist/main",
+    "start:prod": "node dist/main",
     "dev": "nest start --watch",
     "debug": "nest start --debug --watch",
     "update:package": "npx npm-check-updates -u",
