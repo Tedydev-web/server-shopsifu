@@ -33,12 +33,6 @@ jobs:
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-            # Cài đặt jq nếu chưa có để xử lý JSON
-            if ! command -v jq &> /dev/null; then
-              echo "jq not found. Installing..."
-              sudo apt-get update && sudo apt-get install -y jq
-            fi
-
             cd ${{ secrets.STAGING_PATH_PROJECT }}
             git fetch origin master && git reset --hard origin/master
             npm ci
@@ -46,20 +40,26 @@ jobs:
             pm2 startOrReload ecosystem.config.js --env production
             sleep 5
 
-            # Tạo bảng trạng thái tùy chỉnh chỉ với các cột cần thiết
-            pm2 jlist | jq -r '"ID  | Name                | Status", "----|---------------------|---------", (.[] | "\(.pm_id | tostring | rpad(3)) | \(.name | rpad(19)) | \(.pm2_env.status)")' > /tmp/pm2_status.txt
+            # Chỉ lấy dữ liệu JSON thô từ server
+            pm2 jlist > /tmp/pm2_status.json
 
-            # Lấy trạng thái của instance đầu tiên để kiểm tra deploy thành công
-            STATUS=$(pm2 jlist | jq -r '(.[] | select(.name == "server-shopsifu")).pm2_env.status' | head -n 1)
+            # Cài jq trên server chỉ để kiểm tra status (nếu cần)
+            if ! command -v jq &> /dev/null; then sudo apt-get update && sudo apt-get install -y jq; fi
+            STATUS=$(cat /tmp/pm2_status.json | jq -r '(.[] | select(.name == "server-shopsifu")).pm2_env.status' | head -n 1)
             [ "$STATUS" = "online" ] || exit 2
           EOF
         continue-on-error: true
 
-      - name: Collect PM2 Status
+      - name: Collect and Format PM2 Status
         if: always()
         id: pm2_status
         run: |
-          PM2_CONSOLE_OUTPUT=$(sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} 'cat /tmp/pm2_status.txt' || echo "Không thể lấy trạng thái PM2.")
+          # Lấy file JSON thô từ server về runner
+          PM2_JSON=$(sshpass -p "${{ secrets.STAGING_VPS_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_VPS_USERNAME }}@${{ secrets.STAGING_VPS_IP_HOST }} 'cat /tmp/pm2_status.json' || echo "[]")
+
+          # Dùng jq trên runner để tạo bảng trạng thái tùy chỉnh
+          PM2_CONSOLE_OUTPUT=$(echo "$PM2_JSON" | jq -r '"ID  | Name                | Status", "----|---------------------|---------", (.[] | "\(.pm_id | tostring | rpad(3)) | \(.name | rpad(19)) | \(.pm2_env.status)")')
+
           echo "pm2_console_output<<EOF" >> $GITHUB_OUTPUT
           echo "$PM2_CONSOLE_OUTPUT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
