@@ -12,12 +12,7 @@ on:
 jobs:
   deploy:
     name: Deploy to Production
-    needs: build
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !github.event.inputs.manual_rollback) }}
-    environment: staging
-    env:
-      NODE_ENV: staging
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
