@@ -33,12 +33,6 @@ jobs:
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-            # Cài đặt jq nếu chưa có để xử lý JSON
-            if ! command -v jq &> /dev/null; then
-              echo "jq not found. Installing..."
-              sudo apt-get update && sudo apt-get install -y jq
-            fi
-
             cd ${{ secrets.STAGING_PATH_PROJECT }}
             git fetch origin master && git reset --hard origin/master
             npm ci
@@ -46,11 +40,9 @@ jobs:
             pm2 startOrReload ecosystem.config.js --env production
             sleep 5
 
-            # Tạo bảng trạng thái tùy chỉnh chỉ với các cột cần thiết
-            pm2 jlist | jq -r '"ID  | Name                | Status", "----|---------------------|---------", (.[] | "\(.pm_id | tostring | rpad(3)) | \(.name | rpad(19)) | \(.pm2_env.status)")' > /tmp/pm2_status.txt
+            pm2 status > /tmp/pm2_status.txt
 
-            # Lấy trạng thái của instance đầu tiên để kiểm tra deploy thành công
-            STATUS=$(pm2 jlist | jq -r '(.[] | select(.name == "server-shopsifu")).pm2_env.status' | head -n 1)
+            STATUS=$(pm2 jlist | jq -r '.[] | select(.name == "server-shopsifu") | .pm2_env.status')
             [ "$STATUS" = "online" ] || exit 2
           EOF
         continue-on-error: true
@@ -82,7 +74,7 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           PM2_STATUS_OUTPUT: ${{ steps.pm2_status.outputs.pm2_console_output }}
-          COMMIT_MESSAGE: ${{ steps.get_commit_message.outputs.commit_message }}
+          COMMIT_MESSAGE: ${{ steps.commit_info.outputs.commit_message }}
           JOB_STARTED_AT: ${{ steps.start_time.outputs.timestamp_utc }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
@@ -115,7 +107,7 @@ jobs:
                   { name: "Nội dung Commit", value: $commit_message, inline: false },
                   { name: "Thời gian", value: "<t:\($started_at):R>", inline: true }
                 ],
-                description: "**Trạng thái PM2 trên server:**\n```\n\($pm2_status)\n```",
+                description: "**Trạng thái PM2 trên server:**\n```ansi\n\($pm2_status)\n```",
                 url: "https://github.com/\($repo)/actions/runs/\($run_id)",
                 footer: {
                   "text": "Triển khai tới môi trường Staging"
@@ -125,6 +117,7 @@ jobs:
             }')
           curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" || echo "Lỗi gửi thông báo Discord"
 
+  # Các job rollback vẫn được giữ lại để đảm bảo an toàn
   rollback-auto:
     name: Automatic Rollback
     needs: deploy
