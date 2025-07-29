@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'server-shopsifu',
-      script: './dist/src/main.js',
+      script: './dist/main.js',
       watch: 'false',
       instances: '11',
       exec_mode: 'cluster',
