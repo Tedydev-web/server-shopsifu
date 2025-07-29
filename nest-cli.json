@@ -3,6 +3,13 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
+    "builder": {
+      "type": "swc",
+      "options": {
+        "swcrcPath": ".swcrc",
+        "extensions": [".js", ".ts", ".jsx", ".tsx"]
+      }
+    },
     "deleteOutDir": true,
     "assets": [{ "include": "src/shared/languages/**/*", "watchAssets": true, "outDir": "dist/src/shared/languages" }]
   }

@@ -7,28 +7,45 @@ export default registerAs('redis', (): Record<string, any> => {
     host: process.env.REDIS_HOST,
     port: process.env.REDIS_PORT,
     password: process.env.REDIS_PASSWORD,
-    tls: process.env.REDIS_ENABLE_TLS === 'true' ? {} : null
+    tls: process.env.REDIS_ENABLE_TLS === 'true' ? {} : null,
+    url: process.env.REDIS_URL,
+    connectionName: process.env.REDIS_CONNECTION_NAME
   }
 
   // Khởi tạo Redis client với connection pooling tối ưu
-  const redis = new Client({
-    host: config.host,
-    port: Number(config.port),
-    password: config.password,
-    tls: config.tls || undefined,
-    // Tối ưu connection pooling
-    maxRetriesPerRequest: 3,
-    enableReadyCheck: true,
-    lazyConnect: true,
-    // Connection pool settings
-    connectionName: 'shopsifu-app',
-    // Tối ưu cho production
-    keepAlive: 30000,
-    family: 4,
-    // Timeout settings
-    connectTimeout: 10000,
-    commandTimeout: 5000
-  })
+  const redis = config.url
+    ? new Client(config.url, {
+        // Tối ưu connection pooling
+        maxRetriesPerRequest: 3,
+        enableReadyCheck: true,
+        lazyConnect: true,
+        // Connection pool settings
+        connectionName: config.connectionName,
+        // Tối ưu cho production
+        keepAlive: 30000,
+        family: 4,
+        // Timeout settings
+        connectTimeout: 10000,
+        commandTimeout: 5000
+      })
+    : new Client({
+        host: config.host,
+        port: Number(config.port),
+        password: config.password,
+        tls: config.tls || undefined,
+        // Tối ưu connection pooling
+        maxRetriesPerRequest: 3,
+        enableReadyCheck: true,
+        lazyConnect: true,
+        // Connection pool settings
+        connectionName: config.connectionName,
+        // Tối ưu cho production
+        keepAlive: 30000,
+        family: 4,
+        // Timeout settings
+        connectTimeout: 10000,
+        commandTimeout: 5000
+      })
 
   // Khởi tạo Redlock
   const redlock = new Redlock([redis], {
