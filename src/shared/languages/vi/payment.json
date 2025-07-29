@@ -1,8 +1,42 @@
 {
   "payment": {
-    "success": {
-      "RECEIVER_SUCCESS": "Thanh toán thành công",
-      "RETURN_URL_SUCCESS": "Xác thực URL trả về thành công"
+    "vnpay": {
+      "success": {
+        "GET_BANK_LIST_SUCCESS": "Lấy danh sách ngân hàng thành công",
+        "CREATE_PAYMENT_SUCCESS": "Tạo URL thanh toán thành công",
+        "VERIFY_RETURN_SUCCESS": "Xác thực URL trả về thành công",
+        "VERIFY_IPN_SUCCESS": "Xác thực IPN thành công",
+        "QUERY_DR_SUCCESS": "Truy vấn kết quả thanh toán thành công",
+        "REFUND_SUCCESS": "Hoàn tiền thành công"
+      },
+      "error": {
+        "VNPAY_INVALID_CHECKSUM": "Chữ ký không hợp lệ",
+        "VNPAY_INVALID_AMOUNT": "Số tiền không hợp lệ",
+        "VNPAY_INVALID_ORDER_ID": "Mã đơn hàng không hợp lệ",
+        "VNPAY_INVALID_TRANSACTION": "Mã giao dịch không hợp lệ",
+        "VNPAY_DUPLICATE_REQUEST": "Yêu cầu trùng lặp, duplicate request trong thời gian giới hạn của API",
+        "VNPAY_REFUND_ALREADY_PROCESSED": "Giao dịch đã được gửi yêu cầu hoàn tiền trước đó. Yêu cầu này VNPAY đang xử lý",
+        "VNPAY_TRANSACTION_NOT_FOUND": "Không tìm thấy giao dịch",
+        "VNPAY_INVALID_BANK_CODE": "Mã ngân hàng không hợp lệ",
+        "VNPAY_INVALID_CURRENCY": "Loại tiền tệ không hợp lệ",
+        "VNPAY_INVALID_LOCALE": "Ngôn ngữ không hợp lệ",
+        "VNPAY_INVALID_ORDER_TYPE": "Loại đơn hàng không hợp lệ",
+        "VNPAY_INVALID_IP_ADDRESS": "Địa chỉ IP không hợp lệ",
+        "VNPAY_INVALID_RETURN_URL": "URL trả về không hợp lệ",
+        "VNPAY_INVALID_IPN_URL": "URL IPN không hợp lệ",
+        "VNPAY_INVALID_TRANSACTION_DATE": "Ngày giao dịch không hợp lệ",
+        "VNPAY_INVALID_CREATE_DATE": "Ngày tạo không hợp lệ",
+        "VNPAY_INVALID_REQUEST_ID": "Mã yêu cầu không hợp lệ",
+        "VNPAY_INVALID_TRANSACTION_TYPE": "Loại giao dịch không hợp lệ",
+        "VNPAY_INVALID_CREATE_BY": "Người tạo không hợp lệ",
+        "VNPAY_SERVICE_UNAVAILABLE": "Dịch vụ VNPay không khả dụng",
+        "VNPAY_TIMEOUT": "Yêu cầu VNPay bị timeout",
+        "VNPAY_NETWORK_ERROR": "Lỗi kết nối mạng VNPay"
+      }
+    },
+    "sepay": {
+      "success": {},
+      "error": {}
     }
   }
 }

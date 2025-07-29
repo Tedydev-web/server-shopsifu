@@ -7,7 +7,11 @@ import {
   CreateVNPayPaymentResDTO,
   VNPayBankListResDTO,
   VNPayReturnUrlDTO,
-  VNPayVerifyResDTO
+  VNPayVerifyResDTO,
+  VNPayQueryDrBodyDTO,
+  VNPayQueryDrResDTO,
+  VNPayRefundBodyDTO,
+  VNPayRefundResDTO
 } from './vnpay.dto'
 
 @Controller('payment/vnpay')
@@ -59,5 +63,29 @@ export class VNPayController {
   @ZodSerializerDto(VNPayVerifyResDTO)
   async verifyIpnCall(@Body() ipnData: VNPayReturnUrlDTO) {
     return this.vnpayService.verifyIpnCall(ipnData)
+  }
+
+  /**
+   * Truy vấn kết quả thanh toán từ VNPay
+   * @param queryData Dữ liệu truy vấn
+   * @returns Kết quả truy vấn
+   */
+  @Post('query-dr')
+  @IsPublic()
+  @ZodSerializerDto(VNPayQueryDrResDTO)
+  async queryDr(@Body() queryData: VNPayQueryDrBodyDTO) {
+    return this.vnpayService.queryDr(queryData)
+  }
+
+  /**
+   * Hoàn tiền giao dịch VNPay
+   * @param refundData Dữ liệu hoàn tiền
+   * @returns Kết quả hoàn tiền
+   */
+  @Post('refund')
+  @IsPublic()
+  @ZodSerializerDto(VNPayRefundResDTO)
+  async refund(@Body() refundData: VNPayRefundBodyDTO) {
+    return this.vnpayService.refund(refundData)
   }
 }

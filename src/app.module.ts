@@ -19,7 +19,7 @@ import { ProductTranslationModule } from 'src/routes/product/product-translation
 import { CartModule } from 'src/routes/cart/cart.module'
 import { OrderModule } from 'src/routes/order/order.module'
 import { SepayModule } from 'src/routes/payment/sepay/sepay.module'
-// import { VNPayModule } from 'src/routes/payment/vnpay/vnpay.module'
+import { VNPayModule } from 'src/routes/payment/vnpay/vnpay.module'
 import { PaymentConsumer } from 'src/shared/queues/payment.consumer'
 import { WebsocketModule } from 'src/websockets/websocket.module'
 import { ThrottlerBehindProxyGuard } from 'src/shared/guards/throttler-behind-proxy.guard'
@@ -30,7 +30,6 @@ import { DiscountModule } from 'src/routes/discount/discount.module'
 import { ExpireDiscountCronjob } from 'src/cronjobs/expire-discount.cronjob'
 import { ScheduleModule } from '@nestjs/schedule'
 import { LanguageModule } from 'src/routes/language/language.module'
-import { VNPayModule } from './routes/payment/vnpay/vnpay.module'
 
 @Module({
   imports: [
@@ -52,11 +51,10 @@ import { VNPayModule } from './routes/payment/vnpay/vnpay.module'
     CartModule,
     OrderModule,
     SepayModule,
-    // VNPayModule,
+    VNPayModule,
     ReviewModule,
     DiscountModule,
-    LanguageModule,
-    VNPayModule
+    LanguageModule
   ],
   providers: [
     {

@@ -250,9 +250,9 @@ export type I18nTranslations = {
     };
     "payment": {
         "payment": {
-            "success": {
-                "RECEIVER_SUCCESS": string;
-                "RETURN_URL_SUCCESS": string;
+            "vnpay": {
+                "success": {};
+                "error": {};
             };
         };
     };
