@@ -58,10 +58,15 @@ jobs:
 
       - name: Get Commit Info
         id: commit_info
-        run: |
-          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          COMMIT_MESSAGE=$(git log -1 --pretty=%B | grep -v '^-')
-          echo "commit_message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+          echo "commit_message<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        id: get_commit_message
 
       - name: Send Discord Notification
         if: always()
@@ -74,7 +79,7 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           PM2_STATUS_OUTPUT: ${{ steps.pm2_status.outputs.pm2_console_output }}
-          COMMIT_MESSAGE: ${{ steps.commit_info.outputs.commit_message }}
+          COMMIT_MESSAGE: ${{ steps.get_commit_message.outputs.commit_message }}
           JOB_STARTED_AT: ${{ steps.start_time.outputs.timestamp_utc }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
@@ -104,7 +109,7 @@ jobs:
                   { name: "Nhánh", value: "`\($branch)`", inline: true },
                   { name: "Người thực hiện", value: "`\($actor)`", inline: true },
                   { name: "Commit", value: "[`\($commit_short)`](https://github.com/\($repo)/commit/\($commit_full))", inline: false },
-                  { name: "Nội dung Commit", value: $commit_message, inline: false },
+                  { name: "Nội dung Commit", value: "```\n\($commit_message)\n```", inline: false },
                   { name: "Thời gian", value: "<t:\($started_at):R>", inline: true }
                 ],
                 description: "**Trạng thái PM2 trên server:**\n```ansi\n\($pm2_status)\n```",
