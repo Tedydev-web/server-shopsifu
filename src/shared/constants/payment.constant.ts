@@ -30,3 +30,9 @@ export const VNPayProductCode = {
   VNPAYQRCITI: 'vnpayqrciti'
 } as const
 export type VNPayProductCode = (typeof VNPayProductCode)[keyof typeof VNPayProductCode]
+
+export const SepayConfig = {
+  QR_BASE_URL: 'https://qr.sepay.vn/img',
+  DEFAULT_BANK: 'TPBank',
+  DEFAULT_ACCOUNT: process.env.SEPAY_ACCOUNT || '00869685621'
+} as const

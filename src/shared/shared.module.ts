@@ -28,6 +28,7 @@ import configs from 'src/shared/config'
 import { createLoggerConfig } from './config/logger.config'
 import { PaymentProducer } from './producers/payment.producer'
 import { PAYMENT_QUEUE_NAME } from './constants/queue.constant'
+import { SepayQRService } from './services/sepay-qr.service'
 
 const sharedServices = [
   PrismaService,
@@ -41,7 +42,8 @@ const sharedServices = [
   SharedPaymentRepository,
   SharedWebsocketRepository,
   S3Service,
-  PaymentProducer
+  PaymentProducer,
+  SepayQRService
 ]
 
 @Global()

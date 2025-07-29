@@ -249,13 +249,16 @@ export class SharedUserRepository {
       })
     }
 
+    // Loại bỏ field isDefault khỏi data trước khi update Address
+    const { isDefault, ...addressData } = data
+
     const address = await this.prismaService.address.update({
       where: {
         id: addressId,
         deletedAt: null
       },
       data: {
-        ...data,
+        ...addressData,
         updatedById: userId
       }
     })
