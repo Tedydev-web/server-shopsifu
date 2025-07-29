@@ -85,8 +85,7 @@ export class VNPayRepo {
   async createVNPayPayment(orderIds: string[]): Promise<string> {
     const payment = await this.prismaService.payment.create({
       data: {
-        status: PaymentStatus.PENDING,
-        gateway: 'vnpay'
+        status: PaymentStatus.PENDING
       }
     })
 

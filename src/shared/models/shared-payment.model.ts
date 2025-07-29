@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { PaymentGateway } from 'src/shared/constants/payment.constant'
 
 export const PaymentTransactionSchema = z.object({
   id: z.string(),
@@ -18,48 +17,3 @@ export const PaymentTransactionSchema = z.object({
 })
 
 export type PaymentTransactionType = z.infer<typeof PaymentTransactionSchema>
-
-// VNPay specific schemas
-export const VNPayReturnUrlSchema = z.object({
-  vnp_Amount: z.string(),
-  vnp_BankCode: z.string().optional(),
-  vnp_BankTranNo: z.string().optional(),
-  vnp_CardType: z.string().optional(),
-  vnp_OrderInfo: z.string(),
-  vnp_PayDate: z.string(),
-  vnp_ResponseCode: z.string(),
-  vnp_TmnCode: z.string(),
-  vnp_TransactionNo: z.string(),
-  vnp_TransactionStatus: z.string(),
-  vnp_TxnRef: z.string(),
-  vnp_SecureHash: z.string()
-})
-
-export const VNPayIpnSchema = z.object({
-  vnp_Amount: z.string(),
-  vnp_BankCode: z.string().optional(),
-  vnp_BankTranNo: z.string().optional(),
-  vnp_CardType: z.string().optional(),
-  vnp_OrderInfo: z.string(),
-  vnp_PayDate: z.string(),
-  vnp_ResponseCode: z.string(),
-  vnp_TmnCode: z.string(),
-  vnp_TransactionNo: z.string(),
-  vnp_TransactionStatus: z.string(),
-  vnp_TxnRef: z.string(),
-  vnp_SecureHash: z.string()
-})
-
-export type VNPayReturnUrlType = z.infer<typeof VNPayReturnUrlSchema>
-export type VNPayIpnType = z.infer<typeof VNPayIpnSchema>
-
-// Payment schema with gateway support
-export const PaymentSchema = z.object({
-  id: z.string(),
-  status: z.string(),
-  gateway: z.nativeEnum(PaymentGateway).default(PaymentGateway.SEPAY),
-  createdAt: z.date(),
-  updatedAt: z.date()
-})
-
-export type PaymentType = z.infer<typeof PaymentSchema>

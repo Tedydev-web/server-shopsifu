@@ -6,7 +6,6 @@ import { VNPayController } from './vnpay.controller'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { BullModule } from '@nestjs/bullmq'
 import { PAYMENT_QUEUE_NAME } from 'src/shared/constants/queue.constant'
-import { PaymentProducer } from 'src/shared/producers/payment.producer'
 import { VNPayRepo } from 'src/routes/payment/vnpay/vnpay.repo'
 
 @Module({
@@ -24,7 +23,7 @@ import { VNPayRepo } from 'src/routes/payment/vnpay/vnpay.repo'
       inject: [ConfigService]
     })
   ],
-  providers: [VNPayService, VNPayRepo, PaymentProducer],
+  providers: [VNPayService, VNPayRepo],
   controllers: [VNPayController]
 })
 export class VNPayModule {}

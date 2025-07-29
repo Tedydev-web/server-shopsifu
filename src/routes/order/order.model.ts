@@ -1,6 +1,5 @@
 import { PaginationQuerySchema } from 'src/shared/models/request.model'
 import { OrderSchema, OrderStatusSchema, ProductSKUSnapshotSchema } from 'src/shared/models/shared-order.model'
-import { PaymentGateway } from 'src/shared/constants/payment.constant'
 import { z } from 'zod'
 
 export const GetOrderListResSchema = z.object({
@@ -47,8 +46,7 @@ export const CreateOrderBodySchema = z
         address: z.string()
       }),
       cartItemIds: z.array(z.string()).min(1),
-      discountCodes: z.array(z.string()).optional(),
-      paymentGateway: z.nativeEnum(PaymentGateway).default(PaymentGateway.SEPAY)
+      discountCodes: z.array(z.string()).optional()
     })
   )
   .min(1)
@@ -85,9 +83,7 @@ export const CreateOrderResSchema = z.object({
   message: z.string().optional(),
   data: z.object({
     orders: z.array(OrderSchema),
-    paymentId: z.string(),
-    paymentUrl: z.string().optional(),
-    sepay_qr: z.string().optional()
+    paymentId: z.string()
   })
 })
 export const CancelOrderBodySchema = z.object({})
