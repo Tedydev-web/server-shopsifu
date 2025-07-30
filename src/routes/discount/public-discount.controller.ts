@@ -1,7 +1,6 @@
-import { Controller, Get, Post, Param, Query, Body, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Param, Query, Body } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { DiscountService } from './discount.service'
-import { AccessTokenGuard } from 'src/shared/guards/access-token.guard'
 import {
   GetDiscountsQueryDTO,
   GetDiscountsResDTO,
@@ -11,9 +10,8 @@ import {
   ValidateDiscountCodeResDTO
 } from './discount.dto'
 
-@Controller('discounts')
-@UseGuards(AccessTokenGuard)
-export class DiscountController {
+@Controller('public/discounts')
+export class PublicDiscountController {
   constructor(private readonly discountService: DiscountService) {}
 
   @Get()

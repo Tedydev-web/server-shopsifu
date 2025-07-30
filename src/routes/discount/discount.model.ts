@@ -47,6 +47,8 @@ export const GetManageDiscountsResSchema = z.object({
   })
 })
 
+export const GetDiscountsResSchema = GetManageDiscountsResSchema
+
 export const GetDiscountParamsSchema = z
   .object({
     discountId: z.string()
@@ -56,6 +58,19 @@ export const GetDiscountParamsSchema = z
 export const GetDiscountDetailResSchema = z.object({
   message: z.string().optional(),
   data: DiscountSchema
+})
+
+export const ValidateDiscountCodeBodySchema = z.object({
+  code: z.string().trim().min(1, 'Mã voucher không được để trống')
+})
+
+export const ValidateDiscountCodeResSchema = z.object({
+  message: z.string().optional(),
+  data: z.object({
+    isValid: z.boolean(),
+    discount: DiscountSchema.optional(),
+    error: z.string().optional()
+  })
 })
 
 export const CreateDiscountBodySchema = DiscountSchema.pick({
@@ -149,3 +164,7 @@ export type CreateDiscountBodyType = z.infer<typeof CreateDiscountBodySchema>
 export type UpdateDiscountBodyType = z.infer<typeof UpdateDiscountBodySchema>
 export type CreateDiscountResType = z.infer<typeof CreateDiscountResSchema>
 export type UpdateDiscountResType = z.infer<typeof UpdateDiscountResSchema>
+export type GetDiscountsQueryType = z.infer<typeof GetDiscountsQuerySchema>
+export type GetDiscountsResType = z.infer<typeof GetDiscountsResSchema>
+export type ValidateDiscountCodeBodyType = z.infer<typeof ValidateDiscountCodeBodySchema>
+export type ValidateDiscountCodeResType = z.infer<typeof ValidateDiscountCodeResSchema>

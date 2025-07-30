@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common'
 import { DiscountRepo } from './discount.repo'
+import { DiscountController } from './discount.controller'
+import { DiscountService } from './discount.service'
+import { PublicDiscountController } from './public-discount.controller'
 import { ManageDiscountController } from './manage-discount/manage-discount.controller'
 import { ManageDiscountService } from './manage-discount/manage-discount.service'
 
 @Module({
-  controllers: [ManageDiscountController],
-  providers: [DiscountRepo, ManageDiscountService],
-  exports: [DiscountRepo, ManageDiscountService]
+  controllers: [DiscountController, PublicDiscountController, ManageDiscountController],
+  providers: [DiscountRepo, DiscountService, ManageDiscountService],
+  exports: [DiscountRepo, DiscountService, ManageDiscountService]
 })
 export class DiscountModule {}

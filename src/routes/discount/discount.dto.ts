@@ -7,7 +7,11 @@ import {
   CreateDiscountBodySchema,
   UpdateDiscountBodySchema,
   CreateDiscountResSchema,
-  UpdateDiscountResSchema
+  UpdateDiscountResSchema,
+  GetDiscountsQuerySchema,
+  GetDiscountsResSchema,
+  ValidateDiscountCodeBodySchema,
+  ValidateDiscountCodeResSchema
 } from './discount.model'
 import { DiscountSchema } from 'src/shared/models/shared-discount.model'
 
@@ -28,3 +32,12 @@ export class UpdateDiscountBodyDTO extends createZodDto(UpdateDiscountBodySchema
 export class CreateDiscountResDTO extends createZodDto(CreateDiscountResSchema) {}
 
 export class UpdateDiscountResDTO extends createZodDto(UpdateDiscountResSchema) {}
+
+// Client DTOs
+export class GetDiscountsQueryDTO extends createZodDto(GetDiscountsQuerySchema) {}
+
+export class GetDiscountsResDTO extends createZodDto(GetDiscountsResSchema) {}
+
+export class ValidateDiscountCodeBodyDTO extends createZodDto(ValidateDiscountCodeBodySchema) {}
+
+export class ValidateDiscountCodeResDTO extends createZodDto(ValidateDiscountCodeResSchema) {}
