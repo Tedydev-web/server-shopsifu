@@ -12,7 +12,7 @@ export default registerAs(
       tokenExp: process.env.AUTH_REFRESH_TOKEN_EXP
     },
     otp: {
-      expiresIn: process.env.OTP_EXP
+      expiresIn: process.env.AUTH_OTP_EXP
     },
     google: {
       client: {
