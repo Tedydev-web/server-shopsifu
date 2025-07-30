@@ -12,7 +12,7 @@ export default registerAs(
         sameSite: 'none',
         path: process.env.COOKIE_ACCESS_TOKEN_PATH,
         domain: process.env.COOKIE_ACCESS_TOKEN_DOMAIN,
-        maxAge: ms(process.env.COOKIE_ACCESS_TOKEN_EXP)
+        maxAge: ms(process.env.AUTH_ACCESS_TOKEN_EXP)
       }
     },
 
@@ -24,7 +24,7 @@ export default registerAs(
         sameSite: 'none',
         path: process.env.COOKIE_REFRESH_TOKEN_PATH,
         domain: process.env.COOKIE_REFRESH_TOKEN_DOMAIN,
-        maxAge: ms(process.env.COOKIE_REFRESH_TOKEN_EXP)
+        maxAge: ms(process.env.AUTH_REFRESH_TOKEN_EXP)
       }
     },
 
