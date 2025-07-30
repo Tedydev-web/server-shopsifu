@@ -71,7 +71,7 @@ export const createLoggerConfig = (configService: ConfigService): Params => {
           stack: err.stack
         })
       },
-      customLogLevel: (res: any, err: any) => {
+      customLogLevel: (req: any, res: any, err: any) => {
         if (res.statusCode >= 400 && res.statusCode < 500) return 'warn'
         if (res.statusCode >= 500 || err) return 'error'
         if (res.statusCode >= 300 && res.statusCode < 400) return 'info'

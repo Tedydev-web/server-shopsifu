@@ -6,10 +6,11 @@ import cookieParser from 'cookie-parser'
 import helmet from 'helmet'
 import compression from 'compression'
 import { WebsocketAdapter } from './websockets/websocket.adapter'
-
 import express from 'express'
 import { Logger } from 'nestjs-pino'
 import { ConfigService } from '@nestjs/config'
+import { ValidationPipe, VersioningType } from '@nestjs/common'
+import { useContainer } from 'class-validator'
 
 async function bootstrap(): Promise<void> {
   const server = express()
@@ -39,10 +40,20 @@ async function bootstrap(): Promise<void> {
     await websocketAdapter.connectToRedis()
     app.useWebSocketAdapter(websocketAdapter)
 
-    // app.enableVersioning({
-    //   type: VersioningType.URI,
-    //   defaultVersion: '1'
-    // })
+    // Global settings
+    app.useGlobalPipes(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+
+    app.enableVersioning({
+      type: VersioningType.URI,
+      defaultVersion: '1'
+    })
+    useContainer(app.select(AppModule), { fallbackOnErrors: true })
 
     // Graceful shutdown
     const gracefulShutdown = async (signal: string) => {
