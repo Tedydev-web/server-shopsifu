@@ -21,7 +21,7 @@ export const OrderSchema = z.object({
     address: z.string()
   }),
   shopId: z.string().nullable(),
-  paymentId: z.string(),
+  paymentId: z.number(),
 
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),

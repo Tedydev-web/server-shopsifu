@@ -83,7 +83,7 @@ export const CreateOrderResSchema = z.object({
   message: z.string().optional(),
   data: z.object({
     orders: z.array(OrderSchema),
-    paymentId: z.string()
+    paymentId: z.number()
   })
 })
 export const CancelOrderBodySchema = z.object({})

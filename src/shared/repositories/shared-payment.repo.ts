@@ -17,7 +17,7 @@ export class SharedPaymentRepository {
    * @param paymentId Payment ID
    * @returns Payment với orders
    */
-  async validateAndFindPayment(paymentId: string) {
+  async validateAndFindPayment(paymentId: number) {
     const payment = await this.prismaService.payment.findUnique({
       where: { id: paymentId },
       include: {
@@ -62,7 +62,7 @@ export class SharedPaymentRepository {
    * @param paymentId Payment ID
    * @param orders Orders
    */
-  async updatePaymentAndOrdersOnSuccess(paymentId: string, orders: OrderIncludeProductSKUSnapshotAndDiscountType[]) {
+  async updatePaymentAndOrdersOnSuccess(paymentId: number, orders: OrderIncludeProductSKUSnapshotAndDiscountType[]) {
     await Promise.all([
       this.prismaService.payment.update({
         where: { id: paymentId },
@@ -78,7 +78,7 @@ export class SharedPaymentRepository {
     ])
   }
 
-  async cancelPaymentAndOrder(paymentId: string) {
+  async cancelPaymentAndOrder(paymentId: number) {
     const payment = await this.prismaService.payment.findUnique({
       where: {
         id: paymentId

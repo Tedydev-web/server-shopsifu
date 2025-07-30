@@ -83,7 +83,7 @@ export class VNPayRepo {
    * @param orderIds Danh sách order IDs
    * @returns Payment ID
    */
-  async createVNPayPayment(orderIds: string[]): Promise<string> {
+  async createVNPayPayment(orderIds: string[]): Promise<number> {
     const payment = await this.prismaService.payment.create({
       data: {
         status: PaymentStatus.PENDING
@@ -109,12 +109,12 @@ export class VNPayRepo {
    * @param orderId Order ID
    * @returns Payment ID hoặc null
    */
-  private extractPaymentId(orderInfo: string, orderId: string): string | null {
+  private extractPaymentId(orderInfo: string, orderId: string): number | null {
     // Thử tìm payment ID từ orderInfo
     if (orderInfo.includes(PREFIX_PAYMENT_CODE)) {
       const parts = orderInfo.split(PREFIX_PAYMENT_CODE)
       if (parts.length > 1) {
-        return parts[1].trim()
+        return Number(parts[1].trim())
       }
     }
 
@@ -122,7 +122,7 @@ export class VNPayRepo {
     if (orderId.includes(PREFIX_PAYMENT_CODE)) {
       const parts = orderId.split(PREFIX_PAYMENT_CODE)
       if (parts.length > 1) {
-        return parts[1].trim()
+        return Number(parts[1].trim())
       }
     }
 

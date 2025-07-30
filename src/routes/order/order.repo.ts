@@ -75,7 +75,7 @@ export class OrderRepo {
     userId: string,
     body: CreateOrderBodyType
   ): Promise<{
-    paymentId: string
+    paymentId: number
     orders: CreateOrderResType['data']['orders']
   }> {
     // 1. Kiểm tra xem tất cả cartItemIds có tồn tại trong cơ sở dữ liệu hay không
@@ -103,7 +103,7 @@ export class OrderRepo {
     const locks = await Promise.all(skuIds.map((skuId) => redlock.acquire([`lock:sku:${skuId}`], 3000))) // Giữ khóa trong 3 giây
 
     try {
-      const [paymentId, orders] = await this.prismaService.$transaction<[string, CreateOrderResType['data']['orders']]>(
+      const [paymentId, orders] = await this.prismaService.$transaction<[number, CreateOrderResType['data']['orders']]>(
         async (tx) => {
           // await tx.$queryRaw`SELECT * FROM "SKU" WHERE id IN (${Prisma.join(skuIds)}) FOR UPDATE`
           const cartItems = await tx.cartItem.findMany({

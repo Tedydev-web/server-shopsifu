@@ -61,7 +61,7 @@ export class SepayRepo {
       }
 
       // 3. Validate và tìm payment với orders
-      const payment = await this.sharedPaymentRepository.validateAndFindPayment(paymentId)
+      const payment = await this.sharedPaymentRepository.validateAndFindPayment(Number(paymentId))
 
       const userId = payment.orders[0].userId
       const { orders } = payment
@@ -74,7 +74,7 @@ export class SepayRepo {
       )
 
       // 5. Cập nhật trạng thái payment và orders
-      await this.sharedPaymentRepository.updatePaymentAndOrdersOnSuccess(paymentId, orders)
+      await this.sharedPaymentRepository.updatePaymentAndOrdersOnSuccess(Number(paymentId), orders)
 
       return userId
     })

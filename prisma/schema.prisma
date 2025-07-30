@@ -510,7 +510,7 @@ model Order {
   /// [Receiver]
   receiver    Json
   shopId      String?
-  paymentId   String
+  paymentId   Int
   discounts   DiscountSnapshot[]
   createdBy   User?                @relation("OrderCreatedBy", fields: [createdById], references: [id], onUpdate: NoAction)
   deletedBy   User?                @relation("OrderDeletedBy", fields: [deletedById], references: [id], onUpdate: NoAction)
@@ -532,7 +532,7 @@ model Order {
 }
 
 model Payment {
-  id        String        @id @default(uuid())
+  id        Int           @id @default(autoincrement())
   status    PaymentStatus
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt

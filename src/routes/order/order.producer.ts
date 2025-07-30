@@ -8,7 +8,7 @@ import { generateCancelPaymentJobId } from 'src/shared/helpers'
 export class OrderProducer {
   constructor(@InjectQueue(PAYMENT_QUEUE_NAME) private paymentQueue: Queue) {}
 
-  async addCancelPaymentJob(paymentId: string) {
+  async addCancelPaymentJob(paymentId: number) {
     return this.paymentQueue.add(
       CANCEL_PAYMENT_JOB_NAME,
       {

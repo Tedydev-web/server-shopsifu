@@ -8,7 +8,7 @@ import { generateCancelPaymentJobId } from 'src/shared/helpers'
 export class PaymentProducer {
   constructor(@InjectQueue(PAYMENT_QUEUE_NAME) private paymentQueue: Queue) {}
 
-  removeJob(paymentId: string) {
+  removeJob(paymentId: number) {
     return this.paymentQueue.remove(generateCancelPaymentJobId(paymentId))
   }
 }

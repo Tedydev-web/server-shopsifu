@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
-import { HashingService } from 'src/shared/services/hashing.service'
+import { HashingService } from '../../../src/shared/services/hashing.service'
 
 // COPY operations for optimized bulk inserts
 async function copyUsers(
@@ -955,7 +955,7 @@ async function batchCreateReviews(
   const ordersData: Array<{
     userId: string
     status: 'DELIVERED'
-    paymentId: string
+    paymentId: number
     shopId: string | null
     receiver: any
     createdAt: Date
@@ -973,7 +973,7 @@ async function batchCreateReviews(
       ordersData.push({
         userId: clientUserId,
         status: 'DELIVERED',
-        paymentId: '',
+        paymentId: 0,
         shopId: processed.sellerId || null,
         receiver: { name: review.clientName || 'Anonymous', phone: '0000000000', address: 'N/A' },
         createdAt: new Date(review.date)
@@ -1010,7 +1010,7 @@ async function batchCreateReviews(
 
           const ordersWithPaymentIds = orders.map((order, index) => ({
             ...order,
-            paymentId: paymentIds[index]?.id || ''
+            paymentId: paymentIds[index]?.id || 0
           }))
 
           await tx.order.createMany({ data: ordersWithPaymentIds })

@@ -8,7 +8,7 @@ export class PaymentConsumer extends WorkerHost {
   constructor(private readonly sharedPaymentRepo: SharedPaymentRepository) {
     super()
   }
-  async process(job: Job<{ paymentId: string }, any, string>): Promise<any> {
+  async process(job: Job<{ paymentId: number }, any, string>): Promise<any> {
     switch (job.name) {
       case CANCEL_PAYMENT_JOB_NAME: {
         const { paymentId } = job.data
