@@ -22,7 +22,8 @@ export class SepayService {
   async receiver(body: WebhookPaymentBodyType) {
     const userId = await this.sepayRepo.receiver(body)
     this.server.to(generateRoomUserId(userId)).emit('payment', {
-      status: 'success'
+      status: 'success',
+      gateway: 'sepay'
     })
     // try {
     //   const websockets = await this.sharedWebsocketRepository.findMany(userId)

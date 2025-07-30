@@ -1,4 +1,4 @@
-import { INestApplicationContext, UnauthorizedException } from '@nestjs/common'
+import { INestApplicationContext } from '@nestjs/common'
 import { IoAdapter } from '@nestjs/platform-socket.io'
 import { ServerOptions, Server, Socket } from 'socket.io'
 import { generateRoomUserId } from 'src/shared/helpers'
@@ -7,7 +7,9 @@ import { TokenService } from 'src/shared/services/token.service'
 import { createAdapter } from '@socket.io/redis-adapter'
 import { createClient } from 'redis'
 import { ConfigService } from '@nestjs/config'
+import { parse } from 'cookie'
 
+const namespaces = ['/', 'payment', 'chat']
 export class WebsocketAdapter extends IoAdapter {
   private readonly sharedWebsocketRepository: SharedWebsocketRepository
   private readonly tokenService: TokenService
@@ -33,8 +35,8 @@ export class WebsocketAdapter extends IoAdapter {
     const server: Server = super.createIOServer(port, {
       ...options,
       cors: {
-        origin: this.configService.getOrThrow('app.cors.origin'),
-        credentials: this.configService.getOrThrow('app.cors.credentials')
+        origin: '*',
+        credentials: true
       }
     })
 
@@ -48,39 +50,31 @@ export class WebsocketAdapter extends IoAdapter {
         .then(() => {})
         .catch(() => {})
     })
+    // namespaces.forEach((item) => {
+    //   server.of(item).use(authMiddleware)
+    // })
+    // server.use(authMiddleware)
+    // server.of('payment').use(authMiddleware)
+    // server.of('chat').use(authMiddleware)
     return server
   }
 
   async authMiddleware(socket: Socket, next: (err?: any) => void) {
+    const { authorization, cookie } = socket.handshake.headers
+    let accessToken: string | undefined
+    if (authorization) {
+      accessToken = authorization.split(' ')[1]
+    }
+    if (!accessToken && cookie) {
+      const cookies = parse(cookie)
+      accessToken = cookies['access_token']
+    }
+    if (!accessToken) {
+      return next(new Error('Thiếu access token'))
+    }
     try {
-      let accessToken: string | undefined
-
-      // 1. Thử lấy từ Authorization header
-      const { authorization } = socket.handshake.headers
-      if (authorization) {
-        accessToken = authorization.split(' ')[1]
-      }
-
-      // 2. Thử lấy từ query parameters
-      if (!accessToken) {
-        accessToken = socket.handshake.query.access_token as string
-      }
-
-      // 3. Thử lấy từ cookie
-      if (!accessToken) {
-        const cookies = socket.handshake.headers.cookie
-        if (cookies) {
-          const cookieArray = cookies.split(';')
-          const accessTokenCookie = cookieArray.find((cookie) => cookie.trim().startsWith('access_token='))
-          if (accessTokenCookie) accessToken = accessTokenCookie.split('=')[1]
-        }
-      }
-
-      if (!accessToken) return next(new UnauthorizedException('Thiếu access token'))
-
       const { userId } = await this.tokenService.verifyAccessToken(accessToken)
       await socket.join(generateRoomUserId(userId))
-
       next()
     } catch (error) {
       next(error)
