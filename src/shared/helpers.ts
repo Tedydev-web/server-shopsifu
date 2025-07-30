@@ -35,9 +35,9 @@ export const generateRoomUserId = (userId: string) => {
 
 export function calculateDiscountAmount(discount: any, orderTotal: number): number {
   let discountAmount = 0
-  if (discount.type === 'FIX_AMOUNT') {
+  if (discount.discountType === 'FIX_AMOUNT') {
     discountAmount = discount.value
-  } else if (discount.type === 'PERCENTAGE') {
+  } else if (discount.discountType === 'PERCENTAGE') {
     discountAmount = Math.floor(orderTotal * (discount.value / 100))
     if (discount.maxDiscountValue && discountAmount > discount.maxDiscountValue) {
       discountAmount = discount.maxDiscountValue

@@ -71,7 +71,19 @@ export class OrderService {
       where: { id: { in: body.cartItemIds }, userId: user.userId },
       include: { sku: true }
     })
-    if (!cartItems.length) throw DiscountNotFoundException
+
+    if (!cartItems.length) {
+      return {
+        message: this.i18n.t('order.order.success.CALCULATE_SUCCESS'),
+        data: {
+          subTotal: 0,
+          shippingFee: 0,
+          directDiscount: 0,
+          discounts: [],
+          grandTotal: 0
+        }
+      }
+    }
 
     const subTotal = cartItems.reduce((sum, item) => sum + item.sku.price * item.quantity, 0)
 
@@ -103,12 +115,19 @@ export class OrderService {
         brands: { select: { id: true } }
       }
     })
+
     if (!discounts.length) throw DiscountNotFoundException
 
     if (body.discountCodes && Array.isArray(body.discountCodes)) {
       for (const discountCode of body.discountCodes) {
         const discount = await this.prismaService.discount.findUnique({ where: { code: discountCode } })
         if (!discount) throw DiscountNotFoundException
+
+        // Kiểm tra minOrderValue
+        if (discount.minOrderValue && subTotal < discount.minOrderValue) {
+          throw DiscountNotFoundException
+        }
+
         // Kiểm tra maxUsesPerUser
         if (discount.maxUsesPerUser && discount.maxUsesPerUser > 0) {
           const usedCount = await this.prismaService.discountSnapshot.count({

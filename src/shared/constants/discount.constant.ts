@@ -17,7 +17,10 @@ export const DiscountApplyType = {
 
 export const VoucherType = {
   SHOP: 'SHOP',
-  PRODUCT: 'PRODUCT'
+  PRODUCT: 'PRODUCT',
+  PLATFORM: 'PLATFORM',
+  CATEGORY: 'CATEGORY',
+  BRAND: 'BRAND'
 } as const
 
 export const DisplayType = {

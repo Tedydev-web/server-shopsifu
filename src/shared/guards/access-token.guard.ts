@@ -18,9 +18,7 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 type Permission = RolePermissionsType['permissions'][number]
 type CachedRole = RolePermissionsType & {
-  permissions: {
-    [key: string]: Permission
-  }
+  permissions: Record<string, Permission>
 }
 
 @Injectable()
@@ -33,28 +31,30 @@ export class AccessTokenGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest()
+
     // Extract và validate token
     const decodedAccessToken = await this.extractAndValidateToken(request)
 
     // Check user permission
     await this.validateUserPermission(decodedAccessToken, request)
+
     return true
   }
 
   private async extractAndValidateToken(request: any): Promise<AccessTokenPayload> {
     const accessToken = this.extractAccessTokenFromHeader(request)
+
     try {
       const decodedAccessToken = await this.tokenService.verifyAccessToken(accessToken)
-
       request[REQUEST_USER_KEY] = decodedAccessToken
       return decodedAccessToken
-    } catch {
+    } catch (error) {
       throw new UnauthorizedException('Error.InvalidAccessToken')
     }
   }
 
   private extractAccessTokenFromHeader(request: any): string {
-    const accessToken = request.cookies['access_token']
+    const accessToken = request.cookies?.['access_token']
     if (!accessToken) {
       throw new UnauthorizedException('Error.MissingAccessToken')
     }
@@ -62,16 +62,16 @@ export class AccessTokenGuard implements CanActivate {
   }
 
   private async validateUserPermission(decodedAccessToken: AccessTokenPayload, request: any): Promise<void> {
-    const roleId: string = decodedAccessToken.roleId
-    const path: string = request.route.path
+    const { roleId } = decodedAccessToken
+    const path = request.route?.path || request.url
     const method = request.method as keyof typeof HTTPMethod
     const cacheKey = `role:${roleId}`
     // 1. Thử lấy từ cache
     let cachedRole = await this.cacheManager.get<CachedRole>(cacheKey)
     // 2. Nếu không có trong cache, thì truy vấn từ cơ sở dữ liệu
-    if (cachedRole === null) {
-      const role = await this.prismaService.role
-        .findUniqueOrThrow({
+    if (!cachedRole) {
+      try {
+        const role = await this.prismaService.role.findUniqueOrThrow({
           where: {
             id: roleId,
             deletedAt: null,
@@ -85,24 +85,28 @@ export class AccessTokenGuard implements CanActivate {
             }
           }
         })
-        .catch(() => {
-          throw new ForbiddenException()
-        })
 
-      const permissionObject = keyBy(
-        role.permissions,
-        (permission) => `${permission.path}:${permission.method}`
-      ) as CachedRole['permissions']
-      cachedRole = { ...role, permissions: permissionObject }
-      await this.cacheManager.set(cacheKey, cachedRole, 1000 * 60 * 60) // Cache for 1 hour
+        const permissionObject = keyBy(
+          role.permissions,
+          (permission) => `${permission.path}:${permission.method}`
+        ) as CachedRole['permissions']
 
-      request[REQUEST_ROLE_PERMISSIONS] = role
+        cachedRole = { ...role, permissions: permissionObject }
+        await this.cacheManager.set(cacheKey, cachedRole, 1000 * 60 * 60) // Cache for 1 hour
+        request[REQUEST_ROLE_PERMISSIONS] = role
+      } catch {
+        throw new ForbiddenException('Error.RoleNotFound')
+      }
     }
 
     // 3. Kiểm tra quyền truy cập
-    const canAccess: Permission | undefined = cachedRole?.permissions[`${path}:${method}`]
+    if (!cachedRole) {
+      throw new ForbiddenException('Error.InvalidRole')
+    }
+
+    const canAccess: Permission | undefined = cachedRole.permissions[`${path}:${method}`]
     if (!canAccess) {
-      throw new ForbiddenException()
+      throw new ForbiddenException('Error.InsufficientPermissions')
     }
   }
 }

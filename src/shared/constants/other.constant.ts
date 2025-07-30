@@ -10,7 +10,9 @@ export const OrderBy = {
 export const SortBy = {
   Price: 'price',
   CreatedAt: 'createdAt',
-  Sale: 'sale'
+  Sale: 'sale',
+  Value: 'value',
+  UsesCount: 'usesCount'
 } as const
 
 export const PREFIX_PAYMENT_CODE = 'DH'
