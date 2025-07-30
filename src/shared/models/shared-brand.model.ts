@@ -4,7 +4,7 @@ import { z } from 'zod'
 export const BrandSchema = z.object({
   id: z.string(),
   name: z.string().max(500),
-  logo: z.string().url().max(1000),
+  logo: z.string().max(1000),
 
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),

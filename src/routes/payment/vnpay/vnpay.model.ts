@@ -6,19 +6,19 @@ export const CreateVNPayPaymentBodySchema = z.object({
   amount: z.number(),
   orderInfo: z.string(),
   orderId: z.string(),
-  returnUrl: z.string().url().optional().default('https://shopsifu.live/payment/success'),
-  ipnUrl: z.string().url().optional(),
-  locale: z.nativeEnum(VnpLocale).default(VnpLocale.VN),
-  currency: z.nativeEnum(VnpCurrCode).default(VnpCurrCode.VND),
+  returnUrl: z.string().optional().default('https://shopsifu.live/payment/success'),
+  ipnUrl: z.string().optional(),
+  locale: z.enum(VnpLocale).default(VnpLocale.VN),
+  currency: z.enum(VnpCurrCode).default(VnpCurrCode.VND),
   bankCode: z.string().optional(),
-  orderType: z.nativeEnum(ProductCode).default(ProductCode.Other),
-  ipAddr: z.string().ip().default('127.0.0.1')
+  orderType: z.enum(ProductCode).default(ProductCode.Other),
+  ipAddr: z.string().default('127.0.0.1')
 })
 
 export const CreateVNPayPaymentResSchema = z.object({
   message: z.string(),
   data: z.object({
-    paymentUrl: z.string().url()
+    paymentUrl: z.string()
   })
 })
 
@@ -42,7 +42,7 @@ export const VNPayReturnUrlSchema = z.object({
   vnp_Amount: z.string(),
   vnp_BankCode: z.string().optional(),
   vnp_BankTranNo: z.string().optional(),
-  vnp_CardType: z.nativeEnum(VnpCardType).optional(),
+  vnp_CardType: z.enum(VnpCardType).optional(),
   vnp_OrderInfo: z.string(),
   vnp_PayDate: z.string(),
   vnp_ResponseCode: z.string(),
@@ -74,7 +74,7 @@ export const VNPayQueryDrBodySchema = z.object({
   requestId: z.string(),
   transactionDate: z.number(),
   transactionNo: z.number(),
-  ipAddr: z.string().ip().default('127.0.0.1'),
+  ipAddr: z.string().default('127.0.0.1'),
   createDate: z.number()
 })
 
@@ -99,7 +99,7 @@ export const VNPayRefundBodySchema = z.object({
   amount: z.number(),
   requestId: z.string(),
   transactionNo: z.number(),
-  ipAddr: z.string().ip().default('127.0.0.1'),
+  ipAddr: z.string().default('127.0.0.1'),
   createBy: z.string()
 })
 

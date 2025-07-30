@@ -109,7 +109,7 @@ export const GoogleAuthStateSchema = DeviceSchema.pick({
 })
 
 export const GetAuthorizationUrlResSchema = z.object({
-  url: z.string().url()
+  url: z.string()
 })
 
 export const ForgotPasswordBodySchema = z

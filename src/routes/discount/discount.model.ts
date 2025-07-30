@@ -12,7 +12,7 @@ export const DiscountSchema = z.object({
   id: z.string(),
   name: z.string().max(500),
   description: z.string().nullable().optional(),
-  discountType: z.nativeEnum(DiscountType).default(DiscountType.FIX_AMOUNT),
+  discountType: z.enum(DiscountType).default(DiscountType.FIX_AMOUNT),
   value: z.number().int(),
   code: z.string().max(100),
   startDate: z.coerce.date(),
@@ -23,11 +23,11 @@ export const DiscountSchema = z.object({
   maxUsesPerUser: z.number().int().default(0),
   minOrderValue: z.number().int().default(0),
   maxDiscountValue: z.number().int().nullable().optional(),
-  voucherType: z.nativeEnum(VoucherType).default(VoucherType.SHOP),
-  displayType: z.nativeEnum(DisplayType).default(DisplayType.PUBLIC),
+  voucherType: z.enum(VoucherType).default(VoucherType.SHOP),
+  displayType: z.enum(DisplayType).default(DisplayType.PUBLIC),
   isPlatform: z.boolean().default(false),
-  discountStatus: z.nativeEnum(DiscountStatus).default(DiscountStatus.DRAFT),
-  discountApplyType: z.nativeEnum(DiscountApplyType).default(DiscountApplyType.ALL),
+  discountStatus: z.enum(DiscountStatus).default(DiscountStatus.DRAFT),
+  discountApplyType: z.enum(DiscountApplyType).default(DiscountApplyType.ALL),
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),
   deletedById: z.string().nullable(),
@@ -51,7 +51,7 @@ export const GetDiscountsQuerySchema = z.object({
  * Dành cho Admin và Seller
  */
 export const GetManageDiscountsQuerySchema = GetDiscountsQuerySchema.extend({
-  status: z.nativeEnum(DiscountStatus).optional(),
+  status: z.enum(DiscountStatus).optional(),
   shopId: z.string().optional()
 })
 
@@ -126,16 +126,16 @@ export const GetAvailableDiscountsResSchema = z.object({
       id: z.string(),
       name: z.string(),
       description: z.string().nullable(),
-      discountType: z.nativeEnum(DiscountType),
+      discountType: z.enum(DiscountType),
       value: z.number(),
       code: z.string(),
       maxDiscountValue: z.number().nullable(),
       discountAmount: z.number().optional(),
       minOrderValue: z.number(),
       isPlatform: z.boolean().optional(),
-      voucherType: z.nativeEnum(VoucherType).optional(),
-      displayType: z.nativeEnum(DisplayType).optional(),
-      discountApplyType: z.nativeEnum(DiscountApplyType).optional(),
+      voucherType: z.enum(VoucherType).optional(),
+      displayType: z.enum(DisplayType).optional(),
+      discountApplyType: z.enum(DiscountApplyType).optional(),
       targetInfo: z.any().nullable().optional()
     })
   )

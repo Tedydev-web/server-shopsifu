@@ -30,7 +30,7 @@ export const AddressSchema = z.object({
   district: z.string().min(1).max(200).optional(),
   ward: z.string().min(1).max(200).optional(),
   street: z.string().min(1).max(500).optional(),
-  addressType: z.nativeEnum(AddressType),
+  addressType: z.enum(AddressType),
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),
   deletedById: z.string().nullable(),
