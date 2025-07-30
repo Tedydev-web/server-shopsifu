@@ -56,6 +56,7 @@ export const VNPayReturnUrlSchema = z.object({
 })
 
 export const VNPayVerifyResSchema = z.object({
+  message: z.string(),
   data: z.object({
     isSuccess: z.boolean(),
     isVerified: z.boolean(),
@@ -80,6 +81,7 @@ export const VNPayQueryDrBodySchema = z.object({
 })
 
 export const VNPayQueryDrResSchema = z.object({
+  message: z.string(),
   data: z.object({
     isSuccess: z.boolean(),
     isVerified: z.boolean(),
@@ -104,6 +106,7 @@ export const VNPayRefundBodySchema = z.object({
 })
 
 export const VNPayRefundResSchema = z.object({
+  message: z.string(),
   data: z.object({
     isSuccess: z.boolean(),
     isVerified: z.boolean(),

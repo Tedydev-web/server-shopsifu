@@ -23,7 +23,7 @@ import { VNPayRepo } from './vnpay.repo'
 import { SharedWebsocketRepository } from 'src/shared/repositories/shared-websocket.repo'
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
 import { Server } from 'socket.io'
-import { generateRoomUserId } from 'src/shared/helpers'
+import { generateRoomUserId, getDateInGMT7 } from 'src/shared/helpers'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { PREFIX_PAYMENT_CODE } from 'src/shared/constants/other.constant'
 
@@ -87,16 +87,6 @@ export class VNPayService {
         vnp_OrderType: paymentData.orderType
       }
 
-      // Thêm IPN URL nếu có
-      if (paymentData.ipnUrl) {
-        buildPaymentData.vnp_IpnUrl = paymentData.ipnUrl
-      }
-
-      // Thêm các field tùy chọn nếu có
-      if (paymentData.bankCode) {
-        buildPaymentData.vnp_BankCode = paymentData.bankCode
-      }
-
       // Tạo URL thanh toán với hash
       const paymentUrl = this.vnpayService.buildPaymentUrl(buildPaymentData, {
         withHash: true,
@@ -142,6 +132,7 @@ export class VNPayService {
       }
 
       return {
+        message: this.i18n.t('payment.payment.vnpay.success.VERIFY_RETURN_SUCCESS'),
         data: {
           isSuccess: verify.isSuccess,
           isVerified: verify.isVerified,
@@ -182,6 +173,7 @@ export class VNPayService {
       }
 
       return {
+        message: this.i18n.t('payment.payment.vnpay.success.VERIFY_IPN_SUCCESS'),
         data: {
           isSuccess: verify.isSuccess,
           isVerified: verify.isVerified,
@@ -208,8 +200,6 @@ export class VNPayService {
    */
   async queryDr(queryData: VNPayQueryDrBodyType): Promise<VNPayQueryDrResType> {
     try {
-      const formattedDate = this.getDateInGMT7()
-
       const queryRequest = {
         vnp_RequestId: queryData.requestId,
         vnp_IpAddr: queryData.ipAddr,
@@ -230,6 +220,7 @@ export class VNPayService {
       })
 
       return {
+        message: this.i18n.t('payment.payment.vnpay.success.QUERY_DR_SUCCESS'),
         data: {
           isSuccess: result.isSuccess,
           isVerified: result.isVerified,
@@ -259,8 +250,6 @@ export class VNPayService {
    */
   async refund(refundData: VNPayRefundBodyType): Promise<VNPayRefundResType> {
     try {
-      const formattedDate = this.getDateInGMT7()
-
       const refundRequest = {
         vnp_RequestId: refundData.requestId,
         vnp_IpAddr: refundData.ipAddr,
@@ -268,8 +257,8 @@ export class VNPayService {
         vnp_TransactionNo: refundData.transactionNo,
         vnp_Amount: refundData.amount,
         vnp_OrderInfo: refundData.orderInfo,
-        vnp_TransactionDate: formattedDate,
-        vnp_CreateDate: formattedDate,
+        vnp_TransactionDate: getDateInGMT7(),
+        vnp_CreateDate: getDateInGMT7(),
         vnp_CreateBy: refundData.createBy,
         vnp_TransactionType: '02' // Refund transaction type
       }
@@ -284,6 +273,7 @@ export class VNPayService {
       })
 
       return {
+        message: this.i18n.t('payment.payment.vnpay.success.REFUND_SUCCESS'),
         data: {
           isSuccess: result.isSuccess,
           isVerified: result.isVerified,
@@ -304,24 +294,5 @@ export class VNPayService {
       }
       throw VNPayServiceUnavailableException
     }
-  }
-
-  /**
-   * Lấy ngày hiện tại theo múi giờ GMT+7
-   * @returns Ngày theo định dạng yyyyMMddHHmmss
-   */
-  private getDateInGMT7(): number {
-    const now = new Date()
-    const gmt7Offset = 7 * 60 // GMT+7 in minutes
-    const gmt7Time = new Date(now.getTime() + gmt7Offset * 60 * 1000)
-
-    const year = gmt7Time.getUTCFullYear()
-    const month = String(gmt7Time.getUTCMonth() + 1).padStart(2, '0')
-    const day = String(gmt7Time.getUTCDate()).padStart(2, '0')
-    const hours = String(gmt7Time.getUTCHours()).padStart(2, '0')
-    const minutes = String(gmt7Time.getUTCMinutes()).padStart(2, '0')
-    const seconds = String(gmt7Time.getUTCSeconds()).padStart(2, '0')
-
-    return parseInt(`${year}${month}${day}${hours}${minutes}${seconds}`)
   }
 }

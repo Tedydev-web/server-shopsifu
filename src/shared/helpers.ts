@@ -45,3 +45,21 @@ export function calculateDiscountAmount(discount: any, orderTotal: number): numb
   }
   return Math.min(discountAmount, orderTotal)
 }
+/**
+ * Lấy ngày hiện tại theo múi giờ GMT+7
+ * @returns Ngày theo định dạng yyyyMMddHHmmss
+ */
+export const getDateInGMT7 = (): number => {
+  const now = new Date()
+  const gmt7Offset = 7 * 60 // GMT+7 in minutes
+  const gmt7Time = new Date(now.getTime() + gmt7Offset * 60 * 1000)
+
+  const year = gmt7Time.getUTCFullYear()
+  const month = String(gmt7Time.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(gmt7Time.getUTCDate()).padStart(2, '0')
+  const hours = String(gmt7Time.getUTCHours()).padStart(2, '0')
+  const minutes = String(gmt7Time.getUTCMinutes()).padStart(2, '0')
+  const seconds = String(gmt7Time.getUTCSeconds()).padStart(2, '0')
+
+  return parseInt(`${year}${month}${day}${hours}${minutes}${seconds}`)
+}
