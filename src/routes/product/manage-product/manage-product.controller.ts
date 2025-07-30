@@ -21,7 +21,7 @@ export class ManageProductController {
   @Get()
   @ZodSerializerDto(GetProductsResDTO)
   list(@Query() query: GetManageProductsQueryDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.manageProductService.list({ query, user })
+    return this.manageProductService.list({ query, user } as any)
   }
 
   @Get(':productId')
@@ -33,7 +33,7 @@ export class ManageProductController {
   @Post()
   @ZodSerializerDto(GetProductDetailResDTO)
   create(@Body() body: CreateProductBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.manageProductService.create({ data: body, user })
+    return this.manageProductService.create({ data: body, user } as any)
   }
 
   @Put(':productId')
@@ -43,7 +43,7 @@ export class ManageProductController {
     @Param() params: GetProductParamsDTO,
     @ActiveUser() user: AccessTokenPayload
   ) {
-    return this.manageProductService.update({ data: body, productId: params.productId, user })
+    return this.manageProductService.update({ data: body, productId: params.productId, user } as any)
   }
 
   @Delete(':productId')

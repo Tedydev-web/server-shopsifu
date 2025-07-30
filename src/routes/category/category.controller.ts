@@ -35,7 +35,7 @@ export class CategoryController {
   @Post()
   @ZodSerializerDto(GetCategoryDetailResDTO)
   create(@Body() body: CreateCategoryBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.categoryService.create({ data: body, user })
+    return this.categoryService.create({ data: body, user } as any)
   }
 
   @Put(':categoryId')
@@ -45,7 +45,7 @@ export class CategoryController {
     @Param() params: GetCategoryParamsDTO,
     @ActiveUser() user: AccessTokenPayload
   ) {
-    return this.categoryService.update({ data: body, id: params.categoryId, user })
+    return this.categoryService.update({ data: body, id: params.categoryId, user } as any)
   }
 
   @Delete(':categoryId')

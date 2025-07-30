@@ -23,13 +23,13 @@ export class OrderController {
   @Get()
   @ZodSerializerDto(GetOrderListResDTO)
   getCart(@ActiveUser() user: AccessTokenPayload, @Query() query: GetOrderListQueryDTO) {
-    return this.orderService.list(user, query)
+    return this.orderService.list(user, query as any)
   }
 
   @Post()
   @ZodSerializerDto(CreateOrderResDTO)
   create(@ActiveUser() user: AccessTokenPayload, @Body() body: CreateOrderBodyDTO) {
-    return this.orderService.create(user, body)
+    return this.orderService.create(user, body as any)
   }
 
   @Get(':orderId')
@@ -47,6 +47,6 @@ export class OrderController {
   @Post('calculate')
   @ZodSerializerDto(CalculateOrderResDTO)
   calculate(@ActiveUser() user: AccessTokenPayload, @Body() body: CalculateOrderBodyDTO) {
-    return this.orderService.calculate(user, body)
+    return this.orderService.calculate(user, body as any)
   }
 }

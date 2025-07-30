@@ -24,7 +24,7 @@ export class CategoryTranslationController {
   @Post()
   @ZodSerializerDto(GetCategoryTranslationDetailResDTO)
   create(@Body() body: CreateCategoryTranslationBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.categoryTranslationService.create({ data: body, user })
+    return this.categoryTranslationService.create({ data: body, user } as any)
   }
 
   @Put(':categoryTranslationId')
@@ -34,7 +34,7 @@ export class CategoryTranslationController {
     @Param() params: GetCategoryTranslationParamsDTO,
     @ActiveUser() user: AccessTokenPayload
   ) {
-    return this.categoryTranslationService.update({ data: body, id: params.categoryTranslationId, user })
+    return this.categoryTranslationService.update({ data: body, id: params.categoryTranslationId, user } as any)
   }
 
   @Delete(':categoryTranslationId')

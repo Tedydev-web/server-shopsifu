@@ -22,7 +22,7 @@ export class BrandController {
   @IsPublic()
   @ZodSerializerDto(GetBrandsResDTO)
   list(@Query() query: PaginationQueryDTO) {
-    return this.brandService.list(query)
+    return this.brandService.list(query as any)
   }
 
   @Get(':brandId')
@@ -35,7 +35,7 @@ export class BrandController {
   @Post()
   @ZodSerializerDto(GetBrandDetailResDTO)
   create(@Body() body: CreateBrandBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.brandService.create({ data: body, user })
+    return this.brandService.create({ data: body, user } as any)
   }
 
   @Put(':brandId')

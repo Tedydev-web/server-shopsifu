@@ -23,13 +23,13 @@ export class ReviewController {
   @Get('/products/:productId')
   @ZodSerializerDto(GetReviewsDTO)
   getReviews(@Param() params: GetReviewsParamsDTO, @Query() pagination: PaginationQueryDTO) {
-    return this.reviewService.list(params.productId, pagination)
+    return this.reviewService.list(params.productId, pagination as any)
   }
 
   @Post()
   @ZodSerializerDto(CreateReviewResDTO)
   createReview(@Body() body: CreateReviewBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.reviewService.create(user, body)
+    return this.reviewService.create(user, body as any)
   }
 
   @Put(':reviewId')
@@ -39,6 +39,6 @@ export class ReviewController {
     @ActiveUser() user: AccessTokenPayload,
     @Param() params: GetReviewDetailParamsDTO
   ) {
-    return this.reviewService.update({ user, body, reviewId: params.reviewId })
+    return this.reviewService.update({ user, body, reviewId: params.reviewId } as any)
   }
 }

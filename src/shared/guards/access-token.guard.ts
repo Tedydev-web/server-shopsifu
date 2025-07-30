@@ -100,7 +100,7 @@ export class AccessTokenGuard implements CanActivate {
     }
 
     // 3. Kiểm tra quyền truy cập
-    const canAccess: Permission | undefined = cachedRole.permissions[`${path}:${method}`]
+    const canAccess: Permission | undefined = cachedRole?.permissions[`${path}:${method}`]
     if (!canAccess) {
       throw new ForbiddenException()
     }

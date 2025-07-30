@@ -13,6 +13,6 @@ export class SepayController {
   @ZodSerializerDto(MessageResDTO)
   @Auth(['PaymentAPIKey'])
   receiver(@Body() body: WebhookPaymentBodyDTO) {
-    return this.sepayService.receiver(body)
+    return this.sepayService.receiver(body as any)
   }
 }

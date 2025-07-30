@@ -34,7 +34,7 @@ export class LanguageController {
     return this.languageService.create({
       data: body,
       createdById: user.userId
-    })
+    } as any)
   }
   // Không cho phép cập nhật id: Vì id là mã ngôn ngữ do người dùng tạo (ví dụ: 'en', 'vi'), nó nên bất biến (immutable). Nếu cần thay đổi id, bạn nên xóa ngôn ngữ cũ và tạo mới.
 
@@ -51,7 +51,7 @@ export class LanguageController {
       data: body,
       id: params.languageId,
       updatedById: user.userId
-    })
+    } as any)
   }
 
   @Delete(':languageId')

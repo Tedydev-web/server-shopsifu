@@ -21,7 +21,7 @@ export class ProductController {
   list(@Query() query: GetProductsQueryDTO) {
     return this.productService.list({
       query
-    })
+    } as any)
   }
 
   @SkipThrottle({ default: false })

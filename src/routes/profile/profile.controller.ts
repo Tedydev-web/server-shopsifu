@@ -30,13 +30,13 @@ export class ProfileController {
   @Put()
   @ZodSerializerDto(UpdateProfileResDTO)
   updateProfile(@Body() body: UpdateMeBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.profileService.updateProfile({ user, body })
+    return this.profileService.updateProfile({ user, body } as any)
   }
 
   @Put('change-password')
   @ZodSerializerDto(MessageResDTO)
   changePassword(@Body() body: ChangePasswordBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.profileService.changePassword({ user, body })
+    return this.profileService.changePassword({ user, body } as any)
   }
 
   // Address management endpoints
@@ -55,7 +55,7 @@ export class ProfileController {
   @Post('addresses')
   @ZodSerializerDto(CreateAddressResDTO)
   createAddress(@Body() body: CreateAddressBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.profileService.createAddress(body, user)
+    return this.profileService.createAddress(body as any, user)
   }
 
   @Put('addresses/:addressId')

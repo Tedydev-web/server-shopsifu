@@ -45,7 +45,7 @@ export class UserController {
       data: body,
       user,
       roleName
-    })
+    } as any)
   }
 
   @Put(':userId')

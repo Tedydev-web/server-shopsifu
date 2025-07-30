@@ -49,11 +49,12 @@ async function bootstrap(): Promise<void> {
     //   })
     // )
 
-    app.enableVersioning({
-      type: VersioningType.URI,
-      defaultVersion: '1'
-    })
-    useContainer(app.select(AppModule), { fallbackOnErrors: true })
+    // app.enableVersioning({
+    //   type: VersioningType.URI,
+    //   defaultVersion: '1'
+    // })
+
+    // useContainer(app.select(AppModule), { fallbackOnErrors: true })
 
     // Graceful shutdown
     const gracefulShutdown = async (signal: string) => {

@@ -32,7 +32,7 @@ export class PermissionController {
   @Post()
   @ZodSerializerDto(GetPermissionDetailResDTO)
   create(@Body() body: CreatePermissionBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.permissionService.create({ data: body, user })
+    return this.permissionService.create({ data: body, user } as any)
   }
 
   @Put(':permissionId')
@@ -42,12 +42,12 @@ export class PermissionController {
     @Param() params: GetPermissionParamsDTO,
     @ActiveUser() user: AccessTokenPayload
   ) {
-    return this.permissionService.update({ data: body, id: params.permissionId, user })
+    return this.permissionService.update({ data: body, id: params.permissionId, user } as any)
   }
 
   @Delete(':permissionId')
   @ZodSerializerDto(MessageResDTO)
   delete(@Param() params: GetPermissionParamsDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.permissionService.delete({ id: params.permissionId, user })
+    return this.permissionService.delete({ id: params.permissionId, user } as any)
   }
 }

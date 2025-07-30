@@ -24,7 +24,7 @@ export class BrandTranslationController {
   @Post()
   @ZodSerializerDto(GetBrandTranslationDetailResDTO)
   create(@Body() body: CreateBrandTranslationBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.brandTranslationService.create({ data: body, user })
+    return this.brandTranslationService.create({ data: body, user } as any)
   }
 
   @Put(':brandTranslationId')

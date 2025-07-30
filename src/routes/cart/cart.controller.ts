@@ -21,13 +21,13 @@ export class CartController {
   @Get()
   @ZodSerializerDto(GetCartResDTO)
   getCart(@ActiveUser() user: AccessTokenPayload, @Query() query: PaginationQueryDTO) {
-    return this.cartService.getCart(user, query)
+    return this.cartService.getCart(user, query as any)
   }
 
   @Post()
   @ZodSerializerDto(AddToCartResDTO)
   addToCart(@Body() body: AddToCartBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.cartService.addToCart(user, body)
+    return this.cartService.addToCart(user, body as any)
   }
 
   @Put(':cartItemId')
@@ -37,12 +37,12 @@ export class CartController {
     @Param() param: GetCartItemParamsDTO,
     @Body() body: UpdateCartItemBodyDTO
   ) {
-    return this.cartService.updateCartItem({ user, cartItemId: param.cartItemId, body })
+    return this.cartService.updateCartItem({ user, cartItemId: param.cartItemId, body } as any)
   }
 
   @Post('delete')
   @ZodSerializerDto(MessageResDTO)
   deleteCart(@Body() body: DeleteCartBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.cartService.deleteCart(user, body)
+    return this.cartService.deleteCart(user, body as any)
   }
 }

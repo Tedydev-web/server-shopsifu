@@ -24,7 +24,7 @@ export class ProductTranslationController {
   @Post()
   @ZodSerializerDto(GetProductTranslationDetailResDTO)
   create(@Body() body: CreateProductTranslationBodyDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.productTranslationService.create({ data: body, user })
+    return this.productTranslationService.create({ data: body, user } as any)
   }
 
   @Put(':productTranslationId')
@@ -34,7 +34,7 @@ export class ProductTranslationController {
     @Param() params: GetProductTranslationParamsDTO,
     @ActiveUser() user: AccessTokenPayload
   ) {
-    return this.productTranslationService.update({ data: body, id: params.productTranslationId, user })
+    return this.productTranslationService.update({ data: body, id: params.productTranslationId, user } as any)
   }
 
   @Delete(':productTranslationId')
