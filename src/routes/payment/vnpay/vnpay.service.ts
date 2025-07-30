@@ -99,11 +99,9 @@ export class VNPayService {
       })
 
       return {
+        message: this.i18n.t('payment.payment.vnpay.success.CREATE_PAYMENT_SUCCESS'),
         data: {
-          paymentUrl,
-          orderId: paymentData.orderId,
-          amount: paymentData.amount,
-          orderInfo: paymentData.orderInfo
+          paymentUrl
         }
       }
     } catch {

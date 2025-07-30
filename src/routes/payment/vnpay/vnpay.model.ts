@@ -6,7 +6,7 @@ export const CreateVNPayPaymentBodySchema = z.object({
   amount: z.number(),
   orderInfo: z.string(),
   orderId: z.string(),
-  returnUrl: z.string().url(),
+  returnUrl: z.string().url().optional().default('https://shopsifu.live/payment/success'),
   ipnUrl: z.string().url().optional(),
   locale: z.nativeEnum(VnpLocale).default(VnpLocale.VN),
   currency: z.nativeEnum(VnpCurrCode).default(VnpCurrCode.VND),
@@ -16,11 +16,9 @@ export const CreateVNPayPaymentBodySchema = z.object({
 })
 
 export const CreateVNPayPaymentResSchema = z.object({
+  message: z.string(),
   data: z.object({
-    paymentUrl: z.string().url(),
-    orderId: z.string(),
-    amount: z.number(),
-    orderInfo: z.string()
+    paymentUrl: z.string().url()
   })
 })
 
