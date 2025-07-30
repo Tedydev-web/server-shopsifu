@@ -38,7 +38,7 @@ export class VNPayController {
   @IsPublic()
   @ZodSerializerDto(CreateVNPayPaymentResDTO)
   async createPayment(@Body() paymentData: CreateVNPayPaymentBodyDTO) {
-    return this.vnpayService.createPayment(paymentData)
+    return this.vnpayService.createPayment(paymentData as any)
   }
 
   /**
@@ -50,7 +50,7 @@ export class VNPayController {
   @IsPublic()
   @ZodSerializerDto(VNPayVerifyResDTO)
   async verifyReturnUrl(@Query() queryData: VNPayReturnUrlDTO) {
-    return this.vnpayService.verifyReturnUrl(queryData)
+    return this.vnpayService.verifyReturnUrl(queryData as any)
   }
 
   /**
@@ -61,7 +61,7 @@ export class VNPayController {
   @Post('verify-ipn')
   @IsPublic()
   async verifyIpnCall(@Body() ipnData: VNPayReturnUrlDTO): Promise<string> {
-    const verify = await this.vnpayService.verifyIpnCall(ipnData)
+    const verify = await this.vnpayService.verifyIpnCall(ipnData as any)
     // Nếu checksum không hợp lệ
     if (!verify.data.isVerified) {
       return '97' // Mã lỗi checksum theo tài liệu VNPay
@@ -83,7 +83,7 @@ export class VNPayController {
   @IsPublic()
   @ZodSerializerDto(VNPayQueryDrResDTO)
   async queryDr(@Body() queryData: VNPayQueryDrBodyDTO) {
-    return this.vnpayService.queryDr(queryData)
+    return this.vnpayService.queryDr(queryData as any)
   }
 
   /**
@@ -95,6 +95,6 @@ export class VNPayController {
   @IsPublic()
   @ZodSerializerDto(VNPayRefundResDTO)
   async refund(@Body() refundData: VNPayRefundBodyDTO) {
-    return this.vnpayService.refund(refundData)
+    return this.vnpayService.refund(refundData as any)
   }
 }

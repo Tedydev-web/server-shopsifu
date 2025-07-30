@@ -40,10 +40,6 @@ export class VNPayService {
     private readonly sharedWebsocketRepository: SharedWebsocketRepository
   ) {}
 
-  /**
-   * Lấy danh sách ngân hàng hỗ trợ thanh toán VNPay
-   * @returns Danh sách ngân hàng
-   */
   async getBankList(): Promise<VNPayBankListResType> {
     try {
       const banks = await this.vnpayService.getBankList()
@@ -62,11 +58,6 @@ export class VNPayService {
     }
   }
 
-  /**
-   * Tạo URL thanh toán VNPay
-   * @param paymentData Dữ liệu thanh toán
-   * @returns URL thanh toán và thông tin đơn hàng
-   */
   async createPayment(paymentData: CreateVNPayPaymentBodyType): Promise<CreateVNPayPaymentResType> {
     try {
       // Sử dụng payment ID thay vì order ID
@@ -85,6 +76,16 @@ export class VNPayService {
         vnp_Locale: paymentData.locale,
         vnp_CurrCode: paymentData.currency,
         vnp_OrderType: paymentData.orderType
+      }
+
+      // Thêm IPN URL nếu có
+      if (paymentData.ipnUrl) {
+        buildPaymentData.vnp_IpnUrl = paymentData.ipnUrl
+      }
+
+      // Thêm các field tùy chọn nếu có
+      if (paymentData.bankCode) {
+        buildPaymentData.vnp_BankCode = paymentData.bankCode
       }
 
       // Tạo URL thanh toán với hash
@@ -109,11 +110,6 @@ export class VNPayService {
     }
   }
 
-  /**
-   * Xác thực URL trả về từ VNPay
-   * @param queryData Dữ liệu trả về từ VNPay
-   * @returns Kết quả xác thực
-   */
   async verifyReturnUrl(queryData: VNPayReturnUrlType): Promise<VNPayVerifyResType> {
     try {
       const verify = await this.vnpayService.verifyReturnUrl(queryData)
@@ -150,11 +146,6 @@ export class VNPayService {
     }
   }
 
-  /**
-   * Xác thực IPN call từ VNPay
-   * @param ipnData Dữ liệu IPN từ VNPay
-   * @returns Kết quả xác thực IPN
-   */
   async verifyIpnCall(ipnData: VNPayReturnUrlType): Promise<VNPayVerifyResType> {
     try {
       const verify = await this.vnpayService.verifyIpnCall(ipnData)
@@ -191,11 +182,6 @@ export class VNPayService {
     }
   }
 
-  /**
-   * Truy vấn kết quả thanh toán từ VNPay
-   * @param queryData Dữ liệu truy vấn
-   * @returns Kết quả truy vấn
-   */
   async queryDr(queryData: VNPayQueryDrBodyType): Promise<VNPayQueryDrResType> {
     try {
       const queryRequest = {
@@ -241,11 +227,6 @@ export class VNPayService {
     }
   }
 
-  /**
-   * Hoàn tiền giao dịch VNPay
-   * @param refundData Dữ liệu hoàn tiền
-   * @returns Kết quả hoàn tiền
-   */
   async refund(refundData: VNPayRefundBodyType): Promise<VNPayRefundResType> {
     try {
       const refundRequest = {

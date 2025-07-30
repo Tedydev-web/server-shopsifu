@@ -40,14 +40,14 @@ async function bootstrap(): Promise<void> {
     await websocketAdapter.connectToRedis()
     app.useWebSocketAdapter(websocketAdapter)
 
-    // Global settings
-    app.useGlobalPipes(
-      new ValidationPipe({
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true
-      })
-    )
+    // // Global settings
+    // app.useGlobalPipes(
+    //   new ValidationPipe({
+    //     transform: true,
+    //     whitelist: true,
+    //     forbidNonWhitelisted: true
+    //   })
+    // )
 
     app.enableVersioning({
       type: VersioningType.URI,
