@@ -1,5 +1,9 @@
 # VNPay Payment Integration - Hướng Dẫn Chi Tiết
 
+**Version:** 1.2.1
+**Last Updated:** 2025-07-31
+**Author:** Development Team
+
 Module tích hợp cổng thanh toán VNPay cho hệ thống Shopsifu với đầy đủ tính năng theo thư viện `vnpay`.
 
 ## 📋 Mục Lục
@@ -1064,16 +1068,30 @@ Nếu gặp vấn đề, vui lòng:
 
 ---
 
-**Version:** 1.2.0
-**Last Updated:** 2024-12-19
-**Author:** Development Team
-**Changes:**
-- Fixed IPN endpoint implementation to match VNPay documentation
-- Synchronized with OrderStatus enum and best practices
-- Implemented proper amount calculation from order items
-- Added comprehensive order status management
-- Added `@SkipTransform()` decorator to bypass interceptor for IPN response
-- Fixed response format to match VNPay requirements (direct JSON without wrapper)
-- **Fixed order lookup logic:** Now uses Payment ID instead of Order ID (following Sepay pattern)
-- **Improved transaction handling:** Uses database transactions for atomic updates
-- **Enhanced WebSocket notifications:** Sends notifications to all users in payment
+## Changes
+
+### Version 1.2.1 (2025-07-31)
+- **Fix:** Sửa thứ tự logic trong IPN processing để kiểm tra amount trước payment status
+- **Reason:** Đảm bảo test case "Invalid amount" hoạt động đúng thay vì trả về "Order already confirmed"
+- **Impact:** Test case "Số tiền không hợp lệ" giờ sẽ trả về `RspCode: "04"` thay vì `RspCode: "02"`
+
+### Version 1.2.0 (2025-07-31)
+- **Fix:** Sửa logic tìm order từ orderId sang paymentId (giống Sepay)
+- **Fix:** Cải thiện transaction handling với Prisma $transaction
+- **Fix:** Tăng cường WebSocket notifications cho tất cả users liên quan
+- **Fix:** Sửa response format cho IPN endpoint (bypass interceptor)
+- **Reason:** Tất cả test cases đều trả về "Order not found" do logic lookup sai
+- **Impact:** IPN endpoint giờ có thể tìm thấy payment và xử lý đúng các test cases
+
+### Version 1.1.0 (2025-07-31)
+- **Fix:** Thay đổi HTTP method từ POST sang GET cho IPN endpoint
+- **Fix:** Thay đổi parameter từ @Body() sang @Query() cho IPN endpoint
+- **Fix:** Thêm @SkipTransform() decorator để bypass response interceptor
+- **Fix:** Cập nhật response format từ text sang JSON cho IPN
+- **Reason:** VNPay gửi IPN qua query parameters, không phải request body
+- **Impact:** IPN endpoint giờ nhận đúng format từ VNPay và trả về đúng format JSON
+
+### Version 1.0.0 (2025-07-31)
+- **Initial:** Triển khai VNPay payment gateway
+- **Features:** Tạo payment, verify return URL, verify IPN, query DR, refund
+- **Integration:** Tích hợp với WebSocket cho real-time notifications

@@ -312,12 +312,7 @@ export class VNPayService {
         return { RspCode: '01', Message: 'Order not found' }
       }
 
-      // 4. Kiểm tra payment đã được xử lý chưa (Test Case 4)
-      if (payment.status === PaymentStatus.SUCCESS || payment.status === PaymentStatus.FAILED) {
-        return { RspCode: '02', Message: 'Order already confirmed' }
-      }
-
-      // 5. Kiểm tra amount có đúng không (Test Case 5)
+      // 4. Kiểm tra amount có đúng không (Test Case 5) - ĐƯA LÊN TRƯỚC
       const totalPrice =
         payment.orders.reduce((sum, order) => {
           const orderTotal = order.items.reduce((itemSum, item) => itemSum + item.skuPrice * item.quantity, 0)
@@ -327,6 +322,11 @@ export class VNPayService {
       const receivedAmount = Number(queryData.vnp_Amount)
       if (totalPrice !== receivedAmount) {
         return { RspCode: '04', Message: 'Invalid amount' }
+      }
+
+      // 5. Kiểm tra payment đã được xử lý chưa (Test Case 4) - ĐƯA XUỐNG SAU
+      if (payment.status === PaymentStatus.SUCCESS || payment.status === PaymentStatus.FAILED) {
+        return { RspCode: '02', Message: 'Order already confirmed' }
       }
 
       // 6. Xử lý theo ResponseCode (Test Case 1 & 2)
