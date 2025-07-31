@@ -55,13 +55,13 @@ export class VNPayController {
 
   /**
    * Xác thực IPN call từ VNPay
-   * @param ipnData Dữ liệu IPN từ VNPay
+   * @param queryData Dữ liệu IPN từ VNPay (gửi qua query parameters)
    * @returns Kết quả xác thực IPN (trả về text cho VNPay)
    */
-  @Post('verify-ipn')
+  @Get('verify-ipn')
   @IsPublic()
-  async verifyIpnCall(@Body() ipnData: VNPayReturnUrlDTO): Promise<string> {
-    const verify = await this.vnpayService.verifyIpnCall(ipnData as any)
+  async verifyIpnCall(@Query() queryData: VNPayReturnUrlDTO): Promise<string> {
+    const verify = await this.vnpayService.verifyIpnCall(queryData as any)
     // Nếu checksum không hợp lệ
     if (!verify.data.isVerified) {
       return '97' // Mã lỗi checksum theo tài liệu VNPay

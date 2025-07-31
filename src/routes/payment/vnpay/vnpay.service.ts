@@ -146,13 +146,13 @@ export class VNPayService {
     }
   }
 
-  async verifyIpnCall(ipnData: VNPayReturnUrlType): Promise<VNPayVerifyResType> {
+  async verifyIpnCall(queryData: VNPayReturnUrlType): Promise<VNPayVerifyResType> {
     try {
-      const verify = await this.vnpayService.verifyIpnCall(ipnData)
+      const verify = await this.vnpayService.verifyIpnCall(queryData)
 
       // Nếu xác thực thành công và thanh toán thành công, xử lý webhook
       if (verify.isSuccess && verify.isVerified && verify.vnp_ResponseCode === '00') {
-        const userId = await this.vnpayRepo.processVNPayWebhook(ipnData)
+        const userId = await this.vnpayRepo.processVNPayWebhook(queryData)
 
         // Gửi thông báo qua WebSocket
         this.server.to(generateRoomUserId(userId)).emit('payment', {

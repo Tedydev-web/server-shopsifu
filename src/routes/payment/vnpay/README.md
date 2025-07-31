@@ -259,42 +259,41 @@ Content-Type: application/json
 
 ### 4. Xác Thực IPN Call
 
-**Endpoint:** `POST /api/payment/vnpay/verify-ipn`
+**Endpoint:** `GET /api/payment/vnpay/verify-ipn`
 
-**Request Body:**
-```json
-{
-  "vnp_Amount": "100000",
-  "vnp_BankCode": "NCB",
-  "vnp_OrderInfo": "Thanh toan don hang 12345",
-  "vnp_PayDate": "20240115103000",
-  "vnp_ResponseCode": "00",
-  "vnp_TmnCode": "E12E8KYJ",
-  "vnp_TransactionNo": "20240115103000",
-  "vnp_TransactionStatus": "00",
-  "vnp_TxnRef": "ORDER_12345",
-  "vnp_SecureHash": "hash_string"
-}
+**Query Parameters:**
+```
+?vnp_Amount=100000&vnp_BankCode=NCB&vnp_OrderInfo=Thanh%20toan%20don%20hang%2012345&vnp_PayDate=20240115103000&vnp_ResponseCode=00&vnp_TmnCode=E12E8KYJ&vnp_TransactionNo=20240115103000&vnp_TransactionStatus=00&vnp_TxnRef=ORDER_12345&vnp_SecureHash=hash_string
 ```
 
-**Response:**
-```json
-{
-  "statusCode": 200,
-  "message": "Xác thực IPN thành công",
-  "timestamp": "2024-01-15T10:30:00.000Z",
-  "data": {
-    "isSuccess": true,
-    "isVerified": true,
-    "message": "Giao dịch thành công",
-    "vnp_Amount": 100000,
-    "vnp_TxnRef": "ORDER_12345",
-    "vnp_TransactionNo": "20240115103000",
-    "vnp_ResponseCode": "00",
-    "vnp_TransactionStatus": "00"
-  }
-}
+**Query Parameter Descriptions:**
+- `vnp_Amount`: Số tiền thanh toán
+- `vnp_BankCode`: Mã ngân hàng
+- `vnp_OrderInfo`: Nội dung đơn hàng
+- `vnp_PayDate`: Ngày thanh toán (yyyyMMddHHmmss)
+- `vnp_ResponseCode`: Mã phản hồi (00 = thành công)
+- `vnp_TmnCode`: Mã merchant
+- `vnp_TransactionNo`: Mã giao dịch VNPay
+- `vnp_TransactionStatus`: Trạng thái giao dịch
+- `vnp_TxnRef`: Mã đơn hàng
+- `vnp_SecureHash`: Chữ ký bảo mật
+
+**Response (Text Format):**
 ```
+00  // Thành công
+97  // Lỗi checksum
+01  // Lỗi chung
+```
+
+**Response Code Descriptions:**
+- `00`: Giao dịch thành công
+- `97`: Lỗi chữ ký (checksum verification failed)
+- `01`: Lỗi chung (general error)
+
+**Lưu ý quan trọng:**
+- IPN call được VNPay gửi qua **GET request với query parameters**
+- Response phải là **text format** với các mã cụ thể
+- Không phải JSON response như các endpoint khác
 
 ### 5. Truy Vấn Kết Quả Thanh Toán
 
@@ -628,7 +627,25 @@ export default VNPayPaymentComponent
 }
 ```
 
-### 2. WebSocket Integration
+### 2. IPN Call Flow
+
+VNPay sẽ gửi IPN call đến server của bạn với flow sau:
+
+1. **VNPay gửi GET request** với tất cả thông tin thanh toán trong query parameters
+2. **Server xác thực** checksum và xử lý logic business
+3. **Server trả về text response** với mã cụ thể cho VNPay
+
+```typescript
+// VNPay gửi request đến endpoint này
+GET https://your-domain.com/api/payment/vnpay/verify-ipn?vnp_Amount=100000&vnp_BankCode=NCB&vnp_OrderInfo=Thanh%20toan%20don%20hang%2012345&vnp_PayDate=20240115103000&vnp_ResponseCode=00&vnp_TmnCode=E12E8KYJ&vnp_TransactionNo=20240115103000&vnp_TransactionStatus=00&vnp_TxnRef=ORDER_12345&vnp_SecureHash=hash_string
+
+// Server trả về text response
+00  // Thành công
+97  // Lỗi checksum
+01  // Lỗi chung
+```
+
+### 3. WebSocket Integration
 
 ```javascript
 // Client lắng nghe WebSocket events
@@ -649,7 +666,7 @@ socket.on('payment', (data) => {
 socket.emit('join', { userId: 'user_123' })
 ```
 
-### 3. Server WebSocket Handler
+### 4. Server WebSocket Handler
 
 ```typescript
 // Trong VNPayService
@@ -658,9 +675,10 @@ export class VNPayService {
   @WebSocketServer()
   server: Server
 
-  async verifyReturnUrl(queryData: VNPayReturnUrlType) {
-    const verify = await this.vnpayService.verifyReturnUrl(queryData)
+  async verifyIpnCall(queryData: VNPayReturnUrlType) {
+    const verify = await this.vnpayService.verifyIpnCall(queryData)
 
+    // Nếu xác thực thành công và thanh toán thành công
     if (verify.isSuccess && verify.isVerified && verify.vnp_ResponseCode === '00') {
       const userId = await this.vnpayRepo.processVNPayWebhook(queryData)
 
@@ -675,6 +693,17 @@ export class VNPayService {
   }
 }
 ```
+
+### 5. IPN vs Return URL
+
+| Aspect | IPN Call | Return URL |
+|--------|----------|------------|
+| **Method** | GET với query params | GET với query params |
+| **Purpose** | Server-to-server notification | User redirect handling |
+| **Response** | Text format (00/97/01) | JSON response |
+| **Security** | High (server verification) | Medium (user can see) |
+| **Business Logic** | ✅ Process payment | ❌ UI only |
+| **Reliability** | ✅ Guaranteed delivery | ❌ User may close browser |
 
 ## ⚠️ Error Handling
 
@@ -876,7 +905,29 @@ testVNPayIntegration()
    curl "http://localhost:3000/api/payment/vnpay/verify-return?vnp_Amount=100000&vnp_BankCode=NCB&vnp_OrderInfo=Test%20payment&vnp_PayDate=20240115103000&vnp_ResponseCode=00&vnp_TmnCode=E12E8KYJ&vnp_TransactionNo=20240115103000&vnp_TransactionStatus=00&vnp_TxnRef=ORDER_12345&vnp_SecureHash=test_hash"
    ```
 
+4. **Test IPN endpoint:**
+   ```bash
+   curl "http://localhost:3000/api/payment/vnpay/verify-ipn?vnp_Amount=100000&vnp_BankCode=NCB&vnp_OrderInfo=Test%20payment&vnp_PayDate=20240115103000&vnp_ResponseCode=00&vnp_TmnCode=E12E8KYJ&vnp_TransactionNo=20240115103000&vnp_TransactionStatus=00&vnp_TxnRef=ORDER_12345&vnp_SecureHash=test_hash"
+   ```
+   **Expected Response:** `00` (text format, not JSON)
+
 ## 📝 Lưu Ý Quan Trọng
+
+### 0. Implementation Notes
+
+**⚠️ Thay đổi quan trọng trong IPN Implementation:**
+
+1. **HTTP Method:** IPN endpoint sử dụng `GET` thay vì `POST`
+2. **Parameters:** Nhận dữ liệu qua `@Query()` thay vì `@Body()`
+3. **Response Format:** Trả về text response với mã cụ thể:
+   - `00`: Thành công
+   - `97`: Lỗi checksum
+   - `01`: Lỗi chung
+
+**Lý do thay đổi:**
+- Theo VNPay documentation, IPN call được gửi qua GET request với query parameters
+- VNPay mong đợi text response, không phải JSON
+- Điều này đảm bảo tương thích với VNPay gateway
 
 ### 1. Security Considerations
 
@@ -903,6 +954,9 @@ testVNPayIntegration()
 | Duplicate request | Same order processed twice | Implement idempotency |
 | Timeout | Network issues | Increase timeout settings |
 | Amount mismatch | Currency conversion | Verify amount format |
+| IPN not working | Wrong HTTP method | Use GET instead of POST for IPN |
+| IPN response error | Wrong response format | Return text (00/97/01) not JSON |
+| IPN not receiving | Wrong endpoint URL | Verify IPN URL configuration |
 
 ### 4. Performance Optimization
 
@@ -920,6 +974,37 @@ testVNPayIntegration()
 - [NestJS Documentation](https://docs.nestjs.com/)
 - [Socket.IO Documentation](https://socket.io/docs/)
 
+## 🔧 Troubleshooting
+
+### IPN Issues
+
+**Problem:** IPN endpoint không nhận được calls từ VNPay
+**Solution:**
+- Verify IPN URL configuration trong VNPay merchant portal
+- Ensure endpoint sử dụng GET method
+- Check server logs cho incoming requests
+
+**Problem:** IPN response error
+**Solution:**
+- Verify response format là text, không phải JSON
+- Return đúng mã: `00`, `97`, hoặc `01`
+- Check VNPay logs cho response errors
+
+**Problem:** Checksum verification failed
+**Solution:**
+- Verify `VNPAY_SECURE_SECRET` configuration
+- Check hash algorithm (SHA512)
+- Ensure all required parameters được gửi
+
+### Testing IPN Locally
+
+```bash
+# Test IPN endpoint với curl
+curl "http://localhost:3000/api/payment/vnpay/verify-ipn?vnp_Amount=100000&vnp_BankCode=NCB&vnp_OrderInfo=Test&vnp_PayDate=20241219103000&vnp_ResponseCode=00&vnp_TmnCode=E12E8KYJ&vnp_TransactionNo=20241219103000&vnp_TransactionStatus=00&vnp_TxnRef=ORDER_12345&vnp_SecureHash=test_hash"
+
+# Expected response: 00 (text format)
+```
+
 ## 🤝 Support
 
 Nếu gặp vấn đề, vui lòng:
@@ -931,6 +1016,7 @@ Nếu gặp vấn đề, vui lòng:
 
 ---
 
-**Version:** 1.0.0
-**Last Updated:** 2024-01-15
+**Version:** 1.1.0
+**Last Updated:** 2024-12-19
 **Author:** Development Team
+**Changes:** Fixed IPN endpoint implementation to match VNPay documentation
