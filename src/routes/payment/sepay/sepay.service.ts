@@ -4,7 +4,7 @@ import { WebhookPaymentBodyType } from 'src/routes/payment/sepay/sepay.model'
 import { SharedWebsocketRepository } from 'src/shared/repositories/shared-websocket.repo'
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
 import { Server } from 'socket.io'
-import { generateRoomUserId } from 'src/shared/helpers'
+import { generateRoomPaymentId } from 'src/shared/helpers'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 
@@ -21,12 +21,13 @@ export class SepayService {
 
   async receiver(body: WebhookPaymentBodyType) {
     try {
-      const userId = await this.sepayRepo.receiver(body)
+      const { userId, paymentId } = await this.sepayRepo.receiver(body)
 
-      // Emit success event khi thanh toán thành công
-      this.server.to(generateRoomUserId(userId)).emit('payment', {
+      // Emit success event cho payment room (chỉ client nào join payment room mới nhận)
+      this.server.to(generateRoomPaymentId(paymentId)).emit('payment', {
         status: 'success',
-        gateway: 'sepay'
+        gateway: 'sepay',
+        paymentId
       })
 
       return {

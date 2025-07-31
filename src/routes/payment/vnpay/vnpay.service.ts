@@ -23,7 +23,7 @@ import { VNPayRepo } from './vnpay.repo'
 import { SharedWebsocketRepository } from 'src/shared/repositories/shared-websocket.repo'
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
 import { Server } from 'socket.io'
-import { generateRoomUserId, getDateInGMT7 } from 'src/shared/helpers'
+import { generateRoomUserId, generateRoomPaymentId, getDateInGMT7 } from 'src/shared/helpers'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { PREFIX_PAYMENT_CODE } from 'src/shared/constants/other.constant'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
@@ -105,11 +105,13 @@ export class VNPayService {
     try {
       const verify = await this.vnpayService.verifyReturnUrl(queryData)
       if (verify.isSuccess && verify.isVerified && verify.vnp_ResponseCode === '00') {
-        const userId = await this.vnpayRepo.processVNPayWebhook(queryData)
-        // Emit success event khi thanh toán thành công
-        this.server.to(generateRoomUserId(userId)).emit('payment', {
+        const { userId, paymentId } = await this.vnpayRepo.processVNPayWebhook(queryData)
+
+        // Emit success event cho payment room (chỉ client nào join payment room mới nhận)
+        this.server.to(generateRoomPaymentId(paymentId)).emit('payment', {
           status: 'success',
-          gateway: 'vnpay'
+          gateway: 'vnpay',
+          paymentId
         })
       }
       return {
@@ -242,12 +244,12 @@ export class VNPayService {
       if (queryData.vnp_ResponseCode === '00') {
         // Thành công
         await this.vnpayRepo.updatePaymentAndOrdersOnSuccess(paymentId, orders)
-        // Emit success event khi thanh toán thành công
-        orders.forEach((order) => {
-          this.server.to(generateRoomUserId(order.userId)).emit('payment', {
-            status: 'success',
-            gateway: 'vnpay'
-          })
+
+        // Emit success event cho payment room (chỉ client nào join payment room mới nhận)
+        this.server.to(generateRoomPaymentId(paymentId)).emit('payment', {
+          status: 'success',
+          gateway: 'vnpay',
+          paymentId
         })
       } else {
         // Không thành công - chỉ update DB, không emit event

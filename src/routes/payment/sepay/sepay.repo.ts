@@ -14,7 +14,7 @@ export class SepayRepo {
     private readonly sharedPaymentRepository: SharedPaymentRepository
   ) {}
 
-  async receiver(body: WebhookPaymentBodyType): Promise<string> {
+  async receiver(body: WebhookPaymentBodyType): Promise<{ userId: string; paymentId: number }> {
     // 1. Lưu transaction vào DB
     let amountIn = 0
     let amountOut = 0
@@ -26,7 +26,7 @@ export class SepayRepo {
     })
     if (paymentTransaction) throw new BadRequestException('Transaction already exists')
 
-    const userId = await this.prismaService.$transaction(async (tx) => {
+    const result = await this.prismaService.$transaction(async (tx) => {
       await tx.paymentTransaction.create({
         data: {
           id: body.id,
@@ -67,9 +67,9 @@ export class SepayRepo {
       // 5. Cập nhật trạng thái payment và orders
       await this.sharedPaymentRepository.updatePaymentAndOrdersOnSuccess(Number(paymentId), orders)
 
-      return userId
+      return { userId, paymentId: Number(paymentId) }
     })
 
-    return userId
+    return result
   }
 }

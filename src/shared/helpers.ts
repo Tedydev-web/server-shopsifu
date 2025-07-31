@@ -33,6 +33,14 @@ export const generateRoomUserId = (userId: string) => {
   return `userId-${userId}`
 }
 
+export const generateRoomPaymentId = (paymentId: number) => {
+  return `paymentId-${paymentId}`
+}
+
+export const generateRoomUserDevice = (userId: string, deviceId: string) => {
+  return `userDevice-${userId}-${deviceId}`
+}
+
 export function calculateDiscountAmount(discount: any, orderTotal: number): number {
   let discountAmount = 0
   if (discount.discountType === 'FIX_AMOUNT') {

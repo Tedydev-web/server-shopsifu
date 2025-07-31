@@ -18,14 +18,14 @@ export class VNPayRepo {
   /**
    * Xử lý webhook từ VNPay khi thanh toán thành công
    */
-  async processVNPayWebhook(vnpayData: VNPayReturnUrlType): Promise<string> {
+  async processVNPayWebhook(vnpayData: VNPayReturnUrlType): Promise<{ userId: string; paymentId: number }> {
     // Kiểm tra transaction đã xử lý chưa
     const existing = await this.prismaService.paymentTransaction.findFirst({
       where: { gateway: 'vnpay', referenceNumber: vnpayData.vnp_TransactionNo }
     })
     if (existing) throw new BadRequestException('Transaction already processed')
 
-    const userId = await this.prismaService.$transaction(async (tx) => {
+    const result = await this.prismaService.$transaction(async (tx) => {
       // Lưu transaction với amount đã chia 100 (VND)
       await tx.paymentTransaction.create({
         data: {
@@ -62,9 +62,9 @@ export class VNPayRepo {
       )
       // Update trạng thái
       await this.sharedPaymentRepository.updatePaymentAndOrdersOnSuccess(paymentId, orders)
-      return userId
+      return { userId, paymentId }
     })
-    return userId
+    return result
   }
 
   /**

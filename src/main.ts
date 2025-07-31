@@ -59,6 +59,13 @@ async function bootstrap(): Promise<void> {
     // Graceful shutdown
     const gracefulShutdown = async (signal: string) => {
       logger.log(`Received ${signal}, shutting down gracefully...`)
+
+      // Close WebSocket adapter
+      const websocketAdapter = app.get(WebsocketAdapter)
+      if (websocketAdapter && typeof websocketAdapter.close === 'function') {
+        await websocketAdapter.close()
+      }
+
       await app.close()
       process.exit(0)
     }
