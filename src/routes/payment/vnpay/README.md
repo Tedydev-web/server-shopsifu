@@ -1074,3 +1074,6 @@ Nếu gặp vấn đề, vui lòng:
 - Added comprehensive order status management
 - Added `@SkipTransform()` decorator to bypass interceptor for IPN response
 - Fixed response format to match VNPay requirements (direct JSON without wrapper)
+- **Fixed order lookup logic:** Now uses Payment ID instead of Order ID (following Sepay pattern)
+- **Improved transaction handling:** Uses database transactions for atomic updates
+- **Enhanced WebSocket notifications:** Sends notifications to all users in payment

@@ -28,6 +28,7 @@ import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { PREFIX_PAYMENT_CODE } from 'src/shared/constants/other.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { OrderStatus } from 'src/shared/constants/order.constant'
+import { PaymentStatus } from 'src/shared/constants/payment.constant'
 
 @Injectable()
 @WebSocketGateway({ namespace: 'payment' })
@@ -291,58 +292,95 @@ export class VNPayService {
         return { RspCode: '97', Message: 'Invalid Checksum' }
       }
 
-      // 2. Kiểm tra order có tồn tại không (Test Case 3)
-      const orderId = queryData.vnp_TxnRef
-      const existingOrder = await this.prismaService.order.findFirst({
-        where: { id: orderId },
-        include: { user: true }
+      // 2. Extract payment ID từ vnp_TxnRef (giống Sepay)
+      const paymentId = queryData.vnp_TxnRef.replace(PREFIX_PAYMENT_CODE, '')
+
+      // 3. Tìm payment với orders (giống Sepay)
+      const payment = await this.prismaService.payment.findUnique({
+        where: { id: Number(paymentId) },
+        include: {
+          orders: {
+            include: {
+              user: true,
+              items: true
+            }
+          }
+        }
       })
-      if (!existingOrder) {
+
+      if (!payment) {
         return { RspCode: '01', Message: 'Order not found' }
       }
 
-      // 3. Kiểm tra order đã được xử lý chưa (Test Case 4)
-      if (existingOrder.status === OrderStatus.DELIVERED || existingOrder.status === OrderStatus.CANCELLED) {
+      // 4. Kiểm tra payment đã được xử lý chưa (Test Case 4)
+      if (payment.status === PaymentStatus.SUCCESS || payment.status === PaymentStatus.FAILED) {
         return { RspCode: '02', Message: 'Order already confirmed' }
       }
 
-      // 4. Kiểm tra amount có đúng không (Test Case 5)
-      // Tính tổng tiền từ items của order
-      const items = await this.prismaService.productSKUSnapshot.findMany({
-        where: { orderId: orderId }
-      })
-      const expectedAmount = items.reduce((sum, item) => sum + item.skuPrice * item.quantity, 0) * 100
+      // 5. Kiểm tra amount có đúng không (Test Case 5)
+      const totalPrice =
+        payment.orders.reduce((sum, order) => {
+          const orderTotal = order.items.reduce((itemSum, item) => itemSum + item.skuPrice * item.quantity, 0)
+          return sum + orderTotal
+        }, 0) * 100
+
       const receivedAmount = Number(queryData.vnp_Amount)
-      if (expectedAmount !== receivedAmount) {
+      if (totalPrice !== receivedAmount) {
         return { RspCode: '04', Message: 'Invalid amount' }
       }
 
-      // 5. Xử lý theo ResponseCode (Test Case 1 & 2)
+      // 6. Xử lý theo ResponseCode (Test Case 1 & 2)
       if (queryData.vnp_ResponseCode === '00') {
-        // Giao dịch thành công - cập nhật thành DELIVERED
-        await this.prismaService.order.update({
-          where: { id: orderId },
-          data: { status: OrderStatus.DELIVERED }
+        // Giao dịch thành công
+        await this.prismaService.$transaction(async (tx) => {
+          // Cập nhật payment status
+          await tx.payment.update({
+            where: { id: Number(paymentId) },
+            data: { status: PaymentStatus.SUCCESS }
+          })
+
+          // Cập nhật tất cả orders thành DELIVERED
+          await tx.order.updateMany({
+            where: {
+              id: { in: payment.orders.map((order) => order.id) }
+            },
+            data: { status: OrderStatus.DELIVERED }
+          })
         })
 
-        // Gửi thông báo qua WebSocket
-        this.server.to(generateRoomUserId(existingOrder.userId)).emit('payment', {
-          status: 'success',
-          gateway: 'vnpay'
+        // Gửi thông báo qua WebSocket cho tất cả users
+        payment.orders.forEach((order) => {
+          this.server.to(generateRoomUserId(order.userId)).emit('payment', {
+            status: 'success',
+            gateway: 'vnpay'
+          })
         })
 
         return { RspCode: '00', Message: 'Confirm Success' }
       } else {
-        // Giao dịch không thành công - cập nhật thành CANCELLED
-        await this.prismaService.order.update({
-          where: { id: orderId },
-          data: { status: OrderStatus.CANCELLED }
+        // Giao dịch không thành công
+        await this.prismaService.$transaction(async (tx) => {
+          // Cập nhật payment status
+          await tx.payment.update({
+            where: { id: Number(paymentId) },
+            data: { status: PaymentStatus.FAILED }
+          })
+
+          // Cập nhật tất cả orders thành CANCELLED
+          await tx.order.updateMany({
+            where: {
+              id: { in: payment.orders.map((order) => order.id) }
+            },
+            data: { status: OrderStatus.CANCELLED }
+          })
         })
 
-        // Gửi thông báo qua WebSocket
-        this.server.to(generateRoomUserId(existingOrder.userId)).emit('payment', {
-          status: 'failed',
-          gateway: 'vnpay'
+        // Gửi thông báo qua WebSocket cho tất cả users
+        payment.orders.forEach((order) => {
+          this.server.to(generateRoomUserId(order.userId)).emit('payment', {
+            status: 'failed',
+            gateway: 'vnpay'
+          })
         })
 
         return { RspCode: '00', Message: 'Confirm Success' }
