@@ -26,6 +26,8 @@ import { Server } from 'socket.io'
 import { generateRoomUserId, getDateInGMT7 } from 'src/shared/helpers'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { PREFIX_PAYMENT_CODE } from 'src/shared/constants/other.constant'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { OrderStatus } from 'src/shared/constants/order.constant'
 
 @Injectable()
 @WebSocketGateway({ namespace: 'payment' })
@@ -37,7 +39,8 @@ export class VNPayService {
     private readonly vnpayService: VnpayService,
     private readonly i18n: I18nService<I18nTranslations>,
     private readonly vnpayRepo: VNPayRepo,
-    private readonly sharedWebsocketRepository: SharedWebsocketRepository
+    private readonly sharedWebsocketRepository: SharedWebsocketRepository,
+    private readonly prismaService: PrismaService
   ) {}
 
   async getBankList(): Promise<VNPayBankListResType> {
@@ -272,6 +275,81 @@ export class VNPayService {
         throw VNPayTransactionNotFoundException
       }
       throw VNPayServiceUnavailableException
+    }
+  }
+
+  /**
+   * Xử lý IPN call theo đúng yêu cầu của VNPay
+   * @param queryData Dữ liệu từ VNPay
+   * @returns Kết quả xử lý IPN
+   */
+  async processIpnCall(queryData: VNPayReturnUrlType): Promise<{ RspCode: string; Message: string }> {
+    try {
+      // 1. Kiểm tra checksum trước tiên (Test Case 6)
+      const verify = await this.vnpayService.verifyIpnCall(queryData)
+      if (!verify.isVerified) {
+        return { RspCode: '97', Message: 'Invalid Checksum' }
+      }
+
+      // 2. Kiểm tra order có tồn tại không (Test Case 3)
+      const orderId = queryData.vnp_TxnRef
+      const existingOrder = await this.prismaService.order.findFirst({
+        where: { id: orderId },
+        include: { user: true }
+      })
+      if (!existingOrder) {
+        return { RspCode: '01', Message: 'Order not found' }
+      }
+
+      // 3. Kiểm tra order đã được xử lý chưa (Test Case 4)
+      if (existingOrder.status === OrderStatus.DELIVERED || existingOrder.status === OrderStatus.CANCELLED) {
+        return { RspCode: '02', Message: 'Order already confirmed' }
+      }
+
+      // 4. Kiểm tra amount có đúng không (Test Case 5)
+      // Tính tổng tiền từ items của order
+      const items = await this.prismaService.productSKUSnapshot.findMany({
+        where: { orderId: orderId }
+      })
+      const expectedAmount = items.reduce((sum, item) => sum + item.skuPrice * item.quantity, 0) * 100
+      const receivedAmount = Number(queryData.vnp_Amount)
+      if (expectedAmount !== receivedAmount) {
+        return { RspCode: '04', Message: 'Invalid amount' }
+      }
+
+      // 5. Xử lý theo ResponseCode (Test Case 1 & 2)
+      if (queryData.vnp_ResponseCode === '00') {
+        // Giao dịch thành công - cập nhật thành DELIVERED
+        await this.prismaService.order.update({
+          where: { id: orderId },
+          data: { status: OrderStatus.DELIVERED }
+        })
+
+        // Gửi thông báo qua WebSocket
+        this.server.to(generateRoomUserId(existingOrder.userId)).emit('payment', {
+          status: 'success',
+          gateway: 'vnpay'
+        })
+
+        return { RspCode: '00', Message: 'Confirm Success' }
+      } else {
+        // Giao dịch không thành công - cập nhật thành CANCELLED
+        await this.prismaService.order.update({
+          where: { id: orderId },
+          data: { status: OrderStatus.CANCELLED }
+        })
+
+        // Gửi thông báo qua WebSocket
+        this.server.to(generateRoomUserId(existingOrder.userId)).emit('payment', {
+          status: 'failed',
+          gateway: 'vnpay'
+        })
+
+        return { RspCode: '00', Message: 'Confirm Success' }
+      }
+    } catch (error) {
+      console.error('VNPay IPN processing failed:', error)
+      return { RspCode: '99', Message: 'Unknown error' }
     }
   }
 }

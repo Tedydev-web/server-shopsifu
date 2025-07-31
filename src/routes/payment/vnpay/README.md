@@ -909,7 +909,13 @@ testVNPayIntegration()
    ```bash
    curl "http://localhost:3000/api/payment/vnpay/verify-ipn?vnp_Amount=100000&vnp_BankCode=NCB&vnp_OrderInfo=Test%20payment&vnp_PayDate=20240115103000&vnp_ResponseCode=00&vnp_TmnCode=E12E8KYJ&vnp_TransactionNo=20240115103000&vnp_TransactionStatus=00&vnp_TxnRef=ORDER_12345&vnp_SecureHash=test_hash"
    ```
-   **Expected Response:** `00` (text format, not JSON)
+   **Expected Response:**
+   ```json
+   {
+     "RspCode": "00",
+     "Message": "Confirm Success"
+   }
+   ```
 
 ## 📝 Lưu Ý Quan Trọng
 
