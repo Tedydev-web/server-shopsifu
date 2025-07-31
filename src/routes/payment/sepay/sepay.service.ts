@@ -25,16 +25,7 @@ export class SepayService {
       status: 'success',
       gateway: 'sepay'
     })
-    // try {
-    //   const websockets = await this.sharedWebsocketRepository.findMany(userId)
-    //   websockets.forEach((ws) => {
-    //     this.server.to(ws.id).emit('payment', {
-    //       status: 'success',
-    //     })
-    //   })
-    // } catch (error) {
-    //   console.log(error)
-    // }
+
     return {
       message: this.i18n.t('payment.payment.sepay.success.RECEIVER_SUCCESS')
     }

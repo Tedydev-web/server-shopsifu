@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { VnpLocale, VnpCurrCode, ProductCode, VnpCardType } from 'vnpay'
 
-// ===== SCHEMAS CHO TẠO URL THANH TOÁN =====
+// ================== SCHEMA TẠO URL THANH TOÁN ==================
 export const CreateVNPayPaymentBodySchema = z.object({
   amount: z.number(),
   orderInfo: z.string(),
@@ -22,7 +22,7 @@ export const CreateVNPayPaymentResSchema = z.object({
   })
 })
 
-// ===== SCHEMAS CHO DANH SÁCH NGÂN HÀNG =====
+// ================== SCHEMA DANH SÁCH NGÂN HÀNG ==================
 export const VNPayBankListResSchema = z.object({
   message: z.string(),
   data: z.array(
@@ -36,7 +36,7 @@ export const VNPayBankListResSchema = z.object({
   )
 })
 
-// ===== SCHEMAS CHO XÁC THỰC URL TRẢ VỀ =====
+// ================== SCHEMA XÁC THỰC URL TRẢ VỀ ==================
 export const VNPayReturnUrlSchema = z.object({
   vnp_TmnCode: z.string(),
   vnp_Amount: z.string(),
@@ -67,7 +67,7 @@ export const VNPayVerifyResSchema = z.object({
   })
 })
 
-// ===== SCHEMAS CHO TRUY VẤN KẾT QUẢ THANH TOÁN =====
+// ================== SCHEMA TRUY VẤN KẾT QUẢ THANH TOÁN ==================
 export const VNPayQueryDrBodySchema = z.object({
   orderId: z.string(),
   orderInfo: z.string(),
@@ -92,7 +92,7 @@ export const VNPayQueryDrResSchema = z.object({
   })
 })
 
-// ===== SCHEMAS CHO HOÀN TIỀN =====
+// ================== SCHEMA HOÀN TIỀN ==================
 export const VNPayRefundBodySchema = z.object({
   orderId: z.string(),
   orderInfo: z.string(),
@@ -117,7 +117,7 @@ export const VNPayRefundResSchema = z.object({
   })
 })
 
-// ===== TYPES =====
+// ================== TYPES EXPORT ==================
 export type CreateVNPayPaymentBodyType = z.infer<typeof CreateVNPayPaymentBodySchema>
 export type CreateVNPayPaymentResType = z.infer<typeof CreateVNPayPaymentResSchema>
 export type VNPayBankListResType = z.infer<typeof VNPayBankListResSchema>

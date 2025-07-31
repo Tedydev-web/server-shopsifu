@@ -15,23 +15,16 @@ export class SepayRepo {
   ) {}
 
   async receiver(body: WebhookPaymentBodyType): Promise<string> {
-    // 1. Thêm thông tin giao dịch vào DB
-    // Tham khảo: https://docs.sepay.vn/lap-trinh-webhooks.html
+    // 1. Lưu transaction vào DB
     let amountIn = 0
     let amountOut = 0
-    if (body.transferType === 'in') {
-      amountIn = body.transferAmount
-    } else if (body.transferType === 'out') {
-      amountOut = body.transferAmount
-    }
+    if (body.transferType === 'in') amountIn = body.transferAmount
+    else if (body.transferType === 'out') amountOut = body.transferAmount
 
     const paymentTransaction = await this.prismaService.paymentTransaction.findUnique({
       where: { id: body.id }
     })
-
-    if (paymentTransaction) {
-      throw new BadRequestException('Transaction already exists')
-    }
+    if (paymentTransaction) throw new BadRequestException('Transaction already exists')
 
     const userId = await this.prismaService.$transaction(async (tx) => {
       await tx.paymentTransaction.create({
@@ -51,18 +44,16 @@ export class SepayRepo {
         }
       })
 
-      // 2. Kiểm tra nội dung chuyển khoản và tổng số tiền có khớp hay không
-      const paymentId = body.code
-        ? body.code.split(PREFIX_PAYMENT_CODE)[1]
-        : body.content?.split(PREFIX_PAYMENT_CODE)[1]
-
-      if (!paymentId) {
-        throw new BadRequestException('Cannot get payment id from content')
-      }
+      // 2. Dùng extractPaymentId của shared repo
+      const paymentId = this.sharedPaymentRepository.extractPaymentId(
+        PREFIX_PAYMENT_CODE,
+        ...(body.code ? [body.code] : []),
+        ...(body.content ? [body.content] : [])
+      )
+      if (!paymentId) throw new BadRequestException('Cannot get payment id from content')
 
       // 3. Validate và tìm payment với orders
       const payment = await this.sharedPaymentRepository.validateAndFindPayment(Number(paymentId))
-
       const userId = payment.orders[0].userId
       const { orders } = payment
 

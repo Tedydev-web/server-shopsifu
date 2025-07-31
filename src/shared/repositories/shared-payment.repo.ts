@@ -5,6 +5,9 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 import { OrderIncludeProductSKUSnapshotAndDiscountType } from '../models/shared-order.model'
 import { PaymentProducer } from '../producers/payment.producer'
 
+/**
+ * Repository dùng chung cho các gateway thanh toán
+ */
 @Injectable()
 export class SharedPaymentRepository {
   constructor(
@@ -13,9 +16,7 @@ export class SharedPaymentRepository {
   ) {}
 
   /**
-   * Validate và tìm payment với orders
-   * @param paymentId Payment ID
-   * @returns Payment với orders
+   * Tìm payment kèm orders, nếu không có thì throw
    */
   async validateAndFindPayment(paymentId: number) {
     const payment = await this.prismaService.payment.findUnique({
@@ -29,19 +30,12 @@ export class SharedPaymentRepository {
         }
       }
     })
-
-    if (!payment) {
-      throw new BadRequestException(`Cannot find payment with id ${paymentId}`)
-    }
-
+    if (!payment) throw new BadRequestException(`Cannot find payment with id ${paymentId}`)
     return payment
   }
 
   /**
-   * Validate số tiền thanh toán
-   * @param orders Orders
-   * @param expectedAmount Số tiền mong đợi
-   * @param actualAmount Số tiền thực tế
+   * Kiểm tra số tiền thanh toán có khớp không
    */
   validatePaymentAmount(
     orders: OrderIncludeProductSKUSnapshotAndDiscountType[],
@@ -49,18 +43,15 @@ export class SharedPaymentRepository {
     actualAmount: string | number
   ) {
     const totalPrice = this.getTotalPrice(orders)
-    const expectedAmountNum = parseFloat(expectedAmount)
-    const actualAmountNum = parseFloat(actualAmount.toString())
-
-    if (Math.abs(expectedAmountNum - actualAmountNum) > 0.01) {
-      throw new BadRequestException(`Price not match, expected ${totalPrice} but got ${actualAmount}`)
+    const expected = parseFloat(expectedAmount)
+    const actual = parseFloat(actualAmount.toString())
+    if (Math.abs(expected - actual) > 0.01) {
+      throw new BadRequestException(`Price not match, expected ${totalPrice} but got ${actual}`)
     }
   }
 
   /**
    * Cập nhật trạng thái payment và orders khi thanh toán thành công
-   * @param paymentId Payment ID
-   * @param orders Orders
    */
   async updatePaymentAndOrdersOnSuccess(paymentId: number, orders: OrderIncludeProductSKUSnapshotAndDiscountType[]) {
     await Promise.all([
@@ -69,93 +60,103 @@ export class SharedPaymentRepository {
         data: { status: PaymentStatus.SUCCESS }
       }),
       this.prismaService.order.updateMany({
-        where: {
-          id: { in: orders.map((order) => order.id) }
-        },
+        where: { id: { in: orders.map((order) => order.id) } },
         data: { status: OrderStatus.PENDING_PICKUP }
       }),
       this.paymentProducer.removeJob(paymentId)
     ])
   }
 
+  /**
+   * Cập nhật trạng thái payment và orders khi thanh toán thất bại
+   */
+  async updatePaymentAndOrdersOnFailed(paymentId: number, orders: OrderIncludeProductSKUSnapshotAndDiscountType[]) {
+    await Promise.all([
+      this.prismaService.payment.update({
+        where: { id: paymentId },
+        data: { status: PaymentStatus.FAILED }
+      }),
+      this.prismaService.order.updateMany({
+        where: { id: { in: orders.map((order) => order.id) } },
+        data: { status: OrderStatus.CANCELLED }
+      }),
+      this.paymentProducer.removeJob(paymentId)
+    ])
+  }
+
+  /**
+   * Hủy payment và orders, hoàn lại stock cho SKU (dùng cho queue, nghiệp vụ hủy tự động)
+   */
   async cancelPaymentAndOrder(paymentId: number) {
     const payment = await this.prismaService.payment.findUnique({
-      where: {
-        id: paymentId
-      },
+      where: { id: paymentId },
       include: {
         orders: {
-          include: {
-            items: true
-          }
+          include: { items: true }
         }
       }
     })
-    if (!payment) {
-      throw Error('Payment not found')
-    }
+    if (!payment) throw new BadRequestException('Payment not found')
     const { orders } = payment
     const productSKUSnapshots = orders.map((order) => order.items).flat()
+
     await this.prismaService.$transaction(async (tx) => {
-      const updateOrder$ = tx.order.updateMany({
+      // Chỉ hủy các order đang PENDING_PAYMENT và chưa bị xóa
+      await tx.order.updateMany({
         where: {
-          id: {
-            in: orders.map((order) => order.id)
-          },
+          id: { in: orders.map((order) => order.id) },
           status: OrderStatus.PENDING_PAYMENT,
           deletedAt: null
         },
-        data: {
-          status: OrderStatus.CANCELLED
-        }
+        data: { status: OrderStatus.CANCELLED }
       })
-
-      const updateSkus$ = Promise.all(
+      // Hoàn lại stock cho SKU
+      await Promise.all(
         productSKUSnapshots
           .filter((item) => item.skuId)
           .map((item) =>
             tx.sKU.update({
-              where: {
-                id: item.skuId as string
-              },
-              data: {
-                stock: {
-                  increment: item.quantity
-                }
-              }
+              where: { id: item.skuId as string },
+              data: { stock: { increment: item.quantity } }
             })
           )
       )
-
-      const updatePayment$ = tx.payment.update({
-        where: {
-          id: paymentId
-        },
-        data: {
-          status: PaymentStatus.FAILED
-        }
+      // Update trạng thái payment thành FAILED
+      await tx.payment.update({
+        where: { id: paymentId },
+        data: { status: PaymentStatus.FAILED }
       })
-      return await Promise.all([updateOrder$, updateSkus$, updatePayment$])
     })
+    // Xóa job khỏi queue nếu có
+    await this.paymentProducer.removeJob(paymentId)
   }
 
+  /**
+   * Tính tổng tiền các order (đã trừ giảm giá)
+   */
   getTotalPrice(orders: OrderIncludeProductSKUSnapshotAndDiscountType[]): string {
     return orders
       .reduce((total, order) => {
-        // Tính tổng tiền sản phẩm
-        const productTotal = order.items.reduce((totalPrice: number, productSku: any) => {
-          return totalPrice + productSku.skuPrice * productSku.quantity
-        }, 0)
-
-        // Tính tổng giảm giá từ DiscountSnapshot
-        const discountTotal =
-          order.discounts?.reduce((totalDiscount: number, discount: any) => {
-            return totalDiscount + discount.discountAmount
-          }, 0) || 0
-
-        // Cộng vào tổng (đã trừ giảm giá)
+        const productTotal = order.items.reduce((sum: number, sku: any) => sum + sku.skuPrice * sku.quantity, 0)
+        const discountTotal = order.discounts?.reduce((sum: number, d: any) => sum + d.discountAmount, 0) || 0
         return total + (productTotal - discountTotal)
       }, 0)
       .toString()
+  }
+
+  /**
+   * Trích xuất paymentId từ nhiều nguồn (code, content, vnp_TxnRef, ...)
+   */
+  extractPaymentId(prefix: string, ...sources: string[]): number | null {
+    for (const source of sources) {
+      if (typeof source === 'string' && source.includes(prefix)) {
+        const parts = source.split(prefix)
+        if (parts.length > 1) {
+          const id = Number(parts[1].replace(/\D/g, ''))
+          if (!isNaN(id)) return id
+        }
+      }
+    }
+    return null
   }
 }

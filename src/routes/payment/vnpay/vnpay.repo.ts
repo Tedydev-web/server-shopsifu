@@ -5,6 +5,9 @@ import { PREFIX_PAYMENT_CODE } from 'src/shared/constants/other.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { SharedPaymentRepository } from 'src/shared/repositories/shared-payment.repo'
 
+/**
+ * Repo xử lý các thao tác DB cho VNPay, tách biệt logic nghiệp vụ
+ */
 @Injectable()
 export class VNPayRepo {
   constructor(
@@ -14,31 +17,23 @@ export class VNPayRepo {
 
   /**
    * Xử lý webhook từ VNPay khi thanh toán thành công
-   * @param vnpayData Dữ liệu từ VNPay webhook
-   * @returns userId của user đã thanh toán
    */
   async processVNPayWebhook(vnpayData: VNPayReturnUrlType): Promise<string> {
-    // Kiểm tra xem transaction đã được xử lý chưa
-    const existingTransaction = await this.prismaService.paymentTransaction.findFirst({
-      where: {
-        gateway: 'vnpay',
-        referenceNumber: vnpayData.vnp_TransactionNo
-      }
+    // Kiểm tra transaction đã xử lý chưa
+    const existing = await this.prismaService.paymentTransaction.findFirst({
+      where: { gateway: 'vnpay', referenceNumber: vnpayData.vnp_TransactionNo }
     })
-
-    if (existingTransaction) {
-      throw new BadRequestException('Transaction already processed')
-    }
+    if (existing) throw new BadRequestException('Transaction already processed')
 
     const userId = await this.prismaService.$transaction(async (tx) => {
-      // 1. Lưu thông tin giao dịch VNPay
+      // Lưu transaction
       await tx.paymentTransaction.create({
         data: {
           gateway: 'vnpay',
           transactionDate: new Date(),
           accountNumber: vnpayData.vnp_BankCode,
           subAccount: vnpayData.vnp_BankTranNo,
-          amountIn: Number(vnpayData.vnp_Amount) / 100, // VNPay trả về số tiền theo đơn vị xu, chia cho 100
+          amountIn: Number(vnpayData.vnp_Amount) / 100,
           amountOut: 0,
           accumulated: 0,
           code: vnpayData.vnp_TxnRef,
@@ -47,85 +42,74 @@ export class VNPayRepo {
           body: JSON.stringify(vnpayData)
         }
       })
-
-      // 2. Tìm payment ID từ order ID hoặc nội dung giao dịch
-      const paymentId = this.extractPaymentId(vnpayData.vnp_OrderInfo, vnpayData.vnp_TxnRef)
-
-      if (!paymentId) {
-        throw new BadRequestException('Cannot extract payment ID from VNPay data')
-      }
-
-      // 3. Validate và tìm payment với orders
+      // Extract paymentId
+      const paymentId = this.sharedPaymentRepository.extractPaymentId(
+        PREFIX_PAYMENT_CODE,
+        vnpayData.vnp_OrderInfo,
+        vnpayData.vnp_TxnRef
+      )
+      if (!paymentId) throw new BadRequestException('Cannot extract payment ID from VNPay data')
+      // Validate và tìm payment
       const payment = await this.sharedPaymentRepository.validateAndFindPayment(paymentId)
-
       const userId = payment.orders[0].userId
       const { orders } = payment
-
-      // 4. Validate số tiền (VNPay trả về số tiền theo đơn vị xu, chia cho 100)
+      // Validate số tiền
       const actualAmount = Number(vnpayData.vnp_Amount) / 100
       this.sharedPaymentRepository.validatePaymentAmount(
         orders,
         this.sharedPaymentRepository.getTotalPrice(orders),
         actualAmount
       )
-
-      // 5. Cập nhật trạng thái payment và orders
+      // Update trạng thái
       await this.sharedPaymentRepository.updatePaymentAndOrdersOnSuccess(paymentId, orders)
-
       return userId
     })
-
     return userId
   }
 
   /**
+   * Validate IPN call từ VNPay, trả về payment, orders, paymentId nếu hợp lệ
+   */
+  async verifyIpnCall(queryData: VNPayReturnUrlType) {
+    const paymentId = this.sharedPaymentRepository.extractPaymentId(
+      PREFIX_PAYMENT_CODE,
+      queryData.vnp_TxnRef,
+      queryData.vnp_OrderInfo
+    )
+    if (!paymentId) throw new BadRequestException('Cannot extract paymentId')
+    const payment = await this.sharedPaymentRepository.validateAndFindPayment(paymentId)
+    const orders = payment.orders
+    this.sharedPaymentRepository.validatePaymentAmount(
+      orders,
+      this.sharedPaymentRepository.getTotalPrice(orders),
+      queryData.vnp_Amount
+    )
+    return { payment, orders, paymentId }
+  }
+
+  /**
    * Tạo payment record cho VNPay
-   * @param orderIds Danh sách order IDs
-   * @returns Payment ID
    */
   async createVNPayPayment(orderIds: string[]): Promise<number> {
-    const payment = await this.prismaService.payment.create({
-      data: {
-        status: PaymentStatus.PENDING
-      }
-    })
-
-    // Cập nhật orders với payment ID
+    const payment = await this.prismaService.payment.create({ data: { status: PaymentStatus.PENDING } })
     await this.prismaService.order.updateMany({
-      where: {
-        id: { in: orderIds }
-      },
-      data: {
-        paymentId: payment.id
-      }
+      where: { id: { in: orderIds } },
+      data: { paymentId: payment.id }
     })
-
     return payment.id
   }
 
   /**
-   * Trích xuất payment ID từ nội dung giao dịch hoặc order ID
-   * @param orderInfo Nội dung giao dịch
-   * @param orderId Order ID
-   * @returns Payment ID hoặc null
+   * Cập nhật trạng thái payment và orders khi thanh toán thành công (delegate shared repo)
    */
-  private extractPaymentId(orderInfo: string, orderId: string): number | null {
-    // Thử tìm payment ID từ orderInfo
-    if (orderInfo.includes(PREFIX_PAYMENT_CODE)) {
-      const parts = orderInfo.split(PREFIX_PAYMENT_CODE)
-      if (parts.length > 1) {
-        return Number(parts[1].trim())
-      }
-    }
+  async updatePaymentAndOrdersOnSuccess(paymentId: number, orders: any[]) {
+    return this.sharedPaymentRepository.updatePaymentAndOrdersOnSuccess(paymentId, orders)
+  }
 
-    // Thử tìm payment ID từ orderId
-    if (orderId.includes(PREFIX_PAYMENT_CODE)) {
-      const parts = orderId.split(PREFIX_PAYMENT_CODE)
-      if (parts.length > 1) {
-        return Number(parts[1].trim())
-      }
-    }
-
-    return null
+  /**
+   * Cập nhật trạng thái payment và orders khi thanh toán thất bại (delegate shared repo)
+   */
+  async updatePaymentAndOrdersOnFailed(paymentId: number, orders: any[]) {
+    return this.sharedPaymentRepository.updatePaymentAndOrdersOnFailed(paymentId, orders)
   }
 }
