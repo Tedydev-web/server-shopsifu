@@ -278,22 +278,22 @@ Content-Type: application/json
 - `vnp_TxnRef`: Mã đơn hàng
 - `vnp_SecureHash`: Chữ ký bảo mật
 
-**Response (Text Format):**
-```
-00  // Thành công
-97  // Lỗi checksum
-01  // Lỗi chung
+**Response (JSON Format):**
+```json
+{
+  "RspCode": "00",
+  "Message": "Confirm Success"
+}
 ```
 
 **Response Code Descriptions:**
-- `00`: Giao dịch thành công
-- `97`: Lỗi chữ ký (checksum verification failed)
-- `01`: Lỗi chung (general error)
+- `00`, `02`: Thành công (VNPay kết thúc luồng)
+- `01`, `04`, `97`, `99`: Lỗi (VNPay retry)
 
 **Lưu ý quan trọng:**
 - IPN call được VNPay gửi qua **GET request với query parameters**
-- Response phải là **text format** với các mã cụ thể
-- Không phải JSON response như các endpoint khác
+- Response phải là **JSON format** với `RspCode` và `Message`
+- VNPay sẽ retry nếu nhận được RspCode lỗi (tối đa 10 lần, mỗi 5 phút)
 
 ### 5. Truy Vấn Kết Quả Thanh Toán
 
@@ -919,15 +919,14 @@ testVNPayIntegration()
 
 1. **HTTP Method:** IPN endpoint sử dụng `GET` thay vì `POST`
 2. **Parameters:** Nhận dữ liệu qua `@Query()` thay vì `@Body()`
-3. **Response Format:** Trả về text response với mã cụ thể:
-   - `00`: Thành công
-   - `97`: Lỗi checksum
-   - `01`: Lỗi chung
+3. **Response Format:** Trả về JSON response với `RspCode` và `Message`:
+   - `00`, `02`: Thành công (VNPay kết thúc luồng)
+   - `01`, `04`, `97`, `99`: Lỗi (VNPay retry)
 
 **Lý do thay đổi:**
 - Theo VNPay documentation, IPN call được gửi qua GET request với query parameters
-- VNPay mong đợi text response, không phải JSON
-- Điều này đảm bảo tương thích với VNPay gateway
+- VNPay mong đợi JSON response với format `{RspCode: "00", Message: "Confirm Success"}`
+- VNPay có cơ chế retry: tối đa 10 lần, mỗi 5 phút nếu nhận RspCode lỗi
 
 ### 1. Security Considerations
 
@@ -986,8 +985,8 @@ testVNPayIntegration()
 
 **Problem:** IPN response error
 **Solution:**
-- Verify response format là text, không phải JSON
-- Return đúng mã: `00`, `97`, hoặc `01`
+- Verify response format là JSON với `RspCode` và `Message`
+- Return đúng format: `{"RspCode": "00", "Message": "Confirm Success"}`
 - Check VNPay logs cho response errors
 
 **Problem:** Checksum verification failed

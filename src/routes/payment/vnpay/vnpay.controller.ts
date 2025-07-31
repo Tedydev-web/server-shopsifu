@@ -56,22 +56,25 @@ export class VNPayController {
   /**
    * Xác thực IPN call từ VNPay
    * @param queryData Dữ liệu IPN từ VNPay (gửi qua query parameters)
-   * @returns Kết quả xác thực IPN (trả về text cho VNPay)
+   * @returns Kết quả xác thực IPN (trả về JSON cho VNPay)
    */
   @Get('verify-ipn')
   @IsPublic()
-  async verifyIpnCall(@Query() queryData: VNPayReturnUrlDTO): Promise<string> {
+  async verifyIpnCall(@Query() queryData: VNPayReturnUrlDTO): Promise<{ RspCode: string; Message: string }> {
     const verify = await this.vnpayService.verifyIpnCall(queryData as any)
+
     // Nếu checksum không hợp lệ
     if (!verify.data.isVerified) {
-      return '97' // Mã lỗi checksum theo tài liệu VNPay
+      return { RspCode: '97', Message: 'Fail checksum' }
     }
+
     // Nếu thành công
     if (verify.data.isSuccess && verify.data.vnp_ResponseCode === '00') {
-      return '00' // Thành công
+      return { RspCode: '00', Message: 'Confirm Success' }
     }
+
     // Các trường hợp còn lại (thất bại)
-    return '01' // Mã lỗi chung cho thất bại
+    return { RspCode: '01', Message: 'Order not found or invalid' }
   }
 
   /**
