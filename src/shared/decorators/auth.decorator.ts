@@ -2,6 +2,7 @@ import { SetMetadata } from '@nestjs/common'
 import { AuthType, AuthTypeType, ConditionGuard, ConditionGuardType } from 'src/shared/constants/auth.constant'
 
 export const AUTH_TYPE_KEY = 'authType'
+export const SKIP_TRANSFORM_KEY = 'skipTransform'
 
 export type AuthTypeDecoratorPayload = { authTypes: AuthTypeType[]; options: { condition: ConditionGuardType } }
 
@@ -10,3 +11,5 @@ export const Auth = (authTypes: AuthTypeType[], options?: { condition: Condition
 }
 
 export const IsPublic = () => Auth([AuthType.None])
+
+export const SkipTransform = () => SetMetadata(SKIP_TRANSFORM_KEY, true)

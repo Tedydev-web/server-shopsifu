@@ -917,6 +917,8 @@ testVNPayIntegration()
    }
    ```
 
+   **Lưu ý:** Response được trả về trực tiếp không qua interceptor để đảm bảo format đúng yêu cầu VNPay.
+
 ## 📝 Lưu Ý Quan Trọng
 
 ### 0. Implementation Notes
@@ -928,11 +930,12 @@ testVNPayIntegration()
 3. **Response Format:** Trả về JSON response với `RspCode` và `Message`:
    - `00`, `02`: Thành công (VNPay kết thúc luồng)
    - `01`, `04`, `97`, `99`: Lỗi (VNPay retry)
-4. **Order Status Management:** Sử dụng enum `OrderStatus` chuẩn:
+4. **Response Interceptor:** Sử dụng `@SkipTransform()` decorator để bypass interceptor
+5. **Order Status Management:** Sử dụng enum `OrderStatus` chuẩn:
    - Thành công: `OrderStatus.DELIVERED`
    - Thất bại: `OrderStatus.CANCELLED`
    - Kiểm tra trạng thái: `OrderStatus.DELIVERED` hoặc `OrderStatus.CANCELLED`
-5. **Amount Validation:** Tính tổng tiền từ `productSKUSnapshot` items
+6. **Amount Validation:** Tính tổng tiền từ `productSKUSnapshot` items
 
 **Lý do thay đổi:**
 - Theo VNPay documentation, IPN call được gửi qua GET request với query parameters
@@ -1069,3 +1072,5 @@ Nếu gặp vấn đề, vui lòng:
 - Synchronized with OrderStatus enum and best practices
 - Implemented proper amount calculation from order items
 - Added comprehensive order status management
+- Added `@SkipTransform()` decorator to bypass interceptor for IPN response
+- Fixed response format to match VNPay requirements (direct JSON without wrapper)

@@ -1,10 +1,20 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common'
 import { Observable } from 'rxjs'
 import { map } from 'rxjs/operators'
+import { Reflector } from '@nestjs/core'
+import { SKIP_TRANSFORM_KEY } from 'src/shared/decorators/auth.decorator'
 
 @Injectable()
 export class TransformInterceptor implements NestInterceptor {
+  constructor(private reflector: Reflector) {}
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    // Kiểm tra xem có skip transform không
+    const skipTransform = this.reflector.get<boolean>(SKIP_TRANSFORM_KEY, context.getHandler())
+    if (skipTransform) {
+      return next.handle()
+    }
+
     return next.handle().pipe(
       map((data) => {
         const ctx = context.switchToHttp()

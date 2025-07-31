@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { VNPayService } from './vnpay.service'
-import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { IsPublic, SkipTransform } from 'src/shared/decorators/auth.decorator'
 import {
   CreateVNPayPaymentBodyDTO,
   CreateVNPayPaymentResDTO,
@@ -60,6 +60,7 @@ export class VNPayController {
    */
   @Get('verify-ipn')
   @IsPublic()
+  @SkipTransform()
   async verifyIpnCall(@Query() queryData: VNPayReturnUrlDTO): Promise<{ RspCode: string; Message: string }> {
     return await this.vnpayService.processIpnCall(queryData as any)
   }
