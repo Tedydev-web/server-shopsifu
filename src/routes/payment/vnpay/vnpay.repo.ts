@@ -114,9 +114,9 @@ export class VNPayRepo {
   }
 
   /**
-   * Tính số tiền mong đợi (đã nhân 100) từ orders
+   * Tính số tiền mong đợi (VND * 100) từ orders, làm tròn số
    */
   getExpectedAmount(orders: any[]): number {
-    return Number(this.sharedPaymentRepository.getTotalPrice(orders)) * 100
+    return Math.round(Number(this.sharedPaymentRepository.getTotalPrice(orders)) * 100)
   }
 }
