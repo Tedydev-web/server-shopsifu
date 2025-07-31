@@ -212,11 +212,13 @@ export class VNPayService {
    */
   async processIpnCall(queryData: VNPayReturnUrlType): Promise<{ RspCode: string; Message: string }> {
     try {
-      // 1. Kiểm tra checksum
+      // 1. Kiểm tra checksum (Test Case 6)
       const verify = await this.vnpayService.verifyIpnCall(queryData)
-      if (!verify.isVerified) return { RspCode: '97', Message: 'Invalid Checksum' }
+      if (!verify.isVerified) {
+        return { RspCode: '97', Message: 'Invalid Checksum' }
+      }
 
-      // 2. Validate IPN, lấy payment, orders, paymentId qua repo
+      // 2. Tìm payment và orders (Test Case 3)
       let payment, orders, paymentId
       try {
         const result = await this.vnpayRepo.verifyIpnCall(queryData)
@@ -232,20 +234,22 @@ export class VNPayService {
         throw err
       }
 
-      // 3. Kiểm tra amount (lấy lại cho chắc chắn)
+      // 3. Kiểm tra amount (Test Case 5)
       const expectedAmount = this.vnpayRepo.getExpectedAmount(orders)
       const receivedAmount = Number(queryData.vnp_Amount)
-      if (expectedAmount !== receivedAmount) {
+      // So sánh với sai số nhỏ để tránh lỗi float
+      if (Math.abs(expectedAmount - receivedAmount) > 1) {
         return { RspCode: '04', Message: 'Invalid amount' }
       }
 
-      // 4. Kiểm tra payment đã xử lý chưa
+      // 4. Kiểm tra payment đã xử lý chưa (Test Case 4)
       if (payment.status === PaymentStatus.SUCCESS || payment.status === PaymentStatus.FAILED) {
         return { RspCode: '02', Message: 'Order already confirmed' }
       }
 
-      // 5. Xử lý theo vnp_ResponseCode
+      // 5. Xử lý trạng thái giao dịch (Test Case 1, 2)
       if (queryData.vnp_ResponseCode === '00') {
+        // Thành công
         await this.vnpayRepo.updatePaymentAndOrdersOnSuccess(paymentId, orders)
         orders.forEach((order) => {
           this.server.to(generateRoomUserId(order.userId)).emit('payment', {
@@ -254,6 +258,7 @@ export class VNPayService {
           })
         })
       } else {
+        // Không thành công
         await this.vnpayRepo.updatePaymentAndOrdersOnFailed(paymentId, orders)
         orders.forEach((order) => {
           this.server.to(generateRoomUserId(order.userId)).emit('payment', {
@@ -262,6 +267,7 @@ export class VNPayService {
           })
         })
       }
+      // Trả về Confirm Success cho mọi trường hợp hợp lệ
       return { RspCode: '00', Message: 'Confirm Success' }
     } catch (error) {
       console.error('VNPay IPN processing failed:', error)
