@@ -112,4 +112,11 @@ export class VNPayRepo {
   async updatePaymentAndOrdersOnFailed(paymentId: number, orders: any[]) {
     return this.sharedPaymentRepository.updatePaymentAndOrdersOnFailed(paymentId, orders)
   }
+
+  /**
+   * Tính số tiền mong đợi (đã nhân 100) từ orders
+   */
+  getExpectedAmount(orders: any[]): number {
+    return Number(this.sharedPaymentRepository.getTotalPrice(orders)) * 100
+  }
 }
