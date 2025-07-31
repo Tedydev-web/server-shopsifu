@@ -36,6 +36,9 @@ export class SharedPaymentRepository {
 
   /**
    * Kiểm tra số tiền thanh toán có khớp không
+   * @param orders - Danh sách orders
+   * @param expectedAmount - Số tiền mong đợi (VND)
+   * @param actualAmount - Số tiền thực tế (VND)
    */
   validatePaymentAmount(
     orders: OrderIncludeProductSKUSnapshotAndDiscountType[],
@@ -45,6 +48,8 @@ export class SharedPaymentRepository {
     const totalPrice = this.getTotalPrice(orders)
     const expected = parseFloat(expectedAmount)
     const actual = parseFloat(actualAmount.toString())
+
+    // So sánh với tolerance 0.01 để tránh lỗi float precision
     if (Math.abs(expected - actual) > 0.01) {
       throw new BadRequestException(`Price not match, expected ${totalPrice} but got ${actual}`)
     }

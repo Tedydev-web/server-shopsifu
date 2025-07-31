@@ -144,9 +144,7 @@ export class VNPayService {
         vnp_TransactionDate: queryData.transactionDate,
         vnp_CreateDate: queryData.createDate
       }
-      const result = await this.vnpayService.queryDr(queryRequest, {
-        logger: { type: 'all', loggerFn: (data) => console.log('QueryDR log:', data) }
-      })
+      const result = await this.vnpayService.queryDr(queryRequest)
       return {
         message: this.i18n.t('payment.payment.vnpay.success.QUERY_DR_SUCCESS'),
         data: {
@@ -184,9 +182,7 @@ export class VNPayService {
         vnp_CreateBy: refundData.createBy,
         vnp_TransactionType: '02'
       }
-      const result = await this.vnpayService.refund(refundRequest, {
-        logger: { type: 'all', loggerFn: (data) => console.log('Refund log:', data) }
-      })
+      const result = await this.vnpayService.refund(refundRequest)
       return {
         message: this.i18n.t('payment.payment.vnpay.success.REFUND_SUCCESS'),
         data: {
@@ -221,7 +217,9 @@ export class VNPayService {
       // 2. Tìm payment và orders (Test Case 3)
       let payment, orders, paymentId
       try {
-        const result = await this.vnpayRepo.verifyIpnCall(queryData)
+        // Sử dụng verify.vnp_Amount (đã được thư viện xử lý - chia 100)
+        const processedData = { ...queryData, vnp_Amount: String(verify.vnp_Amount) }
+        const result = await this.vnpayRepo.verifyIpnCall(processedData)
         payment = result.payment
         orders = result.orders
         paymentId = result.paymentId
@@ -234,20 +232,12 @@ export class VNPayService {
         throw err
       }
 
-      // 3. Kiểm tra amount (Test Case 5)
-      const expectedAmount = this.vnpayRepo.getExpectedAmount(orders)
-      const receivedAmount = Number(queryData.vnp_Amount)
-      // So sánh với sai số nhỏ để tránh lỗi float
-      if (Math.abs(expectedAmount - receivedAmount) > 1) {
-        return { RspCode: '04', Message: 'Invalid amount' }
-      }
-
-      // 4. Kiểm tra payment đã xử lý chưa (Test Case 4)
+      // 3. Kiểm tra payment đã xử lý chưa (Test Case 4)
       if (payment.status === PaymentStatus.SUCCESS || payment.status === PaymentStatus.FAILED) {
         return { RspCode: '02', Message: 'Order already confirmed' }
       }
 
-      // 5. Xử lý trạng thái giao dịch (Test Case 1, 2)
+      // 4. Xử lý trạng thái giao dịch (Test Case 1, 2)
       if (queryData.vnp_ResponseCode === '00') {
         // Thành công
         await this.vnpayRepo.updatePaymentAndOrdersOnSuccess(paymentId, orders)

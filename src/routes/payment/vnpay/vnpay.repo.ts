@@ -26,14 +26,14 @@ export class VNPayRepo {
     if (existing) throw new BadRequestException('Transaction already processed')
 
     const userId = await this.prismaService.$transaction(async (tx) => {
-      // Lưu transaction
+      // Lưu transaction với amount đã chia 100 (VND)
       await tx.paymentTransaction.create({
         data: {
           gateway: 'vnpay',
           transactionDate: new Date(),
           accountNumber: vnpayData.vnp_BankCode,
           subAccount: vnpayData.vnp_BankTranNo,
-          amountIn: Number(vnpayData.vnp_Amount) / 100,
+          amountIn: Number(vnpayData.vnp_Amount) / 100, // Chia 100 để lưu VND
           amountOut: 0,
           accumulated: 0,
           code: vnpayData.vnp_TxnRef,
@@ -53,7 +53,7 @@ export class VNPayRepo {
       const payment = await this.sharedPaymentRepository.validateAndFindPayment(paymentId)
       const userId = payment.orders[0].userId
       const { orders } = payment
-      // Validate số tiền
+      // Validate số tiền (VNPay amount đã chia 100)
       const actualAmount = Number(vnpayData.vnp_Amount) / 100
       this.sharedPaymentRepository.validatePaymentAmount(
         orders,
@@ -79,10 +79,12 @@ export class VNPayRepo {
     if (!paymentId) throw new BadRequestException('Cannot extract paymentId')
     const payment = await this.sharedPaymentRepository.validateAndFindPayment(paymentId)
     const orders = payment.orders
+    // Validate số tiền (queryData.vnp_Amount đã được thư viện xử lý - chia 100)
+    const actualAmount = Number(queryData.vnp_Amount)
     this.sharedPaymentRepository.validatePaymentAmount(
       orders,
       this.sharedPaymentRepository.getTotalPrice(orders),
-      queryData.vnp_Amount
+      actualAmount
     )
     return { payment, orders, paymentId }
   }
@@ -111,12 +113,5 @@ export class VNPayRepo {
    */
   async updatePaymentAndOrdersOnFailed(paymentId: number, orders: any[]) {
     return this.sharedPaymentRepository.updatePaymentAndOrdersOnFailed(paymentId, orders)
-  }
-
-  /**
-   * Tính số tiền mong đợi (VND * 100) từ orders, làm tròn số
-   */
-  getExpectedAmount(orders: any[]): number {
-    return Math.round(Number(this.sharedPaymentRepository.getTotalPrice(orders)) * 100)
   }
 }
