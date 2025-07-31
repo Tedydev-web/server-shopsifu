@@ -20,14 +20,22 @@ export class SepayService {
   ) {}
 
   async receiver(body: WebhookPaymentBodyType) {
-    const userId = await this.sepayRepo.receiver(body)
-    this.server.to(generateRoomUserId(userId)).emit('payment', {
-      status: 'success',
-      gateway: 'sepay'
-    })
+    try {
+      const userId = await this.sepayRepo.receiver(body)
 
-    return {
-      message: this.i18n.t('payment.payment.sepay.success.RECEIVER_SUCCESS')
+      // Emit success event khi thanh toán thành công
+      this.server.to(generateRoomUserId(userId)).emit('payment', {
+        status: 'success',
+        gateway: 'sepay'
+      })
+
+      return {
+        message: this.i18n.t('payment.payment.sepay.success.RECEIVER_SUCCESS')
+      }
+    } catch (error) {
+      // Nếu có lỗi (amount mismatch, payment not found, etc.)
+      // Không emit event vì đây là lỗi validation
+      throw error
     }
   }
 }

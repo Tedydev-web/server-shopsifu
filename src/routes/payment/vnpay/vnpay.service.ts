@@ -106,6 +106,7 @@ export class VNPayService {
       const verify = await this.vnpayService.verifyReturnUrl(queryData)
       if (verify.isSuccess && verify.isVerified && verify.vnp_ResponseCode === '00') {
         const userId = await this.vnpayRepo.processVNPayWebhook(queryData)
+        // Emit success event khi thanh toán thành công
         this.server.to(generateRoomUserId(userId)).emit('payment', {
           status: 'success',
           gateway: 'vnpay'
@@ -241,6 +242,7 @@ export class VNPayService {
       if (queryData.vnp_ResponseCode === '00') {
         // Thành công
         await this.vnpayRepo.updatePaymentAndOrdersOnSuccess(paymentId, orders)
+        // Emit success event khi thanh toán thành công
         orders.forEach((order) => {
           this.server.to(generateRoomUserId(order.userId)).emit('payment', {
             status: 'success',
@@ -248,14 +250,9 @@ export class VNPayService {
           })
         })
       } else {
-        // Không thành công
+        // Không thành công - chỉ update DB, không emit event
         await this.vnpayRepo.updatePaymentAndOrdersOnFailed(paymentId, orders)
-        orders.forEach((order) => {
-          this.server.to(generateRoomUserId(order.userId)).emit('payment', {
-            status: 'failed',
-            gateway: 'vnpay'
-          })
-        })
+        // Không emit event khi thất bại (đồng nhất với Sepay)
       }
       // Trả về Confirm Success cho mọi trường hợp hợp lệ
       return { RspCode: '00', Message: 'Confirm Success' }
