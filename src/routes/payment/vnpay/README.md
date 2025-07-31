@@ -928,13 +928,53 @@ testVNPayIntegration()
 3. **Response Format:** Trả về JSON response với `RspCode` và `Message`:
    - `00`, `02`: Thành công (VNPay kết thúc luồng)
    - `01`, `04`, `97`, `99`: Lỗi (VNPay retry)
+4. **Order Status Management:** Sử dụng enum `OrderStatus` chuẩn:
+   - Thành công: `OrderStatus.DELIVERED`
+   - Thất bại: `OrderStatus.CANCELLED`
+   - Kiểm tra trạng thái: `OrderStatus.DELIVERED` hoặc `OrderStatus.CANCELLED`
+5. **Amount Validation:** Tính tổng tiền từ `productSKUSnapshot` items
 
 **Lý do thay đổi:**
 - Theo VNPay documentation, IPN call được gửi qua GET request với query parameters
 - VNPay mong đợi JSON response với format `{RspCode: "00", Message: "Confirm Success"}`
 - VNPay có cơ chế retry: tối đa 10 lần, mỗi 5 phút nếu nhận RspCode lỗi
+- Đồng bộ với hệ thống order status management
+- Tính toán amount chính xác từ order items
 
-### 1. Security Considerations
+### 1. Order Status Management
+
+**Order Status Flow:**
+```typescript
+// Kiểm tra trạng thái đã xử lý
+if (existingOrder.status === OrderStatus.DELIVERED ||
+    existingOrder.status === OrderStatus.CANCELLED) {
+  return { RspCode: '02', Message: 'Order already confirmed' }
+}
+
+// Cập nhật trạng thái thành công
+await this.prismaService.order.update({
+  where: { id: orderId },
+  data: { status: OrderStatus.DELIVERED }
+})
+
+// Cập nhật trạng thái thất bại
+await this.prismaService.order.update({
+  where: { id: orderId },
+  data: { status: OrderStatus.CANCELLED }
+})
+```
+
+**Amount Calculation:**
+```typescript
+// Tính tổng tiền từ order items
+const items = await this.prismaService.productSKUSnapshot.findMany({
+  where: { orderId: orderId }
+})
+const expectedAmount = items.reduce((sum, item) =>
+  sum + item.skuPrice * item.quantity, 0) * 100
+```
+
+### 2. Security Considerations
 
 - **HTTPS Required:** Tất cả API calls phải sử dụng HTTPS
 - **Hash Verification:** Luôn verify hash từ VNPay
@@ -1021,7 +1061,11 @@ Nếu gặp vấn đề, vui lòng:
 
 ---
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Last Updated:** 2024-12-19
 **Author:** Development Team
-**Changes:** Fixed IPN endpoint implementation to match VNPay documentation
+**Changes:**
+- Fixed IPN endpoint implementation to match VNPay documentation
+- Synchronized with OrderStatus enum and best practices
+- Implemented proper amount calculation from order items
+- Added comprehensive order status management
