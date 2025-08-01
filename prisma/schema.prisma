@@ -378,13 +378,13 @@ model Brand {
   updatedAt         DateTime           @updatedAt
   deletedById       String?
   name              String             @db.VarChar(500)
-  discountId        String?
   createdBy         User?              @relation("BrandCreatedBy", fields: [createdById], references: [id], onUpdate: NoAction)
   deletedBy         User?              @relation("BrandDeletedBy", fields: [deletedById], references: [id], onUpdate: NoAction)
-  Discount          Discount?          @relation(fields: [discountId], references: [id])
   updatedBy         User?              @relation("BrandUpdatedBy", fields: [updatedById], references: [id], onUpdate: NoAction)
   brandTranslations BrandTranslation[]
   products          Product[]
+  discount          Discount?          @relation(fields: [discountId], references: [id])
+  discountId        String?
 
   @@index([deletedAt])
 }

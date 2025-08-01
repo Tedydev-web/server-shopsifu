@@ -5,7 +5,6 @@ import { generateRoomUserId, generateRoomPaymentId, generateRoomUserDevice } fro
 import { SharedWebsocketRepository } from 'src/shared/repositories/shared-websocket.repo'
 import { TokenService } from 'src/shared/services/token.service'
 import { createAdapter } from '@socket.io/redis-adapter'
-import { createClient } from 'redis'
 import { ConfigService } from '@nestjs/config'
 import { parse } from 'cookie'
 
@@ -33,12 +32,17 @@ export class WebsocketAdapter extends IoAdapter {
         return
       }
 
-      this.pubClient = createClient({ url: this.configService.getOrThrow('redis.url') })
-      this.subClient = this.pubClient.duplicate()
+      // Sử dụng Redis client đã có từ config thay vì tạo mới
+      const redisClient = this.configService.get('redis.redis')
 
-      await Promise.all([this.pubClient.connect(), this.subClient.connect()])
+      if (!redisClient) {
+        console.error('❌ Redis client is not available from config')
+        console.log('⚠️ Continuing without Redis adapter for WebSocket')
+        return
+      }
 
-      this.adapterConstructor = createAdapter(this.pubClient, this.subClient)
+      // Tạo adapter sử dụng Redis client đã có
+      this.adapterConstructor = createAdapter(redisClient, redisClient.duplicate())
 
       console.log('✅ Redis adapter connected successfully')
     } catch (error) {
@@ -62,7 +66,7 @@ export class WebsocketAdapter extends IoAdapter {
     }
   }
 
-createIOServer(port: number, options?: ServerOptions) {
+  createIOServer(port: number, options?: ServerOptions) {
     const server: Server = super.createIOServer(port, {
       ...options,
       cors: {
@@ -90,7 +94,7 @@ createIOServer(port: number, options?: ServerOptions) {
         .catch(() => {})
     })
 
-   // Áp dụng auth middleware cho từng namespace cụ thể
+    // Áp dụng auth middleware cho từng namespace cụ thể
     namespaces.forEach((namespace) => {
       server.of(namespace).use((socket, next) => {
         this.authMiddleware(socket, next)
@@ -99,7 +103,7 @@ createIOServer(port: number, options?: ServerOptions) {
       })
     })
 
-   // Thêm event handlers cho connection và disconnection
+    // Thêm event handlers cho connection và disconnection
     server.on('connection', (socket) => {
       console.log(`🔌 WebSocket client connected: ${socket.id}`)
 
@@ -108,7 +112,7 @@ createIOServer(port: number, options?: ServerOptions) {
       })
     })
 
-     // Thêm event handlers cho từng namespace
+    // Thêm event handlers cho từng namespace
     namespaces.forEach((namespace) => {
       server.of(namespace).on('connection', (socket) => {
         console.log(`🔌 WebSocket client connected to namespace ${namespace}: ${socket.id}`)
