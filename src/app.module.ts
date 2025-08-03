@@ -20,7 +20,6 @@ import { CartModule } from 'src/routes/cart/cart.module'
 import { OrderModule } from 'src/routes/order/order.module'
 import { SepayModule } from 'src/routes/payment/sepay/sepay.module'
 import { VNPayModule } from 'src/routes/payment/vnpay/vnpay.module'
-import { PaymentConsumer } from 'src/shared/queues/payment.consumer'
 import { WebsocketModule } from 'src/websockets/websocket.module'
 import { ThrottlerBehindProxyGuard } from 'src/shared/guards/throttler-behind-proxy.guard'
 import { ReviewModule } from 'src/routes/review/review.module'
@@ -73,7 +72,6 @@ import { SearchModule } from './routes/search/search.module'
       provide: APP_GUARD,
       useClass: ThrottlerBehindProxyGuard
     },
-    PaymentConsumer,
     RemoveRefreshTokenCronjob,
     ExpireDiscountCronjob
   ]

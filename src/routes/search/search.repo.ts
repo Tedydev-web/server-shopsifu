@@ -1,172 +1,113 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { PrismaService } from './prisma.service'
-import { ElasticsearchService } from './elasticsearch.service'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { ElasticsearchService } from 'src/shared/services/elasticsearch.service'
 import { ConfigService } from '@nestjs/config'
-import { Queue } from 'bullmq'
-import { EsProductDocumentType, SyncProductJobType, SyncProductsBatchJobType } from '../models/search-sync.model'
-import {
-  ES_INDEX_PRODUCTS,
-  SEARCH_SYNC_QUEUE_NAME,
-  SYNC_PRODUCT_JOB,
-  SYNC_PRODUCTS_BATCH_JOB,
-  DELETE_PRODUCT_JOB,
-  JOB_OPTIONS
-} from '../constants/search-sync.constant'
+import { SearchProductsQueryType, SearchProductsResType } from './search.model'
+import { SyncProductJobType, SyncProductsBatchJobType } from 'src/shared/models/search-sync.model'
+import { ES_INDEX_PRODUCTS } from 'src/shared/constants/search-sync.constant'
 
 @Injectable()
-export class SearchSyncService {
-  private readonly logger = new Logger(SearchSyncService.name)
-  public readonly queue: Queue
+export class SearchRepo {
+  private readonly logger = new Logger(SearchRepo.name)
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly es: ElasticsearchService,
     private readonly configService: ConfigService
-  ) {
-    this.queue = new Queue(SEARCH_SYNC_QUEUE_NAME, {
-      connection: {
-        host: this.configService.get('redis.host'),
-        port: this.configService.get('redis.port'),
-        password: this.configService.get('redis.password')
+  ) {}
+
+  /**
+   * Tìm kiếm sản phẩm trong Elasticsearch
+   */
+  async searchProducts(query: SearchProductsQueryType): Promise<SearchProductsResType> {
+    const { q, filters } = query
+
+    // Build Elasticsearch query
+    const esQuery: any = {
+      bool: {
+        must: []
       }
-    })
-  }
-
-  /**
-   * Thêm job đồng bộ một sản phẩm
-   */
-  async addSyncProductJob(productId: string, action: 'create' | 'update' | 'delete' = 'create') {
-    const jobData: SyncProductJobType = {
-      productId,
-      action
     }
 
-    try {
-      await this.queue.add(SYNC_PRODUCT_JOB, jobData, {
-        attempts: JOB_OPTIONS.ATTEMPTS,
-        backoff: JOB_OPTIONS.BACKOFF,
-        removeOnComplete: JOB_OPTIONS.REMOVE_ON_COMPLETE,
-        removeOnFail: JOB_OPTIONS.REMOVE_ON_FAIL
-      })
-
-      this.logger.log(`✅ Added sync job for product ${productId} with action: ${action}`)
-    } catch (error) {
-      this.logger.error(`❌ Failed to add sync job for product ${productId}:`, error)
-      throw error
-    }
-  }
-
-  /**
-   * Thêm job đồng bộ nhiều sản phẩm (batch)
-   */
-  async addSyncProductsBatchJob(productIds: string[], action: 'create' | 'update' | 'delete' = 'create') {
-    const jobData: SyncProductsBatchJobType = {
-      productIds,
-      action
-    }
-
-    try {
-      await this.queue.add(SYNC_PRODUCTS_BATCH_JOB, jobData, {
-        attempts: JOB_OPTIONS.ATTEMPTS,
-        backoff: JOB_OPTIONS.BACKOFF,
-        removeOnComplete: JOB_OPTIONS.REMOVE_ON_COMPLETE,
-        removeOnFail: JOB_OPTIONS.REMOVE_ON_FAIL
-      })
-
-      this.logger.log(`✅ Added batch sync job for ${productIds.length} products with action: ${action}`)
-    } catch (error) {
-      this.logger.error(`❌ Failed to add batch sync job:`, error)
-      throw error
-    }
-  }
-
-  /**
-   * Thêm job xóa sản phẩm khỏi ES
-   */
-  async addDeleteProductJob(productId: string) {
-    try {
-      await this.queue.add(
-        DELETE_PRODUCT_JOB,
-        { productId },
-        {
-          attempts: JOB_OPTIONS.ATTEMPTS,
-          backoff: JOB_OPTIONS.BACKOFF,
-          removeOnComplete: JOB_OPTIONS.REMOVE_ON_COMPLETE,
-          removeOnFail: JOB_OPTIONS.REMOVE_ON_FAIL
+    // Text search
+    if (q && q.trim()) {
+      esQuery.bool.must.push({
+        multi_match: {
+          query: q,
+          fields: ['productName^2', 'productDescription', 'skuValue'],
+          type: 'best_fields',
+          fuzziness: 'AUTO'
         }
-      )
-
-      this.logger.log(`✅ Added delete job for product ${productId}`)
-    } catch (error) {
-      this.logger.error(`❌ Failed to add delete job for product ${productId}:`, error)
-      throw error
+      })
     }
-  }
 
-  /**
-   * Lấy thông tin queue
-   */
-  async getQueueInfo() {
+    // Filters
+    if (filters) {
+      const filterClauses: any[] = []
+
+      if (filters.brandIds?.length) {
+        filterClauses.push({
+          terms: { brandId: filters.brandIds }
+        })
+      }
+
+      if (filters.categoryIds?.length) {
+        filterClauses.push({
+          terms: { categoryIds: filters.categoryIds }
+        })
+      }
+
+      if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
+        const rangeFilter: any = { skuPrice: {} }
+        if (filters.minPrice !== undefined) rangeFilter.skuPrice.gte = filters.minPrice
+        if (filters.maxPrice !== undefined) rangeFilter.skuPrice.lte = filters.maxPrice
+        filterClauses.push({ range: rangeFilter })
+      }
+
+      if (filters.attrs?.length) {
+        const nestedQueries = filters.attrs.map((attr) => ({
+          nested: {
+            path: 'attrs',
+            query: {
+              bool: {
+                must: [{ term: { 'attrs.attrName': attr.attrName } }, { term: { 'attrs.attrValue': attr.attrValue } }]
+              }
+            }
+          }
+        }))
+        filterClauses.push(...nestedQueries)
+      }
+
+      if (filterClauses.length > 0) {
+        esQuery.bool.filter = filterClauses
+      }
+    }
+
     try {
-      const [waiting, active, completed, failed] = await Promise.all([
-        this.queue.getWaiting(),
-        this.queue.getActive(),
-        this.queue.getCompleted(),
-        this.queue.getFailed()
-      ])
+      this.logger.log('🔍 Executing search with query:', JSON.stringify(esQuery, null, 2))
+
+      const result = await this.es.search(ES_INDEX_PRODUCTS, esQuery, {
+        size: 1000 // Lấy tất cả kết quả
+      })
+
+      this.logger.log('✅ Search completed successfully')
+
+      const hits = result.hits.hits.map((hit: any) => hit._source)
+      const total = typeof result.hits.total === 'object' ? result.hits.total.value : result.hits.total || 0
 
       return {
-        waiting: waiting.length,
-        active: active.length,
-        completed: completed.length,
-        failed: failed.length
+        data: hits,
+        metadata: {
+          totalItems: total
+        }
       }
     } catch (error) {
-      this.logger.error('Failed to get queue info:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Xóa tất cả jobs trong queue
-   */
-  async clearQueue() {
-    try {
-      // Clean completed jobs
-      await this.queue.clean(0, 0, 'completed')
-      // Clean failed jobs
-      await this.queue.clean(0, 0, 'failed')
-      // Clean waiting jobs
-      await this.queue.clean(0, 0, 'waiting')
-      this.logger.log('✅ Cleared search sync queue')
-    } catch (error) {
-      this.logger.error('Failed to clear queue:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Pause queue
-   */
-  async pauseQueue() {
-    try {
-      await this.queue.pause()
-      this.logger.log('⏸️ Paused search sync queue')
-    } catch (error) {
-      this.logger.error('Failed to pause queue:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Resume queue
-   */
-  async resumeQueue() {
-    try {
-      await this.queue.resume()
-      this.logger.log('▶️ Resumed search sync queue')
-    } catch (error) {
-      this.logger.error('Failed to resume queue:', error)
+      this.logger.error('❌ Search products failed:', error)
+      this.logger.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      })
       throw error
     }
   }
@@ -259,7 +200,7 @@ export class SearchSyncService {
       }
 
       // Chuyển đổi thành ES documents
-      const allEsDocuments: EsProductDocumentType[] = []
+      const allEsDocuments: any[] = []
 
       for (const product of products) {
         if (product.skus.length > 0) {
@@ -346,14 +287,14 @@ export class SearchSyncService {
   /**
    * Chuyển đổi Product thành ES documents
    */
-  private transformProductToEsDocuments(product: any): EsProductDocumentType[] {
-    const esDocuments: EsProductDocumentType[] = []
+  private transformProductToEsDocuments(product: any): any[] {
+    const esDocuments: any[] = []
 
     for (const sku of product.skus) {
       // Parse attributes từ variants và specifications
       const attrs = this.parseAttributesFromProduct(product, sku)
 
-      const esDocument: EsProductDocumentType = {
+      const esDocument = {
         skuId: sku.id,
         productId: product.id,
         skuValue: sku.value,
@@ -413,25 +354,5 @@ export class SearchSyncService {
     }
 
     return attrs
-  }
-
-  /**
-   * Tìm kiếm sản phẩm trong Elasticsearch
-   */
-  async searchProducts(
-    query: any,
-    options: {
-      size?: number
-      from?: number
-      sort?: any[]
-    } = {}
-  ) {
-    try {
-      const result = await this.es.search(ES_INDEX_PRODUCTS, query, options)
-      return result
-    } catch (error) {
-      this.logger.error('Search products failed:', error)
-      throw error
-    }
   }
 }

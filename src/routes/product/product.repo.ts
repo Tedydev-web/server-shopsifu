@@ -9,13 +9,13 @@ import {
 import { ALL_LANGUAGE_CODE, OrderByType, SortBy, SortByType } from 'src/shared/constants/other.constant'
 import { ProductType } from 'src/shared/models/shared-product.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { SearchSyncQueueService } from 'src/shared/services/search-sync-queue.service'
+import { SearchSyncService } from 'src/shared/services/search-sync.service'
 
 @Injectable()
 export class ProductRepo {
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly searchSyncQueueService: SearchSyncQueueService
+    private readonly searchSyncService: SearchSyncService
   ) {}
 
   async list({
@@ -259,7 +259,7 @@ export class ProductRepo {
       .then(async (product) => {
         // Trigger sync to Elasticsearch
         try {
-          await this.searchSyncQueueService.addSyncProductJob(product.id, 'create')
+          await this.searchSyncService.addSyncProductJob(product.id, 'create')
         } catch (error) {
           console.error('Failed to trigger sync job:', error)
         }
@@ -366,7 +366,7 @@ export class ProductRepo {
 
     // Trigger sync to Elasticsearch
     try {
-      await this.searchSyncQueueService.addSyncProductJob(id, 'update')
+      await this.searchSyncService.addSyncProductJob(id, 'update')
     } catch (error) {
       console.error('Failed to trigger sync job:', error)
     }
@@ -427,7 +427,7 @@ export class ProductRepo {
 
     // Trigger sync to Elasticsearch
     try {
-      await this.searchSyncQueueService.addSyncProductJob(id, 'delete')
+      await this.searchSyncService.addSyncProductJob(id, 'delete')
     } catch (error) {
       console.error('Failed to trigger sync job:', error)
     }

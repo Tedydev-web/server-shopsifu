@@ -19,6 +19,9 @@ export class ElasticsearchService implements OnModuleInit {
       node,
       auth: {
         apiKey
+      },
+      tls: {
+        rejectUnauthorized: false
       }
     })
   }

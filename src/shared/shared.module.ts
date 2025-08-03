@@ -30,9 +30,9 @@ import { PaymentProducer } from './producers/payment.producer'
 import { PAYMENT_QUEUE_NAME } from './constants/queue.constant'
 import { ElasticsearchService } from './services/elasticsearch.service'
 import { SearchSyncService } from './services/search-sync.service'
-import { SearchSyncQueueService } from './services/search-sync-queue.service'
 import { SearchSyncConsumer } from './consumers/search-sync.consumer'
 import { SEARCH_SYNC_QUEUE_NAME } from './constants/search-sync.constant'
+import { PaymentConsumer } from './consumers/payment.consumer'
 
 const sharedServices = [
   PrismaService,
@@ -49,14 +49,14 @@ const sharedServices = [
   PaymentProducer,
   ElasticsearchService,
   SearchSyncService,
-  SearchSyncQueueService
+  SearchSyncConsumer,
+  PaymentConsumer
 ]
 
 @Global()
 @Module({
   providers: [
     ...sharedServices,
-    SearchSyncConsumer,
     AccessTokenGuard,
     PaymentAPIKeyGuard,
     {
