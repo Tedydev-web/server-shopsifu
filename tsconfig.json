@@ -22,7 +22,7 @@
     "noFallthroughCasesInSwitch": false,
     "allowJs": false,
     "moduleResolution": "node",
-    "resolveJsonModule": true,
+    "resolveJsonModule": true
   },
   "ts-node": {
     "require": [
