@@ -403,6 +403,18 @@ export type I18nTranslations = {
                 "SEARCH_FAILED": string;
                 "INVALID_QUERY": string;
                 "NO_RESULTS": string;
+                "EMPTY_QUERY": string;
+                "QUERY_TOO_SHORT": string;
+                "INVALID_FILTERS": string;
+                "INVALID_PRICE_RANGE": string;
+                "INVALID_ATTRIBUTE_FILTER": string;
+                "ELASTICSEARCH_CONNECTION_FAILED": string;
+                "ELASTICSEARCH_QUERY_FAILED": string;
+                "ELASTICSEARCH_INDEX_NOT_FOUND": string;
+                "SEARCH_TIMEOUT": string;
+                "SEARCH_SERVICE_UNAVAILABLE": string;
+                "DICTIONARY_LOAD_FAILED": string;
+                "DICTIONARY_PARSE_FAILED": string;
             };
         };
     };

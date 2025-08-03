@@ -19,6 +19,7 @@
     "studio": "prisma studio",
     "seed:email": "nestjs-command seed:emails",
     "seed": "ts-node -r tsconfig-paths/register initialScript/init/init-data.ts && ts-node -r tsconfig-paths/register initialScript/permission/create-permissions.ts && ts-node -r tsconfig-paths/register initialScript/product/script/create-products.ts",
+    "seed:with-sync": "ts-node -r tsconfig-paths/register initialScript/product/script/seed-with-sync.ts",
     "init-seed-data": "ts-node -r tsconfig-paths/register initialScript/init/init-data.ts",
     "create-permissions": "ts-node -r tsconfig-paths/register initialScript/permission/create-permissions.ts",
     "analyze:products": "ts-node -r tsconfig-paths/register initialScript/product/script/analyze-products.ts",
@@ -29,7 +30,6 @@
     "test": "jest --config test/jest.json --runInBand --passWithNoTests --forceExit",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --config test/jest.json --runInBand",
     "prepare": "husky",
-    "sync:products": "ts-node src/scripts/sync-products-to-es.ts",
     "test:comprehensive": "ts-node src/scripts/test-comprehensive.ts"
   },
   "dependencies": {

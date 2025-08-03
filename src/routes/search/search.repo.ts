@@ -3,8 +3,8 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 import { ElasticsearchService } from 'src/shared/services/elasticsearch.service'
 import { ConfigService } from '@nestjs/config'
 import { SearchProductsQueryType, SearchProductsResType } from './search.model'
-import { ES_INDEX_PRODUCTS } from 'src/shared/constants/search-sync.constant'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
+import { ElasticsearchConnectionException, ElasticsearchQueryException, SearchTimeoutException } from './search.error'
 
 @Injectable()
 export class SearchRepo {
@@ -22,14 +22,13 @@ export class SearchRepo {
   async searchProducts(query: SearchProductsQueryType): Promise<SearchProductsResType> {
     const { q, page = 1, limit = 20, orderBy = OrderBy.Desc, sortBy = SortBy.CreatedAt, filters } = query
 
-    // Build Elasticsearch query
     const esQuery: any = {
       bool: {
         must: []
       }
     }
 
-    // Text search - Chỉ search trong productName
+    // Text search trong productName
     if (q && q.trim()) {
       const searchTerms = q
         .trim()
@@ -38,13 +37,10 @@ export class SearchRepo {
         .filter((term) => term.length > 0)
 
       if (searchTerms.length > 0) {
-        // Tạo multi-match query chỉ search trong productName
         const multiMatchQuery = {
           multi_match: {
             query: q,
-            fields: [
-              'productName^3' // Chỉ search trong productName với boost = 3
-            ],
+            fields: ['productName^3'],
             type: 'best_fields',
             operator: 'and',
             fuzziness: 'AUTO',
@@ -54,11 +50,10 @@ export class SearchRepo {
 
         esQuery.bool.must.push(multiMatchQuery)
 
-        // Thêm should clause để tăng độ chính xác cho các từ khóa quan trọng
         const shouldClauses = searchTerms.map((term) => ({
           multi_match: {
             query: term,
-            fields: ['productName^2'], // Chỉ search trong productName
+            fields: ['productName^2'],
             type: 'phrase',
             boost: 2
           }
@@ -113,34 +108,31 @@ export class SearchRepo {
       }
     }
 
-    // Build sort options
+    // Sort options
     const sortOptions: any[] = []
 
     if (sortBy === SortBy.Price) {
       sortOptions.push({ skuPrice: { order: orderBy.toLowerCase() } })
     } else if (sortBy === SortBy.Sale) {
-      // Note: ES doesn't have sale count field, using score as fallback
       sortOptions.push({ _score: { order: 'desc' } })
     } else {
-      // Default: CreatedAt
       sortOptions.push({ createdAt: { order: orderBy.toLowerCase() } })
     }
 
-    // Add score as secondary sort
     sortOptions.push({ _score: { order: 'desc' } })
 
     try {
-      this.logger.log('🔍 Executing search with query:', JSON.stringify(esQuery, null, 2))
-
       const from = (page - 1) * limit
 
-      const result = await this.es.search(ES_INDEX_PRODUCTS, esQuery, {
-        size: limit,
-        from: from,
-        sort: sortOptions
-      })
-
-      this.logger.log('✅ Search completed successfully')
+      const result = await this.es.search(
+        this.configService.get('elasticsearch.index.products') || 'products',
+        esQuery,
+        {
+          size: limit,
+          from: from,
+          sort: sortOptions
+        }
+      )
 
       const hits = result.hits.hits.map((hit: any) => hit._source)
       const total = typeof result.hits.total === 'object' ? result.hits.total.value : result.hits.total || 0
@@ -158,13 +150,18 @@ export class SearchRepo {
         }
       }
     } catch (error) {
-      this.logger.error('❌ Search products failed:', error)
-      this.logger.error('❌ Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      })
-      throw error
+      this.logger.error('Search products failed:', error)
+
+      // Phân loại lỗi dựa trên error type
+      if (error.name === 'ConnectionError' || error.code === 'ECONNREFUSED') {
+        throw ElasticsearchConnectionException
+      }
+
+      if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
+        throw SearchTimeoutException
+      }
+
+      throw ElasticsearchQueryException
     }
   }
 }

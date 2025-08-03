@@ -1,19 +1,8 @@
-/**
- * Queue names cho search sync
- */
 export const SEARCH_SYNC_QUEUE_NAME = 'search-sync'
 
-/**
- * Job names cho search sync
- */
 export const SYNC_PRODUCT_JOB = 'sync-product'
 export const SYNC_PRODUCTS_BATCH_JOB = 'sync-products-batch'
 export const DELETE_PRODUCT_JOB = 'delete-product'
-
-/**
- * Index names cho Elasticsearch
- */
-export const ES_INDEX_PRODUCTS = 'products'
 
 /**
  * Sync actions

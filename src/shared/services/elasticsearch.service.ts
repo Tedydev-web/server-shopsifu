@@ -25,10 +25,10 @@ export class ElasticsearchService implements OnModuleInit {
   async onModuleInit() {
     try {
       await this.client.info()
-      this.logger.log('✅ Connected to Elasticsearch successfully')
+      this.logger.log('Connected to Elasticsearch successfully')
       await this.createProductIndex()
     } catch (error) {
-      this.logger.error('❌ Failed to connect to Elasticsearch', error)
+      this.logger.error('Failed to connect to Elasticsearch', error)
       throw error
     }
   }
@@ -98,7 +98,7 @@ export class ElasticsearchService implements OnModuleInit {
         }
       })
 
-      this.logger.log(`✅ Index "${indexName}" created successfully`)
+      this.logger.log(`Index "${indexName}" created successfully`)
     }
   }
 
@@ -133,13 +133,11 @@ export class ElasticsearchService implements OnModuleInit {
         searchParams.aggs = aggs
       }
 
-      this.logger.log(`🔍 Searching index: ${index}, size: ${size}, from: ${from}`)
-
       const startTime = Date.now()
       const result = await this.client.search(searchParams)
       const endTime = Date.now()
 
-      this.logger.log(`✅ Search completed in ${endTime - startTime}ms, found ${result.hits.total} results`)
+      this.logger.log(`Search completed in ${endTime - startTime}ms, found ${result.hits.total} results`)
 
       return result
     } catch (error) {
@@ -171,7 +169,7 @@ export class ElasticsearchService implements OnModuleInit {
           result.items.filter((item) => item.index?.error)
         )
       } else {
-        this.logger.log(`✅ Successfully indexed ${docs.length} documents`)
+        this.logger.log(`Successfully indexed ${docs.length} documents`)
       }
 
       return result
@@ -187,7 +185,7 @@ export class ElasticsearchService implements OnModuleInit {
   async deleteById(index: string, id: string) {
     try {
       await this.client.delete({ index, id })
-      this.logger.log(`✅ Deleted document ${id} from index ${index}`)
+      this.logger.log(`Deleted document ${id} from index ${index}`)
     } catch (error) {
       this.logger.error(`Failed to delete document ${id}:`, error)
       throw error

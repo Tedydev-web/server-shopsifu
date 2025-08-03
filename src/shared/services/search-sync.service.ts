@@ -5,7 +5,6 @@ import { ConfigService } from '@nestjs/config'
 import { Queue } from 'bullmq'
 import { EsProductDocumentType, SyncProductJobType, SyncProductsBatchJobType } from '../models/search-sync.model'
 import {
-  ES_INDEX_PRODUCTS,
   SEARCH_SYNC_QUEUE_NAME,
   SYNC_PRODUCT_JOB,
   SYNC_PRODUCTS_BATCH_JOB,
@@ -45,9 +44,9 @@ export class SearchSyncService {
         removeOnComplete: JOB_OPTIONS.REMOVE_ON_COMPLETE,
         removeOnFail: JOB_OPTIONS.REMOVE_ON_FAIL
       })
-      this.logger.log(`✅ Added sync job for product ${productId} with action: ${action}`)
+      this.logger.log(`Added sync job for product ${productId} with action: ${action}`)
     } catch (error) {
-      this.logger.error(`❌ Failed to add sync job for product ${productId}:`, error)
+      this.logger.error(`Failed to add sync job for product ${productId}:`, error)
       throw error
     }
   }
@@ -65,9 +64,9 @@ export class SearchSyncService {
         removeOnComplete: JOB_OPTIONS.REMOVE_ON_COMPLETE,
         removeOnFail: JOB_OPTIONS.REMOVE_ON_FAIL
       })
-      this.logger.log(`✅ Added batch sync job for ${productIds.length} products with action: ${action}`)
+      this.logger.log(`Added batch sync job for ${productIds.length} products with action: ${action}`)
     } catch (error) {
-      this.logger.error(`❌ Failed to add batch sync job:`, error)
+      this.logger.error(`Failed to add batch sync job:`, error)
       throw error
     }
   }
@@ -87,9 +86,9 @@ export class SearchSyncService {
           removeOnFail: JOB_OPTIONS.REMOVE_ON_FAIL
         }
       )
-      this.logger.log(`✅ Added delete job for product ${productId}`)
+      this.logger.log(`Added delete job for product ${productId}`)
     } catch (error) {
-      this.logger.error(`❌ Failed to add delete job for product ${productId}:`, error)
+      this.logger.error(`Failed to add delete job for product ${productId}:`, error)
       throw error
     }
   }
@@ -128,7 +127,7 @@ export class SearchSyncService {
         this.queue.clean(0, 0, 'failed'),
         this.queue.clean(0, 0, 'waiting')
       ])
-      this.logger.log('✅ Cleared search sync queue')
+      this.logger.log('Cleared search sync queue')
     } catch (error) {
       this.logger.error('Failed to clear queue:', error)
       throw error
@@ -141,7 +140,7 @@ export class SearchSyncService {
   async pauseQueue() {
     try {
       await this.queue.pause()
-      this.logger.log('⏸️ Paused search sync queue')
+      this.logger.log('Paused search sync queue')
     } catch (error) {
       this.logger.error('Failed to pause queue:', error)
       throw error
@@ -154,7 +153,7 @@ export class SearchSyncService {
   async resumeQueue() {
     try {
       await this.queue.resume()
-      this.logger.log('▶️ Resumed search sync queue')
+      this.logger.log('Resumed search sync queue')
     } catch (error) {
       this.logger.error('Failed to resume queue:', error)
       throw error
@@ -167,7 +166,7 @@ export class SearchSyncService {
   async syncProductToES(jobData: SyncProductJobType): Promise<void> {
     const { productId, action } = jobData
 
-    this.logger.log(`🔄 Starting sync for product ${productId} with action: ${action}`)
+    this.logger.log(`Starting sync for product ${productId} with action: ${action}`)
 
     try {
       if (action === 'delete') {
@@ -182,11 +181,15 @@ export class SearchSyncService {
       }
 
       const esDocuments = this.transformProductToEsDocuments(product)
-      await this.es.bulkIndex(ES_INDEX_PRODUCTS, esDocuments, 'skuId')
+      await this.es.bulkIndex(
+        this.configService.get('elasticsearch.index.products') || 'products',
+        esDocuments,
+        'skuId'
+      )
 
-      this.logger.log(`✅ Successfully synced ${esDocuments.length} SKUs for product ${productId}`)
+      this.logger.log(`Successfully synced ${esDocuments.length} SKUs for product ${productId}`)
     } catch (error) {
-      this.logger.error(`❌ Failed to sync product ${productId}:`, error)
+      this.logger.error(`Failed to sync product ${productId}:`, error)
       throw error
     }
   }
@@ -197,7 +200,7 @@ export class SearchSyncService {
   async syncProductsBatchToES(jobData: SyncProductsBatchJobType): Promise<void> {
     const { productIds, action } = jobData
 
-    this.logger.log(`🔄 Starting batch sync for ${productIds.length} products with action: ${action}`)
+    this.logger.log(`Starting batch sync for ${productIds.length} products with action: ${action}`)
 
     try {
       if (action === 'delete') {
@@ -220,13 +223,17 @@ export class SearchSyncService {
       }
 
       if (allEsDocuments.length > 0) {
-        await this.es.bulkIndex(ES_INDEX_PRODUCTS, allEsDocuments, 'skuId')
-        this.logger.log(`✅ Successfully synced ${allEsDocuments.length} SKUs for ${products.length} products`)
+        await this.es.bulkIndex(
+          this.configService.get('elasticsearch.index.products') || 'products',
+          allEsDocuments,
+          'skuId'
+        )
+        this.logger.log(`Successfully synced ${allEsDocuments.length} SKUs for ${products.length} products`)
       } else {
         this.logger.warn('No SKUs found for batch sync')
       }
     } catch (error) {
-      this.logger.error(`❌ Failed to batch sync products:`, error)
+      this.logger.error(`Failed to batch sync products:`, error)
       throw error
     }
   }
@@ -278,12 +285,12 @@ export class SearchSyncService {
       }
 
       for (const sku of skus) {
-        await this.es.deleteById(ES_INDEX_PRODUCTS, sku.id)
+        await this.es.deleteById(this.configService.get('elasticsearch.index.products') || 'products', sku.id)
       }
 
-      this.logger.log(`✅ Successfully deleted ${skus.length} SKUs for product ${productId} from ES`)
+      this.logger.log(`Successfully deleted ${skus.length} SKUs for product ${productId} from ES`)
     } catch (error) {
-      this.logger.error(`❌ Failed to delete product ${productId} from ES:`, error)
+      this.logger.error(`Failed to delete product ${productId} from ES:`, error)
       throw error
     }
   }
@@ -307,12 +314,12 @@ export class SearchSyncService {
       }
 
       for (const sku of skus) {
-        await this.es.deleteById(ES_INDEX_PRODUCTS, sku.id)
+        await this.es.deleteById(this.configService.get('elasticsearch.index.products') || 'products', sku.id)
       }
 
-      this.logger.log(`✅ Successfully deleted ${skus.length} SKUs for ${productIds.length} products from ES`)
+      this.logger.log(`Successfully deleted ${skus.length} SKUs for ${productIds.length} products from ES`)
     } catch (error) {
-      this.logger.error(`❌ Failed to batch delete products from ES:`, error)
+      this.logger.error(`Failed to batch delete products from ES:`, error)
       throw error
     }
   }

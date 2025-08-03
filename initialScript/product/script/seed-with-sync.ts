@@ -1,31 +1,36 @@
 import { NestFactory } from '@nestjs/core'
-import { AppModule } from '../src/app.module'
-import { SearchSyncService } from '../src/shared/services/search-sync.service'
-import { PrismaService } from '../src/shared/services/prisma.service'
-import { ElasticsearchService } from '../src/shared/services/elasticsearch.service'
+import { AppModule } from '../../../src/app.module'
+import { SearchSyncService } from '../../../src/shared/services/search-sync.service'
+import { PrismaService } from '../../../src/shared/services/prisma.service'
+import { ElasticsearchService } from '../../../src/shared/services/elasticsearch.service'
 import { Logger } from '@nestjs/common'
+import { importProductsOptimized } from './create-products'
 
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule)
-  const logger = new Logger('SyncProductsScript')
+  const logger = new Logger('SeedWithSync')
   const searchSyncService = app.get(SearchSyncService)
   const prismaService = app.get(PrismaService)
   const elasticsearchService = app.get(ElasticsearchService)
 
   try {
-    logger.log('🚀 Bắt đầu sync tất cả sản phẩm lên Elasticsearch...')
+    logger.log('🚀 Bắt đầu seed data và sync với Elasticsearch...')
 
-    // Lấy tất cả sản phẩm từ PostgreSQL
+    // Bước 1: Import products từ JSON
+    logger.log('📦 Bước 1: Importing products từ JSON...')
+    await importProductsOptimized()
+    logger.log('✅ Hoàn thành import products')
+
+    // Bước 2: Sync tất cả products với Elasticsearch
+    logger.log('🔄 Bước 2: Syncing tất cả products với Elasticsearch...')
+
+    // Lấy tất cả products từ database
     const products = await prismaService.product.findMany({
       where: { deletedAt: null },
       include: {
-        skus: {
-          where: { deletedAt: null }
-        },
+        skus: { where: { deletedAt: null } },
         brand: true,
-        categories: {
-          where: { deletedAt: null }
-        }
+        categories: { where: { deletedAt: null } }
       }
     })
 
@@ -114,11 +119,22 @@ async function bootstrap() {
     } else {
       logger.warn('❌ Không có SKUs nào để sync')
     }
+
+    logger.log('🎉 Hoàn thành seed data và sync với Elasticsearch!')
   } catch (error) {
-    logger.error('❌ Sync failed:', error)
+    logger.error('❌ Seed with sync failed:', error)
+    throw error
   } finally {
     await app.close()
   }
 }
 
 bootstrap()
+  .then(() => {
+    console.log('🎯 Seed with sync completed successfully')
+    process.exit(0)
+  })
+  .catch((error) => {
+    console.error('💥 Seed with sync failed:', error)
+    process.exit(1)
+  })

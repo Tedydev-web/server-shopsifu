@@ -6,7 +6,19 @@
     "error": {
       "SEARCH_FAILED": "Tìm kiếm thất bại",
       "INVALID_QUERY": "Truy vấn không hợp lệ",
-      "NO_RESULTS": "Không tìm thấy kết quả nào"
+      "NO_RESULTS": "Không tìm thấy kết quả nào",
+      "EMPTY_QUERY": "Truy vấn không được để trống",
+      "QUERY_TOO_SHORT": "Truy vấn phải có ít nhất 1 ký tự",
+      "INVALID_FILTERS": "Bộ lọc không hợp lệ",
+      "INVALID_PRICE_RANGE": "Khoảng giá không hợp lệ",
+      "INVALID_ATTRIBUTE_FILTER": "Bộ lọc thuộc tính không hợp lệ",
+      "ELASTICSEARCH_CONNECTION_FAILED": "Kết nối Elasticsearch thất bại",
+      "ELASTICSEARCH_QUERY_FAILED": "Truy vấn Elasticsearch thất bại",
+      "ELASTICSEARCH_INDEX_NOT_FOUND": "Không tìm thấy index Elasticsearch",
+      "SEARCH_TIMEOUT": "Tìm kiếm bị timeout",
+      "SEARCH_SERVICE_UNAVAILABLE": "Dịch vụ tìm kiếm không khả dụng",
+      "DICTIONARY_LOAD_FAILED": "Tải từ điển thất bại",
+      "DICTIONARY_PARSE_FAILED": "Phân tích từ điển thất bại"
     }
   }
 }

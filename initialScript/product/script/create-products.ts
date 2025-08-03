@@ -2,6 +2,10 @@ import { PrismaClient } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
 import { HashingService } from '../../../src/shared/services/hashing.service'
+import { NestFactory } from '@nestjs/core'
+import { AppModule } from '../../../src/app.module'
+import { SearchSyncService } from '../../../src/shared/services/search-sync.service'
+import { Logger } from '@nestjs/common'
 
 // COPY operations for optimized bulk inserts
 async function copyUsers(
@@ -1168,6 +1172,51 @@ async function readJsonStream(jsonPath: string): Promise<ShopeeProduct[]> {
   }
 }
 
+/**
+ * Sync products với Elasticsearch sau khi tạo
+ */
+async function syncProductsToElasticsearch(productIds: string[]): Promise<void> {
+  const logger = new Logger('SyncProductsToES')
+  
+  try {
+    logger.log('🔄 Bắt đầu sync products với Elasticsearch...')
+    
+    // Tạo NestJS application context
+    const app = await NestFactory.createApplicationContext(AppModule)
+    const searchSyncService = app.get(SearchSyncService)
+    
+    // Sync từng batch để tránh quá tải
+    const batchSize = 100
+    const batches = Array.from({ length: Math.ceil(productIds.length / batchSize) }, (_, i) =>
+      productIds.slice(i * batchSize, (i + 1) * batchSize)
+    )
+    
+    logger.log(`📦 Sẽ sync ${productIds.length} products trong ${batches.length} batches`)
+    
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i]
+      logger.log(`🔄 Đang sync batch ${i + 1}/${batches.length} với ${batch.length} products...`)
+      
+      try {
+        await searchSyncService.syncProductsBatchToES({
+          productIds: batch,
+          action: 'create'
+        })
+        logger.log(`✅ Đã sync thành công batch ${i + 1}/${batches.length}`)
+      } catch (error) {
+        logger.error(`❌ Lỗi khi sync batch ${i + 1}/${batches.length}:`, error)
+        // Tiếp tục với batch tiếp theo thay vì dừng toàn bộ
+      }
+    }
+    
+    await app.close()
+    logger.log('✅ Hoàn thành sync tất cả products với Elasticsearch')
+  } catch (error) {
+    logger.error('❌ Lỗi khi sync products với Elasticsearch:', error)
+    throw error
+  }
+}
+
 async function importProductsOptimized(): Promise<void> {
   let timeout: NodeJS.Timeout | null = null
   try {
@@ -1305,6 +1354,13 @@ async function importProductsOptimized(): Promise<void> {
     const reviewResult = await batchCreateReviews(processedProducts, productNameToIdMap, clientMap, prisma)
     console.log(`✅ Created ${reviewResult.success} reviews, failed: ${reviewResult.failed}`)
 
+    // Sync products với Elasticsearch
+    if (productResult.success > 0) {
+      console.log('🔄 Syncing products với Elasticsearch...')
+      const createdProductIds = Array.from(productNameToIdMap.values())
+      await syncProductsToElasticsearch(createdProductIds)
+    }
+
     console.log('\n🎉 Import Summary:', {
       totalProducts: validProducts.length + Object.values(validationStats).reduce((a, b) => a + b, 0),
       validProducts: validProducts.length,
@@ -1322,7 +1378,8 @@ async function importProductsOptimized(): Promise<void> {
       sellersCreated: sellerMap.size,
       customersCreated: clientMap.size,
       addressesCreated: addressResult.addressCount,
-      userAddressRelationships: addressResult.userAddressCount
+      userAddressRelationships: addressResult.userAddressCount,
+      elasticsearchSync: productResult.success > 0 ? 'Completed' : 'Skipped'
     })
   } catch (error) {
     console.error('❌ Fatal error during import:', error)

@@ -1,14 +1,14 @@
 import { registerAs } from '@nestjs/config'
 
 export default registerAs('elasticsearch', () => ({
-  node: process.env.ELASTICSEARCH_NODE || 'http://localhost:9200',
+  node: process.env.ELASTICSEARCH_NODE,
   apiKey: process.env.ELASTICSEARCH_API_KEY,
   index: {
-    products: process.env.ELASTICSEARCH_INDEX_PRODUCTS || 'products_v1'
+    products: process.env.ELASTICSEARCH_INDEX_PRODUCTS
   },
   connection: {
-    timeout: 30000,
-    maxRetries: 3,
-    requestTimeout: 30000
+    timeout: process.env.ELASTICSEARCH_CONNECTION_TIMEOUT,
+    maxRetries: process.env.ELASTICSEARCH_MAX_RETRIES,
+    requestTimeout: process.env.ELASTICSEARCH_REQUEST_TIMEOUT
   }
 }))

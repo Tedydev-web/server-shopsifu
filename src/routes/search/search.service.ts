@@ -1,8 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { SearchRepo } from './search.repo'
 import { SearchProductsQueryType, SearchProductsResType } from './search.model'
 import { I18nService } from 'nestjs-i18n'
 import { ElasticsearchService } from 'src/shared/services/elasticsearch.service'
+import {
+  EmptySearchQueryException,
+  SearchQueryTooShortException,
+  DictionaryLoadException,
+  DictionaryParseException
+} from './search.error'
 
 interface ParsedQuery {
   q: string
@@ -19,7 +26,8 @@ export class SearchService {
   constructor(
     private readonly searchRepo: SearchRepo,
     private readonly esService: ElasticsearchService,
-    private readonly i18n: I18nService
+    private readonly i18n: I18nService,
+    private readonly configService: ConfigService
   ) {}
 
   /**
@@ -29,9 +37,10 @@ export class SearchService {
     if (this.dictionaryCache && Date.now() < this.cacheExpiry) {
       return this.dictionaryCache
     }
+
     try {
       const result = await this.esService.client.search({
-        index: process.env.ELASTICSEARCH_INDEX_PRODUCTS,
+        index: this.configService.get('elasticsearch.index.products'),
         size: 0,
         aggs: {
           unique_attrs: {
@@ -49,8 +58,10 @@ export class SearchService {
           }
         }
       })
+
       const dictionary = new Map<string, { normalizedValue: string; synonyms: string[] }[]>()
       const attrBuckets = (result.aggregations as any)?.unique_attrs?.attr_names?.buckets || []
+
       for (const attrBucket of attrBuckets) {
         const attrName = attrBucket.key
         const values = attrBucket.attr_values.buckets.map((v: any) => ({
@@ -59,57 +70,72 @@ export class SearchService {
         }))
         dictionary.set(attrName, values)
       }
+
       this.dictionaryCache = dictionary
       this.cacheExpiry = Date.now() + this.CACHE_DURATION
-      this.logger.log(`✅ Loaded dictionary from Elasticsearch: ${dictionary.size} attributes`)
       return dictionary
-    } catch (error) {
-      this.logger.error('❌ Failed to load dictionary from Elasticsearch:', error)
-      return new Map()
+    } catch {
+      throw DictionaryLoadException
     }
   }
 
   /**
-   * Parse natural language query thành structured query (dùng dictionary động từ Elasticsearch)
+   * Parse natural language query thành structured query
    */
   private async parseQuery(rawQuery: string): Promise<ParsedQuery> {
-    const dictionary = await this.getDictionary()
-    const tokens = rawQuery.toLowerCase().split(' ').filter(Boolean)
-    const searchTextParts: string[] = []
-    const foundOptions: { name: string; value: string }[] = []
-    const consumedTokens = new Set<string>()
-    for (const token of tokens) {
-      if (consumedTokens.has(token)) continue
-      let found = false
-      for (const [optionName, values] of dictionary.entries()) {
-        const foundValue = values.find((v) => v.synonyms.includes(token))
-        if (foundValue) {
-          foundOptions.push({ name: optionName, value: foundValue.normalizedValue })
-          consumedTokens.add(token)
-          found = true
-          break
+    try {
+      const dictionary = await this.getDictionary()
+      const tokens = rawQuery.toLowerCase().split(' ').filter(Boolean)
+      const searchTextParts: string[] = []
+      const foundOptions: { name: string; value: string }[] = []
+      const consumedTokens = new Set<string>()
+
+      for (const token of tokens) {
+        if (consumedTokens.has(token)) continue
+
+        let found = false
+        for (const [optionName, values] of dictionary.entries()) {
+          const foundValue = values.find((v) => v.synonyms.includes(token))
+          if (foundValue) {
+            foundOptions.push({ name: optionName, value: foundValue.normalizedValue })
+            consumedTokens.add(token)
+            found = true
+            break
+          }
+        }
+
+        if (!found) {
+          searchTextParts.push(token)
         }
       }
-      if (!found) {
-        searchTextParts.push(token)
+
+      return {
+        q: searchTextParts.join(' '),
+        options: foundOptions
       }
+    } catch {
+      throw DictionaryParseException
     }
-    const result: ParsedQuery = {
-      q: searchTextParts.join(' '),
-      options: foundOptions
-    }
-    this.logger.log(`🔍 Parsed query: q='${result.q}', options=${JSON.stringify(result.options)}`)
-    return result
   }
 
   /**
    * Tìm kiếm sản phẩm
    */
   async searchProducts(query: SearchProductsQueryType): Promise<SearchProductsResType> {
-    // Parse query nếu có
+    // Validate query trước khi parse
+    if (query.q) {
+      const trimmedQuery = query.q.trim()
+      if (!trimmedQuery) {
+        throw EmptySearchQueryException
+      }
+      if (trimmedQuery.length < 1) {
+        throw SearchQueryTooShortException
+      }
+    }
+
     if (query.q && query.q.trim()) {
       const parsedQuery = await this.parseQuery(query.q)
-      // Merge parsed options với filters có sẵn
+
       if (parsedQuery.options.length > 0) {
         const parsedAttrs = parsedQuery.options.map((opt) => ({
           attrName: opt.name,
@@ -120,10 +146,12 @@ export class SearchService {
           attrs: [...(query.filters?.attrs || []), ...parsedAttrs]
         }
       }
-      // Cập nhật query với parsed text
+
       query.q = parsedQuery.q
     }
+
     const result = await this.searchRepo.searchProducts(query)
+
     return {
       message: this.i18n.t('search.search.success.SEARCH_SUCCESS'),
       data: result.data,
