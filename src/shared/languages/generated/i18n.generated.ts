@@ -5,18 +5,6 @@
 import { Path } from "nestjs-i18n";
 /* prettier-ignore */
 export type I18nTranslations = {
-    "search": {
-        "search": {
-            "success": {
-                "SEARCH_SUCCESS": string;
-            };
-            "error": {
-                "SEARCH_FAILED": string;
-                "INVALID_QUERY": string;
-                "NO_RESULTS": string;
-            };
-        };
-    };
     "auth": {
         "auth": {
             "success": {
@@ -403,6 +391,18 @@ export type I18nTranslations = {
                 "CANNOT_UPDATE_DEFAULT_ROLE": string;
                 "CANNOT_DELETE_DEFAULT_ROLE": string;
                 "PROHIBITED_ACTION_ON_BASE_ROLE": string;
+            };
+        };
+    };
+    "search": {
+        "search": {
+            "success": {
+                "SEARCH_SUCCESS": string;
+            };
+            "error": {
+                "SEARCH_FAILED": string;
+                "INVALID_QUERY": string;
+                "NO_RESULTS": string;
             };
         };
     };

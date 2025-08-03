@@ -15,7 +15,6 @@ import { SEARCH_SYNC_QUEUE_NAME } from 'src/shared/constants/search-sync.constan
     })
   ],
   controllers: [SearchController],
-  providers: [SearchService, SearchRepo, ElasticsearchService, SearchSyncService, SearchSyncConsumer],
-  exports: [SearchService, SearchRepo, SearchSyncService]
+  providers: [SearchService, SearchRepo, ElasticsearchService, SearchSyncService, SearchSyncConsumer]
 })
 export class SearchModule {}
