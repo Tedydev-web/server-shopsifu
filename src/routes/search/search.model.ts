@@ -76,35 +76,6 @@ export const SearchProductsResSchema = z.object({
   })
 })
 
-/**
- * Schema cho sync job
- */
-export const SyncProductJobSchema = z.object({
-  productId: z.string(),
-  action: z.enum(['create', 'update', 'delete'])
-})
-
-export const SyncProductsBatchJobSchema = z.object({
-  productIds: z.array(z.string()),
-  action: z.enum(['create', 'update', 'delete'])
-})
-
-/**
- * Schema cho queue info response
- */
-export const QueueInfoResSchema = z.object({
-  message: z.string().optional(),
-  data: z.object({
-    waiting: z.number(),
-    active: z.number(),
-    completed: z.number(),
-    failed: z.number()
-  })
-})
-
 // Type exports
 export type SearchProductsQueryType = z.infer<typeof SearchProductsQuerySchema>
 export type SearchProductsResType = z.infer<typeof SearchProductsResSchema>
-export type SyncProductJobType = z.infer<typeof SyncProductJobSchema>
-export type SyncProductsBatchJobType = z.infer<typeof SyncProductsBatchJobSchema>
-export type QueueInfoResType = z.infer<typeof QueueInfoResSchema>
