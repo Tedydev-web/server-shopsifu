@@ -31,7 +31,7 @@ export class SearchService {
     }
     try {
       const result = await this.esService.client.search({
-        index: 'products_v1',
+        index: process.env.ELASTICSEARCH_INDEX_PRODUCTS,
         size: 0,
         aggs: {
           unique_attrs: {
