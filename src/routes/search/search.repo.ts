@@ -3,7 +3,6 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 import { ElasticsearchService } from 'src/shared/services/elasticsearch.service'
 import { ConfigService } from '@nestjs/config'
 import { SearchProductsQueryType, SearchProductsResType } from './search.model'
-import { SyncProductJobType, SyncProductsBatchJobType } from 'src/shared/models/search-sync.model'
 import { ES_INDEX_PRODUCTS } from 'src/shared/constants/search-sync.constant'
 import { OrderBy, SortBy } from 'src/shared/constants/other.constant'
 

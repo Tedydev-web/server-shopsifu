@@ -36,10 +36,7 @@ export class SearchSyncService {
    * Thêm job đồng bộ một sản phẩm
    */
   async addSyncProductJob(productId: string, action: 'create' | 'update' | 'delete' = 'create') {
-    const jobData: SyncProductJobType = {
-      productId,
-      action
-    }
+    const jobData: SyncProductJobType = { productId, action }
 
     try {
       await this.queue.add(SYNC_PRODUCT_JOB, jobData, {
@@ -48,7 +45,6 @@ export class SearchSyncService {
         removeOnComplete: JOB_OPTIONS.REMOVE_ON_COMPLETE,
         removeOnFail: JOB_OPTIONS.REMOVE_ON_FAIL
       })
-
       this.logger.log(`✅ Added sync job for product ${productId} with action: ${action}`)
     } catch (error) {
       this.logger.error(`❌ Failed to add sync job for product ${productId}:`, error)
@@ -60,10 +56,7 @@ export class SearchSyncService {
    * Thêm job đồng bộ nhiều sản phẩm (batch)
    */
   async addSyncProductsBatchJob(productIds: string[], action: 'create' | 'update' | 'delete' = 'create') {
-    const jobData: SyncProductsBatchJobType = {
-      productIds,
-      action
-    }
+    const jobData: SyncProductsBatchJobType = { productIds, action }
 
     try {
       await this.queue.add(SYNC_PRODUCTS_BATCH_JOB, jobData, {
@@ -72,7 +65,6 @@ export class SearchSyncService {
         removeOnComplete: JOB_OPTIONS.REMOVE_ON_COMPLETE,
         removeOnFail: JOB_OPTIONS.REMOVE_ON_FAIL
       })
-
       this.logger.log(`✅ Added batch sync job for ${productIds.length} products with action: ${action}`)
     } catch (error) {
       this.logger.error(`❌ Failed to add batch sync job:`, error)
@@ -95,7 +87,6 @@ export class SearchSyncService {
           removeOnFail: JOB_OPTIONS.REMOVE_ON_FAIL
         }
       )
-
       this.logger.log(`✅ Added delete job for product ${productId}`)
     } catch (error) {
       this.logger.error(`❌ Failed to add delete job for product ${productId}:`, error)
@@ -132,12 +123,11 @@ export class SearchSyncService {
    */
   async clearQueue() {
     try {
-      // Clean completed jobs
-      await this.queue.clean(0, 0, 'completed')
-      // Clean failed jobs
-      await this.queue.clean(0, 0, 'failed')
-      // Clean waiting jobs
-      await this.queue.clean(0, 0, 'waiting')
+      await Promise.all([
+        this.queue.clean(0, 0, 'completed'),
+        this.queue.clean(0, 0, 'failed'),
+        this.queue.clean(0, 0, 'waiting')
+      ])
       this.logger.log('✅ Cleared search sync queue')
     } catch (error) {
       this.logger.error('Failed to clear queue:', error)
@@ -185,34 +175,13 @@ export class SearchSyncService {
         return
       }
 
-      // Lấy dữ liệu sản phẩm từ PostgreSQL
-      const product = await this.prisma.product.findUnique({
-        where: { id: productId },
-        include: {
-          skus: {
-            where: { deletedAt: null }
-          },
-          brand: true,
-          categories: {
-            where: { deletedAt: null }
-          }
-        }
-      })
-
-      if (!product) {
-        this.logger.warn(`Product ${productId} not found, skipping sync`)
+      const product = await this.getProductWithRelations(productId)
+      if (!product || !product.skus.length) {
+        this.logger.warn(`Product ${productId} not found or has no SKUs, skipping sync`)
         return
       }
 
-      if (!product.skus.length) {
-        this.logger.warn(`Product ${productId} has no SKUs, skipping sync`)
-        return
-      }
-
-      // Chuyển đổi thành ES documents
       const esDocuments = this.transformProductToEsDocuments(product)
-
-      // Bulk index lên Elasticsearch
       await this.es.bulkIndex(ES_INDEX_PRODUCTS, esDocuments, 'skuId')
 
       this.logger.log(`✅ Successfully synced ${esDocuments.length} SKUs for product ${productId}`)
@@ -236,31 +205,13 @@ export class SearchSyncService {
         return
       }
 
-      // Lấy dữ liệu nhiều sản phẩm từ PostgreSQL
-      const products = await this.prisma.product.findMany({
-        where: {
-          id: { in: productIds },
-          deletedAt: null
-        },
-        include: {
-          skus: {
-            where: { deletedAt: null }
-          },
-          brand: true,
-          categories: {
-            where: { deletedAt: null }
-          }
-        }
-      })
-
+      const products = await this.getProductsWithRelations(productIds)
       if (!products.length) {
         this.logger.warn('No products found for batch sync')
         return
       }
 
-      // Chuyển đổi thành ES documents
       const allEsDocuments: EsProductDocumentType[] = []
-
       for (const product of products) {
         if (product.skus.length > 0) {
           const esDocuments = this.transformProductToEsDocuments(product)
@@ -269,7 +220,6 @@ export class SearchSyncService {
       }
 
       if (allEsDocuments.length > 0) {
-        // Bulk index lên Elasticsearch
         await this.es.bulkIndex(ES_INDEX_PRODUCTS, allEsDocuments, 'skuId')
         this.logger.log(`✅ Successfully synced ${allEsDocuments.length} SKUs for ${products.length} products`)
       } else {
@@ -282,16 +232,43 @@ export class SearchSyncService {
   }
 
   /**
+   * Lấy product với relations
+   */
+  private async getProductWithRelations(productId: string) {
+    return await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        skus: { where: { deletedAt: null } },
+        brand: true,
+        categories: { where: { deletedAt: null } }
+      }
+    })
+  }
+
+  /**
+   * Lấy products với relations
+   */
+  private async getProductsWithRelations(productIds: string[]) {
+    return await this.prisma.product.findMany({
+      where: {
+        id: { in: productIds },
+        deletedAt: null
+      },
+      include: {
+        skus: { where: { deletedAt: null } },
+        brand: true,
+        categories: { where: { deletedAt: null } }
+      }
+    })
+  }
+
+  /**
    * Xóa sản phẩm khỏi Elasticsearch
    */
   private async deleteProductFromES(productId: string): Promise<void> {
     try {
-      // Lấy tất cả SKU IDs của sản phẩm
       const skus = await this.prisma.sKU.findMany({
-        where: {
-          productId,
-          deletedAt: null
-        },
+        where: { productId, deletedAt: null },
         select: { id: true }
       })
 
@@ -300,7 +277,6 @@ export class SearchSyncService {
         return
       }
 
-      // Xóa từng SKU document khỏi ES
       for (const sku of skus) {
         await this.es.deleteById(ES_INDEX_PRODUCTS, sku.id)
       }
@@ -317,7 +293,6 @@ export class SearchSyncService {
    */
   private async deleteProductsBatchFromES(productIds: string[]): Promise<void> {
     try {
-      // Lấy tất cả SKU IDs của các sản phẩm
       const skus = await this.prisma.sKU.findMany({
         where: {
           productId: { in: productIds },
@@ -331,7 +306,6 @@ export class SearchSyncService {
         return
       }
 
-      // Xóa từng SKU document khỏi ES
       for (const sku of skus) {
         await this.es.deleteById(ES_INDEX_PRODUCTS, sku.id)
       }
@@ -350,7 +324,6 @@ export class SearchSyncService {
     const esDocuments: EsProductDocumentType[] = []
 
     for (const sku of product.skus) {
-      // Parse attributes từ variants và specifications
       const attrs = this.parseAttributesFromProduct(product, sku)
 
       const esDocument: EsProductDocumentType = {
@@ -386,7 +359,7 @@ export class SearchSyncService {
   private parseAttributesFromProduct(product: any, sku: any): Array<{ attrName: string; attrValue: string }> {
     const attrs: Array<{ attrName: string; attrValue: string }> = []
 
-    // Parse từ variants (nếu có)
+    // Parse từ variants
     if (product.variants && Array.isArray(product.variants)) {
       for (const variant of product.variants) {
         if (variant.value && variant.options && Array.isArray(variant.options)) {
@@ -400,7 +373,7 @@ export class SearchSyncService {
       }
     }
 
-    // Parse từ specifications (nếu có)
+    // Parse từ specifications
     if (product.specifications && Array.isArray(product.specifications)) {
       for (const spec of product.specifications) {
         if (spec.name && spec.value) {
@@ -413,25 +386,5 @@ export class SearchSyncService {
     }
 
     return attrs
-  }
-
-  /**
-   * Tìm kiếm sản phẩm trong Elasticsearch
-   */
-  async searchProducts(
-    query: any,
-    options: {
-      size?: number
-      from?: number
-      sort?: any[]
-    } = {}
-  ) {
-    try {
-      const result = await this.es.search(ES_INDEX_PRODUCTS, query, options)
-      return result
-    } catch (error) {
-      this.logger.error('Search products failed:', error)
-      throw error
-    }
   }
 }

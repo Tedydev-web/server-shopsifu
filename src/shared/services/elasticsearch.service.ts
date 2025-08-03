@@ -17,12 +17,8 @@ export class ElasticsearchService implements OnModuleInit {
 
     this.client = new Client({
       node,
-      auth: {
-        apiKey
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
+      auth: { apiKey },
+      tls: { rejectUnauthorized: false }
     })
   }
 
@@ -30,8 +26,6 @@ export class ElasticsearchService implements OnModuleInit {
     try {
       await this.client.info()
       this.logger.log('✅ Connected to Elasticsearch successfully')
-
-      // Tạo index nếu chưa tồn tại
       await this.createProductIndex()
     } catch (error) {
       this.logger.error('❌ Failed to connect to Elasticsearch', error)
@@ -104,6 +98,52 @@ export class ElasticsearchService implements OnModuleInit {
   }
 
   /**
+   * Search documents với options tối ưu
+   */
+  async search(
+    index: string,
+    query: any,
+    options: {
+      size?: number
+      from?: number
+      sort?: any[]
+      timeout?: number
+      aggs?: any
+    } = {}
+  ) {
+    try {
+      const { size = 20, from = 0, sort, timeout = 30000, aggs } = options
+
+      const searchParams: any = {
+        index,
+        query,
+        size,
+        from,
+        sort,
+        collapse: { field: 'productId' },
+        timeout: `${timeout}ms`
+      }
+
+      if (aggs) {
+        searchParams.aggs = aggs
+      }
+
+      this.logger.log(`🔍 Searching index: ${index}, size: ${size}, from: ${from}`)
+
+      const startTime = Date.now()
+      const result = await this.client.search(searchParams)
+      const endTime = Date.now()
+
+      this.logger.log(`✅ Search completed in ${endTime - startTime}ms, found ${result.hits.total} results`)
+
+      return result
+    } catch (error) {
+      this.logger.error('Search failed:', error)
+      throw error
+    }
+  }
+
+  /**
    * Bulk index documents
    */
   async bulkIndex(index: string, docs: any[], idField: string = 'skuId') {
@@ -145,47 +185,6 @@ export class ElasticsearchService implements OnModuleInit {
       this.logger.log(`✅ Deleted document ${id} from index ${index}`)
     } catch (error) {
       this.logger.error(`Failed to delete document ${id}:`, error)
-      throw error
-    }
-  }
-
-  /**
-   * Search documents
-   */
-  async search(
-    index: string,
-    query: any,
-    options: {
-      size?: number
-      from?: number
-      sort?: any[]
-      timeout?: number
-    } = {}
-  ) {
-    try {
-      const { size = 20, from = 0, sort, timeout = 30000 } = options
-
-      const searchParams: any = {
-        index,
-        query,
-        size,
-        from,
-        sort,
-        collapse: { field: 'productId' }, // Tránh duplicate products
-        timeout: `${timeout}ms`
-      }
-
-      this.logger.log(`🔍 Searching index: ${index}, size: ${size}, from: ${from}`)
-
-      const startTime = Date.now()
-      const result = await this.client.search(searchParams)
-      const endTime = Date.now()
-
-      this.logger.log(`✅ Search completed in ${endTime - startTime}ms, found ${result.hits.total} results`)
-
-      return result
-    } catch (error) {
-      this.logger.error('Search failed:', error)
       throw error
     }
   }

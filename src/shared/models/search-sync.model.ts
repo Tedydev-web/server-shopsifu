@@ -55,33 +55,3 @@ export const SyncProductsBatchJobSchema = z.object({
 })
 
 export type SyncProductsBatchJobType = z.infer<typeof SyncProductsBatchJobSchema>
-
-/**
- * Schema cho search query
- */
-export const SearchQuerySchema = z.object({
-  q: z.string().optional(),
-  filters: z
-    .object({
-      brandIds: z.array(z.string()).optional(),
-      categoryIds: z.array(z.string()).optional(),
-      minPrice: z.number().optional(),
-      maxPrice: z.number().optional(),
-      attrs: z.array(EsAttributeSchema).optional()
-    })
-    .optional(),
-  pagination: z
-    .object({
-      page: z.number().min(1).default(1),
-      limit: z.number().min(1).max(100).default(20)
-    })
-    .optional(),
-  sort: z
-    .object({
-      field: z.enum(['skuPrice', 'createdAt', 'updatedAt', '_score']).default('_score'),
-      order: z.enum(['asc', 'desc']).default('desc')
-    })
-    .optional()
-})
-
-export type SearchQueryType = z.infer<typeof SearchQuerySchema>
