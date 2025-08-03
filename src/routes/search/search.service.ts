@@ -17,7 +17,7 @@ export class SearchService {
     const result = await this.searchRepo.searchProducts(query)
 
     return {
-      message: 'Search completed successfully',
+      message: this.i18n.t('search.search.success.SEARCH_SUCCESS'),
       data: result.data,
       metadata: result.metadata
     }

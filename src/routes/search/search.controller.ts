@@ -13,7 +13,7 @@ export class SearchController {
 
   @Get('products')
   @ZodSerializerDto(SearchProductsResDTO)
-  async searchProducts(@Query() query: SearchProductsQueryDTO) {
+  searchProducts(@Query() query: SearchProductsQueryDTO) {
     return this.searchService.searchProducts(query)
   }
 }

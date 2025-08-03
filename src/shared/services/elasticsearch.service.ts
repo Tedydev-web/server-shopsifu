@@ -159,19 +159,29 @@ export class ElasticsearchService implements OnModuleInit {
       size?: number
       from?: number
       sort?: any[]
+      timeout?: number
     } = {}
   ) {
     try {
-      const { size = 20, from = 0, sort } = options
+      const { size = 20, from = 0, sort, timeout = 30000 } = options
 
-      const result = await this.client.search({
+      const searchParams: any = {
         index,
         query,
         size,
         from,
         sort,
-        collapse: { field: 'productId' } // Tránh duplicate products
-      })
+        collapse: { field: 'productId' }, // Tránh duplicate products
+        timeout: `${timeout}ms`
+      }
+
+      this.logger.log(`🔍 Searching index: ${index}, size: ${size}, from: ${from}`)
+
+      const startTime = Date.now()
+      const result = await this.client.search(searchParams)
+      const endTime = Date.now()
+
+      this.logger.log(`✅ Search completed in ${endTime - startTime}ms, found ${result.hits.total} results`)
 
       return result
     } catch (error) {

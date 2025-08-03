@@ -1,0 +1,12 @@
+{
+  "search": {
+    "success": {
+      "SEARCH_SUCCESS": "Search completed successfully"
+    },
+    "error": {
+      "SEARCH_FAILED": "Search failed",
+      "INVALID_QUERY": "Invalid query",
+      "NO_RESULTS": "No results found"
+    }
+  }
+}

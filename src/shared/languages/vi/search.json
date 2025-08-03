@@ -1,0 +1,12 @@
+{
+  "search": {
+    "success": {
+      "SEARCH_SUCCESS": "Tìm kiếm thành công"
+    },
+    "error": {
+      "SEARCH_FAILED": "Tìm kiếm thất bại",
+      "INVALID_QUERY": "Truy vấn không hợp lệ",
+      "NO_RESULTS": "Không tìm thấy kết quả nào"
+    }
+  }
+}
