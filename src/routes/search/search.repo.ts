@@ -29,16 +29,46 @@ export class SearchRepo {
       }
     }
 
-    // Text search
+    // Text search - Chỉ search trong productName
     if (q && q.trim()) {
-      esQuery.bool.must.push({
-        multi_match: {
-          query: q,
-          fields: ['productName^2', 'productDescription', 'skuValue'],
-          type: 'best_fields',
-          fuzziness: 'AUTO'
+      const searchTerms = q
+        .trim()
+        .toLowerCase()
+        .split(' ')
+        .filter((term) => term.length > 0)
+
+      if (searchTerms.length > 0) {
+        // Tạo multi-match query chỉ search trong productName
+        const multiMatchQuery = {
+          multi_match: {
+            query: q,
+            fields: [
+              'productName^3' // Chỉ search trong productName với boost = 3
+            ],
+            type: 'best_fields',
+            operator: 'and',
+            fuzziness: 'AUTO',
+            minimum_should_match: '75%'
+          }
         }
-      })
+
+        esQuery.bool.must.push(multiMatchQuery)
+
+        // Thêm should clause để tăng độ chính xác cho các từ khóa quan trọng
+        const shouldClauses = searchTerms.map((term) => ({
+          multi_match: {
+            query: term,
+            fields: ['productName^2'], // Chỉ search trong productName
+            type: 'phrase',
+            boost: 2
+          }
+        }))
+
+        if (shouldClauses.length > 0) {
+          esQuery.bool.should = shouldClauses
+          esQuery.bool.minimum_should_match = 1
+        }
+      }
     }
 
     // Filters

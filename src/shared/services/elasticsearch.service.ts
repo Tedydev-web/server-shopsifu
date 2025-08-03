@@ -51,7 +51,12 @@ export class ElasticsearchService implements OnModuleInit {
               vietnamese_analyzer: {
                 type: 'custom',
                 tokenizer: 'standard',
-                filter: ['lowercase', 'asciifolding']
+                filter: ['lowercase', 'asciifolding', 'trim']
+              },
+              vietnamese_search_analyzer: {
+                type: 'custom',
+                tokenizer: 'standard',
+                filter: ['lowercase', 'asciifolding', 'trim']
               }
             }
           }
@@ -67,11 +72,11 @@ export class ElasticsearchService implements OnModuleInit {
             productName: {
               type: 'text',
               analyzer: 'vietnamese_analyzer',
-              fields: { keyword: { type: 'keyword' } }
-            },
-            productDescription: {
-              type: 'text',
-              analyzer: 'vietnamese_analyzer'
+              search_analyzer: 'vietnamese_search_analyzer',
+              fields: {
+                keyword: { type: 'keyword' },
+                raw: { type: 'text', analyzer: 'standard' }
+              }
             },
             productImages: { type: 'keyword', index: false },
             brandId: { type: 'keyword' },
