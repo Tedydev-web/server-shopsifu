@@ -28,6 +28,11 @@ import configs from 'src/shared/config'
 import { createLoggerConfig } from './config/logger.config'
 import { PaymentProducer } from './producers/payment.producer'
 import { PAYMENT_QUEUE_NAME } from './constants/queue.constant'
+import { ElasticsearchService } from './services/elasticsearch.service'
+import { SearchSyncService } from './services/search-sync.service'
+import { SearchSyncQueueService } from './services/search-sync-queue.service'
+import { SearchSyncConsumer } from './consumers/search-sync.consumer'
+import { SEARCH_SYNC_QUEUE_NAME } from './constants/search-sync.constant'
 
 const sharedServices = [
   PrismaService,
@@ -41,13 +46,17 @@ const sharedServices = [
   SharedPaymentRepository,
   SharedWebsocketRepository,
   S3Service,
-  PaymentProducer
+  PaymentProducer,
+  ElasticsearchService,
+  SearchSyncService,
+  SearchSyncQueueService
 ]
 
 @Global()
 @Module({
   providers: [
     ...sharedServices,
+    SearchSyncConsumer,
     AccessTokenGuard,
     PaymentAPIKeyGuard,
     {
@@ -111,6 +120,11 @@ const sharedServices = [
     // Payment Queue
     BullModule.registerQueue({
       name: PAYMENT_QUEUE_NAME
+    }),
+
+    // Search Sync Queue
+    BullModule.registerQueue({
+      name: SEARCH_SYNC_QUEUE_NAME
     }),
 
     // Rate Limiting - Throttler

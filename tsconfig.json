@@ -31,7 +31,8 @@
   },
   "include": [
     "src",
-    "test"
+    "test",
+    "initialScript/sync-products-to-es.ts"
   ],
   "exclude": [
     "node_modules",

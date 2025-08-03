@@ -30,6 +30,7 @@ import { ExpireDiscountCronjob } from 'src/cronjobs/expire-discount.cronjob'
 import { ScheduleModule } from '@nestjs/schedule'
 import { LanguageModule } from 'src/routes/language/language.module'
 import { DiscountModule } from './routes/discount/discount.module'
+import { SearchModule } from './routes/search/search.module'
 
 @Module({
   imports: [
@@ -54,7 +55,8 @@ import { DiscountModule } from './routes/discount/discount.module'
     VNPayModule,
     ReviewModule,
     DiscountModule,
-    LanguageModule
+    LanguageModule,
+    SearchModule
   ],
   providers: [
     {
