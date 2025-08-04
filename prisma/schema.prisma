@@ -708,6 +708,9 @@ enum DiscountApplyType {
 enum VoucherType {
   SHOP
   PRODUCT
+  PLATFORM
+  CATEGORY
+  BRAND
 }
 
 enum DisplayType {

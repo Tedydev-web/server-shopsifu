@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException } from '@nestjs/common'
+import { Injectable, ForbiddenException, BadRequestException } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
@@ -132,6 +132,12 @@ export class ManageDiscountService {
       roleNameRequest: user.roleName,
       shopId: data.shopId
     })
+
+    // Kiểm tra discount code đã tồn tại chưa
+    const existingDiscount = await this.discountRepo.findByCode(data.code)
+    if (existingDiscount) {
+      throw new BadRequestException(`Discount code '${data.code}' already exists`)
+    }
 
     // Nếu là Seller và không có shopId, tự động set shopId = userId
     if (user.roleName !== RoleName.Admin && !data.shopId) {
