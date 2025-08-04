@@ -1,5 +1,9 @@
 import { createZodDto } from 'nestjs-zod'
 import {
+  GetAvailableDiscountsQuerySchema,
+  GetAvailableDiscountsResSchema,
+  ValidateVoucherCodeBodySchema,
+  ValidateVoucherCodeResSchema,
   GetManageDiscountsQuerySchema,
   GetManageDiscountsResSchema,
   GetDiscountParamsSchema,
@@ -7,16 +11,23 @@ import {
   CreateDiscountBodySchema,
   UpdateDiscountBodySchema,
   CreateDiscountResSchema,
-  UpdateDiscountResSchema,
-  GetDiscountsQuerySchema,
-  GetDiscountsResSchema,
-  ValidateDiscountCodeBodySchema,
-  ValidateDiscountCodeResSchema
+  UpdateDiscountResSchema
 } from './discount.model'
 import { DiscountSchema } from 'src/shared/models/shared-discount.model'
 
+// Base DTO
 export class DiscountDTO extends createZodDto(DiscountSchema) {}
 
+// Client DTOs - cho UI checkout
+export class GetAvailableDiscountsQueryDTO extends createZodDto(GetAvailableDiscountsQuerySchema) {}
+
+export class GetAvailableDiscountsResDTO extends createZodDto(GetAvailableDiscountsResSchema) {}
+
+export class ValidateVoucherCodeBodyDTO extends createZodDto(ValidateVoucherCodeBodySchema) {}
+
+export class ValidateVoucherCodeResDTO extends createZodDto(ValidateVoucherCodeResSchema) {}
+
+// Admin Management DTOs
 export class GetManageDiscountsQueryDTO extends createZodDto(GetManageDiscountsQuerySchema) {}
 
 export class GetManageDiscountsResDTO extends createZodDto(GetManageDiscountsResSchema) {}
@@ -32,12 +43,3 @@ export class UpdateDiscountBodyDTO extends createZodDto(UpdateDiscountBodySchema
 export class CreateDiscountResDTO extends createZodDto(CreateDiscountResSchema) {}
 
 export class UpdateDiscountResDTO extends createZodDto(UpdateDiscountResSchema) {}
-
-// Client DTOs
-export class GetDiscountsQueryDTO extends createZodDto(GetDiscountsQuerySchema) {}
-
-export class GetDiscountsResDTO extends createZodDto(GetDiscountsResSchema) {}
-
-export class ValidateDiscountCodeBodyDTO extends createZodDto(ValidateDiscountCodeBodySchema) {}
-
-export class ValidateDiscountCodeResDTO extends createZodDto(ValidateDiscountCodeResSchema) {}

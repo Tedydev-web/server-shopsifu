@@ -9,7 +9,47 @@ import {
   VoucherType
 } from 'src/shared/constants/discount.constant'
 
-export const GetDiscountsQuerySchema = z.object({
+// Schema cho query request - lấy discounts khả dụng cho checkout
+export const GetAvailableDiscountsQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().default(20),
+  cartItemIds: z
+    .preprocess((value) => {
+      if (typeof value === 'string') {
+        return [value]
+      }
+      return value
+    }, z.array(z.string()))
+    .optional(),
+  onlyShopDiscounts: z.preprocess((value) => value === 'true', z.boolean()).default(false),
+  onlyPlatformDiscounts: z.preprocess((value) => value === 'true', z.boolean()).default(false)
+})
+
+// Schema cho validate voucher code
+export const ValidateVoucherCodeBodySchema = z.object({
+  code: z.string().trim().min(1, 'Mã voucher không được để trống'),
+  cartItemIds: z.array(z.string()).optional()
+})
+
+// Schema response cho available discounts (không có metadata pagination)
+export const GetAvailableDiscountsResSchema = z.object({
+  message: z.string().optional(),
+  data: z.array(DiscountSchema)
+})
+
+// Schema response cho validate voucher
+export const ValidateVoucherCodeResSchema = z.object({
+  message: z.string().optional(),
+  data: z.object({
+    isValid: z.boolean(),
+    discount: DiscountSchema.optional(),
+    error: z.string().optional(),
+    discountAmount: z.number().optional(),
+    finalOrderTotal: z.number().optional()
+  })
+})
+
+// Schema cho admin management (giữ lại pagination cho admin)
+export const GetManageDiscountsQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().default(10),
   name: z.string().optional(),
@@ -25,13 +65,9 @@ export const GetDiscountsQuerySchema = z.object({
   minValue: z.coerce.number().positive().optional(),
   maxValue: z.coerce.number().positive().optional(),
   shopId: z.string().optional(),
-  createdById: z.string().optional(),
+  createdById: z.string(),
   orderBy: z.enum(OrderBy).default(OrderBy.Desc),
   sortBy: z.enum(SortBy).default(SortBy.CreatedAt)
-})
-
-export const GetManageDiscountsQuerySchema = GetDiscountsQuerySchema.extend({
-  createdById: z.string()
 })
 
 export const GetManageDiscountsResSchema = z.object({
@@ -47,30 +83,13 @@ export const GetManageDiscountsResSchema = z.object({
   })
 })
 
-export const GetDiscountsResSchema = GetManageDiscountsResSchema
-
-export const GetDiscountParamsSchema = z
-  .object({
-    discountId: z.string()
-  })
-  .strict()
+export const GetDiscountParamsSchema = z.object({
+  discountId: z.string()
+})
 
 export const GetDiscountDetailResSchema = z.object({
   message: z.string().optional(),
   data: DiscountSchema
-})
-
-export const ValidateDiscountCodeBodySchema = z.object({
-  code: z.string().trim().min(1, 'Mã voucher không được để trống')
-})
-
-export const ValidateDiscountCodeResSchema = z.object({
-  message: z.string().optional(),
-  data: z.object({
-    isValid: z.boolean(),
-    discount: DiscountSchema.optional(),
-    error: z.string().optional()
-  })
 })
 
 export const CreateDiscountBodySchema = DiscountSchema.pick({
@@ -87,6 +106,7 @@ export const CreateDiscountBodySchema = DiscountSchema.pick({
   displayType: true,
   voucherType: true,
   isPlatform: true,
+  shopId: true,
   discountApplyType: true,
   discountStatus: true,
   discountType: true
@@ -156,6 +176,11 @@ export const CreateDiscountResSchema = z.object({
 
 export const UpdateDiscountResSchema = CreateDiscountResSchema
 
+// Type exports
+export type GetAvailableDiscountsQueryType = z.infer<typeof GetAvailableDiscountsQuerySchema>
+export type GetAvailableDiscountsResType = z.infer<typeof GetAvailableDiscountsResSchema>
+export type ValidateVoucherCodeBodyType = z.infer<typeof ValidateVoucherCodeBodySchema>
+export type ValidateVoucherCodeResType = z.infer<typeof ValidateVoucherCodeResSchema>
 export type GetManageDiscountsQueryType = z.infer<typeof GetManageDiscountsQuerySchema>
 export type GetManageDiscountsResType = z.infer<typeof GetManageDiscountsResSchema>
 export type GetDiscountParamsType = z.infer<typeof GetDiscountParamsSchema>
@@ -164,7 +189,3 @@ export type CreateDiscountBodyType = z.infer<typeof CreateDiscountBodySchema>
 export type UpdateDiscountBodyType = z.infer<typeof UpdateDiscountBodySchema>
 export type CreateDiscountResType = z.infer<typeof CreateDiscountResSchema>
 export type UpdateDiscountResType = z.infer<typeof UpdateDiscountResSchema>
-export type GetDiscountsQueryType = z.infer<typeof GetDiscountsQuerySchema>
-export type GetDiscountsResType = z.infer<typeof GetDiscountsResSchema>
-export type ValidateDiscountCodeBodyType = z.infer<typeof ValidateDiscountCodeBodySchema>
-export type ValidateDiscountCodeResType = z.infer<typeof ValidateDiscountCodeResSchema>

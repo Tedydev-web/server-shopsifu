@@ -20,7 +20,12 @@ import {
 import { OrderProducer } from 'src/routes/order/order.producer'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { VersionConflictException } from 'src/shared/error'
-import { calculateDiscountAmount, isNotFoundPrismaError } from 'src/shared/helpers'
+import {
+  calculateDiscountAmount,
+  isNotFoundPrismaError,
+  validateDiscountForOrder,
+  prepareDiscountSnapshotData
+} from 'src/shared/helpers'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { DiscountApplyType, DiscountStatus } from 'src/shared/constants/discount.constant'
@@ -118,7 +123,9 @@ export class OrderRepo {
                 include: {
                   product: {
                     include: {
-                      productTranslations: true
+                      productTranslations: true,
+                      brand: true,
+                      categories: true
                     }
                   }
                 }
@@ -126,47 +133,8 @@ export class OrderRepo {
             }
           })
 
-          // 1. Kiểm tra xem tất cả cartItemIds có tồn tại trong cơ sở dữ liệu hay không
-          if (cartItems.length !== allBodyCartItemIds.length) {
-            throw NotFoundCartItemException
-          }
-
-          // 2. Kiểm tra số lượng mua có lớn hơn số lượng tồn kho hay không
-          const isOutOfStock = cartItems.some((item) => {
-            return item.sku.stock < item.quantity
-          })
-          if (isOutOfStock) {
-            throw OutOfStockSKUException
-          }
-
-          // 3. Kiểm tra xem tất cả sản phẩm mua có sản phẩm nào bị xóa hay ẩn không
-          const isExistNotReadyProduct = cartItems.some(
-            (item) =>
-              item.sku.product.deletedAt !== null ||
-              item.sku.product.publishedAt === null ||
-              item.sku.product.publishedAt > new Date()
-          )
-          if (isExistNotReadyProduct) {
-            throw ProductNotFoundException
-          }
-
-          // 4. Kiểm tra xem các skuId trong cartItem gửi lên có thuộc về shopid gửi lên không
-          const cartItemMap = new Map<string, (typeof cartItems)[0]>()
-          cartItems.forEach((item) => {
-            cartItemMap.set(item.id, item)
-          })
-          const isValidShop = body.every((item) => {
-            const bodyCartItemIds = item.cartItemIds
-            return bodyCartItemIds.every((cartItemId) => {
-              // Neu đã đến bước này thì cartItem luôn luôn có giá trị
-              // Vì chúng ta đã so sánh với allBodyCartItems.length ở trên rồi
-              const cartItem = cartItemMap.get(cartItemId)!
-              return item.shopId === cartItem.sku.createdById
-            })
-          })
-          if (!isValidShop) {
-            throw SKUNotBelongToShopException
-          }
+          // Validate cart items
+          const cartItemMap = this.validateCartItems(cartItems, allBodyCartItemIds, body)
 
           // 5. Tạo order và xóa cartItem trong transaction để đảm bảo tính toàn vẹn dữ liệu
 
@@ -178,7 +146,7 @@ export class OrderRepo {
           const orders: CreateOrderResType['data']['orders'] = []
           for (const item of body) {
             // Tính tổng giá trị đơn hàng trước khi áp dụng discount
-            const orderSubTotal = item.cartItemIds.reduce((sum, cartItemId) => {
+            const ordertotalPayment = item.cartItemIds.reduce((sum, cartItemId) => {
               const cartItem = cartItemMap.get(cartItemId)!
               return sum + cartItem.sku.price * cartItem.quantity
             }, 0)
@@ -203,34 +171,48 @@ export class OrderRepo {
                 }
               })
 
-              // Tính toán giá trị giảm giá cho từng mã
+              // Chuẩn bị dữ liệu để kiểm tra eligibility
+              const productIds = item.cartItemIds.map((cartItemId) => {
+                const cartItem = cartItemMap.get(cartItemId)!
+                return cartItem.sku.product.id
+              })
+              const categoryIds = item.cartItemIds
+                .map((cartItemId) => {
+                  const cartItem = cartItemMap.get(cartItemId)!
+                  return cartItem.sku.product.categories.map((c) => c.id)
+                })
+                .flat()
+                .filter(Boolean)
+              const brandIds = item.cartItemIds
+                .map((cartItemId) => {
+                  const cartItem = cartItemMap.get(cartItemId)!
+                  return cartItem.sku.product.brand.id
+                })
+                .filter(Boolean)
+
+              // Lọc và validate discounts
+              const validDiscounts: typeof discounts = []
               for (const discount of discounts) {
-                const discountAmount = calculateDiscountAmount(discount, orderSubTotal)
+                if (validateDiscountForOrder(discount, ordertotalPayment, productIds, categoryIds, brandIds)) {
+                  validDiscounts.push(discount)
+                }
+              }
+
+              // Tính toán giá trị giảm giá cho từng mã hợp lệ
+              for (const discount of validDiscounts) {
+                const discountAmount = calculateDiscountAmount(discount, ordertotalPayment)
 
                 // Chuẩn bị dữ liệu để tạo DiscountSnapshot
-                appliedDiscountsToCreate.push({
-                  name: discount.name,
-                  description: discount.description,
-                  type: discount.discountType,
-                  value: discount.value,
-                  code: discount.code,
-                  maxDiscountValue: discount.maxDiscountValue,
-                  discountAmount: discountAmount,
-                  minOrderValue: discount.minOrderValue,
-                  isPlatform: discount.isPlatform,
-                  voucherType: discount.voucherType,
-                  displayType: discount.displayType,
-                  discountApplyType: discount.discountApplyType,
-                  targetInfo:
-                    discount.discountApplyType === DiscountApplyType.SPECIFIC
-                      ? {
-                          productIds: discount.products.map((p) => p.id),
-                          categoryIds: discount.categories.map((c) => c.id),
-                          brandIds: discount.brands.map((b) => b.id)
-                        }
-                      : null,
-                  discountId: discount.id
-                })
+                const targetInfo =
+                  discount.discountApplyType === DiscountApplyType.SPECIFIC
+                    ? {
+                        productIds: discount.products.map((p) => p.id),
+                        categoryIds: discount.categories.map((c) => c.id),
+                        brandIds: discount.brands.map((b) => b.id)
+                      }
+                    : null
+
+                appliedDiscountsToCreate.push(prepareDiscountSnapshotData(discount, discountAmount, targetInfo))
 
                 // Cập nhật số lượt sử dụng discount
                 await tx.discount.update({
@@ -350,14 +332,27 @@ export class OrderRepo {
         deletedAt: null
       },
       include: {
-        items: true
+        items: true,
+        discounts: true
       }
     })
     if (!order) {
       throw OrderNotFoundException
     }
+
+    // Tính toán giá trị cuối cùng
+    const totalPayment = order.items.reduce((sum, item) => sum + item.skuPrice * item.quantity, 0)
+    const totalVoucherDiscount = order.discounts.reduce((sum, discount) => sum + discount.discountAmount, 0)
+    const totalOrderPayment = Math.max(0, totalPayment - totalVoucherDiscount)
+
     return {
-      data: order
+      data: {
+        ...order,
+        totalItemCost: totalPayment,
+        totalShippingFee: 0,
+        totalVoucherDiscount: -totalVoucherDiscount,
+        totalPayment: totalOrderPayment
+      }
     }
   }
 
@@ -393,5 +388,58 @@ export class OrderRepo {
       }
       throw error
     }
+  }
+
+  /**
+   * Validate cart items và trả về cartItemMap
+   */
+  private validateCartItems(
+    cartItems: any[],
+    allBodyCartItemIds: string[],
+    body: CreateOrderBodyType
+  ): Map<string, any> {
+    // 1. Kiểm tra xem tất cả cartItemIds có tồn tại trong cơ sở dữ liệu hay không
+    if (cartItems.length !== allBodyCartItemIds.length) {
+      throw NotFoundCartItemException
+    }
+
+    // 2. Kiểm tra số lượng mua có lớn hơn số lượng tồn kho hay không
+    const isOutOfStock = cartItems.some((item) => {
+      return item.sku.stock < item.quantity
+    })
+    if (isOutOfStock) {
+      throw OutOfStockSKUException
+    }
+
+    // 3. Kiểm tra xem tất cả sản phẩm mua có sản phẩm nào bị xóa hay ẩn không
+    const isExistNotReadyProduct = cartItems.some(
+      (item) =>
+        item.sku.product.deletedAt !== null ||
+        item.sku.product.publishedAt === null ||
+        item.sku.product.publishedAt > new Date()
+    )
+    if (isExistNotReadyProduct) {
+      throw ProductNotFoundException
+    }
+
+    // 4. Kiểm tra xem các skuId trong cartItem gửi lên có thuộc về shopid gửi lên không
+    const cartItemMap = new Map<string, any>()
+    cartItems.forEach((item) => {
+      cartItemMap.set(item.id, item)
+    })
+    const isValidShop = body.every((item) => {
+      const bodyCartItemIds = item.cartItemIds
+      return bodyCartItemIds.every((cartItemId) => {
+        // Neu đã đến bước này thì cartItem luôn luôn có giá trị
+        // Vì chúng ta đã so sánh với allBodyCartItems.length ở trên rồi
+        const cartItem = cartItemMap.get(cartItemId)!
+        return item.shopId === cartItem.sku.createdById
+      })
+    })
+    if (!isValidShop) {
+      throw SKUNotBelongToShopException
+    }
+
+    return cartItemMap
   }
 }

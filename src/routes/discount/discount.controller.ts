@@ -1,36 +1,30 @@
-import { Controller, Get, Post, Param, Query, Body, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Query, Body, UseGuards } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { DiscountService } from './discount.service'
 import { AccessTokenGuard } from 'src/shared/guards/access-token.guard'
 import {
-  GetDiscountsQueryDTO,
-  GetDiscountsResDTO,
-  GetDiscountParamsDTO,
-  GetDiscountDetailResDTO,
-  ValidateDiscountCodeBodyDTO,
-  ValidateDiscountCodeResDTO
+  GetAvailableDiscountsQueryDTO,
+  GetAvailableDiscountsResDTO,
+  ValidateVoucherCodeBodyDTO,
+  ValidateVoucherCodeResDTO
 } from './discount.dto'
+import { IsPublic } from 'src/shared/decorators/auth.decorator'
 
 @Controller('discounts')
 @UseGuards(AccessTokenGuard)
 export class DiscountController {
   constructor(private readonly discountService: DiscountService) {}
 
-  @Get()
-  @ZodSerializerDto(GetDiscountsResDTO)
-  list(@Query() query: GetDiscountsQueryDTO) {
-    return this.discountService.list(query as any)
-  }
-
-  @Get(':discountId')
-  @ZodSerializerDto(GetDiscountDetailResDTO)
-  findById(@Param() params: GetDiscountParamsDTO) {
-    return this.discountService.getDetail(params.discountId)
+  @Get('available')
+  @IsPublic()
+  @ZodSerializerDto(GetAvailableDiscountsResDTO)
+  getAvailableDiscounts(@Query() query: GetAvailableDiscountsQueryDTO) {
+    return this.discountService.getAvailableDiscounts(query as any)
   }
 
   @Post('validate-code')
-  @ZodSerializerDto(ValidateDiscountCodeResDTO)
-  validateCode(@Body() body: ValidateDiscountCodeBodyDTO) {
-    return this.discountService.validateCode(body.code)
+  @ZodSerializerDto(ValidateVoucherCodeResDTO)
+  validateVoucherCode(@Body() body: ValidateVoucherCodeBodyDTO) {
+    return this.discountService.validateVoucherCode(body as any)
   }
 }

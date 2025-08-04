@@ -71,3 +71,64 @@ export const getDateInGMT7 = (): number => {
 
   return parseInt(`${year}${month}${day}${hours}${minutes}${seconds}`)
 }
+
+/**
+ * Validate discount eligibility cho order
+ */
+export function validateDiscountForOrder(
+  discount: any,
+  orderTotal: number,
+  productIds: string[],
+  categoryIds: string[],
+  brandIds: string[],
+  userUsageCount: number = 0
+): boolean {
+  // Kiểm tra minOrderValue
+  if (discount.minOrderValue > 0 && orderTotal < discount.minOrderValue) {
+    return false
+  }
+
+  // Kiểm tra maxUsesPerUser
+  if (discount.maxUsesPerUser > 0 && userUsageCount >= discount.maxUsesPerUser) {
+    return false
+  }
+
+  // Kiểm tra discountApplyType SPECIFIC
+  if (discount.discountApplyType === 'SPECIFIC') {
+    const hasValidProduct =
+      discount.products.length > 0 && productIds.some((productId) => discount.products.some((p) => p.id === productId))
+    const hasValidCategory =
+      discount.categories.length > 0 &&
+      categoryIds.some((categoryId) => discount.categories.some((c) => c.id === categoryId))
+    const hasValidBrand =
+      discount.brands.length > 0 && brandIds.some((brandId) => discount.brands.some((b) => b.id === brandId))
+
+    if (!hasValidProduct && !hasValidCategory && !hasValidBrand) {
+      return false
+    }
+  }
+
+  return true
+}
+
+/**
+ * Prepare discount data cho DiscountSnapshot
+ */
+export function prepareDiscountSnapshotData(discount: any, discountAmount: number, targetInfo?: any) {
+  return {
+    name: discount.name,
+    description: discount.description,
+    discountType: discount.discountType,
+    value: discount.value,
+    code: discount.code,
+    maxDiscountValue: discount.maxDiscountValue,
+    discountAmount: discountAmount,
+    minOrderValue: discount.minOrderValue,
+    isPlatform: discount.isPlatform,
+    voucherType: discount.voucherType,
+    displayType: discount.displayType,
+    discountApplyType: discount.discountApplyType,
+    targetInfo: targetInfo || null,
+    discountId: discount.id
+  }
+}

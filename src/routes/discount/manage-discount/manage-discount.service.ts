@@ -21,7 +21,9 @@ export class ManageDiscountService {
   ) {}
 
   /**
-   * Kiểm tra nếu người dùng không phải là người tạo discount hoặc admin thì không cho tiếp tục
+   * Kiểm tra quyền truy cập discount
+   * - Admin: có thể truy cập tất cả discounts
+   * - Seller: chỉ có thể truy cập discounts của chính mình
    */
   validatePrivilege({
     userIdRequest,
@@ -35,6 +37,35 @@ export class ManageDiscountService {
     if (userIdRequest !== createdById && roleNameRequest !== RoleName.Admin) {
       throw new ForbiddenException()
     }
+    return true
+  }
+
+  /**
+   * Validate quyền tạo discount
+   * - Admin: có thể tạo discount cho bất kỳ shop nào
+   * - Seller: chỉ có thể tạo discount cho chính mình (shopId = userId)
+   */
+  validateCreatePrivilege({
+    userIdRequest,
+    roleNameRequest,
+    shopId
+  }: {
+    userIdRequest: string
+    roleNameRequest: string
+    shopId?: string | null
+  }) {
+    // Admin có thể tạo discount cho bất kỳ shop nào
+    if (roleNameRequest === RoleName.Admin) {
+      return true
+    }
+
+    // Seller chỉ có thể tạo discount cho chính mình
+    if (roleNameRequest !== RoleName.Admin) {
+      if (shopId && shopId !== userIdRequest) {
+        throw new ForbiddenException('Bạn chỉ có thể tạo discount cho chính shop của mình')
+      }
+    }
+
     return true
   }
 
@@ -95,6 +126,18 @@ export class ManageDiscountService {
   }
 
   async create({ data, user }: { data: CreateDiscountBodyType; user: AccessTokenPayload }) {
+    // Validate quyền tạo discount
+    this.validateCreatePrivilege({
+      userIdRequest: user.userId,
+      roleNameRequest: user.roleName,
+      shopId: data.shopId
+    })
+
+    // Nếu là Seller và không có shopId, tự động set shopId = userId
+    if (user.roleName !== RoleName.Admin && !data.shopId) {
+      data.shopId = user.userId
+    }
+
     const discount = await this.discountRepo.create({
       createdById: user.userId,
       data
@@ -118,11 +161,26 @@ export class ManageDiscountService {
     if (!discount) {
       throw NotFoundRecordException
     }
+
+    // Validate quyền truy cập discount
     this.validatePrivilege({
       userIdRequest: user.userId,
       roleNameRequest: user.roleName,
       createdById: discount.createdById
     })
+
+    // Validate quyền cập nhật shopId
+    this.validateCreatePrivilege({
+      userIdRequest: user.userId,
+      roleNameRequest: user.roleName,
+      shopId: data.shopId
+    })
+
+    // Nếu là Seller và không có shopId, tự động set shopId = userId
+    if (user.roleName !== RoleName.Admin && !data.shopId) {
+      data.shopId = user.userId
+    }
+
     try {
       const updatedDiscount = await this.discountRepo.update({
         id: discountId,

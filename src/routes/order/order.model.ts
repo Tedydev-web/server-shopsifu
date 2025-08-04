@@ -32,7 +32,11 @@ export const GetOrderListQuerySchema = PaginationQuerySchema.extend({
 export const GetOrderDetailResSchema = z.object({
   message: z.string().optional(),
   data: OrderSchema.extend({
-    items: z.array(ProductSKUSnapshotSchema)
+    items: z.array(ProductSKUSnapshotSchema),
+    totalItemCost: z.number(),
+    totalShippingFee: z.number(),
+    totalVoucherDiscount: z.number(),
+    totalPayment: z.number()
   })
 })
 
@@ -60,17 +64,10 @@ export const CalculateOrderBodySchema = z.object({
 export const CalculateOrderResSchema = z.object({
   message: z.string().optional(),
   data: z.object({
-    subTotal: z.number(),
-    shippingFee: z.number(),
-    directDiscount: z.number(),
-    discounts: z.array(
-      z.object({
-        code: z.string(),
-        name: z.string(),
-        amount: z.number()
-      })
-    ),
-    grandTotal: z.number()
+    totalItemCost: z.number(),
+    totalShippingFee: z.number(),
+    totalVoucherDiscount: z.number(),
+    totalPayment: z.number()
   })
 })
 
