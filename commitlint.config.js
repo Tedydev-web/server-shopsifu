@@ -4,50 +4,19 @@ module.exports = {
     'type-enum': [
       2,
       'always',
-      [
-        'feat', // New feature
-        'fix', // Bug fix
-        'docs', // Documentation
-        'style', // Formatting, missing semi colons, etc; no code change
-        'refactor', // Refactoring production code
-        'test', // Adding tests, refactoring tests; no production code change
-        'chore', // Updating build tasks, package manager configs, etc; no production code change
-        'perf', // A code change that improves performance
-        'revert', // Reverts a previous commit
-        'ci', // Changes to our CI configuration files and scripts
-        'build', // Changes that affect the build system or external dependencies
-        'i18n' // Internationalization and localization
-      ]
+      ['feat', 'fix', 'docs', 'style', 'refactor', 'test', 'chore', 'perf', 'revert', 'ci', 'build', 'i18n']
     ],
     'scope-enum': [
       2,
       'always',
-      [
-        'api',
-        'frontend',
-        'backend',
-        'docs',
-        'tests',
-        'config',
-        'chore',
-        'build',
-        'deps',
-        'auth',
-        'db',
-        'ui',
-        'perf',
-        'security',
-        'structure'
-      ]
+      ['api', 'backend', 'frontend', 'db', 'auth', 'ui', 'perf', 'security', 'config', 'tests', 'docs']
     ],
-    'scope-empty': [2, 'never'], // Requires a scope to always be present
-    'subject-case': [
-      2,
-      'always',
-      ['sentence-case'] // Enforces sentence case for the subject
-    ],
+    'scope-empty': [2, 'never'],
+    'subject-case': [2, 'always', ['sentence-case', 'lower-case']],
     'body-leading-blank': [1, 'always'],
     'footer-leading-blank': [1, 'always'],
-    'header-max-length': [2, 'always', 500] // Limits header to 500 characters for common readability
+    'header-max-length': [2, 'always', 100]
+    // Optional: enforce references (nếu bạn liên kết commit với Jira/GitHub Issues)
+    // 'references-empty': [2, 'never'],
   }
 }
