@@ -54,11 +54,11 @@ export const GetManageDiscountsQuerySchema = z.object({
   limit: z.coerce.number().int().positive().default(10),
   name: z.string().optional(),
   code: z.string().optional(),
-  discountStatus: z.enum(DiscountStatus).optional(),
-  discountType: z.enum(DiscountType).optional(),
-  discountApplyType: z.enum(DiscountApplyType).optional(),
-  voucherType: z.enum(VoucherType).optional(),
-  displayType: z.enum(DisplayType).optional(),
+  discountStatus: z.nativeEnum(DiscountStatus).optional(),
+  discountType: z.nativeEnum(DiscountType).optional(),
+  discountApplyType: z.nativeEnum(DiscountApplyType).optional(),
+  voucherType: z.nativeEnum(VoucherType).optional(),
+  displayType: z.nativeEnum(DisplayType).optional(),
   isPlatform: z.preprocess((value) => value === 'true', z.boolean()).optional(),
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
@@ -66,8 +66,8 @@ export const GetManageDiscountsQuerySchema = z.object({
   maxValue: z.coerce.number().positive().optional(),
   shopId: z.string().optional(),
   createdById: z.string(),
-  orderBy: z.enum(OrderBy).default(OrderBy.Desc),
-  sortBy: z.enum(SortBy).default(SortBy.CreatedAt)
+  orderBy: z.nativeEnum(OrderBy).default(OrderBy.Desc),
+  sortBy: z.nativeEnum(SortBy).default(SortBy.CreatedAt)
 })
 
 export const GetManageDiscountsResSchema = z.object({

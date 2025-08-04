@@ -5,7 +5,7 @@ import { z } from 'zod'
 export const ReviewMediaSchema = z.object({
   id: z.string(),
   url: z.string().max(1000),
-  type: z.enum([MediaType.IMAGE, MediaType.VIDEO]),
+  type: z.nativeEnum(MediaType),
   reviewId: z.string(),
   createdAt: z.date()
 })

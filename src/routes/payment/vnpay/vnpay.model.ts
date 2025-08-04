@@ -8,10 +8,10 @@ export const CreateVNPayPaymentBodySchema = z.object({
   orderId: z.string(),
   returnUrl: z.string().optional().default('https://shopsifu.live/checkout/payment-success'),
   ipnUrl: z.string().optional(),
-  locale: z.enum(VnpLocale).default(VnpLocale.VN),
-  currency: z.enum(VnpCurrCode).default(VnpCurrCode.VND),
+  locale: z.nativeEnum(VnpLocale).default(VnpLocale.VN),
+  currency: z.nativeEnum(VnpCurrCode).default(VnpCurrCode.VND),
   bankCode: z.string().optional(),
-  orderType: z.enum(ProductCode).default(ProductCode.Other),
+  orderType: z.nativeEnum(ProductCode).default(ProductCode.Other),
   ipAddr: z.string().default('127.0.0.1')
 })
 
@@ -42,7 +42,7 @@ export const VNPayReturnUrlSchema = z.object({
   vnp_Amount: z.string(),
   vnp_BankCode: z.string().optional(),
   vnp_BankTranNo: z.string().optional(),
-  vnp_CardType: z.enum(VnpCardType).optional(),
+  vnp_CardType: z.nativeEnum(VnpCardType).optional(),
   vnp_OrderInfo: z.string(),
   vnp_PayDate: z.string(),
   vnp_ResponseCode: z.string(),
