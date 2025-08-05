@@ -1,48 +1,108 @@
-import { PrismaService } from 'src/shared/services/prisma.service'
+import { PrismaService } from '../../../src/shared/services/prisma.service'
 
 const prisma = new PrismaService()
 
 async function clearProducts() {
   try {
-    console.log('🗑️  Starting to clear all products and related data...')
+    console.log('🗑️  Starting to clear imported products and related data...')
 
-    // 1. Xóa ReviewMedia trước (vì nó reference đến Review)
-    const deletedReviewMedia = await prisma.reviewMedia.deleteMany({})
+    // Tìm creator user (user được sử dụng để import)
+    const creatorUser = await prisma.user.findFirst({
+      where: { role: { name: 'ADMIN' } },
+      orderBy: { createdAt: 'desc' }
+    })
+
+    if (!creatorUser) {
+      console.log('⚠️  No admin user found, clearing all data...')
+      return clearAllData()
+    }
+
+    console.log(`🎯 Clearing data imported by user: ${creatorUser.name} (${creatorUser.id})`)
+
+    // 1. Xóa ReviewMedia của reviews được import
+    const deletedReviewMedia = await prisma.reviewMedia.deleteMany({
+      where: {
+        review: {
+          product: {
+            createdById: creatorUser.id
+          }
+        }
+      }
+    })
     console.log(`🗑️  Deleted ${deletedReviewMedia.count} review media`)
 
-    // 2. Xóa Reviews
-    const deletedReviews = await prisma.review.deleteMany({})
+    // 2. Xóa Reviews của products được import
+    const deletedReviews = await prisma.review.deleteMany({
+      where: {
+        product: {
+          createdById: creatorUser.id
+        }
+      }
+    })
     console.log(`🗑️  Deleted ${deletedReviews.count} reviews`)
 
-    // 3. Xóa ProductTranslations
-    const deletedTranslations = await prisma.productTranslation.deleteMany({})
+    // 3. Xóa ProductTranslations của products được import
+    const deletedTranslations = await prisma.productTranslation.deleteMany({
+      where: {
+        product: {
+          createdById: creatorUser.id
+        }
+      }
+    })
     console.log(`🗑️  Deleted ${deletedTranslations.count} product translations`)
 
-    // 4. Xóa ProductSKUSnapshots (nếu có)
-    const deletedProductSKUSnapshots = await prisma.productSKUSnapshot.deleteMany({})
+    // 4. Xóa ProductSKUSnapshots của products được import
+    const deletedProductSKUSnapshots = await prisma.productSKUSnapshot.deleteMany({
+      where: {
+        product: {
+          createdById: creatorUser.id
+        }
+      }
+    })
     console.log(`🗑️  Deleted ${deletedProductSKUSnapshots.count} product SKU snapshots`)
 
-    // 5. Xóa SKUs
-    const deletedSKUs = await prisma.sKU.deleteMany({})
+    // 5. Xóa SKUs của products được import
+    const deletedSKUs = await prisma.sKU.deleteMany({
+      where: {
+        product: {
+          createdById: creatorUser.id
+        }
+      }
+    })
     console.log(`🗑️  Deleted ${deletedSKUs.count} SKUs`)
 
-    // 6. Xóa CartItems
-    const deletedCartItems = await prisma.cartItem.deleteMany({})
+    // 6. Xóa CartItems của products được import
+    const deletedCartItems = await prisma.cartItem.deleteMany({
+      where: {
+        sku: {
+          product: {
+            createdById: creatorUser.id
+          }
+        }
+      }
+    })
     console.log(`🗑️  Deleted ${deletedCartItems.count} cart items`)
 
-    // 7. Xóa DiscountSnapshots liên quan đến products
-    const deletedDiscountSnapshots = await prisma.discountSnapshot.deleteMany({})
+    // 7. Xóa DiscountSnapshots của orders được import
+    const deletedDiscountSnapshots = await prisma.discountSnapshot.deleteMany({
+      where: {
+        order: {
+          createdById: creatorUser.id
+        }
+      }
+    })
     console.log(`🗑️  Deleted ${deletedDiscountSnapshots.count} discount snapshots`)
 
-    // 8. Xóa Orders liên quan đến products (fake orders cho reviews)
+    // 8. Xóa Orders được tạo cho reviews (fake orders)
     const deletedOrders = await prisma.order.deleteMany({
       where: {
+        createdById: creatorUser.id,
         items: {
           none: {}
         }
       }
     })
-    console.log(`🗑️  Deleted ${deletedOrders.count} empty orders`)
+    console.log(`🗑️  Deleted ${deletedOrders.count} fake orders`)
 
     // 9. Xóa Payments không có orders
     const deletedPayments = await prisma.payment.deleteMany({
@@ -54,17 +114,28 @@ async function clearProducts() {
     })
     console.log(`🗑️  Deleted ${deletedPayments.count} orphaned payments`)
 
-    // 10. Xóa Products
-    const deletedProducts = await prisma.product.deleteMany({})
+    // 10. Xóa Products được import
+    const deletedProducts = await prisma.product.deleteMany({
+      where: {
+        createdById: creatorUser.id
+      }
+    })
     console.log(`🗑️  Deleted ${deletedProducts.count} products`)
 
-    // 11. Xóa BrandTranslations
-    const deletedBrandTranslations = await prisma.brandTranslation.deleteMany({})
+    // 11. Xóa BrandTranslations của brands được import
+    const deletedBrandTranslations = await prisma.brandTranslation.deleteMany({
+      where: {
+        brand: {
+          createdById: creatorUser.id
+        }
+      }
+    })
     console.log(`🗑️  Deleted ${deletedBrandTranslations.count} brand translations`)
 
-    // 12. Xóa unused Brands
+    // 12. Xóa unused Brands (chỉ những brands được tạo bởi import script)
     const unusedBrands = await prisma.brand.deleteMany({
       where: {
+        createdById: creatorUser.id,
         products: {
           none: {}
         }
@@ -72,13 +143,20 @@ async function clearProducts() {
     })
     console.log(`🗑️  Deleted ${unusedBrands.count} unused brands`)
 
-    // 13. Xóa CategoryTranslations
-    const deletedCategoryTranslations = await prisma.categoryTranslation.deleteMany({})
+    // 13. Xóa CategoryTranslations của categories được import
+    const deletedCategoryTranslations = await prisma.categoryTranslation.deleteMany({
+      where: {
+        category: {
+          createdById: creatorUser.id
+        }
+      }
+    })
     console.log(`🗑️  Deleted ${deletedCategoryTranslations.count} category translations`)
 
-    // 14. Xóa unused Categories (chỉ categories không có products)
+    // 14. Xóa unused Categories (chỉ những categories được tạo bởi import script)
     const unusedCategories = await prisma.category.deleteMany({
       where: {
+        createdById: creatorUser.id,
         products: {
           none: {}
         }
@@ -86,9 +164,14 @@ async function clearProducts() {
     })
     console.log(`🗑️  Deleted ${unusedCategories.count} unused categories`)
 
-    // 15. Xóa unused Users (sellers và customers được tạo cho products)
+    // 15. Xóa ALL Orders trước khi xóa Users (để tránh foreign key constraint)
+    const remainingOrders = await prisma.order.deleteMany({})
+    console.log(`🗑️  Deleted ${remainingOrders.count} remaining orders`)
+
+    // 16. Xóa unused Users (sellers và customers được tạo cho products)
     const unusedUsers = await prisma.user.deleteMany({
       where: {
+        createdById: creatorUser.id,
         AND: [
           {
             OR: [{ role: { name: 'SELLER' } }, { role: { name: 'CLIENT' } }]
@@ -104,15 +187,24 @@ async function clearProducts() {
     })
     console.log(`🗑️  Deleted ${unusedUsers.count} unused users (sellers/clients)`)
 
-    // 16. Xóa unused Addresses
+    // 17. Xóa unused Addresses được tạo cho users
     const unusedAddresses = await prisma.address.deleteMany({
       where: {
+        createdById: creatorUser.id,
         userAddress: {
           none: {}
         }
       }
     })
     console.log(`🗑️  Deleted ${unusedAddresses.count} unused addresses`)
+
+    // 18. Xóa Discounts được import (vouchers)
+    const deletedDiscounts = await prisma.discount.deleteMany({
+      where: {
+        createdById: creatorUser.id
+      }
+    })
+    console.log(`🗑️  Deleted ${deletedDiscounts.count} discounts/vouchers`)
 
     console.log('✅ Successfully cleared all products and related data!')
 
@@ -150,4 +242,28 @@ if (require.main === module) {
     })
 }
 
-export { clearProducts }
+// Function để clear tất cả data (fallback)
+async function clearAllData() {
+  console.log('🗑️  Clearing ALL data (fallback mode)...')
+
+  // Xóa tất cả data theo thứ tự an toàn
+  await prisma.reviewMedia.deleteMany({})
+  await prisma.review.deleteMany({})
+  await prisma.productTranslation.deleteMany({})
+  await prisma.productSKUSnapshot.deleteMany({})
+  await prisma.sKU.deleteMany({})
+  await prisma.cartItem.deleteMany({})
+  await prisma.discountSnapshot.deleteMany({})
+  await prisma.order.deleteMany({})
+  await prisma.payment.deleteMany({})
+  await prisma.product.deleteMany({})
+  await prisma.brandTranslation.deleteMany({})
+  await prisma.brand.deleteMany({})
+  await prisma.categoryTranslation.deleteMany({})
+  await prisma.category.deleteMany({})
+  await prisma.discount.deleteMany({})
+
+  console.log('✅ Cleared ALL data')
+}
+
+export { clearProducts, clearAllData }

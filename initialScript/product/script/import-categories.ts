@@ -8,14 +8,20 @@ export async function importCategories(
 ): Promise<Map<string, string>> {
   const categorySet = new Set<string>(['Khác'])
   const categoryHierarchy = new Map<string, { parent?: string; level: number }>()
+
   products.forEach((p) => {
     const names = p.breadcrumb.slice(1, -1).slice(0, 3)
     if (names.length) {
+      // Thêm category cấp 1
       categorySet.add(names[0])
       categoryHierarchy.set(names[0], { level: 1 })
+
+      // Thêm category cấp 2 (nếu có)
       if (names.length > 1) {
         categorySet.add(names[1])
         categoryHierarchy.set(names[1], { parent: names[0], level: 2 })
+
+        // Thêm category cấp 3 (nếu có)
         if (names.length > 2) {
           categorySet.add(names[2])
           categoryHierarchy.set(names[2], { parent: names[1], level: 3 })
@@ -23,6 +29,8 @@ export async function importCategories(
       }
     }
   })
+
+  logger.log(`📊 Found ${categorySet.size} unique categories with hierarchy`)
   const existingCategories = await tx.category.findMany({
     where: { name: { in: [...categorySet] }, deletedAt: null },
     select: { id: true, name: true, parentCategoryId: true }
@@ -35,13 +43,18 @@ export async function importCategories(
     .sort((a, b) => a[1].level - b[1].level)
   for (const [name, info] of categoriesToCreate) {
     const parentCategory = info.parent ? categoryMap.get(info.parent) : null
-    await tx.category.create({
-      data: {
-        name,
-        parentCategoryId: parentCategory ? (parentCategory as any).id : null,
-        createdById: creatorUserId
-      }
-    })
+    try {
+      await tx.category.create({
+        data: {
+          name,
+          parentCategoryId: parentCategory ? (parentCategory as any).id : null,
+          createdById: creatorUserId
+        }
+      })
+      logger.log(`✅ Created category: ${name} (level ${info.level})`)
+    } catch (error) {
+      logger.warn(`⚠️ Failed to create category: ${name} - ${error}`)
+    }
   }
   const finalCategories = await tx.category.findMany({
     where: { name: { in: [...categorySet] }, deletedAt: null },

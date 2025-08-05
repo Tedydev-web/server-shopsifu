@@ -97,9 +97,23 @@ async function main() {
 
   // 7. Chuẩn bị processedProducts (tận dụng triệt để mọi trường)
   const processedProducts: ProcessedProduct[] = validProducts.map((product, idx) => {
-    const brandId = brandMap.get(product.brand || CONFIG.DEFAULT_BRAND_NAME) || ''
+    const brandId =
+      brandMap.get(product.brand || CONFIG.DEFAULT_BRAND_NAME) || brandMap.get(CONFIG.DEFAULT_BRAND_NAME) || ''
     const categoryNames = product.breadcrumb.slice(1, -1).slice(0, 3)
     const categoryIds = categoryNames.map((name) => categoryMap.get(name)).filter((id) => id) as string[]
+
+    // Nếu không có category nào, thử lấy category đầu tiên
+    if (categoryIds.length === 0 && categoryNames.length > 0) {
+      const firstCategoryId = categoryMap.get(categoryNames[0])
+      if (firstCategoryId) {
+        categoryIds.push(firstCategoryId)
+      }
+    }
+
+    // Log để debug
+    if (categoryIds.length === 0) {
+      logger.warn(`⚠️ No categories found for product: ${product.title}`)
+    }
 
     // Variants - Merge cả variations và product_variation
     const variants = (product.variations || []).map((v) => ({
@@ -144,36 +158,75 @@ async function main() {
       specifications.push({ name: 'Giao hàng', value: product.Delivery })
     }
 
-    // SKUs
-    const skus = (product.product_variation || []).map((v) => ({
-      value: v.name,
-      price: product.final_price,
-      stock: product.stock,
-      image: product.image[0] // hoặc logic chọn ảnh phù hợp
-    }))
+    // SKUs - Tạo SKUs dựa trên variants và product_variation thực tế
+    const skus: Array<{ value: string; price: number; stock: number; image: string }> = []
 
-    // Reviews
-    const reviews = (product.product_ratings || []).map((r) => ({
-      clientName: r.customer_name,
-      rating: r.rating_stars,
-      content: r.review,
-      date: r.review_date,
-      likes: r.review_likes,
-      media: r.review_media
-    }))
+    // Nếu có variants, tạo SKU cho mỗi option
+    if (variants.length > 0) {
+      variants.forEach((variant) => {
+        variant.options.forEach((option) => {
+          skus.push({
+            value: option,
+            price: product.final_price,
+            stock: product.stock,
+            image: product.image[0] || ''
+          })
+        })
+      })
+    } else if (product.product_variation && product.product_variation.length > 0) {
+      // Fallback: sử dụng product_variation nếu không có variants
+      product.product_variation.forEach((pv) => {
+        if (pv.value) {
+          skus.push({
+            value: pv.value,
+            price: product.final_price,
+            stock: product.stock,
+            image: product.image[0] || ''
+          })
+        }
+      })
+    }
 
-    // Metadata
+    // Nếu vẫn không có SKU nào, tạo SKU mặc định
+    if (skus.length === 0) {
+      skus.push({
+        value: 'Mặc định',
+        price: product.final_price,
+        stock: product.stock,
+        image: product.image[0] || ''
+      })
+    }
+
+    // Reviews - Chỉ lấy reviews có nội dung
+    const reviews = (product.product_ratings || [])
+      .filter((r) => r.review && r.review.trim().length > 0) // Chỉ lấy reviews có nội dung
+      .map((r) => ({
+        clientName: r.customer_name,
+        rating: r.rating_stars,
+        content: r.review,
+        date: r.review_date,
+        likes: r.review_likes,
+        media: r.review_media
+      }))
+
+    // Metadata - Lưu thông tin bổ sung
     const metadata = {
       url: product.url,
       favorite: product.favorite,
       sold: product.sold,
       seller_products: product.seller_products,
       seller_followers: product.seller_followers,
+      seller_rating: product.seller_rating,
+      seller_chat_time_reply: product.seller_chat_time_reply,
+      seller_chats_responded_percentage: product.seller_chats_responded_percentage,
+      seller_joined_date: product.seller_joined_date,
       shop_url: product.shop_url,
       flash_sale: product.flash_sale,
       flash_sale_time: product.flash_sale_time,
       vouchers: product.vouchers,
-      gmv_cal: product.gmv_cal
+      gmv_cal: product.gmv_cal,
+      domain: product.domain,
+      category_url: product.category_url
     }
 
     return {
@@ -181,8 +234,8 @@ async function main() {
       brandId,
       categoryIds,
       sellerId: sellerMap.get(product.seller_id) || '',
-      validImages: product.image.filter((img) => img?.startsWith('http')),
-      validVideos: product.video?.filter((vid) => vid?.startsWith('http')) || [],
+      validImages: product.image.filter((img) => img?.startsWith('http') && img?.length > 0 && !img?.includes('.mp4')),
+      validVideos: product.video?.filter((vid) => vid?.startsWith('http') && vid?.includes('.mp4')) || [],
       variants,
       specifications,
       metadata,
@@ -279,24 +332,25 @@ async function main() {
   let reviewIds: string[] = []
   if (reviewsData.length) reviewIds = await importReviews(reviewsData, prisma)
 
-  // 8.6. Import review media
+  // 8.6. Import review media (chỉ từ review, không import product video vào review)
   const reviewMedias: ReviewMediaData[] = []
   let reviewIdx = 0
   processedProducts.forEach((p) => {
     p.reviews.forEach((review, idx) => {
-      if (review.media && reviewIds[reviewIdx]) {
-        // Ensure reviewId exists
-        review.media.forEach((url) => {
-          if (url && typeof url === 'string') {
-            // Validate url is not null/undefined
-            reviewMedias.push({
-              url,
-              type: url.endsWith('.mp4') ? 'VIDEO' : 'IMAGE',
-              reviewId: reviewIds[reviewIdx],
-              createdAt: new Date()
-            })
-          }
-        })
+      if (reviewIds[reviewIdx]) {
+        // Import review media từ review
+        if (review.media) {
+          review.media.forEach((url) => {
+            if (url && typeof url === 'string') {
+              reviewMedias.push({
+                url,
+                type: url.endsWith('.mp4') ? 'VIDEO' : 'IMAGE',
+                reviewId: reviewIds[reviewIdx],
+                createdAt: new Date()
+              })
+            }
+          })
+        }
       }
       reviewIdx++
     })
@@ -308,7 +362,8 @@ async function main() {
   processedProducts.forEach((p) => {
     if (p.shopeeData.vouchers && Array.isArray(p.shopeeData.vouchers)) {
       p.shopeeData.vouchers.forEach((voucher: any) => {
-        if (voucher && typeof voucher === 'object') {
+        if (voucher && typeof voucher === 'object' && voucher.value && voucher.value > 0) {
+          // Chỉ import voucher có giá trị hợp lệ
           vouchersData.push({
             name: voucher.name || `Voucher ${p.shopeeData.title}`,
             description: voucher.description || '',
@@ -319,7 +374,7 @@ async function main() {
             minOrderValue: voucher.minOrderValue || 0,
             maxUses: voucher.maxUses || 100,
             maxUsesPerUser: voucher.maxUsesPerUser || 1,
-            discountType: 'PERCENTAGE',
+            discountType: voucher.value > 100 ? 'PERCENTAGE' : 'FIX_AMOUNT',
             discountStatus: 'ACTIVE',
             voucherType: 'PRODUCT',
             isPlatform: false,
@@ -339,30 +394,74 @@ async function main() {
 
   if (vouchersData.length > 0) {
     logger.log(`📦 Importing ${vouchersData.length} vouchers...`)
+    let successCount = 0
+    let failCount = 0
+
     for (const voucher of vouchersData) {
       try {
         await prisma.discount.create({
           data: voucher
         })
+        successCount++
       } catch (error) {
-        logger.warn(`⚠️ Failed to import voucher: ${voucher.code}`)
+        logger.warn(`⚠️ Failed to import voucher: ${voucher.code} - ${error}`)
+        failCount++
+      }
+    }
+
+    logger.log(`✅ Imported ${successCount} vouchers, failed: ${failCount}`)
+  }
+
+  // 8.8. Import product videos (nếu có) vào product images
+  for (const p of processedProducts) {
+    if (p.productId && p.validVideos.length > 0) {
+      // Thêm videos vào product images
+      const product = await prisma.product.findUnique({
+        where: { id: p.productId },
+        select: { images: true }
+      })
+
+      if (product) {
+        // Tránh duplicate videos
+        const existingVideos = product.images.filter((img) => img.includes('.mp4'))
+        const newVideos = p.validVideos.filter((video) => !existingVideos.includes(video))
+        const updatedImages = [...product.images, ...newVideos]
+
+        if (newVideos.length > 0) {
+          await prisma.product.update({
+            where: { id: p.productId },
+            data: { images: updatedImages }
+          })
+          logger.log(`📹 Added ${newVideos.length} videos to product: ${p.shopeeData.title}`)
+        }
       }
     }
   }
 
-  // 8.8. Gán product vào category (sử dụng connect thay vì createMany)
+  // 8.9. Gán product vào category (sử dụng connect thay vì createMany)
+  let connectedCount = 0
+  let failedCount = 0
+
   for (const p of processedProducts) {
     if (p.productId && p.categoryIds.length > 0) {
-      await prisma.product.update({
-        where: { id: p.productId },
-        data: {
-          categories: {
-            connect: p.categoryIds.map((categoryId) => ({ id: categoryId }))
+      try {
+        await prisma.product.update({
+          where: { id: p.productId },
+          data: {
+            categories: {
+              connect: p.categoryIds.map((categoryId) => ({ id: categoryId }))
+            }
           }
-        }
-      })
+        })
+        connectedCount++
+      } catch (error) {
+        logger.warn(`⚠️ Failed to connect product to categories: ${p.shopeeData.title} - ${error}`)
+        failedCount++
+      }
     }
   }
+
+  logger.log(`✅ Connected ${connectedCount} products to categories, failed: ${failedCount}`)
 
   logger.log('🎉 Import hoàn tất!')
   await prisma.$disconnect()
