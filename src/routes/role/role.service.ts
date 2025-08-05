@@ -20,7 +20,11 @@ export class RoleService {
   ) {}
 
   async list(pagination: GetRolesQueryType) {
-    const data = await this.roleRepo.list(pagination)
+    const data = await this.roleRepo.list({
+      page: pagination.page,
+      limit: pagination.limit,
+      name: pagination.name
+    })
     return {
       message: this.i18n.t('role.role.success.GET_SUCCESS'),
       data: data.data,

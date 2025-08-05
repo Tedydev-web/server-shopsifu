@@ -22,7 +22,8 @@ export const GetRolesResSchema = z.object({
 export const GetRolesQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
-    limit: z.coerce.number().int().positive().default(10)
+    limit: z.coerce.number().int().positive().default(10),
+    name: z.string().optional()
   })
   .strict()
 

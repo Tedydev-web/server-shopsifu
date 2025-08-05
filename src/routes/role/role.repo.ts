@@ -13,19 +13,28 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 export class RoleRepo {
   constructor(private prismaService: PrismaService) {}
 
-  async list(pagination: GetRolesQueryType): Promise<GetRolesResType> {
-    const skip = (pagination.page - 1) * pagination.limit
-    const take = pagination.limit
+  async list({ page, limit, name }: { page: number; limit: number; name?: string }): Promise<GetRolesResType> {
+    const skip = (page - 1) * limit
+    const take = limit
+
+    const where: any = {
+      deletedAt: null
+    }
+
+    // Thêm filter theo name nếu có
+    if (name) {
+      where.name = {
+        contains: name,
+        mode: 'insensitive'
+      }
+    }
+
     const [totalItems, data] = await Promise.all([
       this.prismaService.role.count({
-        where: {
-          deletedAt: null
-        }
+        where
       }),
       this.prismaService.role.findMany({
-        where: {
-          deletedAt: null
-        },
+        where,
         skip,
         take
       })
@@ -34,11 +43,11 @@ export class RoleRepo {
       data,
       metadata: {
         totalItems,
-        page: pagination.page,
-        limit: pagination.limit,
-        totalPages: Math.ceil(totalItems / pagination.limit),
-        hasNext: pagination.page < Math.ceil(totalItems / pagination.limit),
-        hasPrev: pagination.page > 1
+        page,
+        limit,
+        totalPages: Math.ceil(totalItems / limit),
+        hasNext: page < Math.ceil(totalItems / limit),
+        hasPrev: page > 1
       }
     }
   }
