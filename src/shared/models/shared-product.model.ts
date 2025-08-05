@@ -37,17 +37,16 @@ export const SpecificationSchema = z.object({
 })
 
 export const SpecificationsSchema = z.array(SpecificationSchema).superRefine((specs, ctx) => {
-  // Validation logic tương tự variants nhưng đơn giản hơn
-  for (let i = 0; i < specs.length; i++) {
-    const spec = specs[i]
-    const isExistingSpec = specs.findIndex((s) => s.name.toLowerCase() === spec.name.toLowerCase()) !== i
-    if (isExistingSpec) {
-      return ctx.addIssue({
-        code: 'custom',
-        message: `Tên thông số ${spec.name} đã tồn tại. Vui lòng kiểm tra lại.`,
-        path: ['specifications']
-      })
-    }
+  // Loại bỏ các specifications trùng lặp thay vì báo lỗi
+  const uniqueSpecs = specs.filter(
+    (spec, index, self) => index === self.findIndex((s) => s.name.toLowerCase() === spec.name.toLowerCase())
+  )
+
+  // Nếu có trùng lặp, thay thế bằng danh sách đã loại bỏ trùng lặp
+  if (uniqueSpecs.length !== specs.length) {
+    // Thay thế specs bằng uniqueSpecs
+    specs.length = 0
+    specs.push(...uniqueSpecs)
   }
 })
 
@@ -61,7 +60,7 @@ export const ProductSchema = z.object({
   brandId: z.string(),
   images: z.array(z.string()),
   variants: VariantsSchema, // Json field represented as a record
-  specifications: SpecificationsSchema.optional(),
+  specifications: SpecificationsSchema.nullable().default([]),
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),
   deletedById: z.string().nullable(),
