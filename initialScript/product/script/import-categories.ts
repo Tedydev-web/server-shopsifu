@@ -41,17 +41,27 @@ export async function importCategories(
   const categoriesToCreate = Array.from(categoryHierarchy.entries())
     .filter(([name]) => !categoryMap.has(name))
     .sort((a, b) => a[1].level - b[1].level)
+
   for (const [name, info] of categoriesToCreate) {
     const parentCategory = info.parent ? categoryMap.get(info.parent) : null
     try {
-      await tx.category.create({
+      const createdCategory = await tx.category.create({
         data: {
           name,
           parentCategoryId: parentCategory ? (parentCategory as any).id : null,
           createdById: creatorUserId
         }
       })
-      logger.log(`✅ Created category: ${name} (level ${info.level})`)
+
+      // 🔑 Cập nhật categoryMap để các category con có thể tìm thấy parent
+      categoryMap.set(name, {
+        id: createdCategory.id,
+        parentCategoryId: parentCategory ? (parentCategory as any).id : null
+      })
+
+      logger.log(
+        `✅ Created category: ${name} (level ${info.level})${parentCategory ? ` → parent: ${info.parent}` : ''}`
+      )
     } catch (error) {
       logger.warn(`⚠️ Failed to create category: ${name} - ${error}`)
     }
