@@ -17,6 +17,9 @@ import { importProductTranslations } from './import-product-translations'
 import { importReviews } from './import-reviews'
 import { importReviewMedia } from './import-review-media'
 import { v4 as uuidv4 } from 'uuid'
+import { NestFactory } from '@nestjs/core'
+import { AppModule } from '../../../src/app.module'
+import { SearchSyncService } from '../../../src/shared/services/search-sync.service'
 
 const prisma = new PrismaClient()
 
@@ -462,6 +465,56 @@ async function main() {
   }
 
   logger.log(`✅ Connected ${connectedCount} products to categories, failed: ${failedCount}`)
+
+  // 8.10. Sync products với Elasticsearch
+  if (processedProducts.length > 0) {
+    logger.log('🔄 Syncing products với Elasticsearch...')
+
+    try {
+      // Tạo NestJS application context
+      const app = await NestFactory.createApplicationContext(AppModule)
+      const searchSyncService = app.get(SearchSyncService)
+
+      // Lấy tất cả product IDs đã tạo
+      const productIds = processedProducts.map((p) => p.productId).filter((id) => id) as string[]
+
+      if (productIds.length > 0) {
+        // Sync theo batch để tránh quá tải
+        const batchSize = 100
+        const batches = Array.from({ length: Math.ceil(productIds.length / batchSize) }, (_, i) =>
+          productIds.slice(i * batchSize, (i + 1) * batchSize)
+        )
+
+        logger.log(`📦 Sẽ sync ${productIds.length} products trong ${batches.length} batches`)
+
+        let syncSuccessCount = 0
+        let syncFailCount = 0
+
+        for (let i = 0; i < batches.length; i++) {
+          const batch = batches[i]
+
+          try {
+            await searchSyncService.syncProductsBatchToES({
+              productIds: batch,
+              action: 'create'
+            })
+            syncSuccessCount += batch.length
+            logger.log(`✅ Đã sync thành công batch ${i + 1}/${batches.length}`)
+          } catch (error) {
+            syncFailCount += batch.length
+            logger.error(`❌ Lỗi khi sync batch ${i + 1}/${batches.length}:`, error)
+          }
+        }
+
+        logger.log(`🎉 Elasticsearch sync completed! Success: ${syncSuccessCount}, Failed: ${syncFailCount}`)
+      }
+
+      await app.close()
+    } catch (error) {
+      logger.error('❌ Lỗi khi sync với Elasticsearch:', error)
+      // Không throw error để không làm fail toàn bộ import
+    }
+  }
 
   logger.log('🎉 Import hoàn tất!')
   await prisma.$disconnect()
