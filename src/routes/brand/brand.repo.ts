@@ -33,7 +33,7 @@ export class BrandRepo {
           }
         },
         orderBy: {
-          createdAt: 'desc'
+          [pagination.sortBy]: pagination.sortOrder
         },
         skip,
         take
