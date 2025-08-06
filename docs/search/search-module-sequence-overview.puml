@@ -1,0 +1,273 @@
+@startuml
+!theme aws-orange
+skinparam backgroundColor #FFFFFF
+skinparam defaultTextAlignment center
+skinparam participant {
+    BackgroundColor #E8F4FD
+    BorderColor #1976D2
+    FontColor #000000
+    FontStyle bold
+}
+skinparam actor {
+    BackgroundColor #FFF8E1
+    BorderColor #F57C00
+    FontColor #000000
+    FontStyle bold
+}
+skinparam database {
+    BackgroundColor #F3E5F5
+    BorderColor #7B1FA2
+    FontColor #000000
+    FontStyle bold
+}
+skinparam note {
+    BackgroundColor #FFFDE7
+    BorderColor #F9A825
+    FontColor #000000
+}
+
+title Mô-đun Search - Tổng Quan Sequence
+note top : Hệ thống tìm kiếm sản phẩm với Elasticsearch và natural language parsing
+
+actor "Client" as Client
+participant SearchController
+participant SearchService
+participant SearchRepo
+participant ElasticsearchService
+database Elasticsearch
+
+== GET /search/products - Tìm Kiếm Sản Phẩm ==
+Client -> SearchController: GET /search/products?q=query&page=1&limit=20&filters=...
+note right
+Search Query Parameters:
+• q: Search query string
+• page: Pagination page number
+• limit: Results per page
+• orderBy: Sort order (asc/desc)
+• sortBy: Sort field (price, sale, createdAt)
+• filters: Brand, category, price range, attributes
+end note
+
+SearchController -> SearchService: searchProducts(query)
+SearchService -> SearchService: Validate query parameters
+note right
+Query Validation:
+• Check q is not empty after trim
+• Validate minimum query length
+• Handle empty search query
+• Validate filter parameters
+end note
+
+alt Query validation passed
+    SearchService -> SearchService: parseQuery(rawQuery)
+    note right
+    Natural Language Parsing:
+    • Split query into tokens
+    • Match tokens với dictionary
+    • Extract attribute filters
+    • Build structured query
+    end note
+
+    SearchService -> SearchService: getDictionary()
+    note right
+    Dictionary Management:
+    • Cache dictionary for 30 minutes
+    • Load từ Elasticsearch aggregations
+    • Map attribute names và values
+    • Support synonyms matching
+    end note
+
+    alt Dictionary cache valid
+        SearchService -> SearchService: Use cached dictionary
+    else Dictionary cache expired
+        SearchService -> ElasticsearchService: Load dictionary từ ES
+        ElasticsearchService -> Elasticsearch: Search với aggregations
+        note right
+        Dictionary Aggregations:
+        • Nested aggregation trên attrs
+        • Terms aggregation cho attrName
+        • Terms aggregation cho attrValue
+        • Size 100 cho mỗi level
+        end note
+        Elasticsearch --> ElasticsearchService: Aggregations data
+        ElasticsearchService --> SearchService: Dictionary data
+        SearchService -> SearchService: Cache dictionary
+    end
+
+    SearchService -> SearchService: Parse natural language query
+    note right
+    Query Parsing Logic:
+    • Tokenize query string
+    • Match tokens với dictionary
+    • Extract attribute filters
+    • Build structured query
+    • Handle synonyms
+    end note
+
+    alt Parsed attributes found
+        SearchService -> SearchService: Add parsed attributes to filters
+        note right
+        Attribute Extraction:
+        • Map natural language to structured filters
+        • Add attrName và attrValue
+        • Merge với existing filters
+        end note
+    end
+
+    SearchService -> SearchRepo: searchProducts(processedQuery)
+    SearchRepo -> SearchRepo: Build Elasticsearch query
+    note right
+    ES Query Building:
+    • Multi-match query cho text search
+    • Bool query với must/should/filter
+    • Fuzzy matching với fuzziness
+    • Boost fields (productName^3)
+    end note
+
+    SearchRepo -> ElasticsearchService: search(index, query, options)
+    ElasticsearchService -> Elasticsearch: Execute search query
+    note right
+    Elasticsearch Search:
+    • Multi-match với best_fields
+    • Fuzzy matching với AUTO
+    • Filter clauses cho brand/category/price
+    • Nested queries cho attributes
+    • Sort options với score
+    end note
+
+    alt Search successful
+        Elasticsearch --> ElasticsearchService: Search results
+        ElasticsearchService --> SearchRepo: Hits và metadata
+        SearchRepo -> SearchRepo: Process search results
+        note right
+        Result Processing:
+        • Extract _source từ hits
+        • Calculate total items
+        • Build pagination metadata
+        • Format response data
+        end note
+        SearchRepo --> SearchService: Processed results
+        SearchService --> SearchController: Success response
+        SearchController --> Client: JSON với data + metadata
+
+    else Search failed
+        Elasticsearch --> ElasticsearchService: Error
+        ElasticsearchService --> SearchRepo: Error details
+        SearchRepo -> SearchRepo: Classify error type
+        note right
+        Error Classification:
+        • ConnectionError → ElasticsearchConnectionException
+        • TimeoutError → SearchTimeoutException
+        • Other errors → ElasticsearchQueryException
+        end note
+        SearchRepo --> SearchService: Specific exception
+        SearchService --> SearchController: Error response
+        SearchController --> Client: 500/503 Error
+    end
+
+else Query validation failed
+    SearchService --> SearchController: ValidationException
+    SearchController --> Client: 400 Bad Request
+end
+
+== Xử Lý Lỗi & Validation ==
+alt Lỗi empty query
+    SearchService --> SearchController: EmptySearchQueryException
+    SearchController --> Client: 400 Bad Request
+    note right
+    Empty Query Error:
+    • Query string rỗng sau khi trim
+    • Clear error message
+    end note
+
+else Lỗi query quá ngắn
+    SearchService --> SearchController: SearchQueryTooShortException
+    SearchController --> Client: 400 Bad Request
+    note right
+    Short Query Error:
+    • Query length < minimum requirement
+    • Validate query length
+    end note
+
+else Lỗi dictionary load
+    SearchService --> SearchController: DictionaryLoadException
+    SearchController --> Client: 500 Internal Server Error
+    note right
+    Dictionary Error:
+    • Failed to load từ Elasticsearch
+    • Cache miss và load failed
+    end note
+
+else Lỗi dictionary parse
+    SearchService --> SearchController: DictionaryParseException
+    SearchController --> Client: 400 Bad Request
+    note right
+    Parse Error:
+    • Failed to parse natural language
+    • Dictionary parsing failed
+    end note
+
+else Lỗi Elasticsearch connection
+    SearchRepo --> SearchService: ElasticsearchConnectionException
+    SearchService --> SearchController: Error response
+    SearchController --> Client: 503 Service Unavailable
+    note right
+    Connection Error:
+    • Elasticsearch không khả dụng
+    • Network connection failed
+    end note
+
+else Lỗi search timeout
+    SearchRepo --> SearchService: SearchTimeoutException
+    SearchService --> SearchController: Error response
+    SearchController --> Client: 503 Service Unavailable
+    note right
+    Timeout Error:
+    • Search query timeout
+    • Long-running query
+    end note
+
+else Lỗi search query
+    SearchRepo --> SearchService: ElasticsearchQueryException
+    SearchService --> SearchController: Error response
+    SearchController --> Client: 500 Internal Server Error
+    note right
+    Query Error:
+    • Invalid query syntax
+    • Index not found
+    • Other ES errors
+    end note
+end
+
+== Cache Management ==
+alt Dictionary cache operations
+    SearchService -> SearchService: Check cache expiry
+    note right
+    Cache Management:
+    • Cache duration: 30 minutes
+    • Check cache expiry time
+    • Load fresh data if expired
+    • Memory cache với Map
+    end note
+end
+
+== Trả Kết Quả ==
+SearchService -> SearchService: Tạo thông báo đa ngôn ngữ (I18nService)
+SearchService --> SearchController: Response + Message đã localize
+SearchController --> Client: JSON Response với metadata đầy đủ
+
+note bottom
+**Đặc điểm chính của module Search:**
+• Elasticsearch integration với advanced queries
+• Natural language parsing với dictionary
+• Cache management cho dictionary (30 phút)
+• Multi-field search với fuzzy matching
+• Advanced filtering (brand, category, price, attributes)
+• Pagination với metadata đầy đủ
+• Comprehensive error handling
+• Public API (không cần authentication)
+• Skip throttling cho search performance
+• Multi-language support
+end note
+
+@enduml

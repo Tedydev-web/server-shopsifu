@@ -1,0 +1,181 @@
+@startuml
+!theme aws-orange
+skinparam backgroundColor #FFFFFF
+skinparam defaultTextAlignment center
+skinparam participant {
+    BackgroundColor #E8F4FD
+    BorderColor #1976D2
+    FontColor #000000
+    FontStyle bold
+}
+skinparam actor {
+    BackgroundColor #FFF8E1
+    BorderColor #F57C00
+    FontColor #000000
+    FontStyle bold
+}
+skinparam database {
+    BackgroundColor #F3E5F5
+    BorderColor #7B1FA2
+    FontColor #000000
+    FontStyle bold
+}
+skinparam note {
+    BackgroundColor #FFFDE7
+    BorderColor #F9A825
+    FontColor #000000
+}
+
+title Mô-đun Brand - Tổng Quan Sequence
+note top : Hệ thống quản lý thương hiệu với đa ngôn ngữ và phân quyền
+
+actor "Khách hàng" as Client
+actor "Người dùng" as User
+participant BrandController
+participant BrandTranslationController
+participant BrandService
+participant BrandTranslationService
+participant BrandRepo
+participant BrandTranslationRepo
+database PostgreSQL
+
+== API Công Khai (Public Brands) ==
+Client -> BrandController: GET /brands (danh sách thương hiệu)
+BrandController -> BrandService: list() với pagination
+
+opt Multi-language Support
+    BrandService -> BrandService: Lấy ngôn ngữ hiện tại (I18nContext)
+    note right
+    Language Handling:
+    • Lấy language từ I18nContext
+    • ALL_LANGUAGE_CODE = 'all' cho tất cả ngôn ngữ
+    • Filter theo languageId cụ thể
+    end note
+end
+
+BrandService -> BrandRepo: list(pagination, languageId)
+BrandRepo -> PostgreSQL: Query với JOIN brandTranslations
+note right
+Database Query Logic:
+• COUNT(*) cho pagination metadata
+• findMany với include brandTranslations
+• WHERE deletedAt IS NULL
+• ORDER BY createdAt DESC
+• Language filter: ALL_LANGUAGE_CODE hoặc specific language
+end note
+PostgreSQL --> BrandRepo: Brands với translations + metadata
+BrandRepo --> BrandService: Kết quả có đa ngôn ngữ
+BrandService --> BrandController: Response + i18n message
+BrandController --> Client: JSON với data + metadata
+
+Client -> BrandController: GET /brands/:brandId (chi tiết thương hiệu)
+BrandController -> BrandService: findById(brandId)
+BrandService -> BrandRepo: findById(id, languageId)
+BrandRepo -> PostgreSQL: findUnique với include brandTranslations
+PostgreSQL --> BrandRepo: Brand detail với translations
+BrandRepo --> BrandService: Brand với đa ngôn ngữ
+BrandService --> BrandController: Response chi tiết
+BrandController --> Client: JSON brand detail
+
+== API Quản Lý (Management Brands) ==
+User -> BrandController: Request CRUD operations
+BrandController -> BrandService: Business logic + Auth
+
+alt Thao tác CREATE
+    BrandService -> BrandService: validateData(brandData)
+    note right
+    Data Validation:
+    • Schema validation (name, logo)
+    • Business rules (required fields)
+    • Brand uniqueness check
+    end note
+    BrandService -> BrandRepo: create() với createdById
+    BrandRepo -> PostgreSQL: INSERT brand với audit fields
+    PostgreSQL --> BrandRepo: Brand mới với translations
+    BrandRepo --> BrandService: Brand đã tạo
+
+else Thao tác UPDATE
+    BrandService -> BrandRepo: findById() trước
+    BrandRepo -> PostgreSQL: Tìm brand theo ID
+    PostgreSQL --> BrandRepo: Brand data
+    BrandRepo --> BrandService: Brand info
+    BrandService -> BrandRepo: update() với updatedById
+    BrandRepo -> PostgreSQL: UPDATE brand với audit
+    PostgreSQL --> BrandRepo: Brand updated
+    BrandRepo --> BrandService: Brand đã cập nhật
+
+else Thao tác DELETE
+    BrandService -> BrandRepo: delete() soft delete
+    BrandRepo -> PostgreSQL: UPDATE deletedAt field
+    PostgreSQL --> BrandRepo: Brand marked deleted
+    BrandRepo --> BrandService: Success response
+end
+
+== API Quản Lý Translation ==
+User -> BrandTranslationController: Request CRUD translations
+BrandTranslationController -> BrandTranslationService: Business logic + Auth
+
+alt Thao tác CREATE Translation
+    BrandTranslationService -> BrandTranslationService: validateData(translationData)
+    note right
+    Translation Validation:
+    • brandId, languageId, name, description
+    • Unique constraint: brandId + languageId
+    • Foreign key validation
+    end note
+    BrandTranslationService -> BrandTranslationRepo: create()
+    BrandTranslationRepo -> PostgreSQL: INSERT brandTranslation
+    PostgreSQL --> BrandTranslationRepo: Translation created
+    BrandTranslationRepo --> BrandTranslationService: Translation data
+
+else Thao tác UPDATE Translation
+    BrandTranslationService -> BrandTranslationRepo: update()
+    BrandTranslationRepo -> PostgreSQL: UPDATE brandTranslation
+    PostgreSQL --> BrandTranslationRepo: Translation updated
+    BrandTranslationRepo --> BrandTranslationService: Updated data
+
+else Thao tác DELETE Translation
+    BrandTranslationService -> BrandTranslationRepo: delete() soft delete
+    BrandTranslationRepo -> PostgreSQL: UPDATE deletedAt
+    PostgreSQL --> BrandTranslationRepo: Translation marked deleted
+    BrandTranslationRepo --> BrandTranslationService: Success
+end
+
+== Xử Lý Lỗi & Phân Quyền ==
+alt Lỗi validation dữ liệu
+    BrandService --> BrandController: ValidationException
+    BrandController --> User: 422 Unprocessable Entity
+
+else Lỗi không tìm thấy
+    BrandService --> BrandController: NotFoundRecordException
+    BrandController --> Client: 404 Not Found
+
+else Lỗi unique constraint (translation)
+    BrandTranslationService --> BrandTranslationController: BrandTranslationAlreadyExistsException
+    BrandTranslationController --> User: 422 Unprocessable Entity
+
+else Lỗi foreign key
+    BrandService --> BrandController: ForeignKeyConstraintException
+    BrandController --> User: 422 Unprocessable Entity
+end
+
+== Trả Kết Quả ==
+BrandService -> BrandService: Tạo thông báo đa ngôn ngữ (I18nService)
+BrandService --> BrandController: Response + Message đã localize
+BrandController --> User: JSON Response với metadata đầy đủ
+
+note bottom
+**Đặc điểm chính của module Brand:**
+• Hỗ trợ đa ngôn ngữ hoàn chỉnh (I18nContext)
+• Soft delete cho cả brand và translation
+• Audit trail (createdById, updatedById, deletedById)
+• Pagination với metadata đầy đủ
+• Public API cho danh sách và chi tiết
+• Management API cho CRUD operations
+• Unique constraint cho brand + language combination
+end note
+
+@enduml
+
+
+

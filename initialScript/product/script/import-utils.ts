@@ -191,6 +191,8 @@ export function validateProductEnhanced(product: ShopeeProduct): ValidationResul
   }
   if (product['Product Description'] && product['Product Description'].length > CONFIG.MAX_DESCRIPTION_LENGTH)
     issues.push(`Description too long (${product['Product Description'].length} > ${CONFIG.MAX_DESCRIPTION_LENGTH})`)
+
+  // Validate Product Specifications
   if (product['Product Specifications']) {
     if (product['Product Specifications'].length > CONFIG.MAX_SPECIFICATION_COUNT)
       issues.push(
@@ -203,9 +205,15 @@ export function validateProductEnhanced(product: ShopeeProduct): ValidationResul
       }
     }
   }
+
+  // Validate variants và product_variation
+  const variants: Array<{ value: string; options: string[] }> = []
+
+  // Xử lý variations
   if (product.variations) {
     if (product.variations.length > CONFIG.MAX_VARIANT_COUNT)
       issues.push(`Too many variants: ${product.variations.length} > ${CONFIG.MAX_VARIANT_COUNT}`)
+
     for (const variant of product.variations) {
       if (!variant.name?.trim()) {
         issues.push('Invalid variant name')
@@ -219,8 +227,84 @@ export function validateProductEnhanced(product: ShopeeProduct): ValidationResul
         issues.push(`Too many variant options: ${variant.variations.length} > ${CONFIG.MAX_VARIANT_OPTION_COUNT}`)
         break
       }
+
+      // Thêm vào variants để kiểm tra tổng số SKU
+      variants.push({
+        value: variant.name,
+        options: variant.variations.filter((option) => option && option.trim().length > 0)
+      })
     }
   }
+
+  // Xử lý product_variation
+  if (product.product_variation && product.product_variation.length > 0) {
+    const variationMap = new Map<string, Set<string>>()
+
+    product.product_variation.forEach((pv) => {
+      if (pv.name && pv.value) {
+        if (!variationMap.has(pv.name)) {
+          variationMap.set(pv.name, new Set())
+        }
+        variationMap.get(pv.name)!.add(pv.value)
+      }
+    })
+
+    // Merge vào variants
+    variationMap.forEach((options, name) => {
+      const existingVariant = variants.find((v) => v.value === name)
+      if (existingVariant) {
+        options.forEach((option) => {
+          if (!existingVariant.options.includes(option)) {
+            existingVariant.options.push(option)
+          }
+        })
+      } else {
+        variants.push({
+          value: name,
+          options: Array.from(options)
+        })
+      }
+    })
+  }
+
+  // Thêm các trường bổ sung vào variants
+  if (product.Color) {
+    const existingVariant = variants.find((v) => v.value === 'Màu sắc')
+    if (existingVariant) {
+      if (!existingVariant.options.includes(product.Color)) {
+        existingVariant.options.push(product.Color)
+      }
+    } else {
+      variants.push({
+        value: 'Màu sắc',
+        options: [product.Color]
+      })
+    }
+  }
+
+  if (product.Size) {
+    const existingVariant = variants.find((v) => v.value === 'Kích thước')
+    if (existingVariant) {
+      if (!existingVariant.options.includes(product.Size)) {
+        existingVariant.options.push(product.Size)
+      }
+    } else {
+      variants.push({
+        value: 'Kích thước',
+        options: [product.Size]
+      })
+    }
+  }
+
+  // Kiểm tra tổng số SKU sẽ được tạo
+  if (variants.length > 0) {
+    const totalSKUs = variants.reduce((total, variant) => total * variant.options.length, 1)
+    if (totalSKUs > 100) {
+      // Giới hạn tối đa 100 SKU per product
+      issues.push(`Too many SKU combinations: ${totalSKUs} > 100`)
+    }
+  }
+
   return {
     isValid: issues.length === 0,
     reason: issues.length > 0 ? issues[0] : undefined,
@@ -236,4 +320,191 @@ export function createLogger(context: string) {
 // Helper: sleep
 export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// Helper: tạo variants đơn giản (từ cơ chế cũ)
+export function generateEnhancedVariants(
+  variations?: Array<{ name: string; variations: string[] }> | null
+): Array<{ value: string; options: string[] }> {
+  if (!variations?.length) return [{ value: 'Default', options: ['Default'] }]
+  const variants = variations.filter((v) => v.variations?.length).map((v) => ({ value: v.name, options: v.variations }))
+  return variants.length ? variants : [{ value: 'Default', options: ['Default'] }]
+}
+
+// Helper: tạo SKUs đúng (từ cơ chế cũ)
+export function generateSKUs(
+  variants: Array<{ value: string; options: string[] }>,
+  basePrice: number,
+  stock: number,
+  images: string[]
+): Array<{ value: string; price: number; stock: number; image: string }> {
+  if (!variants.length || variants[0].value === 'Default') {
+    return [{ value: 'Default', price: basePrice, stock, image: images[0] || '' }]
+  }
+
+  // Tạo tổ hợp đúng bằng reduce
+  const combinations = variants.reduce((acc: string[][], v) => {
+    const result: string[][] = []
+    const options = v.options
+    if (!acc.length) return options.map((o) => [o])
+    for (const item of acc) {
+      for (const option of options) {
+        result.push([...item, option])
+      }
+    }
+    return result
+  }, [])
+
+  // Phân bổ stock hợp lý
+  const stockPerSku = Math.max(1, Math.floor(stock / combinations.length))
+  const remainingStock = stock - stockPerSku * combinations.length
+
+  return combinations.map((combo, index) => ({
+    value: combo.join(' - '), // Sử dụng ' - ' thay vì '-'
+    price: basePrice,
+    stock: index === 0 ? stockPerSku + remainingStock : stockPerSku,
+    image: images[index % Math.max(1, images.length)] || images[0] || ''
+  }))
+}
+
+// Helper: validate variants đơn giản
+export function validateVariantsAndCalculateSKUs(variants: Array<{ value: string; options: string[] }>): {
+  isValid: boolean
+  totalSKUs: number
+  issues: string[]
+} {
+  const issues: string[] = []
+
+  if (variants.length > CONFIG.MAX_VARIANT_COUNT) {
+    issues.push(`Too many variants: ${variants.length} > ${CONFIG.MAX_VARIANT_COUNT}`)
+  }
+
+  for (const variant of variants) {
+    if (!variant.value || !variant.value.trim()) {
+      issues.push('Variant has empty name')
+    }
+    if (!variant.options || variant.options.length === 0) {
+      issues.push(`Variant "${variant.value}" has no options`)
+    }
+    if (variant.options.length > CONFIG.MAX_VARIANT_OPTION_COUNT) {
+      issues.push(
+        `Too many options for variant "${variant.value}": ${variant.options.length} > ${CONFIG.MAX_VARIANT_OPTION_COUNT}`
+      )
+    }
+  }
+
+  const totalSKUs = variants.reduce((total, variant) => total * variant.options.length, 1)
+
+  // Giới hạn linh hoạt hơn
+  if (totalSKUs > 500) {
+    issues.push(`Too many SKU combinations: ${totalSKUs} > 500`)
+  }
+
+  return {
+    isValid: issues.length === 0,
+    totalSKUs,
+    issues
+  }
+}
+
+// Helper: merge và làm sạch variants
+export function mergeAndCleanVariants(
+  variations?: Array<{ name: string; variations: string[] }>,
+  productVariation?: Array<{ name: string; value: string | null }>,
+  additionalFields?: { Color?: string | null | undefined; Size?: string | null | undefined }
+): Array<{ value: string; options: string[] }> {
+  const variants: Array<{ value: string; options: string[] }> = []
+  const variantMap = new Map<string, Set<string>>()
+
+  // 1. Xử lý variations từ Shopee
+  if (variations && variations.length > 0) {
+    variations.forEach((v) => {
+      if (v.name && v.variations && v.variations.length > 0) {
+        const cleanOptions = v.variations.filter((option) => option && option.trim().length > 0)
+        if (cleanOptions.length > 0) {
+          variantMap.set(v.name, new Set(cleanOptions))
+        }
+      }
+    })
+  }
+
+  // 2. Xử lý product_variation
+  if (productVariation && productVariation.length > 0) {
+    productVariation.forEach((pv) => {
+      if (pv.name && pv.value) {
+        if (!variantMap.has(pv.name)) {
+          variantMap.set(pv.name, new Set())
+        }
+        variantMap.get(pv.name)!.add(pv.value)
+      }
+    })
+  }
+
+  // 3. Thêm các trường bổ sung
+  if (additionalFields) {
+    if (additionalFields.Color) {
+      if (!variantMap.has('Màu sắc')) {
+        variantMap.set('Màu sắc', new Set())
+      }
+      variantMap.get('Màu sắc')!.add(additionalFields.Color)
+    }
+
+    if (additionalFields.Size) {
+      if (!variantMap.has('Kích thước')) {
+        variantMap.set('Kích thước', new Set())
+      }
+      variantMap.get('Kích thước')!.add(additionalFields.Size)
+    }
+  }
+
+  // Chuyển đổi thành array
+  variantMap.forEach((options, name) => {
+    variants.push({
+      value: name,
+      options: Array.from(options)
+    })
+  })
+
+  return variants
+}
+
+// Helper: tạo specifications đơn giản
+export function generateProductSpecifications(product?: ShopeeProduct): Array<{ name: string; value: string }> {
+  return product?.['Product Specifications'] || []
+}
+
+// Helper: tạo metadata đơn giản
+export function generateProductMetadata(product?: ShopeeProduct): any {
+  if (!product) return null
+  return {
+    metrics: {
+      shopeeRating: product.rating || 0,
+      shopeeReviews: product.reviews || 0,
+      shopeeFavorites: product.favorite || 0,
+      shopeeSold: product.sold || 0
+    },
+    seller: {
+      name: product.seller_name || '',
+      rating: product.seller_rating || 0,
+      totalProducts: product.seller_products || 0,
+      followers: product.seller_followers || 0,
+      url: product.shop_url || '',
+      chatsResponseRate: product.seller_chats_responded_percentage || 0,
+      avgReplyTime: product.seller_chat_time_reply || '',
+      joinedDate: product.seller_joined_date || null,
+      sellerId: product.seller_id || ''
+    },
+    shopee: {
+      id: product.id || '',
+      url: product.url || '',
+      categoryId: product.category_id || '',
+      currency: product.currency || 'VND',
+      domain: product.domain || '',
+      categoryUrl: product.category_url || '',
+      flashSale: product.flash_sale || false,
+      flashSaleTime: product.flash_sale_time || null,
+      vouchers: product.vouchers || null,
+      gmvCal: product.gmv_cal || null
+    }
+  }
 }

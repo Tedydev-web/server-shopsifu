@@ -1,0 +1,302 @@
+@startuml
+!theme aws-orange
+skinparam backgroundColor #FFFFFF
+skinparam defaultTextAlignment center
+skinparam participant {
+    BackgroundColor #E8F4FD
+    BorderColor #1976D2
+    FontColor #000000
+    FontStyle bold
+}
+skinparam actor {
+    BackgroundColor #FFF8E1
+    BorderColor #F57C00
+    FontColor #000000
+    FontStyle bold
+}
+skinparam database {
+    BackgroundColor #F3E5F5
+    BorderColor #7B1FA2
+    FontColor #000000
+    FontStyle bold
+}
+skinparam note {
+    BackgroundColor #FFFDE7
+    BorderColor #F9A825
+    FontColor #000000
+}
+
+title Mô-đun VNPay - Tổng Quan Sequence
+note top : Hệ thống thanh toán VNPay với đầy đủ flow và IPN processing
+
+actor "Client" as Client
+actor "VNPay Gateway" as VNPayGateway
+actor "Client (Payment Room)" as PaymentClient
+participant VNPayController
+participant VNPayService
+participant VNPayRepo
+participant SharedPaymentRepo
+participant PaymentProducer
+database PostgreSQL
+database Redis
+
+== API Công Khai (Public APIs) ==
+Client -> VNPayController: GET /payment/vnpay/bank-list (danh sách ngân hàng)
+VNPayController -> VNPayService: getBankList()
+VNPayService -> VNPayService: vnpayService.getBankList()
+note right
+Bank List Logic:
+• Gọi VNPay API để lấy danh sách ngân hàng
+• Transform data format
+• Handle service unavailable
+end note
+VNPayService --> VNPayController: Bank list response
+VNPayController --> Client: JSON với danh sách ngân hàng
+
+Client -> VNPayController: POST /payment/vnpay/create-payment (tạo URL thanh toán)
+VNPayController -> VNPayService: createPayment(paymentData)
+
+VNPayService -> VNPayService: buildPaymentData với prefix
+note right
+Payment URL Creation:
+• Thêm PREFIX_PAYMENT_CODE vào orderInfo
+• Build payment data với đầy đủ params
+• Generate secure hash
+• Create payment URL
+end note
+
+VNPayService -> VNPayService: vnpayService.buildPaymentUrl()
+VNPayService --> VNPayController: Payment URL response
+VNPayController --> Client: JSON với payment URL
+
+== Payment Flow ==
+Client -> VNPayGateway: Redirect to VNPay payment URL
+VNPayGateway -> VNPayGateway: Process payment
+VNPayGateway -> Client: Redirect back với query params
+
+== Return URL Verification ==
+Client -> VNPayController: GET /payment/vnpay/verify-return (verify return URL)
+VNPayController -> VNPayService: verifyReturnUrl(queryData)
+
+VNPayService -> VNPayService: vnpayService.verifyReturnUrl()
+note right
+Return URL Verification:
+• Verify checksum từ VNPay
+• Validate response code = '00'
+• Check isSuccess và isVerified
+end note
+
+alt Verification successful
+    VNPayService -> VNPayRepo: processVNPayWebhook(vnpayData)
+
+    == Webhook Processing ==
+    VNPayRepo -> VNPayRepo: Check transaction duplicate
+    note right
+    Duplicate Check:
+    • Tìm paymentTransaction theo gateway + referenceNumber
+    • Throw BadRequestException nếu đã tồn tại
+    • Đảm bảo idempotency
+    end note
+
+    VNPayRepo -> PostgreSQL: findFirst paymentTransaction
+    PostgreSQL --> VNPayRepo: Existing transaction check
+
+    alt Transaction chưa tồn tại
+        VNPayRepo -> PostgreSQL: $transaction (atomic operation)
+        note right
+        Database Transaction:
+        • CREATE paymentTransaction với VNPay data
+        • Parse amount (chia 100 cho VND)
+        • Lưu đầy đủ transaction info
+        end note
+
+        == Payment ID Extraction ==
+        VNPayRepo -> SharedPaymentRepo: extractPaymentId(prefix, orderInfo, txnRef)
+        SharedPaymentRepo -> SharedPaymentRepo: extractPaymentId logic
+        SharedPaymentRepo --> VNPayRepo: paymentId hoặc null
+
+        alt Payment ID found
+            == Payment Validation ==
+            VNPayRepo -> SharedPaymentRepo: validateAndFindPayment(paymentId)
+            SharedPaymentRepo -> PostgreSQL: findUnique payment với orders
+            PostgreSQL --> SharedPaymentRepo: Payment với orders
+            SharedPaymentRepo --> VNPayRepo: Payment data
+
+            == Amount Validation ==
+            VNPayRepo -> SharedPaymentRepo: validatePaymentAmount(orders, expected, actual)
+            note right
+            Amount Validation:
+            • Tính tổng giá trị orders
+            • So sánh với VNPay amount (đã chia 100)
+            • Tolerance 0.01 để tránh float precision
+            end note
+
+            alt Amount validation passed
+                == Update Payment Status ==
+                VNPayRepo -> SharedPaymentRepo: updatePaymentAndOrdersOnSuccess(paymentId, orders)
+                SharedPaymentRepo -> PostgreSQL: UPDATE payment status = SUCCESS
+                SharedPaymentRepo -> PostgreSQL: UPDATE orders status = PENDING_PICKUP
+                SharedPaymentRepo -> PaymentProducer: removeJob(paymentId)
+                PostgreSQL --> SharedPaymentRepo: Updated records
+                PaymentProducer -> Redis: Remove job từ queue
+                Redis --> PaymentProducer: Job removed
+
+                VNPayRepo --> VNPayService: {userId, paymentId}
+                VNPayService --> VNPayController: Success response
+
+            else Amount validation failed
+                VNPayRepo --> VNPayService: BadRequestException
+                VNPayService --> VNPayController: Error response
+                VNPayController --> Client: 400 Bad Request
+            end
+
+        else Payment ID not found
+            VNPayRepo --> VNPayService: BadRequestException
+            VNPayService --> VNPayController: Error response
+            VNPayController --> Client: 400 Bad Request
+        end
+
+    else Transaction đã tồn tại
+        VNPayRepo --> VNPayService: BadRequestException
+        VNPayService --> VNPayController: Error response
+        VNPayController --> Client: 400 Bad Request
+    end
+
+else Verification failed
+    VNPayService --> VNPayController: VNPayInvalidChecksumException
+    VNPayController --> Client: 422 Unprocessable Entity
+end
+
+== IPN Callback Processing ==
+VNPayGateway -> VNPayController: GET /payment/vnpay/verify-ipn (IPN callback)
+VNPayController -> VNPayService: processIpnCall(queryData)
+
+VNPayService -> VNPayService: vnpayService.verifyIpnCall()
+note right
+IPN Verification:
+• Verify checksum từ VNPay
+• Validate IPN data integrity
+• Check isVerified flag
+end note
+
+alt IPN verification successful
+    VNPayService -> VNPayRepo: verifyIpnCall(processedData)
+
+    == IPN Payment Validation ==
+    VNPayRepo -> SharedPaymentRepo: extractPaymentId(prefix, txnRef, orderInfo)
+    SharedPaymentRepo --> VNPayRepo: paymentId hoặc null
+
+    alt Payment ID found
+        VNPayRepo -> SharedPaymentRepo: validateAndFindPayment(paymentId)
+        SharedPaymentRepo -> PostgreSQL: findUnique payment với orders
+        PostgreSQL --> SharedPaymentRepo: Payment với orders
+        SharedPaymentRepo --> VNPayRepo: Payment data
+
+        == IPN Amount Validation ==
+        VNPayRepo -> SharedPaymentRepo: validatePaymentAmount(orders, expected, actual)
+
+        alt Amount validation passed
+            == Check Payment Status ==
+            VNPayRepo -> VNPayRepo: Check payment status
+            note right
+            Status Check:
+            • Nếu payment.status = SUCCESS/FAILED → return "Order already confirmed"
+            • Nếu chưa xử lý → tiếp tục process
+            end note
+
+            alt Payment chưa xử lý
+                alt Response Code = '00' (Success)
+                    VNPayRepo -> SharedPaymentRepo: updatePaymentAndOrdersOnSuccess(paymentId, orders)
+                    SharedPaymentRepo -> PostgreSQL: UPDATE payment status = SUCCESS
+                    SharedPaymentRepo -> PostgreSQL: UPDATE orders status = PENDING_PICKUP
+                    SharedPaymentRepo -> PaymentProducer: removeJob(paymentId)
+                    PostgreSQL --> SharedPaymentRepo: Updated records
+                    PaymentProducer -> Redis: Remove job từ queue
+                    Redis --> PaymentProducer: Job removed
+
+                    VNPayService -> VNPayService: Emit WebSocket event
+                    VNPayService -> PaymentClient: WebSocket event
+                    PaymentClient -> PaymentClient: Update UI (payment success)
+
+                else Response Code != '00' (Failed)
+                    VNPayRepo -> SharedPaymentRepo: updatePaymentAndOrdersOnFailed(paymentId, orders)
+                    SharedPaymentRepo -> PostgreSQL: UPDATE payment status = FAILED
+                    SharedPaymentRepo -> PostgreSQL: UPDATE orders status = CANCELLED
+                    SharedPaymentRepo -> PaymentProducer: removeJob(paymentId)
+                    PostgreSQL --> SharedPaymentRepo: Updated records
+                    PaymentProducer -> Redis: Remove job từ queue
+                    Redis --> PaymentProducer: Job removed
+                end
+
+                VNPayService --> VNPayController: {RspCode: '00', Message: 'Confirm Success'}
+                VNPayController --> VNPayGateway: JSON response
+
+            else Payment đã xử lý
+                VNPayService --> VNPayController: {RspCode: '02', Message: 'Order already confirmed'}
+                VNPayController --> VNPayGateway: JSON response
+            end
+
+        else Amount validation failed
+            VNPayService --> VNPayController: {RspCode: '04', Message: 'Invalid amount'}
+            VNPayController --> VNPayGateway: JSON response
+        end
+
+    else Payment ID not found
+        VNPayService --> VNPayController: {RspCode: '01', Message: 'Order not found'}
+        VNPayController --> VNPayGateway: JSON response
+    end
+
+else IPN verification failed
+    VNPayService --> VNPayController: {RspCode: '97', Message: 'Invalid Checksum'}
+    VNPayController --> VNPayGateway: JSON response
+end
+
+== Query & Refund Operations ==
+Client -> VNPayController: POST /payment/vnpay/query-dr (truy vấn kết quả)
+VNPayController -> VNPayService: queryDr(queryData)
+VNPayService -> VNPayService: vnpayService.queryDr(queryRequest)
+VNPayService --> VNPayController: Query result
+VNPayController --> Client: JSON response
+
+Client -> VNPayController: POST /payment/vnpay/refund (hoàn tiền)
+VNPayController -> VNPayService: refund(refundData)
+VNPayService -> VNPayService: vnpayService.refund(refundRequest)
+VNPayService --> VNPayController: Refund result
+VNPayController --> Client: JSON response
+
+== Error Handling ==
+alt Lỗi checksum
+    VNPayService --> VNPayController: VNPayInvalidChecksumException
+    VNPayController --> Client: 422 Unprocessable Entity
+
+else Lỗi duplicate request
+    VNPayService --> VNPayController: VNPayDuplicateRequestException
+    VNPayController --> Client: 400 Bad Request
+
+else Lỗi service unavailable
+    VNPayService --> VNPayController: VNPayServiceUnavailableException
+    VNPayController --> Client: 500 Internal Server Error
+
+else Lỗi transaction not found
+    VNPayService --> VNPayController: VNPayTransactionNotFoundException
+    VNPayController --> Client: 422 Unprocessable Entity
+end
+
+== Trả Kết Quả ==
+VNPayService -> VNPayService: Tạo thông báo đa ngôn ngữ (I18nService)
+VNPayService --> VNPayController: Response + Message đã localize
+VNPayController --> Client: JSON Response với metadata đầy đủ
+
+note bottom
+**Đặc điểm chính của module VNPay:**
+• Full payment flow với URL creation và verification
+• IPN callback processing với atomic operations
+• Real-time WebSocket notification
+• Comprehensive error handling với VNPay response codes
+• Integration với shared payment repository
+• Queue management (remove cancel jobs)
+• Multi-language support
+• Checksum verification cho security
+end note
+
+@enduml

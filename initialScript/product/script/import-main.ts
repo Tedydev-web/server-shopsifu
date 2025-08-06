@@ -5,7 +5,12 @@ import {
   CONFIG,
   ShopeeProduct,
   ProcessedProduct,
-  validateProductEnhanced
+  validateProductEnhanced,
+  generateEnhancedVariants,
+  generateSKUs,
+  validateVariantsAndCalculateSKUs,
+  generateProductSpecifications,
+  generateProductMetadata
 } from './import-utils'
 import { importBrands } from './import-brands'
 import { importCategories } from './import-categories'
@@ -98,7 +103,7 @@ async function main() {
   const allUsers = await prisma.user.findMany({ where: { deletedAt: null }, select: { id: true } })
   await importAddresses(allUsers, creatorUser.id, prisma)
 
-  // 7. Chuẩn bị processedProducts (tận dụng triệt để mọi trường)
+  // 7. Chuẩn bị processedProducts (sử dụng logic đơn giản từ cơ chế cũ)
   const processedProducts: ProcessedProduct[] = validProducts.map((product, idx) => {
     const brandId =
       brandMap.get(product.brand || CONFIG.DEFAULT_BRAND_NAME) || brandMap.get(CONFIG.DEFAULT_BRAND_NAME) || ''
@@ -118,86 +123,33 @@ async function main() {
       logger.warn(`⚠️ No categories found for product: ${product.title}`)
     }
 
-    // Variants - Merge cả variations và product_variation
-    const variants = (product.variations || []).map((v) => ({
-      value: v.name,
-      options: v.variations
-    }))
+    // Variants - Sử dụng logic đơn giản từ cơ chế cũ
+    const variants = generateEnhancedVariants(product.variations)
 
-    // Nếu có product_variation, merge vào variants
-    if (product.product_variation && product.product_variation.length > 0) {
-      product.product_variation.forEach((pv) => {
-        const existingVariant = variants.find((v) => v.value === pv.name)
-        if (existingVariant) {
-          if (pv.value && !existingVariant.options.includes(pv.value)) {
-            existingVariant.options.push(pv.value)
-          }
-        } else {
-          variants.push({
-            value: pv.name,
-            options: pv.value ? [pv.value] : []
-          })
-        }
-      })
+    // Validate variants và tính toán số SKU
+    const variantValidation = validateVariantsAndCalculateSKUs(variants)
+    if (!variantValidation.isValid) {
+      logger.warn(`⚠️ Product "${product.title}" has variant issues: ${variantValidation.issues.join(', ')}`)
     }
 
-    // Specifications - Merge cả Product Specifications và các trường bổ sung
-    const specifications = (product['Product Specifications'] || []).map((s) => ({
-      name: s.name,
-      value: s.value
-    }))
+    // Specifications - Sử dụng logic đơn giản từ cơ chế cũ
+    const specifications = generateProductSpecifications(product)
 
-    // Thêm các trường bổ sung vào specifications
-    if (product.Color) {
-      specifications.push({ name: 'Màu sắc', value: product.Color })
-    }
-    if (product.Size) {
-      specifications.push({ name: 'Kích thước', value: product.Size })
-    }
-    if (product.Protection) {
-      specifications.push({ name: 'Bảo hành', value: product.Protection })
-    }
-    if (product.Delivery) {
-      specifications.push({ name: 'Giao hàng', value: product.Delivery })
-    }
+    // SKUs - Sử dụng logic đúng từ cơ chế cũ
+    const validImages = product.image.filter(
+      (img) => img?.startsWith('http') && img?.length > 0 && !img?.includes('.mp4')
+    )
+    const validVideos = product.video?.filter((vid) => vid?.startsWith('http') && vid?.includes('.mp4')) || []
+    const skus = generateSKUs(variants, product.final_price, product.stock, [...validImages, ...validVideos])
 
-    // SKUs - Tạo SKUs dựa trên variants và product_variation thực tế
-    const skus: Array<{ value: string; price: number; stock: number; image: string }> = []
-
-    // Nếu có variants, tạo SKU cho mỗi option
-    if (variants.length > 0) {
-      variants.forEach((variant) => {
-        variant.options.forEach((option) => {
-          skus.push({
-            value: option,
-            price: product.final_price,
-            stock: product.stock,
-            image: product.image[0] || ''
-          })
-        })
-      })
-    } else if (product.product_variation && product.product_variation.length > 0) {
-      // Fallback: sử dụng product_variation nếu không có variants
-      product.product_variation.forEach((pv) => {
-        if (pv.value) {
-          skus.push({
-            value: pv.value,
-            price: product.final_price,
-            stock: product.stock,
-            image: product.image[0] || ''
-          })
-        }
-      })
-    }
-
-    // Nếu vẫn không có SKU nào, tạo SKU mặc định
-    if (skus.length === 0) {
-      skus.push({
-        value: 'Mặc định',
-        price: product.final_price,
-        stock: product.stock,
-        image: product.image[0] || ''
-      })
+    // Log thông tin SKU cho debug
+    if (skus.length > 1) {
+      logger.log(
+        `📦 Product "${product.title}" will create ${skus.length} SKUs: ${skus
+          .slice(0, 3)
+          .map((s) => s.value)
+          .join(', ')}${skus.length > 3 ? '...' : ''}`
+      )
     }
 
     // Reviews - Chỉ lấy reviews có nội dung
@@ -212,33 +164,16 @@ async function main() {
         media: r.review_media
       }))
 
-    // Metadata - Lưu thông tin bổ sung
-    const metadata = {
-      url: product.url,
-      favorite: product.favorite,
-      sold: product.sold,
-      seller_products: product.seller_products,
-      seller_followers: product.seller_followers,
-      seller_rating: product.seller_rating,
-      seller_chat_time_reply: product.seller_chat_time_reply,
-      seller_chats_responded_percentage: product.seller_chats_responded_percentage,
-      seller_joined_date: product.seller_joined_date,
-      shop_url: product.shop_url,
-      flash_sale: product.flash_sale,
-      flash_sale_time: product.flash_sale_time,
-      vouchers: product.vouchers,
-      gmv_cal: product.gmv_cal,
-      domain: product.domain,
-      category_url: product.category_url
-    }
+    // Metadata - Sử dụng logic đơn giản từ cơ chế cũ
+    const metadata = generateProductMetadata(product)
 
     return {
       shopeeData: product,
       brandId,
       categoryIds,
       sellerId: sellerMap.get(product.seller_id) || '',
-      validImages: product.image.filter((img) => img?.startsWith('http') && img?.length > 0 && !img?.includes('.mp4')),
-      validVideos: product.video?.filter((vid) => vid?.startsWith('http') && vid?.includes('.mp4')) || [],
+      validImages,
+      validVideos,
       variants,
       specifications,
       metadata,

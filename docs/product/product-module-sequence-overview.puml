@@ -1,0 +1,178 @@
+@startuml
+!theme aws-orange
+skinparam backgroundColor #FFFFFF
+skinparam defaultTextAlignment center
+skinparam participant {
+    BackgroundColor #E8F4FD
+    BorderColor #1976D2
+    FontColor #000000
+    FontStyle bold
+}
+skinparam actor {
+    BackgroundColor #FFF8E1
+    BorderColor #F57C00
+    FontColor #000000
+    FontStyle bold
+}
+skinparam database {
+    BackgroundColor #F3E5F5
+    BorderColor #7B1FA2
+    FontColor #000000
+    FontStyle bold
+}
+skinparam note {
+    BackgroundColor #FFFDE7
+    BorderColor #F9A825
+    FontColor #000000
+}
+
+title Mô-đun Product - Tổng Quan Sequence
+note top : Hệ thống quản lý sản phẩm với phân quyền, đa ngôn ngữ và tìm kiếm
+
+actor "Khách hàng" as Client
+actor "Chủ shop" as ShopOwner
+participant ProductController
+participant ManageProductController
+participant ProductService
+participant ManageProductService
+participant ProductRepo
+participant SearchSyncService
+database PostgreSQL
+database ElasticSearch
+
+== API Công Khai (Public Products) ==
+Client -> ProductController: GET /products (danh sách sản phẩm)
+ProductController -> ProductService: list() với filters
+
+opt Filter & Pagination nâng cao
+    ProductService -> ProductRepo: Xử lý filters phức tạp
+    note right
+    Advanced Query Features:
+    • Brand, Category, Price range filters
+    • Sort theo popularity, price, date
+    • Pagination với metadata
+    • Multi-language support
+    end note
+end
+
+ProductService -> ProductRepo: list() với isPublic=true
+ProductRepo -> PostgreSQL: Query với Pagination + JOIN translations
+PostgreSQL --> ProductRepo: Products đã publish + metadata
+ProductRepo --> ProductService: Kết quả có đa ngôn ngữ
+ProductService --> ProductController: Response + i18n message
+ProductController --> Client: JSON với data + metadata
+
+Client -> ProductController: GET /products/:id (chi tiết sản phẩm)
+ProductController -> ProductService: getDetail()
+ProductService -> ProductRepo: getDetail() với isPublic=true
+ProductRepo -> PostgreSQL: JOIN với SKUs, Brand, Categories, Translations
+PostgreSQL --> ProductRepo: Product detail đầy đủ
+ProductRepo --> ProductService: Product với SKU variants
+ProductService --> ProductController: Response chi tiết
+ProductController --> Client: JSON product detail
+
+== API Quản Lý (Management Products) ==
+ShopOwner -> ManageProductController: Request CRUD operations
+ManageProductController -> ManageProductService: Business logic + Auth
+
+alt Thao tác CREATE
+    ManageProductService -> ManageProductService: validateData(productData, SKUs)
+    note right
+    Data Validation:
+    • Schema validation (required fields)
+    • Business rules (price > 0, stock >= 0)
+    • SKU variants consistency
+    • Category & Brand existence
+    end note
+    ManageProductService -> ProductRepo: create() với SKUs
+    ProductRepo -> PostgreSQL: Transaction (Product + SKUs + Categories)
+    PostgreSQL --> ProductRepo: Product mới với variants
+    ProductRepo -> SearchSyncService: addSyncProductJob('create')
+    alt Sync create/update
+        SearchSyncService -> ElasticSearch: index/update document
+    else Sync delete
+        SearchSyncService -> ElasticSearch: delete document
+    end
+    ProductRepo --> ManageProductService: Product đã tạo
+
+else Thao tác READ/UPDATE/DELETE
+    ManageProductService -> ProductRepo: findById() trước
+    ProductRepo -> PostgreSQL: Tìm product theo ID
+    PostgreSQL --> ProductRepo: Product data
+    ProductRepo --> ManageProductService: Product info
+    ManageProductService -> ManageProductService: validatePrivilege(user, createdById)
+    note right
+    Kiểm tra quyền sở hữu:
+    • Chỉ người tạo hoặc Admin mới được thao tác
+    • Ngăn chặn truy cập trái phép
+    • Bảo vệ dữ liệu shop
+    end note
+end
+
+== Xử Lý SKU Variants ==
+alt Update Product với SKU thay đổi
+    ManageProductService -> ManageProductService: validateData(productData, SKUs)
+    ManageProductService -> ProductRepo: update() với SKU array
+    ProductRepo -> PostgreSQL: Transaction phức tạp
+    note right
+    SKU Management:
+    • So sánh SKU cũ vs mới
+    • Xóa mềm SKU không dùng
+    • Update SKU có sẵn
+    • Tạo mới SKU chưa có
+    end note
+    PostgreSQL --> ProductRepo: Product + SKUs updated
+    ProductRepo -> SearchSyncService: addSyncProductJob('update')
+end
+
+alt Delete Product
+    ManageProductService -> ProductRepo: delete() soft delete
+    ProductRepo -> PostgreSQL: Update deletedAt field
+    PostgreSQL --> ProductRepo: Product marked deleted
+    ProductRepo -> SearchSyncService: addSyncProductJob('delete')
+end
+
+== Đồng Bộ ElasticSearch ==
+alt Sync create/update
+    SearchSyncService -> ElasticSearch: index/update document
+    note right
+    ElasticSearch Operations:
+    • CREATE: index new product document
+    • UPDATE: update existing document
+    • Background queue processing
+    end note
+else Sync delete
+    SearchSyncService -> ElasticSearch: delete document
+    note right
+    Delete Operation:
+    • Remove document từ search index
+    • Maintain search consistency
+    • Non-blocking operation
+    end note
+end
+
+== Xử Lý Lỗi & Phân Quyền ==
+alt Lỗi validation dữ liệu
+    ManageProductService --> ManageProductController: ValidationException
+    ManageProductController --> ShopOwner: 422 Unprocessable Entity
+
+else Lỗi phân quyền
+    ManageProductService --> ManageProductController: ForbiddenException
+    ManageProductController --> ShopOwner: 403 Forbidden
+
+else Lỗi không tìm thấy
+    ProductService --> ProductController: NotFoundRecordException
+    ProductController --> Client: 404 Not Found
+
+else Lỗi Elasticsearch
+    SearchSyncService --> ProductRepo: Sync failed (non-blocking)
+    note right
+    **Ma trận xử lý lỗi:**
+    • 422 Unprocessable → Data validation lỗi (price, SKU, etc.)
+    • 403 Forbidden → Không có quyền sở hữu
+    • 404 Not Found → Product không tồn tại
+    • 500 Internal → Elasticsearch sync lỗi (non-critical)
+    end note
+end
+
+@enduml

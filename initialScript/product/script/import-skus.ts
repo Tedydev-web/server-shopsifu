@@ -14,13 +14,83 @@ export async function importSKUs(
   }>,
   tx: PrismaClient
 ): Promise<void> {
-  if (skus.length === 0) return
-  const copyBatchSize = CONFIG.SKU_BATCH_SIZE
-  const copyChunks = Array.from({ length: Math.ceil(skus.length / copyBatchSize) }, (_, i) =>
-    skus.slice(i * copyBatchSize, (i + 1) * copyBatchSize)
-  )
-  for (const chunk of copyChunks) {
-    await tx.sKU.createMany({ data: chunk, skipDuplicates: true })
+  if (skus.length === 0) {
+    logger.log('⚠️ No SKUs to import')
+    return
   }
-  logger.log(`✅ Imported ${skus.length} SKUs`)
+
+  // Validate dữ liệu SKU
+  const validSkus = skus.filter((sku) => {
+    if (!sku.value || !sku.value.trim()) {
+      logger.warn(`⚠️ Skipping SKU with empty value for product ${sku.productId}`)
+      return false
+    }
+    if (sku.price < 0) {
+      logger.warn(`⚠️ Skipping SKU with negative price: ${sku.price} for product ${sku.productId}`)
+      return false
+    }
+    if (sku.stock < 0) {
+      logger.warn(`⚠️ Skipping SKU with negative stock: ${sku.stock} for product ${sku.productId}`)
+      return false
+    }
+    return true
+  })
+
+  if (validSkus.length === 0) {
+    logger.warn('⚠️ No valid SKUs to import after validation')
+    return
+  }
+
+  // Kiểm tra SKUs hiện có để tránh duplicate
+  const existingSkus = await tx.sKU.findMany({
+    where: {
+      productId: { in: [...new Set(validSkus.map((s) => s.productId))] },
+      deletedAt: null
+    },
+    select: {
+      id: true,
+      value: true,
+      productId: true
+    }
+  })
+
+  const existingSkuMap = new Map<string, string>()
+  existingSkus.forEach((sku) => {
+    existingSkuMap.set(`${sku.productId}-${sku.value}`, sku.id)
+  })
+
+  // Lọc ra SKUs mới cần tạo
+  const newSkus = validSkus.filter((sku) => {
+    const key = `${sku.productId}-${sku.value}`
+    return !existingSkuMap.has(key)
+  })
+
+  if (newSkus.length === 0) {
+    logger.log('✅ All SKUs already exist, no new SKUs to import')
+    return
+  }
+
+  // Import theo batch
+  const copyBatchSize = CONFIG.SKU_BATCH_SIZE
+  const copyChunks = Array.from({ length: Math.ceil(newSkus.length / copyBatchSize) }, (_, i) =>
+    newSkus.slice(i * copyBatchSize, (i + 1) * copyBatchSize)
+  )
+
+  let successCount = 0
+  let failCount = 0
+
+  for (const chunk of copyChunks) {
+    try {
+      await tx.sKU.createMany({
+        data: chunk,
+        skipDuplicates: true
+      })
+      successCount += chunk.length
+    } catch (error) {
+      logger.error(`❌ Failed to import SKU batch:`, error)
+      failCount += chunk.length
+    }
+  }
+
+  logger.log(`✅ Imported ${successCount} SKUs, failed: ${failCount}, skipped: ${validSkus.length - newSkus.length}`)
 }
