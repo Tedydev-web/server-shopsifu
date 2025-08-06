@@ -1,0 +1,127 @@
+@startuml Brand Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Quản Lý Thương Hiệu - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng yêu cầu thao tác thương hiệu;
+
+if (Loại thao tác?) then (GET /brands - Lấy danh sách)
+  :Trích xuất pagination parameters;
+  :Lấy ngôn ngữ hiện tại từ I18nContext;
+  :Thực thi list query với pagination;
+  note right
+  Logic Truy Vấn Database:
+  • WHERE deletedAt IS NULL
+  • Include brandTranslations
+  • Language-specific translations
+  • ORDER BY createdAt DESC
+  • Pagination với metadata
+  end note
+  :Áp dụng dịch thuật theo ngôn ngữ;
+  :Tính toán pagination metadata;
+  :Trả về danh sách brands với metadata;
+
+elseif (GET /brands/:brandId - Chi tiết thương hiệu) then
+  :Trích xuất brandId từ params;
+  :Lấy ngôn ngữ hiện tại từ I18nContext;
+  :Thực thi findById query;
+  if (Brand được tìm thấy?) then (có)
+    :Load brand với translations;
+    :Áp dụng dịch thuật theo ngôn ngữ;
+    :Trả về brand detail;
+  else (không)
+    :Ném NotFoundRecordException;
+  endif
+
+elseif (POST /brands - Tạo thương hiệu mới) then
+  :Người dùng tạo thương hiệu mới;
+  :Trích xuất {name, logo} từ body;
+  :Validate dữ liệu brand;
+  if (Dữ liệu hợp lệ?) then (có)
+    :Thực thi create operation;
+    :Tạo brand với audit fields;
+    :Include brandTranslations;
+    :Trả về brand đã tạo;
+  else (không)
+    :Ném ValidationException;
+  endif
+
+elseif (PUT /brands/:brandId - Cập nhật thương hiệu) then
+  :Người dùng cập nhật thương hiệu;
+  :Trích xuất brandId từ params;
+  :Trích xuất {name, logo} từ body;
+  :Validate dữ liệu brand;
+  if (Dữ liệu hợp lệ?) then (có)
+    :Thực thi update operation;
+    :Cập nhật brand với audit fields;
+    :Include brandTranslations;
+    :Trả về brand đã cập nhật;
+  else (không)
+    :Ném ValidationException;
+  endif
+
+elseif (DELETE /brands/:brandId - Xóa thương hiệu) then
+  :Người dùng xóa thương hiệu;
+  :Trích xuất brandId từ params;
+  :Thực thi soft delete operation;
+  :Cập nhật deletedAt field;
+  :Cập nhật deletedById;
+  :Trả về success response;
+
+elseif (POST /brand-translations - Tạo translation) then
+  :Người dùng tạo translation;
+  :Trích xuất {brandId, languageId, name, description} từ body;
+  :Validate dữ liệu translation;
+  if (Dữ liệu hợp lệ?) then (có)
+    :Kiểm tra unique constraint;
+    if (Translation đã tồn tại?) then (có)
+      :Ném BrandTranslationAlreadyExistsException;
+    else (không)
+      :Thực thi create operation;
+      :Tạo translation với audit fields;
+      :Trả về translation đã tạo;
+    endif
+  else (không)
+    :Ném ValidationException;
+  endif
+
+elseif (PUT /brand-translations/:brandTranslationId - Cập nhật translation) then
+  :Người dùng cập nhật translation;
+  :Trích xuất brandTranslationId từ params;
+  :Trích xuất {brandId, languageId, name, description} từ body;
+  :Validate dữ liệu translation;
+  if (Dữ liệu hợp lệ?) then (có)
+    :Thực thi update operation;
+    :Cập nhật translation với audit fields;
+    :Trả về translation đã cập nhật;
+  else (không)
+    :Ném ValidationException;
+  endif
+
+elseif (DELETE /brand-translations/:brandTranslationId - Xóa translation) then
+  :Người dùng xóa translation;
+  :Trích xuất brandTranslationId từ params;
+  :Thực thi soft delete operation;
+  :Cập nhật deletedAt field;
+  :Cập nhật deletedById;
+  :Trả về success response;
+
+else (Thao tác không hợp lệ)
+  :Ném InvalidOperationException;
+endif
+
+:Tạo localized success message;
+:Trả về JSON response với metadata;
+
+stop
+
+@enduml

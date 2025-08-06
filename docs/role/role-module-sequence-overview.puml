@@ -26,24 +26,26 @@ skinparam note {
     FontColor #000000
 }
 
-title Mô-đun Role - Tổng Quan Sequence
+title Mô-đun Vai Trò - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý vai trò với base role protection và permission management
 
 actor "Admin" as Admin
-participant RoleController
-participant RoleService
-participant RoleRepo
-database PostgreSQL
-database Redis
+participant "RoleController" as RC
+participant "RoleService" as RS
+participant "RoleRepo" as RR
+participant "I18nService" as IS
+participant "CacheManager" as CM
+database "PostgreSQL" as DB
+database "Redis" as RD
 
 == GET /roles - Lấy Danh Sách Vai Trò ==
-Admin -> RoleController: GET /roles?page=1&limit=10&name=search
-RoleController -> RoleService: list(pagination)
+Admin -> RC: GET /roles?page=1&limit=10&name=search
+RC -> RS: list(pagination)
 
-RoleService -> RoleRepo: list({page, limit, name})
-RoleRepo -> RoleRepo: Calculate pagination metadata
+RS -> RR: list({page, limit, name})
+RR -> RR: Tính toán pagination metadata
 note right
-Pagination Logic:
+Logic Phân Trang:
 • skip = (page - 1) * limit
 • take = limit
 • Parallel queries: count + findMany
@@ -51,221 +53,232 @@ Pagination Logic:
 • WHERE deletedAt IS NULL
 end note
 
-RoleRepo -> PostgreSQL: count() với WHERE deletedAt IS NULL
-RoleRepo -> PostgreSQL: findMany() với pagination và name filter
+RR -> DB: count() với WHERE deletedAt IS NULL
+RR -> DB: findMany() với pagination và name filter
 note right
-Database Query Features:
+Tính Năng Truy Vấn Database:
 • WHERE deletedAt IS NULL
 • Filter name với contains + insensitive
 • Pagination với skip/take
 • ORDER BY default
 end note
-PostgreSQL --> RoleRepo: Total count + roles data
-RoleRepo --> RoleService: Roles với metadata
-RoleService --> RoleController: Response + i18n message
-RoleController --> Admin: JSON với data + metadata
+DB -> RR: Total count + roles data
+RR -> RS: Roles với metadata
+RS -> IS: i18n.t('role.role.success.GET_SUCCESS')
+IS -> RS: Trả về message đã localize
+RS -> RC: Phản hồi + Message đã localize
+RC -> Admin: JSON với data + metadata
 
 == GET /roles/:id - Chi Tiết Vai Trò ==
-Admin -> RoleController: GET /roles/:roleId
-RoleController -> RoleService: findById(roleId)
+Admin -> RC: GET /roles/:roleId
+RC -> RS: findById(roleId)
 
-RoleService -> RoleRepo: findById(id)
-RoleRepo -> PostgreSQL: findUnique với include permissions
+RS -> RR: findById(id)
+RR -> DB: findUnique với include permissions
 note right
-Detail Query Features:
+Tính Năng Truy Vấn Chi Tiết:
 • WHERE id = :roleId AND deletedAt IS NULL
 • Include permissions với WHERE deletedAt IS NULL
 • Return role với permissions array
 end note
-PostgreSQL --> RoleRepo: Role với permissions
-RoleRepo --> RoleService: Role info
+DB -> RR: Role với permissions
+RR -> RS: Role info
 
 alt Role tồn tại
-    RoleService --> RoleController: Success response
-    RoleController --> Admin: JSON role detail với permissions
+    RS -> IS: i18n.t('role.role.success.GET_DETAIL_SUCCESS')
+    IS -> RS: Trả về message đã localize
+    RS -> RC: Success response
+    RC -> Admin: JSON role detail với permissions
 else Role không tồn tại
-    RoleService --> RoleController: NotFoundRecordException
-    RoleController --> Admin: 404 Not Found
+    RS -> RC: NotFoundRecordException
+    RC -> Admin: 404 Not Found
 end
 
 == POST /roles - Tạo Vai Trò Mới ==
-Admin -> RoleController: POST /roles + {name, description, isActive}
-RoleController -> RoleService: create({data, user})
+Admin -> RC: POST /roles + {name, description, isActive}
+RC -> RS: create({data, user})
 
-RoleService -> RoleService: Validate data với Zod schema
+RS -> RS: Validate data với Zod schema
 note right
-Data Validation:
+Xác Thực Dữ Liệu:
 • name: required string (unique)
 • description: optional string
 • isActive: boolean
 • Unique constraint: name
 end note
 
-RoleService -> RoleRepo: create({createdById, data})
-RoleRepo -> PostgreSQL: INSERT role với audit fields
+RS -> RR: create({createdById, data})
+RR -> DB: INSERT role với audit fields
 note right
-Create Logic:
+Logic Tạo Mới:
 • INSERT role với createdById
 • Audit trail: createdAt, createdById
 • Validate unique constraint cho name
 end note
-PostgreSQL --> RoleRepo: Role created
-RoleRepo --> RoleService: New role
-RoleService --> RoleController: Success response
-RoleController --> Admin: 201 Created + JSON response
+DB -> RR: Role created
+RR -> RS: New role
+RS -> IS: i18n.t('role.role.success.CREATE_SUCCESS')
+IS -> RS: Trả về message đã localize
+RS -> RC: Success response
+RC -> Admin: 201 Created + JSON response
 
 == PUT /roles/:id - Cập Nhật Vai Trò ==
-Admin -> RoleController: PUT /roles/:roleId + {data, permissionIds}
-RoleController -> RoleService: update({id, data, user})
+Admin -> RC: PUT /roles/:roleId + {data, permissionIds}
+RC -> RS: update({id, data, user})
 
-RoleService -> RoleService: verifyRole(id)
+RS -> RS: verifyRole(id)
 note right
-Base Role Protection:
+Bảo Vệ Base Role:
 • Kiểm tra role có phải base role không
 • Base roles: Admin, Client, Seller
 • Không cho phép update/delete base roles
 • Throw ProhibitedActionOnBaseRoleException
 end note
 
-RoleService -> RoleRepo: findById(id)
-RoleRepo -> PostgreSQL: findUnique role
-PostgreSQL --> RoleRepo: Role data
-RoleRepo --> RoleService: Role info
+RS -> RR: findById(id)
+RR -> DB: findUnique role
+DB -> RR: Role data
+RR -> RS: Role info
 
 alt Role không phải base role
-    RoleService -> RoleRepo: update({id, updatedById, data})
+    RS -> RR: update({id, updatedById, data})
 
-    RoleRepo -> RoleRepo: Validate permissionIds
+    RR -> RR: Validate permissionIds
     note right
-    Permission Validation:
+    Xác Thực Permissions:
     • Kiểm tra tất cả permissionIds tồn tại
     • Filter permissions đã bị soft delete
     • Throw error nếu có permission đã bị xóa
     end note
 
-    RoleRepo -> PostgreSQL: findMany permissions theo IDs
-    PostgreSQL --> RoleRepo: Permissions data
-    RoleRepo -> RoleRepo: Filter deleted permissions
+    RR -> DB: findMany permissions theo IDs
+    DB -> RR: Permissions data
+    RR -> RR: Filter deleted permissions
 
     alt All permissions valid
-        RoleRepo -> PostgreSQL: UPDATE role với permissions
+        RR -> DB: UPDATE role với permissions
         note right
-        Update Logic:
+        Logic Cập Nhật:
         • UPDATE role với updatedById
         • SET permissions với permissionIds
         • Include permissions trong response
         • Audit trail: updatedAt, updatedById
         end note
-        PostgreSQL --> RoleRepo: Updated role với permissions
-        RoleRepo --> RoleService: Updated data
+        DB -> RR: Updated role với permissions
+        RR -> RS: Updated data
 
-        RoleService -> RoleService: deleteCachedRole(roleId)
-        RoleService -> Redis: del(cacheKey)
+        RS -> RS: deleteCachedRole(roleId)
+        RS -> CM: del(cacheKey)
         note right
-        Cache Management:
+        Quản Lý Cache:
         • Delete cached role data
         • Cache key: `role:${roleId}`
         • Ensure cache consistency
         end note
-        Redis --> RoleService: Cache cleared
-        RoleService --> RoleController: Success response
-        RoleController --> Admin: 200 OK + JSON response
+        CM -> RS: Cache cleared
+        RS -> IS: i18n.t('role.role.success.UPDATE_SUCCESS')
+        IS -> RS: Trả về message đã localize
+        RS -> RC: Success response
+        RC -> Admin: 200 OK + JSON response
 
     else Invalid permissions
-        RoleRepo --> RoleService: Error với deleted permission IDs
-        RoleService --> RoleController: Error response
-        RoleController --> Admin: 400 Bad Request
+        RR -> RS: Error với deleted permission IDs
+        RS -> RC: Error response
+        RC -> Admin: 400 Bad Request
     end
 
 else Role là base role
-    RoleService --> RoleController: ProhibitedActionOnBaseRoleException
-    RoleController --> Admin: 403 Forbidden
+    RS -> RC: ProhibitedActionOnBaseRoleException
+    RC -> Admin: 403 Forbidden
 end
 
 == DELETE /roles/:id - Xóa Vai Trò ==
-Admin -> RoleController: DELETE /roles/:roleId
-RoleController -> RoleService: delete({id, user})
+Admin -> RC: DELETE /roles/:roleId
+RC -> RS: delete({id, user})
 
-RoleService -> RoleService: verifyRole(id)
-RoleService -> RoleRepo: findById(id)
-RoleRepo -> PostgreSQL: findUnique role
-PostgreSQL --> RoleRepo: Role data
-RoleRepo --> RoleService: Role info
+RS -> RS: verifyRole(id)
+RS -> RR: findById(id)
+RR -> DB: findUnique role
+DB -> RR: Role data
+RR -> RS: Role info
 
 alt Role không phải base role
-    RoleService -> RoleRepo: delete({id, deletedById})
-    RoleRepo -> PostgreSQL: UPDATE deletedAt (soft delete)
+    RS -> RR: delete({id, deletedById})
+    RR -> DB: UPDATE deletedAt (soft delete)
     note right
-    Delete Logic:
+    Logic Xóa:
     • Soft delete: UPDATE deletedAt field
     • Audit trail: deletedAt, deletedById
     • Support hard delete với isHard flag
     end note
-    PostgreSQL --> RoleRepo: Role marked deleted
-    RoleRepo --> RoleService: Deleted data
+    DB -> RR: Role marked deleted
+    RR -> RS: Deleted data
 
-    RoleService -> RoleService: deleteCachedRole(roleId)
-    RoleService -> Redis: del(cacheKey)
-    Redis --> RoleService: Cache cleared
-    RoleService --> RoleController: Success response
-    RoleController --> Admin: 200 OK + message
+    RS -> RS: deleteCachedRole(roleId)
+    RS -> CM: del(cacheKey)
+    CM -> RS: Cache cleared
+    RS -> IS: i18n.t('role.role.success.DELETE_SUCCESS')
+    IS -> RS: Trả về message đã localize
+    RS -> RC: Success response
+    RC -> Admin: 200 OK + message
 
 else Role là base role
-    RoleService --> RoleController: ProhibitedActionOnBaseRoleException
-    RoleController --> Admin: 403 Forbidden
+    RS -> RC: ProhibitedActionOnBaseRoleException
+    RC -> Admin: 403 Forbidden
 end
 
 == Xử Lý Lỗi & Validation ==
 alt Lỗi unique constraint
-    RoleService --> RoleController: RoleAlreadyExistsException
-    RoleController --> Admin: 422 Unprocessable Entity
+    RS -> RC: RoleAlreadyExistsException
+    RC -> Admin: 422 Unprocessable Entity
     note right
-    Unique Constraint Error:
+    Lỗi Unique Constraint:
     • Role name đã tồn tại
     • Duplicate role name không được phép
     • Clear error message cho user
     end note
 
 else Lỗi base role protection
-    RoleService --> RoleController: ProhibitedActionOnBaseRoleException
-    RoleController --> Admin: 403 Forbidden
+    RS -> RC: ProhibitedActionOnBaseRoleException
+    RC -> Admin: 403 Forbidden
     note right
-    Base Role Protection:
+    Bảo Vệ Base Role:
     • Không cho phép update/delete Admin, Client, Seller
     • Bảo vệ system roles
     • Clear error message
     end note
 
 else Lỗi không tìm thấy
-    RoleService --> RoleController: NotFoundRecordException
-    RoleController --> Admin: 404 Not Found
+    RS -> RC: NotFoundRecordException
+    RC -> Admin: 404 Not Found
 
 else Lỗi validation dữ liệu
-    RoleService --> RoleController: ValidationException
-    RoleController --> Admin: 422 Unprocessable Entity
+    RS -> RC: ValidationException
+    RC -> Admin: 422 Unprocessable Entity
 
 else Lỗi database
-    RoleService --> RoleController: DatabaseException
-    RoleController --> Admin: 500 Internal Server Error
+    RS -> RC: DatabaseException
+    RC -> Admin: 500 Internal Server Error
 end
 
 == Cache Management ==
 alt Cache operations
-    RoleService -> Redis: del(cacheKey)
+    RS -> CM: del(cacheKey)
     note right
-    Cache Operations:
+    Thao Tác Cache:
     • Delete role cache khi role thay đổi
     • Cache key format: `role:${roleId}`
     • Ensure data consistency
     • Support cache invalidation
     end note
-    Redis --> RoleService: Cache operation result
+    CM -> RS: Cache operation result
 end
 
 == Trả Kết Quả ==
-RoleService -> RoleService: Tạo thông báo đa ngôn ngữ (I18nService)
-RoleService --> RoleController: Response + Message đã localize
-RoleController --> Admin: JSON Response với metadata đầy đủ
+RS -> IS: i18n.t('role.role.success.XXX')
+IS -> RS: Trả về message đã localize
+RS -> RC: Phản hồi + Message đã localize
+RC -> Admin: JSON Response với metadata đầy đủ
 
 note bottom
 **Đặc điểm chính của module Role:**

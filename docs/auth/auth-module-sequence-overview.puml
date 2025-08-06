@@ -1,0 +1,159 @@
+@startuml Auth Module - Sequence Overview
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Mô-đun Xác Thực - Tổng Quan Luồng Xử Lý
+
+actor "Client" as C
+participant "AuthController" as AC
+participant "AuthService" as AS
+participant "GoogleService" as GS
+participant "TokenService" as TS
+participant "EmailService" as ES
+participant "TwoFactorService" as TFS
+participant "AuthRepository" as AR
+participant "SharedUserRepository" as SUR
+participant "SharedRoleRepository" as SRR
+participant "HashingService" as HS
+participant "CookieService" as CS
+database "Database" as DB
+participant "Google OAuth" as GO
+
+== Luồng Đăng Ký ==
+C -> AC: POST /auth/register
+AC -> AS: register(body)
+AS -> AR: findUniqueVerificationCode()
+AR -> DB: SELECT verification_code
+AS -> HS: hash(password)
+AS -> SRR: getClientRoleId()
+AS -> AR: createUser()
+AR -> DB: INSERT user
+AS -> AR: deleteVerificationCode()
+AR -> DB: DELETE verification_code
+AS -> AC: return user
+AC -> C: return success
+
+== Luồng Gửi OTP ==
+C -> AC: POST /auth/otp
+AC -> AS: sendOTP(body)
+AS -> SUR: findUnique(email)
+SUR -> DB: SELECT user
+AS -> AR: createVerificationCode()
+AR -> DB: INSERT verification_code
+AS -> ES: sendOTP(email, code)
+ES -> C: Send email
+AS -> AC: return success
+AC -> C: return success
+
+== Luồng Đăng Nhập ==
+C -> AC: POST /auth/login
+AC -> AS: login(body, res)
+AS -> AR: findUniqueUserIncludeRole()
+AR -> DB: SELECT user with role
+AS -> HS: compare(password, hash)
+alt 2FA Enabled
+    AS -> TFS: verifyTOTP()
+    TFS -> AS: return isValid
+end
+AS -> AR: createDevice()
+AR -> DB: INSERT device
+AS -> TS: signAccessToken()
+AS -> TS: signRefreshToken()
+AS -> AR: createRefreshToken()
+AR -> DB: INSERT refresh_token
+AS -> CS: setAuthCookies()
+CS -> C: Set cookies
+AS -> AC: return success
+AC -> C: return success
+
+== Luồng Google OAuth ==
+C -> AC: GET /auth/google-link
+AC -> GS: getAuthorizationUrl()
+GS -> GO: Generate OAuth URL
+GS -> AC: return authUrl
+AC -> C: return authUrl
+
+C -> GO: Redirect to Google
+GO -> C: Authorization code
+C -> AC: GET /auth/google/callback
+AC -> GS: googleCallback(code, state)
+GS -> GO: Exchange code for token
+GO -> GS: Access token
+GS -> AR: findOrCreateUser()
+AR -> DB: SELECT/INSERT user
+GS -> TS: signAccessToken()
+GS -> TS: signRefreshToken()
+GS -> AC: return tokens
+AC -> C: Redirect with tokens
+
+== Luồng Refresh Token ==
+C -> AC: POST /auth/refresh-token
+AC -> AS: refreshToken(refreshToken, res)
+AS -> TS: verifyRefreshToken()
+AS -> AR: findUniqueRefreshTokenIncludeUserRole()
+AR -> DB: SELECT refresh_token with user
+AS -> AR: updateDevice()
+AR -> DB: UPDATE device
+AS -> AR: deleteRefreshToken()
+AR -> DB: DELETE refresh_token
+AS -> TS: signAccessToken()
+AS -> TS: signRefreshToken()
+AS -> CS: setAuthCookies()
+CS -> C: Set cookies
+AS -> AC: return success
+AC -> C: return success
+
+== Luồng Đăng Xuất ==
+C -> AC: POST /auth/logout
+AC -> AS: logout(refreshToken)
+AS -> TS: verifyRefreshToken()
+AS -> AR: deleteRefreshToken()
+AR -> DB: DELETE refresh_token
+AS -> AR: updateDevice(isActive: false)
+AR -> DB: UPDATE device
+AS -> AC: return success
+AC -> C: return success
+
+== Luồng Thiết Lập 2FA ==
+C -> AC: POST /auth/2fa/setup
+AC -> AS: setupTwoFactorAuth(userId)
+AS -> SUR: findUnique(userId)
+SUR -> DB: SELECT user
+AS -> TFS: generateTOTPSecret()
+TFS -> AS: return secret, uri
+AS -> SUR: update(userId, totpSecret)
+SUR -> DB: UPDATE user
+AS -> AC: return secret, uri
+AC -> C: return secret, uri
+
+== Luồng Quên Mật Khẩu ==
+C -> AC: POST /auth/forgot-password
+AC -> AS: forgotPassword(body)
+AS -> SUR: findUnique(email)
+SUR -> DB: SELECT user
+AS -> AR: findUniqueVerificationCode()
+AR -> DB: SELECT verification_code
+AS -> HS: hash(newPassword)
+AS -> SUR: update(userId, password)
+SUR -> DB: UPDATE user
+AS -> AR: deleteVerificationCode()
+AR -> DB: DELETE verification_code
+AS -> AC: return success
+AC -> C: return success
+
+note bottom
+**Đặc điểm chính của module Auth:**
+• Multi-factor authentication (2FA) với TOTP và OTP
+• Google OAuth integration
+• JWT token management (access + refresh)
+• Device tracking và session management
+• Email verification với OTP
+• Password hashing và security
+• Cookie-based authentication
+• Comprehensive error handling
+end note
+
+@enduml

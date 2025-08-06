@@ -26,248 +26,308 @@ skinparam note {
     FontColor #000000
 }
 
-title Mô-đun Search - Tổng Quan Sequence
-note top : Hệ thống tìm kiếm sản phẩm với Elasticsearch và natural language parsing
+title Mô-đun Tìm Kiếm - Tổng Quan Luồng Xử Lý
+note top : Hệ thống tìm kiếm sản phẩm với Elasticsearch và xử lý ngôn ngữ tự nhiên
 
-actor "Client" as Client
+actor "Người Dùng" as Client
 participant SearchController
 participant SearchService
 participant SearchRepo
 participant ElasticsearchService
+participant SearchSyncService
+participant SearchSyncConsumer
 database Elasticsearch
+queue "Hàng Đợi Đồng Bộ Tìm Kiếm" as SSQ
 
 == GET /search/products - Tìm Kiếm Sản Phẩm ==
 Client -> SearchController: GET /search/products?q=query&page=1&limit=20&filters=...
 note right
-Search Query Parameters:
-• q: Search query string
-• page: Pagination page number
-• limit: Results per page
-• orderBy: Sort order (asc/desc)
-• sortBy: Sort field (price, sale, createdAt)
-• filters: Brand, category, price range, attributes
+Tham Số Tìm Kiếm:
+• q: Chuỗi tìm kiếm (tùy chọn)
+• page: Số trang (mặc định: 1)
+• limit: Kết quả mỗi trang (mặc định: 20)
+• orderBy: Thứ tự sắp xếp (asc/desc, mặc định: desc)
+• sortBy: Trường sắp xếp (price, sale, createdAt, mặc định: createdAt)
+• filters: Thương hiệu, danh mục, khoảng giá, thuộc tính
 end note
 
 SearchController -> SearchService: searchProducts(query)
-SearchService -> SearchService: Validate query parameters
 note right
-Query Validation:
-• Check q is not empty after trim
-• Validate minimum query length
-• Handle empty search query
-• Validate filter parameters
+Cấu Hình Controller:
+• @SkipThrottle() - Bỏ qua giới hạn tốc độ
+• @IsPublic() - Không cần xác thực
+• @ZodSerializerDto(SearchProductsResDTO) - Chuẩn hóa phản hồi
 end note
 
-alt Query validation passed
-    SearchService -> SearchService: parseQuery(rawQuery)
-    note right
-    Natural Language Parsing:
-    • Split query into tokens
-    • Match tokens với dictionary
-    • Extract attribute filters
-    • Build structured query
-    end note
+SearchService -> SearchService: Xác thực tham số truy vấn
+note right
+Xác Thực Truy Vấn:
+• Kiểm tra q không rỗng sau khi cắt khoảng trắng
+• Xác thực độ dài tối thiểu (>= 1)
+• Xử lý truy vấn tìm kiếm rỗng
+• Xác thực tham số bộ lọc với Zod schema
+end note
 
-    SearchService -> SearchService: getDictionary()
-    note right
-    Dictionary Management:
-    • Cache dictionary for 30 minutes
-    • Load từ Elasticsearch aggregations
-    • Map attribute names và values
-    • Support synonyms matching
-    end note
-
-    alt Dictionary cache valid
-        SearchService -> SearchService: Use cached dictionary
-    else Dictionary cache expired
-        SearchService -> ElasticsearchService: Load dictionary từ ES
-        ElasticsearchService -> Elasticsearch: Search với aggregations
+alt Xác thực truy vấn thành công
+    alt Có chuỗi truy vấn
+        SearchService -> SearchService: parseQuery(rawQuery)
         note right
-        Dictionary Aggregations:
-        • Nested aggregation trên attrs
-        • Terms aggregation cho attrName
-        • Terms aggregation cho attrValue
-        • Size 100 cho mỗi level
+        Xử Lý Ngôn Ngữ Tự Nhiên:
+        • Tách chuỗi thành các từ khóa
+        • So khớp từ khóa với từ điển
+        • Trích xuất bộ lọc thuộc tính
+        • Xây dựng truy vấn có cấu trúc
         end note
-        Elasticsearch --> ElasticsearchService: Aggregations data
-        ElasticsearchService --> SearchService: Dictionary data
-        SearchService -> SearchService: Cache dictionary
-    end
 
-    SearchService -> SearchService: Parse natural language query
-    note right
-    Query Parsing Logic:
-    • Tokenize query string
-    • Match tokens với dictionary
-    • Extract attribute filters
-    • Build structured query
-    • Handle synonyms
-    end note
-
-    alt Parsed attributes found
-        SearchService -> SearchService: Add parsed attributes to filters
+        SearchService -> SearchService: getDictionary()
         note right
-        Attribute Extraction:
-        • Map natural language to structured filters
-        • Add attrName và attrValue
-        • Merge với existing filters
+        Quản Lý Từ Điển:
+        • Cache từ điển trong 30 phút
+        • Tải từ Elasticsearch aggregations
+        • Ánh xạ tên và giá trị thuộc tính
+        • Hỗ trợ từ đồng nghĩa
         end note
+
+        alt Cache từ điển còn hiệu lực
+            SearchService -> SearchService: Sử dụng cache từ điển
+        else Cache từ điển hết hạn
+            SearchService -> ElasticsearchService: Tải từ điển từ ES
+            ElasticsearchService -> Elasticsearch: Tìm kiếm với aggregations
+            note right
+            Tổng Hợp Từ Điển:
+            • Nested aggregation trên attrs
+            • Terms aggregation cho attrName
+            • Terms aggregation cho attrValue
+            • Kích thước 100 cho mỗi cấp
+            end note
+            Elasticsearch --> ElasticsearchService: Dữ liệu tổng hợp
+            ElasticsearchService --> SearchService: Dữ liệu từ điển
+            SearchService -> SearchService: Cache từ điển trong 30 phút
+        end
+
+        SearchService -> SearchService: Phân tích truy vấn ngôn ngữ tự nhiên
+        note right
+        Logic Phân Tích Truy Vấn:
+        • Tách chuỗi thành từ khóa
+        • So khớp từ khóa với từ điển
+        • Trích xuất bộ lọc thuộc tính
+        • Xây dựng truy vấn có cấu trúc
+        • Xử lý từ đồng nghĩa
+        end note
+
+        alt Tìm thấy thuộc tính đã phân tích
+            SearchService -> SearchService: Thêm thuộc tính đã phân tích vào bộ lọc
+            note right
+            Trích Xuất Thuộc Tính:
+            • Ánh xạ ngôn ngữ tự nhiên thành bộ lọc có cấu trúc
+            • Thêm attrName và attrValue
+            • Kết hợp với bộ lọc hiện có
+            end note
+        end
     end
 
     SearchService -> SearchRepo: searchProducts(processedQuery)
-    SearchRepo -> SearchRepo: Build Elasticsearch query
+    SearchRepo -> SearchRepo: Xây dựng truy vấn Elasticsearch
     note right
-    ES Query Building:
-    • Multi-match query cho text search
+    Xây Dựng Truy Vấn ES:
+    • Multi-match query cho tìm kiếm văn bản
     • Bool query với must/should/filter
-    • Fuzzy matching với fuzziness
-    • Boost fields (productName^3)
+    • Fuzzy matching với fuzziness AUTO
+    • Boost fields (productName^3, productName^2)
+    • Minimum should match 75%
+    • Phrase matching cho từng từ riêng lẻ
     end note
 
     SearchRepo -> ElasticsearchService: search(index, query, options)
-    ElasticsearchService -> Elasticsearch: Execute search query
+    ElasticsearchService -> Elasticsearch: Thực thi truy vấn tìm kiếm
     note right
-    Elasticsearch Search:
+    Tìm Kiếm Elasticsearch:
     • Multi-match với best_fields
     • Fuzzy matching với AUTO
-    • Filter clauses cho brand/category/price
-    • Nested queries cho attributes
+    • Filter clauses cho thương hiệu/danh mục/giá
+    • Nested queries cho thuộc tính
     • Sort options với score
+    • Collapse by productId
+    • Timeout: 30 giây
     end note
 
-    alt Search successful
-        Elasticsearch --> ElasticsearchService: Search results
+    alt Tìm kiếm thành công
+        Elasticsearch --> ElasticsearchService: Kết quả tìm kiếm
         ElasticsearchService --> SearchRepo: Hits và metadata
-        SearchRepo -> SearchRepo: Process search results
+        SearchRepo -> SearchRepo: Xử lý kết quả tìm kiếm
         note right
-        Result Processing:
-        • Extract _source từ hits
-        • Calculate total items
-        • Build pagination metadata
-        • Format response data
+        Xử Lý Kết Quả:
+        • Trích xuất _source từ hits
+        • Tính tổng số mục
+        • Xây dựng metadata phân trang
+        • Định dạng dữ liệu phản hồi
         end note
-        SearchRepo --> SearchService: Processed results
-        SearchService --> SearchController: Success response
-        SearchController --> Client: JSON với data + metadata
-
-    else Search failed
-        Elasticsearch --> ElasticsearchService: Error
-        ElasticsearchService --> SearchRepo: Error details
-        SearchRepo -> SearchRepo: Classify error type
+        SearchRepo --> SearchService: Kết quả đã xử lý
+        SearchService -> SearchService: Tạo thông báo thành công đa ngôn ngữ
         note right
-        Error Classification:
+        Tích Hợp I18nService:
+        • Dịch thông báo thành công
+        • Hỗ trợ nhiều ngôn ngữ
+        • Key: 'search.search.success.SEARCH_SUCCESS'
+        end note
+        SearchService --> SearchController: Phản hồi thành công với thông báo
+        SearchController --> Client: JSON với dữ liệu + metadata
+
+    else Tìm kiếm thất bại
+        Elasticsearch --> ElasticsearchService: Lỗi
+        ElasticsearchService --> SearchRepo: Chi tiết lỗi
+        SearchRepo -> SearchRepo: Phân loại loại lỗi
+        note right
+        Phân Loại Lỗi:
         • ConnectionError → ElasticsearchConnectionException
         • TimeoutError → SearchTimeoutException
-        • Other errors → ElasticsearchQueryException
+        • Lỗi khác → ElasticsearchQueryException
         end note
-        SearchRepo --> SearchService: Specific exception
-        SearchService --> SearchController: Error response
-        SearchController --> Client: 500/503 Error
+        SearchRepo --> SearchService: Exception cụ thể
+        SearchService --> SearchController: Phản hồi lỗi
+        SearchController --> Client: Lỗi 500/503
     end
 
-else Query validation failed
+else Xác thực truy vấn thất bại
     SearchService --> SearchController: ValidationException
     SearchController --> Client: 400 Bad Request
 end
 
-== Xử Lý Lỗi & Validation ==
-alt Lỗi empty query
+== Hoạt Động Đồng Bộ Nền ==
+note over SearchSyncService, SearchSyncConsumer: Xử lý job nền
+
+alt Đồng bộ sản phẩm vào Elasticsearch
+    SearchSyncService -> SearchSyncConsumer: process(syncProductJob)
+    SearchSyncConsumer -> SearchSyncService: syncProductToES(productId, action)
+    SearchSyncService -> SearchSyncService: getProductWithRelations(productId)
+    SearchSyncService -> SearchSyncService: transformProductToEsDocuments(product)
+    SearchSyncService -> ElasticsearchService: indexProduct(document)
+    ElasticsearchService -> Elasticsearch: INDEX tài liệu sản phẩm
+    Elasticsearch --> ElasticsearchService: trả về kết quả index
+    ElasticsearchService --> SearchSyncService: trả về kết quả đồng bộ
+end
+
+alt Đồng bộ hàng loạt sản phẩm
+    SearchSyncService -> SearchSyncConsumer: process(syncProductsBatchJob)
+    SearchSyncConsumer -> SearchSyncService: syncProductsBatchToES(batchData)
+    SearchSyncService -> SearchSyncService: getProductsWithRelations(productIds)
+    loop Cho mỗi sản phẩm
+        SearchSyncService -> SearchSyncService: transformProductToEsDocuments(product)
+        SearchSyncService -> ElasticsearchService: indexProduct(document)
+        ElasticsearchService -> Elasticsearch: INDEX tài liệu sản phẩm
+    end
+    ElasticsearchService --> SearchSyncService: trả về kết quả đồng bộ hàng loạt
+end
+
+alt Xóa sản phẩm khỏi Elasticsearch
+    SearchSyncService -> SearchSyncConsumer: process(deleteProductJob)
+    SearchSyncConsumer -> SearchSyncService: syncProductToES(productId, action: delete)
+    SearchSyncService -> SearchSyncService: deleteProductFromES(productId)
+    SearchSyncService -> ElasticsearchService: deleteProduct(productId)
+    ElasticsearchService -> Elasticsearch: DELETE tài liệu sản phẩm
+    Elasticsearch --> ElasticsearchService: trả về kết quả xóa
+    ElasticsearchService --> SearchSyncService: trả về kết quả xóa
+end
+
+== Xử Lý Lỗi & Xác Thực ==
+alt Lỗi truy vấn rỗng
     SearchService --> SearchController: EmptySearchQueryException
     SearchController --> Client: 400 Bad Request
     note right
-    Empty Query Error:
-    • Query string rỗng sau khi trim
-    • Clear error message
+    Lỗi Truy Vấn Rỗng:
+    • Chuỗi truy vấn rỗng sau khi cắt khoảng trắng
+    • Thông báo lỗi rõ ràng
     end note
 
-else Lỗi query quá ngắn
+else Lỗi truy vấn quá ngắn
     SearchService --> SearchController: SearchQueryTooShortException
     SearchController --> Client: 400 Bad Request
     note right
-    Short Query Error:
-    • Query length < minimum requirement
-    • Validate query length
+    Lỗi Truy Vấn Quá Ngắn:
+    • Độ dài truy vấn < yêu cầu tối thiểu (1)
+    • Xác thực độ dài truy vấn
     end note
 
-else Lỗi dictionary load
+else Lỗi tải từ điển
     SearchService --> SearchController: DictionaryLoadException
     SearchController --> Client: 500 Internal Server Error
     note right
-    Dictionary Error:
-    • Failed to load từ Elasticsearch
-    • Cache miss và load failed
+    Lỗi Từ Điển:
+    • Không thể tải từ Elasticsearch
+    • Cache miss và tải thất bại
     end note
 
-else Lỗi dictionary parse
+else Lỗi phân tích từ điển
     SearchService --> SearchController: DictionaryParseException
     SearchController --> Client: 400 Bad Request
     note right
-    Parse Error:
-    • Failed to parse natural language
-    • Dictionary parsing failed
+    Lỗi Phân Tích:
+    • Không thể phân tích ngôn ngữ tự nhiên
+    • Phân tích từ điển thất bại
     end note
 
-else Lỗi Elasticsearch connection
+else Lỗi kết nối Elasticsearch
     SearchRepo --> SearchService: ElasticsearchConnectionException
-    SearchService --> SearchController: Error response
+    SearchService --> SearchController: Phản hồi lỗi
     SearchController --> Client: 503 Service Unavailable
     note right
-    Connection Error:
+    Lỗi Kết Nối:
     • Elasticsearch không khả dụng
-    • Network connection failed
+    • Kết nối mạng thất bại
     end note
 
-else Lỗi search timeout
+else Lỗi timeout tìm kiếm
     SearchRepo --> SearchService: SearchTimeoutException
-    SearchService --> SearchController: Error response
+    SearchService --> SearchController: Phản hồi lỗi
     SearchController --> Client: 503 Service Unavailable
     note right
-    Timeout Error:
-    • Search query timeout
-    • Long-running query
+    Lỗi Timeout:
+    • Timeout truy vấn tìm kiếm
+    • Truy vấn chạy quá lâu
     end note
 
-else Lỗi search query
+else Lỗi truy vấn tìm kiếm
     SearchRepo --> SearchService: ElasticsearchQueryException
-    SearchService --> SearchController: Error response
+    SearchService --> SearchController: Phản hồi lỗi
     SearchController --> Client: 500 Internal Server Error
     note right
-    Query Error:
-    • Invalid query syntax
-    • Index not found
-    • Other ES errors
+    Lỗi Truy Vấn:
+    • Cú pháp truy vấn không hợp lệ
+    • Index không tìm thấy
+    • Lỗi ES khác
     end note
 end
 
-== Cache Management ==
-alt Dictionary cache operations
-    SearchService -> SearchService: Check cache expiry
+== Quản Lý Cache ==
+alt Hoạt động cache từ điển
+    SearchService -> SearchService: Kiểm tra thời gian hết hạn cache
     note right
-    Cache Management:
-    • Cache duration: 30 minutes
-    • Check cache expiry time
-    • Load fresh data if expired
-    • Memory cache với Map
+    Quản Lý Cache:
+    • Thời gian cache: 30 phút
+    • Kiểm tra thời gian hết hạn cache
+    • Tải dữ liệu mới nếu hết hạn
+    • Cache bộ nhớ với Map
     end note
 end
 
 == Trả Kết Quả ==
 SearchService -> SearchService: Tạo thông báo đa ngôn ngữ (I18nService)
-SearchService --> SearchController: Response + Message đã localize
+SearchService --> SearchController: Phản hồi + Thông báo đã localize
 SearchController --> Client: JSON Response với metadata đầy đủ
 
 note bottom
-**Đặc điểm chính của module Search:**
-• Elasticsearch integration với advanced queries
-• Natural language parsing với dictionary
-• Cache management cho dictionary (30 phút)
-• Multi-field search với fuzzy matching
-• Advanced filtering (brand, category, price, attributes)
-• Pagination với metadata đầy đủ
-• Comprehensive error handling
-• Public API (không cần authentication)
-• Skip throttling cho search performance
-• Multi-language support
+**Đặc điểm chính của module Tìm Kiếm:**
+• Tích hợp Elasticsearch với truy vấn nâng cao
+• Xử lý ngôn ngữ tự nhiên với cache từ điển (30 phút)
+• Tìm kiếm đa trường với fuzzy matching và phrase matching
+• Bộ lọc nâng cao (thương hiệu, danh mục, giá, thuộc tính lồng nhau)
+• Phân trang với metadata đầy đủ
+• Xử lý lỗi toàn diện với exception cụ thể
+• API công khai (không cần xác thực)
+• Bỏ qua giới hạn tốc độ cho hiệu suất tìm kiếm
+• Hỗ trợ đa ngôn ngữ với I18nService
+• Hoạt động đồng bộ nền với BullMQ
+• Trích xuất thuộc tính dựa trên từ điển
 end note
 
 @enduml

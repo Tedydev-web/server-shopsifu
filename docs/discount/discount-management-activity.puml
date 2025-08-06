@@ -1,0 +1,190 @@
+@startuml Discount Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Quản Lý Khuyến Mãi - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng yêu cầu thao tác khuyến mãi;
+
+if (Loại thao tác?) then (GET /discounts/available)
+  :Trích xuất query parameters;
+  :Lấy cartItemIds, onlyShopDiscounts, onlyPlatformDiscounts;
+  :Tính toán orderTotal từ cartItemIds;
+  :Xây dựng where clause phức tạp;
+  note right
+  Logic Xây Dựng Query:
+  • WHERE deletedAt IS NULL
+  • WHERE discountStatus = 'ACTIVE'
+  • WHERE startDate <= now <= endDate
+  • Filter theo isPlatform (shop/platform)
+  • Filter theo minOrderValue
+  • Include relations (products, categories, brands)
+  end note
+  :Thực thi findMany query;
+  :Filter available discounts;
+  note right
+  Logic Filter Phức Tạp:
+  • Kiểm tra số lần sử dụng (maxUses)
+  • Kiểm tra discountApplyType SPECIFIC
+  • Validate product/category/brand applicability
+  • Filter theo cart items
+  end note
+  :Trả về danh sách available discounts;
+
+elseif (POST /discounts/validate-code) then
+  :Trích xuất {code, cartItemIds} từ body;
+  :Tìm discount theo code;
+  if (Discount được tìm thấy?) then (có)
+    :Kiểm tra discountStatus = 'ACTIVE';
+    if (Status hợp lệ?) then (có)
+      :Kiểm tra thời gian hiệu lực;
+      if (Thời gian hợp lệ?) then (có)
+        :Kiểm tra số lần sử dụng;
+        if (Còn lượt sử dụng?) then (có)
+          :Tính toán orderTotal từ cartItemIds;
+          :Kiểm tra minOrderValue;
+          if (Đạt giá trị tối thiểu?) then (có)
+            :Kiểm tra discountApplyType SPECIFIC;
+            if (ApplyType SPECIFIC?) then (có)
+              :Lấy productIds, categoryIds, brandIds từ cart;
+              :Kiểm tra applicability;
+              if (Áp dụng được?) then (có)
+                :Tính toán discount amount;
+                note right
+                Tính Toán Khuyến Mãi:
+                • PERCENTAGE: (orderTotal * value) / 100
+                • FIX_AMOUNT: min(value, orderTotal)
+                • Apply maxDiscountValue limit
+                end note
+                :Trả về validation success với discountAmount;
+              else (không)
+                :Trả về error "Không áp dụng cho sản phẩm này";
+              endif
+            else (GENERAL)
+              :Tính toán discount amount;
+              :Trả về validation success với discountAmount;
+            endif
+          else (không)
+            :Trả về error "Chưa đạt giá trị tối thiểu";
+          endif
+        else (không)
+          :Trả về error "Đã hết lượt sử dụng";
+        endif
+      else (không)
+        :Trả về error "Không còn hiệu lực";
+      endif
+    else (không)
+      :Trả về error "Không còn hiệu lực";
+    endif
+  else (không)
+    :Trả về error "Mã voucher không tồn tại";
+  endif
+
+elseif (POST /manage-discount/discounts) then
+  :Người dùng tạo discount mới;
+  :Validate quyền tạo discount;
+  note right
+  Xác Thực Quyền:
+  • Admin: có thể tạo cho bất kỳ shop
+  • Seller: chỉ tạo cho chính mình
+  • Auto-set shopId = userId cho Seller
+  end note
+  if (Có quyền tạo?) then (có)
+    :Kiểm tra code đã tồn tại;
+    if (Code chưa tồn tại?) then (có)
+      :Validate business rules;
+      note right
+      Quy Tắc Nghiệp Vụ:
+      • startDate < endDate
+      • Code format: A-Z0-9, max 5 chars
+      • PERCENTAGE: 1-100%
+      • maxUsesPerUser <= maxUses
+      • SPECIFIC: phải chọn ít nhất 1 brand/category/product
+      end note
+      if (Business rules hợp lệ?) then (có)
+        :Tạo discount với audit fields;
+        :Connect brands/categories/products;
+        :Trả về discount đã tạo;
+      else (không)
+        :Trả về validation error;
+      endif
+    else (không)
+      :Trả về error "Code đã tồn tại";
+    endif
+  else (không)
+    :Trả về error "Không có quyền";
+  endif
+
+elseif (PUT /manage-discount/discounts/:discountId) then
+  :Người dùng cập nhật discount;
+  :Tìm discount theo ID;
+  if (Discount tồn tại?) then (có)
+    :Validate quyền truy cập discount;
+    if (Có quyền truy cập?) then (có)
+      :Validate quyền cập nhật shopId;
+      if (Có quyền cập nhật?) then (có)
+        :Validate business rules;
+        if (Business rules hợp lệ?) then (có)
+          :Cập nhật discount với audit fields;
+          :Update brands/categories/products relations;
+          :Trả về discount đã cập nhật;
+        else (không)
+          :Trả về validation error;
+        endif
+      else (không)
+        :Trả về error "Không có quyền cập nhật shopId";
+      endif
+    else (không)
+      :Trả về error "Không có quyền truy cập";
+    endif
+  else (không)
+    :Trả về error "Discount không tồn tại";
+  endif
+
+elseif (DELETE /manage-discount/discounts/:discountId) then
+  :Người dùng xóa discount;
+  :Tìm discount theo ID;
+  if (Discount tồn tại?) then (có)
+    :Validate quyền truy cập discount;
+    if (Có quyền truy cập?) then (có)
+      :Thực thi soft delete;
+      :Cập nhật deletedAt field;
+      :Cập nhật deletedById;
+      :Trả về success response;
+    else (không)
+      :Trả về error "Không có quyền truy cập";
+    endif
+  else (không)
+    :Trả về error "Discount không tồn tại";
+  endif
+
+elseif (GET /manage-discount/discounts) then
+  :Người dùng xem danh sách discounts;
+  :Validate quyền truy cập;
+  if (Có quyền truy cập?) then (có)
+    :Xây dựng where clause với filters;
+    :Thực thi query với pagination;
+    :Tính toán metadata;
+    :Trả về danh sách với pagination;
+  else (không)
+    :Trả về error "Không có quyền truy cập";
+  endif
+
+else (Thao tác không hợp lệ)
+  :Ném InvalidOperationException;
+endif
+
+:Tạo thông báo thành công đa ngôn ngữ;
+:Trả về JSON response với metadata;
+
+stop
+
+@enduml

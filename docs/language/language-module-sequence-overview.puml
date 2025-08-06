@@ -26,31 +26,32 @@ skinparam note {
     FontColor #000000
 }
 
-title Mô-đun Language - Tổng Quan Sequence
+title Mô-đun Ngôn Ngữ - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý ngôn ngữ với CRUD operations và audit trail
 
 actor "Client" as Client
 actor "Admin" as Admin
-participant LanguageController
-participant LanguageService
-participant LanguageRepo
-database PostgreSQL
+participant "LanguageController" as LC
+participant "LanguageService" as LS
+participant "LanguageRepo" as LR
+participant "I18nService" as IS
+database "PostgreSQL" as DB
 
 == GET /languages - Lấy Danh Sách Ngôn Ngữ ==
-Client -> LanguageController: GET /languages
-LanguageController -> LanguageService: findAll()
+Client -> LC: GET /languages
+LC -> LS: findAll()
 
-LanguageService -> LanguageService: Process request
+LS -> LS: Xử lý yêu cầu
 note right
-Language List Logic:
+Logic Lấy Danh Sách:
 • Lấy tất cả languages chưa bị xóa
 • Không cần authentication
 • Trả về danh sách đầy đủ
 • Tính toán totalItems
 end note
 
-LanguageService -> LanguageRepo: findAll()
-LanguageRepo -> PostgreSQL: SELECT * FROM language WHERE deletedAt IS NULL
+LS -> LR: findAll()
+LR -> DB: SELECT * FROM language WHERE deletedAt IS NULL
 note right
 Database Query:
 • Filter deletedAt IS NULL
@@ -58,36 +59,38 @@ Database Query:
 • Trả về tất cả active languages
 • Include audit fields
 end note
-PostgreSQL --> LanguageRepo: Language records
-LanguageRepo --> LanguageService: Languages data
+DB -> LR: Language records
+LR -> LS: Languages data
 
-LanguageService -> LanguageService: Format response
+LS -> LS: Định dạng phản hồi
 note right
-Response Formatting:
+Định Dạng Phản Hồi:
 • Tạo message đa ngôn ngữ
 • Tính totalItems từ array length
 • Wrap data trong response object
 • Include i18n message
 end note
 
-LanguageService --> LanguageController: Response với data và totalItems
-LanguageController --> Client: JSON với danh sách languages
+LS -> IS: i18n.t('language.language.success.GET_SUCCESS')
+IS -> LS: Trả về message đã localize
+LS -> LC: Phản hồi với data và totalItems
+LC -> Client: JSON với danh sách languages
 
 == GET /languages/:languageId - Lấy Chi Tiết Ngôn Ngữ ==
-Client -> LanguageController: GET /languages/:languageId
-LanguageController -> LanguageService: findById(languageId)
+Client -> LC: GET /languages/:languageId
+LC -> LS: findById(languageId)
 
-LanguageService -> LanguageService: Validate languageId
+LS -> LS: Validate languageId
 note right
-Language ID Validation:
+Xác Thực Language ID:
 • Validate string format
 • Max length 10 characters
 • Zod schema validation
 • Parameter sanitization
 end note
 
-LanguageService -> LanguageRepo: findById(languageId)
-LanguageRepo -> PostgreSQL: SELECT * FROM language WHERE id = ? AND deletedAt IS NULL
+LS -> LR: findById(languageId)
+LR -> DB: SELECT * FROM language WHERE id = ? AND deletedAt IS NULL
 note right
 Database Query:
 • Find unique language by ID
@@ -95,30 +98,32 @@ Database Query:
 • Return single language record
 • Include all audit fields
 end note
-PostgreSQL --> LanguageRepo: Language record hoặc null
+DB -> LR: Language record hoặc null
 
 alt Language found
-    LanguageRepo --> LanguageService: Language data
-    LanguageService -> LanguageService: Format response
+    LR -> LS: Language data
+    LS -> LS: Định dạng phản hồi
     note right
     Success Response:
     • Tạo message đa ngôn ngữ
     • Wrap data trong response object
     • Include language details
     end note
-    LanguageService --> LanguageController: Success response
-    LanguageController --> Client: 200 OK + language details
+    LS -> IS: i18n.t('language.language.success.GET_DETAIL_SUCCESS')
+    IS -> LS: Trả về message đã localize
+    LS -> LC: Success response
+    LC -> Client: 200 OK + language details
 
 else Language not found
-    LanguageRepo --> LanguageService: null
-    LanguageService -> LanguageService: Throw NotFoundRecordException
-    LanguageService --> LanguageController: NotFoundRecordException
-    LanguageController --> Client: 404 Not Found
+    LR -> LS: null
+    LS -> LS: Ném NotFoundRecordException
+    LS -> LC: NotFoundRecordException
+    LC -> Client: 404 Not Found
 end
 
 == POST /languages - Tạo Ngôn Ngữ Mới ==
-Admin -> LanguageController: POST /languages + {id, name}
-LanguageController -> LanguageController: Extract user context
+Admin -> LC: POST /languages + {id, name}
+LC -> LC: Trích xuất user context
 note right
 User Context:
 • @ActiveUser() decorator
@@ -127,11 +132,11 @@ User Context:
 • Ensure admin privileges
 end note
 
-LanguageController -> LanguageService: create({data, createdById})
+LC -> LS: create({data, createdById})
 
-LanguageService -> LanguageService: Validate request body
+LS -> LS: Validate request body
 note right
-Create Validation:
+Xác Thực Tạo Mới:
 • id: required string, max 10 chars
 • name: required string, max 500 chars
 • Zod schema validation
@@ -139,8 +144,8 @@ Create Validation:
 end note
 
 alt Validation passed
-    LanguageService -> LanguageRepo: create({createdById, data})
-    LanguageRepo -> PostgreSQL: INSERT INTO language (id, name, createdById, createdAt, updatedAt)
+    LS -> LR: create({createdById, data})
+    LR -> DB: INSERT INTO language (id, name, createdById, createdAt, updatedAt)
     note right
     Database Insert:
     • Insert new language record
@@ -150,39 +155,41 @@ alt Validation passed
     end note
 
     alt Insert successful
-        PostgreSQL --> LanguageRepo: New language record
-        LanguageRepo --> LanguageService: Created language
-        LanguageService -> LanguageService: Format success response
-        LanguageService --> LanguageController: Success response
-        LanguageController --> Admin: 201 Created + language details
+        DB -> LR: New language record
+        LR -> LS: Created language
+        LS -> LS: Định dạng success response
+        LS -> IS: i18n.t('language.language.success.CREATE_SUCCESS')
+        IS -> LS: Trả về message đã localize
+        LS -> LC: Success response
+        LC -> Admin: 201 Created + language details
 
     else Unique constraint violation
-        PostgreSQL --> LanguageRepo: UniqueConstraintError
-        LanguageRepo --> LanguageService: Prisma error
-        LanguageService -> LanguageService: Handle unique constraint
+        DB -> LR: UniqueConstraintError
+        LR -> LS: Prisma error
+        LS -> LS: Xử lý unique constraint
         note right
         Error Handling:
         • Check isUniqueConstraintPrismaError
         • Throw LanguageAlreadyExistsException
         • Return proper error message
         end note
-        LanguageService --> LanguageController: LanguageAlreadyExistsException
-        LanguageController --> Admin: 422 Unprocessable Entity
+        LS -> LC: LanguageAlreadyExistsException
+        LC -> Admin: 422 Unprocessable Entity
     end
 
 else Validation failed
-    LanguageService --> LanguageController: ValidationException
-    LanguageController --> Admin: 400 Bad Request
+    LS -> LC: ValidationException
+    LC -> Admin: 400 Bad Request
 end
 
 == PUT /languages/:languageId - Cập Nhật Ngôn Ngữ ==
-Admin -> LanguageController: PUT /languages/:languageId + {name}
-LanguageController -> LanguageController: Extract user context
-LanguageController -> LanguageService: update({id, data, updatedById})
+Admin -> LC: PUT /languages/:languageId + {name}
+LC -> LC: Trích xuất user context
+LC -> LS: update({id, data, updatedById})
 
-LanguageService -> LanguageService: Validate request
+LS -> LS: Validate request
 note right
-Update Validation:
+Xác Thực Cập Nhật:
 • languageId: required string, max 10 chars
 • name: required string, max 500 chars
 • Zod schema validation
@@ -190,8 +197,8 @@ Update Validation:
 end note
 
 alt Validation passed
-    LanguageService -> LanguageRepo: update({id, updatedById, data})
-    LanguageRepo -> PostgreSQL: UPDATE language SET name = ?, updatedById = ?, updatedAt = ? WHERE id = ? AND deletedAt IS NULL
+    LS -> LR: update({id, updatedById, data})
+    LR -> DB: UPDATE language SET name = ?, updatedById = ?, updatedAt = ? WHERE id = ? AND deletedAt IS NULL
     note right
     Database Update:
     • Update language name
@@ -201,37 +208,39 @@ alt Validation passed
     end note
 
     alt Update successful
-        PostgreSQL --> LanguageRepo: Updated language record
-        LanguageRepo --> LanguageService: Updated language
-        LanguageService -> LanguageService: Format success response
-        LanguageService --> LanguageController: Success response
-        LanguageController --> Admin: 200 OK + updated language
+        DB -> LR: Updated language record
+        LR -> LS: Updated language
+        LS -> LS: Định dạng success response
+        LS -> IS: i18n.t('language.language.success.UPDATE_SUCCESS')
+        IS -> LS: Trả về message đã localize
+        LS -> LC: Success response
+        LC -> Admin: 200 OK + updated language
 
     else Language not found
-        PostgreSQL --> LanguageRepo: NotFoundError
-        LanguageRepo --> LanguageService: Prisma error
-        LanguageService -> LanguageService: Handle not found
+        DB -> LR: NotFoundError
+        LR -> LS: Prisma error
+        LS -> LS: Xử lý not found
         note right
         Error Handling:
         • Check isNotFoundPrismaError
         • Throw NotFoundRecordException
         • Return proper error message
         end note
-        LanguageService --> LanguageController: NotFoundRecordException
-        LanguageController --> Admin: 404 Not Found
+        LS -> LC: NotFoundRecordException
+        LC -> Admin: 404 Not Found
     end
 
 else Validation failed
-    LanguageService --> LanguageController: ValidationException
-    LanguageController --> Admin: 400 Bad Request
+    LS -> LC: ValidationException
+    LC -> Admin: 400 Bad Request
 end
 
 == DELETE /languages/:languageId - Xóa Ngôn Ngữ ==
-Admin -> LanguageController: DELETE /languages/:languageId
-LanguageController -> LanguageService: delete(languageId)
+Admin -> LC: DELETE /languages/:languageId
+LC -> LS: delete(languageId)
 
-LanguageService -> LanguageService: Validate languageId
-LanguageService -> LanguageRepo: delete(languageId, true)
+LS -> LS: Validate languageId
+LS -> LR: delete(languageId, true)
 note right
 Hard Delete Logic:
 • Sử dụng hard delete (isHard = true)
@@ -240,7 +249,7 @@ Hard Delete Logic:
 • Immediate removal
 end note
 
-LanguageRepo -> PostgreSQL: DELETE FROM language WHERE id = ?
+LR -> DB: DELETE FROM language WHERE id = ?
 note right
 Database Delete:
 • Hard delete operation
@@ -250,24 +259,26 @@ Database Delete:
 end note
 
 alt Delete successful
-    PostgreSQL --> LanguageRepo: Deleted record
-    LanguageRepo --> LanguageService: Delete confirmation
-    LanguageService -> LanguageService: Format success response
-    LanguageService --> LanguageController: Success response
-    LanguageController --> Admin: 200 OK + success message
+    DB -> LR: Deleted record
+    LR -> LS: Delete confirmation
+    LS -> LS: Định dạng success response
+    LS -> IS: i18n.t('language.language.success.DELETE_SUCCESS')
+    IS -> LS: Trả về message đã localize
+    LS -> LC: Success response
+    LC -> Admin: 200 OK + success message
 
 else Language not found
-    PostgreSQL --> LanguageRepo: NotFoundError
-    LanguageRepo --> LanguageService: Prisma error
-    LanguageService -> LanguageService: Handle not found
-    LanguageService --> LanguageController: NotFoundRecordException
-    LanguageController --> Admin: 404 Not Found
+    DB -> LR: NotFoundError
+    LR -> LS: Prisma error
+    LS -> LS: Xử lý not found
+    LS -> LC: NotFoundRecordException
+    LC -> Admin: 404 Not Found
 end
 
 == Xử Lý Lỗi & Validation ==
 alt Lỗi validation input
-    LanguageService --> LanguageController: ValidationException
-    LanguageController --> Client: 400 Bad Request
+    LS -> LC: ValidationException
+    LC -> Client: 400 Bad Request
     note right
     Validation Errors:
     • Invalid language ID format
@@ -277,8 +288,8 @@ alt Lỗi validation input
     end note
 
 else Lỗi unique constraint
-    LanguageService --> LanguageController: LanguageAlreadyExistsException
-    LanguageController --> Client: 422 Unprocessable Entity
+    LS -> LC: LanguageAlreadyExistsException
+    LC -> Client: 422 Unprocessable Entity
     note right
     Unique Constraint Errors:
     • Language ID đã tồn tại
@@ -287,8 +298,8 @@ else Lỗi unique constraint
     end note
 
 else Lỗi không tìm thấy
-    LanguageService --> LanguageController: NotFoundRecordException
-    LanguageController --> Client: 404 Not Found
+    LS -> LC: NotFoundRecordException
+    LC -> Client: 404 Not Found
     note right
     Not Found Errors:
     • Language ID không tồn tại
@@ -297,8 +308,8 @@ else Lỗi không tìm thấy
     end note
 
 else Lỗi database
-    LanguageService --> LanguageController: DatabaseException
-    LanguageController --> Client: 500 Internal Server Error
+    LS -> LC: DatabaseException
+    LC -> Client: 500 Internal Server Error
     note right
     Database Errors:
     • Connection issues
@@ -309,9 +320,10 @@ else Lỗi database
 end
 
 == Trả Kết Quả ==
-LanguageService -> LanguageService: Tạo thông báo đa ngôn ngữ (I18nService)
-LanguageService --> LanguageController: Response + Message đã localize
-LanguageController --> Client: JSON Response với metadata đầy đủ
+LS -> IS: i18n.t('language.language.success.XXX')
+IS -> LS: Trả về message đã localize
+LS -> LC: Phản hồi + Message đã localize
+LC -> Client: JSON Response với metadata đầy đủ
 
 note bottom
 **Đặc điểm chính của module Language:**

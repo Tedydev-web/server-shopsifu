@@ -1,0 +1,192 @@
+@startuml Search Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Tìm Kiếm Sản Phẩm - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng truy cập hệ thống;
+
+:GET /search/products với tham số truy vấn;
+note right
+Cấu Hình Endpoint:
+• @SkipThrottle() - Bỏ qua giới hạn tốc độ
+• @IsPublic() - Không cần xác thực
+• @ZodSerializerDto(SearchProductsResDTO) - Chuẩn hóa phản hồi
+end note
+
+:Trích xuất {q, page, limit, orderBy, sortBy, filters} từ truy vấn;
+:Xác thực tham số truy vấn với Zod schema;
+note right
+Xác Thực Truy Vấn (Zod Schema):
+• q: xác thực chuỗi (tùy chọn)
+• page: number.int().positive().default(1)
+• limit: number.int().positive().default(20)
+• orderBy: OrderBy enum (asc/desc)
+• sortBy: SortBy enum (price, sale, createdAt)
+• filters: brandIds, categoryIds, minPrice, maxPrice, attrs
+• Tiền xử lý trường mảng (brandIds, categoryIds)
+end note
+
+if (Xác thực thành công?) then (có)
+  if (Có chuỗi truy vấn?) then (có)
+    :Xác thực chuỗi truy vấn;
+    :Cắt khoảng trắng chuỗi truy vấn;
+    if (Chuỗi truy vấn rỗng sau khi cắt?) then (có)
+      :Ném EmptySearchQueryException;
+      :Trả về 400 Bad Request;
+    else (không)
+      if (Độ dài truy vấn < 1?) then (có)
+        :Ném SearchQueryTooShortException;
+        :Trả về 400 Bad Request;
+      else (không)
+        :Bắt đầu phân tích ngôn ngữ tự nhiên;
+        note right
+          Phân Tích Ngôn Ngữ Tự Nhiên:
+          • Tách truy vấn thành các từ khóa
+          • So khớp từ khóa với từ điển
+          • Trích xuất bộ lọc thuộc tính
+          • Xây dựng truy vấn có cấu trúc
+          end note
+        :Lấy từ điển từ cache hoặc Elasticsearch;
+        if (Cache từ điển còn hiệu lực?) then (có)
+          :Sử dụng cache từ điển;
+        else (không)
+          :Tải từ điển từ Elasticsearch aggregations;
+          note right
+            Tổng Hợp Từ Điển:
+            • Nested aggregation trên attrs
+            • Terms aggregation cho attrName
+            • Terms aggregation cho attrValue
+            • Kích thước 100 cho mỗi cấp
+            • Thời gian cache: 30 phút
+            end note
+          :Cache từ điển trong 30 phút;
+        endif
+        :Phân tích truy vấn ngôn ngữ tự nhiên;
+        :Tách chuỗi thành từ khóa;
+        :So khớp từ khóa với từ điển;
+        :Trích xuất bộ lọc thuộc tính;
+        :Xây dựng truy vấn có cấu trúc;
+        if (Tìm thấy thuộc tính đã phân tích?) then (có)
+          :Thêm thuộc tính đã phân tích vào bộ lọc;
+          note right
+            Trích Xuất Thuộc Tính:
+            • Ánh xạ ngôn ngữ tự nhiên thành bộ lọc có cấu trúc
+            • Thêm attrName và attrValue
+            • Kết hợp với bộ lọc hiện có
+            end note
+        endif
+      endif
+    endif
+  endif
+
+  :Bắt đầu tìm kiếm Elasticsearch;
+  :Xây dựng truy vấn Elasticsearch phức tạp;
+  note right
+    Xây Dựng Truy Vấn ES:
+    • Multi-match query cho tìm kiếm văn bản
+    • Bool query với must/should/filter
+    • Fuzzy matching với fuzziness AUTO
+    • Boost fields (productName^3, productName^2)
+    • Minimum should match 75%
+    • Phrase matching cho từng từ riêng lẻ
+    end note
+
+  if (Có tìm kiếm văn bản?) then (có)
+    :Xây dựng multi-match query;
+    :Thêm fuzzy matching với fuzziness AUTO;
+    :Thêm phrase matching cho từng từ riêng lẻ;
+    :Áp dụng boost trường (productName^3, productName^2);
+  endif
+
+  if (Có bộ lọc?) then (có)
+    :Xây dựng mệnh đề filter;
+    if (Bộ lọc thương hiệu?) then (có)
+      :Thêm terms filter cho brandIds;
+    endif
+    if (Bộ lọc danh mục?) then (có)
+      :Thêm terms filter cho categoryIds;
+    endif
+    if (Khoảng giá?) then (có)
+      :Thêm range filter cho skuPrice;
+    endif
+    if (Bộ lọc thuộc tính?) then (có)
+      :Thêm nested queries cho thuộc tính;
+      note right
+        Nested Attribute Queries:
+        • Nested path: 'attrs'
+        • Term queries cho attrName và attrValue
+        • Bool query với must clauses
+        end note
+    endif
+  endif
+
+  :Xây dựng tùy chọn sắp xếp;
+  if (SortBy.Price?) then (có)
+    :Sắp xếp theo skuPrice với orderBy;
+  elseif (SortBy.Sale?) then (có)
+    :Sắp xếp theo _score desc;
+  else
+    :Sắp xếp theo createdAt với orderBy;
+  endif
+  :Thêm _score sort làm thứ cấp;
+
+  :Thực thi tìm kiếm Elasticsearch;
+  :Tính toán phân trang (from, size);
+  :Gửi yêu cầu tìm kiếm đến Elasticsearch;
+  note right
+    Tìm Kiếm Elasticsearch:
+    • Multi-match với best_fields
+    • Fuzzy matching với AUTO
+    • Filter clauses cho thương hiệu/danh mục/giá
+    • Nested queries cho thuộc tính
+    • Sort options với score
+    • Collapse by productId
+    • Timeout: 30 giây
+    end note
+
+  if (Tìm kiếm thành công?) then (có)
+    :Xử lý kết quả tìm kiếm;
+    :Trích xuất _source từ hits;
+    :Tính tổng số mục;
+    :Xây dựng metadata phân trang;
+    :Định dạng dữ liệu phản hồi;
+    :Tạo thông báo thành công đa ngôn ngữ với I18nService;
+    note right
+      Tích Hợp I18nService:
+      • Dịch thông báo thành công
+      • Hỗ trợ nhiều ngôn ngữ
+      • Key: 'search.search.success.SEARCH_SUCCESS'
+      end note
+    :Trả về kết quả tìm kiếm với metadata;
+  else (không)
+    :Phân loại loại lỗi;
+    if (Lỗi kết nối?) then (có)
+      :Ném ElasticsearchConnectionException;
+      :Trả về 503 Service Unavailable;
+    elseif (Lỗi timeout?) then (có)
+      :Ném SearchTimeoutException;
+      :Trả về 503 Service Unavailable;
+    else
+      :Ném ElasticsearchQueryException;
+      :Trả về 500 Internal Server Error;
+    endif
+  endif
+
+else (không)
+  :Trả về lỗi xác thực;
+endif
+
+:Hoàn thành hoạt động;
+
+stop
+
+@enduml

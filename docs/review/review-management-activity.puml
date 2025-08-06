@@ -1,0 +1,162 @@
+@startuml Review Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Quản Lý Đánh Giá Sản Phẩm - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng truy cập hệ thống;
+
+if (Hoạt động?) then (Xem danh sách đánh giá - Công khai)
+  :GET /reviews/products/:productId với phân trang;
+  :Trích xuất {productId} từ params;
+  :Trích xuất {page, limit} từ query;
+  :Xác thực tham số với Zod schema;
+  if (Xác thực thành công?) then (có)
+    :Tính toán metadata phân trang;
+    :Thực thi truy vấn database song song;
+    note right
+    Hoạt Động Database:
+    • count() với WHERE productId
+    • findMany() với include và phân trang
+    • Thực thi song song cho hiệu suất
+    end note
+    :Bao gồm thông tin người dùng (id, name, avatar);
+    :Bao gồm media (url, type);
+    :Áp dụng sắp xếp (ORDER BY createdAt DESC);
+    :Tính toán metadata (totalItems, totalPages, hasNext, hasPrev);
+    :Tạo thông báo thành công đa ngôn ngữ;
+    :Trả về đánh giá với metadata;
+  else (không)
+    :Trả về lỗi xác thực;
+  endif
+
+elseif (Tạo đánh giá mới)
+  :POST /reviews + {content, rating, productId, orderId, medias};
+  :Xác thực người dùng với @ActiveUser();
+  :Trích xuất người dùng từ JWT token;
+  :Xác thực request body với Zod schema;
+  note right
+    Xác Thực Dữ Liệu:
+    • content: xác thực chuỗi
+    • rating: number.int().min(0).max(5)
+    • productId: xác thực chuỗi
+    • orderId: xác thực chuỗi
+    • medias: xác thực mảng với url và type
+    end note
+  if (Xác thực thành công?) then (có)
+    :Bắt đầu xác thực đơn hàng;
+    :Truy vấn đơn hàng từ database;
+    note right
+    Logic Xác Thực Đơn Hàng:
+    • Kiểm tra đơn hàng tồn tại và thuộc về người dùng
+    • Xác thực order.status = DELIVERED
+    • Chỉ đơn hàng đã giao mới được đánh giá
+    end note
+    if (Xác thực đơn hàng thành công?) then (có)
+      :Bắt đầu giao dịch database;
+      :Tạo đánh giá với các trường audit;
+      note right
+        Giao Dịch Tạo Đánh Giá:
+        • CREATE review với content, rating, productId, orderId, userId
+        • Bao gồm thông tin người dùng (id, name, avatar)
+        • Hoạt động nguyên tử đảm bảo tính nhất quán
+        end note
+      :Thực thi tạo đánh giá;
+      if (Unique constraint hợp lệ?) then (có)
+        :Tạo reviewMedia cho từng media;
+        note right
+          Quản Lý Media:
+          • Tạo nhiều reviewMedia cùng lúc
+          • Liên kết với reviewId
+          • Hỗ trợ nhiều loại media
+          • Trả về media đã tạo
+          end note
+        :Thực thi tạo media;
+        :Commit giao dịch;
+        :Tạo thông báo thành công đa ngôn ngữ;
+        :Trả về đánh giá với người dùng và media;
+      else (không)
+        :Rollback giao dịch;
+        :Ném ConflictException;
+        :Trả về 409 Conflict;
+        note right
+          Lỗi Trùng Lặp:
+          • "Bạn đã đánh giá sản phẩm này rồi"
+          • Unique constraint: userId + productId
+          end note
+      endif
+    else (không)
+      :Ném BadRequestException;
+      :Trả về 400 Bad Request;
+      note right
+        Lỗi Đơn Hàng:
+        • "Đơn hàng không tồn tại hoặc không thuộc về bạn"
+        • "Đơn hàng chưa được giao"
+        end note
+    endif
+  else (không)
+    :Trả về lỗi xác thực;
+  endif
+
+elseif (Cập nhật đánh giá)
+  :PUT /reviews/:reviewId + {data};
+  :Xác thực người dùng với @ActiveUser();
+  :Trích xuất người dùng từ JWT token;
+  :Trích xuất reviewId từ params;
+  :Xác thực request body với Zod schema;
+  if (Xác thực thành công?) then (có)
+    :Bắt đầu xác thực song song;
+    note right
+      Xác Thực Cập Nhật:
+      • validateOrder: Kiểm tra đơn hàng vẫn hợp lệ
+      • validateUpdateReview: Kiểm tra đánh giá thuộc về người dùng
+      • Kiểm tra updateCount < 1 (chỉ được sửa 1 lần)
+      end note
+    :Thực thi Promise.all cho xác thực;
+    :Truy vấn đơn hàng và đánh giá từ database;
+    if (Xác thực thành công?) then (có)
+      :Bắt đầu giao dịch database;
+      :Cập nhật đánh giá với increment updateCount;
+      note right
+        Giao Dịch Cập Nhật Đánh Giá:
+        • UPDATE review với content, rating, productId, orderId, userId
+        • Increment updateCount
+        • Bao gồm thông tin người dùng (id, name, avatar)
+        • Hoạt động nguyên tử
+        end note
+      :Thực thi cập nhật đánh giá;
+      :Xóa tất cả reviewMedia cũ;
+      :Tạo reviewMedia mới;
+      :Commit giao dịch;
+      :Tạo thông báo thành công đa ngôn ngữ;
+      :Trả về đánh giá đã cập nhật với người dùng và media;
+    else (không)
+      :Ném BadRequestException/NotFoundException;
+      :Trả về 400/404 Error;
+      note right
+        Lỗi Đánh Giá:
+        • "Đánh giá không tồn tại hoặc không thuộc về bạn"
+        • "Bạn chỉ được phép sửa đánh giá 1 lần"
+        end note
+    endif
+  else (không)
+    :Trả về lỗi xác thực;
+  endif
+
+else (Hoạt động không hợp lệ)
+  :Trả về 400 Bad Request;
+endif
+
+:Hoàn thành hoạt động;
+
+stop
+
+@enduml

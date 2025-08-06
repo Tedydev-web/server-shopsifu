@@ -1,0 +1,178 @@
+@startuml Role Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Quản Lý Vai Trò - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng truy cập hệ thống;
+
+if (Hoạt động?) then (Lấy danh sách vai trò)
+  :GET /roles với pagination;
+  :Trích xuất {page, limit, name} từ query;
+  :Validate query parameters với Zod schema;
+  if (Validation passed?) then (có)
+    :Tính toán pagination metadata;
+    :Thực thi parallel database queries;
+    note right
+      Database Operations:
+      • count() với WHERE deletedAt IS NULL
+      • findMany() với pagination và name filter
+      • Parallel execution cho performance
+      end note
+    :Xây dựng WHERE clause với filters;
+    if (Name filter provided?) then (có)
+      :Thêm name filter với contains và insensitive;
+    endif
+    :Tính toán metadata (totalItems, totalPages, hasNext, hasPrev);
+    :Tạo localized success message;
+    :Trả về roles với metadata;
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Xem chi tiết vai trò)
+  :GET /roles/:roleId;
+  :Trích xuất roleId từ params;
+  :Validate roleId với Zod schema;
+  if (Validation passed?) then (có)
+    :Query role với permissions;
+    :findUnique với include permissions;
+    :Include permissions với WHERE deletedAt IS NULL;
+    if (Role tồn tại?) then (có)
+      :Tạo localized success message;
+      :Trả về role detail với permissions;
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Tạo vai trò mới)
+  :POST /roles + role data;
+  :Authenticate user với @ActiveUser();
+  :Validate request body với Zod schema;
+  note right
+    Data Validation:
+    • name: required string (unique)
+    • description: optional string
+    • isActive: boolean
+    • Unique constraint: name
+    end note
+  if (Validation passed?) then (có)
+    :Tạo role với audit fields (createdById);
+    :Thực thi database INSERT;
+    if (Unique constraint valid?) then (có)
+      :Tạo localized success message;
+      :Trả về role đã tạo;
+    else (không)
+      :Ném RoleAlreadyExistsException;
+      :Trả về 422 Unprocessable Entity;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Cập nhật vai trò)
+  :PUT /roles/:roleId + role data;
+  :Authenticate user với @ActiveUser();
+  :Validate request body với Zod schema;
+  if (Validation passed?) then (có)
+    :Bắt đầu base role verification;
+    :Query role từ database;
+    note right
+      Base Role Protection:
+      • Kiểm tra role có phải base role không
+      • Base roles: Admin, Client, Seller
+      • Không cho phép update/delete base roles
+      end note
+    if (Role tồn tại?) then (có)
+      :Kiểm tra role name trong base roles;
+      if (Role là base role?) then (có)
+        :Ném ProhibitedActionOnBaseRoleException;
+        :Trả về 403 Forbidden;
+      else (không)
+        :Bắt đầu permission validation;
+        :Trích xuất permissionIds từ data;
+        if (PermissionIds provided?) then (có)
+          :Query permissions từ database;
+          :findMany permissions theo IDs;
+          :Filter deleted permissions;
+          if (All permissions valid?) then (có)
+            :Cập nhật role với audit fields (updatedById);
+            :Set permissions với permissionIds;
+            :Thực thi database UPDATE;
+            :Include permissions trong response;
+            :Xóa cached role data;
+            note right
+              Cache Management:
+              • Delete cached role data
+              • Cache key: `role:${roleId}`
+              • Ensure cache consistency
+              end note
+            :Tạo localized success message;
+            :Trả về updated role với permissions;
+          else (không)
+            :Ném error với deleted permission IDs;
+            :Trả về 400 Bad Request;
+          endif
+        else (không)
+          :Cập nhật role với audit fields (updatedById);
+          :Thực thi database UPDATE;
+          :Xóa cached role data;
+          :Tạo localized success message;
+          :Trả về updated role;
+        endif
+      endif
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Xóa vai trò)
+  :DELETE /roles/:roleId;
+  :Authenticate user với @ActiveUser();
+  if (Validation passed?) then (có)
+    :Bắt đầu base role verification;
+    :Query role từ database;
+    if (Role tồn tại?) then (có)
+      :Kiểm tra role name trong base roles;
+      if (Role là base role?) then (có)
+        :Ném ProhibitedActionOnBaseRoleException;
+        :Trả về 403 Forbidden;
+      else (không)
+        :Thực thi soft delete operation;
+        :Cập nhật role với deletedAt và deletedById;
+        :Xóa cached role data;
+        :Tạo localized success message;
+        :Trả về success response;
+      endif
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+else (Invalid operation)
+  :Trả về 400 Bad Request;
+endif
+
+:Hoàn thành thao tác;
+
+stop
+
+@enduml

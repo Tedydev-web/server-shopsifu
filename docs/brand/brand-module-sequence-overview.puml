@@ -26,25 +26,28 @@ skinparam note {
     FontColor #000000
 }
 
-title Mô-đun Brand - Tổng Quan Sequence
+title Mô-đun Thương Hiệu - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý thương hiệu với đa ngôn ngữ và phân quyền
 
 actor "Khách hàng" as Client
 actor "Người dùng" as User
-participant BrandController
-participant BrandTranslationController
-participant BrandService
-participant BrandTranslationService
-participant BrandRepo
-participant BrandTranslationRepo
-database PostgreSQL
+participant "BrandController" as BC
+participant "BrandTranslationController" as BTC
+participant "BrandService" as BS
+participant "BrandTranslationService" as BTS
+participant "BrandRepo" as BR
+participant "BrandTranslationRepo" as BTR
+participant "I18nService" as IS
+participant "I18nContext" as IC
+database "PostgreSQL" as DB
 
 == API Công Khai (Public Brands) ==
-Client -> BrandController: GET /brands (danh sách thương hiệu)
-BrandController -> BrandService: list() với pagination
+Client -> BC: GET /brands (danh sách thương hiệu)
+BC -> BS: list() với pagination
 
 opt Multi-language Support
-    BrandService -> BrandService: Lấy ngôn ngữ hiện tại (I18nContext)
+    BS -> IC: I18nContext.current()?.lang
+    IC -> BS: trả về ngôn ngữ hiện tại
     note right
     Language Handling:
     • Lấy language từ I18nContext
@@ -53,8 +56,8 @@ opt Multi-language Support
     end note
 end
 
-BrandService -> BrandRepo: list(pagination, languageId)
-BrandRepo -> PostgreSQL: Query với JOIN brandTranslations
+BS -> BR: list(pagination, languageId)
+BR -> DB: Query với JOIN brandTranslations
 note right
 Database Query Logic:
 • COUNT(*) cho pagination metadata
@@ -63,106 +66,137 @@ Database Query Logic:
 • ORDER BY createdAt DESC
 • Language filter: ALL_LANGUAGE_CODE hoặc specific language
 end note
-PostgreSQL --> BrandRepo: Brands với translations + metadata
-BrandRepo --> BrandService: Kết quả có đa ngôn ngữ
-BrandService --> BrandController: Response + i18n message
-BrandController --> Client: JSON với data + metadata
+DB -> BR: Brands với translations + metadata
+BR -> BS: Kết quả có đa ngôn ngữ
+BS -> IS: i18n.t('brand.brand.success.GET_SUCCESS')
+IS -> BS: Trả về message đã localize
+BS -> BC: Response + Message đã localize
+BC -> Client: JSON với data + metadata
 
-Client -> BrandController: GET /brands/:brandId (chi tiết thương hiệu)
-BrandController -> BrandService: findById(brandId)
-BrandService -> BrandRepo: findById(id, languageId)
-BrandRepo -> PostgreSQL: findUnique với include brandTranslations
-PostgreSQL --> BrandRepo: Brand detail với translations
-BrandRepo --> BrandService: Brand với đa ngôn ngữ
-BrandService --> BrandController: Response chi tiết
-BrandController --> Client: JSON brand detail
+Client -> BC: GET /brands/:brandId (chi tiết thương hiệu)
+BC -> BS: findById(brandId)
+BS -> IC: I18nContext.current()?.lang
+IC -> BS: trả về ngôn ngữ hiện tại
+BS -> BR: findById(id, languageId)
+BR -> DB: findUnique với include brandTranslations
+DB -> BR: Brand detail với translations
+BR -> BS: Brand với đa ngôn ngữ
+BS -> IS: i18n.t('brand.brand.success.GET_DETAIL_SUCCESS')
+IS -> BS: Trả về message đã localize
+BS -> BC: Response chi tiết
+BC -> Client: JSON brand detail
 
 == API Quản Lý (Management Brands) ==
-User -> BrandController: Request CRUD operations
-BrandController -> BrandService: Business logic + Auth
+User -> BC: Request CRUD operations
+BC -> BS: Business logic + Auth
 
 alt Thao tác CREATE
-    BrandService -> BrandService: validateData(brandData)
+    BS -> BS: validateData(brandData)
     note right
     Data Validation:
     • Schema validation (name, logo)
     • Business rules (required fields)
     • Brand uniqueness check
     end note
-    BrandService -> BrandRepo: create() với createdById
-    BrandRepo -> PostgreSQL: INSERT brand với audit fields
-    PostgreSQL --> BrandRepo: Brand mới với translations
-    BrandRepo --> BrandService: Brand đã tạo
+    BS -> BR: create() với createdById
+    BR -> DB: INSERT brand với audit fields
+    DB -> BR: Brand mới với translations
+    BR -> BS: Brand đã tạo
+    BS -> IS: i18n.t('brand.brand.success.CREATE_SUCCESS')
+    IS -> BS: Trả về message đã localize
+    BS -> BC: Success response
+    BC -> User: 201 Created + JSON response
 
 else Thao tác UPDATE
-    BrandService -> BrandRepo: findById() trước
-    BrandRepo -> PostgreSQL: Tìm brand theo ID
-    PostgreSQL --> BrandRepo: Brand data
-    BrandRepo --> BrandService: Brand info
-    BrandService -> BrandRepo: update() với updatedById
-    BrandRepo -> PostgreSQL: UPDATE brand với audit
-    PostgreSQL --> BrandRepo: Brand updated
-    BrandRepo --> BrandService: Brand đã cập nhật
+    BS -> BR: findById() trước
+    BR -> DB: Tìm brand theo ID
+    DB -> BR: Brand data
+    BR -> BS: Brand info
+    BS -> BR: update() với updatedById
+    BR -> DB: UPDATE brand với audit
+    DB -> BR: Brand updated
+    BR -> BS: Brand đã cập nhật
+    BS -> IS: i18n.t('brand.brand.success.UPDATE_SUCCESS')
+    IS -> BS: Trả về message đã localize
+    BS -> BC: Success response
+    BC -> User: 200 OK + JSON response
 
 else Thao tác DELETE
-    BrandService -> BrandRepo: delete() soft delete
-    BrandRepo -> PostgreSQL: UPDATE deletedAt field
-    PostgreSQL --> BrandRepo: Brand marked deleted
-    BrandRepo --> BrandService: Success response
+    BS -> BR: delete() soft delete
+    BR -> DB: UPDATE deletedAt field
+    DB -> BR: Brand marked deleted
+    BR -> BS: Success response
+    BS -> IS: i18n.t('brand.brand.success.DELETE_SUCCESS')
+    IS -> BS: Trả về message đã localize
+    BS -> BC: Success response
+    BC -> User: 200 OK + JSON response
 end
 
 == API Quản Lý Translation ==
-User -> BrandTranslationController: Request CRUD translations
-BrandTranslationController -> BrandTranslationService: Business logic + Auth
+User -> BTC: Request CRUD translations
+BTC -> BTS: Business logic + Auth
 
 alt Thao tác CREATE Translation
-    BrandTranslationService -> BrandTranslationService: validateData(translationData)
+    BTS -> BTS: validateData(translationData)
     note right
     Translation Validation:
     • brandId, languageId, name, description
     • Unique constraint: brandId + languageId
     • Foreign key validation
     end note
-    BrandTranslationService -> BrandTranslationRepo: create()
-    BrandTranslationRepo -> PostgreSQL: INSERT brandTranslation
-    PostgreSQL --> BrandTranslationRepo: Translation created
-    BrandTranslationRepo --> BrandTranslationService: Translation data
+    BTS -> BTR: create()
+    BTR -> DB: INSERT brandTranslation
+    DB -> BTR: Translation created
+    BTR -> BTS: Translation data
+    BTS -> IS: i18n.t('brand.brandTranslation.success.CREATE_SUCCESS')
+    IS -> BTS: Trả về message đã localize
+    BTS -> BTC: Success response
+    BTC -> User: 201 Created + JSON response
 
 else Thao tác UPDATE Translation
-    BrandTranslationService -> BrandTranslationRepo: update()
-    BrandTranslationRepo -> PostgreSQL: UPDATE brandTranslation
-    PostgreSQL --> BrandTranslationRepo: Translation updated
-    BrandTranslationRepo --> BrandTranslationService: Updated data
+    BTS -> BTR: update()
+    BTR -> DB: UPDATE brandTranslation
+    DB -> BTR: Translation updated
+    BTR -> BTS: Updated data
+    BTS -> IS: i18n.t('brand.brandTranslation.success.UPDATE_SUCCESS')
+    IS -> BTS: Trả về message đã localize
+    BTS -> BTC: Success response
+    BTC -> User: 200 OK + JSON response
 
 else Thao tác DELETE Translation
-    BrandTranslationService -> BrandTranslationRepo: delete() soft delete
-    BrandTranslationRepo -> PostgreSQL: UPDATE deletedAt
-    PostgreSQL --> BrandTranslationRepo: Translation marked deleted
-    BrandTranslationRepo --> BrandTranslationService: Success
+    BTS -> BTR: delete() soft delete
+    BTR -> DB: UPDATE deletedAt
+    DB -> BTR: Translation marked deleted
+    BTR -> BTS: Success
+    BTS -> IS: i18n.t('brand.brandTranslation.success.DELETE_SUCCESS')
+    IS -> BTS: Trả về message đã localize
+    BTS -> BTC: Success response
+    BTC -> User: 200 OK + JSON response
 end
 
 == Xử Lý Lỗi & Phân Quyền ==
 alt Lỗi validation dữ liệu
-    BrandService --> BrandController: ValidationException
-    BrandController --> User: 422 Unprocessable Entity
+    BS -> BC: ValidationException
+    BC -> User: 422 Unprocessable Entity
 
 else Lỗi không tìm thấy
-    BrandService --> BrandController: NotFoundRecordException
-    BrandController --> Client: 404 Not Found
+    BS -> BC: NotFoundRecordException
+    BC -> Client: 404 Not Found
 
 else Lỗi unique constraint (translation)
-    BrandTranslationService --> BrandTranslationController: BrandTranslationAlreadyExistsException
-    BrandTranslationController --> User: 422 Unprocessable Entity
+    BTS -> BTC: BrandTranslationAlreadyExistsException
+    BTC -> User: 422 Unprocessable Entity
 
 else Lỗi foreign key
-    BrandService --> BrandController: ForeignKeyConstraintException
-    BrandController --> User: 422 Unprocessable Entity
+    BS -> BC: ForeignKeyConstraintException
+    BC -> User: 422 Unprocessable Entity
 end
 
 == Trả Kết Quả ==
-BrandService -> BrandService: Tạo thông báo đa ngôn ngữ (I18nService)
-BrandService --> BrandController: Response + Message đã localize
-BrandController --> User: JSON Response với metadata đầy đủ
+BS -> IS: i18n.t('brand.brand.success.XXX')
+IS -> BS: Trả về message đã localize
+BS -> BC: Response + Message đã localize
+BC -> User: JSON Response với metadata đầy đủ
 
 note bottom
 **Đặc điểm chính của module Brand:**
@@ -173,6 +207,7 @@ note bottom
 • Public API cho danh sách và chi tiết
 • Management API cho CRUD operations
 • Unique constraint cho brand + language combination
+• Translation management sub-module
 end note
 
 @enduml

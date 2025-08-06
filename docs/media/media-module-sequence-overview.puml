@@ -1,281 +1,285 @@
-@startuml
-!theme aws-orange
+@startuml Media Module - Sequence Overview
+!theme plain
 skinparam backgroundColor #FFFFFF
-skinparam defaultTextAlignment center
-skinparam participant {
-    BackgroundColor #E8F4FD
-    BorderColor #1976D2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam actor {
-    BackgroundColor #FFF8E1
-    BorderColor #F57C00
-    FontColor #000000
-    FontStyle bold
-}
-skinparam database {
-    BackgroundColor #F3E5F5
-    BorderColor #7B1FA2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam note {
-    BackgroundColor #FFFDE7
-    BorderColor #F9A825
-    FontColor #000000
-}
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
 
-title Mô-đun Media - Tổng Quan Sequence
+title Mô-đun Media - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý media với file upload, S3 integration và presigned URL
 
-actor "Client" as Client
-participant MediaController
-participant MediaService
-participant S3Service
-participant ParseFilePipeWithUnlink
-database LocalStorage
-database AWS_S3
+actor "Khách hàng" as Client
+participant "MediaController" as MC
+participant "MediaService" as MS
+participant "S3Service" as S3
+participant "ParseFilePipeWithUnlink" as PFP
+participant "I18nService" as IS
+participant "MulterModule" as MM
+database "LocalStorage" as LS
+database "AWS_S3" as S3DB
 
-== POST /media/images/upload - Upload Files ==
-Client -> MediaController: POST /media/images/upload + files
+== POST /media/images/upload - Tải Lên Tệp ==
+Client -> MC: POST /media/images/upload + multipart files
 note right
-Upload Request:
-• Multipart form data
-• Max 100 files
-• Max 5MB per file
-• Supported types: jpg, jpeg, png, webp
+Yêu Cầu Tải Lên:
+• Multipart form data với field 'files'
+• Tối đa 100 files
+• Tối đa 5MB mỗi file (limit config)
+• Loại file hỗ trợ: jpg, jpeg, png, webp
 end note
 
-MediaController -> ParseFilePipeWithUnlink: Validate files
-ParseFilePipeWithUnlink -> ParseFilePipeWithUnlink: File validation
+MC -> MM: FilesInterceptor('files', 100)
+MM -> MM: Cấu hình Multer
 note right
-File Validation:
-• MaxFileSizeValidator: 1MB per file
+Cấu Hình Multer:
+• Storage: multer.diskStorage
+• Destination: UPLOAD_DIR
+• Filename: generateRandomFilename()
+• Giới hạn kích thước file: 5MB
+end note
+
+MM -> LS: Lưu files vào UPLOAD_DIR
+LS -> MM: Files đã lưu với tên ngẫu nhiên
+MM -> MC: Files với metadata
+
+MC -> PFP: ParseFilePipeWithUnlink validation
+PFP -> PFP: Xác thực file
+note right
+Xác Thực File:
+• MaxFileSizeValidator: 1MB mỗi file
 • FileTypeValidator: jpg, jpeg, png, webp
 • Skip magic numbers validation
-• Auto cleanup on validation failure
+• Tự động dọn dẹp khi validation thất bại
 end note
 
-alt File validation passed
-    ParseFilePipeWithUnlink --> MediaController: Validated files
-    MediaController -> MediaService: uploadFile(files)
+alt Xác thực file thành công
+    PFP --> MC: Files đã xác thực
+    MC -> MS: uploadFile(files)
 
-    MediaService -> MediaService: Process files in parallel
+    MS -> MS: Xử lý files song song với Promise.all
     note right
-    File Processing:
-    • Map files to S3 upload promises
-    • Generate random filenames
-    • Upload to S3 with proper paths
-    • Handle multiple files concurrently
+    Xử Lý File:
+    • Map files thành S3 upload promises
+    • Tạo S3 key: 'images/' + filename
+    • Upload lên S3 với đường dẫn phù hợp
+    • Xử lý nhiều files đồng thời
     end note
 
-    loop For each file
-        MediaService -> S3Service: uploadedFile({filename, filepath, contentType})
-        S3Service -> S3Service: Prepare S3 upload
+    loop Với mỗi file
+        MS -> S3: uploadedFile({filename, filepath, contentType})
+        S3 -> S3: Chuẩn bị upload S3
         note right
-        S3 Upload Preparation:
-        • Generate S3 key: 'images/' + filename
-        • Read file from local path
-        • Set proper content type
-        • Upload to S3 bucket
+        Chuẩn Bị Upload S3:
+        • Tạo S3 key: 'images/' + filename
+        • Đọc file từ đường dẫn local
+        • Thiết lập content type phù hợp
+        • Upload lên S3 bucket
         end note
 
-        S3Service -> AWS_S3: Upload file to S3
-        AWS_S3 --> S3Service: Upload result với Location
-        S3Service --> MediaService: S3 upload response
+        S3 -> S3DB: Upload file lên S3
+        S3DB --> S3: Kết quả upload với Location
+        S3 --> MS: Phản hồi upload S3
 
-        MediaService -> MediaService: Extract S3 URL
+        MS -> MS: Trích xuất S3 URL
         note right
-        URL Extraction:
-        • Get Location từ S3 response
-        • Return public S3 URL
-        • Handle upload success/failure
+        Trích Xuất URL:
+        • Lấy Location từ phản hồi S3
+        • Trả về public S3 URL
+        • Xử lý upload thành công/thất bại
         end note
     end
 
-    MediaService -> MediaService: Cleanup local files
+    MS -> MS: Dọn dẹp files local với Promise.all
     note right
-    Local File Cleanup:
-    • Delete temporary files sau khi upload
-    • Use Promise.all cho parallel deletion
-    • Ensure no local file leaks
+    Dọn Dẹp File Local:
+    • Xóa files tạm sau khi upload
+    • Sử dụng Promise.all cho xóa song song
+    • Đảm bảo không rò rỉ file local
+    • unlink(file.path) cho mỗi file
     end note
 
-    MediaService -> LocalStorage: unlink(file.path) cho mỗi file
-    LocalStorage --> MediaService: Files deleted
+    MS -> LS: unlink(file.path) cho mỗi file
+    LS --> MS: Files đã xóa
 
-    MediaService --> MediaController: Upload results
-    MediaController --> Client: JSON với URLs
+    MS -> IS: i18n.t('media.media.success.UPLOAD_SUCCESS')
+    IS -> MS: Trả về message đã localize
+    MS --> MC: Kết quả upload với URLs
+    MC --> Client: JSON với URLs và message
 
-else File validation failed
-    ParseFilePipeWithUnlink -> ParseFilePipeWithUnlink: Auto cleanup files
-    ParseFilePipeWithUnlink -> LocalStorage: unlink(file.path)
-    LocalStorage --> ParseFilePipeWithUnlink: Files deleted
-    ParseFilePipeWithUnlink --> MediaController: ValidationException
-    MediaController --> Client: 400 Bad Request
+else Xác thực file thất bại
+    PFP -> PFP: Tự động dọn dẹp files
+    PFP -> LS: unlink(file.path) cho mỗi file
+    LS --> PFP: Files đã xóa
+    PFP --> MC: ValidationException
+    MC --> Client: 400 Bad Request
 end
 
-== GET /media/static/:filename - Serve Static Files ==
-Client -> MediaController: GET /media/static/:filename
-MediaController -> MediaController: serveFile(filename, res)
+== GET /media/static/:filename - Phục Vụ File Tĩnh ==
+Client -> MC: GET /media/static/:filename
+MC -> MC: serveFile(filename, res)
 note right
-Static File Serving:
-• Serve files từ local UPLOAD_DIR
-• Public access (no authentication)
-• Handle file not found errors
-• Direct file streaming
+Phục Vụ File Tĩnh:
+• Phục vụ files từ local UPLOAD_DIR
+• Truy cập công khai (không cần xác thực)
+• Xử lý lỗi file không tìm thấy
+• Stream file trực tiếp với res.sendFile()
 end note
 
-MediaController -> LocalStorage: Check file exists
-LocalStorage --> MediaController: File status
+MC -> LS: Kiểm tra file tồn tại tại UPLOAD_DIR
+LS --> MC: Trạng thái file
 
-alt File exists
-    MediaController -> Client: Send file stream
-    Client -> Client: Display/download file
-else File not found
-    MediaController -> Client: 404 Not Found
+alt File tồn tại
+    MC -> Client: Gửi file stream
+    Client -> Client: Hiển thị/tải xuống file
+else File không tìm thấy
+    MC -> Client: 404 Not Found với thông báo lỗi
 end
 
-== POST /media/images/upload/presigned-url - Generate Presigned URL ==
-Client -> MediaController: POST /media/images/upload/presigned-url + {filename, filesize}
-MediaController -> MediaService: getPresignUrl(body)
+== POST /media/images/upload/presigned-url - Tạo Presigned URL ==
+Client -> MC: POST /media/images/upload/presigned-url + {filename, filesize}
+MC -> MS: getPresignUrl(body)
 
-MediaService -> MediaService: Validate request body
+MS -> MS: Xác thực request body
 note right
-Presigned URL Validation:
-• filename: required string
-• filesize: max 1MB
-• Zod schema validation
+Xác Thực Presigned URL:
+• filename: string bắt buộc
+• filesize: tối đa 1MB
+• Xác thực schema Zod
 end note
 
-alt Validation passed
-    MediaService -> MediaService: generateRandomFilename(filename)
+alt Xác thực thành công
+    MS -> MS: generateRandomFilename(filename)
     note right
-    Filename Generation:
-    • Generate unique random filename
-    • Prevent filename conflicts
-    • Maintain file extension
-    • Ensure security
+    Tạo Tên File:
+    • Tạo tên file ngẫu nhiên duy nhất
+    • Ngăn chặn xung đột tên file
+    • Giữ nguyên phần mở rộng file
+    • Đảm bảo bảo mật
     end note
 
-    MediaService -> S3Service: createPresignedUrlWithClient(randomFilename)
-    S3Service -> S3Service: Generate presigned URL
+    MS -> S3: createPresignedUrlWithClient(randomFilename)
+    S3 -> S3: Tạo presigned URL
     note right
-    Presigned URL Generation:
-    • Create S3 presigned URL
-    • Set proper expiration
-    • Allow direct upload to S3
-    • Secure access control
+    Tạo Presigned URL:
+    • Tạo S3 presigned URL
+    • Thiết lập thời gian hết hạn phù hợp
+    • Cho phép upload trực tiếp lên S3
+    • Kiểm soát truy cập bảo mật
     end note
 
-    S3Service -> AWS_S3: Generate presigned URL
-    AWS_S3 --> S3Service: Presigned URL
-    S3Service --> MediaService: Presigned URL
+    S3 -> S3DB: Tạo presigned URL
+    S3DB --> S3: Presigned URL
+    S3 --> MS: Presigned URL
 
-    MediaService -> MediaService: Extract base URL
+    MS -> MS: Trích xuất base URL
     note right
-    URL Processing:
-    • Split presigned URL
-    • Extract base URL without query params
-    • Return both presigned và base URLs
+    Xử Lý URL:
+    • Tách presigned URL tại '?'
+    • Trích xuất base URL không có query params
+    • Trả về cả presigned và base URLs
     end note
 
-    MediaService --> MediaController: Presigned URL response
-    MediaController --> Client: JSON với presignedUrl và url
+    MS -> IS: i18n.t('media.media.success.GET_PRESIGNED_URL_SUCCESS')
+    IS -> MS: Trả về message đã localize
+    MS --> MC: Phản hồi Presigned URL
+    MC --> Client: JSON với presignedUrl và url
 
-else Validation failed
-    MediaService --> MediaController: ValidationException
-    MediaController --> Client: 400 Bad Request
+else Xác thực thất bại
+    MS --> MC: ValidationException
+    MC --> Client: 400 Bad Request
 end
 
-== File Storage Management ==
-alt Local storage operations
-    MediaController -> LocalStorage: Check UPLOAD_DIR exists
-    note right
-    Directory Management:
-    • Auto-create UPLOAD_DIR if not exists
-    • Ensure proper permissions
-    • Handle directory creation errors
-    end note
-    LocalStorage --> MediaController: Directory status
+== Khởi Tạo Module ==
+MC -> MC: Constructor kiểm tra UPLOAD_DIR
+note right
+Quản Lý Thư Mục:
+• Tự động tạo UPLOAD_DIR nếu chưa tồn tại
+• Đảm bảo quyền truy cập phù hợp
+• Xử lý lỗi tạo thư mục
+• existsSync() và mkdirSync() với recursive
+end note
+
+MC -> LS: Kiểm tra UPLOAD_DIR tồn tại
+LS --> MC: Trạng thái thư mục
+
+alt Thư mục không tồn tại
+    MC -> LS: mkdirSync(UPLOAD_DIR, { recursive: true })
+    LS --> MC: Thư mục đã tạo
 end
 
-alt S3 operations
-    S3Service -> AWS_S3: Upload/Download operations
+== Xử Lý Lỗi & Xác Thực ==
+alt Lỗi xác thực file
+    PFP --> MC: ValidationException
+    MC --> Client: 400 Bad Request
     note right
-    S3 Integration:
-    • Direct upload to S3 bucket
-    • Presigned URL generation
-    • File metadata management
-    • Error handling
-    end note
-    AWS_S3 --> S3Service: S3 operation results
-end
-
-== Xử Lý Lỗi & Validation ==
-alt Lỗi file validation
-    ParseFilePipeWithUnlink --> MediaController: ValidationException
-    MediaController --> Client: 400 Bad Request
-    note right
-    File Validation Errors:
-    • File size too large
-    • Invalid file type
-    • File corruption
-    • Auto cleanup on failure
+    Lỗi Xác Thực File:
+    • Kích thước file quá lớn (> 1MB)
+    • Loại file không hợp lệ (không phải jpg, jpeg, png, webp)
+    • File bị hỏng
+    • Tự động dọn dẹp khi thất bại
     end note
 
-else Lỗi S3 upload
-    S3Service --> MediaService: S3UploadException
-    MediaService --> MediaController: Error response
-    MediaController --> Client: 500 Internal Server Error
+else Lỗi upload S3
+    S3 --> MS: S3UploadException
+    MS --> MC: Phản hồi lỗi
+    MC --> Client: 500 Internal Server Error
     note right
-    S3 Upload Errors:
-    • Network connectivity issues
+    Lỗi Upload S3:
+    • Vấn đề kết nối mạng
     • S3 bucket access denied
     • File upload timeout
-    • Invalid credentials
+    • Credentials không hợp lệ
+    • Bucket không tồn tại
     end note
 
-else Lỗi file not found
-    MediaController --> Client: 404 Not Found
+else Lỗi file không tìm thấy
+    MC --> Client: 404 Not Found
     note right
-    File Not Found:
-    • Static file không tồn tại
-    • Clear error message
-    • Proper HTTP status
+    File Không Tìm Thấy:
+    • File tĩnh không tồn tại trong UPLOAD_DIR
+    • Thông báo lỗi rõ ràng
+    • HTTP status phù hợp
     end note
 
-else Lỗi presigned URL generation
-    S3Service --> MediaService: PresignedUrlException
-    MediaService --> MediaController: Error response
-    MediaController --> Client: 500 Internal Server Error
+else Lỗi tạo presigned URL
+    S3 --> MS: PresignedUrlException
+    MS --> MC: Phản hồi lỗi
+    MC --> Client: 500 Internal Server Error
     note right
-    Presigned URL Errors:
-    • S3 service unavailable
-    • Invalid bucket configuration
-    • Permission issues
-    • Network errors
+    Lỗi Presigned URL:
+    • S3 service không khả dụng
+    • Cấu hình bucket không hợp lệ
+    • Vấn đề quyền truy cập
+    • Lỗi mạng
+    • Credentials không hợp lệ
+    end note
+
+else Lỗi tạo thư mục
+    MC --> MC: DirectoryCreationException
+    MC --> Client: 500 Internal Server Error
+    note right
+    Lỗi Tạo Thư Mục:
+    • Quyền truy cập không đủ
+    • Ổ đĩa hết dung lượng
+    • Xung đột đường dẫn
     end note
 end
 
-== Trả Kết Quả ==
-MediaService -> MediaService: Tạo thông báo đa ngôn ngữ (I18nService)
-MediaService --> MediaController: Response + Message đã localize
-MediaController --> Client: JSON Response với metadata đầy đủ
+== Đa Ngôn Ngữ ==
+MS -> IS: i18n.t('media.media.success.XXX')
+IS -> MS: Trả về message đã localize
+MS --> MC: Phản hồi + Message đã localize
+MC --> Client: JSON Response với metadata đầy đủ
 
 note bottom
 **Đặc điểm chính của module Media:**
-• File upload với validation và auto cleanup
-• S3 integration cho cloud storage
-• Presigned URL generation cho direct upload
-• Static file serving từ local storage
-• Parallel file processing
-• Comprehensive error handling
-• File type và size validation
-• Auto directory creation
-• Multi-language support
-• Security với random filenames
+• Upload file với validation nghiêm ngặt
+• Tích hợp AWS S3 cho lưu trữ
+• Presigned URL cho upload trực tiếp
+• Tự động dọn dẹp file tạm
+• Hỗ trợ đa ngôn ngữ với I18nService
+• Xử lý lỗi toàn diện
+• Phục vụ file tĩnh công khai
 end note
 
 @enduml

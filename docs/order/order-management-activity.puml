@@ -1,0 +1,180 @@
+@startuml Order Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Quản Lý Đơn Hàng - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng truy cập hệ thống;
+
+if (Hoạt động?) then (Lấy danh sách đơn hàng)
+  :GET /orders với query parameters;
+  :Trích xuất {page, limit, status} từ query;
+  :Xác thực người dùng với @ActiveUser();
+  :Validate query parameters với Zod;
+  if (Xác thực thành công?) then (có)
+    :Lấy userId từ JWT token;
+    :Xây dựng WHERE clause với userId và status;
+    :Thực thi truy vấn với phân trang;
+    :Include order items;
+    :Tính toán metadata (totalItems, totalPages, hasNext, hasPrev);
+    :Tạo thông báo thành công đa ngôn ngữ;
+    :Trả về danh sách đơn hàng với metadata;
+  else (không)
+    :Trả về lỗi xác thực;
+  endif
+
+elseif (Tạo đơn hàng mới)
+  :POST /orders với order data;
+  :Trích xuất {shopId, receiver, cartItemIds, discountCodes} từ body;
+  :Xác thực người dùng với @ActiveUser();
+  :Validate order data với Zod schema;
+  if (Xác thực thành công?) then (có)
+    :Thu thập tất cả discount codes;
+    :Validate discount codes tồn tại;
+    if (Discount codes hợp lệ?) then (có)
+      :Kiểm tra trạng thái và thời gian discount;
+      :Kiểm tra maxUses và maxUsesPerUser;
+      if (Discount validation passed?) then (có)
+        :Bắt đầu giao dịch database;
+        :Lock tất cả SKU cần mua với Redlock;
+        note right
+        Redlock Strategy:
+        • Lock mỗi SKU trong 3 giây
+        • Đảm bảo tính nhất quán tồn kho
+        • Tránh race condition
+        end note
+        :Validate cart items tồn tại;
+        :Kiểm tra số lượng tồn kho;
+        :Kiểm tra sản phẩm sẵn sàng (không bị xóa/ẩn);
+        :Kiểm tra SKU thuộc về shop;
+        if (Validation passed?) then (có)
+          :Tạo payment record với status PENDING;
+          :Tạo orders cho từng shop;
+          :Tính toán tổng giá trị đơn hàng;
+          :Xử lý discount nếu có;
+          note right
+          Discount Processing:
+          • Validate discount eligibility
+          • Calculate discount amount
+          • Create discount snapshots
+          • Update usage count
+          end note
+          :Tạo order items với product snapshots;
+          :Tạo discount snapshots;
+          :Cập nhật tồn kho SKU (decrement);
+          :Xóa cart items;
+          :Thêm job hủy thanh toán tự động (24h);
+          :Commit giao dịch;
+          :Giải phóng Redlock;
+          :Tạo thông báo thành công đa ngôn ngữ;
+          :Trả về orders đã tạo với paymentId;
+        else (không)
+          :Rollback giao dịch;
+          :Giải phóng Redlock;
+          :Throw validation exception;
+          :Trả về lỗi validation;
+        endif
+      else (không)
+        :Throw DiscountNotApplicableException;
+        :Trả về lỗi discount;
+      endif
+    else (không)
+      :Throw BadRequestException;
+      :Trả về lỗi discount codes;
+    endif
+  else (không)
+    :Trả về lỗi xác thực;
+  endif
+
+elseif (Tính toán đơn hàng)
+  :POST /orders/calculate với cart data;
+  :Trích xuất {cartItemIds, discountCodes} từ body;
+  :Xác thực người dùng với @ActiveUser();
+  :Validate calculate data với Zod schema;
+  if (Xác thực thành công?) then (có)
+    :Lấy cart items với SKU và product details;
+    :Tính toán tổng giá trị sản phẩm;
+    if (Có discount codes?) then (có)
+      :Lấy thông tin active discounts;
+      :Validate discount eligibility;
+      :Tính toán discount amounts;
+      :Tính toán tổng giảm giá;
+    else (không)
+      :Tổng giảm giá = 0;
+    endif
+    :Tính toán tổng thanh toán cuối cùng;
+    :Tạo thông báo thành công đa ngôn ngữ;
+    :Trả về kết quả tính toán;
+  else (không)
+    :Trả về lỗi xác thực;
+  endif
+
+elseif (Xem chi tiết đơn hàng)
+  :GET /orders/:orderId;
+  :Trích xuất orderId từ params;
+  :Xác thực người dùng với @ActiveUser();
+  :Validate orderId với Zod;
+  if (Xác thực thành công?) then (có)
+    :Lấy userId từ JWT token;
+    :Truy vấn order với items và discounts;
+    :FindUnique với WHERE id = orderId AND userId = userId;
+    if (Order tồn tại?) then (có)
+      :Tính toán tổng giá trị sản phẩm;
+      :Tính toán tổng giảm giá voucher;
+      :Tính toán tổng thanh toán cuối cùng;
+      :Tạo thông báo thành công đa ngôn ngữ;
+      :Trả về chi tiết đơn hàng;
+    else (không)
+      :Throw OrderNotFoundException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về lỗi xác thực;
+  endif
+
+elseif (Hủy đơn hàng)
+  :PUT /orders/:orderId;
+  :Trích xuất orderId từ params;
+  :Xác thực người dùng với @ActiveUser();
+  :Validate orderId với Zod;
+  if (Xác thực thành công?) then (có)
+    :Lấy userId từ JWT token;
+    :Truy vấn order từ database;
+    if (Order tồn tại?) then (có)
+      :Kiểm tra trạng thái đơn hàng;
+      if (Trạng thái có thể hủy?) then (có)
+        :Cập nhật trạng thái order thành CANCELLED;
+        :Cập nhật order items;
+        :Cập nhật tồn kho SKU (increment);
+        :Thêm job hủy thanh toán vào queue;
+        :Tạo thông báo thành công đa ngôn ngữ;
+        :Trả về đơn hàng đã hủy;
+      else (không)
+        :Throw CannotCancelOrderException;
+        :Trả về 400 Bad Request;
+      endif
+    else (không)
+      :Throw OrderNotFoundException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về lỗi xác thực;
+  endif
+
+else (Hoạt động không hợp lệ)
+  :Trả về 400 Bad Request;
+endif
+
+:Hoàn thành hoạt động;
+
+stop
+
+@enduml

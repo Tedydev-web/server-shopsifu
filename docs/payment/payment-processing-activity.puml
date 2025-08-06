@@ -1,0 +1,149 @@
+@startuml Payment Processing Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Luồng Xử Lý Thanh Toán - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng khởi tạo thanh toán;
+
+:Tạo yêu cầu thanh toán với dữ liệu đơn hàng;
+:Tạo URL thanh toán với VNPay;
+:Chuyển hướng người dùng đến cổng thanh toán;
+
+:Người dùng hoàn thành thanh toán trên cổng;
+:Cổng xử lý thanh toán;
+
+if (Phương thức thanh toán?) then (VNPay)
+  :VNPay xử lý thanh toán;
+  :VNPay chuyển hướng đến URL trả về;
+
+  :Xác thực dữ liệu URL trả về;
+  :Kiểm tra chữ ký thanh toán với VnpayService;
+  if (Chữ ký hợp lệ?) then (có)
+    :Trích xuất thông tin thanh toán;
+    :Kiểm tra giao dịch trùng lặp;
+    if (Giao dịch chưa tồn tại?) then (có)
+      :Bắt đầu giao dịch database;
+      :Tạo bản ghi paymentTransaction;
+      note right
+      Dữ Liệu Giao Dịch:
+      • gateway: 'vnpay'
+      • amountIn: vnp_Amount / 100 (chuyển đổi VND)
+      • amountOut: 0
+      • code: vnp_TxnRef
+      • transactionContent: vnp_OrderInfo
+      • referenceNumber: vnp_TransactionNo
+      • body: JSON.stringify(vnpayData)
+      end note
+      :Trích xuất paymentId từ PREFIX_PAYMENT_CODE;
+      :Xác thực và tìm payment với orders;
+      :Xác thực số tiền thanh toán;
+      if (Số tiền hợp lệ?) then (có)
+        :Cập nhật trạng thái payment thành SUCCESS;
+        :Cập nhật trạng thái orders thành PAID;
+        :Gửi thông báo WebSocket;
+        :Trả về thành công cho người dùng;
+      else (không)
+        :Trả về lỗi số tiền không khớp;
+      endif
+    else (đã tồn tại)
+      :Trả về lỗi giao dịch trùng lặp;
+    endif
+  else (không)
+    :Trả về lỗi chữ ký;
+  endif
+
+  :VNPay gửi callback IPN;
+  :Xác thực chữ ký IPN với VnpayService;
+  if (Chữ ký IPN hợp lệ?) then (có)
+    :Kiểm tra payment đã xử lý chưa;
+    if (Chưa xử lý?) then (có)
+      :Trích xuất paymentId từ PREFIX_PAYMENT_CODE;
+      :Xác thực và tìm payment với orders;
+      :Xác thực số tiền thanh toán;
+      if (Số tiền hợp lệ?) then (có)
+        if (Thanh toán thành công?) then (có)
+          :Cập nhật payment thành SUCCESS;
+          :Cập nhật orders thành PAID;
+          :Gửi thông báo WebSocket;
+        else (không)
+          :Cập nhật payment thành FAILED;
+          :Cập nhật orders thành CANCELLED;
+        endif
+        :Trả về RspCode: 00 cho VNPay;
+      else (không)
+        :Trả về RspCode: 04 cho VNPay;
+      endif
+    else (đã xử lý)
+      :Trả về RspCode: 02 cho VNPay;
+    endif
+  else (không)
+    :Trả về RspCode: 97 cho VNPay;
+  endif
+
+else (Sepay)
+  :Sepay xử lý thanh toán;
+  :Sepay gửi webhook;
+
+  :Xác thực chữ ký webhook;
+  if (Chữ ký hợp lệ?) then (có)
+    :Kiểm tra giao dịch trùng lặp;
+    if (Giao dịch chưa tồn tại?) then (có)
+      :Bắt đầu giao dịch database;
+      :Tạo bản ghi paymentTransaction;
+      note right
+      Dữ Liệu Giao Dịch:
+      • id: body.id
+      • gateway: body.gateway
+      • amountIn/amountOut dựa trên transferType
+      • transactionDate: parse từ body.transactionDate
+      • accountNumber: body.accountNumber
+      • subAccount: body.subAccount
+      • accumulated: body.accumulated
+      • code: body.code
+      • transactionContent: body.content
+      • referenceNumber: body.referenceCode
+      • body: body.description
+      end note
+      :Trích xuất paymentId từ PREFIX_PAYMENT_CODE;
+      :Xác thực và tìm payment với orders;
+      :Xác thực số tiền thanh toán;
+      if (Số tiền hợp lệ?) then (có)
+        :Cập nhật trạng thái payment thành SUCCESS;
+        :Cập nhật trạng thái orders thành PAID;
+        :Gửi thông báo WebSocket;
+        :Trả về thành công cho Sepay;
+      else (không)
+        :Trả về lỗi số tiền không khớp cho Sepay;
+      endif
+    else (đã tồn tại)
+      :Trả về lỗi giao dịch trùng lặp cho Sepay;
+    endif
+  else (không)
+    :Trả về lỗi chữ ký cho Sepay;
+  endif
+endif
+
+:Hoàn thành xử lý thanh toán;
+
+if (Thanh toán thành công?) then (có)
+  :Kích hoạt thực hiện đơn hàng;
+  :Gửi email xác nhận;
+  :Cập nhật kho hàng;
+else (không)
+  :Xử lý thất bại thanh toán;
+  :Khôi phục sản phẩm giỏ hàng;
+  :Gửi thông báo thất bại;
+endif
+
+stop
+
+@enduml

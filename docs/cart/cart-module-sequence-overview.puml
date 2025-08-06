@@ -1,162 +1,171 @@
-@startuml
-!theme aws-orange
+@startuml Cart Module - Sequence Overview
+!theme plain
 skinparam backgroundColor #FFFFFF
-skinparam defaultTextAlignment center
-skinparam participant {
-    BackgroundColor #E8F4FD
-    BorderColor #1976D2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam actor {
-    BackgroundColor #FFF8E1
-    BorderColor #F57C00
-    FontColor #000000
-    FontStyle bold
-}
-skinparam database {
-    BackgroundColor #F3E5F5
-    BorderColor #7B1FA2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam note {
-    BackgroundColor #FFFDE7
-    BorderColor #F9A825
-    FontColor #000000
-}
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
 
-title Mô-đun Cart - Tổng Quan Sequence
+title Mô-đun Giỏ Hàng - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý giỏ hàng với validation SKU và đa ngôn ngữ
 
-actor "Người dùng" as User
-participant CartController
-participant CartService
-participant CartRepo
-database PostgreSQL
+actor "Người dùng" as C
+participant "CartController" as CC
+participant "CartService" as CS
+participant "CartRepo" as CR
+participant "I18nService" as IS
+participant "I18nContext" as IC
+participant "PrismaService" as PS
+participant "AccessTokenGuard" as AG
+database "PostgreSQL" as DB
 
-== GET /cart - Lấy Giỏ Hàng ==
-User -> CartController: GET /cart?page=1&limit=10
-CartController -> CartService: getCart(user, pagination)
+== Xác thực và Phân quyền ==
+C -> AG: Request với cookies
+AG -> AG: Trích xuất access_token từ cookies
+AG -> AG: Xác minh JWT token
+AG -> AG: Tải quyền người dùng
+AG -> CC: Cho phép request với user context
 
-CartService -> CartService: Lấy ngôn ngữ hiện tại (I18nContext)
+== Lấy Danh Sách Giỏ Hàng ==
+C -> CC: GET /cart?page=1&limit=10
+CC -> CS: getCart(user, query)
+CS -> IC: I18nContext.current()?.lang
+IC -> CS: trả về ngôn ngữ hiện tại
+CS -> CR: list({userId, languageId, page, limit})
+CR -> PS: $queryRaw (complex SQL)
 note right
-Language Handling:
-• Lấy language từ I18nContext
-• Support ALL_LANGUAGE_CODE
-• Multi-language product translations
-end note
-
-CartService -> CartRepo: list({userId, languageId, page, limit})
-CartRepo -> PostgreSQL: Complex query với JOINs
-note right
-Database Query Logic:
+Logic Truy Vấn SQL:
 • JOIN CartItem → SKU → Product → ProductTranslation
 • GROUP BY Product.createdById (shop)
-• Filter published products only
-• Language-specific translations
-• Pagination với LIMIT/OFFSET
+• Lọc sản phẩm đã publish
+• Dịch thuật theo ngôn ngữ
+• Phân trang với LIMIT/OFFSET
 end note
-PostgreSQL --> CartRepo: Cart data grouped by shop
-CartRepo --> CartService: Cart items với metadata
-CartService --> CartController: Response + i18n message
-CartController --> User: JSON với data + metadata
+PS -> DB: Thực thi raw SQL query
+DB -> PS: Trả về dữ liệu giỏ hàng nhóm theo shop
+PS -> CR: Trả về cart items với metadata
+CR -> CS: Trả về {data, metadata}
+CS -> IS: i18n.t('cart.cart.success.GET_SUCCESS')
+IS -> CS: Trả về message đã localize
+CS -> CC: Trả về response với data + metadata
+CC -> C: Trả về JSON response
 
-== POST /cart - Thêm Vào Giỏ Hàng ==
-User -> CartController: POST /cart + {skuId, quantity}
-CartController -> CartService: addToCart(user, body)
-
-CartService -> CartRepo: create(userId, body)
-CartRepo -> CartRepo: validateSKU(skuId, quantity, userId, isCreate)
+== Thêm Sản Phẩm Vào Giỏ Hàng ==
+C -> CC: POST /cart + {skuId, quantity}
+CC -> CS: addToCart(user, body)
+CS -> CR: create(userId, body)
+CR -> CR: validateSKU({skuId, quantity, userId, isCreate: true})
 note right
-SKU Validation Logic:
-• Check SKU exists và không bị xóa
-• Validate stock availability
-• Check product published status
-• Validate quantity constraints
-• Check existing cart item (upsert logic)
+Logic Validation SKU:
+• Kiểm tra SKU tồn tại và không bị xóa
+• Validate tính khả dụng của stock
+• Kiểm tra trạng thái publish của product
+• Validate ràng buộc số lượng
+• Kiểm tra cart item hiện có (upsert logic)
 end note
 
-alt SKU validation passed
-    CartRepo -> PostgreSQL: upsert cartItem
+alt SKU validation thành công
+    CR -> PS: cartItem.upsert()
     note right
-    Upsert Logic:
+    Logic Upsert:
     • Nếu cartItem đã tồn tại: increment quantity
     • Nếu chưa tồn tại: create new cartItem
     • Unique constraint: userId + skuId
     end note
-    PostgreSQL --> CartRepo: Cart item created/updated
-    CartRepo --> CartService: Cart item data
-    CartService --> CartController: Success response
-    CartController --> User: 201 Created + JSON response
+    PS -> DB: INSERT/UPDATE cart item
+    DB -> PS: Trả về cart item
+    PS -> CR: Trả về cart item data
+    CR -> CS: Trả về cart item
+    CS -> IS: i18n.t('cart.cart.success.CREATE_SUCCESS')
+    IS -> CS: Trả về message đã localize
+    CS -> CC: Trả về success response
+    CC -> C: Trả về 201 Created + JSON response
 
-else SKU validation failed
-    CartRepo --> CartService: Exception
+else SKU validation thất bại
+    CR -> CS: Throw validation exception
     note right
-    Validation Exceptions:
+    Các Exception Validation:
     • NotFoundSKUException - SKU không tồn tại
     • OutOfStockSKUException - Hết hàng
     • InvalidQuantityException - Số lượng không hợp lệ
     • ProductNotFoundException - Sản phẩm chưa publish
     end note
-    CartService --> CartController: Error response
-    CartController --> User: 400/404 Error
+    CS -> CC: Throw exception
+    CC -> C: Trả về 400/404 Error
 end
 
-== PUT /cart/:cartItemId - Cập Nhật Giỏ Hàng ==
-User -> CartController: PUT /cart/123 + {skuId, quantity}
-CartController -> CartService: updateCartItem({user, cartItemId, body})
+== Cập Nhật Giỏ Hàng ==
+C -> CC: PUT /cart/:cartItemId + {skuId, quantity}
+CC -> CS: updateCartItem({user, cartItemId, body})
+CS -> CR: update({userId, body, cartItemId})
+CR -> CR: validateSKU({skuId, quantity, userId, isCreate: false})
 
-CartService -> CartRepo: update({userId, body, cartItemId})
-CartRepo -> CartRepo: validateSKU(skuId, quantity, userId, isCreate=false)
-
-alt Cart item exists và validation passed
-    CartRepo -> PostgreSQL: UPDATE cartItem
-    PostgreSQL --> CartRepo: Updated cart item
-    CartRepo --> CartService: Updated data
-    CartService --> CartController: Success response
-    CartController --> User: 200 OK + JSON response
+alt Cart item tồn tại và validation thành công
+    CR -> PS: cartItem.update()
+    PS -> DB: UPDATE cart item
+    DB -> PS: Trả về updated cart item
+    PS -> CR: Trả về updated data
+    CR -> CS: Trả về updated cart item
+    CS -> IS: i18n.t('cart.cart.success.UPDATE_SUCCESS')
+    IS -> CS: Trả về message đã localize
+    CS -> CC: Trả về success response
+    CC -> C: Trả về 200 OK + JSON response
 
 else Cart item không tồn tại
-    CartRepo --> CartService: NotFoundCartItemException
-    CartService --> CartController: Error response
-    CartController --> User: 404 Not Found
+    CR -> CS: Throw NotFoundCartItemException
+    CS -> CC: Throw exception
+    CC -> C: Trả về 404 Not Found
 end
 
-== POST /cart/delete - Xóa Giỏ Hàng ==
-User -> CartController: POST /cart/delete + {cartItemIds}
-CartController -> CartService: deleteCart(user, body)
+== Xóa Sản Phẩm Khỏi Giỏ Hàng ==
+C -> CC: POST /cart/delete + {cartItemIds}
+CC -> CS: deleteCart(user, body)
+CS -> CR: delete(userId, body)
+CR -> PS: cartItem.deleteMany()
+PS -> DB: DELETE cartItems WHERE id IN (cartItemIds) AND userId
+DB -> PS: Trả về deleted count
+PS -> CR: Trả về {count}
+CR -> CS: Trả về {count}
+CS -> IS: i18n.t('cart.cart.success.DELETE_SUCCESS')
+IS -> CS: Trả về message đã localize
+CS -> CC: Trả về success response
+CC -> C: Trả về 200 OK + JSON response
 
-CartService -> CartRepo: delete(userId, body)
-CartRepo -> PostgreSQL: DELETE cartItems WHERE id IN (cartItemIds) AND userId
-PostgreSQL --> CartRepo: Deleted count
-CartRepo --> CartService: {count}
-CartService --> CartController: Success response
-CartController --> User: 200 OK + JSON response
-
-== Xử Lý Lỗi & Validation ==
+== Xử Lý Lỗi ==
 alt Lỗi validation SKU
-    CartRepo --> CartService: SKU validation exceptions
-    CartService --> CartController: BadRequestException/NotFoundException
-    CartController --> User: 400/404 Error
+    CR -> CS: SKU validation exceptions
+    CS -> CC: BadRequestException/NotFoundException
+    CC -> C: 400/404 Error
 
 else Lỗi không tìm thấy cart item
-    CartRepo --> CartService: NotFoundCartItemException
-    CartService --> CartController: NotFoundException
-    CartController --> User: 404 Not Found
+    CR -> CS: NotFoundCartItemException
+    CS -> CC: NotFoundException
+    CC -> C: 404 Not Found
 
 else Lỗi database constraint
-    CartRepo --> CartService: PrismaException
-    CartService --> CartController: Database error
-    CartController --> User: 500 Internal Server Error
+    CR -> CS: PrismaException
+    CS -> CC: Database error
+    CC -> C: 500 Internal Server Error
 
 else Lỗi authentication
-    CartController --> User: 401 Unauthorized
+    CC -> C: 401 Unauthorized
 end
 
-== Trả Kết Quả ==
-CartService -> CartService: Tạo thông báo đa ngôn ngữ (I18nService)
-CartService --> CartController: Response + Message đã localize
-CartController --> User: JSON Response với metadata đầy đủ
+== Đa Ngôn Ngữ ==
+CS -> IS: i18n.t('cart.cart.success.XXX')
+IS -> CS: Trả về message đã localize
+CS -> CC: Phản hồi + Message đã localize
+CC -> C: JSON Response với metadata đầy đủ
+
+note bottom
+**Đặc điểm chính của module Cart:**
+• Validation SKU nghiêm ngặt (stock, publish status)
+• Upsert logic cho cart items (increment quantity)
+• Complex SQL query với JOINs và GROUP BY
+• Đa ngôn ngữ với ProductTranslation
+• Phân trang với metadata
+• Unique constraint: userId + skuId
+• Soft delete validation cho SKU và Product
+• Real-time stock validation
+end note
 
 @enduml

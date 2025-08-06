@@ -1,0 +1,112 @@
+@startuml Cart Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Quản Lý Giỏ Hàng - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng yêu cầu thao tác giỏ hàng;
+
+if (Loại thao tác?) then (GET /cart)
+  :Trích xuất user từ JWT token;
+  :Lấy ngôn ngữ hiện tại từ I18nContext;
+  :Thực thi complex SQL query;
+  note right
+  Logic Truy Vấn SQL:
+  • JOIN CartItem → SKU → Product → ProductTranslation
+  • GROUP BY Product.createdById (shop)
+  • Lọc sản phẩm đã publish
+  • Dịch thuật theo ngôn ngữ
+  • Phân trang với LIMIT/OFFSET
+  end note
+  :Nhóm cart items theo shop;
+  :Áp dụng dịch thuật theo ngôn ngữ;
+  :Tính toán metadata phân trang;
+  :Trả về dữ liệu giỏ hàng với metadata;
+
+elseif (POST /cart) then
+  :Người dùng thêm sản phẩm vào giỏ hàng;
+  :Trích xuất {skuId, quantity} từ body;
+  :Validate SKU tồn tại và không bị xóa;
+  if (SKU được tìm thấy?) then (có)
+    :Kiểm tra tính khả dụng của SKU;
+    if (SKU khả dụng?) then (có)
+      :Kiểm tra số lượng tồn kho;
+      if (Đủ hàng?) then (có)
+        :Kiểm tra sản phẩm đã có trong giỏ hàng;
+        if (Sản phẩm đã tồn tại trong giỏ?) then (có)
+          :Cập nhật số lượng sản phẩm hiện có;
+          :Tăng số lượng;
+        else (không)
+          :Tạo cart item mới;
+          :Thêm vào giỏ hàng của user;
+        endif
+        :Thực thi upsert operation;
+        note right
+        Logic Upsert:
+        • Nếu cartItem đã tồn tại: increment quantity
+        • Nếu chưa tồn tại: create new cartItem
+        • Unique constraint: userId + skuId
+        end note
+        :Trả về success response;
+      else (không)
+        :Ném OutOfStockSKUException;
+      endif
+    else (không)
+      :Ném ProductNotFoundException;
+    endif
+  else (không)
+    :Ném NotFoundSKUException;
+  endif
+
+elseif (PUT /cart/:cartItemId) then
+  :Người dùng cập nhật sản phẩm trong giỏ hàng;
+  :Validate cart item tồn tại;
+  if (Cart item được tìm thấy?) then (có)
+    :Kiểm tra tính khả dụng của SKU;
+    if (SKU khả dụng?) then (có)
+      :Validate số lượng mới;
+      if (Số lượng hợp lệ?) then (có)
+        :Cập nhật số lượng cart item;
+        :Cập nhật tham chiếu SKU;
+        :Thực thi update operation;
+        :Trả về updated cart item;
+      else (không)
+        :Ném InvalidQuantityException;
+      endif
+    else (không)
+      :Ném ProductNotFoundException;
+    endif
+  else (không)
+    :Ném NotFoundCartItemException;
+  endif
+
+elseif (POST /cart/delete) then
+  :Người dùng xóa sản phẩm khỏi giỏ hàng;
+  :Trích xuất cartItemIds từ body;
+  :Validate cart items tồn tại;
+  if (Cart items được tìm thấy?) then (có)
+    :Xóa các cart items đã chọn;
+    :Thực thi deleteMany operation;
+    :Trả về số lượng đã xóa;
+  else (không)
+    :Trả về kết quả rỗng;
+  endif
+
+else (Thao tác không hợp lệ)
+  :Ném InvalidOperationException;
+endif
+
+:Tạo thông báo thành công đa ngôn ngữ;
+:Trả về JSON response với metadata;
+
+stop
+
+@enduml

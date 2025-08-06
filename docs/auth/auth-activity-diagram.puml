@@ -1,0 +1,110 @@
+@startuml Auth Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Luồng Xác Thực - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng nhập thông tin đăng nhập;
+
+if (Phương thức đăng nhập?) then (Email/Password)
+  :Validate định dạng email;
+  if (Email hợp lệ?) then (có)
+    :Kiểm tra user tồn tại;
+    if (User được tìm thấy?) then (có)
+      :Xác minh password hash;
+      if (Password đúng?) then (có)
+        if (2FA được bật?) then (có)
+          :Yêu cầu mã 2FA;
+          :Người dùng nhập TOTP/OTP;
+          :Xác minh mã 2FA;
+          if (2FA hợp lệ?) then (có)
+            :Tạo device session;
+            :Tạo access token;
+            :Tạo refresh token;
+            :Lưu refresh token vào DB;
+            :Set auth cookies;
+            :Trả về success response;
+          else (không)
+            :Trả về lỗi 2FA;
+          endif
+        else (không)
+          :Tạo device session;
+          :Tạo access token;
+          :Tạo refresh token;
+          :Lưu refresh token vào DB;
+          :Set auth cookies;
+          :Trả về success response;
+        endif
+      else (không)
+        :Trả về lỗi password;
+      endif
+    else (không)
+      :Trả về lỗi user không tồn tại;
+    endif
+  else (không)
+    :Trả về lỗi định dạng email;
+  endif
+
+else (Google OAuth)
+  :Chuyển hướng đến Google OAuth;
+  :Người dùng ủy quyền trên Google;
+  :Google trả về authorization code;
+  :Đổi code lấy access token;
+  :Lấy thông tin user từ Google;
+  if (User tồn tại?) then (có)
+    :Cập nhật thông tin user;
+  else (không)
+    :Tạo user mới;
+    :Gán client role;
+  endif
+  :Tạo access token;
+  :Tạo refresh token;
+  :Lưu refresh token vào DB;
+  :Set auth cookies;
+  :Chuyển hướng với tokens;
+endif
+
+:Người dùng đã được xác thực;
+
+if (Quản lý session?) then (Refresh Token)
+  :Validate refresh token;
+  if (Token hợp lệ?) then (có)
+    :Kiểm tra token trong DB;
+    if (Token tồn tại?) then (có)
+      :Xóa refresh token cũ;
+      :Tạo access token mới;
+      :Tạo refresh token mới;
+      :Lưu refresh token mới;
+      :Cập nhật thông tin device;
+      :Set auth cookies mới;
+      :Trả về success;
+    else (không)
+      :Trả về lỗi token đã được sử dụng;
+    endif
+  else (không)
+    :Trả về lỗi token không hợp lệ;
+  endif
+
+else (Đăng xuất)
+  :Validate refresh token;
+  if (Token hợp lệ?) then (có)
+    :Xóa refresh token khỏi DB;
+    :Cập nhật device thành inactive;
+    :Xóa auth cookies;
+    :Trả về logout success;
+  else (không)
+    :Trả về lỗi unauthorized;
+  endif
+endif
+
+stop
+
+@enduml

@@ -1,63 +1,33 @@
-@startuml
-!theme aws-orange
+@startuml Discount Module - Sequence Overview
+!theme plain
 skinparam backgroundColor #FFFFFF
-skinparam defaultTextAlignment center
-skinparam participant {
-    BackgroundColor #E8F4FD
-    BorderColor #1976D2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam actor {
-    BackgroundColor #FFF8E1
-    BorderColor #F57C00
-    FontColor #000000
-    FontStyle bold
-}
-skinparam database {
-    BackgroundColor #F3E5F5
-    BorderColor #7B1FA2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam note {
-    BackgroundColor #FFFDE7
-    BorderColor #F9A825
-    FontColor #000000
-}
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
 
-title Mô-đun Discount - Tổng Quan Sequence
+title Mô-đun Khuyến Mãi - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý khuyến mãi với validation phức tạp và phân quyền
 
 actor "Khách hàng" as Client
 actor "Chủ shop" as ShopOwner
 actor "Admin" as Admin
-participant DiscountController
-participant ManageDiscountController
-participant DiscountService
-participant ManageDiscountService
-participant DiscountRepo
-database PostgreSQL
+participant "DiscountController" as DC
+participant "ManageDiscountController" as MDC
+participant "DiscountService" as DS
+participant "ManageDiscountService" as MDS
+participant "DiscountRepo" as DR
+participant "I18nService" as IS
+participant "PrismaService" as PS
+participant "AccessTokenGuard" as AG
+database "PostgreSQL" as DB
 
 == API Công Khai (Public Discounts) ==
-Client -> DiscountController: GET /discounts/available (danh sách khuyến mãi)
-DiscountController -> DiscountService: getAvailableDiscounts(query)
-
-opt Filter & Validation Logic
-    DiscountService -> DiscountRepo: getAvailableDiscounts(params)
-    note right
-    Available Discounts Logic:
-    • Filter theo thời gian hiện tại (startDate <= now <= endDate)
-    • Filter theo trạng thái ACTIVE
-    • Filter theo shop/platform discounts
-    • Filter theo min order value
-    • Filter theo cart items (product/category/brand)
-    end note
-end
-
-DiscountRepo -> PostgreSQL: Query với complex filters
+Client -> DC: GET /discounts/available?limit=20&cartItemIds=123,456&onlyShopDiscounts=true
+DC -> DS: getAvailableDiscounts(query)
+DS -> DR: getAvailableDiscounts(params)
+DR -> DR: buildAvailableDiscountsWhereClause()
 note right
-Database Query Features:
+Logic Xây Dựng Query:
 • WHERE deletedAt IS NULL
 • WHERE discountStatus = 'ACTIVE'
 • WHERE startDate <= now <= endDate
@@ -65,133 +35,207 @@ Database Query Features:
 • Filter theo minOrderValue
 • Include relations (products, categories, brands)
 end note
-PostgreSQL --> DiscountRepo: Available discounts
-DiscountRepo --> DiscountService: Filtered discounts
-DiscountService --> DiscountController: Response + i18n message
-DiscountController --> Client: JSON với available discounts
+DR -> PS: calculateOrderInfoFromCartItems(cartItemIds)
+PS -> DB: Query cart items với JOINs
+DB -> PS: Trả về cart items data
+PS -> DR: Trả về {orderTotal, shopId, productIds, categoryIds, brandIds}
+DR -> PS: discount.findMany() với complex where clause
+PS -> DB: Thực thi query với filters
+DB -> PS: Trả về available discounts
+PS -> DR: Trả về filtered discounts
+DR -> DR: filterAvailableDiscounts(discounts, cartItemIds)
+note right
+Logic Filter Phức Tạp:
+• Kiểm tra số lần sử dụng (maxUses)
+• Kiểm tra discountApplyType SPECIFIC
+• Validate product/category/brand applicability
+• Filter theo cart items
+end note
+DR -> DS: Trả về available discounts
+DS -> DC: Trả về response với data
+DC -> Client: Trả về JSON với available discounts
 
-Client -> DiscountController: POST /discounts/validate-code (validate voucher)
-DiscountController -> DiscountService: validateVoucherCode(body)
+Client -> DC: POST /discounts/validate-code + {code: "ABC123", cartItemIds: ["123", "456"]}
+DC -> DS: validateVoucherCode(body)
+DS -> DR: findByCode(code)
+DR -> PS: discount.findUnique() với include relations
+PS -> DB: Query discount theo code
+DB -> PS: Trả về discount với relations
+PS -> DR: Trả về discount data
+DR -> DS: Trả về discount
 
-alt Voucher Validation Logic
-    DiscountService -> DiscountRepo: findByCode(code)
-    DiscountRepo -> PostgreSQL: findUnique với code
-    PostgreSQL --> DiscountRepo: Discount data
-    DiscountRepo --> DiscountService: Discount info
+alt Discount được tìm thấy
+    DS -> DS: validateDiscountEligibility()
+    note right
+    Các Bước Xác Thực:
+    • Kiểm tra discountStatus = 'ACTIVE'
+    • Kiểm tra thời gian hiệu lực (startDate <= now <= endDate)
+    • Kiểm tra số lần sử dụng (usesCount < maxUses)
+    • Tính toán orderTotal từ cartItemIds
+    • Kiểm tra minOrderValue
+    • Kiểm tra discountApplyType SPECIFIC
+    end note
 
-    opt Validation Checks
-        DiscountService -> DiscountService: validateDiscountStatus()
-        note right
-        Validation Steps:
-        • Kiểm tra discount tồn tại
-        • Kiểm tra status = ACTIVE
-        • Kiểm tra thời gian hiệu lực
-        • Kiểm tra số lần sử dụng
-        • Kiểm tra min order value
-        • Kiểm tra applicability (SPECIFIC)
-        end note
-    end
+    DS -> DS: calculateOrderTotalFromCartItems(cartItemIds)
+    DS -> PS: cartItem.findMany() với JOINs
+    PS -> DB: Query cart items
+    DB -> PS: Trả về cart items
+    PS -> DS: Trả về cart items data
+    DS -> DS: calculateDiscountAmount(discount, orderTotal)
+    note right
+    Tính Toán Khuyến Mãi:
+    • PERCENTAGE: (orderTotal * value) / 100
+    • FIX_AMOUNT: min(value, orderTotal)
+    • Apply maxDiscountValue limit
+    end note
+    DS -> DC: Trả về validation result với discountAmount
+    DC -> Client: Trả về 200 OK + validation details
 
-    alt Validation passed
-        DiscountService -> DiscountService: calculateDiscountAmount()
-        note right
-        Discount Calculation:
-        • PERCENTAGE: (orderTotal * value) / 100
-        • FIX_AMOUNT: min(value, orderTotal)
-        • Apply maxDiscountValue limit
-        end note
-        DiscountService --> DiscountController: Success response
-        DiscountController --> Client: 200 OK + discount details
-
-    else Validation failed
-        DiscountService --> DiscountController: Error response
-        DiscountController --> Client: 400 Bad Request + error message
-    end
+else Discount không tồn tại
+    DS -> DC: Trả về error response
+    DC -> Client: Trả về 400 Bad Request + error message
 end
 
 == API Quản Lý (Management Discounts) ==
-ShopOwner -> ManageDiscountController: Request CRUD operations
-ManageDiscountController -> ManageDiscountService: Business logic + Auth
+ShopOwner -> AG: Request với cookies
+AG -> AG: Trích xuất access_token từ cookies
+AG -> AG: Xác minh JWT token
+AG -> AG: Tải quyền người dùng
+AG -> MDC: Cho phép request với user context
 
-alt Thao tác CREATE
-    ManageDiscountService -> ManageDiscountService: validateCreatePrivilege()
-    note right
-    Privilege Validation:
-    • Admin: có thể tạo cho bất kỳ shop
-    • Seller: chỉ tạo cho chính mình
-    • Auto-set shopId = userId cho Seller
-    end note
-    ManageDiscountService -> DiscountRepo: findByCode() kiểm tra trùng
-    DiscountRepo -> PostgreSQL: findUnique với code
-    PostgreSQL --> DiscountRepo: Existing discount
-    DiscountRepo --> ManageDiscountService: Duplicate check result
+ShopOwner -> MDC: POST /manage-discount/discounts + {name, code, value, startDate, endDate, ...}
+MDC -> MDS: create({data, user})
+MDS -> MDS: validateCreatePrivilege()
+note right
+Xác Thực Quyền:
+• Admin: có thể tạo cho bất kỳ shop
+• Seller: chỉ tạo cho chính mình
+• Auto-set shopId = userId cho Seller
+end note
+MDS -> DR: findByCode(code) kiểm tra trùng
+DR -> PS: discount.findUnique() với code
+PS -> DB: Query discount theo code
+DB -> PS: Trả về existing discount
+PS -> DR: Trả về duplicate check result
+DR -> MDS: Trả về existing discount
 
-    alt Code chưa tồn tại
-        ManageDiscountService -> DiscountRepo: create() với relations
-        DiscountRepo -> PostgreSQL: INSERT discount + relations
-        note right
-        Create Logic:
-        • INSERT discount với audit fields
-        • Connect brands/categories/products
-        • Validate business rules
-        end note
-        PostgreSQL --> DiscountRepo: Discount created
-        DiscountRepo --> ManageDiscountService: New discount
-        ManageDiscountService --> ManageDiscountController: Success response
-        ManageDiscountController --> ShopOwner: 201 Created
+alt Code chưa tồn tại
+    MDS -> DR: create({createdById, data})
+    DR -> PS: discount.create() với relations
+    PS -> DB: INSERT discount với audit fields
+    DB -> PS: Trả về discount created
+    PS -> DR: Trả về new discount
+    DR -> MDS: Trả về created discount
+    MDS -> IS: i18n.t('discount.discount.success.CREATE_SUCCESS')
+    IS -> MDS: Trả về message đã localize
+    MDS -> MDC: Trả về success response
+    MDC -> ShopOwner: Trả về 201 Created + JSON response
 
-    else Code đã tồn tại
-        ManageDiscountService --> ManageDiscountController: BadRequestException
-        ManageDiscountController --> ShopOwner: 400 Bad Request
-    end
-
-else Thao tác READ/UPDATE/DELETE
-    ManageDiscountService -> DiscountRepo: findById() trước
-    DiscountRepo -> PostgreSQL: Tìm discount theo ID
-    PostgreSQL --> DiscountRepo: Discount data
-    DiscountRepo --> ManageDiscountService: Discount info
-    ManageDiscountService -> ManageDiscountService: validatePrivilege()
-    note right
-    Access Control:
-    • Admin: truy cập tất cả discounts
-    • Seller: chỉ truy cập của chính mình
-    • createdById validation
-    end note
+else Code đã tồn tại
+    MDS -> MDC: Throw BadRequestException
+    MDC -> ShopOwner: Trả về 400 Bad Request
 end
 
-== Xử Lý Lỗi & Phân Quyền ==
+ShopOwner -> MDC: PUT /manage-discount/discounts/:discountId + {name, code, value, ...}
+MDC -> MDS: update({discountId, data, user})
+MDS -> DR: findById(discountId)
+DR -> PS: discount.findUnique()
+PS -> DB: Query discount theo ID
+DB -> PS: Trả về discount data
+PS -> DR: Trả về discount
+DR -> MDS: Trả về discount info
+MDS -> MDS: validatePrivilege()
+note right
+Kiểm Soát Truy Cập:
+• Admin: truy cập tất cả discounts
+• Seller: chỉ truy cập của chính mình
+• createdById validation
+end note
+MDS -> DR: update({id, updatedById, data})
+DR -> PS: discount.update() với relations
+PS -> DB: UPDATE discount với audit
+DB -> PS: Trả về discount updated
+PS -> DR: Trả về updated discount
+DR -> MDS: Trả về updated data
+MDS -> IS: i18n.t('discount.discount.success.UPDATE_SUCCESS')
+IS -> MDS: Trả về message đã localize
+MDS -> MDC: Trả về success response
+MDC -> ShopOwner: Trả về 200 OK + JSON response
+
+ShopOwner -> MDC: DELETE /manage-discount/discounts/:discountId
+MDC -> MDS: delete({discountId, user})
+MDS -> DR: findById(discountId)
+DR -> PS: discount.findUnique()
+PS -> DB: Query discount theo ID
+DB -> PS: Trả về discount data
+PS -> DR: Trả về discount
+DR -> MDS: Trả về discount info
+MDS -> MDS: validatePrivilege()
+MDS -> DR: delete({id, deletedById})
+DR -> PS: discount.update() soft delete
+PS -> DB: UPDATE deletedAt field
+DB -> PS: Trả về discount marked deleted
+PS -> DR: Trả về success
+DR -> MDS: Trả về success
+MDS -> IS: i18n.t('discount.discount.success.DELETE_SUCCESS')
+IS -> MDS: Trả về message đã localize
+MDS -> MDC: Trả về success response
+MDC -> ShopOwner: Trả về 200 OK + JSON response
+
+ShopOwner -> MDC: GET /manage-discount/discounts?page=1&limit=10&createdById=123
+MDC -> MDS: list({query, user})
+MDS -> MDS: validatePrivilege()
+MDS -> DR: list(query)
+DR -> DR: buildAdminListWhereClause(filters)
+DR -> PS: discount.count() và discount.findMany()
+PS -> DB: Query với pagination và filters
+DB -> PS: Trả về totalItems và discounts
+PS -> DR: Trả về {data, metadata}
+DR -> MDS: Trả về discounts với pagination
+MDS -> IS: i18n.t('discount.discount.success.GET_SUCCESS')
+IS -> MDS: Trả về message đã localize
+MDS -> MDC: Trả về response với data + metadata
+MDC -> ShopOwner: Trả về JSON với pagination
+
+== Xử Lý Lỗi ==
 alt Lỗi validation voucher
-    DiscountService --> DiscountController: ValidationException
-    DiscountController --> Client: 400 Bad Request
+    DS -> DC: ValidationException
+    DC -> Client: Trả về 400 Bad Request
 
 else Lỗi phân quyền
-    ManageDiscountService --> ManageDiscountController: ForbiddenException
-    ManageDiscountController --> ShopOwner: 403 Forbidden
+    MDS -> MDC: ForbiddenException
+    MDC -> ShopOwner: Trả về 403 Forbidden
 
 else Lỗi không tìm thấy
-    ManageDiscountService --> ManageDiscountController: NotFoundRecordException
-    ManageDiscountController --> ShopOwner: 404 Not Found
+    MDS -> MDC: NotFoundRecordException
+    MDC -> ShopOwner: Trả về 404 Not Found
 
 else Lỗi duplicate code
-    ManageDiscountService --> ManageDiscountController: BadRequestException
-    ManageDiscountController --> ShopOwner: 400 Bad Request
+    MDS -> MDC: BadRequestException
+    MDC -> ShopOwner: Trả về 400 Bad Request
+
+else Lỗi database constraint
+    DR -> MDS: PrismaException
+    MDS -> MDC: Database error
+    MDC -> ShopOwner: Trả về 500 Internal Server Error
 end
 
-== Trả Kết Quả ==
-DiscountService -> DiscountService: Tạo thông báo đa ngôn ngữ (I18nService)
-DiscountService --> DiscountController: Response + Message đã localize
-DiscountController --> Client: JSON Response với metadata đầy đủ
+== Đa Ngôn Ngữ ==
+MDS -> IS: i18n.t('discount.discount.success.XXX')
+IS -> MDS: Trả về message đã localize
+MDS -> MDC: Phản hồi + Message đã localize
+MDC -> ShopOwner: JSON Response với metadata đầy đủ
 
 note bottom
 **Đặc điểm chính của module Discount:**
 • Validation phức tạp cho voucher codes
-• Phân quyền Admin/Seller rõ ràng
-• Support cả shop và platform discounts
-• Tính toán discount amount tự động
-• Filter theo cart items (product/category/brand)
-• Audit trail với createdById, updatedById, deletedById
-• Soft delete pattern
-• Multi-language support
+• Phân quyền Admin/Seller với access control
+• Tính toán discount amount theo loại (PERCENTAGE/FIX_AMOUNT)
+• Filter discounts theo cart items và applicability
+• Soft delete với audit fields
+• Pagination cho admin management
+• Đa ngôn ngữ với I18nService
+• Business rules validation (thời gian, số lần sử dụng, min order value)
 end note
 
 @enduml

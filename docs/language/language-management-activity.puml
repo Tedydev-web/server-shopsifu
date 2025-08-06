@@ -1,0 +1,150 @@
+@startuml Language Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Quản Lý Ngôn Ngữ - Sơ Đồ Hoạt Động
+
+start
+
+:Client/Admin truy cập hệ thống;
+
+if (Hoạt động?) then (Lấy danh sách ngôn ngữ)
+  :GET /languages;
+  :Không cần authentication;
+  :Validate request;
+  if (Validation passed?) then (có)
+    :Query tất cả languages từ database;
+    :FindMany với WHERE deletedAt IS NULL;
+    :Tính toán totalItems từ array length;
+    :Tạo localized success message;
+    :Trả về danh sách languages với totalItems;
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Xem chi tiết ngôn ngữ) then
+  :GET /languages/:languageId;
+  :Trích xuất languageId từ params;
+  :Validate languageId với Zod schema;
+  note right
+  Language ID Validation:
+  • id: required string, max 10 chars
+  • Zod schema validation
+  • Parameter sanitization
+  end note
+  if (Validation passed?) then (có)
+    :Query language từ database;
+    :FindUnique với WHERE id = languageId AND deletedAt IS NULL;
+    if (Language tồn tại?) then (có)
+      :Tạo localized success message;
+      :Trả về language detail;
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Tạo ngôn ngữ mới) then
+  :POST /languages + {id, name};
+  :Trích xuất user từ @ActiveUser();
+  :Validate request body với Zod schema;
+  note right
+  Create Validation:
+  • id: required string, max 10 chars
+  • name: required string, max 500 chars
+  • Zod schema validation
+  • Strict object validation
+  end note
+  if (Validation passed?) then (có)
+    :Tạo language với audit fields;
+    note right
+    Create Logic:
+    • INSERT language với createdById
+    • Audit trail: createdAt, createdById
+    • Validate unique constraint cho id
+    end note
+    :Thực thi database INSERT;
+    if (Unique constraint valid?) then (có)
+      :Tạo localized success message;
+      :Trả về language đã tạo;
+    else (không)
+      :Ném LanguageAlreadyExistsException;
+      :Trả về 422 Unprocessable Entity;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Cập nhật ngôn ngữ) then
+  :PUT /languages/:languageId + {name};
+  :Trích xuất languageId và user;
+  :Validate request data với Zod;
+  note right
+  Update Validation:
+  • languageId: required string, max 10 chars
+  • name: required string, max 500 chars
+  • Không cho phép update id (immutable)
+  • Zod schema validation
+  end note
+  if (Validation passed?) then (có)
+    :Cập nhật language với audit fields;
+    note right
+    Update Logic:
+    • UPDATE language name với updatedById
+    • Audit trail: updatedAt, updatedById
+    • Filter deletedAt IS NULL
+    • Immutable language ID
+    end note
+    :Thực thi database UPDATE;
+    if (Language tồn tại?) then (có)
+      :Tạo localized success message;
+      :Trả về updated language;
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Xóa ngôn ngữ) then
+  :DELETE /languages/:languageId;
+  :Validate languageId với Zod;
+  if (Validation passed?) then (có)
+    :Thực thi hard delete operation;
+    note right
+    Hard Delete Logic:
+    • Sử dụng hard delete (isHard = true)
+    • DELETE FROM language WHERE id = ?
+    • Xóa hoàn toàn khỏi database
+    • Không sử dụng soft delete
+    end note
+    :Thực thi database DELETE;
+    if (Language tồn tại?) then (có)
+      :Tạo localized success message;
+      :Trả về success response;
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+else (Invalid operation)
+  :Trả về 400 Bad Request;
+endif
+
+:Hoàn thành thao tác;
+
+stop
+
+@enduml

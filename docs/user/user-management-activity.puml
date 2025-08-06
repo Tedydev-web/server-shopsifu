@@ -1,0 +1,206 @@
+@startuml User Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Quản Lý Người Dùng - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng truy cập hệ thống;
+
+if (Hoạt động?) then (Lấy danh sách người dùng)
+  :GET /users với pagination;
+  :Trích xuất {page, limit} từ query;
+  :Validate query parameters với Zod schema;
+  if (Validation passed?) then (có)
+    :Tính toán pagination metadata;
+    :Thực thi parallel database queries;
+    note right
+      Database Operations:
+      • count() với WHERE deletedAt IS NULL
+      • findMany() với include role
+      • Parallel execution cho performance
+      end note
+    :Include role information;
+    :Tính toán metadata (totalItems, totalPages, hasNext, hasPrev);
+    :Tạo localized success message;
+    :Trả về users với metadata;
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Xem chi tiết người dùng)
+  :GET /users/:userId;
+  :Trích xuất userId từ params;
+  :Validate userId với Zod schema;
+  if (Validation passed?) then (có)
+    :Query user với role permissions;
+    :findUniqueIncludeRolePermissions;
+    :Include role và permissions;
+    if (User tồn tại?) then (có)
+      :Tạo localized success message;
+      :Trả về user detail với role permissions;
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Tạo người dùng mới)
+  :POST /users + user data;
+  :Authenticate user với @ActiveUser();
+  :Trích xuất roleName từ @ActiveRolePermissions('name');
+  :Validate request body với Zod schema;
+  note right
+    Data Validation:
+    • email: string validation
+    • name: string validation
+    • phoneNumber: string validation
+    • avatar: string validation
+    • status: enum validation
+    • password: string validation
+    • roleId: string validation
+    end note
+  if (Validation passed?) then (có)
+    :Bắt đầu role verification;
+    :Kiểm tra roleNameAgent === RoleName.Admin;
+    if (Agent is Admin?) then (có)
+      :Cho phép any role assignment;
+    else (không)
+      :Lấy admin role ID;
+      :Kiểm tra roleIdTarget !== adminRoleId;
+      if (Target role is Admin?) then (có)
+        :Ném ForbiddenException;
+        :Trả về 403 Forbidden;
+      endif
+    endif
+    :Hash password với HashingService;
+    :Tạo user với audit fields (createdById);
+    :Thực thi database INSERT;
+    if (Unique constraint valid?) then (có)
+      if (Foreign key valid?) then (có)
+        :Tạo localized success message;
+        :Trả về user đã tạo;
+      else (không)
+        :Ném RoleNotFoundException;
+        :Trả về 422 Unprocessable Entity;
+      endif
+    else (không)
+      :Ném UserAlreadyExistsException;
+      :Trả về 422 Unprocessable Entity;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Cập nhật người dùng)
+  :PUT /users/:userId + user data;
+  :Authenticate user với @ActiveUser();
+  :Trích xuất roleName từ @ActiveRolePermissions('name');
+  :Validate request body với Zod schema;
+  if (Validation passed?) then (có)
+    :Bắt đầu self-operation verification;
+    :Kiểm tra userAgentId !== userTargetId;
+    if (Self-operation?) then (có)
+      :Ném CannotUpdateOrDeleteYourselfException;
+      :Trả về 403 Forbidden;
+    else (không)
+      :Lấy current user role ID;
+      :Query user từ database;
+      if (User tồn tại?) then (có)
+        :Bắt đầu role verification;
+        :Kiểm tra roleNameAgent === RoleName.Admin;
+        if (Agent is Admin?) then (có)
+          :Cho phép any role update;
+        else (không)
+          :Lấy admin role ID;
+          :Kiểm tra currentRoleId !== adminRoleId;
+          if (Current role is Admin?) then (có)
+            :Ném ForbiddenException;
+            :Trả về 403 Forbidden;
+          endif
+        endif
+        :Cập nhật user với audit fields (updatedById);
+        :Thực thi database UPDATE;
+        if (User tồn tại?) then (có)
+          if (Unique constraint valid?) then (có)
+            if (Foreign key valid?) then (có)
+              :Tạo localized success message;
+              :Trả về updated user;
+            else (không)
+              :Ném RoleNotFoundException;
+              :Trả về 422 Unprocessable Entity;
+            endif
+          else (không)
+            :Ném UserAlreadyExistsException;
+            :Trả về 422 Unprocessable Entity;
+          endif
+        else (không)
+          :Ném NotFoundRecordException;
+          :Trả về 404 Not Found;
+        endif
+      else (không)
+        :Ném NotFoundRecordException;
+        :Trả về 404 Not Found;
+      endif
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Xóa người dùng)
+  :DELETE /users/:userId;
+  :Authenticate user với @ActiveUser();
+  :Trích xuất roleName từ @ActiveRolePermissions('name');
+  if (Validation passed?) then (có)
+    :Bắt đầu self-operation verification;
+    :Kiểm tra userAgentId !== userTargetId;
+    if (Self-operation?) then (có)
+      :Ném CannotUpdateOrDeleteYourselfException;
+      :Trả về 403 Forbidden;
+    else (không)
+      :Lấy current user role ID;
+      :Query user từ database;
+      if (User tồn tại?) then (có)
+        :Bắt đầu role verification;
+        :Kiểm tra roleNameAgent === RoleName.Admin;
+        if (Agent is Admin?) then (có)
+          :Cho phép any user deletion;
+        else (không)
+          :Lấy admin role ID;
+          :Kiểm tra currentRoleId !== adminRoleId;
+          if (Current role is Admin?) then (có)
+            :Ném ForbiddenException;
+            :Trả về 403 Forbidden;
+          endif
+        endif
+        :Thực thi soft delete operation;
+        :Cập nhật user với deletedAt và deletedById;
+        :Tạo localized success message;
+        :Trả về success response;
+      else (không)
+        :Ném NotFoundRecordException;
+        :Trả về 404 Not Found;
+      endif
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+else (Invalid operation)
+  :Trả về 400 Bad Request;
+endif
+
+:Hoàn thành thao tác;
+
+stop
+
+@enduml

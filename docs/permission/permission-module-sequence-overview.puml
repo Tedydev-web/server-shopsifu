@@ -26,61 +26,67 @@ skinparam note {
     FontColor #000000
 }
 
-title Mô-đun Permission - Tổng Quan Sequence
+title Mô-đun Quyền - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý quyền với cache management và role relationships
 
 actor "Admin" as Admin
-participant PermissionController
-participant PermissionService
-participant PermissionRepo
-database PostgreSQL
-database Redis
+participant "PermissionController" as PC
+participant "PermissionService" as PS
+participant "PermissionRepo" as PR
+participant "I18nService" as IS
+participant "CacheManager" as CM
+database "PostgreSQL" as DB
+database "Redis" as RD
 
 == GET /permissions - Lấy Danh Sách Quyền ==
-Admin -> PermissionController: GET /permissions?page=1&limit=10
-PermissionController -> PermissionService: list(pagination)
+Admin -> PC: GET /permissions?page=1&limit=10
+PC -> PS: list(pagination)
 
-PermissionService -> PermissionRepo: list(pagination)
-PermissionRepo -> PermissionRepo: Calculate pagination metadata
+PS -> PR: list(pagination)
+PR -> PR: Tính toán pagination metadata
 note right
-Pagination Logic:
+Logic Phân Trang:
 • skip = (page - 1) * limit
 • take = limit
 • Parallel queries: count + findMany
-• Calculate totalPages, hasNext, hasPrev
+• Tính toán totalPages, hasNext, hasPrev
 end note
 
-PermissionRepo -> PostgreSQL: count() với WHERE deletedAt IS NULL
-PermissionRepo -> PostgreSQL: findMany() với pagination
-PostgreSQL --> PermissionRepo: Total count + permissions data
-PermissionRepo --> PermissionService: Permissions với metadata
-PermissionService --> PermissionController: Response + i18n message
-PermissionController --> Admin: JSON với data + metadata
+PR -> DB: count() với WHERE deletedAt IS NULL
+PR -> DB: findMany() với pagination
+DB -> PR: Total count + permissions data
+PR -> PS: Permissions với metadata
+PS -> IS: i18n.t('permission.permission.success.GET_SUCCESS')
+IS -> PS: Trả về message đã localize
+PS -> PC: Phản hồi + Message đã localize
+PC -> Admin: JSON với data + metadata
 
 == GET /permissions/:id - Chi Tiết Quyền ==
-Admin -> PermissionController: GET /permissions/:permissionId
-PermissionController -> PermissionService: findById(permissionId)
+Admin -> PC: GET /permissions/:permissionId
+PC -> PS: findById(permissionId)
 
-PermissionService -> PermissionRepo: findById(id)
-PermissionRepo -> PostgreSQL: findUnique với WHERE deletedAt IS NULL
-PostgreSQL --> PermissionRepo: Permission data
-PermissionRepo --> PermissionService: Permission info
+PS -> PR: findById(id)
+PR -> DB: findUnique với WHERE deletedAt IS NULL
+DB -> PR: Permission data
+PR -> PS: Permission info
 
 alt Permission tồn tại
-    PermissionService --> PermissionController: Success response
-    PermissionController --> Admin: JSON permission detail
+    PS -> IS: i18n.t('permission.permission.success.GET_DETAIL_SUCCESS')
+    IS -> PS: Trả về message đã localize
+    PS -> PC: Success response
+    PC -> Admin: JSON permission detail
 else Permission không tồn tại
-    PermissionService --> PermissionController: NotFoundRecordException
-    PermissionController --> Admin: 404 Not Found
+    PS -> PC: NotFoundRecordException
+    PC -> Admin: 404 Not Found
 end
 
 == POST /permissions - Tạo Quyền Mới ==
-Admin -> PermissionController: POST /permissions + {name, path, method, module}
-PermissionController -> PermissionService: create({data, user})
+Admin -> PC: POST /permissions + {name, path, method, module}
+PC -> PS: create({data, user})
 
-PermissionService -> PermissionService: Validate data với Zod schema
+PS -> PS: Validate data với Zod schema
 note right
-Data Validation:
+Xác Thực Dữ Liệu:
 • name: required string
 • path: required string (API path)
 • method: required string (HTTP method)
@@ -88,121 +94,128 @@ Data Validation:
 • Unique constraint: path + method
 end note
 
-PermissionService -> PermissionRepo: create({createdById, data})
-PermissionRepo -> PostgreSQL: INSERT permission với audit fields
+PS -> PR: create({createdById, data})
+PR -> DB: INSERT permission với audit fields
 note right
-Create Logic:
+Logic Tạo Mới:
 • INSERT permission với createdById
 • Audit trail: createdAt, createdById
 • Validate unique constraint
 end note
-PostgreSQL --> PermissionRepo: Permission created
-PermissionRepo --> PermissionService: New permission
-PermissionService --> PermissionController: Success response
-PermissionController --> Admin: 201 Created + JSON response
+DB -> PR: Permission created
+PR -> PS: New permission
+PS -> IS: i18n.t('permission.permission.success.CREATE_SUCCESS')
+IS -> PS: Trả về message đã localize
+PS -> PC: Success response
+PC -> Admin: 201 Created + JSON response
 
 == PUT /permissions/:id - Cập Nhật Quyền ==
-Admin -> PermissionController: PUT /permissions/:permissionId + {data}
-PermissionController -> PermissionService: update({id, data, user})
+Admin -> PC: PUT /permissions/:permissionId + {data}
+PC -> PS: update({id, data, user})
 
-PermissionService -> PermissionRepo: update({id, updatedById, data})
-PermissionRepo -> PostgreSQL: UPDATE permission với include roles
+PS -> PR: update({id, updatedById, data})
+PR -> DB: UPDATE permission với include roles
 note right
-Update Logic:
+Logic Cập Nhật:
 • UPDATE permission với updatedById
 • Include roles relationship
 • Validate unique constraint
 • Audit trail: updatedAt, updatedById
 end note
-PostgreSQL --> PermissionRepo: Updated permission với roles
-PermissionRepo --> PermissionService: Updated data
+DB -> PR: Updated permission với roles
+PR -> PS: Updated data
 
 alt Update successful
-    PermissionService -> PermissionService: deleteCachedRole(roles)
+    PS -> PS: deleteCachedRole(roles)
     note right
-    Cache Management:
+    Quản Lý Cache:
     • Delete cached role data cho tất cả roles
     • Cache key: `role:${roleId}`
     • Parallel deletion với Promise.all
     • Ensure cache consistency
     end note
-    PermissionService -> Redis: del(cacheKey) cho mỗi role
-    Redis --> PermissionService: Cache cleared
-    PermissionService --> PermissionController: Success response
-    PermissionController --> Admin: 200 OK + JSON response
+    PS -> CM: del(cacheKey) cho mỗi role
+    CM -> PS: Cache cleared
+    PS -> IS: i18n.t('permission.permission.success.UPDATE_SUCCESS')
+    IS -> PS: Trả về message đã localize
+    PS -> PC: Success response
+    PC -> Admin: 200 OK + JSON response
 else Update failed
-    PermissionService --> PermissionController: Error response
-    PermissionController --> Admin: 400/404 Error
+    PS -> PC: Error response
+    PC -> Admin: 400/404 Error
 end
 
 == DELETE /permissions/:id - Xóa Quyền ==
-Admin -> PermissionController: DELETE /permissions/:permissionId
-PermissionController -> PermissionService: delete({id, user})
+Admin -> PC: DELETE /permissions/:permissionId
+PC -> PS: delete({id, user})
 
-PermissionService -> PermissionRepo: delete({id, deletedById})
-PermissionRepo -> PostgreSQL: UPDATE deletedAt (soft delete)
+PS -> PR: delete({id, deletedById})
+PR -> DB: UPDATE deletedAt (soft delete)
 note right
-Delete Logic:
+Logic Xóa:
 • Soft delete: UPDATE deletedAt field
 • Include roles relationship
 • Audit trail: deletedAt, deletedById
 • Support hard delete với isHard flag
 end note
-PostgreSQL --> PermissionRepo: Permission marked deleted với roles
-PermissionRepo --> PermissionService: Deleted data
+DB -> PR: Permission marked deleted với roles
+PR -> PS: Deleted data
 
 alt Delete successful
-    PermissionService -> PermissionService: deleteCachedRole(roles)
-    PermissionService -> Redis: del(cacheKey) cho mỗi role
-    Redis --> PermissionService: Cache cleared
-    PermissionService --> PermissionController: Success response
-    PermissionController --> Admin: 200 OK + message
+    PS -> PS: deleteCachedRole(roles)
+    PS -> CM: del(cacheKey) cho mỗi role
+    CM -> PS: Cache cleared
+    PS -> IS: i18n.t('permission.permission.success.DELETE_SUCCESS')
+    IS -> PS: Trả về message đã localize
+    PS -> PC: Success response
+    PC -> Admin: 200 OK + message
 else Delete failed
-    PermissionService --> PermissionController: Error response
-    PermissionController --> Admin: 404 Not Found
+    PS -> PC: Error response
+    PC -> Admin: 404 Not Found
 end
 
 == Xử Lý Lỗi & Validation ==
 alt Lỗi unique constraint
-    PermissionService --> PermissionController: PermissionAlreadyExistsException
-    PermissionController --> Admin: 422 Unprocessable Entity
+    PS -> PC: PermissionAlreadyExistsException
+    PC -> Admin: 422 Unprocessable Entity
     note right
-    Unique Constraint Error:
+    Lỗi Unique Constraint:
     • path + method combination đã tồn tại
     • Duplicate permission không được phép
     • Clear error message cho user
     end note
 
 else Lỗi không tìm thấy
-    PermissionService --> PermissionController: NotFoundRecordException
-    PermissionController --> Admin: 404 Not Found
+    PS -> PC: NotFoundRecordException
+    PC -> Admin: 404 Not Found
 
 else Lỗi validation dữ liệu
-    PermissionService --> PermissionController: ValidationException
-    PermissionController --> Admin: 422 Unprocessable Entity
+    PS -> PC: ValidationException
+    PC -> Admin: 422 Unprocessable Entity
 
 else Lỗi database
-    PermissionService --> PermissionController: DatabaseException
-    PermissionController --> Admin: 500 Internal Server Error
+    PS -> PC: DatabaseException
+    PC -> Admin: 500 Internal Server Error
 end
 
 == Cache Management ==
 alt Cache operations
-    PermissionService -> Redis: del(cacheKey)
+    PS -> CM: del(cacheKey)
     note right
-    Cache Operations:
+    Thao Tác Cache:
     • Delete role cache khi permission thay đổi
     • Cache key format: `role:${roleId}`
     • Parallel deletion với Promise.all
     • Ensure data consistency
     end note
-    Redis --> PermissionService: Cache operation result
+    CM -> PS: Cache operation result
 end
 
 == Trả Kết Quả ==
-PermissionService -> PermissionService: Tạo thông báo đa ngôn ngữ (I18nService)
-PermissionService --> PermissionController: Response + Message đã localize
-PermissionController --> Admin: JSON Response với metadata đầy đủ
+PS -> IS: i18n.t('permission.permission.success.XXX')
+IS -> PS: Trả về message đã localize
+PS -> PC: Phản hồi + Message đã localize
+PC -> Admin: JSON Response với metadata đầy đủ
 
 note bottom
 **Đặc điểm chính của module Permission:**

@@ -1,0 +1,267 @@
+@startuml Product Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Quản Lý Sản Phẩm - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng truy cập hệ thống;
+
+if (Hoạt động?) then (Xem danh sách sản phẩm - Công khai)
+  :GET /products với tham số truy vấn;
+  :Trích xuất {page, limit, name, brandIds, categories, minPrice, maxPrice, createdById, orderBy, sortBy};
+  :Xác thực tham số truy vấn với Zod;
+  if (Xác thực thành công?) then (có)
+    :Lấy ngôn ngữ hiện tại từ I18nContext;
+    :Xây dựng mệnh đề WHERE phức tạp;
+    note right
+    Xây Dựng Truy Vấn:
+    • WHERE deletedAt IS NULL
+    • Lọc theo isPublic=true (publishedAt <= now)
+    • Lọc theo name (contains, insensitive)
+    • Lọc theo brandIds (IN clause)
+    • Lọc theo categories (some relation)
+    • Lọc theo khoảng giá (minPrice, maxPrice)
+    • Lọc theo createdById
+    end note
+    :Tính toán metadata phân trang;
+    :Thực thi truy vấn song song (count + findMany);
+    :Bao gồm productTranslations theo ngôn ngữ;
+    :Bao gồm orders với status DELIVERED;
+    :Áp dụng logic sắp xếp;
+    note right
+    Tùy Chọn Sắp Xếp:
+    • SortBy.CreatedAt: createdAt
+    • SortBy.Price: basePrice
+    • SortBy.UpdatedAt: updatedAt
+    • SortBy.Sale: orders._count
+    end note
+    :Tính toán metadata (totalItems, totalPages, hasNext, hasPrev);
+    :Tạo thông báo thành công đa ngôn ngữ;
+    :Trả về sản phẩm với metadata;
+  else (không)
+    :Trả về lỗi xác thực;
+  endif
+
+elseif (Xem chi tiết sản phẩm - Công khai)
+  :GET /products/:productId;
+  :Trích xuất productId từ params;
+  :Xác thực productId với Zod;
+  if (Xác thực thành công?) then (có)
+    :Lấy ngôn ngữ hiện tại từ I18nContext;
+    :Truy vấn sản phẩm với isPublic=true;
+    :FindUnique với WHERE id = productId AND deletedAt IS NULL;
+    :Bao gồm productTranslations theo ngôn ngữ;
+    :Bao gồm SKUs với deletedAt IS NULL;
+    :Bao gồm brand với translations;
+    :Bao gồm categories với translations;
+    if (Sản phẩm tồn tại?) then (có)
+      :Tạo thông báo thành công đa ngôn ngữ;
+      :Trả về chi tiết sản phẩm với SKUs;
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về lỗi xác thực;
+  endif
+
+elseif (Quản lý sản phẩm - Admin/Shop)
+  :Xác thực người dùng với @ActiveUser();
+  :Trích xuất người dùng từ JWT token;
+  if (Hoạt động?) then (Lấy danh sách sản phẩm)
+    :GET /manage-product/products với query;
+    :Trích xuất {createdById} từ query (bắt buộc);
+    :Xác thực quyền (user.userId === createdById OR user.roleName === Admin);
+    if (Quyền hợp lệ?) then (có)
+      :Xây dựng mệnh đề WHERE với createdById;
+      :Áp dụng bộ lọc (isPublic, brandIds, categories, khoảng giá);
+      :Thực thi truy vấn với phân trang;
+      :Trả về sản phẩm với metadata;
+    else (không)
+      :Ném ForbiddenException;
+      :Trả về 403 Forbidden;
+    endif
+
+  elseif (Xem chi tiết sản phẩm)
+    :GET /manage-product/products/:productId;
+    :Trích xuất productId từ params;
+    :Truy vấn sản phẩm từ database;
+    if (Sản phẩm tồn tại?) then (có)
+      :Xác thực quyền (user.userId === product.createdById OR user.roleName === Admin);
+      if (Quyền hợp lệ?) then (có)
+        :Trả về chi tiết sản phẩm;
+      else (không)
+        :Ném ForbiddenException;
+        :Trả về 403 Forbidden;
+      endif
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+
+  elseif (Tạo sản phẩm mới)
+    :POST /manage-product/products + dữ liệu sản phẩm;
+    :Trích xuất {publishedAt, name, description, basePrice, virtualPrice, brandId, images, variants, specifications, categories, skus} từ body;
+    :Xác thực dữ liệu sản phẩm với Zod schema;
+    note right
+    Xác Thực Dữ Liệu:
+    • Xác thực schema (các trường bắt buộc)
+    • Kiểm tra tính nhất quán biến thể SKU
+    • Xác thực sự tồn tại của danh mục
+    • Xác thực sự tồn tại của thương hiệu
+    • Xác thực giá (basePrice > 0)
+    end note
+    if (Xác thực thành công?) then (có)
+      :Bắt đầu giao dịch database;
+      :Tạo sản phẩm với các trường audit (createdById);
+      :Kết nối danh mục với sản phẩm;
+      :Tạo SKUs với createMany;
+      :Bao gồm productTranslations, SKUs, brand, categories;
+      :Commit giao dịch;
+      :Kích hoạt job đồng bộ Elasticsearch (create);
+      note right
+        Đồng Bộ Elasticsearch:
+        • Thêm job đồng bộ vào hàng đợi
+        • Hoạt động không chặn
+        • Xử lý nền
+        end note
+      :Tạo thông báo thành công đa ngôn ngữ;
+      :Trả về sản phẩm đã tạo;
+    else (không)
+      :Trả về lỗi xác thực;
+    endif
+
+  elseif (Cập nhật sản phẩm)
+    :PUT /manage-product/products/:productId + dữ liệu sản phẩm;
+    :Trích xuất productId và người dùng;
+    :Truy vấn sản phẩm hiện có từ database;
+    if (Sản phẩm tồn tại?) then (có)
+      :Xác thực quyền (user.userId === product.createdById OR user.roleName === Admin);
+      if (Quyền hợp lệ?) then (có)
+        :Xác thực dữ liệu sản phẩm với Zod schema;
+        if (Xác thực thành công?) then (có)
+          :Bắt đầu quản lý SKU phức tạp;
+          note right
+            Logic Quản Lý SKU:
+            • Lấy SKUs hiện có từ database
+            • So sánh với data payload
+            • Xóa mềm SKUs không có trong payload
+            • Cập nhật SKUs có trong payload
+            • Tạo mới SKUs chưa có trong DB
+            end note
+          :Thực thi giao dịch database;
+          :Cập nhật sản phẩm với các trường audit;
+          :Cập nhật kết nối danh mục;
+          :Xử lý hoạt động SKU (xóa, cập nhật, tạo);
+          :Commit giao dịch;
+          :Kích hoạt job đồng bộ Elasticsearch (update);
+          :Tạo thông báo thành công đa ngôn ngữ;
+          :Trả về sản phẩm đã cập nhật;
+        else (không)
+          :Trả về lỗi xác thực;
+        endif
+      else (không)
+        :Ném ForbiddenException;
+        :Trả về 403 Forbidden;
+      endif
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+
+  elseif (Xóa sản phẩm)
+    :DELETE /manage-product/products/:productId;
+    :Trích xuất productId và người dùng;
+    :Truy vấn sản phẩm hiện có từ database;
+    if (Sản phẩm tồn tại?) then (có)
+      :Xác thực quyền (user.userId === product.createdById OR user.roleName === Admin);
+      if (Quyền hợp lệ?) then (có)
+        :Thực thi hoạt động xóa mềm;
+        :Cập nhật sản phẩm với deletedAt và deletedById;
+        :Cập nhật productTranslations với xóa mềm;
+        :Cập nhật SKUs với xóa mềm;
+        :Kích hoạt job đồng bộ Elasticsearch (delete);
+        :Tạo thông báo thành công đa ngôn ngữ;
+        :Trả về phản hồi thành công;
+      else (không)
+        :Ném ForbiddenException;
+        :Trả về 403 Forbidden;
+      endif
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  endif
+
+elseif (Quản lý dịch thuật sản phẩm)
+  :Xác thực người dùng với @ActiveUser();
+  if (Hoạt động?) then (Tạo dịch thuật)
+    :POST /product-translations + {productId, name, description, languageId};
+    :Xác thực dữ liệu dịch thuật với Zod;
+    if (Xác thực thành công?) then (có)
+      :Tạo dịch thuật với các trường audit;
+      :Thực thi INSERT database;
+      if (Unique constraint hợp lệ?) then (có)
+        :Trả về dịch thuật đã tạo;
+      else (không)
+        :Ném ProductTranslationAlreadyExistsException;
+        :Trả về 422 Unprocessable Entity;
+      endif
+    else (không)
+      :Trả về lỗi xác thực;
+    endif
+
+  elseif (Cập nhật dịch thuật)
+    :PUT /product-translations/:translationId + dữ liệu;
+    :Trích xuất translationId và người dùng;
+    :Xác thực dữ liệu dịch thuật với Zod;
+    if (Xác thực thành công?) then (có)
+      :Cập nhật dịch thuật với các trường audit;
+      :Thực thi UPDATE database;
+      if (Dịch thuật tồn tại?) then (có)
+        if (Unique constraint hợp lệ?) then (có)
+          :Tạo thông báo thành công đa ngôn ngữ;
+          :Trả về dịch thuật đã cập nhật;
+        else (không)
+          :Ném ProductTranslationAlreadyExistsException;
+          :Trả về 422 Unprocessable Entity;
+        endif
+      else (không)
+        :Ném NotFoundRecordException;
+        :Trả về 404 Not Found;
+      endif
+    else (không)
+      :Trả về lỗi xác thực;
+    endif
+
+  elseif (Xóa dịch thuật)
+    :DELETE /product-translations/:translationId;
+    :Trích xuất translationId và người dùng;
+    :Thực thi hoạt động xóa mềm;
+    :Cập nhật dịch thuật với deletedAt và deletedById;
+    if (Dịch thuật tồn tại?) then (có)
+      :Tạo thông báo thành công đa ngôn ngữ;
+      :Trả về phản hồi thành công;
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  endif
+
+else (Hoạt động không hợp lệ)
+  :Trả về 400 Bad Request;
+endif
+
+:Hoàn thành hoạt động;
+
+stop
+
+@enduml

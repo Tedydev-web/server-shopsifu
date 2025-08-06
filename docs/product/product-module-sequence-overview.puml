@@ -26,7 +26,7 @@ skinparam note {
     FontColor #000000
 }
 
-title Mô-đun Product - Tổng Quan Sequence
+title Mô-đun Sản Phẩm - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý sản phẩm với phân quyền, đa ngôn ngữ và tìm kiếm
 
 actor "Khách hàng" as Client
@@ -40,66 +40,93 @@ participant SearchSyncService
 database PostgreSQL
 database ElasticSearch
 
-== API Công Khai (Public Products) ==
+== API Công Khai (Sản Phẩm Công Khai) ==
 Client -> ProductController: GET /products (danh sách sản phẩm)
-ProductController -> ProductService: list() với filters
+note right
+Cấu Hình Endpoint:
+• @SkipThrottle() - Bỏ qua giới hạn tốc độ
+• @IsPublic() - Không cần xác thực
+• @ZodSerializerDto(GetProductsResDTO) - Chuẩn hóa phản hồi
+end note
 
-opt Filter & Pagination nâng cao
-    ProductService -> ProductRepo: Xử lý filters phức tạp
+ProductController -> ProductService: list() với bộ lọc
+
+opt Bộ Lọc & Phân Trang Nâng Cao
+    ProductService -> ProductRepo: Xử lý bộ lọc phức tạp
     note right
-    Advanced Query Features:
-    • Brand, Category, Price range filters
-    • Sort theo popularity, price, date
-    • Pagination với metadata
-    • Multi-language support
+    Tính Năng Truy Vấn Nâng Cao:
+    • Bộ lọc thương hiệu, danh mục, khoảng giá
+    • Sắp xếp theo độ phổ biến, giá, ngày
+    • Phân trang với metadata
+    • Hỗ trợ đa ngôn ngữ
     end note
 end
 
 ProductService -> ProductRepo: list() với isPublic=true
-ProductRepo -> PostgreSQL: Query với Pagination + JOIN translations
-PostgreSQL --> ProductRepo: Products đã publish + metadata
+ProductRepo -> PostgreSQL: Truy vấn với Phân trang + JOIN translations
+PostgreSQL --> ProductRepo: Sản phẩm đã xuất bản + metadata
 ProductRepo --> ProductService: Kết quả có đa ngôn ngữ
-ProductService --> ProductController: Response + i18n message
-ProductController --> Client: JSON với data + metadata
+ProductService -> ProductService: Tạo thông báo thành công đa ngôn ngữ
+note right
+Tích Hợp I18nService:
+• Dịch thông báo thành công
+• Hỗ trợ nhiều ngôn ngữ
+• Key: 'product.product.success.GET_SUCCESS'
+end note
+ProductService --> ProductController: Phản hồi + thông báo đã localize
+ProductController --> Client: JSON với dữ liệu + metadata
 
 Client -> ProductController: GET /products/:id (chi tiết sản phẩm)
+note right
+Cấu Hình Endpoint:
+• @SkipThrottle({ default: false }) - Áp dụng throttling
+• @ZodSerializerDto(GetProductDetailResDTO) - Chuẩn hóa phản hồi
+end note
+
 ProductController -> ProductService: getDetail()
 ProductService -> ProductRepo: getDetail() với isPublic=true
 ProductRepo -> PostgreSQL: JOIN với SKUs, Brand, Categories, Translations
-PostgreSQL --> ProductRepo: Product detail đầy đủ
-ProductRepo --> ProductService: Product với SKU variants
-ProductService --> ProductController: Response chi tiết
-ProductController --> Client: JSON product detail
+PostgreSQL --> ProductRepo: Chi tiết sản phẩm đầy đủ
+ProductRepo --> ProductService: Sản phẩm với biến thể SKU
+ProductService -> ProductService: Tạo thông báo thành công đa ngôn ngữ
+note right
+Tích Hợp I18nService:
+• Dịch thông báo thành công
+• Hỗ trợ nhiều ngôn ngữ
+• Key: 'product.product.success.GET_DETAIL_SUCCESS'
+end note
+ProductService --> ProductController: Phản hồi chi tiết
+ProductController --> Client: JSON chi tiết sản phẩm
 
-== API Quản Lý (Management Products) ==
-ShopOwner -> ManageProductController: Request CRUD operations
-ManageProductController -> ManageProductService: Business logic + Auth
+== API Quản Lý (Quản Lý Sản Phẩm) ==
+ShopOwner -> ManageProductController: Yêu cầu thao tác CRUD
+ManageProductController -> ManageProductService: Logic nghiệp vụ + Xác thực
 
-alt Thao tác CREATE
+alt Thao tác TẠO MỚI
     ManageProductService -> ManageProductService: validateData(productData, SKUs)
     note right
-    Data Validation:
-    • Schema validation (required fields)
-    • Business rules (price > 0, stock >= 0)
-    • SKU variants consistency
-    • Category & Brand existence
+    Xác Thực Dữ Liệu:
+    • Xác thực schema (các trường bắt buộc)
+    • Quy tắc nghiệp vụ (giá > 0, tồn kho >= 0)
+    • Tính nhất quán biến thể SKU
+    • Sự tồn tại của danh mục và thương hiệu
     end note
     ManageProductService -> ProductRepo: create() với SKUs
-    ProductRepo -> PostgreSQL: Transaction (Product + SKUs + Categories)
-    PostgreSQL --> ProductRepo: Product mới với variants
+    ProductRepo -> PostgreSQL: Giao dịch (Sản phẩm + SKUs + Danh mục)
+    PostgreSQL --> ProductRepo: Sản phẩm mới với biến thể
     ProductRepo -> SearchSyncService: addSyncProductJob('create')
-    alt Sync create/update
+    alt Đồng bộ tạo/cập nhật
         SearchSyncService -> ElasticSearch: index/update document
-    else Sync delete
+    else Đồng bộ xóa
         SearchSyncService -> ElasticSearch: delete document
     end
-    ProductRepo --> ManageProductService: Product đã tạo
+    ProductRepo --> ManageProductService: Sản phẩm đã tạo
 
-else Thao tác READ/UPDATE/DELETE
+else Thao tác ĐỌC/CẬP NHẬT/XÓA
     ManageProductService -> ProductRepo: findById() trước
-    ProductRepo -> PostgreSQL: Tìm product theo ID
-    PostgreSQL --> ProductRepo: Product data
-    ProductRepo --> ManageProductService: Product info
+    ProductRepo -> PostgreSQL: Tìm sản phẩm theo ID
+    PostgreSQL --> ProductRepo: Dữ liệu sản phẩm
+    ProductRepo --> ManageProductService: Thông tin sản phẩm
     ManageProductService -> ManageProductService: validatePrivilege(user, createdById)
     note right
     Kiểm tra quyền sở hữu:
@@ -109,50 +136,50 @@ else Thao tác READ/UPDATE/DELETE
     end note
 end
 
-== Xử Lý SKU Variants ==
-alt Update Product với SKU thay đổi
+== Xử Lý Biến Thể SKU ==
+alt Cập Nhật Sản Phẩm với SKU thay đổi
     ManageProductService -> ManageProductService: validateData(productData, SKUs)
-    ManageProductService -> ProductRepo: update() với SKU array
-    ProductRepo -> PostgreSQL: Transaction phức tạp
+    ManageProductService -> ProductRepo: update() với mảng SKU
+    ProductRepo -> PostgreSQL: Giao dịch phức tạp
     note right
-    SKU Management:
+    Quản Lý SKU:
     • So sánh SKU cũ vs mới
     • Xóa mềm SKU không dùng
-    • Update SKU có sẵn
+    • Cập nhật SKU có sẵn
     • Tạo mới SKU chưa có
     end note
-    PostgreSQL --> ProductRepo: Product + SKUs updated
+    PostgreSQL --> ProductRepo: Sản phẩm + SKUs đã cập nhật
     ProductRepo -> SearchSyncService: addSyncProductJob('update')
 end
 
-alt Delete Product
-    ManageProductService -> ProductRepo: delete() soft delete
-    ProductRepo -> PostgreSQL: Update deletedAt field
-    PostgreSQL --> ProductRepo: Product marked deleted
+alt Xóa Sản Phẩm
+    ManageProductService -> ProductRepo: delete() xóa mềm
+    ProductRepo -> PostgreSQL: Cập nhật trường deletedAt
+    PostgreSQL --> ProductRepo: Sản phẩm đã đánh dấu xóa
     ProductRepo -> SearchSyncService: addSyncProductJob('delete')
 end
 
 == Đồng Bộ ElasticSearch ==
-alt Sync create/update
+alt Đồng bộ tạo/cập nhật
     SearchSyncService -> ElasticSearch: index/update document
     note right
-    ElasticSearch Operations:
-    • CREATE: index new product document
-    • UPDATE: update existing document
-    • Background queue processing
+    Hoạt Động ElasticSearch:
+    • TẠO: index document sản phẩm mới
+    • CẬP NHẬT: cập nhật document hiện có
+    • Xử lý hàng đợi nền
     end note
-else Sync delete
+else Đồng bộ xóa
     SearchSyncService -> ElasticSearch: delete document
     note right
-    Delete Operation:
-    • Remove document từ search index
-    • Maintain search consistency
-    • Non-blocking operation
+    Hoạt Động Xóa:
+    • Xóa document khỏi search index
+    • Duy trì tính nhất quán tìm kiếm
+    • Hoạt động không chặn
     end note
 end
 
 == Xử Lý Lỗi & Phân Quyền ==
-alt Lỗi validation dữ liệu
+alt Lỗi xác thực dữ liệu
     ManageProductService --> ManageProductController: ValidationException
     ManageProductController --> ShopOwner: 422 Unprocessable Entity
 
@@ -165,14 +192,59 @@ else Lỗi không tìm thấy
     ProductController --> Client: 404 Not Found
 
 else Lỗi Elasticsearch
-    SearchSyncService --> ProductRepo: Sync failed (non-blocking)
+    SearchSyncService --> ProductRepo: Đồng bộ thất bại (không chặn)
     note right
     **Ma trận xử lý lỗi:**
-    • 422 Unprocessable → Data validation lỗi (price, SKU, etc.)
+    • 422 Unprocessable → Lỗi xác thực dữ liệu (giá, SKU, v.v.)
     • 403 Forbidden → Không có quyền sở hữu
-    • 404 Not Found → Product không tồn tại
-    • 500 Internal → Elasticsearch sync lỗi (non-critical)
+    • 404 Not Found → Sản phẩm không tồn tại
+    • 500 Internal → Lỗi đồng bộ Elasticsearch (không quan trọng)
     end note
 end
+
+== Quản Lý Dịch Thuật Sản Phẩm ==
+alt Tạo dịch thuật sản phẩm
+    ShopOwner -> ManageProductController: POST /product-translations
+    ManageProductController -> ProductTranslationService: create()
+    ProductTranslationService -> ProductTranslationRepo: create()
+    ProductTranslationRepo -> PostgreSQL: INSERT translation
+    PostgreSQL --> ProductTranslationRepo: Translation đã tạo
+    ProductTranslationRepo --> ProductTranslationService: Translation data
+    ProductTranslationService --> ManageProductController: Success response
+    ManageProductController --> ShopOwner: 201 Created
+
+else Cập nhật dịch thuật sản phẩm
+    ShopOwner -> ManageProductController: PUT /product-translations/:id
+    ManageProductController -> ProductTranslationService: update()
+    ProductTranslationService -> ProductTranslationRepo: update()
+    ProductTranslationRepo -> PostgreSQL: UPDATE translation
+    PostgreSQL --> ProductTranslationRepo: Translation đã cập nhật
+    ProductTranslationRepo --> ProductTranslationService: Updated data
+    ProductTranslationService --> ManageProductController: Success response
+    ManageProductController --> ShopOwner: 200 OK
+
+else Xóa dịch thuật sản phẩm
+    ShopOwner -> ManageProductController: DELETE /product-translations/:id
+    ManageProductController -> ProductTranslationService: delete()
+    ProductTranslationService -> ProductTranslationRepo: delete()
+    ProductTranslationRepo -> PostgreSQL: Soft delete translation
+    PostgreSQL --> ProductTranslationRepo: Translation đã xóa
+    ProductTranslationRepo --> ProductTranslationService: Delete success
+    ProductTranslationService --> ManageProductController: Success response
+    ManageProductController --> ShopOwner: 200 OK
+end
+
+note bottom
+**Đặc điểm chính của module Sản Phẩm:**
+• API công khai cho xem sản phẩm (không cần xác thực)
+• API quản lý cho CRUD (cần xác thực và phân quyền)
+• Hỗ trợ đa ngôn ngữ với product translations
+• Quản lý biến thể SKU phức tạp
+• Đồng bộ với Elasticsearch cho tìm kiếm
+• Phân quyền nghiêm ngặt (chỉ chủ sở hữu hoặc Admin)
+• Xóa mềm để bảo toàn dữ liệu
+• Hỗ trợ đa ngôn ngữ với I18nService
+• Xử lý lỗi toàn diện
+end note
 
 @enduml

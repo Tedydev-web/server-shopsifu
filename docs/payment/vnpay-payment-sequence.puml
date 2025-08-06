@@ -1,0 +1,181 @@
+@startuml VNPay Payment Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Luồng Thanh Toán VNPay - Sơ Đồ Luồng Xử Lý
+
+actor "Khách hàng" as C
+participant "VNPayController" as VC
+participant "VNPayService" as VS
+participant "VNPayRepo" as VR
+participant "VnpayService" as VNS
+participant "SharedWebsocketRepository" as SWR
+participant "I18nService" as IS
+participant "SharedPaymentRepository" as SPR
+database "PostgreSQL" as DB
+
+== Tạo URL Thanh Toán ==
+C -> VC: POST /payment/vnpay/create-payment + {amount, orderInfo, orderId, returnUrl, ipnUrl, locale, currency, bankCode, orderType, ipAddr}
+VC -> VS: createPayment(paymentData)
+VS -> VS: Xây dựng dữ liệu thanh toán với PREFIX_PAYMENT_CODE
+note right
+Xây Dựng Dữ Liệu Thanh Toán:
+• orderInfoWithPrefix = PREFIX_PAYMENT_CODE + paymentId
+• orderIdWithPrefix = PREFIX_PAYMENT_CODE + paymentId
+• vnp_Amount, vnp_OrderInfo, vnp_TxnRef
+• vnp_IpAddr, vnp_ReturnUrl, vnp_Locale
+• vnp_CurrCode, vnp_OrderType
+end note
+VS -> VNS: buildPaymentUrl(buildPaymentData, {withHash: true})
+VNS -> VNS: Tạo URL thanh toán với chữ ký
+VNS -> VS: return paymentUrl
+VS -> IS: i18n.t('payment.payment.vnpay.success.CREATE_PAYMENT_SUCCESS')
+IS -> VS: Trả về message đã localize
+VS -> VC: return paymentUrl với message
+VC -> C: return paymentUrl
+
+== Người Dùng Chuyển Hướng Đến VNPay ==
+C -> VNG: Chuyển hướng đến URL thanh toán
+VNG -> C: Hiển thị form thanh toán
+C -> VNG: Gửi thanh toán
+VNG -> C: Xử lý thanh toán
+VNG -> C: Chuyển hướng đến URL trả về
+
+== Xác Thực URL Trả Về ==
+C -> VC: GET /payment/vnpay/verify-return + tham số truy vấn
+VC -> VS: verifyReturnUrl(queryData)
+VS -> VNS: verifyReturnUrl(data)
+VNS -> VS: return kết quả xác thực
+alt Thanh toán thành công (ResponseCode = '00')
+    VS -> VR: processVNPayWebhook(data)
+    VR -> VR: Kiểm tra giao dịch trùng lặp
+    note right
+    Kiểm Tra Trùng Lặp:
+    • Tìm giao dịch hiện có theo gateway='vnpay' và referenceNumber
+    • Ném BadRequestException nếu đã xử lý
+    end note
+    VR -> DB: Kiểm tra paymentTransaction
+    DB -> VR: Không có giao dịch hiện có
+    VR -> VR: Bắt đầu giao dịch database
+    VR -> DB: CREATE paymentTransaction
+    note right
+    Dữ Liệu Giao Dịch:
+    • gateway: 'vnpay'
+    • amountIn: vnp_Amount / 100 (chuyển đổi VND)
+    • amountOut: 0
+    • code: vnp_TxnRef
+    • transactionContent: vnp_OrderInfo
+    • referenceNumber: vnp_TransactionNo
+    • body: JSON.stringify(vnpayData)
+    end note
+    VR -> SPR: extractPaymentId(PREFIX_PAYMENT_CODE, vnp_OrderInfo, vnp_TxnRef)
+    SPR -> VR: return paymentId
+    VR -> SPR: validateAndFindPayment(paymentId)
+    SPR -> DB: Truy vấn payment với orders
+    DB -> SPR: Dữ liệu payment và orders
+    SPR -> VR: return {payment, orders}
+    VR -> SPR: validatePaymentAmount(orders, totalPrice, actualAmount)
+    SPR -> VR: Xác thực số tiền thành công
+    VR -> SPR: updatePaymentAndOrdersOnSuccess(paymentId, orders)
+    SPR -> DB: UPDATE trạng thái payment thành SUCCESS
+    SPR -> DB: UPDATE trạng thái orders thành PAID
+    VR -> VS: return {userId, paymentId}
+    VS -> VS: generateRoomPaymentId(paymentId)
+    VS -> SWR: server.to(roomId).emit('payment')
+    SWR -> C: Thông báo WebSocket
+    VS -> IS: i18n.t('payment.payment.vnpay.success.VERIFY_RETURN_SUCCESS')
+    IS -> VS: Trả về message đã localize
+    VS -> VC: return phản hồi thành công
+    VC -> C: return thành công
+
+else Thanh toán thất bại
+    VS -> VC: return phản hồi thất bại
+    VC -> C: return thất bại
+end
+
+== Xử Lý Callback IPN ==
+VNG -> VC: GET /payment/vnpay/verify-ipn + tham số truy vấn
+VC -> VS: processIpnCall(queryData)
+VS -> VNS: verifyIpnCall(data)
+VNS -> VS: return kết quả xác thực
+alt IPN đã xác thực
+    VS -> VR: verifyIpnCall(data)
+    VR -> SPR: extractPaymentId(PREFIX_PAYMENT_CODE, vnp_TxnRef, vnp_OrderInfo)
+    SPR -> VR: return paymentId
+    VR -> SPR: validateAndFindPayment(paymentId)
+    SPR -> DB: Truy vấn payment với orders
+    DB -> SPR: Dữ liệu payment và orders
+    SPR -> VR: return {payment, orders}
+    VR -> SPR: validatePaymentAmount(orders, totalPrice, actualAmount)
+    SPR -> VR: Xác thực số tiền thành công
+    VR -> VS: return {payment, orders, paymentId}
+    VS -> VS: Kiểm tra trạng thái payment
+    alt Payment chưa xử lý
+        if (Response code là 00?) then (có)
+            VS -> VR: updatePaymentAndOrdersOnSuccess(paymentId, orders)
+            VR -> SPR: updatePaymentAndOrdersOnSuccess(paymentId, orders)
+            SPR -> DB: UPDATE payment thành SUCCESS
+            SPR -> DB: UPDATE orders thành PAID
+            VS -> VS: generateRoomPaymentId(paymentId)
+            VS -> SWR: server.to(roomId).emit('payment')
+            SWR -> C: Thông báo WebSocket
+        else (không)
+            VS -> VR: updatePaymentAndOrdersOnFailed(paymentId, orders)
+            VR -> SPR: updatePaymentAndOrdersOnFailed(paymentId, orders)
+            SPR -> DB: UPDATE payment thành FAILED
+            SPR -> DB: UPDATE orders thành CANCELLED
+        endif
+        VS -> VNG: return RspCode: 00, Message: Confirm Success
+    else (đã xử lý)
+        VS -> VNG: return RspCode: 02, Message: Order already confirmed
+    endif
+else (xác thực thất bại)
+    VS -> VNG: return RspCode: 97, Message: Invalid Checksum
+end
+
+== Truy Vấn Trạng Thái Thanh Toán ==
+C -> VC: POST /payment/vnpay/query-dr + {orderId, orderInfo, requestId, transactionDate, transactionNo, ipAddr, createDate}
+VC -> VS: queryDr(queryData)
+VS -> VNS: queryDr(queryRequest)
+VNS -> VS: return kết quả truy vấn
+VS -> IS: i18n.t('payment.payment.vnpay.success.QUERY_DR_SUCCESS')
+IS -> VS: Trả về message đã localize
+VS -> VC: return kết quả truy vấn
+VC -> C: return kết quả truy vấn
+
+== Hoàn Tiền Thanh Toán ==
+C -> VC: POST /payment/vnpay/refund + {orderId, orderInfo, amount, requestId, transactionNo, ipAddr, createBy}
+VC -> VS: refund(refundData)
+VS -> VNS: refund(refundRequest)
+VNS -> VS: return kết quả hoàn tiền
+VS -> IS: i18n.t('payment.payment.vnpay.success.REFUND_SUCCESS')
+IS -> VS: Trả về message đã localize
+VS -> VC: return kết quả hoàn tiền
+VC -> C: return kết quả hoàn tiền
+
+== Xử Lý Lỗi ==
+alt Chữ ký không hợp lệ
+    VS -> VC: VNPayInvalidChecksumException
+    VC -> C: 422 Unprocessable Entity
+
+else Yêu cầu trùng lặp
+    VS -> VC: VNPayDuplicateRequestException
+    VC -> C: 400 Bad Request
+
+else Giao dịch không tìm thấy
+    VS -> VC: VNPayTransactionNotFoundException
+    VC -> C: 422 Unprocessable Entity
+
+else Hoàn tiền đã xử lý
+    VS -> VC: VNPayRefundAlreadyProcessedException
+    VC -> C: 400 Bad Request
+
+else Dịch vụ không khả dụng
+    VS -> VC: VNPayServiceUnavailableException
+    VC -> C: 500 Internal Server Error
+end
+
+@enduml

@@ -1,0 +1,166 @@
+@startuml Permission Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Quản Lý Quyền - Sơ Đồ Hoạt Động
+
+start
+
+:Admin truy cập hệ thống;
+
+if (Hoạt động?) then (Lấy danh sách quyền)
+  :GET /permissions?page=1&limit=10;
+  :Trích xuất pagination parameters;
+  :Validate query parameters với Zod;
+  if (Validation passed?) then (có)
+    :Tính toán pagination metadata;
+    note right
+    Logic Phân Trang:
+    • skip = (page - 1) * limit
+    • take = limit
+    • Parallel queries: count + findMany
+    • Tính toán totalPages, hasNext, hasPrev
+    end note
+    :Thực thi parallel database queries;
+    :Count permissions với WHERE deletedAt IS NULL;
+    :FindMany permissions với pagination;
+    :Tính toán metadata (totalItems, totalPages, hasNext, hasPrev);
+    :Tạo localized success message;
+    :Trả về permissions với metadata;
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Xem chi tiết quyền) then
+  :GET /permissions/:permissionId;
+  :Trích xuất permissionId từ params;
+  :Validate permissionId với Zod;
+  if (Validation passed?) then (có)
+    :Query permission từ database;
+    :FindUnique với WHERE id = permissionId AND deletedAt IS NULL;
+    if (Permission tồn tại?) then (có)
+      :Tạo localized success message;
+      :Trả về permission detail;
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Tạo quyền mới) then
+  :POST /permissions + {name, path, method, module};
+  :Trích xuất user từ @ActiveUser();
+  :Validate request body với Zod schema;
+  note right
+    Data Validation:
+    • name: required string
+    • path: required string (API path)
+    • method: required string (HTTP method)
+    • module: required string
+    • Unique constraint: path + method
+    end note
+  if (Validation passed?) then (có)
+    :Tạo permission với audit fields;
+    note right
+    Logic Tạo Mới:
+    • INSERT permission với createdById
+    • Audit trail: createdAt, createdById
+    • Validate unique constraint
+    end note
+    :Thực thi database INSERT;
+    if (Unique constraint valid?) then (có)
+      :Tạo localized success message;
+      :Trả về permission đã tạo;
+    else (không)
+      :Ném PermissionAlreadyExistsException;
+      :Trả về 422 Unprocessable Entity;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Cập nhật quyền) then
+  :PUT /permissions/:permissionId + {data};
+  :Trích xuất permissionId và user;
+  :Validate request data với Zod;
+  if (Validation passed?) then (có)
+    :Cập nhật permission với audit fields;
+    note right
+    Logic Cập Nhật:
+    • UPDATE permission với updatedById
+    • Include roles relationship
+    • Validate unique constraint
+    • Audit trail: updatedAt, updatedById
+    end note
+    :Thực thi database UPDATE với include roles;
+    if (Permission tồn tại?) then (có)
+      if (Unique constraint valid?) then (có)
+        :Trích xuất roles từ updated permission;
+        :Xóa cached role data;
+        note right
+        Cache Management:
+        • Delete cached role data cho tất cả roles
+        • Cache key: `role:${roleId}`
+        • Parallel deletion với Promise.all
+        • Ensure cache consistency
+        end note
+        :Thực thi Promise.all cho cache deletion;
+        :Tạo localized success message;
+        :Trả về updated permission;
+      else (không)
+        :Ném PermissionAlreadyExistsException;
+        :Trả về 422 Unprocessable Entity;
+      endif
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+elseif (Xóa quyền) then
+  :DELETE /permissions/:permissionId;
+  :Trích xuất permissionId và user;
+  :Validate permissionId với Zod;
+  if (Validation passed?) then (có)
+    :Thực thi soft delete operation;
+    note right
+    Logic Xóa:
+    • Soft delete: UPDATE deletedAt field
+    • Include roles relationship
+    • Audit trail: deletedAt, deletedById
+    • Support hard delete với isHard flag
+    end note
+    :Cập nhật permission với deletedAt và deletedById;
+    if (Permission tồn tại?) then (có)
+      :Trích xuất roles từ deleted permission;
+      :Xóa cached role data;
+      :Thực thi Promise.all cho cache deletion;
+      :Tạo localized success message;
+      :Trả về success response;
+    else (không)
+      :Ném NotFoundRecordException;
+      :Trả về 404 Not Found;
+    endif
+  else (không)
+    :Trả về validation error;
+  endif
+
+else (Invalid operation)
+  :Trả về 400 Bad Request;
+endif
+
+:Hoàn thành thao tác;
+
+stop
+
+@enduml

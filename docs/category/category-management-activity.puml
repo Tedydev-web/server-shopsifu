@@ -1,0 +1,128 @@
+@startuml Category Management Activity Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityDiamondBackgroundColor #FFE6E6
+skinparam activityDiamondBorderColor #CC0000
+
+title Quản Lý Danh Mục - Sơ Đồ Hoạt Động
+
+start
+
+:Người dùng yêu cầu thao tác danh mục;
+
+if (Loại thao tác?) then (GET /categories)
+  :Trích xuất parentCategoryId từ query;
+  :Lấy ngôn ngữ hiện tại từ I18nContext;
+  :Thực thi findAll query;
+  note right
+  Logic Truy Vấn Database:
+  • WHERE deletedAt IS NULL
+  • Filter theo parentCategoryId (hierarchical)
+  • Include categoryTranslations
+  • Language-specific translations
+  • ORDER BY createdAt DESC
+  end note
+  :Nhóm categories theo parentCategoryId;
+  :Áp dụng dịch thuật theo ngôn ngữ;
+  :Tính toán totalItems;
+  :Trả về danh sách categories với metadata;
+
+elseif (GET /categories/:categoryId) then
+  :Trích xuất categoryId từ params;
+  :Lấy ngôn ngữ hiện tại từ I18nContext;
+  :Thực thi findById query;
+  if (Category được tìm thấy?) then (có)
+    :Load category với translations;
+    :Áp dụng dịch thuật theo ngôn ngữ;
+    :Trả về category detail;
+  else (không)
+    :Ném NotFoundRecordException;
+  endif
+
+elseif (POST /categories) then
+  :Người dùng tạo danh mục mới;
+  :Trích xuất {name, logo, parentCategoryId} từ body;
+  :Validate dữ liệu category;
+  if (Dữ liệu hợp lệ?) then (có)
+    :Thực thi create operation;
+    :Tạo category với audit fields;
+    :Include categoryTranslations;
+    :Trả về category đã tạo;
+  else (không)
+    :Ném ValidationException;
+  endif
+
+elseif (PUT /categories/:categoryId) then
+  :Người dùng cập nhật danh mục;
+  :Trích xuất categoryId từ params;
+  :Trích xuất {name, logo, parentCategoryId} từ body;
+  :Validate dữ liệu category;
+  if (Dữ liệu hợp lệ?) then (có)
+    :Thực thi update operation;
+    :Cập nhật category với audit fields;
+    :Include categoryTranslations;
+    :Trả về category đã cập nhật;
+  else (không)
+    :Ném ValidationException;
+  endif
+
+elseif (DELETE /categories/:categoryId) then
+  :Người dùng xóa danh mục;
+  :Trích xuất categoryId từ params;
+  :Thực thi soft delete operation;
+  :Cập nhật deletedAt field;
+  :Cập nhật deletedById;
+  :Trả về success response;
+
+elseif (POST /category-translations) then
+  :Người dùng tạo translation;
+  :Trích xuất {categoryId, languageId, name, description} từ body;
+  :Validate dữ liệu translation;
+  if (Dữ liệu hợp lệ?) then (có)
+    :Kiểm tra unique constraint;
+    if (Translation đã tồn tại?) then (có)
+      :Ném CategoryTranslationAlreadyExistsException;
+    else (không)
+      :Thực thi create operation;
+      :Tạo translation với audit fields;
+      :Trả về translation đã tạo;
+    endif
+  else (không)
+    :Ném ValidationException;
+  endif
+
+elseif (PUT /category-translations/:categoryTranslationId) then
+  :Người dùng cập nhật translation;
+  :Trích xuất categoryTranslationId từ params;
+  :Trích xuất {categoryId, languageId, name, description} từ body;
+  :Validate dữ liệu translation;
+  if (Dữ liệu hợp lệ?) then (có)
+    :Thực thi update operation;
+    :Cập nhật translation với audit fields;
+    :Trả về translation đã cập nhật;
+  else (không)
+    :Ném ValidationException;
+  endif
+
+elseif (DELETE /category-translations/:categoryTranslationId) then
+  :Người dùng xóa translation;
+  :Trích xuất categoryTranslationId từ params;
+  :Thực thi soft delete operation;
+  :Cập nhật deletedAt field;
+  :Cập nhật deletedById;
+  :Trả về success response;
+
+else (Thao tác không hợp lệ)
+  :Ném InvalidOperationException;
+endif
+
+:Tạo localized success message;
+:Trả về JSON response với metadata;
+
+stop
+
+@enduml

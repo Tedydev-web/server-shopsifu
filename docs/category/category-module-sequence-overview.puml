@@ -1,177 +1,203 @@
-@startuml
-!theme aws-orange
+@startuml Category Module - Sequence Overview
+!theme plain
 skinparam backgroundColor #FFFFFF
-skinparam defaultTextAlignment center
-skinparam participant {
-    BackgroundColor #E8F4FD
-    BorderColor #1976D2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam actor {
-    BackgroundColor #FFF8E1
-    BorderColor #F57C00
-    FontColor #000000
-    FontStyle bold
-}
-skinparam database {
-    BackgroundColor #F3E5F5
-    BorderColor #7B1FA2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam note {
-    BackgroundColor #FFFDE7
-    BorderColor #F9A825
-    FontColor #000000
-}
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
 
-title Mô-đun Category - Tổng Quan Sequence
+title Mô-đun Danh Mục - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý danh mục với phân cấp và đa ngôn ngữ
 
 actor "Khách hàng" as Client
 actor "Người dùng" as User
-participant CategoryController
-participant CategoryTranslationController
-participant CategoryService
-participant CategoryTranslationService
-participant CategoryRepo
-participant CategoryTranslationRepo
-database PostgreSQL
+participant "CategoryController" as CC
+participant "CategoryTranslationController" as CTC
+participant "CategoryService" as CS
+participant "CategoryTranslationService" as CTS
+participant "CategoryRepo" as CR
+participant "CategoryTranslationRepo" as CTR
+participant "I18nService" as IS
+participant "I18nContext" as IC
+participant "PrismaService" as PS
+participant "AccessTokenGuard" as AG
+database "PostgreSQL" as DB
 
 == API Công Khai (Public Categories) ==
-Client -> CategoryController: GET /categories (danh sách danh mục)
-CategoryController -> CategoryService: findAll(parentCategoryId)
-
-CategoryService -> CategoryService: Lấy ngôn ngữ hiện tại (I18nContext)
+Client -> CC: GET /categories?parentCategoryId=123
+CC -> CS: findAll(parentCategoryId)
+CS -> IC: I18nContext.current()?.lang
+IC -> CS: trả về ngôn ngữ hiện tại
+CS -> CR: findAll({parentCategoryId, languageId})
+CR -> PS: category.findMany()
 note right
-Language Handling:
-• Lấy language từ I18nContext
-• Support ALL_LANGUAGE_CODE
-• Multi-language category translations
-end note
-
-CategoryService -> CategoryRepo: findAll({parentCategoryId, languageId})
-CategoryRepo -> PostgreSQL: Query với JOIN categoryTranslations
-note right
-Database Query Logic:
-• findMany với include categoryTranslations
+Logic Truy Vấn Database:
 • WHERE deletedAt IS NULL
 • Filter theo parentCategoryId (hierarchical)
+• Include categoryTranslations
 • Language-specific translations
 • ORDER BY createdAt DESC
 end note
-PostgreSQL --> CategoryRepo: Categories với translations
-CategoryRepo --> CategoryService: Categories data + totalItems
-CategoryService --> CategoryController: Response + i18n message
-CategoryController --> Client: JSON với data + totalItems
+PS -> DB: Thực thi query với JOINs
+DB -> PS: Trả về categories với translations
+PS -> CR: Trả về categories data + totalItems
+CR -> CS: Trả về {data, totalItems}
+CS -> IS: i18n.t('category.category.success.GET_SUCCESS')
+IS -> CS: Trả về message đã localize
+CS -> CC: Trả về response với data + totalItems
+CC -> Client: Trả về JSON response
 
-Client -> CategoryController: GET /categories/:categoryId (chi tiết danh mục)
-CategoryController -> CategoryService: findById(categoryId)
-CategoryService -> CategoryRepo: findById({id, languageId})
-CategoryRepo -> PostgreSQL: findUnique với include categoryTranslations
-PostgreSQL --> CategoryRepo: Category detail với translations
-CategoryRepo --> CategoryService: Category với đa ngôn ngữ
-CategoryService --> CategoryController: Response chi tiết
-CategoryController --> Client: JSON category detail
+Client -> CC: GET /categories/:categoryId
+CC -> CS: findById(categoryId)
+CS -> IC: I18nContext.current()?.lang
+IC -> CS: trả về ngôn ngữ hiện tại
+CS -> CR: findById({id, languageId})
+CR -> PS: category.findUnique()
+PS -> DB: Thực thi findUnique query
+DB -> PS: Trả về category detail với translations
+PS -> CR: Trả về category với đa ngôn ngữ
+CR -> CS: Trả về category data
+CS -> IS: i18n.t('category.category.success.GET_DETAIL_SUCCESS')
+IS -> CS: Trả về message đã localize
+CS -> CC: Trả về response chi tiết
+CC -> Client: Trả về JSON category detail
 
 == API Quản Lý (Management Categories) ==
-User -> CategoryController: Request CRUD operations
-CategoryController -> CategoryService: Business logic + Auth
+User -> AG: Request với cookies
+AG -> AG: Trích xuất access_token từ cookies
+AG -> AG: Xác minh JWT token
+AG -> AG: Tải quyền người dùng
+AG -> CC: Cho phép request với user context
 
-alt Thao tác CREATE
-    CategoryService -> CategoryService: validateData(categoryData)
-    note right
-    Data Validation:
-    • Schema validation (name, logo, parentCategoryId)
-    • Business rules (required fields)
-    • Hierarchical structure validation
-    end note
-    CategoryService -> CategoryRepo: create() với createdById
-    CategoryRepo -> PostgreSQL: INSERT category với audit fields
-    PostgreSQL --> CategoryRepo: Category mới với translations
-    CategoryRepo --> CategoryService: Category đã tạo
+User -> CC: POST /categories + {name, logo, parentCategoryId}
+CC -> CS: create({data, user})
+CS -> CR: create({createdById, data})
+CR -> PS: category.create()
+PS -> DB: INSERT category với audit fields
+DB -> PS: Trả về category mới với translations
+PS -> CR: Trả về category đã tạo
+CR -> CS: Trả về category data
+CS -> IS: i18n.t('category.category.success.CREATE_SUCCESS')
+IS -> CS: Trả về message đã localize
+CS -> CC: Trả về success response
+CC -> User: Trả về 201 Created + JSON response
 
-else Thao tác UPDATE
-    CategoryService -> CategoryRepo: findById() trước
-    CategoryRepo -> PostgreSQL: Tìm category theo ID
-    PostgreSQL --> CategoryRepo: Category data
-    CategoryRepo --> CategoryService: Category info
-    CategoryService -> CategoryRepo: update() với updatedById
-    CategoryRepo -> PostgreSQL: UPDATE category với audit
-    PostgreSQL --> CategoryRepo: Category updated
-    CategoryRepo --> CategoryService: Category đã cập nhật
+User -> CC: PUT /categories/:categoryId + {name, logo, parentCategoryId}
+CC -> CS: update({id, data, user})
+CS -> CR: update({id, updatedById, data})
+CR -> PS: category.update()
+PS -> DB: UPDATE category với audit
+DB -> PS: Trả về category updated
+PS -> CR: Trả về category đã cập nhật
+CR -> CS: Trả về category data
+CS -> IS: i18n.t('category.category.success.UPDATE_SUCCESS')
+IS -> CS: Trả về message đã localize
+CS -> CC: Trả về success response
+CC -> User: Trả về 200 OK + JSON response
 
-else Thao tác DELETE
-    CategoryService -> CategoryRepo: delete() soft delete
-    CategoryRepo -> PostgreSQL: UPDATE deletedAt field
-    PostgreSQL --> CategoryRepo: Category marked deleted
-    CategoryRepo --> CategoryService: Success response
-end
+User -> CC: DELETE /categories/:categoryId
+CC -> CS: delete({id, user})
+CS -> CR: delete({id, deletedById})
+CR -> PS: category.update() soft delete
+PS -> DB: UPDATE deletedAt field
+DB -> PS: Trả về category marked deleted
+PS -> CR: Trả về success
+CR -> CS: Trả về success
+CS -> IS: i18n.t('category.category.success.DELETE_SUCCESS')
+IS -> CS: Trả về message đã localize
+CS -> CC: Trả về success response
+CC -> User: Trả về 200 OK + JSON response
 
 == API Quản Lý Translation ==
-User -> CategoryTranslationController: Request CRUD translations
-CategoryTranslationController -> CategoryTranslationService: Business logic + Auth
+User -> CTC: POST /category-translations + {categoryId, languageId, name, description}
+CTC -> CTS: create({data, user})
+CTS -> CTR: create({createdById, data})
+CTR -> PS: categoryTranslation.create()
+PS -> DB: INSERT categoryTranslation
+DB -> PS: Trả về translation created
+PS -> CTR: Trả về translation data
+CTR -> CTS: Trả về translation
+CTS -> IS: i18n.t('category.categoryTranslation.success.CREATE_SUCCESS')
+IS -> CTS: Trả về message đã localize
+CTS -> CTC: Trả về success response
+CTC -> User: Trả về 201 Created + JSON response
 
-alt Thao tác CREATE Translation
-    CategoryTranslationService -> CategoryTranslationService: validateData(translationData)
-    note right
-    Translation Validation:
-    • categoryId, languageId, name, description
-    • Unique constraint: categoryId + languageId
-    • Foreign key validation
-    end note
-    CategoryTranslationService -> CategoryTranslationRepo: create()
-    CategoryTranslationRepo -> PostgreSQL: INSERT categoryTranslation
-    PostgreSQL --> CategoryTranslationRepo: Translation created
-    CategoryTranslationRepo --> CategoryTranslationService: Translation data
-
-else Thao tác UPDATE Translation
-    CategoryTranslationService -> CategoryTranslationRepo: update()
-    CategoryTranslationRepo -> PostgreSQL: UPDATE categoryTranslation
-    PostgreSQL --> CategoryTranslationRepo: Translation updated
-    CategoryTranslationRepo --> CategoryTranslationService: Updated data
-
-else Thao tác DELETE Translation
-    CategoryTranslationService -> CategoryTranslationRepo: delete() soft delete
-    CategoryTranslationRepo -> PostgreSQL: UPDATE deletedAt
-    PostgreSQL --> CategoryTranslationRepo: Translation marked deleted
-    CategoryTranslationRepo --> CategoryTranslationService: Success
+alt Unique constraint violation
+    CTR -> PS: categoryTranslation.create()
+    PS -> DB: INSERT categoryTranslation
+    DB -> PS: Unique constraint error
+    PS -> CTR: Throw PrismaException
+    CTR -> CTS: Throw exception
+    CTS -> CTS: isUniqueConstraintPrismaError(error)
+    CTS -> CTC: Throw CategoryTranslationAlreadyExistsException
+    CTC -> User: Trả về 422 Unprocessable Entity
 end
 
-== Xử Lý Lỗi & Phân Quyền ==
-alt Lỗi validation dữ liệu
-    CategoryService --> CategoryController: ValidationException
-    CategoryController --> User: 422 Unprocessable Entity
+User -> CTC: PUT /category-translations/:categoryTranslationId + {categoryId, languageId, name, description}
+CTC -> CTS: update({id, data, user})
+CTS -> CTR: update({id, updatedById, data})
+CTR -> PS: categoryTranslation.update()
+PS -> DB: UPDATE categoryTranslation
+DB -> PS: Trả về translation updated
+PS -> CTR: Trả về translation đã cập nhật
+CTR -> CTS: Trả về translation data
+CTS -> IS: i18n.t('category.categoryTranslation.success.UPDATE_SUCCESS')
+IS -> CTS: Trả về message đã localize
+CTS -> CTC: Trả về success response
+CTC -> User: Trả về 200 OK + JSON response
 
-else Lỗi không tìm thấy
-    CategoryService --> CategoryController: NotFoundRecordException
-    CategoryController --> Client: 404 Not Found
+User -> CTC: DELETE /category-translations/:categoryTranslationId
+CTC -> CTS: delete({id, user})
+CTS -> CTR: delete({id, deletedById})
+CTR -> PS: categoryTranslation.update() soft delete
+PS -> DB: UPDATE deletedAt field
+DB -> PS: Trả về translation marked deleted
+PS -> CTR: Trả về success
+CTR -> CTS: Trả về success
+CTS -> IS: i18n.t('category.categoryTranslation.success.DELETE_SUCCESS')
+IS -> CTS: Trả về message đã localize
+CTS -> CTC: Trả về success response
+CTC -> User: Trả về 200 OK + JSON response
+
+== Xử Lý Lỗi ==
+alt Lỗi không tìm thấy category
+    CR -> CS: Return null
+    CS -> CS: Throw NotFoundRecordException
+    CS -> CC: Throw exception
+    CC -> Client: Trả về 404 Not Found
 
 else Lỗi unique constraint (translation)
-    CategoryTranslationService --> CategoryTranslationController: CategoryTranslationAlreadyExistsException
-    CategoryTranslationController --> User: 422 Unprocessable Entity
+    CTR -> CTS: Throw PrismaException
+    CTS -> CTS: isUniqueConstraintPrismaError(error)
+    CTS -> CTC: Throw CategoryTranslationAlreadyExistsException
+    CTC -> User: Trả về 422 Unprocessable Entity
 
-else Lỗi foreign key
-    CategoryService --> CategoryController: ForeignKeyConstraintException
-    CategoryController --> User: 422 Unprocessable Entity
+else Lỗi database constraint
+    CR -> CS: PrismaException
+    CS -> CC: Database error
+    CC -> User: Trả về 500 Internal Server Error
+
+else Lỗi authentication
+    CC -> User: Trả về 401 Unauthorized
 end
 
-== Trả Kết Quả ==
-CategoryService -> CategoryService: Tạo thông báo đa ngôn ngữ (I18nService)
-CategoryService --> CategoryController: Response + Message đã localize
-CategoryController --> User: JSON Response với metadata đầy đủ
+== Đa Ngôn Ngữ ==
+CS -> IS: i18n.t('category.category.success.XXX')
+IS -> CS: Trả về message đã localize
+CS -> CC: Response + Message đã localize
+CC -> Client: JSON Response với metadata đầy đủ
 
 note bottom
 **Đặc điểm chính của module Category:**
-• Hỗ trợ phân cấp danh mục (parentCategoryId)
-• Multi-language support với I18nContext
-• Soft delete pattern cho cả category và translation
-• Audit trail với createdById, updatedById, deletedById
-• Hierarchical structure management
-• Public API cho danh sách và chi tiết
-• Management API cho CRUD operations
-• Unique constraint cho category + language combination
+• CRUD operations đầy đủ cho category management
+• Hierarchical structure với parentCategoryId
+• Multi-language support với categoryTranslations
+• Public API cho read operations (@IsPublic())
+• Admin-only access cho create/update/delete
+• Soft delete pattern với audit trail
+• Zod schema validation cho input/output
+• Comprehensive error handling
+• I18nContext integration cho language detection
+• Translation management sub-module
 end note
 
 @enduml

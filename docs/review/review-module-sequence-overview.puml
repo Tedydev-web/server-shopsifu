@@ -26,8 +26,8 @@ skinparam note {
     FontColor #000000
 }
 
-title Mô-đun Review - Tổng Quan Sequence
-note top : Hệ thống quản lý đánh giá sản phẩm với validation và media management
+title Mô-đun Đánh Giá - Tổng Quan Luồng Xử Lý
+note top : Hệ thống quản lý đánh giá sản phẩm với xác thực và quản lý media
 
 actor "Khách hàng" as Client
 actor "Người dùng" as User
@@ -38,212 +38,251 @@ database PostgreSQL
 
 == GET /reviews/products/:productId - Lấy Danh Sách Đánh Giá ==
 Client -> ReviewController: GET /reviews/products/:productId?page=1&limit=10
+note right
+Cấu Hình Endpoint:
+• @IsPublic() - Không cần xác thực
+• @ZodSerializerDto(GetReviewsDTO) - Chuẩn hóa phản hồi
+end note
+
 ReviewController -> ReviewService: list(productId, pagination)
 
 ReviewService -> ReviewRepo: list(productId, pagination)
-ReviewRepo -> ReviewRepo: Calculate pagination metadata
+ReviewRepo -> ReviewRepo: Tính toán metadata phân trang
 note right
-Pagination Logic:
+Logic Phân Trang:
 • skip = (page - 1) * limit
 • take = limit
-• Parallel queries: count + findMany
-• Filter theo productId
-• Include user info và medias
+• Truy vấn song song: count + findMany
+• Lọc theo productId
+• Bao gồm thông tin người dùng và media
 end note
 
 ReviewRepo -> PostgreSQL: count() với WHERE productId
 ReviewRepo -> PostgreSQL: findMany() với include và pagination
 note right
-Database Query Features:
+Tính Năng Truy Vấn Database:
 • WHERE productId = :productId
 • Include user (id, name, avatar)
 • Include medias (url, type)
 • ORDER BY createdAt DESC
-• Pagination với skip/take
+• Phân trang với skip/take
 end note
-PostgreSQL --> ReviewRepo: Total count + reviews data
-ReviewRepo --> ReviewService: Reviews với metadata
-ReviewService --> ReviewController: Response + i18n message
-ReviewController --> Client: JSON với data + metadata
+PostgreSQL --> ReviewRepo: Tổng số + dữ liệu đánh giá
+ReviewRepo --> ReviewService: Đánh giá với metadata
+ReviewService -> ReviewService: Tạo thông báo thành công đa ngôn ngữ
+note right
+Tích Hợp I18nService:
+• Dịch thông báo thành công
+• Hỗ trợ nhiều ngôn ngữ
+• Key: 'review.review.success.GET_SUCCESS'
+end note
+ReviewService --> ReviewController: Phản hồi + thông báo đã localize
+ReviewController --> Client: JSON với dữ liệu + metadata
 
 == POST /reviews - Tạo Đánh Giá Mới ==
 User -> ReviewController: POST /reviews + {content, rating, productId, orderId, medias}
+note right
+Cấu Hình Endpoint:
+• @ActiveUser() - Xác thực người dùng
+• @ZodSerializerDto(CreateReviewResDTO) - Chuẩn hóa phản hồi
+end note
+
 ReviewController -> ReviewService: create(user, body)
 
 ReviewService -> ReviewRepo: create(userId, body)
 ReviewRepo -> ReviewRepo: validateOrder({orderId, userId})
 note right
-Order Validation Logic:
-• Kiểm tra order tồn tại và thuộc về user
-• Validate order.status = DELIVERED
-• Chỉ đơn hàng đã giao mới được review
+Logic Xác Thực Đơn Hàng:
+• Kiểm tra đơn hàng tồn tại và thuộc về người dùng
+• Xác thực order.status = DELIVERED
+• Chỉ đơn hàng đã giao mới được đánh giá
 end note
 
 ReviewRepo -> PostgreSQL: findUnique order với userId
-PostgreSQL --> ReviewRepo: Order data
+PostgreSQL --> ReviewRepo: Dữ liệu đơn hàng
 
-alt Order validation passed
-    ReviewRepo -> PostgreSQL: $transaction (atomic operation)
+alt Xác thực đơn hàng thành công
+    ReviewRepo -> PostgreSQL: $transaction (hoạt động nguyên tử)
     note right
-    Create Review Transaction:
-    • CREATE review với audit fields
+    Giao Dịch Tạo Đánh Giá:
+    • CREATE review với các trường audit
     • CREATE reviewMedia cho từng media
-    • Validate unique constraint (user + product)
-    • Atomic operations đảm bảo consistency
+    • Xác thực unique constraint (user + product)
+    • Hoạt động nguyên tử đảm bảo tính nhất quán
     end note
 
     ReviewRepo -> PostgreSQL: INSERT review
-    PostgreSQL --> ReviewRepo: Review created
+    PostgreSQL --> ReviewRepo: Đánh giá đã tạo
 
     ReviewRepo -> PostgreSQL: createManyAndReturn reviewMedia
     note right
-    Media Management:
+    Quản Lý Media:
     • Tạo nhiều reviewMedia cùng lúc
-    • Link với reviewId
-    • Support multiple media types
-    • Return created medias
+    • Liên kết với reviewId
+    • Hỗ trợ nhiều loại media
+    • Trả về media đã tạo
     end note
-    PostgreSQL --> ReviewRepo: Review medias created
+    PostgreSQL --> ReviewRepo: Review media đã tạo
 
     ReviewRepo -> PostgreSQL: findUnique review với include
-    PostgreSQL --> ReviewRepo: Review với user và medias
-    ReviewRepo --> ReviewService: Complete review data
-    ReviewService --> ReviewController: Success response
+    PostgreSQL --> ReviewRepo: Review với user và media
+    ReviewRepo --> ReviewService: Dữ liệu review hoàn chỉnh
+    ReviewService -> ReviewService: Tạo thông báo thành công đa ngôn ngữ
+    note right
+    Tích Hợp I18nService:
+    • Dịch thông báo thành công
+    • Hỗ trợ nhiều ngôn ngữ
+    • Key: 'review.review.success.CREATE_SUCCESS'
+    end note
+    ReviewService --> ReviewController: Phản hồi thành công
     ReviewController --> User: 201 Created + JSON response
 
-else Order validation failed
+else Xác thực đơn hàng thất bại
     ReviewRepo --> ReviewService: BadRequestException
-    ReviewService --> ReviewController: Error response
+    ReviewService --> ReviewController: Phản hồi lỗi
     ReviewController --> User: 400 Bad Request
 end
 
 == PUT /reviews/:reviewId - Cập Nhật Đánh Giá ==
 User -> ReviewController: PUT /reviews/:reviewId + {data}
+note right
+Cấu Hình Endpoint:
+• @ActiveUser() - Xác thực người dùng
+• @ZodSerializerDto(UpdateReviewResDTO) - Chuẩn hóa phản hồi
+end note
+
 ReviewController -> ReviewService: update({user, reviewId, body})
 
 ReviewService -> ReviewRepo: update({userId, reviewId, body})
 
-ReviewRepo -> ReviewRepo: Parallel validation
+ReviewRepo -> ReviewRepo: Xác thực song song
 note right
-Update Validation:
-• validateOrder: Kiểm tra order vẫn hợp lệ
-• validateUpdateReview: Kiểm tra review thuộc về user
-• Check updateCount < 1 (chỉ được sửa 1 lần)
+Xác Thực Cập Nhật:
+• validateOrder: Kiểm tra đơn hàng vẫn hợp lệ
+• validateUpdateReview: Kiểm tra review thuộc về người dùng
+• Kiểm tra updateCount < 1 (chỉ được sửa 1 lần)
 end note
 
 ReviewRepo -> PostgreSQL: findUnique order
 ReviewRepo -> PostgreSQL: findUnique review
-PostgreSQL --> ReviewRepo: Order và review data
+PostgreSQL --> ReviewRepo: Dữ liệu đơn hàng và review
 
-alt Validation passed
-    ReviewRepo -> PostgreSQL: $transaction (atomic operation)
+alt Xác thực thành công
+    ReviewRepo -> PostgreSQL: $transaction (hoạt động nguyên tử)
     note right
-    Update Review Transaction:
+    Giao Dịch Cập Nhật Review:
     • UPDATE review với increment updateCount
     • DELETE tất cả reviewMedia cũ
     • CREATE reviewMedia mới
-    • Atomic operations
+    • Hoạt động nguyên tử
     end note
 
     ReviewRepo -> PostgreSQL: UPDATE review với updateCount
-    PostgreSQL --> ReviewRepo: Review updated
+    PostgreSQL --> ReviewRepo: Review đã cập nhật
 
     ReviewRepo -> PostgreSQL: DELETE reviewMedia WHERE reviewId
-    PostgreSQL --> ReviewRepo: Old medias deleted
+    PostgreSQL --> ReviewRepo: Media cũ đã xóa
 
     ReviewRepo -> PostgreSQL: createManyAndReturn reviewMedia
-    PostgreSQL --> ReviewRepo: New medias created
+    PostgreSQL --> ReviewRepo: Media mới đã tạo
 
     ReviewRepo -> PostgreSQL: findUnique review với include
-    PostgreSQL --> ReviewRepo: Updated review với user và medias
-    ReviewRepo --> ReviewService: Complete updated data
-    ReviewService --> ReviewController: Success response
+    PostgreSQL --> ReviewRepo: Review đã cập nhật với user và media
+    ReviewRepo --> ReviewService: Dữ liệu cập nhật hoàn chỉnh
+    ReviewService -> ReviewService: Tạo thông báo thành công đa ngôn ngữ
+    note right
+    Tích Hợp I18nService:
+    • Dịch thông báo thành công
+    • Hỗ trợ nhiều ngôn ngữ
+    • Key: 'review.review.success.UPDATE_SUCCESS'
+    end note
+    ReviewService --> ReviewController: Phản hồi thành công
     ReviewController --> User: 200 OK + JSON response
 
-else Validation failed
+else Xác thực thất bại
     ReviewRepo --> ReviewService: BadRequestException/NotFoundException
-    ReviewService --> ReviewController: Error response
+    ReviewService --> ReviewController: Phản hồi lỗi
     ReviewController --> User: 400/404 Error
 end
 
-== Xử Lý Lỗi & Validation ==
-alt Lỗi order không tồn tại
+== Xử Lý Lỗi & Xác Thực ==
+alt Lỗi đơn hàng không tồn tại
     ReviewRepo --> ReviewService: BadRequestException
-    ReviewService --> ReviewController: Error response
+    ReviewService --> ReviewController: Phản hồi lỗi
     ReviewController --> User: 400 Bad Request
     note right
-    Order Errors:
+    Lỗi Đơn Hàng:
     • "Đơn hàng không tồn tại hoặc không thuộc về bạn"
     • "Đơn hàng chưa được giao"
     end note
 
-else Lỗi review không tồn tại
+else Lỗi đánh giá không tồn tại
     ReviewRepo --> ReviewService: NotFoundException
-    ReviewService --> ReviewController: Error response
+    ReviewService --> ReviewController: Phản hồi lỗi
     ReviewController --> User: 404 Not Found
     note right
-    Review Errors:
+    Lỗi Đánh Giá:
     • "Đánh giá không tồn tại hoặc không thuộc về bạn"
     • "Bạn chỉ được phép sửa đánh giá 1 lần"
     end note
 
-else Lỗi duplicate review
+else Lỗi đánh giá trùng lặp
     ReviewRepo --> ReviewService: ConflictException
-    ReviewService --> ReviewController: Error response
+    ReviewService --> ReviewController: Phản hồi lỗi
     ReviewController --> User: 409 Conflict
     note right
-    Duplicate Error:
+    Lỗi Trùng Lặp:
     • "Bạn đã đánh giá sản phẩm này rồi"
     • Unique constraint: userId + productId
     end note
 
-else Lỗi validation dữ liệu
+else Lỗi xác thực dữ liệu
     ReviewService --> ReviewController: ValidationException
     ReviewController --> User: 422 Unprocessable Entity
 
 else Lỗi database
     ReviewRepo --> ReviewService: DatabaseException
-    ReviewService --> ReviewController: Error response
+    ReviewService --> ReviewController: Phản hồi lỗi
     ReviewController --> User: 500 Internal Server Error
 end
 
-== Business Logic ==
-alt Rating validation
-    ReviewService -> ReviewService: Validate rating 0-5
+== Logic Nghiệp Vụ ==
+alt Xác thực rating
+    ReviewService -> ReviewService: Xác thực rating 0-5
     note right
-    Rating Validation:
+    Xác Thực Rating:
     • rating: number.int().min(0).max(5)
-    • Validate trong Zod schema
-    • Ensure rating hợp lệ
+    • Xác thực trong Zod schema
+    • Đảm bảo rating hợp lệ
     end note
 end
 
-alt Media validation
-    ReviewService -> ReviewService: Validate media types
+alt Xác thực media
+    ReviewService -> ReviewService: Xác thực loại media
     note right
-    Media Validation:
+    Xác Thực Media:
     • url: string.max(1000)
     • type: MediaType enum
-    • Support multiple media per review
+    • Hỗ trợ nhiều media cho mỗi đánh giá
     end note
 end
 
 == Trả Kết Quả ==
 ReviewService -> ReviewService: Tạo thông báo đa ngôn ngữ (I18nService)
-ReviewService --> ReviewController: Response + Message đã localize
+ReviewService --> ReviewController: Phản hồi + Thông báo đã localize
 ReviewController --> User: JSON Response với metadata đầy đủ
 
 note bottom
-**Đặc điểm chính của module Review:**
-• Public API cho danh sách reviews (không cần auth)
-• Protected API cho create/update (cần auth)
-• Order validation nghiêm ngặt (chỉ DELIVERED mới review được)
-• Update limit: chỉ được sửa 1 lần
-• Media management với atomic operations
-• Unique constraint: user + product (1 review per user per product)
-• Pagination với metadata đầy đủ
-• Multi-language support
-• Comprehensive error handling
+**Đặc điểm chính của module Đánh Giá:**
+• API công khai cho danh sách đánh giá (không cần xác thực)
+• API được bảo vệ cho tạo/cập nhật (cần xác thực)
+• Xác thực đơn hàng nghiêm ngặt (chỉ DELIVERED mới đánh giá được)
+• Giới hạn cập nhật: chỉ được sửa 1 lần
+• Quản lý media với hoạt động nguyên tử
+• Unique constraint: user + product (1 đánh giá mỗi người dùng mỗi sản phẩm)
+• Phân trang với metadata đầy đủ
+• Hỗ trợ đa ngôn ngữ
+• Xử lý lỗi toàn diện
 end note
 
 @enduml

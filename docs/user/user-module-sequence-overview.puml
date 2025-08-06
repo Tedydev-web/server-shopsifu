@@ -26,37 +26,45 @@ skinparam note {
     FontColor #000000
 }
 
-title Mô-đun User - Tổng Quan Sequence
+title Mô-đun Người Dùng - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý người dùng với phân quyền và xử lý lỗi toàn diện
 
 actor "Người dùng" as Client
-participant UserController
-participant UserService
-participant UserRepo
-participant SharedUserRepo
-database PostgreSQL
+participant "UserController" as UC
+participant "UserService" as US
+participant "UserRepo" as UR
+participant "SharedUserRepo" as SUR
+participant "HashingService" as HS
+participant "SharedRoleRepo" as SRR
+participant "I18nService" as IS
+participant "PrismaService" as PS
+database "PostgreSQL" as DB
 
 == Luồng Xử Lý Chính ==
-Client -> UserController: Yêu cầu (GET/POST/PUT/DELETE)
-UserController -> UserService: Xử lý nghiệp vụ + Validation
+Client -> UC: Yêu cầu (GET/POST/PUT/DELETE)
+UC -> US: Xử lý nghiệp vụ + Validation
 
 alt Thao tác CRUD cơ bản
-    UserService -> UserService: Mã hóa mật khẩu (HashingService)
-    UserService -> UserRepo: Thực hiện CRUD
-    UserRepo -> PostgreSQL: SELECT COUNT(*) + Query với LIMIT/OFFSET
-    PostgreSQL --> UserRepo: Dữ liệu + Thống kê phân trang
-    UserRepo --> UserService: Kết quả có metadata (total, hasNext, hasPrev)
+    US -> US: Mã hóa mật khẩu (HashingService)
+    US -> UR: Thực hiện CRUD
+    UR -> PS: SELECT COUNT(*) + Query với LIMIT/OFFSET
+    PS -> DB: Thực thi query với pagination
+    DB -> PS: Dữ liệu + Thống kê phân trang
+    PS -> UR: Kết quả có metadata (total, hasNext, hasPrev)
+    UR -> US: Trả về data với metadata
 
 else Lấy thông tin chi tiết User
-    UserService -> SharedUserRepo: findUniqueIncludeRolePermissions
-    SharedUserRepo -> PostgreSQL: JOIN với Role + Permissions
-    PostgreSQL --> SharedUserRepo: User profile đầy đủ
-    SharedUserRepo --> UserService: Thông tin user + quyền hạn
+    US -> SUR: findUniqueIncludeRolePermissions
+    SUR -> PS: JOIN với Role + Permissions
+    PS -> DB: Query user với role permissions
+    DB -> PS: User profile đầy đủ
+    PS -> SUR: Thông tin user + quyền hạn
+    SUR -> US: Trả về user detail
 end
 
 == Kiểm Tra Phân Quyền ==
 alt Admin thực hiện thao tác đặc biệt
-    UserService -> UserService: verifyRole(người thực hiện, đối tượng)
+    US -> US: verifyRole(người thực hiện, đối tượng)
     note right
     Logic nghiệp vụ phân quyền:
     • Chỉ Admin tạo/sửa/xóa Admin khác
@@ -65,14 +73,14 @@ alt Admin thực hiện thao tác đặc biệt
     end note
 
 else Không đủ quyền hoặc vi phạm quy tắc
-    UserService --> UserController: Exception tương ứng
-    UserController --> Client: HTTP Error Response
+    US -> UC: Exception tương ứng
+    UC -> Client: HTTP Error Response
 end
 
 == Xử Lý Ngoại Lệ ==
 alt Các trường hợp lỗi phổ biến
-    UserService --> UserController: Exception
-    UserController --> Client: Error Response
+    US -> UC: Exception
+    UC -> Client: Error Response
     note right
     **Ma trận xử lý lỗi:**
     • 404 Not Found → User không tồn tại
@@ -83,8 +91,21 @@ alt Các trường hợp lỗi phổ biến
 end
 
 == Trả Kết Quả ==
-UserService -> UserService: Tạo thông báo đa ngôn ngữ (I18nService)
-UserService --> UserController: Response + Message đã localize
-UserController --> Client: JSON Response với metadata đầy đủ
+US -> IS: i18n.t('user.user.success.XXX')
+IS -> US: Trả về message đã localize
+US -> UC: Phản hồi + Message đã localize
+UC -> Client: JSON Response với metadata đầy đủ
+
+note bottom
+**Đặc điểm chính của module User:**
+• Phân quyền nghiêm ngặt (Admin/Seller/User)
+• Mã hóa mật khẩu với HashingService
+• Soft delete với audit fields
+• Validation unique constraint (email)
+• Foreign key validation (roleId)
+• Ngăn chặn tự thao tác trên chính mình
+• Đa ngôn ngữ với I18nService
+• Pagination với metadata
+end note
 
 @enduml

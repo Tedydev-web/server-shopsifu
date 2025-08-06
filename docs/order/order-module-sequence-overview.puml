@@ -1,0 +1,160 @@
+@startuml Order Module - Sequence Overview
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Mô-đun Đơn Hàng - Tổng Quan Luồng Xử Lý
+
+actor "Khách hàng" as C
+participant "OrderController" as OC
+participant "OrderService" as OS
+participant "OrderRepo" as OR
+participant "OrderProducer" as OP
+participant "PaymentProducer" as PP
+participant "PrismaService" as PS
+participant "I18nService" as IS
+database "Database" as DB
+queue "Payment Queue" as PQ
+
+== Lấy Danh Sách Đơn Hàng ==
+C -> OC: GET /orders
+note right
+Cấu Hình Endpoint:
+• @ActiveUser() - Xác thực người dùng
+• @ZodSerializerDto(GetOrderListResDTO) - Chuẩn hóa phản hồi
+end note
+
+OC -> OS: list(user, query)
+OS -> OR: list(userId, query)
+OR -> PS: findMany(orders)
+PS -> DB: SELECT orders với phân trang
+OR -> OS: return dữ liệu đơn hàng
+OS -> IS: i18n.t('order.order.success.GET_SUCCESS')
+IS -> OS: Trả về message đã localize
+OS -> OC: return danh sách đơn hàng
+OC -> C: return danh sách đơn hàng
+
+== Tạo Đơn Hàng ==
+C -> OC: POST /orders
+note right
+Cấu Hình Endpoint:
+• @ActiveUser() - Xác thực người dùng
+• @ZodSerializerDto(CreateOrderResDTO) - Chuẩn hóa phản hồi
+end note
+
+OC -> OS: create(user, body)
+OS -> PS: findMany(discounts)
+PS -> DB: SELECT discounts theo codes
+OS -> PS: groupBy(discount_snapshot)
+PS -> DB: SELECT số lần sử dụng
+loop Với mỗi discount
+    OS -> OS: validateDiscount(discount)
+    alt Discount không hợp lệ
+        OS -> OS: throw DiscountNotApplicableException
+    end
+end
+OS -> OR: create(userId, body)
+OR -> PS: createMany(orders)
+PS -> DB: INSERT orders
+OR -> PS: createMany(order_items)
+PS -> DB: INSERT order items
+OR -> PS: createMany(discount_snapshots)
+PS -> DB: INSERT discount snapshots
+OR -> PS: deleteMany(cart_items)
+PS -> DB: DELETE cart items
+OR -> OS: return đơn hàng đã tạo
+OS -> IS: i18n.t('order.order.success.CREATE_SUCCESS')
+IS -> OS: Trả về message đã localize
+OS -> OC: return đơn hàng đã tạo
+OC -> C: return đơn hàng đã tạo
+
+== Tính Toán Đơn Hàng ==
+C -> OC: POST /orders/calculate
+note right
+Cấu Hình Endpoint:
+• @ActiveUser() - Xác thực người dùng
+• @ZodSerializerDto(CalculateOrderResDTO) - Chuẩn hóa phản hồi
+end note
+
+OC -> OS: calculate(user, body)
+OS -> PS: findMany(cart_items)
+PS -> DB: SELECT cart items với SKU
+OS -> PS: findMany(discounts)
+PS -> DB: SELECT active discounts
+OS -> PS: groupBy(discount_snapshot)
+PS -> DB: SELECT số lần sử dụng
+loop Với mỗi discount
+    OS -> OS: validateDiscountForOrder()
+    OS -> OS: calculateDiscountAmount()
+end
+OS -> OS: tính toán tổng tiền
+OS -> IS: i18n.t('order.order.success.CALCULATE_SUCCESS')
+IS -> OS: Trả về message đã localize
+OS -> OC: return kết quả tính toán
+OC -> C: return kết quả tính toán
+
+== Xem Chi Tiết Đơn Hàng ==
+C -> OC: GET /orders/:orderId
+note right
+Cấu Hình Endpoint:
+• @ActiveUser() - Xác thực người dùng
+• @ZodSerializerDto(GetOrderDetailResDTO) - Chuẩn hóa phản hồi
+end note
+
+OC -> OS: detail(user, orderId)
+OS -> OR: detail(userId, orderId)
+OR -> PS: findFirst(order)
+PS -> DB: SELECT order với chi tiết
+OR -> OS: return chi tiết đơn hàng
+OS -> IS: i18n.t('order.order.success.GET_DETAIL_SUCCESS')
+IS -> OS: Trả về message đã localize
+OS -> OC: return chi tiết đơn hàng
+OC -> C: return chi tiết đơn hàng
+
+== Hủy Đơn Hàng ==
+C -> OC: PUT /orders/:orderId
+note right
+Cấu Hình Endpoint:
+• @ActiveUser() - Xác thực người dùng
+• @ZodSerializerDto(CancelOrderResDTO) - Chuẩn hóa phản hồi
+end note
+
+OC -> OS: cancel(user, orderId)
+OS -> OR: cancel(userId, orderId)
+OR -> PS: findFirst(order)
+PS -> DB: SELECT order
+alt Đơn hàng có thể hủy
+    OR -> PS: update(order status)
+    PS -> DB: UPDATE trạng thái đơn hàng
+    OR -> PS: updateMany(order_items)
+    PS -> DB: UPDATE order items
+    OR -> PS: updateMany(skus)
+    PS -> DB: UPDATE tồn kho SKU
+    OR -> OP: addCancelPaymentJob(paymentId)
+    OP -> PP: add job vào queue
+    PP -> PQ: Thêm job hủy thanh toán
+    OR -> OS: return đơn hàng đã hủy
+    OS -> IS: i18n.t('order.order.success.CANCEL_SUCCESS')
+    IS -> OS: Trả về message đã localize
+    OS -> OC: return đơn hàng đã hủy
+    OC -> C: return đơn hàng đã hủy
+else Đơn hàng không thể hủy
+    OR -> OS: throw CannotCancelOrderException
+    OS -> OC: throw exception
+    OC -> C: return lỗi
+end
+
+note bottom
+**Đặc điểm chính của module Đơn Hàng:**
+• Xác thực người dùng bắt buộc cho tất cả endpoints
+• Xử lý discount/voucher phức tạp với validation
+• Giao dịch database để đảm bảo tính toàn vẹn
+• Quản lý tồn kho SKU với optimistic locking
+• Background job để hủy thanh toán tự động
+• Hỗ trợ đa ngôn ngữ với I18nService
+• Xử lý lỗi toàn diện
+end note
+
+@enduml
