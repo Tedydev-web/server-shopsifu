@@ -25,6 +25,7 @@
     "clear-products": "ts-node -r tsconfig-paths/register initialScript/product/script/clear-products.ts",
     "sync-to-elasticsearch": "ts-node -r tsconfig-paths/register initialScript/product/script/sync-to-elasticsearch.ts",
     "import:reset": "npm run clear-products && npm run import-products && npm run sync-to-elasticsearch",
+    "import:products": "ts-node -r tsconfig-paths/register initialScript/product/script/import-main.ts && npm run sync-to-elasticsearch",
     "db:reset": "npx prisma migrate reset --force && npm run seed",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\"",

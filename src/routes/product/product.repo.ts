@@ -96,6 +96,10 @@ export class ProductRepo {
       caculatedOrderBy = {
         basePrice: orderBy
       }
+    } else if (sortBy === SortBy.UpdatedAt) {
+      caculatedOrderBy = {
+        updatedAt: orderBy
+      }
     } else if (sortBy === SortBy.Sale) {
       caculatedOrderBy = {
         orders: {

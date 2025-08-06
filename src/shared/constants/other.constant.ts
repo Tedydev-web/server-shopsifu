@@ -10,6 +10,7 @@ export const OrderBy = {
 export const SortBy = {
   Price: 'price',
   CreatedAt: 'createdAt',
+  UpdatedAt: 'updatedAt',
   Sale: 'sale',
   Value: 'value',
   UsesCount: 'usesCount'
