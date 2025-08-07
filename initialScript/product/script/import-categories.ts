@@ -30,7 +30,6 @@ export async function importCategories(
     }
   })
 
-  logger.log(`📊 Found ${categorySet.size} unique categories with hierarchy`)
   const existingCategories = await tx.category.findMany({
     where: { name: { in: [...categorySet] }, deletedAt: null },
     select: { id: true, name: true, parentCategoryId: true }
@@ -58,10 +57,6 @@ export async function importCategories(
         id: createdCategory.id,
         parentCategoryId: parentCategory ? (parentCategory as any).id : null
       })
-
-      logger.log(
-        `✅ Created category: ${name} (level ${info.level})${parentCategory ? ` → parent: ${info.parent}` : ''}`
-      )
     } catch (error) {
       logger.warn(`⚠️ Failed to create category: ${name} - ${error}`)
     }
@@ -70,6 +65,5 @@ export async function importCategories(
     where: { name: { in: [...categorySet] }, deletedAt: null },
     select: { id: true, name: true }
   })
-  logger.log(`✅ Imported ${finalCategories.length} categories`)
   return new Map(finalCategories.map((cat) => [cat.name, cat.id]))
 }

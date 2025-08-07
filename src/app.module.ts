@@ -31,10 +31,12 @@ import { LanguageModule } from 'src/routes/language/language.module'
 import { DiscountModule } from './routes/discount/discount.module'
 import { SearchModule } from './routes/search/search.module'
 import { HealthController } from 'src/health.controller'
+import { TerminusModule } from '@nestjs/terminus'
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
+    TerminusModule,
     WebsocketModule,
     SharedModule,
     AuthModule,

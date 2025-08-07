@@ -2,16 +2,17 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: nestjs-postgres
+    container_name: postgres
     restart: unless-stopped
     ports:
       - '5432:5432'
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-shopsifu}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Shopsifu2025@@}
-      POSTGRES_DB: ${POSTGRES_DB:-shopsifu_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-shopsifu}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     networks:
       - app-network
     healthcheck:
@@ -23,7 +24,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: nestjs-redis
+    container_name: redis
     restart: unless-stopped
     ports:
       - '6379:6379'
@@ -63,17 +64,12 @@ services:
         hard: 65536
     volumes:
       - esdata:/usr/share/elasticsearch/data
-      - ./certs:/usr/share/elasticsearch/config/certs
     ports:
       - 127.0.0.1:9200:9200
     networks:
       - app-network
     healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          "curl -s -u elastic:${ELASTICSEARCH_PASSWORD:-elastic2025@@} https://localhost:9200 --insecure | grep -q 'You Know, for Search'"
-        ]
+      test: ['CMD-SHELL', "curl -s http://localhost:9200 | grep -q 'You Know, for Search'"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -82,10 +78,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: nestjs-app
+    container_name: server
     restart: unless-stopped
     ports:
-      - '3001:3001'
+      - '3000:3000'
     env_file:
       - .env.docker
     networks:
@@ -127,15 +123,15 @@ services:
 networks:
   app-network:
     driver: bridge
-    name: nestjs-network
+    name: app-network
 
 volumes:
   postgres_data:
     driver: local
-    name: nestjs-postgres-data
+    name: postgres-data
   redis_data:
     driver: local
-    name: nestjs-redis-data
+    name: redis-data
   esdata:
     driver: local
     name: elasticsearch-data

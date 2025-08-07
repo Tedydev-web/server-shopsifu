@@ -8,18 +8,30 @@ export class ElasticsearchService implements OnModuleInit {
   public readonly client: Client
 
   constructor(private readonly configService: ConfigService) {
-    const node = this.configService.get<string>('elasticsearch.node')
-    const apiKey = this.configService.get<string>('elasticsearch.apiKey')
+    const node = this.configService.get<string>('ELASTICSEARCH_NODE')
+    const username = this.configService.get<string>('ELASTICSEARCH_USERNAME')
+    const password = this.configService.get<string>('ELASTICSEARCH_PASSWORD')
+    const sslEnabled = this.configService.get<boolean>('ELASTICSEARCH_SSL_ENABLED', false)
 
-    if (!node || !apiKey) {
-      throw new Error('Elasticsearch configuration is missing')
+    if (!node) {
+      throw new Error('Elasticsearch configuration is missing: ELASTICSEARCH_NODE')
     }
 
-    this.client = new Client({
-      node,
-      auth: { apiKey },
-      tls: { rejectUnauthorized: false }
-    })
+    const clientConfig: any = {
+      node
+    }
+
+    // Chỉ thêm auth nếu có username và password
+    if (username && password) {
+      clientConfig.auth = { username, password }
+    }
+
+    // Chỉ thêm tls nếu SSL được bật
+    if (sslEnabled) {
+      clientConfig.tls = { rejectUnauthorized: false }
+    }
+
+    this.client = new Client(clientConfig)
   }
 
   async onModuleInit() {
@@ -37,7 +49,7 @@ export class ElasticsearchService implements OnModuleInit {
    * Tạo index cho sản phẩm với mapping tối ưu
    */
   private async createProductIndex() {
-    const indexName = this.configService.get<string>('elasticsearch.index.products', 'products_v1')
+    const indexName = this.configService.get<string>('ELASTICSEARCH_INDEX_PRODUCTS', 'products_v1')
     const exists = await this.client.indices.exists({ index: indexName })
 
     if (!exists) {

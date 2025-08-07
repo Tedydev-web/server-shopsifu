@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client'
-import { logger, CONFIG } from './import-utils'
+import { CONFIG } from './import-utils'
 
 export async function importSKUs(
   skus: Array<{
@@ -15,29 +15,24 @@ export async function importSKUs(
   tx: PrismaClient
 ): Promise<void> {
   if (skus.length === 0) {
-    logger.log('⚠️ No SKUs to import')
     return
   }
 
   // Validate dữ liệu SKU
   const validSkus = skus.filter((sku) => {
     if (!sku.value || !sku.value.trim()) {
-      logger.warn(`⚠️ Skipping SKU with empty value for product ${sku.productId}`)
       return false
     }
     if (sku.price < 0) {
-      logger.warn(`⚠️ Skipping SKU with negative price: ${sku.price} for product ${sku.productId}`)
       return false
     }
     if (sku.stock < 0) {
-      logger.warn(`⚠️ Skipping SKU with negative stock: ${sku.stock} for product ${sku.productId}`)
       return false
     }
     return true
   })
 
   if (validSkus.length === 0) {
-    logger.warn('⚠️ No valid SKUs to import after validation')
     return
   }
 
@@ -66,7 +61,6 @@ export async function importSKUs(
   })
 
   if (newSkus.length === 0) {
-    logger.log('✅ All SKUs already exist, no new SKUs to import')
     return
   }
 
@@ -87,10 +81,7 @@ export async function importSKUs(
       })
       successCount += chunk.length
     } catch (error) {
-      logger.error(`❌ Failed to import SKU batch:`, error)
       failCount += chunk.length
     }
   }
-
-  logger.log(`✅ Imported ${successCount} SKUs, failed: ${failCount}, skipped: ${validSkus.length - newSkus.length}`)
 }

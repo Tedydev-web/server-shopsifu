@@ -38,6 +38,9 @@ WORKDIR /app
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nestjs -u 1001
 
+# Install @nestjs/cli globally for production
+RUN npm install -g @nestjs/cli
+
 # Copy built application from builder stage
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/package-lock.json ./

@@ -62,7 +62,6 @@ async function main() {
   await prisma.$connect()
   const jsonPath = require('path').join(process.cwd(), 'initialScript', 'product', 'data', 'Shopee-products.json')
   const products: ShopeeProduct[] = await readJsonStream(jsonPath)
-  logger.log(`📦 Đã load ${products.length} sản phẩm từ file JSON`)
 
   // 1. Validate và lọc sản phẩm hợp lệ
   const validProducts: ShopeeProduct[] = []
@@ -70,7 +69,6 @@ async function main() {
     const validation = validateProductEnhanced(product)
     if (validation.isValid) validProducts.push(product)
   }
-  logger.log(`✅ Có ${validProducts.length} sản phẩm hợp lệ để import`)
 
   // 2. Import brands
   const creatorUser = await prisma.user.findFirst({ orderBy: { createdAt: 'asc' } })
@@ -120,7 +118,6 @@ async function main() {
 
     // Log để debug
     if (categoryIds.length === 0) {
-      logger.warn(`⚠️ No categories found for product: ${product.title}`)
     }
 
     // Variants - Sử dụng logic đơn giản từ cơ chế cũ
@@ -129,7 +126,6 @@ async function main() {
     // Validate variants và tính toán số SKU
     const variantValidation = validateVariantsAndCalculateSKUs(variants)
     if (!variantValidation.isValid) {
-      logger.warn(`⚠️ Product "${product.title}" has variant issues: ${variantValidation.issues.join(', ')}`)
     }
 
     // Specifications - Sử dụng logic đơn giản từ cơ chế cũ
@@ -144,12 +140,6 @@ async function main() {
 
     // Log thông tin SKU cho debug
     if (skus.length > 1) {
-      logger.log(
-        `📦 Product "${product.title}" will create ${skus.length} SKUs: ${skus
-          .slice(0, 3)
-          .map((s) => s.value)
-          .join(', ')}${skus.length > 3 ? '...' : ''}`
-      )
     }
 
     // Reviews - Chỉ lấy reviews có nội dung
@@ -266,7 +256,7 @@ async function main() {
       })
     })
   })
-  if (ordersData.length) await prisma.order.createMany({ data: ordersData, skipDuplicates: true })
+  if (ordersData.length) await prisma.order.createMany({ data: ordersData as any, skipDuplicates: true })
   let reviewIds: string[] = []
   if (reviewsData.length) reviewIds = await importReviews(reviewsData, prisma)
 
@@ -331,7 +321,6 @@ async function main() {
   })
 
   if (vouchersData.length > 0) {
-    logger.log(`📦 Importing ${vouchersData.length} vouchers...`)
     let successCount = 0
     let failCount = 0
 
@@ -347,7 +336,6 @@ async function main() {
       }
     }
 
-    logger.log(`✅ Imported ${successCount} vouchers, failed: ${failCount}`)
   }
 
   // 8.8. Import product videos (nếu có) vào product images
@@ -393,13 +381,10 @@ async function main() {
         })
         connectedCount++
       } catch (error) {
-        logger.warn(`⚠️ Failed to connect product to categories: ${p.shopeeData.title} - ${error}`)
         failedCount++
       }
     }
   }
-
-  logger.log(`✅ Connected ${connectedCount} products to categories, failed: ${failedCount}`)
 
   // 8.10. Sync products với Elasticsearch
   if (processedProducts.length > 0) {
