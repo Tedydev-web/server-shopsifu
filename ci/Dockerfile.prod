@@ -42,6 +42,10 @@ RUN addgroup -g 1001 -S nodejs && \
 # Install PM2 globally for cluster mode
 RUN npm install -g pm2
 
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/upload /app/logs && \
+    chown -R nestjs:nodejs /app/upload /app/logs
+
 # Copy built application from builder stage
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/package.json ./

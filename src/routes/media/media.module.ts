@@ -28,8 +28,12 @@ const storage = multer.diskStorage({
 })
 export class MediaModule {
   constructor() {
-    if (!existsSync(UPLOAD_DIR)) {
-      mkdirSync(UPLOAD_DIR, { recursive: true })
+    try {
+      if (!existsSync(UPLOAD_DIR)) {
+        mkdirSync(UPLOAD_DIR, { recursive: true })
+      }
+    } catch (error) {
+      console.warn(`Không thể tạo thư mục upload: ${UPLOAD_DIR}`, error.message)
     }
   }
 }
