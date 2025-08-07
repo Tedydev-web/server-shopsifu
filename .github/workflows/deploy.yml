@@ -66,10 +66,10 @@ jobs:
     steps:
       - name: Deploy to production VPS via SSH (docker-compose)
         env:
-          VPS_USER: ${{ secrets.PROD_VPS_USERNAME }}
-          VPS_HOST: ${{ secrets.PROD_VPS_IP_HOST }}
-          VPS_PASS: ${{ secrets.PROD_VPS_PASSWORD }}
-          PROJECT_PATH: ${{ secrets.PROD_PATH_PROJECT }}
+          VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
+          VPS_HOST: ${{ secrets.STAGING_VPS_IP_HOST }}
+          VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
+          PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
         run: |
           sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST << 'EOF'
             set -euo pipefail
@@ -130,10 +130,10 @@ jobs:
     steps:
       - name: Rollback to previous commit (production)
         env:
-          VPS_USER: ${{ secrets.PROD_VPS_USERNAME }}
-          VPS_HOST: ${{ secrets.PROD_VPS_IP_HOST }}
-          VPS_PASS: ${{ secrets.PROD_VPS_PASSWORD }}
-          PROJECT_PATH: ${{ secrets.PROD_PATH_PROJECT }}
+          VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
+          VPS_HOST: ${{ secrets.STAGING_VPS_IP_HOST }}
+          VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
+          PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
         run: |
           sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST << 'EOF'
             set -euo pipefail
@@ -150,10 +150,10 @@ jobs:
     steps:
       - name: Re-deploy to VPS (manual rollback)
         env:
-          VPS_USER: ${{ secrets.PROD_VPS_USERNAME }}
-          VPS_HOST: ${{ secrets.PROD_VPS_IP_HOST }}
-          VPS_PASS: ${{ secrets.PROD_VPS_PASSWORD }}
-          PROJECT_PATH: ${{ secrets.PROD_PATH_PROJECT }}
+          VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
+          VPS_HOST: ${{ secrets.STAGING_VPS_IP_HOST }}
+          VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
+          PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
         run: |
           sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST << 'EOF'
             set -euo pipefail
