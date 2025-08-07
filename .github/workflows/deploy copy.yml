@@ -1,0 +1,165 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      manual_rollback:
+        description: 'Commit SHA hoặc tag để rollback'
+        required: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./ci/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  deploy-production:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to production VPS via SSH (docker-compose)
+        env:
+          VPS_USER: ${{ secrets.PROD_VPS_USERNAME }}
+          VPS_HOST: ${{ secrets.PROD_VPS_IP_HOST }}
+          VPS_PASS: ${{ secrets.PROD_VPS_PASSWORD }}
+          PROJECT_PATH: ${{ secrets.PROD_PATH_PROJECT }}
+        run: |
+          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST << 'EOF'
+            set -euo pipefail
+            cd $PROJECT_PATH
+            git fetch origin master && git reset --hard origin/master
+            docker-compose pull
+            docker-compose up -d
+            sleep 5
+            docker-compose ps > /tmp/docker_status.txt
+          EOF
+
+      - name: Send Discord Notification
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          STATUS: ${{ job.status }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
+          ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
+          JSON_PAYLOAD=$(jq -n \
+            --arg status "$STATUS" \
+            --arg icon "$ICON" \
+            --arg branch "$BRANCH" \
+            --arg commit_short "$(echo $COMMIT | cut -c1-7)" \
+            --arg commit_full "$COMMIT" \
+            --arg repo "$REPO" \
+            --arg actor "$ACTOR" \
+            --arg run_id "$RUN_ID" \
+            --arg color "$COLOR" \
+            ' {
+              embeds: [{
+                title: "🚀 Triển khai Production",
+                color: ($color | tonumber),
+                fields: [
+                  { name: "Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
+                  { name: "Nhánh", value: "`\($branch)`", inline: true },
+                  { name: "Người thực hiện", value: "`\($actor)`", inline: true },
+                  { name: "Commit", value: "[`\($commit_short)`](https://github.com/\($repo)/commit/\($commit_full))", inline: false }
+                ],
+                url: "https://github.com/\($repo)/actions/runs/\($run_id)",
+                footer: { "text": "Triển khai tới môi trường Production" },
+                "timestamp": (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+              }]
+            }')
+          curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" || echo "Lỗi gửi thông báo Discord"
+
+  rollback-auto:
+    name: Automatic Rollback
+    needs: deploy-production
+    runs-on: ubuntu-latest
+    if: failure()
+    steps:
+      - name: Rollback to previous commit (production)
+        env:
+          VPS_USER: ${{ secrets.PROD_VPS_USERNAME }}
+          VPS_HOST: ${{ secrets.PROD_VPS_IP_HOST }}
+          VPS_PASS: ${{ secrets.PROD_VPS_PASSWORD }}
+          PROJECT_PATH: ${{ secrets.PROD_PATH_PROJECT }}
+        run: |
+          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST << 'EOF'
+            set -euo pipefail
+            cd $PROJECT_PATH
+            git fetch origin master && git reset --hard HEAD~1
+            docker-compose pull
+            docker-compose up -d
+          EOF
+
+  manual-rollback:
+    name: Manual Rollback
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.manual_rollback
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-deploy to VPS (manual rollback)
+        env:
+          VPS_USER: ${{ secrets.PROD_VPS_USERNAME }}
+          VPS_HOST: ${{ secrets.PROD_VPS_IP_HOST }}
+          VPS_PASS: ${{ secrets.PROD_VPS_PASSWORD }}
+          PROJECT_PATH: ${{ secrets.PROD_PATH_PROJECT }}
+        run: |
+          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST << 'EOF'
+            set -euo pipefail
+            cd $PROJECT_PATH
+            git fetch --all
+            git reset --hard ${{ github.event.inputs.manual_rollback }}
+            docker-compose pull
+            docker-compose up -d
+          EOF

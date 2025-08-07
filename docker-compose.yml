@@ -1,0 +1,141 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nestjs-postgres
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-shopsifu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Shopsifu2025@@}
+      POSTGRES_DB: ${POSTGRES_DB:-shopsifu_dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-shopsifu}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: nestjs-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command: redis-server --appendonly yes
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: elasticsearch
+    environment:
+      - node.name=es01
+      - cluster.name=shopsifu-prod-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.keystore.path=certs/elastic-certificates.p12
+      - xpack.security.transport.ssl.truststore.path=certs/elastic-certificates.p12
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-elastic2025@@}
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+      - ./certs:/usr/share/elasticsearch/config/certs
+    ports:
+      - 127.0.0.1:9200:9200
+    networks:
+      - app-network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "curl -s -u elastic:${ELASTICSEARCH_PASSWORD:-elastic2025@@} https://localhost:9200 --insecure | grep -q 'You Know, for Search'"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nestjs-app
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    env_file:
+      - .env.docker
+    networks:
+      - app-network
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: kibana
+    environment:
+      - SERVER_NAME=kibana
+      - ELASTICSEARCH_HOSTS=https://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-elastic2025@@}
+      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=/usr/share/kibana/config/certs/elastic-stack-ca.p12
+      - SERVER_SSL_ENABLED=true
+      - SERVER_SSL_CERTIFICATE=/usr/share/kibana/config/certs/elastic-certificates.p12
+      - SERVER_SSL_KEY=/usr/share/kibana/config/certs/elastic-certificates.p12
+    ports:
+      - 127.0.0.1:5601:5601
+    volumes:
+      - ./certs:/usr/share/kibana/config/certs
+    networks:
+      - app-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+networks:
+  app-network:
+    driver: bridge
+    name: nestjs-network
+
+volumes:
+  postgres_data:
+    driver: local
+    name: nestjs-postgres-data
+  redis_data:
+    driver: local
+    name: nestjs-redis-data
+  esdata:
+    driver: local
+    name: elasticsearch-data

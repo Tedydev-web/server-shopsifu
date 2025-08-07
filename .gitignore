@@ -10,5 +10,5 @@
 # Logs
 **/logs
 /upload
-**/.serena
 **/logs
+**/certs

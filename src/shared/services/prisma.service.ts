@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common'
+import { HealthIndicatorResult } from '@nestjs/terminus'
 import { PrismaClient } from '@prisma/client'
 
 @Injectable()
@@ -60,7 +61,22 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     `) as Array<{ max_connections: string; unit: string }>
     console.log('🔗 Max connections:', poolInfo[0]?.max_connections)
   }
-
+  async isHealthy(): Promise<HealthIndicatorResult> {
+    try {
+      await this.$queryRaw`SELECT 1`
+      return Promise.resolve({
+        prisma: {
+          status: 'up'
+        }
+      })
+    } catch {
+      return Promise.resolve({
+        prisma: {
+          status: 'down'
+        }
+      })
+    }
+  }
   async onModuleDestroy() {
     await this.$disconnect()
     console.log('🔌 Prisma disconnected from PostgreSQL')
