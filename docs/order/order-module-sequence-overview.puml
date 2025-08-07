@@ -6,155 +6,315 @@ skinparam roundcorner 20
 skinparam maxmessagesize 60
 
 title Mô-đun Đơn Hàng - Tổng Quan Luồng Xử Lý
+note top : Hệ thống quản lý đơn hàng với validation phức tạp, discount handling và multi-shop support
 
-actor "Khách hàng" as C
+actor "Người dùng" as User
 participant "OrderController" as OC
 participant "OrderService" as OS
 participant "OrderRepo" as OR
 participant "OrderProducer" as OP
-participant "PaymentProducer" as PP
-participant "PrismaService" as PS
 participant "I18nService" as IS
-database "Database" as DB
-queue "Payment Queue" as PQ
+participant "PrismaService" as PS
+participant "AccessTokenGuard" as AG
+participant "Redis Redlock" as RL
+participant "BullMQ Queue" as BQ
+database "PostgreSQL" as DB
 
-== Lấy Danh Sách Đơn Hàng ==
-C -> OC: GET /orders
-note right
-Cấu Hình Endpoint:
-• @ActiveUser() - Xác thực người dùng
-• @ZodSerializerDto(GetOrderListResDTO) - Chuẩn hóa phản hồi
-end note
+== Xác thực và Phân quyền ==
+User -> AG: Request với cookies
+AG -> AG: Trích xuất access_token từ cookies
+AG -> AG: Xác minh JWT token
+AG -> AG: Tải quyền người dùng
+AG -> OC: Cho phép request với user context
 
+== GET /orders - Lấy Danh Sách Đơn Hàng ==
+User -> OC: GET /orders?page=1&limit=10&status=PENDING_PAYMENT
 OC -> OS: list(user, query)
 OS -> OR: list(userId, query)
-OR -> PS: findMany(orders)
-PS -> DB: SELECT orders với phân trang
-OR -> OS: return dữ liệu đơn hàng
+OR -> PS: order.count() và order.findMany()
+note right
+Database Query Logic:
+• WHERE userId = user.userId
+• Filter theo status (optional)
+• Include order items
+• Pagination với skip/take
+• ORDER BY createdAt DESC
+end note
+PS -> DB: Thực thi query với pagination
+DB -> PS: Trả về orders với metadata
+PS -> OR: Trả về {data, metadata}
+OR -> OS: Trả về orders data
 OS -> IS: i18n.t('order.order.success.GET_SUCCESS')
 IS -> OS: Trả về message đã localize
-OS -> OC: return danh sách đơn hàng
-OC -> C: return danh sách đơn hàng
+OS -> OC: Trả về response với data + metadata
+OC -> User: Trả về JSON response
 
-== Tạo Đơn Hàng ==
-C -> OC: POST /orders
+== POST /orders - Tạo Đơn Hàng Mới ==
+User -> OC: POST /orders + {shopId, receiver, cartItemIds, discountCodes}
+OC -> OS: create(user, body)
+OS -> OS: validateDiscountCodes()
 note right
-Cấu Hình Endpoint:
-• @ActiveUser() - Xác thực người dùng
-• @ZodSerializerDto(CreateOrderResDTO) - Chuẩn hóa phản hồi
+Discount Validation Logic:
+• Thu thập tất cả discount codes
+• Kiểm tra tồn tại trong database
+• Validate trạng thái ACTIVE
+• Kiểm tra thời gian hiệu lực
+• Validate maxUses và maxUsesPerUser
 end note
 
-OC -> OS: create(user, body)
-OS -> PS: findMany(discounts)
-PS -> DB: SELECT discounts theo codes
-OS -> PS: groupBy(discount_snapshot)
-PS -> DB: SELECT số lần sử dụng
-loop Với mỗi discount
-    OS -> OS: validateDiscount(discount)
-    alt Discount không hợp lệ
-        OS -> OS: throw DiscountNotApplicableException
-    end
+alt Discount codes được cung cấp
+    OS -> PS: discount.findMany() với codes
+    PS -> DB: Query discounts với relations
+    DB -> PS: Trả về discounts data
+    PS -> OS: Trả về discounts
+    OS -> PS: discountSnapshot.groupBy() cho usage count
+    PS -> DB: Query user usage count
+    DB -> PS: Trả về usage data
+    PS -> OS: Trả về usage map
+    OS -> OS: validateDiscountEligibility()
+    note right
+    Validation Steps:
+    • Kiểm tra discountStatus = 'ACTIVE'
+    • Validate startDate <= now <= endDate
+    • Kiểm tra maxUses và maxUsesPerUser
+    • Throw exceptions nếu không hợp lệ
+    end note
 end
+
 OS -> OR: create(userId, body)
-OR -> PS: createMany(orders)
-PS -> DB: INSERT orders
-OR -> PS: createMany(order_items)
-PS -> DB: INSERT order items
-OR -> PS: createMany(discount_snapshots)
-PS -> DB: INSERT discount snapshots
-OR -> PS: deleteMany(cart_items)
-PS -> DB: DELETE cart items
-OR -> OS: return đơn hàng đã tạo
+OR -> OR: validateCartItems()
+note right
+Cart Items Validation:
+• Kiểm tra tất cả cartItemIds tồn tại
+• Validate stock quantity
+• Kiểm tra product publish status
+• Validate shop ownership
+end note
+
+OR -> RL: Acquire locks cho tất cả SKUs
+note right
+Redis Lock Logic:
+• Lock tất cả SKU IDs cần mua
+• Timeout 3 giây
+• Prevent race conditions
+end note
+RL -> OR: Trả về locks
+
+OR -> PS: $transaction() bắt đầu
+PS -> DB: BEGIN TRANSACTION
+
+OR -> PS: cartItem.findMany() với includes
+PS -> DB: Query cart items với relations
+DB -> PS: Trả về cart items data
+PS -> OR: Trả về cart items
+
+OR -> OR: validateCartItems()
+alt Validation thành công
+    OR -> PS: payment.create() với status PENDING
+    PS -> DB: INSERT payment record
+    DB -> PS: Trả về payment ID
+    PS -> OR: Trả về payment
+
+    loop Cho mỗi shop order
+        OR -> OR: calculateOrderTotal()
+        OR -> OR: processDiscounts()
+        note right
+        Discount Processing:
+        • Validate discount eligibility
+        • Calculate discount amounts
+        • Prepare discount snapshots
+        • Update discount usage count
+        end note
+
+        OR -> PS: order.create() với items
+        PS -> DB: INSERT order với relations
+        DB -> PS: Trả về order data
+        PS -> OR: Trả về order
+
+        OR -> PS: discountSnapshot.create() cho mỗi discount
+        PS -> DB: INSERT discount snapshots
+        DB -> PS: Trả về snapshot data
+        PS -> OR: Trả về snapshots
+    end
+
+    OR -> PS: cartItem.deleteMany()
+    PS -> DB: DELETE cart items
+    DB -> PS: Trả về delete count
+    PS -> OR: Trả về success
+
+    OR -> PS: SKU.update() decrement stock
+    PS -> DB: UPDATE SKU stock với optimistic lock
+    DB -> PS: Trả về updated SKU
+    PS -> OR: Trả về success
+
+    OR -> OP: addCancelPaymentJob(paymentId)
+    OP -> BQ: Add job với delay 24h
+    BQ -> OP: Trả về job queued
+    OP -> OR: Trả về success
+end
+
+PS -> DB: COMMIT TRANSACTION
+DB -> PS: Transaction committed
+PS -> OR: Trả về {paymentId, orders}
+
+OR -> RL: Release tất cả locks
+RL -> OR: Locks released
+OR -> OS: Trả về result
 OS -> IS: i18n.t('order.order.success.CREATE_SUCCESS')
 IS -> OS: Trả về message đã localize
-OS -> OC: return đơn hàng đã tạo
-OC -> C: return đơn hàng đã tạo
+OS -> OC: Trả về success response
+OC -> User: Trả về 201 Created + JSON response
 
-== Tính Toán Đơn Hàng ==
-C -> OC: POST /orders/calculate
-note right
-Cấu Hình Endpoint:
-• @ActiveUser() - Xác thực người dùng
-• @ZodSerializerDto(CalculateOrderResDTO) - Chuẩn hóa phản hồi
-end note
-
-OC -> OS: calculate(user, body)
-OS -> PS: findMany(cart_items)
-PS -> DB: SELECT cart items với SKU
-OS -> PS: findMany(discounts)
-PS -> DB: SELECT active discounts
-OS -> PS: groupBy(discount_snapshot)
-PS -> DB: SELECT số lần sử dụng
-loop Với mỗi discount
-    OS -> OS: validateDiscountForOrder()
-    OS -> OS: calculateDiscountAmount()
-end
-OS -> OS: tính toán tổng tiền
-OS -> IS: i18n.t('order.order.success.CALCULATE_SUCCESS')
-IS -> OS: Trả về message đã localize
-OS -> OC: return kết quả tính toán
-OC -> C: return kết quả tính toán
-
-== Xem Chi Tiết Đơn Hàng ==
-C -> OC: GET /orders/:orderId
-note right
-Cấu Hình Endpoint:
-• @ActiveUser() - Xác thực người dùng
-• @ZodSerializerDto(GetOrderDetailResDTO) - Chuẩn hóa phản hồi
-end note
-
+== GET /orders/:orderId - Chi Tiết Đơn Hàng ==
+User -> OC: GET /orders/:orderId
 OC -> OS: detail(user, orderId)
 OS -> OR: detail(userId, orderId)
-OR -> PS: findFirst(order)
-PS -> DB: SELECT order với chi tiết
-OR -> OS: return chi tiết đơn hàng
-OS -> IS: i18n.t('order.order.success.GET_DETAIL_SUCCESS')
-IS -> OS: Trả về message đã localize
-OS -> OC: return chi tiết đơn hàng
-OC -> C: return chi tiết đơn hàng
+OR -> PS: order.findUnique() với includes
+PS -> DB: Query order với items và discounts
+DB -> PS: Trả về order detail
+PS -> OR: Trả về order data
 
-== Hủy Đơn Hàng ==
-C -> OC: PUT /orders/:orderId
-note right
-Cấu Hình Endpoint:
-• @ActiveUser() - Xác thực người dùng
-• @ZodSerializerDto(CancelOrderResDTO) - Chuẩn hóa phản hồi
-end note
-
-OC -> OS: cancel(user, orderId)
-OS -> OR: cancel(userId, orderId)
-OR -> PS: findFirst(order)
-PS -> DB: SELECT order
-alt Đơn hàng có thể hủy
-    OR -> PS: update(order status)
-    PS -> DB: UPDATE trạng thái đơn hàng
-    OR -> PS: updateMany(order_items)
-    PS -> DB: UPDATE order items
-    OR -> PS: updateMany(skus)
-    PS -> DB: UPDATE tồn kho SKU
-    OR -> OP: addCancelPaymentJob(paymentId)
-    OP -> PP: add job vào queue
-    PP -> PQ: Thêm job hủy thanh toán
-    OR -> OS: return đơn hàng đã hủy
-    OS -> IS: i18n.t('order.order.success.CANCEL_SUCCESS')
+alt Order được tìm thấy
+    OR -> OR: calculateOrderTotals()
+    note right
+    Total Calculation:
+    • totalItemCost = sum(items * price * quantity)
+    • totalVoucherDiscount = sum(discount amounts)
+    • totalPayment = totalItemCost - totalVoucherDiscount
+    end note
+    OR -> OS: Trả về order với totals
+    OS -> IS: i18n.t('order.order.success.GET_DETAIL_SUCCESS')
     IS -> OS: Trả về message đã localize
-    OS -> OC: return đơn hàng đã hủy
-    OC -> C: return đơn hàng đã hủy
-else Đơn hàng không thể hủy
-    OR -> OS: throw CannotCancelOrderException
-    OS -> OC: throw exception
-    OC -> C: return lỗi
+    OS -> OC: Trả về success response
+    OC -> User: Trả về 200 OK + JSON response
+
+else Order không tồn tại
+    OR -> OS: Throw OrderNotFoundException
+    OS -> OC: Throw exception
+    OC -> User: Trả về 404 Not Found
 end
 
+== PUT /orders/:orderId - Hủy Đơn Hàng ==
+User -> OC: PUT /orders/:orderId
+OC -> OS: cancel(user, orderId)
+OS -> OR: cancel(userId, orderId)
+OR -> PS: order.findUniqueOrThrow()
+PS -> DB: Query order theo ID
+DB -> PS: Trả về order data
+PS -> OR: Trả về order
+
+alt Order tồn tại và có thể hủy
+    OR -> OR: validateCancelEligibility()
+    note right
+    Cancel Validation:
+    • Kiểm tra status = PENDING_PAYMENT
+    • Validate user ownership
+    • Check business rules
+    end note
+
+    OR -> PS: order.update() với status CANCELLED
+    PS -> DB: UPDATE order status
+    DB -> PS: Trả về updated order
+    PS -> OR: Trả về updated data
+    OR -> OS: Trả về success
+    OS -> IS: i18n.t('order.order.success.CANCEL_SUCCESS')
+    IS -> OS: Trả về message đã localize
+    OS -> OC: Trả về success response
+    OC -> User: Trả về 200 OK + JSON response
+
+else Order không thể hủy
+    OR -> OS: Throw CannotCancelOrderException
+    OS -> OC: Throw exception
+    OC -> User: Trả về 400 Bad Request
+end
+
+== POST /orders/calculate - Tính Toán Đơn Hàng ==
+User -> OC: POST /orders/calculate + {cartItemIds, discountCodes}
+OC -> OS: calculate(user, body)
+OS -> PS: cartItem.findMany() với includes
+PS -> DB: Query cart items với relations
+DB -> PS: Trả về cart items data
+PS -> OS: Trả về cart items
+
+alt Cart items tồn tại
+    OS -> OS: calculateTotalPayment()
+    OS -> OS: processDiscountCalculation()
+    note right
+    Discount Calculation:
+    • Validate discount codes
+    • Check eligibility criteria
+    • Calculate discount amounts
+    • Apply max discount limits
+    end note
+
+    alt Có discount codes
+        OS -> PS: discount.findMany() với filters
+        PS -> DB: Query active discounts
+        DB -> PS: Trả về discounts
+        PS -> OS: Trả về discounts
+
+        OS -> PS: discountSnapshot.groupBy() cho usage
+        PS -> DB: Query user usage count
+        DB -> PS: Trả về usage data
+        PS -> OS: Trả về usage map
+
+        OS -> OS: validateAndCalculateDiscounts()
+        OS -> OS: calculateFinalTotals()
+    end
+
+    OS -> OC: Trả về calculation result
+    OC -> User: Trả về 200 OK + calculation data
+
+else Cart items rỗng
+    OS -> OC: Trả về empty calculation
+    OC -> User: Trả về 200 OK + zero totals
+end
+
+== Xử Lý Lỗi ==
+alt Lỗi validation cart items
+    OR -> OS: Throw NotFoundCartItemException
+    OS -> OC: Throw exception
+    OC -> User: Trả về 404 Not Found
+
+else Lỗi out of stock
+    OR -> OS: Throw OutOfStockSKUException
+    OS -> OC: Throw exception
+    OC -> User: Trả về 400 Bad Request
+
+else Lỗi discount validation
+    OS -> OC: Throw BadRequestException
+    OC -> User: Trả về 400 Bad Request
+
+else Lỗi transaction
+    PS -> DB: ROLLBACK TRANSACTION
+    DB -> PS: Transaction rolled back
+    PS -> OR: Throw PrismaException
+    OR -> OS: Throw exception
+    OS -> OC: Throw exception
+    OC -> User: Trả về 500 Internal Server Error
+
+else Lỗi authentication
+    OC -> User: Trả về 401 Unauthorized
+end
+
+== Đa Ngôn Ngữ ==
+OS -> IS: i18n.t('order.order.success.XXX')
+IS -> OS: Trả về message đã localize
+OS -> OC: Phản hồi + Message đã localize
+OC -> User: JSON Response với metadata đầy đủ
+
 note bottom
-**Đặc điểm chính của module Đơn Hàng:**
-• Xác thực người dùng bắt buộc cho tất cả endpoints
-• Xử lý discount/voucher phức tạp với validation
-• Giao dịch database để đảm bảo tính toàn vẹn
-• Quản lý tồn kho SKU với optimistic locking
-• Background job để hủy thanh toán tự động
-• Hỗ trợ đa ngôn ngữ với I18nService
-• Xử lý lỗi toàn diện
+**Đặc điểm chính của module Order:**
+• Multi-shop order creation với validation phức tạp
+• Redis lock để tránh race conditions
+• Transaction-based order creation với rollback
+• Discount/voucher validation và calculation
+• BullMQ queue cho payment cancellation
+• Optimistic locking cho SKU stock updates
+• Comprehensive error handling
+• Multi-language support với I18nService
+• Audit trail với createdById, updatedById
+• Stock validation và decrement
 end note
 
 @enduml

@@ -14,7 +14,7 @@ start
 
 :Người dùng yêu cầu thao tác khuyến mãi;
 
-if (Loại thao tác?) then (GET /discounts/available)
+if (Loại thao tác?) then (GET /discounts/available - Lấy danh sách khả dụng)
   :Trích xuất query parameters;
   :Lấy cartItemIds, onlyShopDiscounts, onlyPlatformDiscounts;
   :Tính toán orderTotal từ cartItemIds;
@@ -39,7 +39,7 @@ if (Loại thao tác?) then (GET /discounts/available)
   end note
   :Trả về danh sách available discounts;
 
-elseif (POST /discounts/validate-code) then
+elseif (POST /discounts/validate-code - Validate voucher code) then
   :Trích xuất {code, cartItemIds} từ body;
   :Tìm discount theo code;
   if (Discount được tìm thấy?) then (có)
@@ -88,7 +88,7 @@ elseif (POST /discounts/validate-code) then
     :Trả về error "Mã voucher không tồn tại";
   endif
 
-elseif (POST /manage-discount/discounts) then
+elseif (POST /manage-discount/discounts - Tạo discount mới) then
   :Người dùng tạo discount mới;
   :Validate quyền tạo discount;
   note right
@@ -123,7 +123,7 @@ elseif (POST /manage-discount/discounts) then
     :Trả về error "Không có quyền";
   endif
 
-elseif (PUT /manage-discount/discounts/:discountId) then
+elseif (PUT /manage-discount/discounts/:discountId - Cập nhật discount) then
   :Người dùng cập nhật discount;
   :Tìm discount theo ID;
   if (Discount tồn tại?) then (có)
@@ -149,7 +149,7 @@ elseif (PUT /manage-discount/discounts/:discountId) then
     :Trả về error "Discount không tồn tại";
   endif
 
-elseif (DELETE /manage-discount/discounts/:discountId) then
+elseif (DELETE /manage-discount/discounts/:discountId - Xóa discount) then
   :Người dùng xóa discount;
   :Tìm discount theo ID;
   if (Discount tồn tại?) then (có)
@@ -166,7 +166,7 @@ elseif (DELETE /manage-discount/discounts/:discountId) then
     :Trả về error "Discount không tồn tại";
   endif
 
-elseif (GET /manage-discount/discounts) then
+elseif (GET /manage-discount/discounts - Xem danh sách discounts) then
   :Người dùng xem danh sách discounts;
   :Validate quyền truy cập;
   if (Có quyền truy cập?) then (có)

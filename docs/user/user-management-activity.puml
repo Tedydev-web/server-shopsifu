@@ -12,7 +12,7 @@ title Quản Lý Người Dùng - Sơ Đồ Hoạt Động
 
 start
 
-:Người dùng truy cập hệ thống;
+:Admin truy cập hệ thống;
 
 if (Hoạt động?) then (Lấy danh sách người dùng)
   :GET /users với pagination;

@@ -18,12 +18,18 @@ participant "CategoryRepo" as CR
 participant "CategoryTranslationRepo" as CTR
 participant "I18nService" as IS
 participant "I18nContext" as IC
+participant "ActiveUser" as AU
 participant "PrismaService" as PS
-participant "AccessTokenGuard" as AG
 database "PostgreSQL" as DB
 
 == API Công Khai (Public Categories) ==
 Client -> CC: GET /categories?parentCategoryId=123
+note right
+Cấu Hình Endpoint:
+• @IsPublic() - Không cần xác thực
+• @ZodSerializerDto(GetAllCategoriesResDTO) - Chuẩn hóa phản hồi
+end note
+
 CC -> CS: findAll(parentCategoryId)
 CS -> IC: I18nContext.current()?.lang
 IC -> CS: trả về ngôn ngữ hiện tại
@@ -47,6 +53,12 @@ CS -> CC: Trả về response với data + totalItems
 CC -> Client: Trả về JSON response
 
 Client -> CC: GET /categories/:categoryId
+note right
+Cấu Hình Endpoint:
+• @IsPublic() - Không cần xác thực
+• @ZodSerializerDto(GetCategoryDetailResDTO) - Chuẩn hóa phản hồi
+end note
+
 CC -> CS: findById(categoryId)
 CS -> IC: I18nContext.current()?.lang
 IC -> CS: trả về ngôn ngữ hiện tại
@@ -56,18 +68,20 @@ PS -> DB: Thực thi findUnique query
 DB -> PS: Trả về category detail với translations
 PS -> CR: Trả về category với đa ngôn ngữ
 CR -> CS: Trả về category data
-CS -> IS: i18n.t('category.category.success.GET_DETAIL_SUCCESS')
-IS -> CS: Trả về message đã localize
-CS -> CC: Trả về response chi tiết
-CC -> Client: Trả về JSON category detail
+
+alt Category tồn tại
+    CS -> IS: i18n.t('category.category.success.GET_DETAIL_SUCCESS')
+    IS -> CS: Trả về message đã localize
+    CS -> CC: Trả về response chi tiết
+    CC -> Client: Trả về JSON category detail
+else Category không tồn tại
+    CS -> CC: Throw NotFoundRecordException
+    CC -> Client: Trả về 404 Not Found
+end
 
 == API Quản Lý (Management Categories) ==
-User -> AG: Request với cookies
-AG -> AG: Trích xuất access_token từ cookies
-AG -> AG: Xác minh JWT token
-AG -> AG: Tải quyền người dùng
-AG -> CC: Cho phép request với user context
-
+User -> AU: @ActiveUser()
+AU -> User: Trả về user context
 User -> CC: POST /categories + {name, logo, parentCategoryId}
 CC -> CS: create({data, user})
 CS -> CR: create({createdById, data})
@@ -81,6 +95,8 @@ IS -> CS: Trả về message đã localize
 CS -> CC: Trả về success response
 CC -> User: Trả về 201 Created + JSON response
 
+User -> AU: @ActiveUser()
+AU -> User: Trả về user context
 User -> CC: PUT /categories/:categoryId + {name, logo, parentCategoryId}
 CC -> CS: update({id, data, user})
 CS -> CR: update({id, updatedById, data})
@@ -94,6 +110,8 @@ IS -> CS: Trả về message đã localize
 CS -> CC: Trả về success response
 CC -> User: Trả về 200 OK + JSON response
 
+User -> AU: @ActiveUser()
+AU -> User: Trả về user context
 User -> CC: DELETE /categories/:categoryId
 CC -> CS: delete({id, user})
 CS -> CR: delete({id, deletedById})
@@ -108,6 +126,8 @@ CS -> CC: Trả về success response
 CC -> User: Trả về 200 OK + JSON response
 
 == API Quản Lý Translation ==
+User -> AU: @ActiveUser()
+AU -> User: Trả về user context
 User -> CTC: POST /category-translations + {categoryId, languageId, name, description}
 CTC -> CTS: create({data, user})
 CTS -> CTR: create({createdById, data})
@@ -132,6 +152,8 @@ alt Unique constraint violation
     CTC -> User: Trả về 422 Unprocessable Entity
 end
 
+User -> AU: @ActiveUser()
+AU -> User: Trả về user context
 User -> CTC: PUT /category-translations/:categoryTranslationId + {categoryId, languageId, name, description}
 CTC -> CTS: update({id, data, user})
 CTS -> CTR: update({id, updatedById, data})
@@ -145,6 +167,8 @@ IS -> CTS: Trả về message đã localize
 CTS -> CTC: Trả về success response
 CTC -> User: Trả về 200 OK + JSON response
 
+User -> AU: @ActiveUser()
+AU -> User: Trả về user context
 User -> CTC: DELETE /category-translations/:categoryTranslationId
 CTC -> CTS: delete({id, user})
 CTS -> CTR: delete({id, deletedById})

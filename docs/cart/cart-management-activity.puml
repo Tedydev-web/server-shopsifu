@@ -14,7 +14,7 @@ start
 
 :Người dùng yêu cầu thao tác giỏ hàng;
 
-if (Loại thao tác?) then (GET /cart)
+if (Loại thao tác?) then (GET /cart - Lấy danh sách)
   :Trích xuất user từ JWT token;
   :Lấy ngôn ngữ hiện tại từ I18nContext;
   :Thực thi complex SQL query;
@@ -31,7 +31,7 @@ if (Loại thao tác?) then (GET /cart)
   :Tính toán metadata phân trang;
   :Trả về dữ liệu giỏ hàng với metadata;
 
-elseif (POST /cart) then
+elseif (POST /cart - Thêm sản phẩm vào giỏ hàng) then
   :Người dùng thêm sản phẩm vào giỏ hàng;
   :Trích xuất {skuId, quantity} từ body;
   :Validate SKU tồn tại và không bị xóa;
@@ -66,7 +66,7 @@ elseif (POST /cart) then
     :Ném NotFoundSKUException;
   endif
 
-elseif (PUT /cart/:cartItemId) then
+elseif (PUT /cart/:cartItemId - Cập nhật giỏ hàng) then
   :Người dùng cập nhật sản phẩm trong giỏ hàng;
   :Validate cart item tồn tại;
   if (Cart item được tìm thấy?) then (có)
@@ -88,7 +88,7 @@ elseif (PUT /cart/:cartItemId) then
     :Ném NotFoundCartItemException;
   endif
 
-elseif (POST /cart/delete) then
+elseif (POST /cart/delete - Xóa sản phẩm khỏi giỏ hàng) then
   :Người dùng xóa sản phẩm khỏi giỏ hàng;
   :Trích xuất cartItemIds từ body;
   :Validate cart items tồn tại;

@@ -1,30 +1,9 @@
-@startuml
-!theme aws-orange
+@startuml Brand Module - Sequence Overview
+!theme plain
 skinparam backgroundColor #FFFFFF
-skinparam defaultTextAlignment center
-skinparam participant {
-    BackgroundColor #E8F4FD
-    BorderColor #1976D2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam actor {
-    BackgroundColor #FFF8E1
-    BorderColor #F57C00
-    FontColor #000000
-    FontStyle bold
-}
-skinparam database {
-    BackgroundColor #F3E5F5
-    BorderColor #7B1FA2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam note {
-    BackgroundColor #FFFDE7
-    BorderColor #F9A825
-    FontColor #000000
-}
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
 
 title Mô-đun Thương Hiệu - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý thương hiệu với đa ngôn ngữ và phân quyền
@@ -37,12 +16,19 @@ participant "BrandService" as BS
 participant "BrandTranslationService" as BTS
 participant "BrandRepo" as BR
 participant "BrandTranslationRepo" as BTR
+participant "ActiveUser" as AU
 participant "I18nService" as IS
 participant "I18nContext" as IC
+participant "PrismaService" as PS
 database "PostgreSQL" as DB
 
 == API Công Khai (Public Brands) ==
 Client -> BC: GET /brands (danh sách thương hiệu)
+note right
+Cấu Hình Endpoint:
+• @IsPublic() - Không cần xác thực
+• @ZodSerializerDto(GetBrandsResDTO) - Chuẩn hóa phản hồi
+end note
 BC -> BS: list() với pagination
 
 opt Multi-language Support
@@ -57,7 +43,7 @@ opt Multi-language Support
 end
 
 BS -> BR: list(pagination, languageId)
-BR -> DB: Query với JOIN brandTranslations
+BR -> PS: Query với JOIN brandTranslations
 note right
 Database Query Logic:
 • COUNT(*) cho pagination metadata
@@ -66,7 +52,9 @@ Database Query Logic:
 • ORDER BY createdAt DESC
 • Language filter: ALL_LANGUAGE_CODE hoặc specific language
 end note
-DB -> BR: Brands với translations + metadata
+PS -> DB: Thực thi parallel queries
+DB -> PS: Brands với translations + metadata
+PS -> BR: Kết quả có đa ngôn ngữ
 BR -> BS: Kết quả có đa ngôn ngữ
 BS -> IS: i18n.t('brand.brand.success.GET_SUCCESS')
 IS -> BS: Trả về message đã localize
@@ -74,12 +62,19 @@ BS -> BC: Response + Message đã localize
 BC -> Client: JSON với data + metadata
 
 Client -> BC: GET /brands/:brandId (chi tiết thương hiệu)
+note right
+Cấu Hình Endpoint:
+• @IsPublic() - Không cần xác thực
+• @ZodSerializerDto(GetBrandDetailResDTO) - Chuẩn hóa phản hồi
+end note
 BC -> BS: findById(brandId)
 BS -> IC: I18nContext.current()?.lang
 IC -> BS: trả về ngôn ngữ hiện tại
 BS -> BR: findById(id, languageId)
-BR -> DB: findUnique với include brandTranslations
-DB -> BR: Brand detail với translations
+BR -> PS: findUnique với include brandTranslations
+PS -> DB: Thực thi findUnique query
+DB -> PS: Brand detail với translations
+PS -> BR: Brand detail với translations
 BR -> BS: Brand với đa ngôn ngữ
 BS -> IS: i18n.t('brand.brand.success.GET_DETAIL_SUCCESS')
 IS -> BS: Trả về message đã localize
@@ -87,6 +82,8 @@ BS -> BC: Response chi tiết
 BC -> Client: JSON brand detail
 
 == API Quản Lý (Management Brands) ==
+User -> AU: @ActiveUser()
+AU -> User: Trả về user context
 User -> BC: Request CRUD operations
 BC -> BS: Business logic + Auth
 
@@ -99,8 +96,10 @@ alt Thao tác CREATE
     • Brand uniqueness check
     end note
     BS -> BR: create() với createdById
-    BR -> DB: INSERT brand với audit fields
-    DB -> BR: Brand mới với translations
+    BR -> PS: INSERT brand với audit fields
+    PS -> DB: INSERT brand với audit fields
+    DB -> PS: Brand mới với translations
+    PS -> BR: Brand đã tạo
     BR -> BS: Brand đã tạo
     BS -> IS: i18n.t('brand.brand.success.CREATE_SUCCESS')
     IS -> BS: Trả về message đã localize
@@ -109,12 +108,16 @@ alt Thao tác CREATE
 
 else Thao tác UPDATE
     BS -> BR: findById() trước
-    BR -> DB: Tìm brand theo ID
-    DB -> BR: Brand data
+    BR -> PS: Tìm brand theo ID
+    PS -> DB: Query brand
+    DB -> PS: Brand data
+    PS -> BR: Brand info
     BR -> BS: Brand info
     BS -> BR: update() với updatedById
-    BR -> DB: UPDATE brand với audit
-    DB -> BR: Brand updated
+    BR -> PS: UPDATE brand với audit
+    PS -> DB: UPDATE brand với audit
+    DB -> PS: Brand updated
+    PS -> BR: Brand đã cập nhật
     BR -> BS: Brand đã cập nhật
     BS -> IS: i18n.t('brand.brand.success.UPDATE_SUCCESS')
     IS -> BS: Trả về message đã localize
@@ -123,8 +126,10 @@ else Thao tác UPDATE
 
 else Thao tác DELETE
     BS -> BR: delete() soft delete
-    BR -> DB: UPDATE deletedAt field
-    DB -> BR: Brand marked deleted
+    BR -> PS: UPDATE deletedAt field
+    PS -> DB: UPDATE deletedAt field
+    DB -> PS: Brand marked deleted
+    PS -> BR: Success response
     BR -> BS: Success response
     BS -> IS: i18n.t('brand.brand.success.DELETE_SUCCESS')
     IS -> BS: Trả về message đã localize
@@ -133,6 +138,8 @@ else Thao tác DELETE
 end
 
 == API Quản Lý Translation ==
+User -> AU: @ActiveUser()
+AU -> User: Trả về user context
 User -> BTC: Request CRUD translations
 BTC -> BTS: Business logic + Auth
 
@@ -145,8 +152,10 @@ alt Thao tác CREATE Translation
     • Foreign key validation
     end note
     BTS -> BTR: create()
-    BTR -> DB: INSERT brandTranslation
-    DB -> BTR: Translation created
+    BTR -> PS: INSERT brandTranslation
+    PS -> DB: INSERT brandTranslation
+    DB -> PS: Translation created
+    PS -> BTR: Translation created
     BTR -> BTS: Translation data
     BTS -> IS: i18n.t('brand.brandTranslation.success.CREATE_SUCCESS')
     IS -> BTS: Trả về message đã localize
@@ -155,8 +164,10 @@ alt Thao tác CREATE Translation
 
 else Thao tác UPDATE Translation
     BTS -> BTR: update()
-    BTR -> DB: UPDATE brandTranslation
-    DB -> BTR: Translation updated
+    BTR -> PS: UPDATE brandTranslation
+    PS -> DB: UPDATE brandTranslation
+    DB -> PS: Translation updated
+    PS -> BTR: Translation updated
     BTR -> BTS: Updated data
     BTS -> IS: i18n.t('brand.brandTranslation.success.UPDATE_SUCCESS')
     IS -> BTS: Trả về message đã localize
@@ -165,8 +176,10 @@ else Thao tác UPDATE Translation
 
 else Thao tác DELETE Translation
     BTS -> BTR: delete() soft delete
-    BTR -> DB: UPDATE deletedAt
-    DB -> BTR: Translation marked deleted
+    BTR -> PS: UPDATE deletedAt
+    PS -> DB: UPDATE deletedAt
+    DB -> PS: Translation marked deleted
+    PS -> BTR: Success
     BTR -> BTS: Success
     BTS -> IS: i18n.t('brand.brandTranslation.success.DELETE_SUCCESS')
     IS -> BTS: Trả về message đã localize

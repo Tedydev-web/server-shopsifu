@@ -28,7 +28,7 @@ if (Hoạt động?) then (Lấy danh sách ngôn ngữ)
     :Trả về validation error;
   endif
 
-elseif (Xem chi tiết ngôn ngữ) then
+elseif (Xem chi tiết ngôn ngữ)
   :GET /languages/:languageId;
   :Trích xuất languageId từ params;
   :Validate languageId với Zod schema;
@@ -52,9 +52,9 @@ elseif (Xem chi tiết ngôn ngữ) then
     :Trả về validation error;
   endif
 
-elseif (Tạo ngôn ngữ mới) then
+elseif (Tạo ngôn ngữ mới)
   :POST /languages + {id, name};
-  :Trích xuất user từ @ActiveUser();
+  :Authenticate user với @ActiveUser();
   :Validate request body với Zod schema;
   note right
   Create Validation:
@@ -83,9 +83,9 @@ elseif (Tạo ngôn ngữ mới) then
     :Trả về validation error;
   endif
 
-elseif (Cập nhật ngôn ngữ) then
+elseif (Cập nhật ngôn ngữ)
   :PUT /languages/:languageId + {name};
-  :Trích xuất languageId và user;
+  :Authenticate user với @ActiveUser();
   :Validate request data với Zod;
   note right
   Update Validation:
@@ -115,7 +115,7 @@ elseif (Cập nhật ngôn ngữ) then
     :Trả về validation error;
   endif
 
-elseif (Xóa ngôn ngữ) then
+elseif (Xóa ngôn ngữ)
   :DELETE /languages/:languageId;
   :Validate languageId với Zod;
   if (Validation passed?) then (có)

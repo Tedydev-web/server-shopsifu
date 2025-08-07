@@ -15,13 +15,21 @@ start
 :Người dùng khởi tạo thanh toán;
 
 :Tạo yêu cầu thanh toán với dữ liệu đơn hàng;
-:Tạo URL thanh toán với VNPay;
-:Chuyển hướng người dùng đến cổng thanh toán;
-
-:Người dùng hoàn thành thanh toán trên cổng;
-:Cổng xử lý thanh toán;
 
 if (Phương thức thanh toán?) then (VNPay)
+  :Lấy danh sách ngân hàng VNPay;
+  :Tạo URL thanh toán với VNPay;
+  note right
+  Tạo URL Thanh Toán:
+  • Xây dựng dữ liệu với PREFIX_PAYMENT_CODE
+  • orderInfoWithPrefix = PREFIX_PAYMENT_CODE + paymentId
+  • orderIdWithPrefix = PREFIX_PAYMENT_CODE + paymentId
+  • vnp_Amount, vnp_OrderInfo, vnp_TxnRef
+  • vnp_IpAddr, vnp_ReturnUrl, vnp_Locale
+  • vnp_CurrCode, vnp_OrderType
+  end note
+  :Chuyển hướng người dùng đến cổng thanh toán VNPay;
+  :Người dùng hoàn thành thanh toán trên VNPay;
   :VNPay xử lý thanh toán;
   :VNPay chuyển hướng đến URL trả về;
 
@@ -34,7 +42,7 @@ if (Phương thức thanh toán?) then (VNPay)
       :Bắt đầu giao dịch database;
       :Tạo bản ghi paymentTransaction;
       note right
-      Dữ Liệu Giao Dịch:
+      Dữ Liệu Giao Dịch VNPay:
       • gateway: 'vnpay'
       • amountIn: vnp_Amount / 100 (chuyển đổi VND)
       • amountOut: 0
@@ -93,14 +101,14 @@ else (Sepay)
   :Sepay xử lý thanh toán;
   :Sepay gửi webhook;
 
-  :Xác thực chữ ký webhook;
-  if (Chữ ký hợp lệ?) then (có)
+  :Xác thực PaymentAPIKey;
+  if (API Key hợp lệ?) then (có)
     :Kiểm tra giao dịch trùng lặp;
     if (Giao dịch chưa tồn tại?) then (có)
       :Bắt đầu giao dịch database;
       :Tạo bản ghi paymentTransaction;
       note right
-      Dữ Liệu Giao Dịch:
+      Dữ Liệu Giao Dịch Sepay:
       • id: body.id
       • gateway: body.gateway
       • amountIn/amountOut dựa trên transferType
@@ -128,7 +136,7 @@ else (Sepay)
       :Trả về lỗi giao dịch trùng lặp cho Sepay;
     endif
   else (không)
-    :Trả về lỗi chữ ký cho Sepay;
+    :Trả về lỗi xác thực API Key cho Sepay;
   endif
 endif
 
@@ -138,11 +146,23 @@ if (Thanh toán thành công?) then (có)
   :Kích hoạt thực hiện đơn hàng;
   :Gửi email xác nhận;
   :Cập nhật kho hàng;
+  :Gửi thông báo WebSocket real-time;
+  note right
+  WebSocket Notification:
+  • Chỉ client join payment room mới nhận
+  • Real-time notification
+  • Không emit khi thất bại
+  • Event: {status: 'success', gateway: 'vnpay/sepay', paymentId}
+  end note
 else (không)
   :Xử lý thất bại thanh toán;
   :Khôi phục sản phẩm giỏ hàng;
   :Gửi thông báo thất bại;
+  :Cập nhật trạng thái payment thành FAILED;
+  :Cập nhật trạng thái orders thành CANCELLED;
 endif
+
+:Hoàn thành quy trình thanh toán;
 
 stop
 

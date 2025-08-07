@@ -6,7 +6,7 @@ skinparam roundcorner 20
 skinparam maxmessagesize 60
 
 title Mô-đun Khuyến Mãi - Tổng Quan Luồng Xử Lý
-note top : Hệ thống quản lý khuyến mãi với validation phức tạp và phân quyền
+note top : Hệ thống quản lý khuyến mãi với validation phức tạp và phân quyền Admin/Seller
 
 actor "Khách hàng" as Client
 actor "Chủ shop" as ShopOwner
@@ -20,6 +20,13 @@ participant "I18nService" as IS
 participant "PrismaService" as PS
 participant "AccessTokenGuard" as AG
 database "PostgreSQL" as DB
+
+== Xác thực và Phân quyền ==
+Client -> AG: Request với cookies
+AG -> AG: Trích xuất access_token từ cookies
+AG -> AG: Xác minh JWT token
+AG -> AG: Tải quyền người dùng
+AG -> DC: Cho phép request với user context
 
 == API Công Khai (Public Discounts) ==
 Client -> DC: GET /discounts/available?limit=20&cartItemIds=123,456&onlyShopDiscounts=true

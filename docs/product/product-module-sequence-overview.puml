@@ -1,250 +1,263 @@
-@startuml
-!theme aws-orange
+@startuml Product Module - Sequence Overview
+!theme plain
 skinparam backgroundColor #FFFFFF
-skinparam defaultTextAlignment center
-skinparam participant {
-    BackgroundColor #E8F4FD
-    BorderColor #1976D2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam actor {
-    BackgroundColor #FFF8E1
-    BorderColor #F57C00
-    FontColor #000000
-    FontStyle bold
-}
-skinparam database {
-    BackgroundColor #F3E5F5
-    BorderColor #7B1FA2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam note {
-    BackgroundColor #FFFDE7
-    BorderColor #F9A825
-    FontColor #000000
-}
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
 
 title Mô-đun Sản Phẩm - Tổng Quan Luồng Xử Lý
-note top : Hệ thống quản lý sản phẩm với phân quyền, đa ngôn ngữ và tìm kiếm
+note top : Hệ thống quản lý sản phẩm với SKU variants, đa ngôn ngữ và Elasticsearch sync
 
 actor "Khách hàng" as Client
 actor "Chủ shop" as ShopOwner
-participant ProductController
-participant ManageProductController
-participant ProductService
-participant ManageProductService
-participant ProductRepo
-participant SearchSyncService
-database PostgreSQL
-database ElasticSearch
+actor "Admin" as Admin
+participant "ProductController" as PC
+participant "ManageProductController" as MPC
+participant "ProductTranslationController" as PTC
+participant "ProductService" as PS
+participant "ManageProductService" as MPS
+participant "ProductTranslationService" as PTS
+participant "ProductRepo" as PR
+participant "ProductTranslationRepo" as PTR
+participant "I18nService" as IS
+participant "SearchSyncService" as SSS
+participant "PrismaService" as PS
+participant "AccessTokenGuard" as AG
+database "PostgreSQL" as DB
+database "Elasticsearch" as ES
 
-== API Công Khai (Sản Phẩm Công Khai) ==
-Client -> ProductController: GET /products (danh sách sản phẩm)
+== API Công Khai (Public Products) ==
+Client -> PC: GET /products?page=1&limit=10&name=phone&brandIds=123,456
+PC -> PS: list({query})
+PS -> PR: list({page, limit, name, brandIds, categories, minPrice, maxPrice, languageId, isPublic: true})
+PR -> PS: buildWhereClause()
 note right
-Cấu Hình Endpoint:
-• @SkipThrottle() - Bỏ qua giới hạn tốc độ
-• @IsPublic() - Không cần xác thực
-• @ZodSerializerDto(GetProductsResDTO) - Chuẩn hóa phản hồi
+Logic Xây Dựng Query:
+• WHERE deletedAt IS NULL
+• WHERE publishedAt <= now (public only)
+• Filter theo name, brandIds, categories
+• Filter theo price range
+• Include productTranslations theo language
+end note
+PR -> PS: product.findMany() với includes
+PS -> DB: Thực thi query với filters
+DB -> PS: Trả về products với translations
+PS -> PR: Trả về {data, metadata}
+PR -> PS: Trả về products data
+PS -> IS: i18n.t('product.product.success.GET_SUCCESS')
+IS -> PS: Trả về message đã localize
+PS -> PC: Trả về response với data + metadata
+PC -> Client: Trả về JSON response
+
+Client -> PC: GET /products/:productId
+PC -> PS: getDetail({productId})
+PS -> PR: getDetail({productId, languageId, isPublic: true})
+PR -> PS: product.findUnique() với includes
+note right
+Detail Includes:
+• productTranslations theo language
+• skus (active only)
+• brand với translations
+• categories với translations
+end note
+PS -> DB: Query product detail với relations
+DB -> PS: Trả về product detail
+PS -> PR: Trả về product data
+
+alt Product được tìm thấy
+    PR -> PS: Trả về product detail
+    PS -> IS: i18n.t('product.product.success.GET_DETAIL_SUCCESS')
+    IS -> PS: Trả về message đã localize
+    PS -> PC: Trả về success response
+    PC -> Client: Trả về 200 OK + JSON response
+
+else Product không tồn tại
+    PR -> PS: Throw NotFoundRecordException
+    PS -> PC: Throw exception
+    PC -> Client: Trả về 404 Not Found
+end
+
+== API Quản Lý (Management Products) ==
+ShopOwner -> AG: Request với cookies
+AG -> AG: Trích xuất access_token từ cookies
+AG -> AG: Xác minh JWT token
+AG -> AG: Tải quyền người dùng
+AG -> MPC: Cho phép request với user context
+
+ShopOwner -> MPC: POST /manage-product/products + {name, description, variants, skus, ...}
+MPC -> MPS: create({data, user})
+MPS -> MPS: validateSKUsWithVariants()
+note right
+SKU Validation Logic:
+• Generate SKUs từ variants
+• Validate số lượng SKU matches
+• Validate SKU values
+• Business rules validation
 end note
 
-ProductController -> ProductService: list() với bộ lọc
-
-opt Bộ Lọc & Phân Trang Nâng Cao
-    ProductService -> ProductRepo: Xử lý bộ lọc phức tạp
+alt SKU validation thành công
+    MPS -> PR: create({createdById, data})
+    PR -> PS: product.create() với relations
     note right
-    Tính Năng Truy Vấn Nâng Cao:
-    • Bộ lọc thương hiệu, danh mục, khoảng giá
-    • Sắp xếp theo độ phổ biến, giá, ngày
-    • Phân trang với metadata
-    • Hỗ trợ đa ngôn ngữ
+    Create Logic:
+    • Create product với audit fields
+    • Connect categories
+    • Create SKUs với variants
+    • Include all relations
     end note
+    PS -> DB: INSERT product với relations
+    DB -> PS: Trả về product created
+    PS -> PR: Trả về product data
+    PR -> SSS: addSyncProductJob(productId, 'create')
+    SSS -> ES: Sync product to Elasticsearch
+    ES -> SSS: Sync completed
+    SSS -> PR: Trả về sync result
+    PR -> MPS: Trả về created product
+    MPS -> IS: i18n.t('product.product.success.CREATE_SUCCESS')
+    IS -> MPS: Trả về message đã localize
+    MPS -> MPC: Trả về success response
+    MPC -> ShopOwner: Trả về 201 Created + JSON response
+
+else SKU validation thất bại
+    MPS -> MPC: Throw ValidationException
+    MPC -> ShopOwner: Trả về 400 Bad Request
 end
 
-ProductService -> ProductRepo: list() với isPublic=true
-ProductRepo -> PostgreSQL: Truy vấn với Phân trang + JOIN translations
-PostgreSQL --> ProductRepo: Sản phẩm đã xuất bản + metadata
-ProductRepo --> ProductService: Kết quả có đa ngôn ngữ
-ProductService -> ProductService: Tạo thông báo thành công đa ngôn ngữ
+ShopOwner -> MPC: PUT /manage-product/products/:productId + {name, description, variants, skus, ...}
+MPC -> MPS: update({productId, data, user})
+MPS -> PR: findById(productId)
+PR -> PS: product.findUnique()
+PS -> DB: Query product theo ID
+DB -> PS: Trả về product data
+PS -> PR: Trả về product
+PR -> MPS: Trả về product info
+MPS -> MPS: validatePrivilege()
 note right
-Tích Hợp I18nService:
-• Dịch thông báo thành công
-• Hỗ trợ nhiều ngôn ngữ
-• Key: 'product.product.success.GET_SUCCESS'
-end note
-ProductService --> ProductController: Phản hồi + thông báo đã localize
-ProductController --> Client: JSON với dữ liệu + metadata
-
-Client -> ProductController: GET /products/:id (chi tiết sản phẩm)
-note right
-Cấu Hình Endpoint:
-• @SkipThrottle({ default: false }) - Áp dụng throttling
-• @ZodSerializerDto(GetProductDetailResDTO) - Chuẩn hóa phản hồi
+Kiểm Soát Truy Cập:
+• Admin: truy cập tất cả products
+• Seller: chỉ truy cập của chính mình
+• createdById validation
 end note
 
-ProductController -> ProductService: getDetail()
-ProductService -> ProductRepo: getDetail() với isPublic=true
-ProductRepo -> PostgreSQL: JOIN với SKUs, Brand, Categories, Translations
-PostgreSQL --> ProductRepo: Chi tiết sản phẩm đầy đủ
-ProductRepo --> ProductService: Sản phẩm với biến thể SKU
-ProductService -> ProductService: Tạo thông báo thành công đa ngôn ngữ
-note right
-Tích Hợp I18nService:
-• Dịch thông báo thành công
-• Hỗ trợ nhiều ngôn ngữ
-• Key: 'product.product.success.GET_DETAIL_SUCCESS'
-end note
-ProductService --> ProductController: Phản hồi chi tiết
-ProductController --> Client: JSON chi tiết sản phẩm
-
-== API Quản Lý (Quản Lý Sản Phẩm) ==
-ShopOwner -> ManageProductController: Yêu cầu thao tác CRUD
-ManageProductController -> ManageProductService: Logic nghiệp vụ + Xác thực
-
-alt Thao tác TẠO MỚI
-    ManageProductService -> ManageProductService: validateData(productData, SKUs)
+alt Product tồn tại và có quyền truy cập
+    MPS -> PR: update({id, updatedById, data})
+    PR -> PR: handleSKUUpdates()
     note right
-    Xác Thực Dữ Liệu:
-    • Xác thực schema (các trường bắt buộc)
-    • Quy tắc nghiệp vụ (giá > 0, tồn kho >= 0)
-    • Tính nhất quán biến thể SKU
-    • Sự tồn tại của danh mục và thương hiệu
+    SKU Update Logic:
+    • Find existing SKUs
+    • Identify SKUs to delete
+    • Map SKUs to update
+    • Create new SKUs
+    • Transaction-based updates
     end note
-    ManageProductService -> ProductRepo: create() với SKUs
-    ProductRepo -> PostgreSQL: Giao dịch (Sản phẩm + SKUs + Danh mục)
-    PostgreSQL --> ProductRepo: Sản phẩm mới với biến thể
-    ProductRepo -> SearchSyncService: addSyncProductJob('create')
-    alt Đồng bộ tạo/cập nhật
-        SearchSyncService -> ElasticSearch: index/update document
-    else Đồng bộ xóa
-        SearchSyncService -> ElasticSearch: delete document
-    end
-    ProductRepo --> ManageProductService: Sản phẩm đã tạo
+    PR -> PS: $transaction() với SKU operations
+    PS -> DB: UPDATE product và SKUs
+    DB -> PS: Trả về updated product
+    PS -> PR: Trả về updated data
+    PR -> SSS: addSyncProductJob(productId, 'update')
+    SSS -> ES: Sync product to Elasticsearch
+    ES -> SSS: Sync completed
+    SSS -> PR: Trả về sync result
+    PR -> MPS: Trả về updated product
+    MPS -> IS: i18n.t('product.product.success.UPDATE_SUCCESS')
+    IS -> MPS: Trả về message đã localize
+    MPS -> MPC: Trả về success response
+    MPC -> ShopOwner: Trả về 200 OK + JSON response
 
-else Thao tác ĐỌC/CẬP NHẬT/XÓA
-    ManageProductService -> ProductRepo: findById() trước
-    ProductRepo -> PostgreSQL: Tìm sản phẩm theo ID
-    PostgreSQL --> ProductRepo: Dữ liệu sản phẩm
-    ProductRepo --> ManageProductService: Thông tin sản phẩm
-    ManageProductService -> ManageProductService: validatePrivilege(user, createdById)
-    note right
-    Kiểm tra quyền sở hữu:
-    • Chỉ người tạo hoặc Admin mới được thao tác
-    • Ngăn chặn truy cập trái phép
-    • Bảo vệ dữ liệu shop
-    end note
+else Product không tồn tại hoặc không có quyền
+    MPS -> MPC: Throw NotFoundRecordException/ForbiddenException
+    MPC -> ShopOwner: Trả về 404/403 Error
 end
 
-== Xử Lý Biến Thể SKU ==
-alt Cập Nhật Sản Phẩm với SKU thay đổi
-    ManageProductService -> ManageProductService: validateData(productData, SKUs)
-    ManageProductService -> ProductRepo: update() với mảng SKU
-    ProductRepo -> PostgreSQL: Giao dịch phức tạp
-    note right
-    Quản Lý SKU:
-    • So sánh SKU cũ vs mới
-    • Xóa mềm SKU không dùng
-    • Cập nhật SKU có sẵn
-    • Tạo mới SKU chưa có
-    end note
-    PostgreSQL --> ProductRepo: Sản phẩm + SKUs đã cập nhật
-    ProductRepo -> SearchSyncService: addSyncProductJob('update')
+ShopOwner -> MPC: DELETE /manage-product/products/:productId
+MPC -> MPS: delete({productId, user})
+MPS -> PR: findById(productId)
+PR -> PS: product.findUnique()
+PS -> DB: Query product theo ID
+DB -> PS: Trả về product data
+PS -> PR: Trả về product
+PR -> MPS: Trả về product info
+MPS -> MPS: validatePrivilege()
+MPS -> PR: delete({id, deletedById})
+PR -> PS: product.update() soft delete
+PS -> DB: UPDATE deletedAt field
+DB -> PS: Trả về product marked deleted
+PS -> PR: Trả về success
+PR -> SSS: addSyncProductJob(productId, 'delete')
+SSS -> ES: Remove product from Elasticsearch
+ES -> SSS: Delete completed
+SSS -> PR: Trả về sync result
+PR -> MPS: Trả về success
+MPS -> IS: i18n.t('product.product.success.DELETE_SUCCESS')
+IS -> MPS: Trả về message đã localize
+MPS -> MPC: Trả về success response
+MPC -> ShopOwner: Trả về 200 OK + JSON response
+
+== API Product Translation ==
+ShopOwner -> PTC: POST /product-translations + {productId, languageId, name, description}
+PTC -> PTS: create({data, user})
+PTS -> PTR: create({createdById, data})
+PTR -> PS: productTranslation.create()
+PS -> DB: INSERT productTranslation
+DB -> PS: Trả về translation created
+PS -> PTR: Trả về translation data
+PTR -> PTS: Trả về translation
+PTS -> IS: i18n.t('product.productTranslation.success.CREATE_SUCCESS')
+IS -> PTS: Trả về message đã localize
+PTS -> PTC: Trả về success response
+PTC -> ShopOwner: Trả về 201 Created + JSON response
+
+alt Unique constraint violation
+    PTR -> PS: productTranslation.create()
+    PS -> DB: INSERT productTranslation
+    DB -> PS: Unique constraint error
+    PS -> PTR: Throw PrismaException
+    PTR -> PTS: Throw exception
+    PTS -> PTS: isUniqueConstraintPrismaError(error)
+    PTS -> PTC: Throw ProductTranslationAlreadyExistsException
+    PTC -> ShopOwner: Trả về 422 Unprocessable Entity
 end
 
-alt Xóa Sản Phẩm
-    ManageProductService -> ProductRepo: delete() xóa mềm
-    ProductRepo -> PostgreSQL: Cập nhật trường deletedAt
-    PostgreSQL --> ProductRepo: Sản phẩm đã đánh dấu xóa
-    ProductRepo -> SearchSyncService: addSyncProductJob('delete')
-end
-
-== Đồng Bộ ElasticSearch ==
-alt Đồng bộ tạo/cập nhật
-    SearchSyncService -> ElasticSearch: index/update document
-    note right
-    Hoạt Động ElasticSearch:
-    • TẠO: index document sản phẩm mới
-    • CẬP NHẬT: cập nhật document hiện có
-    • Xử lý hàng đợi nền
-    end note
-else Đồng bộ xóa
-    SearchSyncService -> ElasticSearch: delete document
-    note right
-    Hoạt Động Xóa:
-    • Xóa document khỏi search index
-    • Duy trì tính nhất quán tìm kiếm
-    • Hoạt động không chặn
-    end note
-end
-
-== Xử Lý Lỗi & Phân Quyền ==
-alt Lỗi xác thực dữ liệu
-    ManageProductService --> ManageProductController: ValidationException
-    ManageProductController --> ShopOwner: 422 Unprocessable Entity
+== Xử Lý Lỗi ==
+alt Lỗi validation SKU
+    MPS -> MPC: ValidationException
+    MPC -> ShopOwner: Trả về 400 Bad Request
 
 else Lỗi phân quyền
-    ManageProductService --> ManageProductController: ForbiddenException
-    ManageProductController --> ShopOwner: 403 Forbidden
+    MPS -> MPC: ForbiddenException
+    MPC -> ShopOwner: Trả về 403 Forbidden
 
 else Lỗi không tìm thấy
-    ProductService --> ProductController: NotFoundRecordException
-    ProductController --> Client: 404 Not Found
+    MPS -> MPC: NotFoundRecordException
+    MPC -> ShopOwner: Trả về 404 Not Found
 
-else Lỗi Elasticsearch
-    SearchSyncService --> ProductRepo: Đồng bộ thất bại (không chặn)
-    note right
-    **Ma trận xử lý lỗi:**
-    • 422 Unprocessable → Lỗi xác thực dữ liệu (giá, SKU, v.v.)
-    • 403 Forbidden → Không có quyền sở hữu
-    • 404 Not Found → Sản phẩm không tồn tại
-    • 500 Internal → Lỗi đồng bộ Elasticsearch (không quan trọng)
-    end note
+else Lỗi unique constraint (translation)
+    PTS -> PTC: ProductTranslationAlreadyExistsException
+    PTC -> ShopOwner: Trả về 422 Unprocessable Entity
+
+else Lỗi Elasticsearch sync
+    SSS -> PR: Log sync error
+    PR -> MPS: Continue without sync
+    MPS -> MPC: Success response (sync failed)
+    MPC -> ShopOwner: Trả về 200 OK + warning
 end
 
-== Quản Lý Dịch Thuật Sản Phẩm ==
-alt Tạo dịch thuật sản phẩm
-    ShopOwner -> ManageProductController: POST /product-translations
-    ManageProductController -> ProductTranslationService: create()
-    ProductTranslationService -> ProductTranslationRepo: create()
-    ProductTranslationRepo -> PostgreSQL: INSERT translation
-    PostgreSQL --> ProductTranslationRepo: Translation đã tạo
-    ProductTranslationRepo --> ProductTranslationService: Translation data
-    ProductTranslationService --> ManageProductController: Success response
-    ManageProductController --> ShopOwner: 201 Created
-
-else Cập nhật dịch thuật sản phẩm
-    ShopOwner -> ManageProductController: PUT /product-translations/:id
-    ManageProductController -> ProductTranslationService: update()
-    ProductTranslationService -> ProductTranslationRepo: update()
-    ProductTranslationRepo -> PostgreSQL: UPDATE translation
-    PostgreSQL --> ProductTranslationRepo: Translation đã cập nhật
-    ProductTranslationRepo --> ProductTranslationService: Updated data
-    ProductTranslationService --> ManageProductController: Success response
-    ManageProductController --> ShopOwner: 200 OK
-
-else Xóa dịch thuật sản phẩm
-    ShopOwner -> ManageProductController: DELETE /product-translations/:id
-    ManageProductController -> ProductTranslationService: delete()
-    ProductTranslationService -> ProductTranslationRepo: delete()
-    ProductTranslationRepo -> PostgreSQL: Soft delete translation
-    PostgreSQL --> ProductTranslationRepo: Translation đã xóa
-    ProductTranslationRepo --> ProductTranslationService: Delete success
-    ProductTranslationService --> ManageProductController: Success response
-    ManageProductController --> ShopOwner: 200 OK
-end
+== Đa Ngôn Ngữ ==
+MPS -> IS: i18n.t('product.product.success.XXX')
+IS -> MPS: Trả về message đã localize
+MPS -> MPC: Phản hồi + Message đã localize
+MPC -> ShopOwner: JSON Response với metadata đầy đủ
 
 note bottom
-**Đặc điểm chính của module Sản Phẩm:**
-• API công khai cho xem sản phẩm (không cần xác thực)
-• API quản lý cho CRUD (cần xác thực và phân quyền)
-• Hỗ trợ đa ngôn ngữ với product translations
-• Quản lý biến thể SKU phức tạp
-• Đồng bộ với Elasticsearch cho tìm kiếm
-• Phân quyền nghiêm ngặt (chỉ chủ sở hữu hoặc Admin)
-• Xóa mềm để bảo toàn dữ liệu
-• Hỗ trợ đa ngôn ngữ với I18nService
-• Xử lý lỗi toàn diện
+**Đặc điểm chính của module Product:**
+• Role-based access control (Admin/Seller)
+• SKU management với variants và validation
+• Multi-language support với ProductTranslation
+• Elasticsearch sync cho search functionality
+• Complex filtering và search capabilities
+• Soft delete với audit fields
+• Transaction-based SKU operations
+• Comprehensive error handling
 end note
 
 @enduml

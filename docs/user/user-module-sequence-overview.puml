@@ -1,111 +1,230 @@
-@startuml
-!theme aws-orange
+@startuml User Module - Sequence Overview
+!theme plain
 skinparam backgroundColor #FFFFFF
-skinparam defaultTextAlignment center
-skinparam participant {
-    BackgroundColor #E8F4FD
-    BorderColor #1976D2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam actor {
-    BackgroundColor #FFF8E1
-    BorderColor #F57C00
-    FontColor #000000
-    FontStyle bold
-}
-skinparam database {
-    BackgroundColor #F3E5F5
-    BorderColor #7B1FA2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam note {
-    BackgroundColor #FFFDE7
-    BorderColor #F9A825
-    FontColor #000000
-}
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
 
 title Mô-đun Người Dùng - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý người dùng với phân quyền và xử lý lỗi toàn diện
 
-actor "Người dùng" as Client
+actor "Admin" as Admin
+actor "User" as User
 participant "UserController" as UC
 participant "UserService" as US
 participant "UserRepo" as UR
 participant "SharedUserRepo" as SUR
-participant "HashingService" as HS
 participant "SharedRoleRepo" as SRR
+participant "HashingService" as HS
 participant "I18nService" as IS
+participant "ActiveRolePermissions" as ARP
+participant "ActiveUser" as AU
 participant "PrismaService" as PS
 database "PostgreSQL" as DB
 
-== Luồng Xử Lý Chính ==
-Client -> UC: Yêu cầu (GET/POST/PUT/DELETE)
-UC -> US: Xử lý nghiệp vụ + Validation
+== GET /users - Lấy Danh Sách Người Dùng ==
+Admin -> UC: GET /users?page=1&limit=10
+UC -> US: list(pagination)
 
-alt Thao tác CRUD cơ bản
-    US -> US: Mã hóa mật khẩu (HashingService)
-    US -> UR: Thực hiện CRUD
-    UR -> PS: SELECT COUNT(*) + Query với LIMIT/OFFSET
-    PS -> DB: Thực thi query với pagination
-    DB -> PS: Dữ liệu + Thống kê phân trang
-    PS -> UR: Kết quả có metadata (total, hasNext, hasPrev)
-    UR -> US: Trả về data với metadata
+US -> UR: list(pagination)
+UR -> UR: Tính toán pagination metadata
+note right
+Logic Phân Trang:
+• skip = (page - 1) * limit
+• take = limit
+• Parallel queries: count + findMany
+• Include role information
+end note
 
-else Lấy thông tin chi tiết User
-    US -> SUR: findUniqueIncludeRolePermissions
-    SUR -> PS: JOIN với Role + Permissions
-    PS -> DB: Query user với role permissions
-    DB -> PS: User profile đầy đủ
-    PS -> SUR: Thông tin user + quyền hạn
-    SUR -> US: Trả về user detail
+UR -> PS: count() với WHERE deletedAt IS NULL
+UR -> PS: findMany() với include role
+PS -> DB: Thực thi parallel queries
+DB -> PS: Total count + users data với roles
+PS -> UR: Users với metadata
+UR -> US: Users data + metadata
+US -> IS: i18n.t('user.user.success.GET_SUCCESS')
+IS -> US: Trả về message đã localize
+US -> UC: Phản hồi + Message đã localize
+UC -> Admin: JSON với data + metadata
+
+== GET /users/:userId - Chi Tiết Người Dùng ==
+Admin -> UC: GET /users/:userId
+UC -> US: findById(userId)
+
+US -> SUR: findUniqueIncludeRolePermissions({id})
+SUR -> PS: findUnique với include role permissions
+PS -> DB: Query user với role permissions
+DB -> PS: User profile đầy đủ
+PS -> SUR: Thông tin user + quyền hạn
+SUR -> US: User detail với role permissions
+
+alt User tồn tại
+    US -> IS: i18n.t('user.user.success.GET_DETAIL_SUCCESS')
+    IS -> US: Trả về message đã localize
+    US -> UC: Success response
+    UC -> Admin: JSON user detail
+else User không tồn tại
+    US -> UC: NotFoundRecordException
+    UC -> Admin: 404 Not Found
 end
 
-== Kiểm Tra Phân Quyền ==
-alt Admin thực hiện thao tác đặc biệt
-    US -> US: verifyRole(người thực hiện, đối tượng)
-    note right
-    Logic nghiệp vụ phân quyền:
-    • Chỉ Admin tạo/sửa/xóa Admin khác
-    • Ngăn chặn tự thao tác trên chính mình
-    • Validation Role ID hợp lệ
-    end note
+== POST /users - Tạo Người Dùng Mới ==
+Admin -> UC: POST /users + {email, name, password, roleId, ...}
+UC -> AU: @ActiveUser()
+AU -> UC: Trả về user context
+UC -> ARP: @ActiveRolePermissions('name')
+ARP -> UC: Trả về roleName
+UC -> US: create({data, user, roleName})
 
-else Không đủ quyền hoặc vi phạm quy tắc
-    US -> UC: Exception tương ứng
-    UC -> Client: HTTP Error Response
+US -> US: verifyRole({roleNameAgent, roleIdTarget})
+note right
+Role Verification Logic:
+• Chỉ Admin có quyền tạo user với role Admin
+• Non-admin không thể tạo Admin user
+• Validate roleIdTarget hợp lệ
+end note
+
+alt Role verification thành công
+    US -> HS: hash(password)
+    HS -> US: Trả về hashedPassword
+    US -> UR: create({createdById, data})
+    UR -> PS: INSERT user với audit fields
+    PS -> DB: INSERT user với hashedPassword
+    DB -> PS: User created
+    PS -> UR: Trả về user đã tạo
+    UR -> US: Trả về user data
+    US -> IS: i18n.t('user.user.success.CREATE_SUCCESS')
+    IS -> US: Trả về message đã localize
+    US -> UC: Success response
+    UC -> Admin: 201 Created + JSON response
+
+else Role verification thất bại
+    US -> UC: ForbiddenException
+    UC -> Admin: 403 Forbidden
 end
 
-== Xử Lý Ngoại Lệ ==
-alt Các trường hợp lỗi phổ biến
-    US -> UC: Exception
-    UC -> Client: Error Response
-    note right
-    **Ma trận xử lý lỗi:**
-    • 404 Not Found → User không tồn tại
-    • 422 Unprocessable → Email trùng / Role ID sai
-    • 403 Forbidden → Không đủ quyền / Tự thao tác
-    • 500 Internal → Lỗi hệ thống / Database
-    end note
+== PUT /users/:userId - Cập Nhật Người Dùng ==
+Admin -> UC: PUT /users/:userId + {data}
+UC -> AU: @ActiveUser()
+AU -> UC: Trả về user context
+UC -> ARP: @ActiveRolePermissions('name')
+ARP -> UC: Trả về roleName
+UC -> US: update({id, data, user, roleName})
+
+US -> US: verifyYourself({userAgentId, userTargetId})
+note right
+Self-Operation Prevention:
+• Không thể cập nhật chính mình
+• userAgentId !== userTargetId
+• Prevent self-modification
+end note
+
+alt Self-operation check passed
+    US -> SUR: findUnique({id})
+    SUR -> PS: Query current user
+    PS -> DB: SELECT user với roleId
+    DB -> PS: Current user data
+    PS -> SUR: Trả về current user
+    SUR -> US: Trả về current user
+    US -> US: verifyRole({roleNameAgent, currentRoleId})
+
+    alt Role verification thành công
+        US -> SUR: update({id}, {data, updatedById})
+        SUR -> PS: UPDATE user với audit
+        PS -> DB: UPDATE user với audit fields
+        DB -> PS: User updated
+        PS -> SUR: Trả về updated user
+        SUR -> US: Trả về user data
+        US -> IS: i18n.t('user.user.success.UPDATE_SUCCESS')
+        IS -> US: Trả về message đã localize
+        US -> UC: Success response
+        UC -> Admin: 200 OK + JSON response
+    else Role verification thất bại
+        US -> UC: ForbiddenException
+        UC -> Admin: 403 Forbidden
+    end
+else Self-operation detected
+    US -> UC: CannotUpdateOrDeleteYourselfException
+    UC -> Admin: 403 Forbidden
+end
+
+== DELETE /users/:userId - Xóa Người Dùng ==
+Admin -> UC: DELETE /users/:userId
+UC -> AU: @ActiveUser()
+AU -> UC: Trả về user context
+UC -> ARP: @ActiveRolePermissions('name')
+ARP -> UC: Trả về roleName
+UC -> US: delete({id, user, roleName})
+
+US -> US: verifyYourself({userAgentId, userTargetId})
+US -> SUR: findUnique({id})
+SUR -> PS: Query current user
+PS -> DB: SELECT user với roleId
+DB -> PS: Current user data
+PS -> SUR: Trả về current user
+SUR -> US: Trả về current user
+US -> US: verifyRole({roleNameAgent, currentRoleId})
+
+alt Role verification thành công
+    US -> UR: delete({id, deletedById})
+    UR -> PS: UPDATE deletedAt (soft delete)
+    PS -> DB: UPDATE deletedAt field
+    DB -> PS: User marked deleted
+    PS -> UR: Trả về success
+    UR -> US: Trả về success
+    US -> IS: i18n.t('user.user.success.DELETE_SUCCESS')
+    IS -> US: Trả về message đã localize
+    US -> UC: Success response
+    UC -> Admin: 200 OK + message
+else Role verification thất bại
+    US -> UC: ForbiddenException
+    UC -> Admin: 403 Forbidden
+end
+
+== Xử Lý Lỗi & Validation ==
+alt Lỗi unique constraint (email)
+    UR -> US: UserAlreadyExistsException
+    US -> UC: Throw exception
+    UC -> Admin: 422 Unprocessable Entity
+
+else Lỗi foreign key (roleId)
+    UR -> US: RoleNotFoundException
+    US -> UC: Throw exception
+    UC -> Admin: 422 Unprocessable Entity
+
+else Lỗi không tìm thấy user
+    SUR -> US: Return null
+    US -> US: Throw NotFoundRecordException
+    US -> UC: Throw exception
+    UC -> Admin: 404 Not Found
+
+else Lỗi self-operation
+    US -> UC: CannotUpdateOrDeleteYourselfException
+    UC -> Admin: 403 Forbidden
+
+else Lỗi không đủ quyền
+    US -> UC: ForbiddenException
+    UC -> Admin: 403 Forbidden
 end
 
 == Trả Kết Quả ==
 US -> IS: i18n.t('user.user.success.XXX')
 IS -> US: Trả về message đã localize
 US -> UC: Phản hồi + Message đã localize
-UC -> Client: JSON Response với metadata đầy đủ
+UC -> Admin: JSON Response với metadata đầy đủ
 
 note bottom
 **Đặc điểm chính của module User:**
-• Phân quyền nghiêm ngặt (Admin/Seller/User)
-• Mã hóa mật khẩu với HashingService
-• Soft delete với audit fields
-• Validation unique constraint (email)
+• Role-based access control (Admin/Seller/User)
+• Password hashing với HashingService
+• Self-operation prevention
+• Admin privilege validation
+• Soft delete với audit trail
+• Unique constraint validation (email)
 • Foreign key validation (roleId)
-• Ngăn chặn tự thao tác trên chính mình
-• Đa ngôn ngữ với I18nService
+• Multi-language support với I18nService
 • Pagination với metadata
+• Comprehensive error handling
 end note
 
 @enduml

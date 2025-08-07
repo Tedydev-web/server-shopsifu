@@ -1,0 +1,225 @@
+@startuml System Module - Sequence Overview
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Tổng Quan Hệ Thống E-commerce - Sequence Overview
+note top : Hệ thống E-commerce với authentication, payment processing và order management
+
+actor "User" as User
+actor "Admin" as Admin
+actor "Google OAuth" as Google
+actor "VNPay Gateway" as VNPay
+actor "Sepay Gateway" as Sepay
+participant "AuthController" as AC
+participant "UserController" as UC
+participant "ProductController" as PC
+participant "OrderController" as OC
+participant "PaymentController" as PayC
+participant "AuthService" as AS
+participant "UserService" as US
+participant "ProductService" as PS
+participant "OrderService" as OS
+participant "PaymentService" as PayS
+participant "VNPayService" as VNS
+participant "SepayService" as SPS
+participant "WebSocketGateway" as WSG
+participant "EmailService" as ES
+participant "I18nService" as IS
+participant "PrismaService" as PS
+database "PostgreSQL" as DB
+database "Redis" as RD
+
+== Authentication Flow ==
+User -> AC: POST /auth/login + {email, password}
+AC -> AS: authenticate({email, password})
+
+AS -> AS: Validate credentials
+note right
+Authentication Logic:
+• Hash password với bcrypt
+• Validate email format
+• Check user exists và active
+• Generate JWT tokens
+end note
+
+alt Credentials valid
+    AS -> AS: Generate access token
+    AS -> AS: Generate refresh token
+    AS -> IS: i18n.t('auth.auth.success.LOGIN_SUCCESS')
+    IS -> AS: Trả về message đã localize
+    AS -> AC: Success response với tokens
+    AC -> User: Set cookies + redirect to dashboard
+else Credentials invalid
+    AS -> AC: AuthenticationException
+    AC -> User: 401 Unauthorized
+end
+
+== Google OAuth Flow ==
+User -> AC: GET /auth/google
+AC -> AS: initiateGoogleOAuth()
+AS -> Google: Redirect to Google OAuth
+Google -> User: Google login page
+User -> Google: Login với Google
+Google -> AC: GET /auth/google/callback + code
+AC -> AS: handleGoogleCallback(code)
+AS -> Google: Exchange code for tokens
+Google -> AS: Google user info
+AS -> US: createOrUpdateUser(googleUser)
+US -> PS: Upsert user với Google data
+PS -> DB: INSERT/UPDATE user
+DB -> PS: User data
+PS -> US: User created/updated
+US -> AS: User info
+AS -> AS: Generate JWT tokens
+AS -> AC: Success response
+AC -> User: Redirect to dashboard
+
+== Product Browsing Flow ==
+User -> PC: GET /products?page=1&limit=10
+PC -> PS: list(pagination)
+PS -> PS: Apply filters và pagination
+PS -> PS: Query products với Elasticsearch
+note right
+Product Search Logic:
+• Natural language processing
+• Dictionary cache management
+• Elasticsearch integration
+• Multi-language support
+end note
+PS -> IS: i18n.t('product.product.success.GET_SUCCESS')
+IS -> PS: Trả về message đã localize
+PS -> PC: Products với metadata
+PC -> User: JSON response
+
+== Cart Management Flow ==
+User -> OC: POST /cart + {productId, quantity}
+OC -> OS: addToCart({productId, quantity, userId})
+OS -> OS: Validate product availability
+OS -> OS: Check inventory
+OS -> OS: Calculate price với discounts
+OS -> IS: i18n.t('cart.cart.success.ADD_SUCCESS')
+IS -> OS: Trả về message đã localize
+OS -> OC: Cart updated
+OC -> User: JSON response
+
+== Order Creation Flow ==
+User -> OC: POST /orders + order data
+OC -> OS: createOrder({data, userId})
+OS -> OS: Validate order data
+OS -> OS: Check inventory với Redis lock
+note right
+Order Creation Logic:
+• Redis Redlock cho concurrency control
+• Validate SKU availability
+• Calculate totals với discounts
+• Create order với transaction
+end note
+OS -> OS: Begin database transaction
+OS -> PS: Create order record
+PS -> DB: INSERT order
+DB -> PS: Order created
+PS -> OS: Order data
+OS -> OS: Create order items
+OS -> OS: Update inventory
+OS -> OS: Commit transaction
+OS -> IS: i18n.t('order.order.success.CREATE_SUCCESS')
+IS -> OS: Trả về message đã localize
+OS -> OC: Order created
+OC -> User: 201 Created + order details
+
+== Payment Processing Flow ==
+alt VNPay Payment
+    User -> PayC: POST /payment/vnpay/create + {orderId}
+    PayC -> VNS: createPayment({orderId, amount})
+    VNS -> VNS: Generate payment URL
+    VNS -> VNPay: Create payment request
+    VNPay -> VNS: Payment URL
+    VNS -> PayC: Payment URL
+    PayC -> User: Redirect to VNPay
+    User -> VNPay: Complete payment
+    VNPay -> PayC: GET /payment/vnpay/return + signature
+    PayC -> VNS: verifyReturn(signature)
+    VNS -> VNS: Verify payment signature
+    VNS -> VNS: Update order status
+    VNS -> WSG: Send payment success notification
+    WSG -> User: Real-time notification
+    VNS -> PayC: Payment verified
+    PayC -> User: Payment success
+
+else Sepay Payment
+    User -> PayC: POST /payment/sepay/create + {orderId}
+    PayC -> SPS: createPayment({orderId, amount})
+    SPS -> SPS: Generate payment URL
+    SPS -> Sepay: Create payment request
+    Sepay -> SPS: Payment URL
+    SPS -> PayC: Payment URL
+    PayC -> User: Redirect to Sepay
+    User -> Sepay: Complete payment
+    Sepay -> PayC: POST /payment/sepay/webhook + signature
+    PayC -> SPS: verifyWebhook(signature)
+    SPS -> SPS: Verify webhook signature
+    SPS -> SPS: Update order status
+    SPS -> WSG: Send payment success notification
+    WSG -> User: Real-time notification
+    SPS -> PayC: Payment verified
+    PayC -> User: Payment success
+end
+
+== Admin Management Flow ==
+Admin -> UC: GET /users?page=1&limit=10
+UC -> US: list(pagination)
+US -> US: Apply role-based filtering
+US -> IS: i18n.t('user.user.success.GET_SUCCESS')
+IS -> US: Trả về message đã localize
+US -> UC: Users với metadata
+UC -> Admin: JSON response
+
+== Review System Flow ==
+User -> OC: POST /reviews + {productId, rating, content}
+OC -> OS: createReview({data, userId})
+OS -> OS: Validate order completion
+OS -> OS: Check review eligibility
+OS -> OS: Create review với media
+OS -> IS: i18n.t('review.review.success.CREATE_SUCCESS')
+IS -> OS: Trả về message đã localize
+OS -> OC: Review created
+OC -> User: 201 Created + review details
+
+== Error Handling & Notifications ==
+alt Payment failure
+    PayS -> ES: Send payment failure email
+    ES -> User: Email notification
+    PayS -> WSG: Send real-time error
+    WSG -> User: Real-time notification
+else Order validation error
+    OS -> OC: ValidationException
+    OC -> User: 422 Unprocessable Entity
+else Authentication error
+    AS -> AC: AuthenticationException
+    AC -> User: 401 Unauthorized
+end
+
+== System Monitoring ==
+loop Background Jobs
+    OS -> OS: Process expired discounts
+    OS -> OS: Clean up old refresh tokens
+    OS -> OS: Sync data to Elasticsearch
+    OS -> OS: Send scheduled notifications
+end
+
+note bottom
+**Đặc điểm chính của System:**
+• Multi-authentication (Email/Password, Google OAuth)
+• Payment gateway integration (VNPay, Sepay)
+• Real-time notifications với WebSocket
+• Role-based access control
+• Inventory management với Redis locks
+• Multi-language support
+• Background job processing
+• Comprehensive error handling
+end note
+
+@enduml

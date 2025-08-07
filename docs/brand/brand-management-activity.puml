@@ -30,7 +30,7 @@ if (Loại thao tác?) then (GET /brands - Lấy danh sách)
   :Tính toán pagination metadata;
   :Trả về danh sách brands với metadata;
 
-elseif (GET /brands/:brandId - Chi tiết thương hiệu) then
+elseif (GET /brands/:brandId - Chi tiết thương hiệu)
   :Trích xuất brandId từ params;
   :Lấy ngôn ngữ hiện tại từ I18nContext;
   :Thực thi findById query;
@@ -42,8 +42,9 @@ elseif (GET /brands/:brandId - Chi tiết thương hiệu) then
     :Ném NotFoundRecordException;
   endif
 
-elseif (POST /brands - Tạo thương hiệu mới) then
+elseif (POST /brands - Tạo thương hiệu mới)
   :Người dùng tạo thương hiệu mới;
+  :Authenticate user với @ActiveUser();
   :Trích xuất {name, logo} từ body;
   :Validate dữ liệu brand;
   if (Dữ liệu hợp lệ?) then (có)
@@ -55,8 +56,9 @@ elseif (POST /brands - Tạo thương hiệu mới) then
     :Ném ValidationException;
   endif
 
-elseif (PUT /brands/:brandId - Cập nhật thương hiệu) then
+elseif (PUT /brands/:brandId - Cập nhật thương hiệu)
   :Người dùng cập nhật thương hiệu;
+  :Authenticate user với @ActiveUser();
   :Trích xuất brandId từ params;
   :Trích xuất {name, logo} từ body;
   :Validate dữ liệu brand;
@@ -69,16 +71,18 @@ elseif (PUT /brands/:brandId - Cập nhật thương hiệu) then
     :Ném ValidationException;
   endif
 
-elseif (DELETE /brands/:brandId - Xóa thương hiệu) then
+elseif (DELETE /brands/:brandId - Xóa thương hiệu)
   :Người dùng xóa thương hiệu;
+  :Authenticate user với @ActiveUser();
   :Trích xuất brandId từ params;
   :Thực thi soft delete operation;
   :Cập nhật deletedAt field;
   :Cập nhật deletedById;
   :Trả về success response;
 
-elseif (POST /brand-translations - Tạo translation) then
+elseif (POST /brand-translations - Tạo translation)
   :Người dùng tạo translation;
+  :Authenticate user với @ActiveUser();
   :Trích xuất {brandId, languageId, name, description} từ body;
   :Validate dữ liệu translation;
   if (Dữ liệu hợp lệ?) then (có)
@@ -94,8 +98,9 @@ elseif (POST /brand-translations - Tạo translation) then
     :Ném ValidationException;
   endif
 
-elseif (PUT /brand-translations/:brandTranslationId - Cập nhật translation) then
+elseif (PUT /brand-translations/:brandTranslationId - Cập nhật translation)
   :Người dùng cập nhật translation;
+  :Authenticate user với @ActiveUser();
   :Trích xuất brandTranslationId từ params;
   :Trích xuất {brandId, languageId, name, description} từ body;
   :Validate dữ liệu translation;
@@ -107,8 +112,9 @@ elseif (PUT /brand-translations/:brandTranslationId - Cập nhật translation) 
     :Ném ValidationException;
   endif
 
-elseif (DELETE /brand-translations/:brandTranslationId - Xóa translation) then
+elseif (DELETE /brand-translations/:brandTranslationId - Xóa translation)
   :Người dùng xóa translation;
+  :Authenticate user với @ActiveUser();
   :Trích xuất brandTranslationId từ params;
   :Thực thi soft delete operation;
   :Cập nhật deletedAt field;

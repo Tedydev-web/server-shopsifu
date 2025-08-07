@@ -15,6 +15,7 @@ participant "S3Service" as S3
 participant "ParseFilePipeWithUnlink" as PFP
 participant "I18nService" as IS
 participant "MulterModule" as MM
+participant "FilesInterceptor" as FI
 database "LocalStorage" as LS
 database "AWS_S3" as S3DB
 
@@ -28,8 +29,8 @@ Yêu Cầu Tải Lên:
 • Loại file hỗ trợ: jpg, jpeg, png, webp
 end note
 
-MC -> MM: FilesInterceptor('files', 100)
-MM -> MM: Cấu hình Multer
+MC -> FI: FilesInterceptor('files', 100)
+FI -> MM: Cấu hình Multer
 note right
 Cấu Hình Multer:
 • Storage: multer.diskStorage

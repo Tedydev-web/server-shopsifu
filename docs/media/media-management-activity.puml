@@ -56,7 +56,7 @@ if (Loại thao tác?) then (POST /media/images/upload)
     :Trả về lỗi "Quá nhiều files";
   endif
 
-elseif (GET /media/static/:filename) then
+elseif (GET /media/static/:filename)
   :Trích xuất filename từ params;
   :Kiểm tra file tồn tại tại UPLOAD_DIR;
   if (File tồn tại?) then (có)
@@ -67,7 +67,7 @@ elseif (GET /media/static/:filename) then
     :Trả về 404 Not Found;
   endif
 
-elseif (POST /media/images/upload/presigned-url) then
+elseif (POST /media/images/upload/presigned-url)
   :Trích xuất {filename, filesize} từ body;
   :Xác thực request body;
   if (Xác thực thành công?) then (có)

@@ -1,30 +1,9 @@
-@startuml
-!theme aws-orange
+@startuml Permission Module - Sequence Overview
+!theme plain
 skinparam backgroundColor #FFFFFF
-skinparam defaultTextAlignment center
-skinparam participant {
-    BackgroundColor #E8F4FD
-    BorderColor #1976D2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam actor {
-    BackgroundColor #FFF8E1
-    BorderColor #F57C00
-    FontColor #000000
-    FontStyle bold
-}
-skinparam database {
-    BackgroundColor #F3E5F5
-    BorderColor #7B1FA2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam note {
-    BackgroundColor #FFFDE7
-    BorderColor #F9A825
-    FontColor #000000
-}
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
 
 title Mô-đun Quyền - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý quyền với cache management và role relationships
@@ -135,7 +114,9 @@ alt Update successful
     • Ensure cache consistency
     end note
     PS -> CM: del(cacheKey) cho mỗi role
-    CM -> PS: Cache cleared
+    CM -> RD: Delete cache entries
+    RD -> CM: Cache cleared
+    CM -> PS: Cache operation result
     PS -> IS: i18n.t('permission.permission.success.UPDATE_SUCCESS')
     IS -> PS: Trả về message đã localize
     PS -> PC: Success response
@@ -164,7 +145,9 @@ PR -> PS: Deleted data
 alt Delete successful
     PS -> PS: deleteCachedRole(roles)
     PS -> CM: del(cacheKey) cho mỗi role
-    CM -> PS: Cache cleared
+    CM -> RD: Delete cache entries
+    RD -> CM: Cache cleared
+    CM -> PS: Cache operation result
     PS -> IS: i18n.t('permission.permission.success.DELETE_SUCCESS')
     IS -> PS: Trả về message đã localize
     PS -> PC: Success response
@@ -208,6 +191,8 @@ alt Cache operations
     • Parallel deletion với Promise.all
     • Ensure data consistency
     end note
+    CM -> RD: Delete cache entries
+    RD -> CM: Cache operation result
     CM -> PS: Cache operation result
 end
 

@@ -31,7 +31,7 @@ if (Loại thao tác?) then (GET /categories)
   :Tính toán totalItems;
   :Trả về danh sách categories với metadata;
 
-elseif (GET /categories/:categoryId) then
+elseif (GET /categories/:categoryId)
   :Trích xuất categoryId từ params;
   :Lấy ngôn ngữ hiện tại từ I18nContext;
   :Thực thi findById query;
@@ -43,8 +43,9 @@ elseif (GET /categories/:categoryId) then
     :Ném NotFoundRecordException;
   endif
 
-elseif (POST /categories) then
+elseif (POST /categories)
   :Người dùng tạo danh mục mới;
+  :Xác thực người dùng với @ActiveUser();
   :Trích xuất {name, logo, parentCategoryId} từ body;
   :Validate dữ liệu category;
   if (Dữ liệu hợp lệ?) then (có)
@@ -56,8 +57,9 @@ elseif (POST /categories) then
     :Ném ValidationException;
   endif
 
-elseif (PUT /categories/:categoryId) then
+elseif (PUT /categories/:categoryId)
   :Người dùng cập nhật danh mục;
+  :Xác thực người dùng với @ActiveUser();
   :Trích xuất categoryId từ params;
   :Trích xuất {name, logo, parentCategoryId} từ body;
   :Validate dữ liệu category;
@@ -70,16 +72,18 @@ elseif (PUT /categories/:categoryId) then
     :Ném ValidationException;
   endif
 
-elseif (DELETE /categories/:categoryId) then
+elseif (DELETE /categories/:categoryId)
   :Người dùng xóa danh mục;
+  :Xác thực người dùng với @ActiveUser();
   :Trích xuất categoryId từ params;
   :Thực thi soft delete operation;
   :Cập nhật deletedAt field;
   :Cập nhật deletedById;
   :Trả về success response;
 
-elseif (POST /category-translations) then
+elseif (POST /category-translations)
   :Người dùng tạo translation;
+  :Xác thực người dùng với @ActiveUser();
   :Trích xuất {categoryId, languageId, name, description} từ body;
   :Validate dữ liệu translation;
   if (Dữ liệu hợp lệ?) then (có)
@@ -95,8 +99,9 @@ elseif (POST /category-translations) then
     :Ném ValidationException;
   endif
 
-elseif (PUT /category-translations/:categoryTranslationId) then
+elseif (PUT /category-translations/:categoryTranslationId)
   :Người dùng cập nhật translation;
+  :Xác thực người dùng với @ActiveUser();
   :Trích xuất categoryTranslationId từ params;
   :Trích xuất {categoryId, languageId, name, description} từ body;
   :Validate dữ liệu translation;
@@ -108,8 +113,9 @@ elseif (PUT /category-translations/:categoryTranslationId) then
     :Ném ValidationException;
   endif
 
-elseif (DELETE /category-translations/:categoryTranslationId) then
+elseif (DELETE /category-translations/:categoryTranslationId)
   :Người dùng xóa translation;
+  :Xác thực người dùng với @ActiveUser();
   :Trích xuất categoryTranslationId từ params;
   :Thực thi soft delete operation;
   :Cập nhật deletedAt field;

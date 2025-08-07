@@ -1,30 +1,9 @@
-@startuml
-!theme aws-orange
+@startuml Role Module - Sequence Overview
+!theme plain
 skinparam backgroundColor #FFFFFF
-skinparam defaultTextAlignment center
-skinparam participant {
-    BackgroundColor #E8F4FD
-    BorderColor #1976D2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam actor {
-    BackgroundColor #FFF8E1
-    BorderColor #F57C00
-    FontColor #000000
-    FontStyle bold
-}
-skinparam database {
-    BackgroundColor #F3E5F5
-    BorderColor #7B1FA2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam note {
-    BackgroundColor #FFFDE7
-    BorderColor #F9A825
-    FontColor #000000
-}
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
 
 title Mô-đun Vai Trò - Tổng Quan Luồng Xử Lý
 note top : Hệ thống quản lý vai trò với base role protection và permission management
@@ -33,8 +12,10 @@ actor "Admin" as Admin
 participant "RoleController" as RC
 participant "RoleService" as RS
 participant "RoleRepo" as RR
+participant "ActiveUser" as AU
 participant "I18nService" as IS
 participant "CacheManager" as CM
+participant "PrismaService" as PS
 database "PostgreSQL" as DB
 database "Redis" as RD
 
@@ -53,8 +34,8 @@ Logic Phân Trang:
 • WHERE deletedAt IS NULL
 end note
 
-RR -> DB: count() với WHERE deletedAt IS NULL
-RR -> DB: findMany() với pagination và name filter
+RR -> PS: count() với WHERE deletedAt IS NULL
+RR -> PS: findMany() với pagination và name filter
 note right
 Tính Năng Truy Vấn Database:
 • WHERE deletedAt IS NULL
@@ -62,7 +43,9 @@ Tính Năng Truy Vấn Database:
 • Pagination với skip/take
 • ORDER BY default
 end note
-DB -> RR: Total count + roles data
+PS -> DB: Thực thi parallel queries
+DB -> PS: Total count + roles data
+PS -> RR: Roles với metadata
 RR -> RS: Roles với metadata
 RS -> IS: i18n.t('role.role.success.GET_SUCCESS')
 IS -> RS: Trả về message đã localize
@@ -74,14 +57,16 @@ Admin -> RC: GET /roles/:roleId
 RC -> RS: findById(roleId)
 
 RS -> RR: findById(id)
-RR -> DB: findUnique với include permissions
+RR -> PS: findUnique với include permissions
 note right
 Tính Năng Truy Vấn Chi Tiết:
 • WHERE id = :roleId AND deletedAt IS NULL
 • Include permissions với WHERE deletedAt IS NULL
 • Return role với permissions array
 end note
-DB -> RR: Role với permissions
+PS -> DB: Thực thi findUnique query
+DB -> PS: Role với permissions
+PS -> RR: Role với permissions
 RR -> RS: Role info
 
 alt Role tồn tại
@@ -95,6 +80,8 @@ else Role không tồn tại
 end
 
 == POST /roles - Tạo Vai Trò Mới ==
+Admin -> AU: @ActiveUser()
+AU -> Admin: Trả về user context
 Admin -> RC: POST /roles + {name, description, isActive}
 RC -> RS: create({data, user})
 
@@ -108,14 +95,16 @@ Xác Thực Dữ Liệu:
 end note
 
 RS -> RR: create({createdById, data})
-RR -> DB: INSERT role với audit fields
+RR -> PS: INSERT role với audit fields
 note right
 Logic Tạo Mới:
 • INSERT role với createdById
 • Audit trail: createdAt, createdById
 • Validate unique constraint cho name
 end note
-DB -> RR: Role created
+PS -> DB: INSERT role với audit fields
+DB -> PS: Role created
+PS -> RR: New role
 RR -> RS: New role
 RS -> IS: i18n.t('role.role.success.CREATE_SUCCESS')
 IS -> RS: Trả về message đã localize
@@ -123,6 +112,8 @@ RS -> RC: Success response
 RC -> Admin: 201 Created + JSON response
 
 == PUT /roles/:id - Cập Nhật Vai Trò ==
+Admin -> AU: @ActiveUser()
+AU -> Admin: Trả về user context
 Admin -> RC: PUT /roles/:roleId + {data, permissionIds}
 RC -> RS: update({id, data, user})
 
@@ -136,8 +127,10 @@ Bảo Vệ Base Role:
 end note
 
 RS -> RR: findById(id)
-RR -> DB: findUnique role
-DB -> RR: Role data
+RR -> PS: findUnique role
+PS -> DB: Query role
+DB -> PS: Role data
+PS -> RR: Role info
 RR -> RS: Role info
 
 alt Role không phải base role
@@ -151,12 +144,14 @@ alt Role không phải base role
     • Throw error nếu có permission đã bị xóa
     end note
 
-    RR -> DB: findMany permissions theo IDs
-    DB -> RR: Permissions data
+    RR -> PS: findMany permissions theo IDs
+    PS -> DB: Query permissions
+    DB -> PS: Permissions data
+    PS -> RR: Permissions data
     RR -> RR: Filter deleted permissions
 
     alt All permissions valid
-        RR -> DB: UPDATE role với permissions
+        RR -> PS: UPDATE role với permissions
         note right
         Logic Cập Nhật:
         • UPDATE role với updatedById
@@ -164,7 +159,9 @@ alt Role không phải base role
         • Include permissions trong response
         • Audit trail: updatedAt, updatedById
         end note
-        DB -> RR: Updated role với permissions
+        PS -> DB: UPDATE role với permissions
+        DB -> PS: Updated role với permissions
+        PS -> RR: Updated data
         RR -> RS: Updated data
 
         RS -> RS: deleteCachedRole(roleId)
@@ -175,7 +172,9 @@ alt Role không phải base role
         • Cache key: `role:${roleId}`
         • Ensure cache consistency
         end note
-        CM -> RS: Cache cleared
+        CM -> RD: Delete cache entries
+        RD -> CM: Cache cleared
+        CM -> RS: Cache operation result
         RS -> IS: i18n.t('role.role.success.UPDATE_SUCCESS')
         IS -> RS: Trả về message đã localize
         RS -> RC: Success response
@@ -193,30 +192,38 @@ else Role là base role
 end
 
 == DELETE /roles/:id - Xóa Vai Trò ==
+Admin -> AU: @ActiveUser()
+AU -> Admin: Trả về user context
 Admin -> RC: DELETE /roles/:roleId
 RC -> RS: delete({id, user})
 
 RS -> RS: verifyRole(id)
 RS -> RR: findById(id)
-RR -> DB: findUnique role
-DB -> RR: Role data
+RR -> PS: findUnique role
+PS -> DB: Query role
+DB -> PS: Role data
+PS -> RR: Role data
 RR -> RS: Role info
 
 alt Role không phải base role
     RS -> RR: delete({id, deletedById})
-    RR -> DB: UPDATE deletedAt (soft delete)
+    RR -> PS: UPDATE deletedAt (soft delete)
     note right
     Logic Xóa:
     • Soft delete: UPDATE deletedAt field
     • Audit trail: deletedAt, deletedById
     • Support hard delete với isHard flag
     end note
-    DB -> RR: Role marked deleted
+    PS -> DB: UPDATE deletedAt field
+    DB -> PS: Role marked deleted
+    PS -> RR: Deleted data
     RR -> RS: Deleted data
 
     RS -> RS: deleteCachedRole(roleId)
     RS -> CM: del(cacheKey)
-    CM -> RS: Cache cleared
+    CM -> RD: Delete cache entries
+    RD -> CM: Cache cleared
+    CM -> RS: Cache operation result
     RS -> IS: i18n.t('role.role.success.DELETE_SUCCESS')
     IS -> RS: Trả về message đã localize
     RS -> RC: Success response
@@ -271,6 +278,8 @@ alt Cache operations
     • Ensure data consistency
     • Support cache invalidation
     end note
+    CM -> RD: Delete cache entries
+    RD -> CM: Cache operation result
     CM -> RS: Cache operation result
 end
 

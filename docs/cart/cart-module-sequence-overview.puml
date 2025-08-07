@@ -6,9 +6,9 @@ skinparam roundcorner 20
 skinparam maxmessagesize 60
 
 title Mô-đun Giỏ Hàng - Tổng Quan Luồng Xử Lý
-note top : Hệ thống quản lý giỏ hàng với validation SKU và đa ngôn ngữ
+note top : Hệ thống quản lý giỏ hàng với validation SKU nghiêm ngặt và đa ngôn ngữ
 
-actor "Người dùng" as C
+actor "Người dùng" as User
 participant "CartController" as CC
 participant "CartService" as CS
 participant "CartRepo" as CR
@@ -19,14 +19,14 @@ participant "AccessTokenGuard" as AG
 database "PostgreSQL" as DB
 
 == Xác thực và Phân quyền ==
-C -> AG: Request với cookies
+User -> AG: Request với cookies
 AG -> AG: Trích xuất access_token từ cookies
 AG -> AG: Xác minh JWT token
 AG -> AG: Tải quyền người dùng
 AG -> CC: Cho phép request với user context
 
-== Lấy Danh Sách Giỏ Hàng ==
-C -> CC: GET /cart?page=1&limit=10
+== GET /cart - Lấy Danh Sách Giỏ Hàng ==
+User -> CC: GET /cart?page=1&limit=10
 CC -> CS: getCart(user, query)
 CS -> IC: I18nContext.current()?.lang
 IC -> CS: trả về ngôn ngữ hiện tại
@@ -47,10 +47,10 @@ CR -> CS: Trả về {data, metadata}
 CS -> IS: i18n.t('cart.cart.success.GET_SUCCESS')
 IS -> CS: Trả về message đã localize
 CS -> CC: Trả về response với data + metadata
-CC -> C: Trả về JSON response
+CC -> User: Trả về JSON response
 
-== Thêm Sản Phẩm Vào Giỏ Hàng ==
-C -> CC: POST /cart + {skuId, quantity}
+== POST /cart - Thêm Sản Phẩm Vào Giỏ Hàng ==
+User -> CC: POST /cart + {skuId, quantity}
 CC -> CS: addToCart(user, body)
 CS -> CR: create(userId, body)
 CR -> CR: validateSKU({skuId, quantity, userId, isCreate: true})
@@ -78,7 +78,7 @@ alt SKU validation thành công
     CS -> IS: i18n.t('cart.cart.success.CREATE_SUCCESS')
     IS -> CS: Trả về message đã localize
     CS -> CC: Trả về success response
-    CC -> C: Trả về 201 Created + JSON response
+    CC -> User: Trả về 201 Created + JSON response
 
 else SKU validation thất bại
     CR -> CS: Throw validation exception
@@ -90,11 +90,11 @@ else SKU validation thất bại
     • ProductNotFoundException - Sản phẩm chưa publish
     end note
     CS -> CC: Throw exception
-    CC -> C: Trả về 400/404 Error
+    CC -> User: Trả về 400/404 Error
 end
 
-== Cập Nhật Giỏ Hàng ==
-C -> CC: PUT /cart/:cartItemId + {skuId, quantity}
+== PUT /cart/:cartItemId - Cập Nhật Giỏ Hàng ==
+User -> CC: PUT /cart/:cartItemId + {skuId, quantity}
 CC -> CS: updateCartItem({user, cartItemId, body})
 CS -> CR: update({userId, body, cartItemId})
 CR -> CR: validateSKU({skuId, quantity, userId, isCreate: false})
@@ -108,16 +108,16 @@ alt Cart item tồn tại và validation thành công
     CS -> IS: i18n.t('cart.cart.success.UPDATE_SUCCESS')
     IS -> CS: Trả về message đã localize
     CS -> CC: Trả về success response
-    CC -> C: Trả về 200 OK + JSON response
+    CC -> User: Trả về 200 OK + JSON response
 
 else Cart item không tồn tại
     CR -> CS: Throw NotFoundCartItemException
     CS -> CC: Throw exception
-    CC -> C: Trả về 404 Not Found
+    CC -> User: Trả về 404 Not Found
 end
 
-== Xóa Sản Phẩm Khỏi Giỏ Hàng ==
-C -> CC: POST /cart/delete + {cartItemIds}
+== POST /cart/delete - Xóa Sản Phẩm Khỏi Giỏ Hàng ==
+User -> CC: POST /cart/delete + {cartItemIds}
 CC -> CS: deleteCart(user, body)
 CS -> CR: delete(userId, body)
 CR -> PS: cartItem.deleteMany()
@@ -128,33 +128,33 @@ CR -> CS: Trả về {count}
 CS -> IS: i18n.t('cart.cart.success.DELETE_SUCCESS')
 IS -> CS: Trả về message đã localize
 CS -> CC: Trả về success response
-CC -> C: Trả về 200 OK + JSON response
+CC -> User: Trả về 200 OK + JSON response
 
 == Xử Lý Lỗi ==
 alt Lỗi validation SKU
     CR -> CS: SKU validation exceptions
     CS -> CC: BadRequestException/NotFoundException
-    CC -> C: 400/404 Error
+    CC -> User: 400/404 Error
 
 else Lỗi không tìm thấy cart item
     CR -> CS: NotFoundCartItemException
     CS -> CC: NotFoundException
-    CC -> C: 404 Not Found
+    CC -> User: 404 Not Found
 
 else Lỗi database constraint
     CR -> CS: PrismaException
     CS -> CC: Database error
-    CC -> C: 500 Internal Server Error
+    CC -> User: 500 Internal Server Error
 
 else Lỗi authentication
-    CC -> C: 401 Unauthorized
+    CC -> User: 401 Unauthorized
 end
 
 == Đa Ngôn Ngữ ==
 CS -> IS: i18n.t('cart.cart.success.XXX')
 IS -> CS: Trả về message đã localize
 CS -> CC: Phản hồi + Message đã localize
-CC -> C: JSON Response với metadata đầy đủ
+CC -> User: JSON Response với metadata đầy đủ
 
 note bottom
 **Đặc điểm chính của module Cart:**

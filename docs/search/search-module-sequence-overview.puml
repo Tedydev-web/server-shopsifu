@@ -1,46 +1,26 @@
-@startuml
-!theme aws-orange
+@startuml Search Module - Sequence Overview
+!theme plain
 skinparam backgroundColor #FFFFFF
-skinparam defaultTextAlignment center
-skinparam participant {
-    BackgroundColor #E8F4FD
-    BorderColor #1976D2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam actor {
-    BackgroundColor #FFF8E1
-    BorderColor #F57C00
-    FontColor #000000
-    FontStyle bold
-}
-skinparam database {
-    BackgroundColor #F3E5F5
-    BorderColor #7B1FA2
-    FontColor #000000
-    FontStyle bold
-}
-skinparam note {
-    BackgroundColor #FFFDE7
-    BorderColor #F9A825
-    FontColor #000000
-}
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
 
 title Mô-đun Tìm Kiếm - Tổng Quan Luồng Xử Lý
 note top : Hệ thống tìm kiếm sản phẩm với Elasticsearch và xử lý ngôn ngữ tự nhiên
 
 actor "Người Dùng" as Client
-participant SearchController
-participant SearchService
-participant SearchRepo
-participant ElasticsearchService
-participant SearchSyncService
-participant SearchSyncConsumer
-database Elasticsearch
+participant "SearchController" as SC
+participant "SearchService" as SS
+participant "SearchRepo" as SR
+participant "ElasticsearchService" as ES
+participant "SearchSyncService" as SSS
+participant "SearchSyncConsumer" as SSC
+participant "I18nService" as IS
+database "Elasticsearch" as ESDB
 queue "Hàng Đợi Đồng Bộ Tìm Kiếm" as SSQ
 
 == GET /search/products - Tìm Kiếm Sản Phẩm ==
-Client -> SearchController: GET /search/products?q=query&page=1&limit=20&filters=...
+Client -> SC: GET /search/products?q=query&page=1&limit=20&filters=...
 note right
 Tham Số Tìm Kiếm:
 • q: Chuỗi tìm kiếm (tùy chọn)
@@ -51,7 +31,7 @@ Tham Số Tìm Kiếm:
 • filters: Thương hiệu, danh mục, khoảng giá, thuộc tính
 end note
 
-SearchController -> SearchService: searchProducts(query)
+SC -> SS: searchProducts(query)
 note right
 Cấu Hình Controller:
 • @SkipThrottle() - Bỏ qua giới hạn tốc độ
@@ -59,7 +39,7 @@ Cấu Hình Controller:
 • @ZodSerializerDto(SearchProductsResDTO) - Chuẩn hóa phản hồi
 end note
 
-SearchService -> SearchService: Xác thực tham số truy vấn
+SS -> SS: Xác thực tham số truy vấn
 note right
 Xác Thực Truy Vấn:
 • Kiểm tra q không rỗng sau khi cắt khoảng trắng
@@ -70,7 +50,7 @@ end note
 
 alt Xác thực truy vấn thành công
     alt Có chuỗi truy vấn
-        SearchService -> SearchService: parseQuery(rawQuery)
+        SS -> SS: parseQuery(rawQuery)
         note right
         Xử Lý Ngôn Ngữ Tự Nhiên:
         • Tách chuỗi thành các từ khóa
@@ -79,7 +59,7 @@ alt Xác thực truy vấn thành công
         • Xây dựng truy vấn có cấu trúc
         end note
 
-        SearchService -> SearchService: getDictionary()
+        SS -> SS: getDictionary()
         note right
         Quản Lý Từ Điển:
         • Cache từ điển trong 30 phút
@@ -89,10 +69,10 @@ alt Xác thực truy vấn thành công
         end note
 
         alt Cache từ điển còn hiệu lực
-            SearchService -> SearchService: Sử dụng cache từ điển
+            SS -> SS: Sử dụng cache từ điển
         else Cache từ điển hết hạn
-            SearchService -> ElasticsearchService: Tải từ điển từ ES
-            ElasticsearchService -> Elasticsearch: Tìm kiếm với aggregations
+            SS -> ES: Tải từ điển từ ES
+            ES -> ESDB: Tìm kiếm với aggregations
             note right
             Tổng Hợp Từ Điển:
             • Nested aggregation trên attrs
@@ -100,12 +80,12 @@ alt Xác thực truy vấn thành công
             • Terms aggregation cho attrValue
             • Kích thước 100 cho mỗi cấp
             end note
-            Elasticsearch --> ElasticsearchService: Dữ liệu tổng hợp
-            ElasticsearchService --> SearchService: Dữ liệu từ điển
-            SearchService -> SearchService: Cache từ điển trong 30 phút
+            ESDB -> ES: Dữ liệu tổng hợp
+            ES -> SS: Dữ liệu từ điển
+            SS -> SS: Cache từ điển trong 30 phút
         end
 
-        SearchService -> SearchService: Phân tích truy vấn ngôn ngữ tự nhiên
+        SS -> SS: Phân tích truy vấn ngôn ngữ tự nhiên
         note right
         Logic Phân Tích Truy Vấn:
         • Tách chuỗi thành từ khóa
@@ -116,7 +96,7 @@ alt Xác thực truy vấn thành công
         end note
 
         alt Tìm thấy thuộc tính đã phân tích
-            SearchService -> SearchService: Thêm thuộc tính đã phân tích vào bộ lọc
+            SS -> SS: Thêm thuộc tính đã phân tích vào bộ lọc
             note right
             Trích Xuất Thuộc Tính:
             • Ánh xạ ngôn ngữ tự nhiên thành bộ lọc có cấu trúc
@@ -126,8 +106,8 @@ alt Xác thực truy vấn thành công
         end
     end
 
-    SearchService -> SearchRepo: searchProducts(processedQuery)
-    SearchRepo -> SearchRepo: Xây dựng truy vấn Elasticsearch
+    SS -> SR: searchProducts(processedQuery)
+    SR -> SR: Xây dựng truy vấn Elasticsearch
     note right
     Xây Dựng Truy Vấn ES:
     • Multi-match query cho tìm kiếm văn bản
@@ -138,8 +118,8 @@ alt Xác thực truy vấn thành công
     • Phrase matching cho từng từ riêng lẻ
     end note
 
-    SearchRepo -> ElasticsearchService: search(index, query, options)
-    ElasticsearchService -> Elasticsearch: Thực thi truy vấn tìm kiếm
+    SR -> ES: search(index, query, options)
+    ES -> ESDB: Thực thi truy vấn tìm kiếm
     note right
     Tìm Kiếm Elasticsearch:
     • Multi-match với best_fields
@@ -152,9 +132,9 @@ alt Xác thực truy vấn thành công
     end note
 
     alt Tìm kiếm thành công
-        Elasticsearch --> ElasticsearchService: Kết quả tìm kiếm
-        ElasticsearchService --> SearchRepo: Hits và metadata
-        SearchRepo -> SearchRepo: Xử lý kết quả tìm kiếm
+        ESDB -> ES: Kết quả tìm kiếm
+        ES -> SR: Hits và metadata
+        SR -> SR: Xử lý kết quả tìm kiếm
         note right
         Xử Lý Kết Quả:
         • Trích xuất _source từ hits
@@ -162,77 +142,72 @@ alt Xác thực truy vấn thành công
         • Xây dựng metadata phân trang
         • Định dạng dữ liệu phản hồi
         end note
-        SearchRepo --> SearchService: Kết quả đã xử lý
-        SearchService -> SearchService: Tạo thông báo thành công đa ngôn ngữ
-        note right
-        Tích Hợp I18nService:
-        • Dịch thông báo thành công
-        • Hỗ trợ nhiều ngôn ngữ
-        • Key: 'search.search.success.SEARCH_SUCCESS'
-        end note
-        SearchService --> SearchController: Phản hồi thành công với thông báo
-        SearchController --> Client: JSON với dữ liệu + metadata
+        SR -> SS: Kết quả đã xử lý
+        SS -> IS: i18n.t('search.search.success.SEARCH_SUCCESS')
+        IS -> SS: Trả về message đã localize
+        SS -> SC: Phản hồi thành công với thông báo
+        SC -> Client: JSON với dữ liệu + metadata
 
     else Tìm kiếm thất bại
-        Elasticsearch --> ElasticsearchService: Lỗi
-        ElasticsearchService --> SearchRepo: Chi tiết lỗi
-        SearchRepo -> SearchRepo: Phân loại loại lỗi
+        ESDB -> ES: Lỗi
+        ES -> SR: Chi tiết lỗi
+        SR -> SR: Phân loại loại lỗi
         note right
         Phân Loại Lỗi:
         • ConnectionError → ElasticsearchConnectionException
         • TimeoutError → SearchTimeoutException
         • Lỗi khác → ElasticsearchQueryException
         end note
-        SearchRepo --> SearchService: Exception cụ thể
-        SearchService --> SearchController: Phản hồi lỗi
-        SearchController --> Client: Lỗi 500/503
+        SR -> SS: Exception cụ thể
+        SS -> SC: Phản hồi lỗi
+        SC -> Client: Lỗi 500/503
     end
 
 else Xác thực truy vấn thất bại
-    SearchService --> SearchController: ValidationException
-    SearchController --> Client: 400 Bad Request
+    SS -> SC: ValidationException
+    SC -> Client: 400 Bad Request
 end
 
 == Hoạt Động Đồng Bộ Nền ==
-note over SearchSyncService, SearchSyncConsumer: Xử lý job nền
+note over SSS, SSC: Xử lý job nền
 
 alt Đồng bộ sản phẩm vào Elasticsearch
-    SearchSyncService -> SearchSyncConsumer: process(syncProductJob)
-    SearchSyncConsumer -> SearchSyncService: syncProductToES(productId, action)
-    SearchSyncService -> SearchSyncService: getProductWithRelations(productId)
-    SearchSyncService -> SearchSyncService: transformProductToEsDocuments(product)
-    SearchSyncService -> ElasticsearchService: indexProduct(document)
-    ElasticsearchService -> Elasticsearch: INDEX tài liệu sản phẩm
-    Elasticsearch --> ElasticsearchService: trả về kết quả index
-    ElasticsearchService --> SearchSyncService: trả về kết quả đồng bộ
+    SSS -> SSC: process(syncProductJob)
+    SSC -> SSS: syncProductToES(productId, action)
+    SSS -> SSS: getProductWithRelations(productId)
+    SSS -> SSS: transformProductToEsDocuments(product)
+    SSS -> ES: indexProduct(document)
+    ES -> ESDB: INDEX tài liệu sản phẩm
+    ESDB -> ES: trả về kết quả index
+    ES -> SSS: trả về kết quả đồng bộ
 end
 
 alt Đồng bộ hàng loạt sản phẩm
-    SearchSyncService -> SearchSyncConsumer: process(syncProductsBatchJob)
-    SearchSyncConsumer -> SearchSyncService: syncProductsBatchToES(batchData)
-    SearchSyncService -> SearchSyncService: getProductsWithRelations(productIds)
+    SSS -> SSC: process(syncProductsBatchJob)
+    SSC -> SSS: syncProductsBatchToES(batchData)
+    SSS -> SSS: getProductsWithRelations(productIds)
     loop Cho mỗi sản phẩm
-        SearchSyncService -> SearchSyncService: transformProductToEsDocuments(product)
-        SearchSyncService -> ElasticsearchService: indexProduct(document)
-        ElasticsearchService -> Elasticsearch: INDEX tài liệu sản phẩm
+        SSS -> SSS: transformProductToEsDocuments(product)
+        SSS -> ES: indexProduct(document)
+        ES -> ESDB: INDEX tài liệu sản phẩm
     end
-    ElasticsearchService --> SearchSyncService: trả về kết quả đồng bộ hàng loạt
+    ES -> SSS: trả về kết quả đồng bộ hàng loạt
 end
 
 alt Xóa sản phẩm khỏi Elasticsearch
-    SearchSyncService -> SearchSyncConsumer: process(deleteProductJob)
-    SearchSyncConsumer -> SearchSyncService: syncProductToES(productId, action: delete)
-    SearchSyncService -> SearchSyncService: deleteProductFromES(productId)
-    SearchSyncService -> ElasticsearchService: deleteProduct(productId)
-    ElasticsearchService -> Elasticsearch: DELETE tài liệu sản phẩm
-    Elasticsearch --> ElasticsearchService: trả về kết quả xóa
-    ElasticsearchService --> SearchSyncService: trả về kết quả xóa
+    SSS -> SSC: process(deleteProductJob)
+    SSC -> SSS: syncProductToES(productId, action: delete)
+    SSS -> SSS: deleteProductFromES(productId)
+    SSS -> ES: deleteProduct(productId)
+    ES -> ESDB: DELETE tài liệu sản phẩm
+    ESDB -> ES: trả về kết quả xóa
+    ES -> SSS: trả về kết quả xóa
 end
 
 == Xử Lý Lỗi & Xác Thực ==
 alt Lỗi truy vấn rỗng
-    SearchService --> SearchController: EmptySearchQueryException
-    SearchController --> Client: 400 Bad Request
+    SS -> SC: EmptySearchQueryException
+    SC -> Client: 400 Bad Request
     note right
     Lỗi Truy Vấn Rỗng:
     • Chuỗi truy vấn rỗng sau khi cắt khoảng trắng
@@ -240,8 +215,8 @@ alt Lỗi truy vấn rỗng
     end note
 
 else Lỗi truy vấn quá ngắn
-    SearchService --> SearchController: SearchQueryTooShortException
-    SearchController --> Client: 400 Bad Request
+    SS -> SC: SearchQueryTooShortException
+    SC -> Client: 400 Bad Request
     note right
     Lỗi Truy Vấn Quá Ngắn:
     • Độ dài truy vấn < yêu cầu tối thiểu (1)
@@ -249,8 +224,8 @@ else Lỗi truy vấn quá ngắn
     end note
 
 else Lỗi tải từ điển
-    SearchService --> SearchController: DictionaryLoadException
-    SearchController --> Client: 500 Internal Server Error
+    SS -> SC: DictionaryLoadException
+    SC -> Client: 500 Internal Server Error
     note right
     Lỗi Từ Điển:
     • Không thể tải từ Elasticsearch
@@ -258,8 +233,8 @@ else Lỗi tải từ điển
     end note
 
 else Lỗi phân tích từ điển
-    SearchService --> SearchController: DictionaryParseException
-    SearchController --> Client: 400 Bad Request
+    SS -> SC: DictionaryParseException
+    SC -> Client: 400 Bad Request
     note right
     Lỗi Phân Tích:
     • Không thể phân tích ngôn ngữ tự nhiên
@@ -267,9 +242,9 @@ else Lỗi phân tích từ điển
     end note
 
 else Lỗi kết nối Elasticsearch
-    SearchRepo --> SearchService: ElasticsearchConnectionException
-    SearchService --> SearchController: Phản hồi lỗi
-    SearchController --> Client: 503 Service Unavailable
+    SR -> SS: ElasticsearchConnectionException
+    SS -> SC: Phản hồi lỗi
+    SC -> Client: 503 Service Unavailable
     note right
     Lỗi Kết Nối:
     • Elasticsearch không khả dụng
@@ -277,9 +252,9 @@ else Lỗi kết nối Elasticsearch
     end note
 
 else Lỗi timeout tìm kiếm
-    SearchRepo --> SearchService: SearchTimeoutException
-    SearchService --> SearchController: Phản hồi lỗi
-    SearchController --> Client: 503 Service Unavailable
+    SR -> SS: SearchTimeoutException
+    SS -> SC: Phản hồi lỗi
+    SC -> Client: 503 Service Unavailable
     note right
     Lỗi Timeout:
     • Timeout truy vấn tìm kiếm
@@ -287,9 +262,9 @@ else Lỗi timeout tìm kiếm
     end note
 
 else Lỗi truy vấn tìm kiếm
-    SearchRepo --> SearchService: ElasticsearchQueryException
-    SearchService --> SearchController: Phản hồi lỗi
-    SearchController --> Client: 500 Internal Server Error
+    SR -> SS: ElasticsearchQueryException
+    SS -> SC: Phản hồi lỗi
+    SC -> Client: 500 Internal Server Error
     note right
     Lỗi Truy Vấn:
     • Cú pháp truy vấn không hợp lệ
@@ -300,7 +275,7 @@ end
 
 == Quản Lý Cache ==
 alt Hoạt động cache từ điển
-    SearchService -> SearchService: Kiểm tra thời gian hết hạn cache
+    SS -> SS: Kiểm tra thời gian hết hạn cache
     note right
     Quản Lý Cache:
     • Thời gian cache: 30 phút
@@ -311,9 +286,10 @@ alt Hoạt động cache từ điển
 end
 
 == Trả Kết Quả ==
-SearchService -> SearchService: Tạo thông báo đa ngôn ngữ (I18nService)
-SearchService --> SearchController: Phản hồi + Thông báo đã localize
-SearchController --> Client: JSON Response với metadata đầy đủ
+SS -> IS: i18n.t('search.search.success.SEARCH_SUCCESS')
+IS -> SS: Trả về message đã localize
+SS -> SC: Phản hồi + Thông báo đã localize
+SC -> Client: JSON Response với metadata đầy đủ
 
 note bottom
 **Đặc điểm chính của module Tìm Kiếm:**
