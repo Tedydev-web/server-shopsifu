@@ -73,6 +73,16 @@ jobs:
         run: |
           sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch origin master && git reset --hard origin/master && docker-compose pull && docker-compose down && docker-compose up -d --force-recreate && sleep 5 && docker-compose ps > /tmp/docker_status.txt"
 
+      - name: Get commit details
+        id: commit
+        run: |
+          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
+          COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an")
+          COMMIT_DATE=$(git log -1 --pretty=format:"%cd" --date=relative)
+          echo "message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
+          echo "author=$COMMIT_AUTHOR" >> $GITHUB_OUTPUT
+          echo "date=$COMMIT_DATE" >> $GITHUB_OUTPUT
+
       - name: Send Discord Notification
         if: always()
         env:
@@ -83,10 +93,83 @@ jobs:
           ACTOR: ${{ github.actor }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
+          VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
+          VPS_HOST: ${{ secrets.STAGING_VPS_IP_HOST }}
+          VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
+          PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
+          COMMIT_MESSAGE: ${{ steps.commit.outputs.message }}
+          COMMIT_AUTHOR: ${{ steps.commit.outputs.author }}
+          COMMIT_DATE: ${{ steps.commit.outputs.date }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
+
+          # Lấy thông tin PM2 từ server
+          PM2_STATUS=""
+          if [ "$STATUS" = "success" ]; then
+            PM2_STATUS=$(sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "cd $PROJECT_PATH && pm2 list --no-daemon" 2>/dev/null || echo "Không thể kết nối PM2")
+          fi
+
           COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
           ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
+
+          # Tạo description chi tiết
+          DESCRIPTION=""
+          if [ "$STATUS" = "success" ]; then
+            DESCRIPTION="🚀 **SERVER - Thông báo triển khai ✨**\n\n**Trạng thái PM2 trên server:**\n$PM2_STATUS"
+          else
+            DESCRIPTION="❌ **Deployment thất bại**\n\nChi tiết lỗi có thể xem tại GitHub Actions."
+          fi
+
+          # Xử lý commit message để giữ nguyên emoji và ký tự đặc biệt
+          COMMIT_MESSAGE_ESCAPED=$(echo "$COMMIT_MESSAGE" | sed 's/"/\\"/g')
+
+          # Nhận diện Conventional Commits và thêm emoji phù hợp
+          # Conventional Commits Emoji Reference:
+          # ✨ feat: new feature
+          # 🐛 fix: bug fix
+          # 📚 docs: documentation
+          # 💄 style: formatting, missing semi colons, etc
+          # ♻️ refactor: refactoring production code
+          # 🧪 test: adding tests, refactoring tests
+          # 🔧 chore: updating build tasks, package manager configs
+          # ⚡ perf: performance improvements
+          # 👷 ci: changes to CI configuration files and scripts
+          # 📦 build: changes that affect the build system or external dependencies
+          # ⏪ revert: reverts a previous commit
+          # 🔒 security: security fixes
+          # 📝 default: other changes
+          COMMIT_TYPE_ICON=""
+          if [[ "$COMMIT_MESSAGE" =~ ^feat ]]; then
+            COMMIT_TYPE_ICON="✨"
+          elif [[ "$COMMIT_MESSAGE" =~ ^fix ]]; then
+            COMMIT_TYPE_ICON="🐛"
+          elif [[ "$COMMIT_MESSAGE" =~ ^docs ]]; then
+            COMMIT_TYPE_ICON="📚"
+          elif [[ "$COMMIT_MESSAGE" =~ ^style ]]; then
+            COMMIT_TYPE_ICON="💄"
+          elif [[ "$COMMIT_MESSAGE" =~ ^refactor ]]; then
+            COMMIT_TYPE_ICON="♻️"
+          elif [[ "$COMMIT_MESSAGE" =~ ^test ]]; then
+            COMMIT_TYPE_ICON="🧪"
+          elif [[ "$COMMIT_MESSAGE" =~ ^chore ]]; then
+            COMMIT_TYPE_ICON="🔧"
+          elif [[ "$COMMIT_MESSAGE" =~ ^perf ]]; then
+            COMMIT_TYPE_ICON="⚡"
+          elif [[ "$COMMIT_MESSAGE" =~ ^ci ]]; then
+            COMMIT_TYPE_ICON="👷"
+          elif [[ "$COMMIT_MESSAGE" =~ ^build ]]; then
+            COMMIT_TYPE_ICON="📦"
+          elif [[ "$COMMIT_MESSAGE" =~ ^revert ]]; then
+            COMMIT_TYPE_ICON="⏪"
+          elif [[ "$COMMIT_MESSAGE" =~ ^security ]]; then
+            COMMIT_TYPE_ICON="🔒"
+          else
+            COMMIT_TYPE_ICON="📝"
+          fi
+
+          # Tạo commit message với icon
+          COMMIT_DISPLAY="$COMMIT_TYPE_ICON $COMMIT_MESSAGE_ESCAPED"
+
           JSON_PAYLOAD=$(jq -n \
             --arg status "$STATUS" \
             --arg icon "$ICON" \
@@ -97,18 +180,24 @@ jobs:
             --arg actor "$ACTOR" \
             --arg run_id "$RUN_ID" \
             --arg color "$COLOR" \
+            --arg description "$DESCRIPTION" \
+            --arg commit_message "$COMMIT_DISPLAY" \
+            --arg commit_author "$COMMIT_AUTHOR" \
+            --arg commit_date "$COMMIT_DATE" \
             ' {
               embeds: [{
-                title: "🚀 Triển khai Production",
+                title: "🚀 SERVER - Thông báo triển khai ✨",
+                description: $description,
                 color: ($color | tonumber),
                 fields: [
-                  { name: "Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
-                  { name: "Nhánh", value: "`\($branch)`", inline: true },
-                  { name: "Người thực hiện", value: "`\($actor)`", inline: true },
-                  { name: "Commit", value: "[`\($commit_short)`](https://github.com/\($repo)/commit/\($commit_full))", inline: false }
+                  { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
+                  { name: "🌿 Nhánh", value: "`\($branch)`", inline: true },
+                  { name: "👤 Người thực hiện", value: "`\($actor)`", inline: true },
+                  { name: "🔗 Commit", value: "[`\($commit_short)`](https://github.com/\($repo)/commit/\($commit_full))", inline: false },
+                  { name: "📝 Nội dung Commit", value: "\($commit_message)", inline: false }
                 ],
                 url: "https://github.com/\($repo)/actions/runs/\($run_id)",
-                footer: { "text": "Triển khai tới môi trường Production" },
+                footer: { "text": "🚀 Triển khai tới môi trường Production • \($commit_date)" },
                 "timestamp": (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
               }]
             }')
