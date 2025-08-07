@@ -45,27 +45,20 @@ services:
     container_name: elasticsearch
     environment:
       - node.name=es01
-      - cluster.name=shopsifu-prod-cluster
+      - cluster.name=shopsifu-cluster
       - discovery.type=single-node
       - bootstrap.memory_lock=true
+      - 'ES_JAVA_OPTS=-Xms4g -Xmx4g'
       - xpack.security.enabled=false
-      # - xpack.security.transport.ssl.enabled=true
-      # - xpack.security.transport.ssl.verification_mode=certificate
-      # - xpack.security.transport.ssl.keystore.path=certs/elastic-certificates.p12
-      # - xpack.security.transport.ssl.truststore.path=certs/elastic-certificates.p12
-      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-elastic2025@@}
-      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+      - xpack.security.enrollment.enabled=false
     ulimits:
       memlock:
         soft: -1
         hard: -1
-      nofile:
-        soft: 65536
-        hard: 65536
     volumes:
       - esdata:/usr/share/elasticsearch/data
     ports:
-      - 127.0.0.1:9200:9200
+      - '127.0.0.1:9200:9200'
     networks:
       - app-network
     healthcheck:
@@ -74,8 +67,28 @@ services:
       timeout: 10s
       retries: 5
 
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: kibana
+    environment:
+      - SERVER_NAME=kibana
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_SSL_ENABLED=false
+    ports:
+      - 127.0.0.1:5601:5601
+    volumes:
+      - ./certs:/usr/share/kibana/config/certs
+    networks:
+      - app-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  # === MAIN APPLICATION ===
   server:
-    image: ghcr.io/tedydev-web/server-shopsifu:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: server
     restart: unless-stopped
     ports:
@@ -98,38 +111,60 @@ services:
       test: ['CMD-SHELL', 'curl -f http://localhost:3000/health || exit 1']
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '2.0'
-        reservations:
-          memory: 1G
-          cpus: '1.0'
+      retries: 5
+      start_period: 120s
 
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.13.4
-    container_name: kibana
-    environment:
-      - SERVER_NAME=kibana
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - SERVER_SSL_ENABLED=false
-      # - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
-      # - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-elastic2025@@}
-      # - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=/usr/share/kibana/config/certs/elastic-stack-ca.p12
-      # - SERVER_SSL_CERTIFICATE=/usr/share/kibana/config/certs/elastic-certificates.p12
-      # - SERVER_SSL_KEY=/usr/share/kibana/config/certs/elastic-certificates.p12
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    restart: unless-stopped
     ports:
-      - 127.0.0.1:5601:5601
+      - '9090:9090'
     volumes:
-      - ./certs:/usr/share/kibana/config/certs
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
     networks:
       - app-network
     depends_on:
-      elasticsearch:
+      - server
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - '3001:3000'
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-ShopsifuAdmin2025@@}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - app-network
+    depends_on:
+      prometheus:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 networks:
   app-network:
@@ -146,3 +181,9 @@ volumes:
   esdata:
     driver: local
     name: elasticsearch-data
+  prometheus_data:
+    driver: local
+    name: prometheus-data
+  grafana_data:
+    driver: local
+    name: grafana-data
