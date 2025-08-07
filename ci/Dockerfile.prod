@@ -29,8 +29,8 @@ RUN npm prune --production && \
 # Production stage
 FROM node:20-alpine AS production
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install dumb-init for proper signal handling and curl for healthcheck
+RUN apk add --no-cache dumb-init curl
 
 # Create app directory
 WORKDIR /app
@@ -39,12 +39,16 @@ WORKDIR /app
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nestjs -u 1001
 
+# Install PM2 globally for cluster mode
+RUN npm install -g pm2
+
 # Copy built application from builder stage
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/package.json ./
 COPY --from=builder --chown=nestjs:nodejs /app/package-lock.json ./
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nestjs:nodejs /app/ecosystem.config.js ./
 
 # Switch to non-root user
 USER nestjs
@@ -59,5 +63,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application
-CMD ["npm", "run", "start:pm2"]
+# Start with PM2 cluster mode (11 instances)
+CMD ["pm2-runtime", "ecosystem.config.js", "--env", "production"]

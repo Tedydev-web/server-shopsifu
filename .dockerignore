@@ -56,8 +56,8 @@ jest.config.js
 prisma/migrations
 prisma/migration_lock.toml
 
-# Logs
-logs
+# Logs (allow logs directory for PM2)
+# logs
 *.log
 lcov-report
 

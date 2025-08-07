@@ -85,9 +85,8 @@ services:
     networks:
       - app-network
     volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/dist
+      - ./logs:/app/logs
+      - ./certs:/app/certs
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,6 +94,20 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:3000/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
