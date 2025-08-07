@@ -75,9 +75,7 @@ services:
       retries: 5
 
   server:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/Tedydev-web/server-shopsifu:latest
     container_name: server
     restart: unless-stopped
     ports:
