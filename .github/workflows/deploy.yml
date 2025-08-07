@@ -71,7 +71,7 @@ jobs:
           VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
           PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
         run: |
-          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch origin master && git reset --hard origin/master && docker-compose pull && docker-compose up -d && sleep 5 && docker-compose ps > /tmp/docker_status.txt"
+          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch origin master && git reset --hard origin/master && docker-compose pull && docker-compose down && docker-compose up -d --force-recreate && sleep 5 && docker-compose ps > /tmp/docker_status.txt"
 
       - name: Send Discord Notification
         if: always()
@@ -127,7 +127,7 @@ jobs:
           VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
           PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
         run: |
-          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch origin master && git reset --hard HEAD~1 && docker-compose pull && docker-compose up -d"
+          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch origin master && git reset --hard HEAD~1 && docker-compose pull && docker-compose down && docker-compose up -d --force-recreate"
 
   manual-rollback:
     name: Manual Rollback
@@ -141,4 +141,4 @@ jobs:
           VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
           PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
         run: |
-          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch --all && git reset --hard ${{ github.event.inputs.manual_rollback }} && docker-compose pull && docker-compose up -d"
+          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch --all && git reset --hard ${{ github.event.inputs.manual_rollback }} && docker-compose pull && docker-compose down && docker-compose up -d --force-recreate"
