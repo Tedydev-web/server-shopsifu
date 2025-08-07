@@ -20,7 +20,7 @@ RUN npm ci
 COPY . .
 
 # Generate Prisma client and build the application
-RUN npm run generate && npm run build
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run generate && NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 # Remove devDependencies and build deps
 RUN npm prune --production && \

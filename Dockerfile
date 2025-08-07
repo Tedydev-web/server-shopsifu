@@ -24,7 +24,7 @@ RUN npm run generate
 COPY . .
 
 # Build dist
-RUN npm run build
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 # Remove devDependencies and build deps
 RUN npm prune --omit=dev && apk del .build-deps
