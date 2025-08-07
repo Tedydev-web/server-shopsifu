@@ -48,11 +48,11 @@ services:
       - cluster.name=shopsifu-prod-cluster
       - discovery.type=single-node
       - bootstrap.memory_lock=true
-      - xpack.security.enabled=true
-      - xpack.security.transport.ssl.enabled=true
-      - xpack.security.transport.ssl.verification_mode=certificate
-      - xpack.security.transport.ssl.keystore.path=certs/elastic-certificates.p12
-      - xpack.security.transport.ssl.truststore.path=certs/elastic-certificates.p12
+      - xpack.security.enabled=false
+      # - xpack.security.transport.ssl.enabled=true
+      # - xpack.security.transport.ssl.verification_mode=certificate
+      # - xpack.security.transport.ssl.keystore.path=certs/elastic-certificates.p12
+      # - xpack.security.transport.ssl.truststore.path=certs/elastic-certificates.p12
       - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-elastic2025@@}
       - ES_JAVA_OPTS=-Xms2g -Xmx2g
     ulimits:
@@ -101,13 +101,13 @@ services:
     container_name: kibana
     environment:
       - SERVER_NAME=kibana
-      - ELASTICSEARCH_HOSTS=https://elasticsearch:9200
-      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
-      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-elastic2025@@}
-      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=/usr/share/kibana/config/certs/elastic-stack-ca.p12
-      - SERVER_SSL_ENABLED=true
-      - SERVER_SSL_CERTIFICATE=/usr/share/kibana/config/certs/elastic-certificates.p12
-      - SERVER_SSL_KEY=/usr/share/kibana/config/certs/elastic-certificates.p12
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_SSL_ENABLED=false
+      # - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
+      # - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-elastic2025@@}
+      # - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=/usr/share/kibana/config/certs/elastic-stack-ca.p12
+      # - SERVER_SSL_CERTIFICATE=/usr/share/kibana/config/certs/elastic-certificates.p12
+      # - SERVER_SSL_KEY=/usr/share/kibana/config/certs/elastic-certificates.p12
     ports:
       - 127.0.0.1:5601:5601
     volumes:

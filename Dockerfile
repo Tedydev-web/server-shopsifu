@@ -39,7 +39,7 @@ RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nestjs -u 1001
 
 # Install @nestjs/cli globally for production
-RUN npm install -g @nestjs/cli
+RUN npm install -g @nestjs/cli pm2
 
 # Copy built application from builder stage
 COPY --from=builder /app/package.json ./
