@@ -217,11 +217,11 @@ services:
     container_name: pgbouncer
     restart: unless-stopped
     environment:
-      - DATABASES_HOST=postgres
-      - DATABASES_PORT=5432
-      - DATABASES_USER=${POSTGRES_USER:-shopsifu}
-      - DATABASES_PASSWORD=${POSTGRES_PASSWORD:-Shopsifu2025@@}
-      - DATABASES_DBNAME=${POSTGRES_DB:-shopsifu}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-shopsifu}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-Shopsifu2025@@}
+      - DB_NAME=${POSTGRES_DB:-shopsifu}
       - POOL_MODE=${PGBOUNCER_POOL_MODE:-transaction}
       - MAX_CLIENT_CONN=${PGBOUNCER_MAX_CLIENT_CONN:-1000}
       - DEFAULT_POOL_SIZE=${PGBOUNCER_DEFAULT_POOL_SIZE:-20}
