@@ -14,6 +14,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-shopsifu}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Shopsifu2025@@}
       POSTGRES_DB: ${POSTGRES_DB:-shopsifu}
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: '--auth-host=md5'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
@@ -158,6 +160,8 @@ services:
       nofile: 65535
     security_opt:
       - no-new-privileges:true
+    ports:
+      - '${PROMETHEUS_PORT:-9090}:9090'
     volumes:
       - ./monitoring/prometheus:/etc/prometheus
       - prometheus_data:/prometheus
@@ -190,6 +194,8 @@ services:
       nofile: 65535
     security_opt:
       - no-new-privileges:true
+    ports:
+      - '${GRAFANA_PORT:-3001}:3000'
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-Shopsifu2025@@}
