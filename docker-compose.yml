@@ -8,8 +8,9 @@ services:
       options:
         max-size: '10m'
         max-file: '5'
+    # Expose PostgreSQL chỉ cho localhost (an toàn hơn)
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-shopsifu}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Shopsifu2025@@}
@@ -122,8 +123,9 @@ services:
     sysctls:
       net.core.somaxconn: 65535
       net.ipv4.tcp_tw_reuse: '1'
-    ports:
-      - '3000:3000'
+    # Port mapping đã được xử lý qua Nginx reverse proxy
+    # ports:
+    #   - '3000:3000'
     env_file:
       - .env.docker
     networks:
@@ -159,8 +161,6 @@ services:
       nofile: 65535
     security_opt:
       - no-new-privileges:true
-    ports:
-      - '9090:9090'
     volumes:
       - ./monitoring/prometheus:/etc/prometheus
       - prometheus_data:/prometheus
@@ -193,11 +193,9 @@ services:
       nofile: 65535
     security_opt:
       - no-new-privileges:true
-    ports:
-      - '3001:3000'
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-ShopsifuAdmin2025@@}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-Shopsifu2025@@}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_AUTH_ANONYMOUS_ENABLED=false
     volumes:
@@ -215,6 +213,62 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # PgBouncer cho connection pooling
+  pgbouncer:
+    image: edoburu/pgbouncer:1.18.0
+    container_name: pgbouncer
+    restart: unless-stopped
+    environment:
+      - DATABASES_HOST=postgres
+      - DATABASES_PORT=5432
+      - DATABASES_USER=shopsifu
+      - DATABASES_PASSWORD=Shopsifu2025@@
+      - DATABASES_DBNAME=shopsifu
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=1000
+      - DEFAULT_POOL_SIZE=20
+      - MAX_DB_CONNECTIONS=100
+      - MAX_USER_CONNECTIONS=100
+    ports:
+      - '127.0.0.1:6432:5432'
+    networks:
+      - app-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    security_opt:
+      - no-new-privileges:true
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nginx
+    restart: unless-stopped
+    depends_on:
+      - grafana
+      - prometheus
+    networks:
+      - app-network
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/secrets:/etc/nginx/secrets:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    security_opt:
+      - no-new-privileges:true
 
 networks:
   app-network:
