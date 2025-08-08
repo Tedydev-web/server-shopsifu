@@ -49,7 +49,16 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    command: redis-server --appendonly yes
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --appendfsync
+      - everysec
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-1gb}
+      - --maxmemory-policy
+      - allkeys-lru
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
@@ -59,7 +68,7 @@ services:
       - cluster.name=shopsifu-cluster
       - discovery.type=single-node
       - bootstrap.memory_lock=true
-      - 'ES_JAVA_OPTS=-Xms4g -Xmx4g'
+      - 'ES_JAVA_OPTS=-Xms${ELASTICSEARCH_HEAP_SIZE:-8g} -Xmx${ELASTICSEARCH_HEAP_SIZE:-8g}'
       - xpack.security.enabled=false
       - xpack.security.enrollment.enabled=false
     ulimits:
@@ -99,6 +108,7 @@ services:
     image: ghcr.io/tedydev-web/server-shopsifu:latest
     container_name: server
     restart: unless-stopped
+    read_only: true
     logging:
       driver: json-file
       options:
@@ -107,6 +117,11 @@ services:
     ulimits:
       nofile: 65535
     stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.core.somaxconn: 65535
+      net.ipv4.tcp_tw_reuse: '1'
     ports:
       - '3000:3000'
     env_file:
@@ -116,6 +131,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./certs:/app/certs
+      - ./upload:/app/upload
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,6 +157,8 @@ services:
         max-file: '5'
     ulimits:
       nofile: 65535
+    security_opt:
+      - no-new-privileges:true
     ports:
       - '9090:9090'
     volumes:
@@ -173,6 +191,8 @@ services:
         max-file: '5'
     ulimits:
       nofile: 65535
+    security_opt:
+      - no-new-privileges:true
     ports:
       - '3001:3000'
     environment:

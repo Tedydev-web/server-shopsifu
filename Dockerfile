@@ -27,7 +27,7 @@ COPY . .
 RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 # Remove devDependencies and build deps
-RUN npm prune --omit=dev && apk del .build-deps
+RUN npm prune --omit=dev && npm cache clean --force && apk del .build-deps
 
 FROM node:20-alpine AS production
 
@@ -38,8 +38,11 @@ WORKDIR /app
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nestjs -u 1001
 
-# Install @nestjs/cli globally for production
-RUN npm install -g @nestjs/cli pm2
+# Install runtime tools
+RUN apk add --no-cache curl && npm install -g pm2
+
+# Runtime env
+ENV NODE_ENV=production
 
 # Copy built application from builder stage
 COPY --from=builder /app/package.json ./
@@ -55,6 +58,10 @@ USER nestjs
 
 # Expose port
 EXPOSE 3000
+
+# Healthcheck (đồng nhất với compose)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
 
 # Start production server
 CMD ["npm", "run", "start:pm2"]
