@@ -18,7 +18,11 @@ export class ElasticsearchService implements OnModuleInit {
     }
 
     const clientConfig: any = {
-      node
+      node,
+      // Tăng timeout cho kết nối từ xa
+      requestTimeout: 120000, // 2 phút
+      maxRetries: 3,
+      retryOnTimeout: true
     }
 
     // Chỉ thêm auth nếu có username và password
@@ -172,7 +176,8 @@ export class ElasticsearchService implements OnModuleInit {
     try {
       const result = await this.client.bulk({
         refresh: true,
-        operations
+        operations,
+        timeout: '120s' // Tăng timeout lên 2 phút
       })
 
       if (result.errors) {

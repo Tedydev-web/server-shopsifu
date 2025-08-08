@@ -335,7 +335,6 @@ async function main() {
         failCount++
       }
     }
-
   }
 
   // 8.8. Import product videos (nếu có) vào product images
@@ -420,6 +419,11 @@ async function main() {
             })
             syncSuccessCount += batch.length
             logger.log(`✅ Đã sync thành công batch ${i + 1}/${batches.length}`)
+
+            // Thêm delay giữa các batch để tránh quá tải
+            if (i < batches.length - 1) {
+              await new Promise((resolve) => setTimeout(resolve, 1000)) // Delay 1 giây
+            }
           } catch (error) {
             syncFailCount += batch.length
             logger.error(`❌ Lỗi khi sync batch ${i + 1}/${batches.length}:`, error)
