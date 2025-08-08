@@ -109,7 +109,7 @@ services:
     image: ${SERVER_IMAGE:-ghcr.io/tedydev-web/server-shopsifu:latest}
     container_name: server
     restart: unless-stopped
-    read_only: true
+    # read_only: true  # Tạm thời tắt để PM2 hoạt động
     logging:
       driver: json-file
       options:
