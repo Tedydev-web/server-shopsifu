@@ -10,7 +10,7 @@ services:
         max-file: '5'
     # Expose PostgreSQL chỉ cho localhost (an toàn hơn)
     ports:
-      - '127.0.0.1:5432:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-shopsifu}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Shopsifu2025@@}
@@ -39,7 +39,7 @@ services:
     ulimits:
       nofile: 65535
     ports:
-      - '6379:6379'
+      - '${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     networks:
@@ -79,7 +79,7 @@ services:
     volumes:
       - esdata:/usr/share/elasticsearch/data
     ports:
-      - '127.0.0.1:9200:9200'
+      - '127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200'
     networks:
       - app-network
     healthcheck:
@@ -96,7 +96,7 @@ services:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - SERVER_SSL_ENABLED=false
     ports:
-      - 127.0.0.1:5601:5601
+      - 127.0.0.1:${KIBANA_PORT:-5601}:5601
     volumes:
       - ./certs:/usr/share/kibana/config/certs
     networks:
@@ -167,7 +167,7 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=7d'
+      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_DAYS:-7}d'
       - '--web.enable-lifecycle'
     networks:
       - app-network
@@ -196,8 +196,9 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-Shopsifu2025@@}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_USERS_ALLOW_SIGN_UP=${GRAFANA_ALLOW_SIGNUP:-false}
+      - GF_AUTH_ANONYMOUS_ENABLED=${GRAFANA_ANONYMOUS_ENABLED:-false}
+      - GF_SERVER_HTTP_PORT=${GRAFANA_PORT:-3000}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
@@ -222,16 +223,16 @@ services:
     environment:
       - DATABASES_HOST=postgres
       - DATABASES_PORT=5432
-      - DATABASES_USER=shopsifu
-      - DATABASES_PASSWORD=Shopsifu2025@@
-      - DATABASES_DBNAME=shopsifu
-      - POOL_MODE=transaction
-      - MAX_CLIENT_CONN=1000
-      - DEFAULT_POOL_SIZE=20
-      - MAX_DB_CONNECTIONS=100
-      - MAX_USER_CONNECTIONS=100
+      - DATABASES_USER=${POSTGRES_USER:-shopsifu}
+      - DATABASES_PASSWORD=${POSTGRES_PASSWORD:-Shopsifu2025@@}
+      - DATABASES_DBNAME=${POSTGRES_DB:-shopsifu}
+      - POOL_MODE=${PGBOUNCER_POOL_MODE:-transaction}
+      - MAX_CLIENT_CONN=${PGBOUNCER_MAX_CLIENT_CONN:-1000}
+      - DEFAULT_POOL_SIZE=${PGBOUNCER_DEFAULT_POOL_SIZE:-20}
+      - MAX_DB_CONNECTIONS=${PGBOUNCER_MAX_DB_CONNECTIONS:-100}
+      - MAX_USER_CONNECTIONS=${PGBOUNCER_MAX_USER_CONNECTIONS:-100}
     ports:
-      - '127.0.0.1:6432:5432'
+      - '127.0.0.1:${PGBOUNCER_PORT:-6432}:5432'
     networks:
       - app-network
     depends_on:
@@ -255,8 +256,8 @@ services:
     networks:
       - app-network
     ports:
-      - '80:80'
-      - '443:443'
+      - '${NGINX_HTTP_PORT:-80}:80'
+      - '${NGINX_HTTPS_PORT:-443}:443'
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
