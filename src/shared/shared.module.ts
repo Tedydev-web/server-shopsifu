@@ -91,18 +91,10 @@ const sharedServices = [
     I18nModule.forRoot({
       fallbackLanguage: 'en',
       loaderOptions: {
-        // Tự động chọn thư mục ngôn ngữ: ưu tiên dist khi chạy production, fallback sang src khi dev
-        path: (() => {
-          const distLang = path.resolve('dist/shared/languages')
-          const srcLang = path.resolve('src/shared/languages')
-          if (existsSync(distLang)) return distLang
-          if (existsSync(srcLang)) return srcLang
-          return path.join(__dirname, 'languages')
-        })(),
-        watch: process.env.NODE_ENV !== 'production'
+        path: path.resolve('src/shared/languages/'),
+        watch: true
       },
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
-      // Luôn generate types để đảm bảo type safety
       typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts')
     }),
 
