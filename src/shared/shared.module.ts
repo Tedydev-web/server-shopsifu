@@ -16,6 +16,7 @@ import { S3Service } from 'src/shared/services/s3.service'
 import { SharedPaymentRepository } from './repositories/shared-payment.repo'
 import { SharedWebsocketRepository } from './repositories/shared-websocket.repo'
 import path from 'path'
+import { existsSync } from 'fs'
 import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
 import { Resolvable, ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler'
 import { ScheduleModule } from '@nestjs/schedule'
@@ -90,8 +91,14 @@ const sharedServices = [
     I18nModule.forRoot({
       fallbackLanguage: 'en',
       loaderOptions: {
-        // Dùng đường dẫn theo __dirname để chạy được cả dev (src) và prod (dist)
-        path: path.join(__dirname, 'languages'),
+        // Tự động chọn thư mục ngôn ngữ: ưu tiên dist khi chạy production, fallback sang src khi dev
+        path: (() => {
+          const distLang = path.resolve('dist/shared/languages')
+          const srcLang = path.resolve('src/shared/languages')
+          if (existsSync(distLang)) return distLang
+          if (existsSync(srcLang)) return srcLang
+          return path.join(__dirname, 'languages')
+        })(),
         watch: process.env.NODE_ENV !== 'production'
       },
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],

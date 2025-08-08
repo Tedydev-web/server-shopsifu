@@ -64,6 +64,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Deploy to production VPS via SSH (docker-compose)
         env:
           VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
