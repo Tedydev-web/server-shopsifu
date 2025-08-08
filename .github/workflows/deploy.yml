@@ -63,9 +63,13 @@ jobs:
   deploy-production:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Deploy to production VPS via SSH (docker-compose)
         env:
@@ -74,14 +78,30 @@ jobs:
           VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
           PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
         run: |
-          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch origin master && git reset --hard origin/master && docker-compose pull && docker-compose down && docker-compose up -d --force-recreate && sleep 10 && docker-compose logs server && docker-compose ps"
+          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch origin master && git reset --hard origin/master && docker-compose pull && docker-compose build --no-cache server && docker-compose down && docker-compose up -d --force-recreate --build server && sleep 10 && docker-compose logs server && docker-compose ps"
 
       - name: Get commit details
         id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
-          COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an")
-          COMMIT_DATE=$(git log -1 --pretty=format:"%cd" --date=relative)
+          set -euo pipefail
+          # Thử lấy từ GitHub event trước (ổn định cho workflow_dispatch)
+          COMMIT_MESSAGE="${{ github.event.head_commit.message || '' }}"
+          COMMIT_AUTHOR="${{ github.event.head_commit.author.name || '' }}"
+          COMMIT_DATE="${{ github.event.head_commit.timestamp || '' }}"
+
+          # Nếu thiếu, fallback sang git (đã checkout repo)
+          if [ -z "$COMMIT_MESSAGE" ]; then
+            COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s" || true)
+          fi
+          if [ -z "$COMMIT_AUTHOR" ]; then
+            COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" || true)
+          fi
+          if [ -z "$COMMIT_DATE" ]; then
+            COMMIT_DATE=$(git log -1 --pretty=format:"%cd" --date=relative || true)
+          fi
+
           echo "message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
           echo "author=$COMMIT_AUTHOR" >> $GITHUB_OUTPUT
           echo "date=$COMMIT_DATE" >> $GITHUB_OUTPUT
