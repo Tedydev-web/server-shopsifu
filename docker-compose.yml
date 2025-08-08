@@ -3,6 +3,8 @@ services:
     image: postgres:16-alpine
     container_name: postgres
     restart: unless-stopped
+    env_file:
+      - .env.docker
     logging:
       driver: json-file
       options:
@@ -32,6 +34,8 @@ services:
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
+    env_file:
+      - .env.docker
     logging:
       driver: json-file
       options:
@@ -65,12 +69,14 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
     container_name: elasticsearch
+    env_file:
+      - .env.docker
     environment:
       - node.name=es01
       - cluster.name=shopsifu-cluster
       - discovery.type=single-node
       - bootstrap.memory_lock=true
-      - 'ES_JAVA_OPTS=-Xms${ELASTICSEARCH_HEAP_SIZE:-8g} -Xmx${ELASTICSEARCH_HEAP_SIZE:-8g}'
+      - 'ES_JAVA_OPTS=-Xms${ELASTICSEARCH_HEAP_SIZE:-2g} -Xmx${ELASTICSEARCH_HEAP_SIZE:-2g}'
       - xpack.security.enabled=false
       - xpack.security.enrollment.enabled=false
     ulimits:
@@ -92,6 +98,8 @@ services:
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
     container_name: kibana
+    env_file:
+      - .env.docker
     environment:
       - SERVER_NAME=kibana
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
@@ -151,6 +159,8 @@ services:
     image: prom/prometheus:v2.54.1
     container_name: prometheus
     restart: unless-stopped
+    env_file:
+      - .env.docker
     logging:
       driver: json-file
       options:
@@ -185,6 +195,8 @@ services:
     image: grafana/grafana:11.4.0
     container_name: grafana
     restart: unless-stopped
+    env_file:
+      - .env.docker
     logging:
       driver: json-file
       options:
@@ -222,6 +234,8 @@ services:
     image: edoburu/pgbouncer:1.18.0
     container_name: pgbouncer
     restart: unless-stopped
+    env_file:
+      - .env.docker
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
