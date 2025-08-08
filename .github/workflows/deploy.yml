@@ -62,6 +62,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
+          provenance: false
 
   deploy-production:
     needs: build
@@ -74,16 +75,24 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Deploy to production VPS via SSH (docker compose)
-        env:
-          VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
-          VPS_HOST: ${{ secrets.STAGING_VPS_IP_HOST }}
-          VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
-          PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
-        run: |
-          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch origin master && git reset --hard origin/master && export SERVER_IMAGE=ghcr.io/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }} && docker login ghcr.io -u $GITHUB_ACTOR -p $GITHUB_TOKEN && docker compose pull && docker compose up -d --force-recreate && sleep 10 && docker compose ps"
+      - name: Deploy to production VPS via SSH (key-based)
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.STAGING_VPS_IP_HOST }}
+          username: ${{ secrets.STAGING_VPS_USERNAME }}
+          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          script: |
+            export PROJECT_PATH='${{ secrets.STAGING_PATH_PROJECT }}'
+            set -euo pipefail
+            cd "$PROJECT_PATH"
+            git fetch origin master
+            git reset --hard origin/master
+            docker login ghcr.io -u '${{ github.actor }}' -p '${{ secrets.GITHUB_TOKEN }}'
+            export SERVER_IMAGE='ghcr.io/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }}'
+            docker compose pull
+            docker compose up -d --force-recreate
+            sleep 10
+            docker compose ps
 
       - name: Get commit details
         id: commit
@@ -121,21 +130,16 @@ jobs:
           ACTOR: ${{ github.actor }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
-          VPS_HOST: ${{ secrets.STAGING_VPS_IP_HOST }}
-          VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
-          PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
           COMMIT_MESSAGE: ${{ steps.commit.outputs.message }}
           COMMIT_AUTHOR: ${{ steps.commit.outputs.author }}
           COMMIT_DATE: ${{ steps.commit.outputs.date }}
+          IMAGE_TAGS: ${{ needs.build.outputs.image-tag }}
+          IMAGE_DIGEST: ${{ needs.build.outputs.image-digest }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
 
-          # Lấy thông tin PM2 từ server
-          PM2_STATUS=""
-          if [ "$STATUS" = "success" ]; then
-            PM2_STATUS=$(sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "cd $PROJECT_PATH && pm2 list --no-daemon" 2>/dev/null || echo "Không thể kết nối PM2")
-          fi
+          # Bỏ qua PM2 status truy vấn từ xa để tránh phụ thuộc mật khẩu
+          PM2_STATUS="(bỏ qua)"
 
           COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
           ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
@@ -212,6 +216,8 @@ jobs:
             --arg commit_message "$COMMIT_DISPLAY" \
             --arg commit_author "$COMMIT_AUTHOR" \
             --arg commit_date "$COMMIT_DATE" \
+            --arg image_tags "$IMAGE_TAGS" \
+            --arg image_digest "$IMAGE_DIGEST" \
             ' {
               embeds: [{
                 title: "🚀 SERVER - Thông báo triển khai ✨",
@@ -222,7 +228,8 @@ jobs:
                   { name: "🌿 Nhánh", value: "`\($branch)`", inline: true },
                   { name: "👤 Người thực hiện", value: "`\($actor)`", inline: true },
                   { name: "🔗 Commit", value: "[`\($commit_short)`](https://github.com/\($repo)/commit/\($commit_full))", inline: false },
-                  { name: "📝 Nội dung Commit", value: "\($commit_message)", inline: false }
+                  { name: "📝 Nội dung Commit", value: "\($commit_message)", inline: false },
+                  { name: "🖼️ Image", value: "Tags:\n`\($image_tags)`\nDigest:\n`\($image_digest)`", inline: false }
                 ],
                 url: "https://github.com/\($repo)/actions/runs/\($run_id)",
                 footer: { "text": "🚀 Triển khai tới môi trường Production • \($commit_date)" },
@@ -237,25 +244,39 @@ jobs:
     runs-on: ubuntu-latest
     if: failure()
     steps:
-      - name: Rollback to previous commit (production)
-        env:
-          VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
-          VPS_HOST: ${{ secrets.STAGING_VPS_IP_HOST }}
-          VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
-          PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
-        run: |
-          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch origin master && git reset --hard HEAD~1 && docker-compose pull && docker-compose down && docker-compose up -d --force-recreate"
+      - name: Rollback to previous commit (production via SSH key)
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.STAGING_VPS_IP_HOST }}
+          username: ${{ secrets.STAGING_VPS_USERNAME }}
+          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          script: |
+            export PROJECT_PATH='${{ secrets.STAGING_PATH_PROJECT }}'
+            set -euo pipefail
+            cd "$PROJECT_PATH"
+            git fetch origin master
+            git reset --hard HEAD~1
+            docker compose pull
+            docker compose down
+            docker compose up -d --force-recreate
 
   manual-rollback:
     name: Manual Rollback
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.manual_rollback
     runs-on: ubuntu-latest
     steps:
-      - name: Re-deploy to VPS (manual rollback)
-        env:
-          VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
-          VPS_HOST: ${{ secrets.STAGING_VPS_IP_HOST }}
-          VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
-          PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
-        run: |
-          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch --all && git reset --hard ${{ github.event.inputs.manual_rollback }} && docker-compose pull && docker-compose down && docker-compose up -d --force-recreate"
+      - name: Re-deploy to VPS (manual rollback via SSH key)
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.STAGING_VPS_IP_HOST }}
+          username: ${{ secrets.STAGING_VPS_USERNAME }}
+          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          script: |
+            export PROJECT_PATH='${{ secrets.STAGING_PATH_PROJECT }}'
+            set -euo pipefail
+            cd "$PROJECT_PATH"
+            git fetch --all
+            git reset --hard '${{ github.event.inputs.manual_rollback }}'
+            docker compose pull
+            docker compose down
+            docker compose up -d --force-recreate
