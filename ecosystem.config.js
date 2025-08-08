@@ -4,10 +4,12 @@ module.exports = {
       name: 'server-shopsifu',
       script: './dist/main.js',
       watch: false,
-      instances: 'max', // Sử dụng tất cả CPU cores
+      instances: process.env.PM2_INSTANCES || 11,
       exec_mode: 'cluster',
-      max_memory_restart: '1G',
-      node_args: '--max-old-space-size=1024',
+      wait_ready: false,
+      max_memory_restart: process.env.PM2_MAX_MEM || '1G',
+      node_args: process.env.NODE_ARGS || '--max-old-space-size=1024',
+      instance_var: 'INSTANCE_ID',
       env: {
         NODE_ENV: 'development',
         PORT: 3000
@@ -18,7 +20,6 @@ module.exports = {
       },
       // Docker specific settings
       kill_timeout: 5000,
-      wait_ready: true,
       listen_timeout: 10000,
       // Logging
       log_file: './logs/combined.log',
