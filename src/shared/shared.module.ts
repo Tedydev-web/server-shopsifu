@@ -90,11 +90,15 @@ const sharedServices = [
     I18nModule.forRoot({
       fallbackLanguage: 'en',
       loaderOptions: {
-        path: path.resolve('src/shared/languages/'),
-        watch: true
+        // Dùng đường dẫn theo __dirname để chạy được cả dev (src) và prod (dist)
+        path: path.join(__dirname, 'languages'),
+        watch: process.env.NODE_ENV !== 'production'
       },
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
-      typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts')
+      // Chỉ sinh type ở môi trường dev để tránh ghi file vào container/prod
+      ...(process.env.NODE_ENV === 'production'
+        ? {}
+        : { typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts') })
     }),
 
     CacheModule.registerAsync({
