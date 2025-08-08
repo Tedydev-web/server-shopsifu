@@ -105,7 +105,7 @@ services:
         condition: service_healthy
 
   server:
-    image: ghcr.io/tedydev-web/server-shopsifu:latest
+    image: ${SERVER_IMAGE:-ghcr.io/tedydev-web/server-shopsifu:latest}
     container_name: server
     restart: unless-stopped
     read_only: true
