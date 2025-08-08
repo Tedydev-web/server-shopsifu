@@ -8,9 +8,8 @@ services:
       options:
         max-size: '10m'
         max-file: '5'
-    # Expose PostgreSQL chỉ cho localhost (an toàn hơn)
     ports:
-      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+      - '${POSTGRES_PORT:-5432}:5432'
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-shopsifu}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Shopsifu2025@@}
@@ -213,7 +212,6 @@ services:
       retries: 3
       start_period: 30s
 
-  # PgBouncer cho connection pooling
   pgbouncer:
     image: edoburu/pgbouncer:1.18.0
     container_name: pgbouncer
@@ -230,7 +228,7 @@ services:
       - MAX_DB_CONNECTIONS=${PGBOUNCER_MAX_DB_CONNECTIONS:-100}
       - MAX_USER_CONNECTIONS=${PGBOUNCER_MAX_USER_CONNECTIONS:-100}
     ports:
-      - '127.0.0.1:${PGBOUNCER_PORT:-6432}:5432'
+      - '${PGBOUNCER_PORT:-6432}:5432'
     networks:
       - app-network
     depends_on:
