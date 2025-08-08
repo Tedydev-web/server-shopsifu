@@ -51,6 +51,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/ecosystem.config.js ./
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/src/shared/languages ./src/shared/languages
 
 # Change ownership
 RUN chown -R nestjs:nodejs /app
