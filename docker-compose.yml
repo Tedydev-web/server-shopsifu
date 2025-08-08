@@ -1,9 +1,13 @@
-version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
     container_name: postgres
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
     ports:
       - '5432:5432'
     environment:
@@ -26,6 +30,13 @@ services:
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    ulimits:
+      nofile: 65535
     ports:
       - '6379:6379'
     volumes:
@@ -84,13 +95,18 @@ services:
       elasticsearch:
         condition: service_healthy
 
-  # === MAIN APPLICATION ===
   server:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/tedydev-web/server-shopsifu:latest
     container_name: server
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    ulimits:
+      nofile: 65535
+    stop_grace_period: 30s
     ports:
       - '3000:3000'
     env_file:
@@ -118,6 +134,13 @@ services:
     image: prom/prometheus:v2.54.1
     container_name: prometheus
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    ulimits:
+      nofile: 65535
     ports:
       - '9090:9090'
     volumes:
@@ -143,6 +166,13 @@ services:
     image: grafana/grafana:11.4.0
     container_name: grafana
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    ulimits:
+      nofile: 65535
     ports:
       - '3001:3000'
     environment:

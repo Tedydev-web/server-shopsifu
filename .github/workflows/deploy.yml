@@ -71,14 +71,16 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Deploy to production VPS via SSH (docker-compose)
+      - name: Deploy to production VPS via SSH (docker compose)
         env:
           VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
           VPS_HOST: ${{ secrets.STAGING_VPS_IP_HOST }}
           VPS_PASS: ${{ secrets.STAGING_VPS_PASSWORD }}
           PROJECT_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
         run: |
-          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch origin master && git reset --hard origin/master && docker-compose pull && docker-compose build --no-cache server && docker-compose down && docker-compose up -d --force-recreate --build server && sleep 10 && docker-compose logs server && docker-compose ps"
+          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "export PROJECT_PATH='$PROJECT_PATH' && set -euo pipefail && cd \$PROJECT_PATH && git fetch origin master && git reset --hard origin/master && docker login ghcr.io -u $GITHUB_ACTOR -p $GITHUB_TOKEN && docker compose pull && docker compose up -d --force-recreate && sleep 10 && docker compose ps"
 
       - name: Get commit details
         id: commit
