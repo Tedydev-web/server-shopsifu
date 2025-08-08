@@ -11,6 +11,6 @@
       }
     },
     "deleteOutDir": true,
-    "assets": [{ "include": "src/shared/languages/**/*", "watchAssets": true, "outDir": "dist/shared/languages" }]
+    "assets": [{ "include": "src/shared/languages/**/*", "watchAssets": true, "outDir": "dist/src/shared/languages" }]
   }
 }

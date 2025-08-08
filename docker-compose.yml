@@ -79,7 +79,7 @@ services:
     volumes:
       - esdata:/usr/share/elasticsearch/data
     ports:
-      - '127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200'
+      - '${ELASTICSEARCH_PORT:-9200}:9200'
     networks:
       - app-network
     healthcheck:
@@ -96,7 +96,7 @@ services:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - SERVER_SSL_ENABLED=false
     ports:
-      - 127.0.0.1:${KIBANA_PORT:-5601}:5601
+      - '${KIBANA_PORT:-5601}:5601'
     volumes:
       - ./certs:/usr/share/kibana/config/certs
     networks:
@@ -109,7 +109,6 @@ services:
     image: ${SERVER_IMAGE:-ghcr.io/tedydev-web/server-shopsifu:latest}
     container_name: server
     restart: unless-stopped
-    # read_only: true  # Tạm thời tắt để PM2 hoạt động
     logging:
       driver: json-file
       options:
@@ -123,9 +122,8 @@ services:
     sysctls:
       net.core.somaxconn: 65535
       net.ipv4.tcp_tw_reuse: '1'
-    # Port mapping đã được xử lý qua Nginx reverse proxy
-    # ports:
-    #   - '3000:3000'
+    ports:
+      - '${SERVER_PORT:-3000}:3000'
     env_file:
       - .env.docker
     networks:
@@ -238,31 +236,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '5'
-    security_opt:
-      - no-new-privileges:true
-
-  nginx:
-    image: nginx:1.27-alpine
-    container_name: nginx
-    restart: unless-stopped
-    depends_on:
-      - grafana
-      - prometheus
-    networks:
-      - app-network
-    ports:
-      - '${NGINX_HTTP_PORT:-80}:80'
-      - '${NGINX_HTTPS_PORT:-443}:443'
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-      - ./nginx/secrets:/etc/nginx/secrets:ro
     logging:
       driver: json-file
       options:

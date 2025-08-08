@@ -102,10 +102,8 @@ const sharedServices = [
         watch: process.env.NODE_ENV !== 'production'
       },
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
-      // Chỉ sinh type ở môi trường dev để tránh ghi file vào container/prod
-      ...(process.env.NODE_ENV === 'production'
-        ? {}
-        : { typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts') })
+      // Luôn generate types để đảm bảo type safety
+      typesOutputPath: path.resolve('src/shared/languages/generated/i18n.generated.ts')
     }),
 
     CacheModule.registerAsync({

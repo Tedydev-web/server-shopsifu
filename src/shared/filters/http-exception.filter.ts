@@ -41,7 +41,7 @@ export class HttpExceptionFilter extends BaseExceptionFilter {
 
           // Kiểm tra xem có phải là translation key không
           if (messageKey.includes('.')) {
-            translatedMessage = await this.i18n.translate(messageKey, { lang: language })
+            translatedMessage = await this.i18n.translate(messageKey as keyof I18nTranslations, { lang: language })
           } else {
             translatedMessage = messageKey
           }
@@ -53,7 +53,7 @@ export class HttpExceptionFilter extends BaseExceptionFilter {
               ...error,
               message:
                 typeof error.message === 'string' && error.message.includes('.')
-                  ? await this.i18n.translate(error.message, { lang: language })
+                  ? await this.i18n.translate(error.message as keyof I18nTranslations, { lang: language })
                   : error.message
             }))
           )
