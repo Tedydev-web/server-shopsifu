@@ -94,7 +94,7 @@ services:
       - cluster.name=shopsifu-cluster
       - discovery.type=single-node
       - bootstrap.memory_lock=true
-      - 'ELASTICSEARCH_HEAP_SIZE=${ELASTICSEARCH_HEAP_SIZE:-2g}'
+      - 'ELASTICSEARCH_HEAP_SIZE=${ELASTICSEARCH_HEAP_SIZE:-1g}'
       - 'ES_JAVA_OPTS=-Xms$${ELASTICSEARCH_HEAP_SIZE} -Xmx$${ELASTICSEARCH_HEAP_SIZE}'
       - xpack.security.enabled=false
       - xpack.security.enrollment.enabled=false
@@ -122,9 +122,9 @@ services:
       # Đơn giản hoá: chỉ cần HTTP 200 ở root, tránh fail do cluster chưa yellow
       test: ['CMD-SHELL', 'curl -fsS -m 5 http://localhost:9200 >/dev/null || exit 1']
       interval: 10s
-      timeout: 5s
+      timeout: 10s
       retries: 60
-      start_period: 180s
+      start_period: 300s
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
