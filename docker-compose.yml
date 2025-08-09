@@ -102,10 +102,18 @@ services:
       memlock:
         soft: -1
         hard: -1
+      nofile:
+        soft: 65535
+        hard: 65535
     security_opt:
       - no-new-privileges:true
     volumes:
       - esdata:/usr/share/elasticsearch/data
+    deploy:
+      resources:
+        limits:
+          cpus: '3.0'
+          memory: 8g
     ports:
       - '127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200'
     networks:
