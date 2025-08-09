@@ -1,0 +1,28 @@
+@startuml Auth - 2FA Setup Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /auth/2fa/setup
+
+start
+:Lấy user theo userId;
+if (Không tồn tại?) then (Có)
+  :Ném EmailNotFound (422);
+  stop
+endif
+if (Đã bật 2FA?) then (Có)
+  :Ném TOTPAlreadyEnabled (422);
+  stop
+endif
+:generateTOTPSecret(email);
+:Cập nhật user.totpSecret;
+:Trả về 200 { secret, uri };
+stop
+
+@enduml
+
+

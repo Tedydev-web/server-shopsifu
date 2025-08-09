@@ -1,0 +1,51 @@
+@startuml Brand - Update Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng PUT /brands/:brandId
+
+actor "User" as U
+participant "BrandController" as BC
+participant "ActiveUser" as AU
+participant "BrandService" as BS
+participant "BrandRepo" as BR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> BC: PUT /brands/:brandId { name, logo }
+activate BC
+
+BC -> AU: @ActiveUser()
+AU --> BC: user
+
+BC -> BS: update({ id, data, user })
+activate BS
+
+BS -> BR: update({ id, updatedById: user.userId, data })
+activate BR
+BR -> DB: brand.update({ where: { id, deletedAt: null }, data: { ...data, updatedById }, include: translations })
+DB --> BR: brand | NotFound
+BR --> BS: brand | error
+deactivate BR
+
+alt NotFound
+  BS --> BC: NotFoundRecordException (404)
+  BC --> U: 404 Not Found
+  deactivate BS
+  deactivate BC
+  stop
+end
+
+BS -> IS: t('brand.brand.success.UPDATE_SUCCESS')
+IS --> BS: message
+BS --> BC: { message, data: brand }
+deactivate BS
+
+BC --> U: 200 OK + JSON
+deactivate BC
+
+@enduml
+
+

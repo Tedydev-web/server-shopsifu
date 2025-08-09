@@ -1,0 +1,29 @@
+@startuml Auth - Register Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /auth/register
+
+start
+:Nhận {email, password, confirmPassword, name, phoneNumber, code};
+:validateVerificationCode(REGISTER);
+if (OTP tồn tại & chưa hết hạn?) then (Có)
+  :Hash password;
+  fork
+    :Tạo user với role Client;
+  fork again
+    :Xóa verification code;
+  end fork
+  :Trả về 201 user (ẩn password);
+else (Không)
+  :Ném InvalidOTP hoặc OTPExpired (422);
+endif
+stop
+
+@enduml
+
+

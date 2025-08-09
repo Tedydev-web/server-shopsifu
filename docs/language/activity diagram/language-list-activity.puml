@@ -1,0 +1,20 @@
+@startuml Language - Get List Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /languages
+
+start
+:FindMany languages (deletedAt=null);
+:Tính totalItems từ array length;
+:Build message i18n;
+:Trả về 200 { message, data, totalItems };
+stop
+
+@enduml
+
+

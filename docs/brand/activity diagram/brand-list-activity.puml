@@ -1,0 +1,27 @@
+@startuml Brand - Get List Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /brands
+
+start
+:Đọc pagination params;
+:Lấy languageId từ I18nContext;
+fork
+  :COUNT brands (deletedAt IS NULL);
+fork again
+  :FIND brands (deletedAt IS NULL) include translations theo languageId
+  orderBy, skip, take;
+end fork
+:Tính metadata (totalItems, totalPages, hasNext, hasPrev);
+:Build message i18n;
+:Trả về 200 { message, data, metadata };
+stop
+
+@enduml
+
+

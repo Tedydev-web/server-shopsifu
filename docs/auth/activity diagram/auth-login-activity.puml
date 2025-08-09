@@ -1,0 +1,46 @@
+@startuml Auth - Login Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /auth/login
+
+start
+:Tìm user theo email;
+if (Không tìm thấy?) then (Có)
+  :Ném EmailNotFound (422);
+  stop
+endif
+:So khớp password hash;
+if (Sai mật khẩu?) then (Có)
+  :Ném InvalidPassword (422);
+  stop
+endif
+if (Đã bật 2FA?) then (Có)
+  if (Không có totpCode và code?) then (Có)
+    :Ném InvalidTOTPAndCode (422);
+    stop
+  endif
+  if (Có totpCode?) then (Có)
+    :verifyTOTP();
+    if (Sai?) then (Có)
+      :Ném InvalidTOTP (422);
+      stop
+    endif
+  else (Có code)
+    :validateVerificationCode(LOGIN);
+  endif
+endif
+:Tạo device;
+:Ký accessToken và refreshToken;
+:Lưu refreshToken vào DB;
+:Set auth cookies;
+:Trả về 200 message + user;
+stop
+
+@enduml
+
+

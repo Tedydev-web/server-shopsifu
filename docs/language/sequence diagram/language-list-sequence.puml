@@ -1,0 +1,39 @@
+@startuml Language - Get List Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /languages
+
+actor "Client/Admin" as U
+participant "LanguageController" as LC
+participant "LanguageService" as LS
+participant "LanguageRepo" as LR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> LC: GET /languages
+activate LC
+
+LC -> LS: findAll()
+activate LS
+
+LS -> LR: findAll()
+activate LR
+LR -> DB: language.findMany({ where: { deletedAt: null } })
+DB --> LR: languages[]
+LR --> LS: languages[]
+deactivate LR
+
+LS -> IS: t('language.language.success.GET_SUCCESS')
+IS --> LS: message
+LS --> LC: { message, data: languages, totalItems: languages.length }
+deactivate LS
+
+LC --> U: 200 OK + JSON
+deactivate LC
+
+@enduml
+
+

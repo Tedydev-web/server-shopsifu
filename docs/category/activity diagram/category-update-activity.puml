@@ -1,0 +1,24 @@
+@startuml Category - Update Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: PUT /categories/:categoryId
+
+start
+:Nhận categoryId + body + user;
+:category.update({ where: id & deletedAt=null, data: {..., updatedById} }) include translations;
+if (Thành công?) then (Có)
+  :Build message i18n;
+  :Trả về 200 { message, data };
+else (Không)
+  :Ném NotFoundRecordException (404);
+endif
+stop
+
+@enduml
+
+

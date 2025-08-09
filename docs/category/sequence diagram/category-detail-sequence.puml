@@ -1,0 +1,51 @@
+@startuml Category - Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /categories/:categoryId
+
+actor "Client" as C
+participant "CategoryController" as CC
+participant "CategoryService" as CS
+participant "CategoryRepo" as CR
+participant "I18nContext" as IC
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+C -> CC: GET /categories/:categoryId
+activate CC
+
+CC -> CS: findById(categoryId)
+activate CS
+
+CS -> IC: current()?.lang
+IC --> CS: languageId
+
+CS -> CR: findById({ id: categoryId, languageId })
+activate CR
+CR -> DB: category.findUnique({ where: { id, deletedAt: null }, include: { categoryTranslations filtered } })
+DB --> CR: category | null
+CR --> CS: category | null
+deactivate CR
+
+alt category == null
+  CS --> CC: NotFoundRecordException (404)
+  CC --> C: 404 Not Found
+  deactivate CS
+  deactivate CC
+  stop
+end
+
+CS -> IS: t('category.category.success.GET_DETAIL_SUCCESS')
+IS --> CS: message
+CS --> CC: { message, data: category }
+deactivate CS
+
+CC --> C: 200 OK + JSON
+deactivate CC
+
+@enduml
+
+

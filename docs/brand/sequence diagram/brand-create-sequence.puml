@@ -1,0 +1,43 @@
+@startuml Brand - Create Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /brands
+
+actor "User" as U
+participant "BrandController" as BC
+participant "ActiveUser" as AU
+participant "BrandService" as BS
+participant "BrandRepo" as BR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> BC: POST /brands { name, logo }
+activate BC
+
+BC -> AU: @ActiveUser()
+AU --> BC: user
+
+BC -> BS: create({ data, user })
+activate BS
+
+BS -> BR: create({ createdById: user.userId, data })
+activate BR
+BR -> DB: brand.create({ data: { ...data, createdById }, include: translations })
+DB --> BR: brand
+BR --> BS: brand
+deactivate BR
+
+BS -> IS: t('brand.brand.success.CREATE_SUCCESS')
+IS --> BS: message
+BS --> BC: { message, data: brand }
+deactivate BS
+
+BC --> U: 201 Created + JSON
+deactivate BC
+
+@enduml
+
+

@@ -1,0 +1,51 @@
+@startuml Brand - Delete Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng DELETE /brands/:brandId
+
+actor "User" as U
+participant "BrandController" as BC
+participant "ActiveUser" as AU
+participant "BrandService" as BS
+participant "BrandRepo" as BR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> BC: DELETE /brands/:brandId
+activate BC
+
+BC -> AU: @ActiveUser()
+AU --> BC: user
+
+BC -> BS: delete({ id, user })
+activate BS
+
+BS -> BR: delete({ id, deletedById: user.userId })
+activate BR
+BR -> DB: brand.update({ where: { id, deletedAt: null }, data: { deletedAt: now, deletedById } })
+DB --> BR: ok | NotFound
+BR --> BS: ok | error
+deactivate BR
+
+alt NotFound
+  BS --> BC: NotFoundRecordException (404)
+  BC --> U: 404 Not Found
+  deactivate BS
+  deactivate BC
+  stop
+end
+
+BS -> IS: t('brand.brand.success.DELETE_SUCCESS')
+IS --> BS: message
+BS --> BC: { message }
+deactivate BS
+
+BC --> U: 200 OK + JSON
+deactivate BC
+
+@enduml
+
+

@@ -1,0 +1,29 @@
+@startuml Brand Translation - Update Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: PUT /brand-translations/:brandTranslationId
+
+start
+:Nhận id + body(partial) + user;
+:brandTranslation.update({ where: id & deletedAt=null, data: {..., updatedById} });
+if (Unique?) then (Vi phạm)
+  :Ném BrandTranslationAlreadyExistsException (422);
+  stop
+else (OK)
+  if (NotFound?) then (Có)
+    :Ném NotFoundRecordException (404);
+  else (Không)
+    :Build message i18n;
+    :Trả về 200 { message, data };
+  endif
+endif
+stop
+
+@enduml
+
+

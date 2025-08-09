@@ -1,0 +1,20 @@
+@startuml Auth - Google Link Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /auth/google-link
+
+start
+:Nhận userAgent, ip;
+:Mã hóa state (base64);
+:Tạo OAuth URL với scope + state;
+:Trả về 200 { url };
+stop
+
+@enduml
+
+

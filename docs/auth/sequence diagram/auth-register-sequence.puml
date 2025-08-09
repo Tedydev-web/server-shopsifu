@@ -1,0 +1,70 @@
+@startuml Auth - Register Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /auth/register
+
+actor "Client" as C
+participant "AuthController" as AC
+participant "AuthService" as AS
+participant "AuthRepository" as AR
+participant "SharedRoleRepository" as SRR
+participant "HashingService" as HS
+participant "I18n/Helpers" as HP
+database "PostgreSQL (Prisma)" as DB
+
+C -> AC: POST /auth/register { email, password, confirmPassword, name, phoneNumber, code }
+activate AC
+
+AC -> AS: register(body)
+activate AS
+
+AS -> AS: validateVerificationCode({ email, type: REGISTER })
+AS -> AR: findUniqueVerificationCode({ email_type })
+AR -> DB: verificationCode.findUnique()
+DB --> AR: verificationCode | null
+AR --> AS: code | null
+alt Mã OTP không tồn tại
+  AS --> AC: InvalidOTPException (422)
+  AC --> C: 422 Unprocessable Entity
+  deactivate AS
+  deactivate AC
+  stop
+end
+AS -> HP: kiểm tra expiresAt
+alt Mã OTP đã hết hạn
+  AS --> AC: OTPExpiredException (422)
+  AC --> C: 422 Unprocessable Entity
+  deactivate AS
+  deactivate AC
+  stop
+end
+
+AS -> SRR: getClientRoleId()
+SRR --> AS: clientRoleId
+AS -> HS: hash(password)
+HS --> AS: hashedPassword
+
+par Tạo user
+  AS -> AR: createUser({ email, name, phoneNumber, password: hashedPassword, roleId: clientRoleId })
+  AR -> DB: user.create()
+  DB --> AR: user
+  AR --> AS: user (omit password, totpSecret)
+and Xóa OTP
+  AS -> AR: deleteVerificationCode({ email_type: { email, type: REGISTER } })
+  AR -> DB: verificationCode.delete()
+  DB --> AR: deleted
+  AR --> AS: ok
+end
+
+AS --> AC: 201 Created + user (ẩn password)
+deactivate AS
+
+AC --> C: 201 Created + JSON
+deactivate AC
+
+@enduml
+
+

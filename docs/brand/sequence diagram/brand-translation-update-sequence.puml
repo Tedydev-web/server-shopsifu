@@ -1,0 +1,59 @@
+@startuml Brand Translation - Update Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng PUT /brand-translations/:brandTranslationId
+
+actor "User" as U
+participant "BrandTranslationController" as BTC
+participant "ActiveUser" as AU
+participant "BrandTranslationService" as BTS
+participant "BrandTranslationRepo" as BTR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> BTC: PUT /brand-translations/:brandTranslationId { ...partial }
+activate BTC
+
+BTC -> AU: @ActiveUser()
+AU --> BTC: user
+
+BTC -> BTS: update({ id, data, user })
+activate BTS
+
+BTS -> BTR: update({ id, updatedById: user.userId, data })
+activate BTR
+BTR -> DB: brandTranslation.update({ where: { id, deletedAt: null }, data: { ...data, updatedById } })
+DB --> BTR: translation | NotFound | UniqueError
+BTR --> BTS: translation | error
+deactivate BTR
+
+alt Unique constraint
+  BTS --> BTC: BrandTranslationAlreadyExistsException (422)
+  BTC --> U: 422 Unprocessable Entity
+  deactivate BTS
+  deactivate BTC
+  stop
+end
+
+alt NotFound
+  BTS --> BTC: NotFoundRecordException (404)
+  BTC --> U: 404 Not Found
+  deactivate BTS
+  deactivate BTC
+  stop
+end
+
+BTS -> IS: t('brand.brandTranslation.success.UPDATE_SUCCESS')
+IS --> BTS: message
+BTS --> BTC: { message, data: translation }
+deactivate BTS
+
+BTC --> U: 200 OK + JSON
+deactivate BTC
+
+@enduml
+
+

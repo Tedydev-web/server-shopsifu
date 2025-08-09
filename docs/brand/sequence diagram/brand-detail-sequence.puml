@@ -1,0 +1,51 @@
+@startuml Brand - Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /brands/:brandId
+
+actor "Client" as C
+participant "BrandController" as BC
+participant "BrandService" as BS
+participant "BrandRepo" as BR
+participant "I18nContext" as IC
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+C -> BC: GET /brands/:brandId
+activate BC
+
+BC -> BS: findById(brandId)
+activate BS
+
+BS -> IC: current()?.lang
+IC --> BS: languageId
+
+BS -> BR: findById(brandId, languageId)
+activate BR
+BR -> DB: brand.findUnique({ where: { id, deletedAt: null }, include: translations filtered })
+DB --> BR: brand | null
+BR --> BS: brand | null
+deactivate BR
+
+alt brand == null
+  BS --> BC: NotFoundRecordException (404)
+  BC --> C: 404 Not Found
+  deactivate BS
+  deactivate BC
+  stop
+end
+
+BS -> IS: t('brand.brand.success.GET_DETAIL_SUCCESS')
+IS --> BS: message
+BS --> BC: { message, data: brand }
+deactivate BS
+
+BC --> C: 200 OK + JSON
+deactivate BC
+
+@enduml
+
+

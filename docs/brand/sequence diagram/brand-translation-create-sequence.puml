@@ -1,0 +1,51 @@
+@startuml Brand Translation - Create Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /brand-translations
+
+actor "User" as U
+participant "BrandTranslationController" as BTC
+participant "ActiveUser" as AU
+participant "BrandTranslationService" as BTS
+participant "BrandTranslationRepo" as BTR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> BTC: POST /brand-translations { brandId, languageId, name, description }
+activate BTC
+
+BTC -> AU: @ActiveUser()
+AU --> BTC: user
+
+BTC -> BTS: create({ data, user })
+activate BTS
+
+BTS -> BTR: create({ createdById: user.userId, data })
+activate BTR
+BTR -> DB: brandTranslation.create({ data: { ...data, createdById } })
+DB --> BTR: translation | UniqueError
+BTR --> BTS: translation | error
+deactivate BTR
+
+alt Unique constraint
+  BTS --> BTC: BrandTranslationAlreadyExistsException (422)
+  BTC --> U: 422 Unprocessable Entity
+  deactivate BTS
+  deactivate BTC
+  stop
+end
+
+BTS -> IS: t('brand.brandTranslation.success.CREATE_SUCCESS')
+IS --> BTS: message
+BTS --> BTC: { message, data: translation }
+deactivate BTS
+
+BTC --> U: 201 Created + JSON
+deactivate BTC
+
+@enduml
+
+

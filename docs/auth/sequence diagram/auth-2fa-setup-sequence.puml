@@ -1,0 +1,55 @@
+@startuml Auth - 2FA Setup Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /auth/2fa/setup
+
+actor "User" as U
+participant "AuthController" as AC
+participant "AuthService" as AS
+participant "SharedUserRepository" as SUR
+participant "TwoFactorService" as TFS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AC: POST /auth/2fa/setup {}
+activate AC
+
+AC -> AS: setupTwoFactorAuth(userId)
+activate AS
+
+AS -> SUR: findUnique({ id: userId })
+SUR -> DB: user.findFirst()
+DB --> SUR: user | null
+SUR --> AS: user | null
+alt user == null
+  AS --> AC: EmailNotFoundException (422)
+  AC --> U: 422 Unprocessable Entity
+  deactivate AS
+  deactivate AC
+  stop
+end
+alt user.totpSecret exists
+  AS --> AC: TOTPAlreadyEnabledException (422)
+  AC --> U: 422 Unprocessable Entity
+  deactivate AS
+  deactivate AC
+  stop
+end
+
+AS -> TFS: generateTOTPSecret(user.email)
+TFS --> AS: { secret, uri }
+AS -> SUR: update({ id: userId }, { totpSecret: secret, updatedById: userId })
+SUR -> DB: user.update()
+DB --> SUR: ok
+SUR --> AS: ok
+AS --> AC: { secret, uri }
+deactivate AS
+
+AC --> U: 200 OK + { secret, uri }
+deactivate AC
+
+@enduml
+
+

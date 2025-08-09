@@ -1,0 +1,47 @@
+@startuml Language - Delete Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng DELETE /languages/:languageId
+
+actor "Admin" as A
+participant "LanguageController" as LC
+participant "LanguageService" as LS
+participant "LanguageRepo" as LR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> LC: DELETE /languages/:languageId
+activate LC
+
+LC -> LS: delete(languageId)
+activate LS
+
+LS -> LR: delete(languageId, true)  // hard delete
+activate LR
+LR -> DB: language.delete({ where: { id } })
+DB --> LR: deleted language | NotFound
+LR --> LS: ok | error
+deactivate LR
+
+alt NotFound
+  LS --> LC: NotFoundRecordException (404)
+  LC --> A: 404 Not Found
+  deactivate LS
+  deactivate LC
+  stop
+end
+
+LS -> IS: t('language.language.success.DELETE_SUCCESS')
+IS --> LS: message
+LS --> LC: { message }
+deactivate LS
+
+LC --> A: 200 OK + JSON
+deactivate LC
+
+@enduml
+
+

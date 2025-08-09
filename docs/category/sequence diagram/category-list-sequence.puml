@@ -1,0 +1,49 @@
+@startuml Category - Get List Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /categories?parentCategoryId
+
+actor "Client" as C
+participant "CategoryController" as CC
+participant "CategoryService" as CS
+participant "CategoryRepo" as CR
+participant "I18nContext" as IC
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+C -> CC: GET /categories?parentCategoryId
+activate CC
+
+CC -> CS: findAll(parentCategoryId)
+activate CS
+
+CS -> IC: current()?.lang
+IC --> CS: languageId
+
+CS -> CR: findAll({ parentCategoryId, languageId })
+activate CR
+note right of CR
+• WHERE deletedAt IS NULL
+• parentCategoryId = query or null
+• include categoryTranslations filtered by languageId ('all' => no filter)
+• ORDER BY createdAt DESC
+end note
+CR -> DB: category.findMany({ where, include, orderBy })
+DB --> CR: categories[]
+CR --> CS: { data: categories, totalItems: categories.length }
+deactivate CR
+
+CS -> IS: t('category.category.success.GET_SUCCESS')
+IS --> CS: message
+CS --> CC: { message, data, totalItems }
+deactivate CS
+
+CC --> C: 200 OK + JSON
+deactivate CC
+
+@enduml
+
+

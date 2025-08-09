@@ -1,0 +1,34 @@
+@startuml Auth - Send OTP Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /auth/otp
+
+start
+:Nhận { email, type };
+:Tìm user theo email;
+if (type==REGISTER && user tồn tại?) then (Có)
+  :Ném EmailAlreadyExists (422);
+  stop
+endif
+if (type==FORGOT_PASSWORD && user không tồn tại?) then (Có)
+  :Ném EmailNotFound (422);
+  stop
+endif
+:generateOTP();
+:Tạo/ghi đè verificationCode với expiresAt;
+:Gửi email OTP;
+if (Gửi lỗi?) then (Có)
+  :Ném FailedToSendOTP (422);
+  stop
+endif
+:Trả về 200 message;
+stop
+
+@enduml
+
+

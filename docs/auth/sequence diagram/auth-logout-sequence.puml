@@ -1,0 +1,57 @@
+@startuml Auth - Logout Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /auth/logout
+
+actor "Client" as C
+participant "AuthController" as AC
+participant "AuthService" as AS
+participant "TokenService" as TS
+participant "AuthRepository" as AR
+database "PostgreSQL (Prisma)" as DB
+
+C -> AC: POST /auth/logout (cookie refresh_token)
+activate AC
+
+AC -> AC: Xóa cookies access_token, refresh_token trên client
+AC -> AS: logout(refreshToken)
+activate AS
+
+AS -> TS: verifyRefreshToken(refreshToken)
+TS --> AS: ok | error
+alt lỗi verify
+  AS --> AC: UnauthorizedAccessException (401)
+  AC --> C: 401 Unauthorized
+  deactivate AS
+  deactivate AC
+  stop
+end
+
+AS -> AR: deleteRefreshToken({ token })
+AR -> DB: refreshToken.delete()
+DB --> AR: deleted | NotFound
+AR --> AS: deleted | error
+alt NotFound Prisma
+  AS --> AC: RefreshTokenAlreadyUsedException (401)
+  AC --> C: 401 Unauthorized
+  deactivate AS
+  deactivate AC
+  stop
+end
+
+AS -> AR: updateDevice(deviceId, { isActive: false })
+AR -> DB: device.update()
+DB --> AR: device
+AR --> AS: ok
+AS --> AC: { message: 'Đăng xuất thành công' }
+deactivate AS
+
+AC --> C: 200 OK + JSON
+deactivate AC
+
+@enduml
+
+

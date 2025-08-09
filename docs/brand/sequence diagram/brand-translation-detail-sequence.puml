@@ -1,0 +1,47 @@
+@startuml Brand Translation - Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /brand-translations/:brandTranslationId
+
+actor "User" as U
+participant "BrandTranslationController" as BTC
+participant "BrandTranslationService" as BTS
+participant "BrandTranslationRepo" as BTR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> BTC: GET /brand-translations/:brandTranslationId
+activate BTC
+
+BTC -> BTS: findById(brandTranslationId)
+activate BTS
+
+BTS -> BTR: findById(id)
+activate BTR
+BTR -> DB: brandTranslation.findUnique({ where: { id, deletedAt: null }})
+DB --> BTR: translation | null
+BTR --> BTS: { data } | null
+deactivate BTR
+
+alt not found
+  BTS --> BTC: NotFoundRecordException (404)
+  BTC --> U: 404 Not Found
+  deactivate BTS
+  deactivate BTC
+  stop
+end
+
+BTS -> IS: t('brand.brandTranslation.success.GET_DETAIL_SUCCESS')
+IS --> BTS: message
+BTS --> BTC: { message, data }
+deactivate BTS
+
+BTC --> U: 200 OK + JSON
+deactivate BTC
+
+@enduml
+
+

@@ -1,0 +1,43 @@
+@startuml Language - Create Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /languages
+
+actor "Admin" as A
+participant "LanguageController" as LC
+participant "ActiveUser" as AU
+participant "LanguageService" as LS
+participant "LanguageRepo" as LR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> LC: POST /languages { id, name }
+activate LC
+
+LC -> AU: @ActiveUser()
+AU --> LC: user
+
+LC -> LS: create({ data, createdById: user.userId })
+activate LS
+
+LS -> LR: create({ createdById, data })
+activate LR
+LR -> DB: language.create({ data: { id, name, createdById } })
+DB --> LR: language
+LR --> LS: language
+deactivate LR
+
+LS -> IS: t('language.language.success.CREATE_SUCCESS')
+IS --> LS: message
+LS --> LC: { message, data: language }
+deactivate LS
+
+LC --> A: 201 Created + JSON
+deactivate LC
+
+@enduml
+
+

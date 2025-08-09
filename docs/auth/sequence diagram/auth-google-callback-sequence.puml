@@ -1,0 +1,67 @@
+@startuml Auth - Google Callback Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /auth/google/callback
+
+actor "Client" as C
+participant "AuthController" as AC
+participant "GoogleService" as GS
+participant "OAuth2Client" as GOC
+participant "Google OAuth2 API" as GOA
+participant "AuthRepository" as AR
+participant "SharedRoleRepository" as SRR
+participant "HashingService" as HS
+participant "AuthService" as AS
+database "PostgreSQL (Prisma)" as DB
+
+C -> AC: GET /auth/google/callback?code&state
+activate AC
+
+AC -> GS: googleCallback({ code, state })
+activate GS
+GS -> GS: parse state (userAgent, ip)
+GS -> GOC: getToken(code)
+GOC --> GS: tokens
+GS -> GOA: userinfo.get()
+GOA --> GS: { email, name, picture }
+alt email missing
+  GS --> AC: throw GoogleUserInfoError
+  AC --> C: redirect redirectUri?errorMessage=...
+  deactivate GS
+  deactivate AC
+  stop
+end
+
+GS -> AR: findUniqueUserIncludeRole({ email })
+AR -> DB: user.findFirst(include: role)
+DB --> AR: user | null
+AR --> GS: user | null
+alt user == null
+  GS -> SRR: getClientRoleId()
+  SRR --> GS: clientRoleId
+  GS -> HS: hash(randomPassword)
+  HS --> GS: hashed
+  GS -> AR: createUserInclueRole({ email, name, avatar, password: hashed, roleId: clientRoleId, phoneNumber: '' })
+  AR -> DB: user.create(include: role)
+  DB --> AR: user
+  AR --> GS: user
+end
+
+GS -> AR: createDevice({ userId, userAgent, ip })
+AR -> DB: device.create()
+DB --> AR: device
+AR --> GS: device
+GS -> AS: generateTokens({ userId, deviceId, roleId, roleName })
+AS --> GS: { accessToken, refreshToken }
+GS --> AC: { accessToken, refreshToken }
+deactivate GS
+
+AC --> C: redirect redirectUri?accessToken=...&refreshToken=...
+deactivate AC
+
+@enduml
+
+

@@ -1,0 +1,30 @@
+@startuml Auth - Google Link Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /auth/google-link
+
+actor "Client" as C
+participant "AuthController" as AC
+participant "GoogleService" as GS
+participant "OAuth2Client" as GOC
+
+C -> AC: GET /auth/google-link
+activate AC
+
+AC -> GS: getAuthorizationUrl({ userAgent, ip })
+activate GS
+GS -> GS: encode state (base64)
+GS -> GOC: generateAuthUrl({ scope, state, access_type })
+GOC --> GS: url
+GS --> AC: { url }
+deactivate GS
+
+AC --> C: 200 OK { url }
+deactivate AC
+
+@enduml
+
+

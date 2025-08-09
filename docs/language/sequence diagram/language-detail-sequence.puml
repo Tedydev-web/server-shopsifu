@@ -1,0 +1,47 @@
+@startuml Language - Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /languages/:languageId
+
+actor "Client/Admin" as U
+participant "LanguageController" as LC
+participant "LanguageService" as LS
+participant "LanguageRepo" as LR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> LC: GET /languages/:languageId
+activate LC
+
+LC -> LS: findById(languageId)
+activate LS
+
+LS -> LR: findById(id)
+activate LR
+LR -> DB: language.findUnique({ id, deletedAt: null })
+DB --> LR: language | null
+LR --> LS: language | null
+deactivate LR
+
+alt language == null
+  LS --> LC: NotFoundRecordException (404)
+  LC --> U: 404 Not Found
+  deactivate LS
+  deactivate LC
+  stop
+end
+
+LS -> IS: t('language.language.success.GET_DETAIL_SUCCESS')
+IS --> LS: message
+LS --> LC: { message, data: language }
+deactivate LS
+
+LC --> U: 200 OK + JSON
+deactivate LC
+
+@enduml
+
+

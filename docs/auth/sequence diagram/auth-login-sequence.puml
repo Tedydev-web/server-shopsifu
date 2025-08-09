@@ -1,0 +1,96 @@
+@startuml Auth - Login Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /auth/login
+
+actor "Client" as C
+participant "AuthController" as AC
+participant "AuthService" as AS
+participant "AuthRepository" as AR
+participant "HashingService" as HS
+participant "TwoFactorService" as TFS
+participant "TokenService" as TS
+participant "CookieService" as CS
+database "PostgreSQL (Prisma)" as DB
+
+C -> AC: POST /auth/login { email, password, totpCode?, code? }
+activate AC
+
+AC -> AS: login({ ...body, userAgent, ip }, res)
+activate AS
+
+AS -> AR: findUniqueUserIncludeRole({ email })
+AR -> DB: user.findFirst({ include: role })
+DB --> AR: user | null
+AR --> AS: user | null
+alt user == null
+  AS --> AC: EmailNotFoundException (422)
+  AC --> C: 422 Unprocessable Entity
+  deactivate AS
+  deactivate AC
+  stop
+end
+
+AS -> HS: compare(password, user.password)
+HS --> AS: isPasswordMatch
+alt !isPasswordMatch
+  AS --> AC: InvalidPasswordException (422)
+  AC --> C: 422 Unprocessable Entity
+  deactivate AS
+  deactivate AC
+  stop
+end
+
+alt user.totpSecret != null
+  alt !totpCode && !code
+    AS --> AC: InvalidTOTPAndCodeException (422)
+    AC --> C: 422 Unprocessable Entity
+    deactivate AS
+    deactivate AC
+    stop
+  end
+  alt totpCode
+    AS -> TFS: verifyTOTP({ email, secret, token: totpCode })
+    TFS --> AS: isValid
+    alt !isValid
+      AS --> AC: InvalidTOTPException (422)
+      AC --> C: 422 Unprocessable Entity
+      deactivate AS
+      deactivate AC
+      stop
+    end
+  else code
+    AS -> AS: validateVerificationCode({ email, type: LOGIN })
+  end
+end
+
+AS -> AR: createDevice({ userId, userAgent, ip })
+AR -> DB: device.create()
+DB --> AR: device
+AR --> AS: device
+
+AS -> TS: signAccessToken({ userId, deviceId, roleId, roleName })
+TS --> AS: accessToken
+AS -> TS: signRefreshToken({ userId })
+TS --> AS: refreshToken
+AS -> TS: verifyRefreshToken(refreshToken)
+TS --> AS: decoded (exp)
+AS -> AR: createRefreshToken({ token, userId, deviceId, expiresAt })
+AR -> DB: refreshToken.create()
+DB --> AR: ok
+AR --> AS: ok
+
+AS -> CS: setAuthCookies(res, accessToken, refreshToken)
+CS --> AS: ok
+AS --> AC: { message: 'Đăng nhập thành công', data: user(ẩn mật khẩu) }
+deactivate AS
+
+AC --> C: 200 OK + JSON
+deactivate AC
+
+@enduml
+
+

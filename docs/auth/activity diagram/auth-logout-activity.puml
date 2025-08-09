@@ -1,0 +1,30 @@
+@startuml Auth - Logout Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /auth/logout
+
+start
+:Đọc refresh_token từ cookie;
+:verifyRefreshToken();
+if (Không hợp lệ?) then (Có)
+  :Ném Unauthorized (401);
+  stop
+endif
+:Xóa refreshToken trong DB;
+if (Không tồn tại?) then (Có)
+  :Ném RefreshTokenAlreadyUsed (401);
+  stop
+endif
+:Cập nhật device isActive=false;
+:Xóa cookies phía client;
+:Trả về 200 message;
+stop
+
+@enduml
+
+

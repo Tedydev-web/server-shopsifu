@@ -1,0 +1,43 @@
+@startuml Category - Create Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /categories
+
+actor "User" as U
+participant "CategoryController" as CC
+participant "ActiveUser" as AU
+participant "CategoryService" as CS
+participant "CategoryRepo" as CR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> CC: POST /categories { name, logo, parentCategoryId }
+activate CC
+
+CC -> AU: @ActiveUser()
+AU --> CC: user
+
+CC -> CS: create({ data, user })
+activate CS
+
+CS -> CR: create({ createdById: user.userId, data })
+activate CR
+CR -> DB: category.create({ data: { ...data, createdById }, include: translations })
+DB --> CR: category
+CR --> CS: category
+deactivate CR
+
+CS -> IS: t('category.category.success.CREATE_SUCCESS')
+IS --> CS: message
+CS --> CC: { message, data: category }
+deactivate CS
+
+CC --> U: 201 Created + JSON
+deactivate CC
+
+@enduml
+
+

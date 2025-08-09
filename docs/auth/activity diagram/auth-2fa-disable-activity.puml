@@ -1,0 +1,36 @@
+@startuml Auth - 2FA Disable Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /auth/2fa/disable
+
+start
+:Lấy user theo userId;
+if (Không tồn tại?) then (Có)
+  :Ném EmailNotFound (422);
+  stop
+endif
+if (Chưa bật 2FA?) then (Có)
+  :Ném TOTPNotEnabled (422);
+  stop
+endif
+if (Có totpCode?) then (Có)
+  :verifyTOTP();
+  if (Sai?) then (Có)
+    :Ném InvalidTOTP (422);
+    stop
+  endif
+else (Có code)
+  :validateVerificationCode(DISABLE_2FA);
+endif
+:Cập nhật totpSecret = null;
+:Trả về 200 message;
+stop
+
+@enduml
+
+

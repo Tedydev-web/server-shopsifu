@@ -1,0 +1,66 @@
+@startuml Auth - Refresh Token Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /auth/refresh-token
+
+actor "Client" as C
+participant "AuthController" as AC
+participant "AuthService" as AS
+participant "TokenService" as TS
+participant "AuthRepository" as AR
+participant "CookieService" as CS
+database "PostgreSQL (Prisma)" as DB
+
+C -> AC: POST /auth/refresh-token (cookie refresh_token)
+activate AC
+
+AC -> AS: refreshToken({ refreshToken, userAgent, ip, res })
+activate AS
+
+AS -> TS: verifyRefreshToken(refreshToken)
+TS --> AS: { userId } | error
+alt lỗi verify
+  AS --> AC: UnauthorizedAccessException (401)
+  AC --> C: 401 Unauthorized
+  deactivate AS
+  deactivate AC
+  stop
+end
+
+AS -> AR: findUniqueRefreshTokenIncludeUserRole({ token })
+AR -> DB: refreshToken.findUnique({ include: user.role })
+DB --> AR: record | null
+AR --> AS: record | null
+alt null
+  AS --> AC: RefreshTokenAlreadyUsedException (401)
+  AC --> C: 401 Unauthorized
+  deactivate AS
+  deactivate AC
+  stop
+end
+
+AS -> AR: updateDevice(deviceId, { ip, userAgent })
+AR -> DB: device.update()
+DB --> AR: device
+AR --> AS: ok
+
+AS -> AR: deleteRefreshToken({ token })
+AR -> DB: refreshToken.delete()
+DB --> AR: deleted
+AR --> AS: ok
+
+AS -> AS: generateTokens({ userId, deviceId, roleId, roleName })
+AS -> CS: setAuthCookies(res, accessToken, refreshToken)
+CS --> AS: ok
+AS --> AC: { message: 'Làm mới token thành công' }
+deactivate AS
+
+AC --> C: 200 OK + JSON
+deactivate AC
+
+@enduml
+
+

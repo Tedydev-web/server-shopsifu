@@ -1,0 +1,35 @@
+@startuml Auth - Refresh Token Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /auth/refresh-token
+
+start
+:Đọc refresh_token từ cookie;
+:verifyRefreshToken();
+if (Không hợp lệ?) then (Có)
+  :Ném Unauthorized (401);
+  stop
+endif
+:Tìm refreshToken trong DB kèm user.role;
+if (Không tồn tại?) then (Có)
+  :Ném RefreshTokenAlreadyUsed (401);
+  stop
+endif
+fork
+  :Cập nhật device { ip, userAgent };
+fork again
+  :Xóa refreshToken cũ;
+end fork
+:Tạo accessToken + refreshToken mới;
+:Set auth cookies mới;
+:Trả về 200 message;
+stop
+
+@enduml
+
+

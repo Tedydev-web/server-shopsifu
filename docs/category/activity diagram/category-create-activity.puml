@@ -1,0 +1,20 @@
+@startuml Category - Create Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /categories
+
+start
+:Nhận body { name, logo, parentCategoryId } + user;
+:category.create({ createdById, data }) include translations;
+:Build message i18n;
+:Trả về 201 { message, data };
+stop
+
+@enduml
+
+

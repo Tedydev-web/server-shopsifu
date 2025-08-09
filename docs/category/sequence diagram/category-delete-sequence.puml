@@ -1,0 +1,51 @@
+@startuml Category - Delete Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng DELETE /categories/:categoryId
+
+actor "User" as U
+participant "CategoryController" as CC
+participant "ActiveUser" as AU
+participant "CategoryService" as CS
+participant "CategoryRepo" as CR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> CC: DELETE /categories/:categoryId
+activate CC
+
+CC -> AU: @ActiveUser()
+AU --> CC: user
+
+CC -> CS: delete({ id, user })
+activate CS
+
+CS -> CR: delete({ id, deletedById: user.userId })
+activate CR
+CR -> DB: category.update({ where: { id, deletedAt: null }, data: { deletedAt: now, deletedById } })
+DB --> CR: ok | NotFound
+CR --> CS: ok | error
+deactivate CR
+
+alt NotFound
+  CS --> CC: NotFoundRecordException (404)
+  CC --> U: 404 Not Found
+  deactivate CS
+  deactivate CC
+  stop
+end
+
+CS -> IS: t('category.category.success.DELETE_SUCCESS')
+IS --> CS: message
+CS --> CC: { message }
+deactivate CS
+
+CC --> U: 200 OK + JSON
+deactivate CC
+
+@enduml
+
+

@@ -1,0 +1,67 @@
+@startuml Auth - 2FA Disable Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /auth/2fa/disable
+
+actor "User" as U
+participant "AuthController" as AC
+participant "AuthService" as AS
+participant "SharedUserRepository" as SUR
+participant "TwoFactorService" as TFS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AC: POST /auth/2fa/disable { totpCode? | code? }
+activate AC
+
+AC -> AS: disableTwoFactorAuth({ ...body, userId })
+activate AS
+
+AS -> SUR: findUnique({ id: userId })
+SUR -> DB: user.findFirst()
+DB --> SUR: user | null
+SUR --> AS: user | null
+alt user == null
+  AS --> AC: EmailNotFoundException (422)
+  AC --> U: 422 Unprocessable Entity
+  deactivate AS
+  deactivate AC
+  stop
+end
+alt !user.totpSecret
+  AS --> AC: TOTPNotEnabledException (422)
+  AC --> U: 422 Unprocessable Entity
+  deactivate AS
+  deactivate AC
+  stop
+end
+
+alt totpCode provided
+  AS -> TFS: verifyTOTP({ email, secret, token: totpCode })
+  TFS --> AS: isValid
+  alt !isValid
+    AS --> AC: InvalidTOTPException (422)
+    AC --> U: 422 Unprocessable Entity
+    deactivate AS
+    deactivate AC
+    stop
+  end
+else code provided
+  AS -> AS: validateVerificationCode({ email, type: DISABLE_2FA })
+end
+
+AS -> SUR: update({ id: userId }, { totpSecret: null, updatedById: userId })
+SUR -> DB: user.update()
+DB --> SUR: ok
+SUR --> AS: ok
+AS --> AC: { message: 'Tắt 2FA thành công' }
+deactivate AS
+
+AC --> U: 200 OK + message
+deactivate AC
+
+@enduml
+
+

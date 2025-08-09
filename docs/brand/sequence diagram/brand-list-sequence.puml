@@ -1,0 +1,48 @@
+@startuml Brand - Get List Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /brands (pagination)
+
+actor "Client" as C
+participant "BrandController" as BC
+participant "BrandService" as BS
+participant "BrandRepo" as BR
+participant "I18nContext" as IC
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+C -> BC: GET /brands?page&limit&sortBy&sortOrder
+activate BC
+
+BC -> BS: list(pagination)
+activate BS
+
+BS -> IC: current()?.lang
+IC --> BS: languageId
+
+BS -> BR: list(pagination, languageId)
+activate BR
+par Count total
+  BR -> DB: brand.count({ where: { deletedAt: null } })
+  DB --> BR: totalItems
+and Fetch page
+  BR -> DB: brand.findMany({ where: { deletedAt: null }, include: translations by languageId, orderBy, skip, take })
+  DB --> BR: brands[]
+end
+BR --> BS: { data: brands, metadata }
+deactivate BR
+
+BS -> IS: t('brand.brand.success.GET_SUCCESS')
+IS --> BS: message
+BS --> BC: { message, data, metadata }
+deactivate BS
+
+BC --> C: 200 OK + JSON
+deactivate BC
+
+@enduml
+
+

@@ -1,0 +1,25 @@
+@startuml Brand Translation - Create Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /brand-translations
+
+start
+:Nhận body { brandId, languageId, name, description } + user;
+:brandTranslation.create({ createdById, data });
+if (Unique?) then (Vi phạm)
+  :Ném BrandTranslationAlreadyExistsException (422);
+  stop
+else (OK)
+  :Build message i18n;
+  :Trả về 201 { message, data };
+endif
+stop
+
+@enduml
+
+

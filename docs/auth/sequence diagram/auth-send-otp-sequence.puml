@@ -1,0 +1,74 @@
+@startuml Auth - Send OTP Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /auth/otp
+
+actor "Client" as C
+participant "AuthController" as AC
+participant "AuthService" as AS
+participant "SharedUserRepository" as SUR
+participant "AuthRepository" as AR
+participant "EmailService" as ES
+participant "ConfigService" as CFG
+participant "Helpers(ms/generateOTP)" as HP
+database "PostgreSQL (Prisma)" as DB
+
+C -> AC: POST /auth/otp { email, type }
+activate AC
+
+AC -> AS: sendOTP(body)
+activate AS
+
+AS -> SUR: findUnique({ email })
+SUR -> DB: user.findFirst()
+DB --> SUR: user | null
+SUR --> AS: user | null
+
+alt type == REGISTER and user exists
+  AS --> AC: EmailAlreadyExistsException (422)
+  AC --> C: 422 Unprocessable Entity
+  deactivate AS
+  deactivate AC
+  stop
+end
+alt type == FORGOT_PASSWORD and user not found
+  AS --> AC: EmailNotFoundException (422)
+  AC --> C: 422 Unprocessable Entity
+  deactivate AS
+  deactivate AC
+  stop
+end
+
+AS -> HP: generateOTP()
+HP --> AS: code
+AS -> CFG: get('auth.otp.expiresIn')
+CFG --> AS: expiresIn(ms-string)
+AS -> HP: ms(expiresIn)
+HP --> AS: expiresMs
+AS -> AR: createVerificationCode({ email, code, type, expiresAt: now+expiresMs })
+AR -> DB: verificationCode.upsert()
+DB --> AR: verificationCode
+AR --> AS: ok
+
+AS -> ES: sendOTP({ email, code })
+ES --> AS: { error?: string }
+alt error
+  AS --> AC: FailedToSendOTPException (422)
+  AC --> C: 422 Unprocessable Entity
+  deactivate AS
+  deactivate AC
+  stop
+end
+
+AS --> AC: { message: 'Gửi mã OTP thành công' }
+deactivate AS
+
+AC --> C: 200 OK + JSON
+deactivate AC
+
+@enduml
+
+

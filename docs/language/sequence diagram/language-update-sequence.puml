@@ -1,0 +1,51 @@
+@startuml Language - Update Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng PUT /languages/:languageId
+
+actor "Admin" as A
+participant "LanguageController" as LC
+participant "ActiveUser" as AU
+participant "LanguageService" as LS
+participant "LanguageRepo" as LR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> LC: PUT /languages/:languageId { name }
+activate LC
+
+LC -> AU: @ActiveUser()
+AU --> LC: user
+
+LC -> LS: update({ id, data, updatedById: user.userId })
+activate LS
+
+LS -> LR: update({ id, updatedById, data })
+activate LR
+LR -> DB: language.update({ where: { id, deletedAt: null }, data: { name, updatedById } })
+DB --> LR: language | NotFound
+LR --> LS: language | error
+deactivate LR
+
+alt NotFound
+  LS --> LC: NotFoundRecordException (404)
+  LC --> A: 404 Not Found
+  deactivate LS
+  deactivate LC
+  stop
+end
+
+LS -> IS: t('language.language.success.UPDATE_SUCCESS')
+IS --> LS: message
+LS --> LC: { message, data: language }
+deactivate LS
+
+LC --> A: 200 OK + JSON
+deactivate LC
+
+@enduml
+
+

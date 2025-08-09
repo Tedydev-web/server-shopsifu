@@ -1,0 +1,22 @@
+@startuml Category - Get List Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /categories
+
+start
+:Nhận parentCategoryId?;
+:Lấy languageId từ I18nContext;
+:Query category.findMany with include translations theo languageId;
+:Tính totalItems;
+:Build message i18n;
+:Trả về 200 { message, data, totalItems };
+stop
+
+@enduml
+
+

@@ -1,0 +1,31 @@
+@startuml Auth - Google Callback Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /auth/google/callback
+
+start
+:Parse state (userAgent, ip);
+:Đổi code lấy tokens;
+:Lấy userinfo từ Google;
+if (Không có email?) then (Có)
+  :Redirect với errorMessage;
+  stop
+endif
+:Tìm user theo email;
+if (Không có?) then (Có)
+  :Lấy clientRoleId;
+  :Tạo user ngầm với random password;
+endif
+:Tạo device;
+:generateTokens(userId, deviceId, role);
+:Redirect redirectUri với tokens;
+stop
+
+@enduml
+
+
