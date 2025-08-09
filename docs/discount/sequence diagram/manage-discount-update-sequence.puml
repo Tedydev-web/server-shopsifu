@@ -1,0 +1,63 @@
+@startuml Manage Discount - Update Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng PUT /manage-discount/discounts/:discountId
+
+actor "Seller/Admin" as U
+participant "AccessTokenGuard" as AG
+participant "ManageDiscountController" as MDC
+participant "ManageDiscountService" as MDS
+participant "DiscountRepo" as DR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> MDC: Forward với user
+activate MDC
+
+MDC -> MDS: update({ discountId, data, user })
+activate MDS
+
+MDS -> DR: findById(discountId)
+activate DR
+DR -> DB: discount.findUnique({ where: { id, deletedAt: null } })
+DB --> DR: discount | null
+DR --> MDS: discount | null
+deactivate DR
+
+alt not found
+  MDS --> MDC: 404 Not Found
+  MDC --> U: 404 Not Found
+  deactivate MDS
+  deactivate MDC
+  stop
+end
+
+MDS -> MDS: validatePrivilege(userIdRequest=user.userId, roleNameRequest=user.roleName, createdById=discount.createdById)
+MDS -> MDS: validateCreatePrivilege(userIdRequest=user.userId, roleNameRequest=user.roleName, shopId=data.shopId)
+alt Seller và không có shopId
+  MDS -> MDS: auto-set data.shopId = user.userId
+end
+
+MDS -> DR: update({ id: discountId, updatedById: user.userId, data })
+activate DR
+DR -> DB: discount.update({ where: { id, deletedAt: null }, data: { ...data, voucherType, updatedById, relations(set) } })
+DB --> DR: updated discount
+DR --> MDS: updated discount
+deactivate DR
+
+MDS -> IS: i18n.t('discount.discount.success.UPDATE_SUCCESS')
+IS --> MDS: message
+MDS --> MDC: { message, data: updatedDiscount }
+deactivate MDS
+
+MDC --> U: 200 OK + JSON
+deactivate MDC
+
+@enduml
+
+

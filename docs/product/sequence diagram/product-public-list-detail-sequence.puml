@@ -1,0 +1,72 @@
+@startuml Product Public List - Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /products (Public)
+
+actor "Client" as C
+participant "ProductController" as PC
+participant "ProductService" as PS
+participant "ProductRepo" as PR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+== Request ==
+C -> PC: GET /products?page&limit&name&brandIds[]&categories[]&minPrice&maxPrice&orderBy&sortBy
+activate PC
+
+PC -> PS: list({ query })
+activate PS
+
+PS -> PR: list({ page, limit, languageId=I18nContext.lang, isPublic=true,\n brandIds, categories, name, minPrice, maxPrice, orderBy, sortBy })
+activate PR
+
+note right of PR
+Xây dựng where/orderBy dựa trên query:
+• where.deletedAt = null
+• where.publishedAt <= now (public only)
+• where.name contains name (insensitive) (optional)
+• where.brandId in brandIds (optional)
+• where.categories some id in categories (optional)
+• where.basePrice gte/lte theo minPrice/maxPrice (optional)
+• orderBy: createdAt|price|updatedAt|orders._count theo sortBy
+• include.productTranslations theo languageId ('all' => không filter)
+end note
+
+PR -> DB: product.count({ where })
+DB --> PR: totalItems
+PR -> DB: product.findMany({ where, include, orderBy, skip, take })
+DB --> PR: products[] (kèm translations và orders delivered)
+PR --> PS: { data, metadata }
+deactivate PR
+
+PS -> IS: t('product.product.success.GET_SUCCESS')
+IS --> PS: message
+PS --> PC: { message, data, metadata }
+deactivate PS
+
+PC --> C: 200 OK + JSON
+deactivate PC
+
+== Trường Hợp Rẽ Nhánh Chính ==
+alt sortBy = price
+  note over PR: orderBy = { basePrice: orderBy }
+else sortBy = updatedAt
+  note over PR: orderBy = { updatedAt: orderBy }
+else sortBy = sale
+  note over PR: orderBy = { orders: { _count: orderBy } }
+else mặc định
+  note over PR: orderBy = { createdAt: orderBy }
+end
+
+alt languageId = 'all'
+  note over PR: include.productTranslations.where = { deletedAt: null }
+else language cụ thể
+  note over PR: include.productTranslations.where = { languageId, deletedAt: null }
+end
+
+@enduml
+
+

@@ -1,0 +1,26 @@
+@startuml VNPay - Refund Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /payment/vnpay/refund
+
+start
+:Nhận refundData { orderId, orderInfo, amount, requestId, transactionNo, ipAddr, createBy };
+:Build refundRequest (vnp_RequestId, vnp_TxnRef, ...);
+:Gọi VnpayService.refund(refundRequest);
+if (Thành công?) then (Có)
+  :Map kết quả → dữ liệu trả về;
+  :Build message i18n;
+  :Trả về 200 { message, data };
+else (Không)
+  :Ném lỗi theo case: already processed / not found / service unavailable;
+endif
+stop
+
+@enduml
+
+

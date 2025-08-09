@@ -1,0 +1,66 @@
+@startuml Order - Cancel Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng PUT /orders/:orderId (Cancel)
+
+actor "Người dùng" as U
+participant "AccessTokenGuard" as AG
+participant "OrderController" as OC
+participant "OrderService" as OS
+participant "OrderRepo" as OR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> OC: Forward với user
+activate OC
+
+OC -> OS: cancel(user, orderId)
+activate OS
+
+OS -> OR: cancel(user.userId, orderId)
+activate OR
+
+OR -> DB: order.findUniqueOrThrow({ id: orderId, userId, deletedAt: null })
+DB --> OR: order | throw
+
+alt not found
+  OR -> OS: throw OrderNotFoundException
+  OS --> OC: 404 Not Found
+  OC --> U: 404 Not Found
+  deactivate OR
+  deactivate OS
+  deactivate OC
+  stop
+end
+
+alt order.status !== PENDING_PAYMENT
+  OR -> OS: throw CannotCancelOrderException
+  OS --> OC: 400 Bad Request
+  OC --> U: 400 Bad Request
+  deactivate OR
+  deactivate OS
+  deactivate OC
+  stop
+end
+
+OR -> DB: order.update({ where: { id, userId, deletedAt: null }, data: { status: CANCELLED, updatedById: userId } })
+DB --> OR: updated order
+OR --> OS: { data: updatedOrder }
+deactivate OR
+
+OS -> IS: t('order.order.success.CANCEL_SUCCESS')
+IS --> OS: message
+OS --> OC: { message, data }
+deactivate OS
+
+OC --> U: 200 OK + JSON
+deactivate OC
+
+@enduml
+
+

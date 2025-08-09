@@ -1,0 +1,56 @@
+@startuml Media - Upload Images Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /media/images/upload
+
+actor "Client" as C
+participant "MediaController" as MC
+participant "FilesInterceptor" as FI
+participant "ParseFilePipeWithUnlink" as PFP
+participant "MediaService" as MS
+participant "S3Service" as S3
+participant "I18nService" as IS
+database "Local Disk (UPLOAD_DIR)" as LD
+database "AWS S3" as S3DB
+
+C -> MC: POST /media/images/upload (multipart 'files')
+activate MC
+
+MC -> FI: Intercept files (max 100, size limit 5MB)
+FI -> LD: Lưu files vào UPLOAD_DIR (random filename)
+LD --> FI: Files saved
+FI --> MC: Files metadata
+
+MC -> PFP: Validate files (MaxFileSize=1MB, FileType=jpg|jpeg|png|webp)
+alt Validation OK
+  PFP --> MC: Files hợp lệ
+  MC -> MS: uploadFile(files)
+  activate MS
+  loop For each file
+    MS -> S3: uploadedFile({ filename: 'images/' + file.filename, filepath, contentType })
+    S3 -> S3DB: Upload file
+    S3DB --> S3: { Location }
+    S3 --> MS: { Location }
+  end
+  MS -> LD: unlink(file.path) song song cho tất cả files
+  LD --> MS: ok
+  MS -> IS: t('media.media.success.UPLOAD_SUCCESS')
+  IS --> MS: message
+  MS --> MC: { message, data: [{ url }] }
+  deactivate MS
+  MC --> C: 200 OK + JSON
+else Validation Failed
+  PFP -> LD: unlink(file.path) dọn dẹp
+  LD --> PFP: ok
+  PFP --> MC: ValidationException (400)
+  MC --> C: 400 Bad Request
+end
+
+deactivate MC
+
+@enduml
+
+

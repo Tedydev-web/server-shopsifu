@@ -1,0 +1,24 @@
+@startuml Media - Serve Static File Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /media/static/:filename
+
+start
+:Nhận :filename;
+:res.sendFile(resolve(UPLOAD_DIR, filename));
+if (Thành công?) then (Có)
+  :Stream file về client;
+  :200 OK;
+else (Không)
+  :Trả về 404 Not Found;
+endif
+stop
+
+@enduml
+
+

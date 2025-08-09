@@ -1,0 +1,33 @@
+@startuml Media - Serve Static File Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /media/static/:filename
+
+actor "Client" as C
+participant "MediaController" as MC
+participant "Express Response" as RES
+database "Local Disk (UPLOAD_DIR)" as LD
+
+C -> MC: GET /media/static/:filename
+activate MC
+
+MC -> RES: res.sendFile(resolve(UPLOAD_DIR, filename), callback)
+RES -> LD: Đọc file từ UPLOAD_DIR
+alt File tồn tại
+  LD --> RES: Stream file
+  RES --> C: 200 OK (file stream)
+else File không tồn tại
+  LD --> RES: error
+  RES --> MC: callback(error)
+  MC -> RES: Gửi 404 Not Found (NotFoundException)
+  RES --> C: 404 Not Found
+end
+
+deactivate MC
+
+@enduml
+
+

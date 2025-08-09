@@ -1,0 +1,27 @@
+@startuml Role - Update Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: PUT /roles/:roleId
+
+start
+:Nhận id + body + user;
+:verifyRole(id) (base role protection);
+if (Base role?) then (Có)
+  :Ném 403 ProhibitedActionOnBaseRole;
+  stop
+endif
+:Validate permissionIds (không chứa permissions đã soft delete);
+:Update role (fields, permissions.set, updatedById);
+:Xóa cache key `role:${id}`;
+:Build message i18n;
+:Trả về 200 { message, data };
+stop
+
+@enduml
+
+

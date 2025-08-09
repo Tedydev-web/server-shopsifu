@@ -1,0 +1,62 @@
+@startuml Manage Discount - Create Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /manage-discount/discounts
+
+actor "Seller/Admin" as U
+participant "AccessTokenGuard" as AG
+participant "ManageDiscountController" as MDC
+participant "ManageDiscountService" as MDS
+participant "DiscountRepo" as DR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> MDC: Forward với user
+activate MDC
+
+MDC -> MDS: create({ data, user })
+activate MDS
+
+MDS -> MDS: validateCreatePrivilege(userIdRequest=user.userId, roleNameRequest=user.roleName, shopId=data.shopId)
+alt Seller và không có shopId
+  MDS -> MDS: auto-set data.shopId = user.userId
+end
+
+MDS -> DR: findByCode(data.code)
+activate DR
+DR -> DB: discount.findUnique({ where: { code, deletedAt: null }, include: relations })
+DB --> DR: existing | null
+DR --> MDS: existing | null
+deactivate DR
+
+alt existing != null
+  MDS --> MDC: 400 Bad Request (code exists)
+  MDC --> U: 400 Bad Request
+  deactivate MDS
+  deactivate MDC
+  stop
+end
+
+MDS -> DR: create({ createdById: user.userId, data })
+activate DR
+DR -> DB: discount.create({ data: { createdById, ...data, voucherType, relations(connect) } })
+DB --> DR: discount
+DR --> MDS: { data: discount }
+deactivate DR
+
+MDS -> IS: i18n.t('discount.discount.success.CREATE_SUCCESS')
+IS --> MDS: message
+MDS --> MDC: { message, data }
+deactivate MDS
+
+MDC --> U: 201 Created + JSON
+deactivate MDC
+
+@enduml
+
+

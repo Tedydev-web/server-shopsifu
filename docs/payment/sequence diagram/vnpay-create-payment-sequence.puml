@@ -1,0 +1,35 @@
+@startuml VNPay - Create Payment Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /payment/vnpay/create-payment
+
+actor "Client" as C
+participant "VNPayController" as VC
+participant "VNPayService" as VS
+participant "VnpayService" as VNS
+participant "I18nService" as IS
+
+C -> VC: POST /payment/vnpay/create-payment { amount, orderInfo, orderId, ... }
+activate VC
+
+VC -> VS: createPayment(paymentData)
+activate VS
+
+VS -> VS: Build buildPaymentData với PREFIX_PAYMENT_CODE
+VS -> VNS: buildPaymentUrl(buildPaymentData, { withHash: true })
+VNS --> VS: paymentUrl
+
+VS -> IS: t('payment.payment.vnpay.success.CREATE_PAYMENT_SUCCESS')
+IS --> VS: message
+VS --> VC: { message, data: { paymentUrl } }
+deactivate VS
+
+VC --> C: 200 OK + JSON
+deactivate VC
+
+@enduml
+
+

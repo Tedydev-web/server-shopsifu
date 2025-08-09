@@ -1,0 +1,26 @@
+@startuml VNPay - Query DR Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /payment/vnpay/query-dr
+
+start
+:Nhận queryData { orderId, orderInfo, requestId, transactionDate, transactionNo, ipAddr, createDate };
+:Xây dựng queryRequest theo chuẩn VNPay;
+:Gọi VnpayService.queryDr(queryRequest);
+if (Thành công?) then (Có)
+  :Map kết quả → dữ liệu trả về;
+  :Build message i18n;
+  :Trả về 200 { message, data };
+else (Không)
+  :Ném lỗi theo case: duplicate/not found/service unavailable;
+endif
+stop
+
+@enduml
+
+

@@ -1,0 +1,34 @@
+@startuml VNPay - Verify IPN Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /payment/vnpay/verify-ipn
+
+start
+:Nhận query vnp_*;
+:verifyIpnCall với VnpayService;
+if (isVerified?) then (Không)
+  :Trả về { RspCode: '97', Message: 'Invalid Checksum' };
+  stop
+endif
+:verifyIpnCall repo → tìm payment, orders, paymentId;
+if (payment đã xử lý?) then (Có)
+  :Trả về { RspCode: '02', Message: 'Order already confirmed' };
+  stop
+endif
+if (vnp_ResponseCode == '00'?) then (Có)
+  :updatePaymentAndOrdersOnSuccess(paymentId, orders);
+  :Emit WebSocket đến payment room;
+else (Không)
+  :updatePaymentAndOrdersOnFailed(paymentId, orders);
+endif
+:Trả về { RspCode: '00', Message: 'Confirm Success' };
+stop
+
+@enduml
+
+

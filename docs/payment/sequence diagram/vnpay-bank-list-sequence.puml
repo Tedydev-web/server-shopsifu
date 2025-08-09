@@ -1,0 +1,36 @@
+@startuml VNPay - Bank List Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /payment/vnpay/bank-list
+
+actor "Client" as C
+participant "VNPayController" as VC
+participant "VNPayService" as VS
+participant "VnpayService" as VNS
+participant "I18nService" as IS
+
+C -> VC: GET /payment/vnpay/bank-list
+activate VC
+
+VC -> VS: getBankList()
+activate VS
+
+VS -> VNS: getBankList()
+activate VNS
+VNS --> VS: banks[]
+deactivate VNS
+
+VS -> IS: t('payment.payment.vnpay.success.GET_BANK_LIST_SUCCESS')
+IS --> VS: message
+VS --> VC: { message, data: mappedBanks }
+deactivate VS
+
+VC --> C: 200 OK + JSON
+deactivate VC
+
+@enduml
+
+

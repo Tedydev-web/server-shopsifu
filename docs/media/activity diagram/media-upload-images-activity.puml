@@ -1,0 +1,28 @@
+@startuml Media - Upload Images Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /media/images/upload
+
+start
+:Nhận multipart với field 'files';
+:FilesInterceptor lưu files vào UPLOAD_DIR (tối đa 100, size limit 5MB);
+:ParseFilePipeWithUnlink validate (Max 1MB, loại file hợp lệ);
+if (Hợp lệ?) then (Có)
+  :Upload từng file lên S3 (images/<random>);
+  :Dọn dẹp local: unlink tất cả file;
+  :Build message i18n;
+  :Trả về 200 { message, data: urls };
+else (Không)
+  :Dọn dẹp local (unlink);
+  :Trả về 400 Validation Error;
+endif
+stop
+
+@enduml
+
+

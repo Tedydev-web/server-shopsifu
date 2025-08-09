@@ -1,0 +1,27 @@
+@startuml Cart - Add To Cart Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /cart (Add To Cart)
+
+start
+:Xác thực AccessToken và tải user context;
+:Nhận body { skuId, quantity };
+:ValidateSKU(isCreate=true): kiểm tra cartItem hiện có, SKU tồn tại, stock, publish status;
+if (Hợp lệ?) then (Có)
+  :Upsert cartItem theo ràng buộc (userId + skuId);
+  :Increment quantity nếu đã tồn tại;
+  :Build message i18n;
+  :Trả về 201 { message, data };
+else (Không)
+  :Ném 400/404 theo từng lỗi (NotFoundSKU/OutOfStock/InvalidQuantity/ProductNotFound);
+endif
+stop
+
+@enduml
+
+

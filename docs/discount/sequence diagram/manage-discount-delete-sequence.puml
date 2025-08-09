@@ -1,0 +1,59 @@
+@startuml Manage Discount - Delete Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng DELETE /manage-discount/discounts/:discountId
+
+actor "Seller/Admin" as U
+participant "AccessTokenGuard" as AG
+participant "ManageDiscountController" as MDC
+participant "ManageDiscountService" as MDS
+participant "DiscountRepo" as DR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> MDC: Forward với user
+activate MDC
+
+MDC -> MDS: delete({ discountId, user })
+activate MDS
+
+MDS -> DR: findById(discountId)
+activate DR
+DR -> DB: discount.findUnique({ where: { id, deletedAt: null } })
+DB --> DR: discount | null
+DR --> MDS: discount | null
+deactivate DR
+
+alt not found
+  MDS --> MDC: 404 Not Found
+  MDC --> U: 404 Not Found
+  deactivate MDS
+  deactivate MDC
+  stop
+end
+
+MDS -> MDS: validatePrivilege(userIdRequest=user.userId, roleNameRequest=user.roleName, createdById=discount.createdById)
+
+MDS -> DR: delete({ id: discountId, deletedById: user.userId })
+activate DR
+DR -> DB: discount.update({ where: { id, deletedAt: null }, data: { deletedAt: now, deletedById } })
+DB --> DR: deleted (soft)
+DR --> MDS: success
+deactivate DR
+
+MDS -> IS: i18n.t('discount.discount.success.DELETE_SUCCESS')
+IS --> MDS: message
+MDS --> MDC: { message }
+deactivate MDS
+
+MDC --> U: 200 OK + JSON
+deactivate MDC
+
+@enduml
+
+

@@ -1,0 +1,45 @@
+@startuml User - Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /users/:userId
+
+actor "Admin" as A
+participant "UserController" as UC
+participant "UserService" as US
+participant "SharedUserRepository" as SUR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> UC: GET /users/:userId
+activate UC
+
+UC -> US: findById(userId)
+activate US
+
+US -> SUR: findUniqueIncludeRolePermissions({ id })
+SUR -> DB: Query user + role permissions
+DB --> SUR: user | null
+SUR --> US: user | null
+
+alt user == null
+  US --> UC: NotFoundRecordException (404)
+  UC --> A: 404 Not Found
+  deactivate US
+  deactivate UC
+  stop
+end
+
+US -> IS: t('user.user.success.GET_DETAIL_SUCCESS')
+IS --> US: message
+US --> UC: { message, data: user }
+deactivate US
+
+UC --> A: 200 OK + JSON
+deactivate UC
+
+@enduml
+
+

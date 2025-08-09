@@ -1,0 +1,41 @@
+@startuml Search - Products Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /search/products
+
+start
+:Nhận query { q?, page, limit, orderBy, sortBy, filters? };
+if (q tồn tại?) then (Có)
+  :Trim q; kiểm tra rỗng và độ dài >= 1;
+  if (Không hợp lệ?) then (Có)
+    :Ném EmptySearchQueryException/SearchQueryTooShortException;
+    stop
+  endif
+  :parseQuery(q) -> { q', options };
+  :getDictionary() (cache 30 phút hoặc load từ ES aggregations);
+  :Hợp nhất options -> filters.attrs;
+  :Gán q = q';
+endif
+:Xây dựng esQuery (must/should/filter) theo q và filters;
+:Xây dựng sortOptions theo sortBy/orderBy (+ _score thứ cấp);
+:Tính from = (page-1)*limit;
+:Gọi Elasticsearch search(index, esQuery, {size, from, sort});
+if (Thành công?) then (Có)
+  :Map hits -> _source;
+  :Tính total, totalPages, hasNext, hasPrev;
+  :Build message i18n;
+  :Trả về 200 { message, data, metadata };
+else (Không)
+  :Phân loại lỗi (connection/timeout/khác);
+  :Ném ElasticsearchConnectionException/SearchTimeoutException/ElasticsearchQueryException;
+endif
+stop
+
+@enduml
+
+

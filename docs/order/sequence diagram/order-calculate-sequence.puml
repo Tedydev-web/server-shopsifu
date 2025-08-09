@@ -1,0 +1,77 @@
+@startuml Order - Calculate Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /orders/calculate
+
+actor "Người dùng" as U
+participant "AccessTokenGuard" as AG
+participant "OrderController" as OC
+participant "OrderService" as OS
+participant "I18nService" as IS
+participant "PrismaService" as PS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> OC: Forward với user
+activate OC
+
+OC -> OS: calculate(user, { cartItemIds, discountCodes? })
+activate OS
+
+OS -> PS: cartItem.findMany({ ids, userId }, include sku.product(translations, brand, categories))
+PS -> DB: Query cart items with relations
+DB --> PS: cartItems[]
+PS --> OS: cartItems
+
+alt cartItems.length == 0
+  OS -> IS: t('order.order.success.CALCULATE_SUCCESS')
+  IS --> OS: message
+  OS --> OC: { message, data: zero totals }
+  OC --> U: 200 OK + zero totals
+  deactivate OS
+  deactivate OC
+  stop
+end
+
+OS -> OS: totalPayment = sum(sku.price * quantity)
+
+alt discountCodes empty
+  OS -> IS: t('order.order.success.CALCULATE_SUCCESS')
+  IS --> OS: message
+  OS --> OC: { message, data: { totalItemCost=totalPayment, totalShippingFee=0, totalVoucherDiscount=0, totalPayment } }
+  OC --> U: 200 OK
+  deactivate OS
+  deactivate OC
+  stop
+end
+
+OS -> PS: discount.findMany({ code in discountCodes, status ACTIVE, time valid, deletedAt null }, include targets)
+PS -> DB: Query discounts
+DB --> PS: discounts[]
+PS --> OS: discounts
+
+OS -> PS: discountSnapshot.groupBy({ userId })
+PS -> DB: Query usage count per discount
+DB --> PS: usage[]
+PS --> OS: usage map
+
+OS -> OS: validDiscounts = filter(validateDiscountForOrder)
+OS -> OS: appliedDiscounts = map(calculateDiscountAmount)
+OS -> OS: totalVoucherDiscountAmount = sum(appliedDiscounts.amount)
+OS -> OS: grandTotal = totalPayment - totalVoucherDiscountAmount
+
+OS -> IS: t('order.order.success.CALCULATE_SUCCESS')
+IS --> OS: message
+OS --> OC: { message, data: { totalItemCost=totalPayment, totalShippingFee=0, totalVoucherDiscount=-totalVoucherDiscountAmount, totalPayment=max(0, grandTotal) } }
+deactivate OS
+
+OC --> U: 200 OK + JSON
+deactivate OC
+
+@enduml
+
+

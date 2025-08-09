@@ -1,0 +1,81 @@
+@startuml Review - Create Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /reviews
+
+actor "Người dùng" as U
+participant "ReviewController" as RC
+participant "ActiveUser" as AU
+participant "ReviewService" as RS
+participant "ReviewRepository" as RR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> RC: POST /reviews { content, rating, productId, orderId, medias[] }
+activate RC
+
+RC -> AU: @ActiveUser()
+AU --> RC: user
+
+RC -> RS: create(user, body)
+activate RS
+
+RS -> RR: create(user.userId, body)
+activate RR
+
+RR -> RR: validateOrder({ orderId, userId })
+RR -> DB: order.findUnique({ id: orderId, userId })
+DB --> RR: order | null
+
+alt order == null
+  RR -> RS: throw BadRequestException('Đơn hàng không tồn tại hoặc không thuộc về bạn')
+  RS --> RC: 400 Bad Request
+  RC --> U: 400 Bad Request
+  deactivate RR
+  deactivate RS
+  deactivate RC
+  stop
+end
+
+alt order.status !== DELIVERED
+  RR -> RS: throw BadRequestException('Đơn hàng chưa được giao')
+  RS --> RC: 400 Bad Request
+  RC --> U: 400 Bad Request
+  deactivate RR
+  deactivate RS
+  deactivate RC
+  stop
+end
+
+RR -> DB: $transaction begin
+RR -> DB: review.create({ data, include: user }) catch unique → Conflict
+DB --> RR: review | throw
+alt unique conflict
+  RR -> RS: throw ConflictException('Bạn đã đánh giá sản phẩm này rồi')
+  RS --> RC: 409 Conflict
+  RC --> U: 409 Conflict
+  deactivate RR
+  deactivate RS
+  deactivate RC
+  stop
+end
+
+RR -> DB: reviewMedia.createManyAndReturn({ data: medias })
+DB --> RR: medias[]
+RR --> RS: { data: { ...review, medias } }
+deactivate RR
+
+RS -> IS: t('review.review.success.CREATE_SUCCESS')
+IS --> RS: message
+RS --> RC: { message, data }
+deactivate RS
+
+RC --> U: 201 Created + JSON
+deactivate RC
+
+@enduml
+
+

@@ -1,0 +1,51 @@
+@startuml Review - Get List Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /reviews/products/:productId
+
+actor "Khách/Người dùng" as U
+participant "ReviewController" as RC
+participant "ReviewService" as RS
+participant "ReviewRepository" as RR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> RC: GET /reviews/products/:productId?page&limit
+activate RC
+
+RC -> RS: list(productId, pagination)
+activate RS
+
+RS -> RR: list(productId, pagination)
+activate RR
+
+note right of RR
+Pagination:
+• skip = (page - 1) * limit
+• take = limit
+Queries (song song):
+• review.count({ where: { productId } })
+• review.findMany({ where: { productId }, include: { user(select: id,name,avatar), medias: true }, skip, take, orderBy: createdAt desc })
+end note
+
+RR -> DB: review.count({ where })
+DB --> RR: totalItems
+RR -> DB: review.findMany({ where, include, skip, take, orderBy })
+DB --> RR: reviews[]
+RR --> RS: { data, metadata }
+deactivate RR
+
+RS -> IS: t('review.review.success.GET_SUCCESS')
+IS --> RS: message
+RS --> RC: { message, data, metadata }
+deactivate RS
+
+RC --> U: 200 OK + JSON
+deactivate RC
+
+@enduml
+
+

@@ -1,0 +1,47 @@
+@startuml Role - Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /roles/:roleId
+
+actor "Admin" as A
+participant "RoleController" as RC
+participant "RoleService" as RS
+participant "RoleRepo" as RR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> RC: GET /roles/:roleId
+activate RC
+
+RC -> RS: findById(roleId)
+activate RS
+
+RS -> RR: findById(roleId)
+activate RR
+RR -> DB: role.findUnique({ id, deletedAt: null, include: { permissions where deletedAt=null } })
+DB --> RR: role | null
+RR --> RS: role | null
+deactivate RR
+
+alt role == null
+  RS --> RC: NotFoundRecordException (404)
+  RC --> A: 404 Not Found
+  deactivate RS
+  deactivate RC
+  stop
+end
+
+RS -> IS: i18n.t('role.role.success.GET_DETAIL_SUCCESS')
+IS --> RS: message
+RS --> RC: { message, data: role }
+deactivate RS
+
+RC --> A: 200 OK + JSON
+deactivate RC
+
+@enduml
+
+

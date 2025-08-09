@@ -1,0 +1,50 @@
+@startuml Permission - Update Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng PUT /permissions/:permissionId
+
+actor "Admin" as A
+participant "PermissionController" as PC
+participant "ActiveUser" as AU
+participant "PermissionService" as PS
+participant "PermissionRepo" as PR
+participant "CacheManager" as CM
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+database "Redis" as RD
+
+A -> PC: PUT /permissions/:permissionId { data }
+activate PC
+
+PC -> AU: @ActiveUser()
+AU --> PC: user
+
+PC -> PS: update({ id, data, user })
+activate PS
+
+PS -> PR: update({ id, updatedById: user.userId, data })
+activate PR
+PR -> DB: permission.update({ where: { id, deletedAt: null }, data: { ...data, updatedById }, include: roles })
+DB --> PR: permission (kèm roles)
+PR --> PS: permission (kèm roles)
+deactivate PR
+
+PS -> PS: deleteCachedRole(roles)
+PS -> CM: del(`role:${roleId}`) cho từng role
+CM -> RD: Delete cache entries
+RD --> CM: ok
+
+PS -> IS: i18n.t('permission.permission.success.UPDATE_SUCCESS')
+IS --> PS: message
+PS --> PC: { message, data: permission }
+deactivate PS
+
+PC --> A: 200 OK + JSON
+deactivate PC
+
+@enduml
+
+

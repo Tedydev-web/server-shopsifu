@@ -1,0 +1,89 @@
+@startuml Cart - Add To Cart Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /cart (Add To Cart)
+
+actor "Người dùng" as U
+participant "AccessTokenGuard" as AG
+participant "CartController" as CC
+participant "CartService" as CS
+participant "CartRepo" as CR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> CC: Forward với user
+activate CC
+
+CC -> CS: addToCart(user, { skuId, quantity })
+activate CS
+
+CS -> CR: create(user.userId, body)
+activate CR
+
+CR -> CR: validateSKU({ skuId, quantity, userId, isCreate: true })
+CR -> DB: cartItem.findUnique({ userId_skuId })
+DB --> CR: cartItem | null
+CR -> DB: sKU.findUnique({ id, deletedAt: null }, include: { product })
+DB --> CR: sku { product } | null
+
+alt sku == null
+  CR -> CS: throw NotFoundSKUException
+  CS --> CC: 404 Not Found
+  CC --> U: 404 Not Found
+  deactivate CR
+  deactivate CS
+  deactivate CC
+  stop
+end
+
+alt cartItem exists AND quantity + cartItem.quantity > sku.stock
+  CR -> CS: throw InvalidQuantityException
+  CS --> CC: 400 Bad Request
+  CC --> U: 400 Bad Request
+  deactivate CR
+  deactivate CS
+  deactivate CC
+  stop
+end
+
+alt sku.stock < 1 OR sku.stock < quantity
+  CR -> CS: throw OutOfStockSKUException
+  CS --> CC: 400 Bad Request
+  CC --> U: 400 Bad Request
+  deactivate CR
+  deactivate CS
+  deactivate CC
+  stop
+end
+
+alt product deleted OR not published OR publishedAt > now
+  CR -> CS: throw ProductNotFoundException
+  CS --> CC: 404 Not Found
+  CC --> U: 404 Not Found
+  deactivate CR
+  deactivate CS
+  deactivate CC
+  stop
+end
+
+CR -> DB: cartItem.upsert({ where: userId+skuId,\n update: { quantity.increment = body.quantity },\n create: { userId, skuId, quantity } })
+DB --> CR: cartItem
+CR --> CS: cartItem
+deactivate CR
+
+CS -> IS: t('cart.cart.success.CREATE_SUCCESS')
+IS --> CS: message
+CS --> CC: { message, data: cartItem }
+deactivate CS
+
+CC --> U: 201 Created + JSON
+deactivate CC
+
+@enduml
+
+

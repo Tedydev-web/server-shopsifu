@@ -1,0 +1,54 @@
+@startuml Cart - Get List Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /cart
+
+actor "Người dùng" as U
+participant "AccessTokenGuard" as AG
+participant "CartController" as CC
+participant "CartService" as CS
+participant "CartRepo" as CR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> CC: Forward với user
+activate CC
+
+CC -> CS: getCart(user, query)
+activate CS
+
+CS -> CR: list({ userId: user.userId, languageId: I18nContext.lang, page, limit })
+activate CR
+
+note right of CR
+Thực thi 2 truy vấn song song bằng $queryRaw:
+• totalItems$: SELECT DISTINCT shop (Product.createdById)
+• data$: SELECT json_agg(cartItems) GROUP BY shop, JOIN SKU/Product/Translation
+• Lọc: Product.deletedAt IS NULL AND Product.publishedAt <= NOW()
+• Translation: nếu languageId = 'all' → không filter; ngược lại filter theo languageId
+• ORDER: MAX(CartItem.updatedAt) DESC; LIMIT/OFFSET theo page/limit
+end note
+
+CR -> DB: totalItems$ (COUNT groups)
+DB --> CR: array groups
+CR -> DB: data$ (JSON aggregated per shop)
+DB --> CR: CartItemDetail[]
+CR --> CS: { data, metadata }
+deactivate CR
+
+CS -> IS: t('cart.cart.success.GET_SUCCESS')
+IS --> CS: message
+CS --> CC: { message, data, metadata }
+deactivate CS
+
+CC --> U: 200 OK + JSON
+deactivate CC
+
+@enduml
+
+

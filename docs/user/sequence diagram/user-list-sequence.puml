@@ -1,0 +1,51 @@
+@startuml User - Get List Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /users
+
+actor "Admin" as A
+participant "UserController" as UC
+participant "UserService" as US
+participant "UserRepo" as UR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> UC: GET /users?page&limit
+activate UC
+
+UC -> US: list({ page, limit })
+activate US
+
+US -> UR: list(pagination)
+activate UR
+
+note right of UR
+Pagination:
+• skip = (page - 1) * limit
+• take = limit
+Queries song song:
+• user.count({ deletedAt: null })
+• user.findMany({ deletedAt: null, include: { role: true }, skip, take })
+end note
+
+UR -> DB: user.count({ where: { deletedAt: null } })
+DB --> UR: totalItems
+UR -> DB: user.findMany({ where: { deletedAt: null }, include: { role: true }, skip, take })
+DB --> UR: users[]
+UR --> US: { data, metadata }
+deactivate UR
+
+US -> IS: t('user.user.success.GET_SUCCESS')
+IS --> US: message
+US --> UC: { message, data, metadata }
+deactivate US
+
+UC --> A: 200 OK + JSON
+deactivate UC
+
+@enduml
+
+

@@ -1,0 +1,35 @@
+@startuml Media - Presigned URL Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /media/images/upload/presigned-url
+
+actor "Client" as C
+participant "MediaController" as MC
+participant "MediaService" as MS
+participant "S3Service" as S3
+participant "I18nService" as IS
+
+C -> MC: POST /media/images/upload/presigned-url { filename, filesize }
+activate MC
+
+MC -> MS: getPresignUrl({ filename, filesize })
+activate MS
+
+MS -> MS: randomFilename = generateRandomFilename(filename)
+MS -> S3: createPresignedUrlWithClient(randomFilename)
+S3 --> MS: presignedUrl
+MS -> MS: url = presignedUrl.split('?')[0]
+MS -> IS: t('media.media.success.GET_PRESIGNED_URL_SUCCESS')
+IS --> MS: message
+MS --> MC: { message, presignedUrl, url }
+deactivate MS
+
+MC --> C: 200 OK + JSON
+deactivate MC
+
+@enduml
+
+

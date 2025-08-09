@@ -1,0 +1,43 @@
+@startuml Permission - Create Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /permissions
+
+actor "Admin" as A
+participant "PermissionController" as PC
+participant "ActiveUser" as AU
+participant "PermissionService" as PS
+participant "PermissionRepo" as PR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> PC: POST /permissions { name, path, method, module }
+activate PC
+
+PC -> AU: @ActiveUser()
+AU --> PC: user
+
+PC -> PS: create({ data, user })
+activate PS
+
+PS -> PR: create({ createdById: user.userId, data })
+activate PR
+PR -> DB: permission.create({ data: { ...data, createdById } })
+DB --> PR: permission
+PR --> PS: permission
+deactivate PR
+
+PS -> IS: i18n.t('permission.permission.success.CREATE_SUCCESS')
+IS --> PS: message
+PS --> PC: { message, data }
+deactivate PS
+
+PC --> A: 201 Created + JSON
+deactivate PC
+
+@enduml
+
+

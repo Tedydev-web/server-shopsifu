@@ -1,0 +1,25 @@
+@startuml VNPay - Bank List Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /payment/vnpay/bank-list
+
+start
+:Nhận request;
+:Gọi VnpayService.getBankList();
+if (Thành công?) then (Có)
+  :Map kết quả về dạng chuẩn hoá;
+  :Build message i18n;
+  :Trả về 200 { message, data };
+else (Không)
+  :Ném VNPayServiceUnavailableException;
+endif
+stop
+
+@enduml
+
+

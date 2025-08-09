@@ -1,0 +1,77 @@
+@startuml User - Delete Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng DELETE /users/:userId
+
+actor "Admin/Nhân viên" as A
+participant "UserController" as UC
+participant "ActiveUser" as AU
+participant "ActiveRolePermissions('name')" as ARP
+participant "UserService" as US
+participant "UserRepo" as UR
+participant "SharedUserRepository" as SUR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> UC: DELETE /users/:userId
+activate UC
+
+UC -> AU: @ActiveUser()
+AU --> UC: user
+UC -> ARP: @ActiveRolePermissions('name')
+ARP --> UC: roleName
+UC -> US: delete({ id, user, roleName })
+activate US
+
+US -> US: verifyYourself(user.userId, id)
+alt self-operation
+  US --> UC: CannotUpdateOrDeleteYourselfException (403)
+  UC --> A: 403 Forbidden
+  deactivate US
+  deactivate UC
+  stop
+end
+
+US -> US: roleIdTarget = getRoleIdByUserId(id)
+US -> SUR: findUnique({ id })
+SUR -> DB: SELECT user
+DB --> SUR: current user | null
+SUR --> US: current user | null
+alt not found
+  US --> UC: NotFoundRecordException (404)
+  UC --> A: 404 Not Found
+  deactivate US
+  deactivate UC
+  stop
+end
+
+US -> US: verifyRole(roleName, roleIdTarget)
+alt forbidden
+  US --> UC: ForbiddenException (403)
+  UC --> A: 403 Forbidden
+  deactivate US
+  deactivate UC
+  stop
+end
+
+US -> UR: delete({ id, deletedById: user.userId })
+activate UR
+UR -> DB: user.update({ where: { id, deletedAt: null }, data: { deletedAt: now, deletedById } })
+DB --> UR: ok
+UR --> US: ok
+deactivate UR
+
+US -> IS: t('user.user.success.DELETE_SUCCESS')
+IS --> US: message
+US --> UC: { message }
+deactivate US
+
+UC --> A: 200 OK + JSON
+deactivate UC
+
+@enduml
+
+

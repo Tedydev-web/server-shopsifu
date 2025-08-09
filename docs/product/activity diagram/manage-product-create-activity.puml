@@ -1,0 +1,28 @@
+@startuml Manage Product Create Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /manage-product/products
+
+start
+:Xác thực AccessToken và tải user context;
+:Nhận body { productData, categories[], skus[] };
+:Validate DTO (Zod) bao gồm superRefine đối chiếu SKUs với variants;
+if (Hợp lệ?) then (Có)
+  :product.create với audit fields (createdById), connect categories, createMany SKUs;
+  :Include relations để trả về đầy đủ dữ liệu;
+  :enqueue addSyncProductJob(productId, 'create') vào BullMQ;
+  :Build message i18n;
+  :Trả về 201 { message, data };
+else (Không)
+  :Ném ValidationException (422/400);
+endif
+stop
+
+@enduml
+
+

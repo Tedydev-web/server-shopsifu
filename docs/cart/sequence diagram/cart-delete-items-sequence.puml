@@ -1,0 +1,42 @@
+@startuml Cart - Delete Items Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /cart/delete
+
+actor "Người dùng" as U
+participant "AccessTokenGuard" as AG
+participant "CartController" as CC
+participant "CartService" as CS
+participant "CartRepo" as CR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> CC: Forward với user
+activate CC
+
+CC -> CS: deleteCart(user, { cartItemIds })
+activate CS
+
+CS -> CR: delete(user.userId, { cartItemIds })
+activate CR
+CR -> DB: cartItem.deleteMany({ where: { id in cartItemIds, userId } })
+DB --> CR: { count }
+CR --> CS: { count }
+deactivate CR
+
+CS -> IS: t('cart.cart.success.DELETE_SUCCESS')
+IS --> CS: message
+CS --> CC: { message, data: { count } }
+deactivate CS
+
+CC --> U: 200 OK + JSON
+deactivate CC
+
+@enduml
+
+

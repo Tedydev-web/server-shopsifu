@@ -1,0 +1,51 @@
+@startuml Permission - Get List Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /permissions
+
+actor "Admin" as A
+participant "PermissionController" as PC
+participant "PermissionService" as PS
+participant "PermissionRepo" as PR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> PC: GET /permissions?page&limit
+activate PC
+
+PC -> PS: list({ page, limit })
+activate PS
+
+PS -> PR: list(pagination)
+activate PR
+
+note right of PR
+Pagination:
+• skip = (page - 1) * limit
+• take = limit
+Queries song song:
+• permission.count({ deletedAt: null })
+• permission.findMany({ deletedAt: null, skip, take })
+end note
+
+PR -> DB: permission.count({ where: { deletedAt: null } })
+DB --> PR: totalItems
+PR -> DB: permission.findMany({ where: { deletedAt: null }, skip, take })
+DB --> PR: permissions[]
+PR --> PS: { data, metadata }
+deactivate PR
+
+PS -> IS: t('permission.permission.success.GET_SUCCESS')
+IS --> PS: message
+PS --> PC: { message, data, metadata }
+deactivate PS
+
+PC --> A: 200 OK + JSON
+deactivate PC
+
+@enduml
+
+

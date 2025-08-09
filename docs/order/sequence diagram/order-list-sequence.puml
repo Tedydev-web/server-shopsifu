@@ -1,0 +1,55 @@
+@startuml Order - Get List Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /orders
+
+actor "Người dùng" as U
+participant "AccessTokenGuard" as AG
+participant "OrderController" as OC
+participant "OrderService" as OS
+participant "OrderRepo" as OR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> OC: Forward với user
+activate OC
+
+OC -> OS: list(user, { page, limit, status? })
+activate OS
+
+OS -> OR: list(user.userId, query)
+activate OR
+
+note right of OR
+Xây dựng where:
+• userId = user.userId
+• status (optional)
+Pagination:
+• skip/take theo page/limit; orderBy createdAt DESC
+Include:
+• items
+end note
+
+OR -> DB: order.count({ where })
+DB --> OR: totalItems
+OR -> DB: order.findMany({ where, include: { items: true }, skip, take, orderBy })
+DB --> OR: orders[]
+OR --> OS: { data, metadata }
+deactivate OR
+
+OS -> IS: t('order.order.success.GET_SUCCESS')
+IS --> OS: message
+OS --> OC: { message, data, metadata }
+deactivate OS
+
+OC --> U: 200 OK + JSON
+deactivate OC
+
+@enduml
+
+

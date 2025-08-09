@@ -1,0 +1,34 @@
+@startuml Product Public List Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /products (Public)
+
+start
+:Nhận request với query params;
+:Trích xuất page, limit, name, brandIds, categories, minPrice, maxPrice, orderBy, sortBy;
+:Lấy languageId từ I18nContext;
+:Xây dựng where/orderBy theo filters;
+note right
+• deletedAt IS NULL
+• publishedAt <= now
+• name contains (insensitive)
+• brandId in []
+• categories some id in []
+• basePrice gte/lte theo range
+• orderBy theo sortBy
+end note
+:Thực thi count và findMany song song;
+:Đọc productTranslations theo languageId;
+:Chuẩn hóa metadata pagination;
+:Build message i18n;
+:Trả về JSON { message, data, metadata };
+stop
+
+@enduml
+
+

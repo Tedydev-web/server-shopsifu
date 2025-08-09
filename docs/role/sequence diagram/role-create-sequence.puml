@@ -1,0 +1,43 @@
+@startuml Role - Create Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /roles
+
+actor "Admin" as A
+participant "RoleController" as RC
+participant "ActiveUser" as AU
+participant "RoleService" as RS
+participant "RoleRepo" as RR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> RC: POST /roles { name, description, isActive }
+activate RC
+
+RC -> AU: @ActiveUser()
+AU --> RC: user
+
+RC -> RS: create({ data, user })
+activate RS
+
+RS -> RR: create({ createdById: user.userId, data })
+activate RR
+RR -> DB: role.create({ data: { ...data, createdById } })
+DB --> RR: role
+RR --> RS: role
+deactivate RR
+
+RS -> IS: i18n.t('role.role.success.CREATE_SUCCESS')
+IS --> RS: message
+RS --> RC: { message, data: role }
+deactivate RS
+
+RC --> A: 201 Created + JSON
+deactivate RC
+
+@enduml
+
+

@@ -1,0 +1,50 @@
+@startuml Role - Get List Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /roles
+
+actor "Admin" as A
+participant "RoleController" as RC
+participant "RoleService" as RS
+participant "RoleRepo" as RR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> RC: GET /roles?page&limit&name?
+activate RC
+
+RC -> RS: list({ page, limit, name? })
+activate RS
+
+RS -> RR: list({ page, limit, name })
+activate RR
+
+note right of RR
+Xây dựng where:
+• deletedAt = null
+• name contains (insensitive) nếu có
+Pagination:
+• skip/take theo page/limit
+end note
+
+RR -> DB: role.count({ where })
+DB --> RR: totalItems
+RR -> DB: role.findMany({ where, skip, take })
+DB --> RR: roles[]
+RR --> RS: { data, metadata }
+deactivate RR
+
+RS -> IS: i18n.t('role.role.success.GET_SUCCESS')
+IS --> RS: message
+RS --> RC: { message, data, metadata }
+deactivate RS
+
+RC --> A: 200 OK + JSON
+deactivate RC
+
+@enduml
+
+

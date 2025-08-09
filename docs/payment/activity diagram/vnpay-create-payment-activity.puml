@@ -1,0 +1,25 @@
+@startuml VNPay - Create Payment Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /payment/vnpay/create-payment
+
+start
+:Nhận paymentData { amount, orderInfo, orderId, ... };
+:Gắn PREFIX_PAYMENT_CODE vào orderInfo và orderId;
+:Gọi VnpayService.buildPaymentUrl(..., withHash=true);
+if (Thành công?) then (Có)
+  :Build message i18n;
+  :Trả về 200 { message, data: { paymentUrl } };
+else (Không)
+  :Ném VNPayServiceUnavailableException;
+endif
+stop
+
+@enduml
+
+

@@ -1,0 +1,55 @@
+@startuml Order - Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /orders/:orderId
+
+actor "Người dùng" as U
+participant "AccessTokenGuard" as AG
+participant "OrderController" as OC
+participant "OrderService" as OS
+participant "OrderRepo" as OR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> OC: Forward với user
+activate OC
+
+OC -> OS: detail(user, orderId)
+activate OS
+
+OS -> OR: detail(user.userId, orderId)
+activate OR
+
+OR -> DB: order.findUnique({ where: { id: orderId, userId, deletedAt: null }, include: { items: true, discounts: true } })
+DB --> OR: order | null
+
+alt order == null
+  OR -> OS: throw OrderNotFoundException
+  OS --> OC: 404 Not Found
+  OC --> U: 404 Not Found
+  deactivate OR
+  deactivate OS
+  deactivate OC
+  stop
+end
+
+OR -> OR: calculate totals (items, discounts)
+OR --> OS: { data: { ...order, totals } }
+deactivate OR
+
+OS -> IS: t('order.order.success.GET_DETAIL_SUCCESS')
+IS --> OS: message
+OS --> OC: { message, data }
+deactivate OS
+
+OC --> U: 200 OK + JSON
+deactivate OC
+
+@enduml
+
+

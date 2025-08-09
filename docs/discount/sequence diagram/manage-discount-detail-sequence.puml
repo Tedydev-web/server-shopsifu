@@ -1,0 +1,59 @@
+@startuml Manage Discount - Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /manage-discount/discounts/:discountId
+
+actor "Seller/Admin" as U
+participant "AccessTokenGuard" as AG
+participant "ManageDiscountController" as MDC
+participant "ManageDiscountService" as MDS
+participant "DiscountRepo" as DR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> MDC: Forward với user
+activate MDC
+
+MDC -> MDS: getDetail({ discountId, user })
+activate MDS
+
+MDS -> DR: getDetail({ discountId, createdById: user.userId })
+activate DR
+DR -> DB: discount.findUnique({ where: { id: discountId, deletedAt: null, createdById: user.userId } })
+DB --> DR: { data } | null
+DR --> MDS: { data } | null
+deactivate DR
+
+alt not found
+  MDS --> MDC: 404 Not Found
+  MDC --> U: 404 Not Found
+  deactivate MDS
+  deactivate MDC
+  stop
+end
+
+MDS -> MDS: validatePrivilege(userIdRequest=user.userId, roleNameRequest=user.roleName, createdById=data.createdById)
+alt Không hợp lệ
+  MDS --> MDC: 403 Forbidden
+  MDC --> U: 403 Forbidden
+  deactivate MDS
+  deactivate MDC
+  stop
+end
+
+MDS -> IS: i18n.t('discount.discount.success.GET_SUCCESS')
+IS --> MDS: message
+MDS --> MDC: { message, data }
+deactivate MDS
+
+MDC --> U: 200 OK + JSON
+deactivate MDC
+
+@enduml
+
+

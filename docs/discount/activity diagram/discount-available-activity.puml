@@ -1,0 +1,29 @@
+@startuml Discount - Available Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /discounts/available
+
+start
+:Nhận query { limit, cartItemIds?, onlyShopDiscounts?, onlyPlatformDiscounts? };
+:Xây dựng where cơ bản (ACTIVE, thời gian hợp lệ, chưa xóa);
+if (Có cartItemIds?) then (Có)
+  :Tải cartItems với sku.product (createdBy,categories,brand);
+  :Tính orderTotal và shopId;
+  :Áp dụng minOrderValue theo orderTotal;
+  :Áp dụng filter isPlatform/shopId theo flags;
+else (Không)
+  :Áp dụng filter isPlatform theo flags;
+endif
+:Query discount.findMany(where, include relations, orderBy desc, take limit);
+:Lọc kết quả theo usesCount và applyType SPECIFIC (match product/category/brand);
+:Trả về 200 { message, data };
+stop
+
+@enduml
+
+

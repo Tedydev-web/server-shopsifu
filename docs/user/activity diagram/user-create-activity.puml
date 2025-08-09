@@ -1,0 +1,26 @@
+@startuml User - Create Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /users
+
+start
+:Nhận { data } + user + roleName;
+:verifyRole(roleNameAgent, roleIdTarget);
+if (Không hợp lệ?) then (Có)
+  :Ném ForbiddenException (403);
+  stop
+endif
+:Hash password;
+:Tạo user với audit createdById;
+:Build message i18n;
+:Trả về 201 { message, data };
+stop
+
+@enduml
+
+

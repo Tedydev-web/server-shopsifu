@@ -1,0 +1,34 @@
+@startuml Order - Calculate Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /orders/calculate
+
+start
+:Xác thực AccessToken và tải user context;
+:Nhận { cartItemIds, discountCodes? };
+:Load cartItems với sku.product (translations, brand, categories);
+if (cartItems rỗng?) then (Có)
+  :Trả về zero totals;
+  stop
+endif
+:Tính totalPayment = sum(sku.price * quantity);
+if (discountCodes rỗng?) then (Có)
+  :Trả về totals không áp dụng voucher;
+  stop
+endif
+:Lấy discounts ACTIVE trong thời gian hiệu lực;
+:Tính user usage count; tạo usageMap;
+:Lọc validDiscounts bằng validateDiscountForOrder;
+:Tính appliedDiscounts với calculateDiscountAmount;
+:Tổng hợp totalVoucherDiscount; tính grandTotal;
+:Trả về { totalItemCost, totalShippingFee=0, totalVoucherDiscount, totalPayment };
+stop
+
+@enduml
+
+

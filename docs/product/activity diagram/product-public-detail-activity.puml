@@ -1,0 +1,27 @@
+@startuml Product Public Detail Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /products/:productId (Public)
+
+start
+:Nhận request với productId;
+:Lấy languageId từ I18nContext;
+:Xây dựng where { id, deletedAt = null, publishedAt <= now };
+:Include translations/skus/brand/categories theo languageId;
+:Thực thi findUnique;
+if (product tồn tại?) then (Có)
+  :Build message i18n;
+  :Trả về JSON { message, data };
+else (Không)
+  :Ném NotFoundRecordException;
+endif
+stop
+
+@enduml
+
+

@@ -1,0 +1,47 @@
+@startuml Permission - Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /permissions/:permissionId
+
+actor "Admin" as A
+participant "PermissionController" as PC
+participant "PermissionService" as PS
+participant "PermissionRepo" as PR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> PC: GET /permissions/:permissionId
+activate PC
+
+PC -> PS: findById(id)
+activate PS
+
+PS -> PR: findById(id)
+activate PR
+PR -> DB: permission.findUnique({ id, deletedAt: null })
+DB --> PR: permission | null
+PR --> PS: permission | null
+deactivate PR
+
+alt permission == null
+  PS --> PC: NotFoundRecordException (404)
+  PC --> A: 404 Not Found
+  deactivate PS
+  deactivate PC
+  stop
+end
+
+PS -> IS: t('permission.permission.success.GET_DETAIL_SUCCESS')
+IS --> PS: message
+PS --> PC: { message, data }
+deactivate PS
+
+PC --> A: 200 OK + JSON
+deactivate PC
+
+@enduml
+
+

@@ -1,0 +1,57 @@
+@startuml Product Public Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /products/:productId (Public)
+
+actor "Client" as C
+participant "ProductController" as PC
+participant "ProductService" as PS
+participant "ProductRepo" as PR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+C -> PC: GET /products/:productId
+activate PC
+
+PC -> PS: getDetail({ productId })
+activate PS
+
+PS -> PR: getDetail({ productId, languageId=I18nContext.lang, isPublic=true })
+activate PR
+
+note right of PR
+Build where:
+• id = productId, deletedAt = null
+• publishedAt <= now (public only)
+Include:
+• productTranslations theo languageId ('all' => không filter)
+• skus where deletedAt = null
+• brand with brandTranslations (filter theo language)
+• categories with categoryTranslations (filter theo language)
+end note
+
+PR -> DB: product.findUnique({ where, include })
+DB --> PR: product | null
+PR --> PS: { data: product } | null
+deactivate PR
+
+alt product != null
+  PS -> IS: t('product.product.success.GET_DETAIL_SUCCESS')
+  IS --> PS: message
+  PS --> PC: { message, data }
+  PC --> C: 200 OK + JSON
+else product == null
+  PS -> PS: throw NotFoundRecordException
+  PS --> PC: 404 Not Found
+  PC --> C: 404 Not Found
+end
+
+deactivate PS
+deactivate PC
+
+@enduml
+
+

@@ -1,0 +1,49 @@
+@startuml Order - Create Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /orders (Create)
+
+start
+:Xác thực AccessToken và tải user context;
+:Nhận body [{ shopId, receiver, cartItemIds, discountCodes? }];
+:Validate discount codes (nếu có): ACTIVE, thời gian, maxUses, maxUsesPerUser;
+if (Discount invalid?) then (Có)
+  :Ném BadRequestException;
+  stop
+endif
+:Lấy skuIds từ cart items;
+:Acquire Redis locks cho skuIds (3s);
+:BEGIN TRANSACTION;
+:Load cart items với sku.product (translations, brand, categories);
+:Validate cart items (tồn tại, stock, published, đúng shop);
+if (Validation fail?) then (Có)
+  :ROLLBACK;
+  :Release locks;
+  :Ném validation exception;
+  stop
+endif
+:Tạo payment status PENDING;
+repeat Cho mỗi shop trong body
+  :Tính orderTotal;
+  if (Có discountCodes?) then (Có)
+    :Lấy và lọc discounts hợp lệ;
+    :Cập nhật usesCount và usersUsed;
+  endif
+  :Tạo order + items + connect products;
+repeat while (hết shops)
+:Xóa cart items đã mua;
+:Decrement stock theo từng item (optimistic lock);
+:Thêm cancel payment job (delay 24h) vào queue;
+:COMMIT;
+:Release locks;
+:Trả về 201 { paymentId, orders };
+stop
+
+@enduml
+
+

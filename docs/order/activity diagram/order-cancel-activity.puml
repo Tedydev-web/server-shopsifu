@@ -1,0 +1,30 @@
+@startuml Order - Cancel Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: PUT /orders/:orderId (Cancel)
+
+start
+:Xác thực AccessToken và tải user context;
+:Nhận orderId;
+:Find order theo { id, userId, deletedAt = null };
+if (Order tồn tại?) then (Có)
+  if (status == PENDING_PAYMENT?) then (Có)
+    :Update status -> CANCELLED, updatedById = userId;
+    :Build message i18n;
+    :Trả về 200 { message, data };
+  else (Không)
+    :Ném CannotCancelOrderException;
+  endif
+else (Không)
+  :Ném OrderNotFoundException;
+endif
+stop
+
+@enduml
+
+

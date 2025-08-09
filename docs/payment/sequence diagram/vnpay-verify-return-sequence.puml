@@ -1,0 +1,51 @@
+@startuml VNPay - Verify Return Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /payment/vnpay/verify-return
+
+actor "Client" as C
+participant "VNPayController" as VC
+participant "VNPayService" as VS
+participant "VnpayService" as VNS
+participant "VNPayRepo" as VR
+participant "I18nService" as IS
+participant "WebSocket Server" as WS
+
+C -> VC: GET /payment/vnpay/verify-return?{...vnp_*}
+activate VC
+
+VC -> VS: verifyReturnUrl(queryData)
+activate VS
+
+VS -> VNS: verifyReturnUrl(queryData)
+VNS --> VS: { isSuccess, isVerified, message, vnp_* }
+
+alt isSuccess && isVerified && vnp_ResponseCode == '00'
+  VS -> VR: processVNPayWebhook(queryData)
+  activate VR
+  VR -> VR: Kiểm tra trùng lặp paymentTransaction
+  VR -> VR: Bắt đầu transaction
+  VR -> VR: Lưu paymentTransaction (vnp_Amount/100)
+  VR -> VR: extractPaymentId(PREFIX_PAYMENT_CODE, vnp_OrderInfo, vnp_TxnRef)
+  VR -> VR: validateAndFindPayment(paymentId)
+  VR -> VR: validatePaymentAmount(orders, total, actualAmount)
+  VR -> VR: updatePaymentAndOrdersOnSuccess(paymentId, orders)
+  VR --> VS: { userId, paymentId }
+  deactivate VR
+  VS -> WS: server.to(room(paymentId)).emit('payment', {status:'success', gateway:'vnpay', paymentId})
+end
+
+VS -> IS: t('payment.payment.vnpay.success.VERIFY_RETURN_SUCCESS')
+IS --> VS: message
+VS --> VC: { message, data: mapped verify }
+deactivate VS
+
+VC --> C: 200 OK + JSON
+deactivate VC
+
+@enduml
+
+

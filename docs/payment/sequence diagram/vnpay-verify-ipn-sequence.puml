@@ -1,0 +1,59 @@
+@startuml VNPay - Verify IPN Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /payment/vnpay/verify-ipn
+
+actor "VNPay Gateway" as VNG
+participant "VNPayController" as VC
+participant "VNPayService" as VS
+participant "VnpayService" as VNS
+participant "VNPayRepo" as VR
+participant "WebSocket Server" as WS
+
+VNG -> VC: GET /payment/vnpay/verify-ipn?{...vnp_*}
+activate VC
+
+VC -> VS: processIpnCall(queryData)
+activate VS
+
+VS -> VNS: verifyIpnCall(queryData)
+VNS --> VS: { isVerified, vnp_Amount, ... }
+
+alt !isVerified
+  VS --> VC: { RspCode: '97', Message: 'Invalid Checksum' }
+  VC --> VNG: 200 OK + JSON
+  deactivate VS
+  deactivate VC
+  stop
+end
+
+VS -> VR: verifyIpnCall(processedData)
+VR --> VS: { payment, orders, paymentId }
+
+alt payment.status in [SUCCESS, FAILED]
+  VS --> VC: { RspCode: '02', Message: 'Order already confirmed' }
+  VC --> VNG: 200 OK + JSON
+  deactivate VS
+  deactivate VC
+  stop
+end
+
+alt vnp_ResponseCode == '00'
+  VS -> VR: updatePaymentAndOrdersOnSuccess(paymentId, orders)
+  VS -> WS: server.to(room(paymentId)).emit('payment', {status:'success', gateway:'vnpay', paymentId})
+else
+  VS -> VR: updatePaymentAndOrdersOnFailed(paymentId, orders)
+end
+
+VS --> VC: { RspCode: '00', Message: 'Confirm Success' }
+deactivate VS
+
+VC --> VNG: 200 OK + JSON
+deactivate VC
+
+@enduml
+
+

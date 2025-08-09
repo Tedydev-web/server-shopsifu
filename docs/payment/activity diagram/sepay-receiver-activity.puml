@@ -1,0 +1,37 @@
+@startuml Sepay - Receiver Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /payment/receiver (Webhook)
+
+start
+:Xác thực PaymentAPIKey;
+if (API Key hợp lệ?) then (Có)
+  :Kiểm tra trùng lặp transaction theo id;
+  if (Đã tồn tại?) then (Có)
+    :Ném BadRequestException('Transaction already exists');
+    stop
+  endif
+  :Tạo paymentTransaction từ body (parse transactionDate, in/out amount);
+  :extractPaymentId từ PREFIX_PAYMENT_CODE trong code/content;
+  if (Không tìm thấy paymentId?) then (Có)
+    :Ném BadRequestException('Cannot get payment id from content');
+    stop
+  endif
+  :validateAndFindPayment(paymentId) → lấy orders;
+  :validatePaymentAmount(orders, totalPrice, transferAmount);
+  :updatePaymentAndOrdersOnSuccess(paymentId, orders);
+  :Emit WebSocket đến payment room;
+  :Trả về 200 { message };
+else (Không)
+  :Ném Unauthorized (API Key invalid);
+endif
+stop
+
+@enduml
+
+

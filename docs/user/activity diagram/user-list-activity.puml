@@ -1,0 +1,22 @@
+@startuml User - Get List Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /users
+
+start
+:Nhận page, limit;
+:Tính skip/take;
+:Thực thi count + findMany song song (include role);
+:Tính metadata;
+:Build message i18n;
+:Trả về 200 { message, data, metadata };
+stop
+
+@enduml
+
+

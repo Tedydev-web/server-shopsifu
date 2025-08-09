@@ -1,0 +1,134 @@
+@startuml Order - Create Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /orders (Create)
+
+actor "Người dùng" as U
+participant "AccessTokenGuard" as AG
+participant "OrderController" as OC
+participant "OrderService" as OS
+participant "OrderRepo" as OR
+participant "OrderProducer" as OP
+participant "I18nService" as IS
+participant "PrismaService" as PS
+participant "Redis Redlock" as RL
+database "PostgreSQL (Prisma)" as DB
+queue "BullMQ Queue" as BQ
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> OC: Forward với user
+activate OC
+
+OC -> OS: create(user, body[])
+activate OS
+
+OS -> OS: validateDiscountCodesIfAny()
+alt Có discount codes
+  OS -> PS: discount.findMany({ codes }, include targets)
+  PS -> DB: Query discounts
+  DB --> PS: discounts
+  PS --> OS: discounts[]
+  OS -> PS: discountSnapshot.groupBy({ userId })
+  PS -> DB: Query usage count per discount
+  DB --> PS: usage[]
+  PS --> OS: usage map
+  OS -> OS: kiểm tra ACTIVE, hiệu lực thời gian, maxUses, maxUsesPerUser
+  alt invalid
+    OS -> OC: throw BadRequestException
+    OC --> U: 400 Bad Request
+    deactivate OS
+    deactivate OC
+    stop
+  end
+end
+
+OS -> OR: create(user.userId, body)
+activate OR
+
+OR -> PS: cartItem.findMany({ ids by body, userId }) (để lấy skuIds)
+PS -> DB: Query cart items (for skuIds)
+DB --> PS: cartItems
+PS --> OR: cartItems (skuIds)
+
+OR -> RL: acquire locks for each skuId (3s)
+RL --> OR: locks
+
+OR -> PS: $transaction() begin
+PS -> DB: BEGIN TRANSACTION
+
+OR -> PS: cartItem.findMany({ include sku.product(translations, brand, categories) })
+PS -> DB: Query cart items with relations
+DB --> PS: cartItems[]
+PS --> OR: cartItems
+
+OR -> OR: validateCartItems(cartItems, body)
+note right of OR
+• Đủ cartItemIds
+• Stock đủ
+• Product publish OK
+• SKU thuộc đúng shopId
+end note
+
+OR -> PS: payment.create({ status: PENDING })
+PS -> DB: INSERT payment
+DB --> PS: payment
+PS --> OR: payment.id
+
+loop Mỗi shop trong body
+  OR -> OR: tính orderTotal
+  alt có discountCodes
+    OR -> PS: discount.findMany(active+time+deletedAt=null, include targets)
+    PS -> DB: Query discounts
+    DB --> PS: discounts
+    PS --> OR: discounts
+    OR -> OR: lọc và validate discounts theo orderTotal và targets
+    OR -> PS: discount.update(usesCount++, usersUsed.push(userId)) (mỗi mã áp dụng)
+    PS -> DB: UPDATE discount
+    DB --> PS: ok
+  end
+  OR -> PS: order.create({ userId, shopId, paymentId, items.create[], products.connect[] })
+  PS -> DB: INSERT order + items + relations
+  DB --> PS: order
+  PS --> OR: order
+end
+
+OR -> PS: cartItem.deleteMany({ ids in allBodyCartItemIds })
+PS -> DB: DELETE cart items
+DB --> PS: { count }
+
+loop Decrement stock theo từng cartItem
+  OR -> PS: sKU.update({ where: { id, updatedAt, stock >= quantity }, data: { stock: decrement quantity } })
+  PS -> DB: UPDATE SKU (optimistic lock)
+  DB --> PS: ok | throw
+  alt throw isNotFoundPrismaError
+    PS --> OR: throw VersionConflictException
+  end
+end
+
+OR -> OP: addCancelPaymentJob(payment.id)
+OP -> BQ: enqueue CANCEL_PAYMENT_JOB (delay 24h)
+BQ --> OP: queued
+OP --> OR: ok
+
+PS -> DB: COMMIT TRANSACTION
+DB --> PS: committed
+OR -> RL: release locks
+RL --> OR: released
+OR --> OS: { paymentId, orders }
+deactivate OR
+
+OS -> IS: t('order.order.success.CREATE_SUCCESS')
+IS --> OS: message
+OS --> OC: { message, data: { paymentId, orders } }
+deactivate OS
+
+OC --> U: 201 Created + JSON
+deactivate OC
+
+@enduml
+
+

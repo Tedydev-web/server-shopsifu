@@ -1,0 +1,59 @@
+@startuml Cart - Update Cart Item Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng PUT /cart/:cartItemId
+
+actor "Người dùng" as U
+participant "AccessTokenGuard" as AG
+participant "CartController" as CC
+participant "CartService" as CS
+participant "CartRepo" as CR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> CC: Forward với user
+activate CC
+
+CC -> CS: updateCartItem({ user, cartItemId, body: { skuId, quantity } })
+activate CS
+
+CS -> CR: update({ userId: user.userId, cartItemId, body })
+activate CR
+
+CR -> CR: validateSKU({ skuId, quantity, userId, isCreate: false })
+CR -> DB: cartItem.findUnique({ userId_skuId })
+DB --> CR: cartItem | null
+CR -> DB: sKU.findUnique({ id, deletedAt: null }, include: { product })
+DB --> CR: sku { product } | null
+
+alt SKU/stock/publish validation fail
+  CR -> CS: throw corresponding exception
+  CS --> CC: 400/404
+  CC --> U: 400/404
+  deactivate CR
+  deactivate CS
+  deactivate CC
+  stop
+end
+
+CR -> DB: cartItem.update({ where: { id: cartItemId, userId }, data: { skuId, quantity } })
+DB --> CR: updated cartItem
+CR --> CS: updated cartItem
+deactivate CR
+
+CS -> IS: t('cart.cart.success.UPDATE_SUCCESS')
+IS --> CS: message
+CS --> CC: { message, data: cartItem }
+deactivate CS
+
+CC --> U: 200 OK + JSON
+deactivate CC
+
+@enduml
+
+

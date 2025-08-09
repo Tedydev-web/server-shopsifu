@@ -1,0 +1,21 @@
+@startuml Permission - Update Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: PUT /permissions/:permissionId
+
+start
+:Nhận id + body + user;
+:permission.update({ id, updatedById, data }) include roles;
+:Xóa cache roles liên quan (role:${roleId});
+:Build message i18n;
+:Trả về 200 { message, data };
+stop
+
+@enduml
+
+

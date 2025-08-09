@@ -1,0 +1,54 @@
+@startuml Manage Discount - List Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /manage-discount/discounts
+
+actor "Seller/Admin" as U
+participant "AccessTokenGuard" as AG
+participant "ManageDiscountController" as MDC
+participant "ManageDiscountService" as MDS
+participant "DiscountRepo" as DR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> MDC: Forward với user
+activate MDC
+
+MDC -> MDS: list({ query, user })
+activate MDS
+
+MDS -> MDS: validatePrivilege(userIdRequest=user.userId, roleNameRequest=user.roleName, createdById=query.createdById)
+alt Không hợp lệ
+  MDS --> MDC: 403 Forbidden
+  MDC --> U: 403 Forbidden
+  deactivate MDS
+  deactivate MDC
+  stop
+end
+
+MDS -> DR: list({ filters..., createdById, page, limit, orderBy, sortBy })
+activate DR
+DR -> DR: buildAdminListWhereClause(filters)
+DR -> DB: discount.count({ where })
+DB --> DR: totalItems
+DR -> DB: discount.findMany({ where, orderBy, skip, take })
+DB --> DR: discounts[]
+DR --> MDS: { data, metadata }
+deactivate DR
+
+MDS -> IS: i18n.t('discount.discount.success.GET_SUCCESS')
+IS --> MDS: message
+MDS --> MDC: { message, data, metadata }
+deactivate MDS
+
+MDC --> U: 200 OK + JSON
+deactivate MDC
+
+@enduml
+
+

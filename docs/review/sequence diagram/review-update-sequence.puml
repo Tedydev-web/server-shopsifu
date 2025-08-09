@@ -1,0 +1,65 @@
+@startuml Review - Update Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng PUT /reviews/:reviewId
+
+actor "Người dùng" as U
+participant "ReviewController" as RC
+participant "ActiveUser" as AU
+participant "ReviewService" as RS
+participant "ReviewRepository" as RR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> RC: PUT /reviews/:reviewId { content, rating, productId, orderId, medias[] }
+activate RC
+
+RC -> AU: @ActiveUser()
+AU --> RC: user
+
+RC -> RS: update({ user, reviewId, body })
+activate RS
+
+RS -> RR: update({ userId: user.userId, reviewId, body })
+activate RR
+
+RR -> RR: validateOrder(orderId,userId) & validateUpdateReview(reviewId,userId)
+RR -> DB: order.findUnique({ id: orderId, userId })
+DB --> RR: order | null
+RR -> DB: review.findUnique({ id: reviewId, userId })
+DB --> RR: review | null
+
+alt order null OR review null OR review.updateCount >= 1
+  RR -> RS: throw BadRequestException/NotFoundException
+  RS --> RC: 400/404
+  RC --> U: 400/404
+  deactivate RR
+  deactivate RS
+  deactivate RC
+  stop
+end
+
+RR -> DB: $transaction begin
+RR -> DB: review.update({ data: { ...body, updateCount.increment = 1 }, include: user })
+DB --> RR: updated review
+RR -> DB: reviewMedia.deleteMany({ reviewId })
+DB --> RR: deleted count
+RR -> DB: reviewMedia.createManyAndReturn(medias with reviewId)
+DB --> RR: new medias
+RR --> RS: { data: { ...review, medias } }
+deactivate RR
+
+RS -> IS: t('review.review.success.UPDATE_SUCCESS')
+IS --> RS: message
+RS --> RC: { message, data }
+deactivate RS
+
+RC --> U: 200 OK + JSON
+deactivate RC
+
+@enduml
+
+

@@ -1,0 +1,30 @@
+@startuml Cart - Get List Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /cart
+
+start
+:Xác thực AccessToken và tải user context;
+:Nhận page, limit;
+:Lấy languageId từ I18nContext;
+:Thực thi totalItems$ (đếm nhóm shop);
+:Thực thi data$ (gom JSON theo shop, JOIN SKU/Product/Translation);
+note right
+Filter:
+• Product.deletedAt IS NULL
+• Product.publishedAt IS NOT NULL AND <= NOW()
+• LanguageId = 'all' → không filter, ngược lại filter
+end note
+:Tính metadata phân trang;
+:Build message i18n;
+:Trả về JSON { message, data, metadata };
+stop
+
+@enduml
+
+

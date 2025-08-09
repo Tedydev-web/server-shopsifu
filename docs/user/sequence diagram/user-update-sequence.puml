@@ -1,0 +1,75 @@
+@startuml User - Update Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng PUT /users/:userId
+
+actor "Admin/Nhân viên" as A
+participant "UserController" as UC
+participant "ActiveUser" as AU
+participant "ActiveRolePermissions('name')" as ARP
+participant "UserService" as US
+participant "SharedUserRepository" as SUR
+participant "SharedRoleRepository" as SRR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> UC: PUT /users/:userId { data }
+activate UC
+
+UC -> AU: @ActiveUser()
+AU --> UC: user
+UC -> ARP: @ActiveRolePermissions('name')
+ARP --> UC: roleName
+UC -> US: update({ id, data, user, roleName })
+activate US
+
+US -> US: verifyYourself(user.userId, id)
+alt self-operation
+  US --> UC: CannotUpdateOrDeleteYourselfException (403)
+  UC --> A: 403 Forbidden
+  deactivate US
+  deactivate UC
+  stop
+end
+
+US -> US: roleIdTarget = getRoleIdByUserId(id)
+US -> SUR: findUnique({ id })
+SUR -> DB: SELECT user
+DB --> SUR: current user | null
+SUR --> US: current user | null
+alt not found
+  US --> UC: NotFoundRecordException (404)
+  UC --> A: 404 Not Found
+  deactivate US
+  deactivate UC
+  stop
+end
+
+US -> US: verifyRole(roleName, roleIdTarget)
+alt forbidden
+  US --> UC: ForbiddenException (403)
+  UC --> A: 403 Forbidden
+  deactivate US
+  deactivate UC
+  stop
+end
+
+US -> SUR: update({ id }, { ...data, updatedById: user.userId })
+SUR -> DB: UPDATE user
+DB --> SUR: updated user
+SUR --> US: updated user
+
+US -> IS: t('user.user.success.UPDATE_SUCCESS')
+IS --> US: message
+US --> UC: { message, data: updatedUser }
+deactivate US
+
+UC --> A: 200 OK + JSON
+deactivate UC
+
+@enduml
+
+

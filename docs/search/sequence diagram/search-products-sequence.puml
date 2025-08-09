@@ -1,0 +1,86 @@
+@startuml Search - Products Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /search/products
+
+actor "Khách/Người dùng" as U
+participant "SearchController" as SC
+participant "SearchService" as SS
+participant "SearchRepo" as SR
+participant "ElasticsearchService" as ES
+participant "I18nService" as IS
+database "Elasticsearch" as ESDB
+
+U -> SC: GET /search/products?q&page&limit&orderBy&sortBy&filters
+activate SC
+
+SC -> SS: searchProducts(query)
+activate SS
+
+note right of SS
+Validate query:
+• Nếu có q: trim và kiểm tra rỗng
+• Độ dài tối thiểu >= 1
+end note
+
+alt query.q tồn tại và hợp lệ
+  SS -> SS: parseQuery(query.q)
+  note right of SS
+  parseQuery:
+  • getDictionary() (có cache 30 phút)
+  • Tách tokens; match với từ điển → options
+  • q' = phần còn lại sau khi loại token thuộc tính
+  • Trả về { q', options }
+  end note
+  SS -> SS: getDictionary()
+  alt cache còn hiệu lực
+    SS -> SS: dùng dictionaryCache
+  else hết hạn
+    SS -> ES: client.search(aggs: unique_attrs)
+    ES -> ESDB: AGGS trên attrs.attrName/attrValue
+    ESDB --> ES: aggregations
+    ES --> SS: aggregations
+    SS -> SS: build Map(attrName -> values[]); set cacheExpiry
+  end
+  SS -> SS: hợp nhất options → query.filters.attrs
+  SS -> SS: gán query.q = parsed.q
+end
+
+SS -> SR: searchProducts(query)
+activate SR
+
+note right of SR
+Xây dựng esQuery:
+• bool.must: multi_match (productName^3) với q (nếu có)
+• bool.should: multi_match phrase cho từng token (productName^2)
+• bool.filter: terms brandIds/categoryIds, range skuPrice, nested attrs
+Sort options:
+• Price → skuPrice { order }
+• Sale → _score desc
+• Default → createdAt { order }
+• Thêm _score desc thứ cấp
+end note
+
+SR -> ES: search(index, esQuery, { size: limit, from, sort })
+ES -> ESDB: Thực thi truy vấn
+ESDB --> ES: hits + total
+ES --> SR: raw result
+
+SR -> SR: map hits → _source; tính metadata
+SR --> SS: { data, metadata }
+deactivate SR
+
+SS -> IS: t('search.search.success.SEARCH_SUCCESS')
+IS --> SS: message
+SS --> SC: { message, data, metadata }
+deactivate SS
+
+SC --> U: 200 OK + JSON
+deactivate SC
+
+@enduml
+
+

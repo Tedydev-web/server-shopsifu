@@ -1,0 +1,29 @@
+@startuml Manage Product List Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /manage-product/products
+
+start
+:Xác thực AccessToken và tải user context;
+:Nhận query { page, limit, createdById, isPublic?, name?, brandIds?, categories?, minPrice?, maxPrice?, orderBy, sortBy };
+:Kiểm tra quyền: user.userId == createdById hoặc roleName == Admin?;
+if (Hợp lệ?) then (Có)
+  :Xây dựng where/orderBy tương tự public nhưng thêm createdById và isPublic 2 trạng thái;
+  :Thực thi count/findMany;
+  :Đọc translations theo languageId;
+  :Chuẩn hóa metadata;
+  :Build message i18n;
+  :Trả về JSON { message, data, metadata };
+else (Không)
+  :Ném ForbiddenException;
+endif
+stop
+
+@enduml
+
+

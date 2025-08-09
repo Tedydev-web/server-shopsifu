@@ -1,0 +1,58 @@
+@startuml Role - Delete Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng DELETE /roles/:roleId
+
+actor "Admin" as A
+participant "RoleController" as RC
+participant "ActiveUser" as AU
+participant "RoleService" as RS
+participant "RoleRepo" as RR
+participant "CacheManager" as CM
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+database "Redis" as RD
+
+A -> RC: DELETE /roles/:roleId
+activate RC
+
+RC -> AU: @ActiveUser()
+AU --> RC: user
+
+RC -> RS: delete({ id, user })
+activate RS
+
+RS -> RS: verifyRole(id) (base role protection)
+alt Base role
+  RS --> RC: ProhibitedActionOnBaseRoleException (403)
+  RC --> A: 403 Forbidden
+  deactivate RS
+  deactivate RC
+  stop
+end
+
+RS -> RR: delete({ id, deletedById: user.userId })
+activate RR
+RR -> DB: role.update({ where: { id, deletedAt: null }, data: { deletedAt: now, deletedById } })
+DB --> RR: ok
+RR --> RS: ok
+deactivate RR
+
+RS -> CM: del(`role:${id}`)
+CM -> RD: Delete cache entries
+RD --> CM: ok
+
+RS -> IS: i18n.t('role.role.success.DELETE_SUCCESS')
+IS --> RS: message
+RS --> RC: { message }
+deactivate RS
+
+RC --> A: 200 OK + JSON
+deactivate RC
+
+@enduml
+
+

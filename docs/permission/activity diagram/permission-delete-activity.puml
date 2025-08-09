@@ -1,0 +1,21 @@
+@startuml Permission - Delete Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: DELETE /permissions/:permissionId
+
+start
+:Nhận id + user;
+:permission.update({ id, deletedAt, deletedById }) include roles;
+:Xóa cache roles liên quan (role:${roleId});
+:Build message i18n;
+:Trả về 200 { message };
+stop
+
+@enduml
+
+

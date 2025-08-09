@@ -1,0 +1,24 @@
+@startuml Review - Get List Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /reviews/products/:productId
+
+start
+:Nhận productId + pagination;
+:Tính skip/take từ page/limit;
+:Thực thi count + findMany song song;
+:Include user (id,name,avatar) và medias;
+:ORDER BY createdAt DESC;
+:Tính metadata;
+:Build message i18n;
+:Trả về 200 { message, data, metadata };
+stop
+
+@enduml
+
+

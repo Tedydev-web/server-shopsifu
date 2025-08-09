@@ -1,0 +1,42 @@
+@startuml Discount - Validate Code Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /discounts/validate-code
+
+start
+:Nhận { code, cartItemIds? };
+:Tìm discount theo code (include relations);
+if (Không tìm thấy?) then (Có)
+  :Trả về { isValid: false, error: 'Mã voucher không tồn tại' };
+  stop
+endif
+:Kiểm tra status ACTIVE, thời gian hiệu lực, số lượt sử dụng;
+if (Không hợp lệ?) then (Có)
+  :Trả về { isValid: false, error: tương ứng };
+  stop
+endif
+:Tính orderTotal từ cartItemIds;
+if (orderTotal < minOrderValue?) then (Có)
+  :Trả về { isValid: false, error: 'Chưa đạt giá trị tối thiểu' };
+  stop
+endif
+if (applyType SPECIFIC?) then (Có)
+  :Lấy productIds/categoryIds/brandIds từ cart;
+  :Validate applicability (ít nhất 1 điều kiện khớp);
+  if (Không khớp?) then (Có)
+    :Trả về { isValid: false, error: 'Không áp dụng cho sản phẩm này' };
+    stop
+  endif
+endif
+:Tính discountAmount theo loại (PERCENTAGE/FIX_AMOUNT) + maxDiscountValue;
+:Trả về { isValid: true, discount, discountAmount, finalOrderTotal };
+stop
+
+@enduml
+
+

@@ -1,0 +1,33 @@
+@startuml Review - Create Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /reviews
+
+start
+:Nhận body { content, rating, productId, orderId, medias } và user;
+:validateOrder(orderId, userId);
+if (Order hợp lệ và DELIVERED?) then (Có)
+  :BEGIN TRANSACTION;
+  :review.create (catch unique -> Conflict);
+  if (Conflict?) then (Có)
+    :Rollback;
+    :Ném ConflictException;
+    stop
+  endif
+  :reviewMedia.createManyAndReturn(medias);
+  :COMMIT;
+  :Build message i18n;
+  :Trả về 201 { message, data };
+else (Không)
+  :Ném BadRequestException;
+endif
+stop
+
+@enduml
+
+

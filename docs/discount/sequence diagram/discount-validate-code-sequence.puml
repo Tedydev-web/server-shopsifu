@@ -1,0 +1,74 @@
+@startuml Discount - Validate Code Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /discounts/validate-code
+
+actor "Người dùng" as U
+participant "DiscountController" as DC
+participant "DiscountService" as DS
+participant "DiscountRepo" as DR
+database "PostgreSQL (Prisma)" as DB
+
+U -> DC: POST /discounts/validate-code { code, cartItemIds? }
+activate DC
+
+DC -> DS: validateVoucherCode({ code, cartItemIds })
+activate DS
+
+DS -> DR: findByCode(code)
+activate DR
+DR -> DB: discount.findUnique({ where: { code, deletedAt: null }, include: { products, categories, brands } })
+DB --> DR: discount | null
+DR --> DS: discount | null
+deactivate DR
+
+alt discount == null
+  DS --> DC: { isValid: false, error: 'Mã voucher không tồn tại' }
+  DC --> U: 200 OK + JSON
+  deactivate DS
+  deactivate DC
+  stop
+end
+
+alt discount.status != ACTIVE OR out of time OR out of uses
+  DS --> DC: { isValid: false, error: 'Không còn hiệu lực/Đã hết lượt sử dụng' }
+  DC --> U: 200 OK + JSON
+  deactivate DS
+  deactivate DC
+  stop
+end
+
+DS -> DS: orderTotal = calculateOrderTotalFromCartItems(cartItemIds)
+alt orderTotal < minOrderValue
+  DS --> DC: { isValid: false, error: 'Chưa đạt giá trị tối thiểu' }
+  DC --> U: 200 OK + JSON
+  deactivate DS
+  deactivate DC
+  stop
+end
+
+alt discount.applyType == SPECIFIC
+  DS -> DS: getCartItemInfo(cartItemIds) → { productIds, categoryIds, brandIds }
+  DS -> DS: validate applicability (match any)
+  alt not applicable
+    DS --> DC: { isValid: false, error: 'Không áp dụng cho sản phẩm này' }
+    DC --> U: 200 OK + JSON
+    deactivate DS
+    deactivate DC
+    stop
+  end
+end
+
+DS -> DS: discountAmount = calculateDiscountAmount(discount, orderTotal)
+DS --> DC: { isValid: true, discount, discountAmount, finalOrderTotal: orderTotal - discountAmount }
+deactivate DS
+
+DC --> U: 200 OK + JSON
+deactivate DC
+
+@enduml
+
+

@@ -1,0 +1,30 @@
+@startuml Manage Product Detail Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /manage-product/products/:productId
+
+start
+:Xác thực AccessToken và tải user context;
+:Nhận productId;
+:Tải product detail (bao gồm relations theo languageId);
+if (Product tồn tại?) then (Có)
+  :Kiểm tra quyền: user.userId == createdById hoặc roleName == Admin?;
+  if (Hợp lệ?) then (Có)
+    :Build message i18n;
+    :Trả về JSON { message, data };
+  else (Không)
+    :Ném ForbiddenException;
+  endif
+else (Không)
+  :Ném NotFoundRecordException;
+endif
+stop
+
+@enduml
+
+

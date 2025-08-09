@@ -1,0 +1,22 @@
+@startuml Cart - Delete Items Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: POST /cart/delete
+
+start
+:Xác thực AccessToken và tải user context;
+:Nhận body { cartItemIds };
+:Xóa nhiều cart items theo userId;
+:Trả về số lượng đã xóa { count };
+:Build message i18n;
+:Trả về 200 { message, data: { count } };
+stop
+
+@enduml
+
+

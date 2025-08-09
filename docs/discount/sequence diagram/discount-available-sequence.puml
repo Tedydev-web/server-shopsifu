@@ -1,0 +1,57 @@
+@startuml Discount - Available Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /discounts/available
+
+actor "Khách/Người dùng" as U
+participant "DiscountController" as DC
+participant "DiscountService" as DS
+participant "DiscountRepo" as DR
+database "PostgreSQL (Prisma)" as DB
+
+U -> DC: GET /discounts/available?limit&cartItemIds[]&onlyShopDiscounts&onlyPlatformDiscounts
+activate DC
+
+DC -> DS: getAvailableDiscounts(query)
+activate DS
+
+DS -> DR: getAvailableDiscounts({ limit, cartItemIds, onlyShopDiscounts, onlyPlatformDiscounts })
+activate DR
+
+DR -> DR: buildAvailableDiscountsWhereClause()
+note right of DR
+• deletedAt = null
+• discountStatus = 'ACTIVE'
+• startDate <= now <= endDate
+• isPlatform theo flags
+• minOrderValue theo orderTotal
+• Tính orderTotal, shopId từ cartItemIds (nếu có)
+end note
+
+DR -> DB: cartItem.findMany(include sku.product(createdBy,categories,brand)) (nếu có cartItemIds)
+DB --> DR: cartItems
+DR -> DR: calculate orderTotal, shopId, productIds, categoryIds, brandIds
+
+DR -> DB: discount.findMany({ where, include: { products, categories, brands }, orderBy: createdAt desc, take: limit })
+DB --> DR: discounts[]
+
+DR -> DR: filterAvailableDiscounts(discounts, cartItemIds)
+note right of DR
+• Loại bỏ discount hết lượt (usesCount >= maxUses)
+• Nếu applyType SPECIFIC: phải match product/category/brand
+end note
+DR --> DS: filtered discounts
+deactivate DR
+
+DS --> DC: { message: '...GET_AVAILABLE_VOUCHERS_SUCCESS', data }
+deactivate DS
+
+DC --> U: 200 OK + JSON
+deactivate DC
+
+@enduml
+
+

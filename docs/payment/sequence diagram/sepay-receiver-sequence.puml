@@ -1,0 +1,83 @@
+@startuml Sepay - Receiver Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /payment/receiver (Webhook)
+
+actor "Sepay Gateway" as SG
+participant "PaymentAPIKeyGuard" as AG
+participant "SepayController" as SC
+participant "SepayService" as SS
+participant "SepayRepo" as SR
+participant "SharedPaymentRepository" as SPR
+participant "I18nService" as IS
+participant "WebSocket Server" as WS
+database "PostgreSQL (Prisma)" as DB
+
+SG -> AG: POST /payment/receiver { webhook body }
+AG -> AG: Validate API Key
+AG --> SC: Forward request
+activate SC
+
+SC -> SS: receiver(body)
+activate SS
+
+SS -> SR: receiver(body)
+activate SR
+
+SR -> DB: paymentTransaction.findUnique({ id: body.id })
+DB --> SR: existing | null
+alt existing
+  SR -> SS: throw BadRequestException('Transaction already exists')
+  SS --> SC: 400 Bad Request
+  SC --> SG: 400 Bad Request
+  deactivate SR
+  deactivate SS
+  deactivate SC
+  stop
+end
+
+SR -> DB: BEGIN TRANSACTION
+SR -> DB: paymentTransaction.create({...})
+SR -> SPR: extractPaymentId(PREFIX_PAYMENT_CODE, body.code?, body.content?)
+SPR --> SR: paymentId | null
+alt paymentId null
+  SR -> SS: throw BadRequestException('Cannot get payment id from content')
+  SS --> SC: 400 Bad Request
+  SC --> SG: 400 Bad Request
+  deactivate SR
+  deactivate SS
+  deactivate SC
+  stop
+end
+
+SR -> SPR: validateAndFindPayment(paymentId)
+SPR -> DB: Query payment with orders
+DB --> SPR: { payment, orders }
+SPR --> SR: { payment, orders }
+
+SR -> SPR: validatePaymentAmount(orders, totalPrice, body.transferAmount)
+SPR --> SR: ok
+
+SR -> SPR: updatePaymentAndOrdersOnSuccess(paymentId, orders)
+SPR -> DB: UPDATE payment + orders
+DB --> SPR: ok
+SPR --> SR: ok
+
+SR --> SS: { userId, paymentId }
+deactivate SR
+
+SS -> WS: server.to(room(paymentId)).emit('payment', {status:'success', gateway:'sepay', paymentId})
+SS -> IS: t('payment.payment.sepay.success.RECEIVER_SUCCESS')
+IS --> SS: message
+SS --> SC: { message }
+deactivate SS
+
+SC --> SG: 200 OK + JSON
+deactivate SC
+
+@enduml
+
+

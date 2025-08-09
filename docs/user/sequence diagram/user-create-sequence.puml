@@ -1,0 +1,63 @@
+@startuml User - Create Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /users
+
+actor "Admin/Nhân viên" as A
+participant "UserController" as UC
+participant "ActiveUser" as AU
+participant "ActiveRolePermissions('name')" as ARP
+participant "UserService" as US
+participant "SharedRoleRepository" as SRR
+participant "HashingService" as HS
+participant "UserRepo" as UR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+A -> UC: POST /users { email, name, password, roleId, ... }
+activate UC
+
+UC -> AU: @ActiveUser()
+AU --> UC: user
+UC -> ARP: @ActiveRolePermissions('name')
+ARP --> UC: roleName
+
+UC -> US: create({ data, user, roleName })
+activate US
+
+US -> US: verifyRole({ roleNameAgent: roleName, roleIdTarget: data.roleId })
+alt roleNameAgent == Admin
+  US -> US: pass
+else Non-admin & roleIdTarget == adminRoleId
+  US -> SRR: getAdminRoleId()
+  SRR --> US: adminRoleId
+  US --> UC: throw ForbiddenException (403)
+  UC --> A: 403 Forbidden
+  deactivate US
+  deactivate UC
+  stop
+end
+
+US -> HS: hash(data.password)
+HS --> US: hashedPassword
+US -> UR: create({ createdById: user.userId, data: { ...data, password: hashedPassword } })
+activate UR
+UR -> DB: INSERT user
+DB --> UR: userCreated
+UR --> US: userCreated
+deactivate UR
+
+US -> IS: t('user.user.success.CREATE_SUCCESS')
+IS --> US: message
+US --> UC: { message, data: userCreated }
+deactivate US
+
+UC --> A: 201 Created + JSON
+deactivate UC
+
+@enduml
+
+

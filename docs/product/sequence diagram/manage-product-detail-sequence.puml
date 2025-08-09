@@ -1,0 +1,62 @@
+@startuml Manage Product Detail Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng GET /manage-product/products/:productId
+
+actor "ShopOwner/Admin" as U
+participant "AccessTokenGuard" as AG
+participant "ManageProductController" as MPC
+participant "ManageProductService" as MPS
+participant "ProductRepo" as PR
+participant "I18nService" as IS
+database "PostgreSQL (Prisma)" as DB
+
+U -> AG: Request + access_token
+AG -> AG: Validate JWT, load user context
+AG --> MPC: Forward với user
+activate MPC
+
+MPC -> MPS: getDetail({ productId, user })
+activate MPS
+
+MPS -> PR: getDetail({ productId, languageId=I18nContext.lang })
+activate PR
+PR -> DB: product.findUnique({ where: { id, deletedAt: null }, include: relations })
+DB --> PR: product | null
+PR --> MPS: { data: product } | null
+deactivate PR
+
+alt product == null
+  MPS -> MPS: throw NotFoundRecordException
+  MPS --> MPC: 404 Not Found
+  MPC --> U: 404 Not Found
+  deactivate MPS
+  deactivate MPC
+  stop
+end
+
+MPS -> MPS: validatePrivilege(userIdRequest=user.userId,\n roleNameRequest=user.roleName,\n createdById=product.data.createdById)
+
+alt Không hợp lệ
+  MPS -> MPS: throw ForbiddenException
+  MPS --> MPC: 403 Forbidden
+  MPC --> U: 403 Forbidden
+  deactivate MPS
+  deactivate MPC
+  stop
+end
+
+MPS -> IS: t('product.product.success.GET_DETAIL_SUCCESS')
+IS --> MPS: message
+MPS --> MPC: { message, data: product.data }
+deactivate MPS
+
+MPC --> U: 200 OK + JSON
+deactivate MPC
+
+@enduml
+
+

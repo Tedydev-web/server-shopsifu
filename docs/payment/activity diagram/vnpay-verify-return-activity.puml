@@ -1,0 +1,29 @@
+@startuml VNPay - Verify Return Activity
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam activityFontSize 12
+skinparam activityFontColor #333333
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #F7F7F7
+
+title Hoạt Động: GET /payment/vnpay/verify-return
+
+start
+:Nhận query vnp_*;
+:verifyReturnUrl với VnpayService;
+if (isSuccess && isVerified && vnp_ResponseCode == '00'?) then (Có)
+  :Kiểm tra trùng lặp transaction;
+  :Tạo paymentTransaction (amount/100);
+  :extractPaymentId từ PREFIX_PAYMENT_CODE;
+  :validateAndFindPayment(paymentId);
+  :validatePaymentAmount(orders, total, actualAmount);
+  :updatePaymentAndOrdersOnSuccess(paymentId, orders);
+  :Emit WebSocket đến payment room;
+endif
+:Build message i18n;
+:Trả về 200 { message, data: verify payload };
+stop
+
+@enduml
+
+

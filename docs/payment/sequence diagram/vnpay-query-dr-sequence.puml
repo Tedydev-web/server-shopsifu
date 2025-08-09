@@ -1,0 +1,34 @@
+@startuml VNPay - Query DR Sequence
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 16
+
+title Chi Tiết Luồng POST /payment/vnpay/query-dr
+
+actor "Client" as C
+participant "VNPayController" as VC
+participant "VNPayService" as VS
+participant "VnpayService" as VNS
+participant "I18nService" as IS
+
+C -> VC: POST /payment/vnpay/query-dr { orderId, orderInfo, requestId, transactionDate, transactionNo, ipAddr, createDate }
+activate VC
+
+VC -> VS: queryDr(queryData)
+activate VS
+
+VS -> VNS: queryDr(queryRequest)
+VNS --> VS: result
+
+VS -> IS: t('payment.payment.vnpay.success.QUERY_DR_SUCCESS')
+IS --> VS: message
+VS --> VC: { message, data: mapped result }
+deactivate VS
+
+VC --> C: 200 OK + JSON
+deactivate VC
+
+@enduml
+
+
