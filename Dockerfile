@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 FROM node:20-alpine AS builder
 
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    HUSKY=0
 
 # Install build dependencies
 RUN apk add --no-cache --virtual .build-deps \
