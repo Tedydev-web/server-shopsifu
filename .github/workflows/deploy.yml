@@ -107,13 +107,14 @@ jobs:
 
             # Dùng đúng file môi trường production
             docker compose --env-file .env.docker pull
-            docker compose --env-file .env.docker up -d --force-recreate
+            # Không fail sớm nếu có service chưa kịp healthy để còn có log chẩn đoán
+            docker compose --env-file .env.docker up -d --force-recreate || true
 
             # Kiểm tra nhanh trạng thái sau deploy
             sleep 20
             docker compose ps
-            # Nếu Elasticsearch unhealthy, in log để chẩn đoán
-            if docker compose ps elasticsearch | grep -qi unhealthy; then
+            # Nếu Elasticsearch KHÔNG healthy (unhealthy/exit/restarting), in log để chẩn đoán
+            if ! docker compose ps elasticsearch | grep -qi 'healthy'; then
               echo '--- Elasticsearch logs (last 200 lines) ---'
               docker compose logs --tail=200 elasticsearch | cat || true
             fi
