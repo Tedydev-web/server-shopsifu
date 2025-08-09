@@ -9,6 +9,10 @@ on:
         description: 'Commit SHA hoặc tag để rollback'
         required: false
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: tedydev-web/server-shopsifu
@@ -16,6 +20,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -67,13 +72,14 @@ jobs:
   deploy-production:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Deploy to production VPS via SSH (key-based)
         uses: appleboy/ssh-action@v0.1.10
@@ -85,46 +91,165 @@ jobs:
             export PROJECT_PATH='${{ secrets.STAGING_PATH_PROJECT }}'
             set -euo pipefail
             cd "$PROJECT_PATH"
-            git fetch origin master
+
+            # Bảo đảm repo đồng bộ tuyệt đối
+            git fetch --prune --tags origin master
             git reset --hard origin/master
-            docker login ghcr.io -u '${{ github.actor }}' -p '${{ secrets.GITHUB_TOKEN }}'
-            export SERVER_IMAGE='ghcr.io/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }}'
-            docker compose pull
-            docker compose up -d --force-recreate
+
+            # Đăng nhập GHCR để pull image
+            echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
+            # Pin image theo digest build từ job trước
+            export SERVER_IMAGE="ghcr.io/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }}"
+
+            # Dùng đúng file môi trường production
+            docker compose --env-file .env.docker pull
+            docker compose --env-file .env.docker up -d --force-recreate
+
+            # Kiểm tra nhanh trạng thái sau deploy
             sleep 10
             docker compose ps
 
-      - name: Get commit details
+      - name: Health check (post-deploy with retry)
+        id: health
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL || 'https://api.shopsifu.live/health' }}
+        run: |
+          set -euo pipefail
+
+          URL="$HEALTHCHECK_URL"
+          echo "Healthcheck URL: $URL"
+
+          # Retry up to 15 times, wait 5s between attempts (total ~75s)
+          ATTEMPTS=15
+          SLEEP=5
+          PASS=0
+
+          for i in $(seq 1 $ATTEMPTS); do
+            echo "Attempt $i/$ATTEMPTS..."
+            # Accept any 2xx as success
+            CODE=$(curl -fsS -m 5 -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+            if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+              PASS=1
+              break
+            fi
+            sleep $SLEEP
+          done
+
+          if [ "$PASS" -eq 1 ]; then
+            echo "result=success" >> $GITHUB_OUTPUT
+            echo "✅ Health check passed with code $CODE"
+          else
+            echo "result=failure" >> $GITHUB_OUTPUT
+            echo "❌ Health check failed after $ATTEMPTS attempts" >&2
+          fi
+
+      - name: Conditional rollback on health-check failure
+        if: steps.health.outputs.result != 'success'
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.STAGING_VPS_IP_HOST }}
+          username: ${{ secrets.STAGING_VPS_USERNAME }}
+          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          script: |
+            export PROJECT_PATH='${{ secrets.STAGING_PATH_PROJECT }}'
+            set -euo pipefail
+            cd "$PROJECT_PATH"
+
+            echo "Health-check failed. Rolling back one commit..."
+            git fetch --prune --tags origin master
+            git reset --hard HEAD~1
+
+            docker compose --env-file .env.docker pull
+            docker compose --env-file .env.docker up -d --force-recreate
+            sleep 10
+            docker compose ps
+
+      - name: Get commit details (range-aware)
         id: commit
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Thử lấy từ GitHub event trước (ổn định cho workflow_dispatch)
-          COMMIT_MESSAGE="${{ github.event.head_commit.message || '' }}"
-          COMMIT_AUTHOR="${{ github.event.head_commit.author.name || '' }}"
-          COMMIT_DATE="${{ github.event.head_commit.timestamp || '' }}"
 
-          # Nếu thiếu, fallback sang git (đã checkout repo)
-          if [ -z "$COMMIT_MESSAGE" ]; then
-            COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s" || true)
-          fi
-          if [ -z "$COMMIT_AUTHOR" ]; then
-            COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" || true)
-          fi
-          if [ -z "$COMMIT_DATE" ]; then
-            COMMIT_DATE=$(git log -1 --pretty=format:"%cd" --date=relative || true)
+          # Bảo đảm đầy đủ lịch sử để truy vấn phạm vi commit
+          git fetch --prune --unshallow || true
+          git fetch --all --tags || true
+
+          CURRENT_SHA="${{ github.sha }}"
+          BEFORE_SHA="${{ github.event.before }}"
+
+          # Fallback nếu BEFORE_SHA trống (ví dụ workflow_dispatch)
+          if [ -z "$BEFORE_SHA" ] || ! git rev-parse --verify "$BEFORE_SHA^{commit}" >/dev/null 2>&1; then
+            BEFORE_SHA=$(git rev-parse "$CURRENT_SHA^" 2>/dev/null || echo "")
           fi
 
+          # Lấy thông tin commit HEAD
+          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s" "$CURRENT_SHA" || true)
+          COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" "$CURRENT_SHA" || true)
+          COMMIT_DATE=$(git log -1 --pretty=format:"%cd" --date=iso-strict "$CURRENT_SHA" || date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Tạo danh sách commit giữa BEFORE..CURRENT (không bao gồm BEFORE)
+          COMMIT_RANGE=""
+          if [ -n "$BEFORE_SHA" ]; then
+            COMMIT_RANGE=$(git rev-list --reverse "$BEFORE_SHA..$CURRENT_SHA" 2>/dev/null || echo "")
+          fi
+
+          COMMIT_LOG=""
+          if [ -n "$COMMIT_RANGE" ]; then
+            while read -r SHA; do
+              [ -z "$SHA" ] && continue
+              MSG=$(git log -1 --pretty=format:"%s" "$SHA")
+              AUTHOR=$(git log -1 --pretty=format:"%an" "$SHA")
+              COMMIT_LOG+="- [\`$(echo "$SHA" | cut -c1-7)\`](https://github.com/${{ github.repository }}/commit/$SHA) $MSG — _${AUTHOR}_\n"
+            done <<< "$COMMIT_RANGE"
+          else
+            # Không có phạm vi (single commit)
+            SHORT=$(echo "$CURRENT_SHA" | cut -c1-7)
+            COMMIT_LOG="- [\`$SHORT\`](https://github.com/${{ github.repository }}/commit/$CURRENT_SHA) $COMMIT_MESSAGE — _${COMMIT_AUTHOR}_\n"
+          fi
+
+          # Xuất output cho step sau
           echo "message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
           echo "author=$COMMIT_AUTHOR" >> $GITHUB_OUTPUT
           echo "date=$COMMIT_DATE" >> $GITHUB_OUTPUT
+          echo "log<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$COMMIT_LOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Job Summary
+        env:
+          STATUS: ${{ steps.health.outputs.result }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          IMAGE_TAGS: ${{ needs.build.outputs.image-tag }}
+          IMAGE_DIGEST: ${{ needs.build.outputs.image-digest }}
+          COMMITS_BLOCK: ${{ steps.commit.outputs.log }}
+        run: |
+          {
+            echo "# 🚀 Deploy Summary"
+            echo
+            echo "**Status:** ${STATUS^^}"
+            echo
+            echo "**Repository:** $REPO"
+            echo "**Branch:** `$BRANCH`"
+            echo "**Run:** https://github.com/$REPO/actions/runs/$RUN_ID"
+            echo
+            echo "## 🔗 Artifact"
+            echo "- **Image Tags:** \`$IMAGE_TAGS\`"
+            echo "- **Image Digest:** \`$IMAGE_DIGEST\`"
+            echo
+            echo "## 📚 Commits"
+            echo "$COMMITS_BLOCK"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Send Discord Notification
         if: always()
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          STATUS: ${{ job.status }}
+          STATUS: ${{ steps.health.outputs.result }}
           BRANCH: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
@@ -135,72 +260,34 @@ jobs:
           COMMIT_DATE: ${{ steps.commit.outputs.date }}
           IMAGE_TAGS: ${{ needs.build.outputs.image-tag }}
           IMAGE_DIGEST: ${{ needs.build.outputs.image-digest }}
+          COMMIT_LOG: ${{ steps.commit.outputs.log }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
-
-          # Bỏ qua PM2 status truy vấn từ xa để tránh phụ thuộc mật khẩu
-          PM2_STATUS="(bỏ qua)"
 
           COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
           ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
 
-          # Tạo description chi tiết
-          DESCRIPTION=""
-          if [ "$STATUS" = "success" ]; then
-            DESCRIPTION="🚀 **SERVER - Thông báo triển khai ✨**\n\n**Trạng thái PM2 trên server:**\n$PM2_STATUS"
-          else
-            DESCRIPTION="❌ **Deployment thất bại**\n\nChi tiết lỗi có thể xem tại GitHub Actions."
-          fi
+          DESCRIPTION=$([ "$STATUS" = "success" ] && echo "🚀 **Triển khai Production thành công**" || echo "❌ **Deployment thất bại**")
 
-          # Xử lý commit message để giữ nguyên emoji và ký tự đặc biệt
-          COMMIT_MESSAGE_ESCAPED=$(echo "$COMMIT_MESSAGE" | sed 's/"/\\"/g')
+          # Nhận diện Conventional Commits icon cho commit HEAD
+          COMMIT_TYPE_ICON="📝"
+          case "$COMMIT_MESSAGE" in
+            feat*) COMMIT_TYPE_ICON="✨";;
+            fix*) COMMIT_TYPE_ICON="🐛";;
+            docs*) COMMIT_TYPE_ICON="📚";;
+            style*) COMMIT_TYPE_ICON="💄";;
+            refactor*) COMMIT_TYPE_ICON="♻️";;
+            test*) COMMIT_TYPE_ICON="🧪";;
+            chore*) COMMIT_TYPE_ICON="🔧";;
+            perf*) COMMIT_TYPE_ICON="⚡";;
+            ci*) COMMIT_TYPE_ICON="👷";;
+            build*) COMMIT_TYPE_ICON="📦";;
+            revert*) COMMIT_TYPE_ICON="⏪";;
+            security*) COMMIT_TYPE_ICON="🔒";;
+          esac
 
-          # Nhận diện Conventional Commits và thêm emoji phù hợp
-          # Conventional Commits Emoji Reference:
-          # ✨ feat: new feature
-          # 🐛 fix: bug fix
-          # 📚 docs: documentation
-          # 💄 style: formatting, missing semi colons, etc
-          # ♻️ refactor: refactoring production code
-          # 🧪 test: adding tests, refactoring tests
-          # 🔧 chore: updating build tasks, package manager configs
-          # ⚡ perf: performance improvements
-          # 👷 ci: changes to CI configuration files and scripts
-          # 📦 build: changes that affect the build system or external dependencies
-          # ⏪ revert: reverts a previous commit
-          # 🔒 security: security fixes
-          # 📝 default: other changes
-          COMMIT_TYPE_ICON=""
-          if [[ "$COMMIT_MESSAGE" =~ ^feat ]]; then
-            COMMIT_TYPE_ICON="✨"
-          elif [[ "$COMMIT_MESSAGE" =~ ^fix ]]; then
-            COMMIT_TYPE_ICON="🐛"
-          elif [[ "$COMMIT_MESSAGE" =~ ^docs ]]; then
-            COMMIT_TYPE_ICON="📚"
-          elif [[ "$COMMIT_MESSAGE" =~ ^style ]]; then
-            COMMIT_TYPE_ICON="💄"
-          elif [[ "$COMMIT_MESSAGE" =~ ^refactor ]]; then
-            COMMIT_TYPE_ICON="♻️"
-          elif [[ "$COMMIT_MESSAGE" =~ ^test ]]; then
-            COMMIT_TYPE_ICON="🧪"
-          elif [[ "$COMMIT_MESSAGE" =~ ^chore ]]; then
-            COMMIT_TYPE_ICON="🔧"
-          elif [[ "$COMMIT_MESSAGE" =~ ^perf ]]; then
-            COMMIT_TYPE_ICON="⚡"
-          elif [[ "$COMMIT_MESSAGE" =~ ^ci ]]; then
-            COMMIT_TYPE_ICON="👷"
-          elif [[ "$COMMIT_MESSAGE" =~ ^build ]]; then
-            COMMIT_TYPE_ICON="📦"
-          elif [[ "$COMMIT_MESSAGE" =~ ^revert ]]; then
-            COMMIT_TYPE_ICON="⏪"
-          elif [[ "$COMMIT_MESSAGE" =~ ^security ]]; then
-            COMMIT_TYPE_ICON="🔒"
-          else
-            COMMIT_TYPE_ICON="📝"
-          fi
-
-          # Tạo commit message với icon
-          COMMIT_DISPLAY="$COMMIT_TYPE_ICON $COMMIT_MESSAGE_ESCAPED"
+          # Hiển thị danh sách commit của push hiện tại (1..n)
+          COMMITS_BLOCK=${COMMIT_LOG:-"(không có dữ liệu commit)"}
 
           JSON_PAYLOAD=$(jq -n \
             --arg status "$STATUS" \
@@ -213,29 +300,32 @@ jobs:
             --arg run_id "$RUN_ID" \
             --arg color "$COLOR" \
             --arg description "$DESCRIPTION" \
-            --arg commit_message "$COMMIT_DISPLAY" \
+            --arg commit_message "$COMMIT_TYPE_ICON $COMMIT_MESSAGE" \
             --arg commit_author "$COMMIT_AUTHOR" \
             --arg commit_date "$COMMIT_DATE" \
             --arg image_tags "$IMAGE_TAGS" \
             --arg image_digest "$IMAGE_DIGEST" \
+            --arg commits_block "$COMMITS_BLOCK" \
             ' {
-              embeds: [{
-                title: "🚀 SERVER - Thông báo triển khai ✨",
-                description: $description,
-                color: ($color | tonumber),
-                fields: [
-                  { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
-                  { name: "🌿 Nhánh", value: "`\($branch)`", inline: true },
-                  { name: "👤 Người thực hiện", value: "`\($actor)`", inline: true },
-                  { name: "🔗 Commit", value: "[`\($commit_short)`](https://github.com/\($repo)/commit/\($commit_full))", inline: false },
-                  { name: "📝 Nội dung Commit", value: "\($commit_message)", inline: false },
-                  { name: "🖼️ Image", value: "Tags:\n`\($image_tags)`\nDigest:\n`\($image_digest)`", inline: false }
-                ],
-                url: "https://github.com/\($repo)/actions/runs/\($run_id)",
-                footer: { "text": "🚀 Triển khai tới môi trường Production • \($commit_date)" },
-                "timestamp": (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
-              }]
-            }')
+                embeds: [{
+                  title: "🚀 SERVER - Triển khai Production",
+                  description: $description,
+                  color: ($color | tonumber),
+                  fields: [
+                    { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
+                    { name: "🌿 Nhánh", value: "`\($branch)`", inline: true },
+                    { name: "👤 Người thực hiện", value: "`\($actor)`", inline: true },
+                    { name: "🔗 Commit HEAD", value: "[`\($commit_short)`](https://github.com/\($repo)/commit/\($commit_full))", inline: false },
+                    { name: "📝 Nội dung HEAD", value: "\($commit_message)", inline: false },
+                    { name: "📚 Danh sách commits", value: \($commits_block), inline: false },
+                    { name: "🖼️ Image", value: "Tags:\n`\($image_tags)`\nDigest:\n`\($image_digest)`", inline: false }
+                  ],
+                  url: "https://github.com/\($repo)/actions/runs/\($run_id)",
+                  footer: { "text": "🚀 Triển khai Production • \($commit_date)" },
+                  timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+                }]
+              }')
+
           curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" || echo "Lỗi gửi thông báo Discord"
 
   rollback-auto:

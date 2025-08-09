@@ -9,11 +9,11 @@ import { WebsocketAdapter } from './websockets/websocket.adapter'
 import express from 'express'
 import { Logger } from 'nestjs-pino'
 import { ConfigService } from '@nestjs/config'
-import { ValidationPipe, VersioningType } from '@nestjs/common'
-import { useContainer } from 'class-validator'
+import bodyParser from 'body-parser'
 
 async function bootstrap(): Promise<void> {
   const server = express()
+  server.disable('x-powered-by')
   let app: any
 
   try {
@@ -22,18 +22,25 @@ async function bootstrap(): Promise<void> {
       bufferLogs: true
     })
 
+    // Body limits
+    server.use(bodyParser.json({ limit: '2mb' }))
+    server.use(bodyParser.urlencoded({ extended: true, limit: '2mb' }))
+
     const config = app.get(ConfigService)
     const logger = app.get(Logger)
     const host = config.getOrThrow('app.http.host')
     const port = config.getOrThrow('app.http.port')
 
     // Middleware
-    app.use(helmet())
-    app.use(compression())
+    app.use(helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' }
+    }))
+    app.use(compression({ threshold: 1024 }))
     app.useLogger(logger)
     app.enableCors(config.get('app.cors'))
     app.use(cookieParser())
     app.set('trust proxy', 'loopback')
+    app.enableShutdownHooks()
 
     // Websocket
     const websocketAdapter = new WebsocketAdapter(app)
@@ -67,6 +74,7 @@ async function bootstrap(): Promise<void> {
       }
 
       await app.close()
+      logger.log('✅ Application closed cleanly. Bye!')
       process.exit(0)
     }
 
@@ -75,6 +83,9 @@ async function bootstrap(): Promise<void> {
 
     // Start server
     await app.listen(port, host)
+    if (typeof process.send === 'function') {
+      try { process.send('ready') } catch {}
+    }
 
     const appUrl = await app.getUrl()
     logger.log(`🚀 Server running on: ${appUrl}`)

@@ -1,4 +1,11 @@
+# syntax=docker/dockerfile:1.7
+LABEL org.opencontainers.image.title="server-shopsifu" \
+      org.opencontainers.image.source="https://github.com/Tedydev-web/server-shopsifu" \
+      org.opencontainers.image.description="Shopsifu backend (NestJS) production image" \
+      org.opencontainers.image.licenses="Proprietary"
 FROM node:20-alpine AS builder
+
+ENV NODE_ENV=production
 
 # Install build dependencies
 RUN apk add --no-cache --virtual .build-deps \
@@ -12,13 +19,15 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Install all dependencies (including devDependencies)
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    --mount=type=cache,target=/root/.cache/node-gyp \
+    npm ci --prefer-offline --no-audit --no-fund --loglevel=error
 
 # Copy Prisma schema
 COPY prisma ./prisma/
 
 # Generate Prisma client
-RUN npm run generate
+RUN --mount=type=cache,target=/root/.cache/prisma npm run generate
 
 # Copy source code
 COPY . .
@@ -31,38 +40,41 @@ RUN npm prune --omit=dev && npm cache clean --force && apk del .build-deps
 
 FROM node:20-alpine AS production
 
+ENV NODE_ENV=production \
+    TZ=Asia/Ho_Chi_Minh \
+    PRISMA_CLIENT_ENGINE_TYPE=library \
+    PRISMA_HIDE_UPDATE_MESSAGE=1
+
 # Set working directory
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nestjs -u 1001
+# Install minimal runtime deps and create non-root user
+RUN apk add --no-cache \
+      curl \
+      tzdata \
+      openssl \
+      libc6-compat \
+  && addgroup -g 1001 -S nodejs \
+  && adduser -S nestjs -u 1001 \
+  && npm install -g pm2@latest
 
-# Install runtime tools
-RUN apk add --no-cache curl && npm install -g pm2
+# Copy built application from builder stage (with correct ownership)
+COPY --chown=nestjs:nodejs --from=builder /app/package.json ./
+COPY --chown=nestjs:nodejs --from=builder /app/package-lock.json ./
+COPY --chown=nestjs:nodejs --from=builder /app/node_modules ./node_modules
+COPY --chown=nestjs:nodejs --from=builder /app/dist ./dist
+COPY --chown=nestjs:nodejs --from=builder /app/ecosystem.config.js ./
+COPY --chown=nestjs:nodejs --from=builder /app/prisma ./prisma
+COPY --chown=nestjs:nodejs --from=builder /app/src/shared/languages ./src/shared/languages
 
-# Runtime env
-ENV NODE_ENV=production
-
-# Copy built application from builder stage
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/package-lock.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/ecosystem.config.js ./
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/src/shared/languages ./src/shared/languages
-
-# Change ownership
-RUN chown -R nestjs:nodejs /app
 USER nestjs
 
 # Expose port
 EXPOSE 3000
 
 # Healthcheck (đồng nhất với compose)
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -fsS http://localhost:3000/health || exit 1
 
 # Start production server
-CMD ["npm", "run", "start:pm2"]
+CMD ["pm2-runtime", "ecosystem.config.js"]
