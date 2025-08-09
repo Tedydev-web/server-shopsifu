@@ -92,11 +92,8 @@ jobs:
             set -euo pipefail
             cd "$PROJECT_PATH"
 
-            # Yêu cầu kernel cho Elasticsearch (an toàn chạy nhiều lần)
-            if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
-            $SUDO sysctl -w vm.max_map_count=262144 || true
-            $SUDO sysctl -w fs.file-max=65536 || true
-            $SUDO bash -c 'echo vm.max_map_count=262144 > /etc/sysctl.d/99-elasticsearch.conf' || true
+            # Thiết lập kernel cho Elasticsearch qua Docker (không cần sudo)
+            docker run --rm --privileged --pid=host alpine sh -c "sysctl -w vm.max_map_count=262144 && sysctl -w fs.file-max=65536" || true
 
             # Bảo đảm repo đồng bộ tuyệt đối
             git fetch --prune --tags origin master
@@ -115,6 +112,11 @@ jobs:
             # Kiểm tra nhanh trạng thái sau deploy
             sleep 20
             docker compose ps
+            # Nếu Elasticsearch unhealthy, in log để chẩn đoán
+            if docker compose ps elasticsearch | grep -qi unhealthy; then
+              echo '--- Elasticsearch logs (last 200 lines) ---'
+              docker compose logs --tail=200 elasticsearch | cat || true
+            fi
 
       - name: Health check (post-deploy with retry)
         id: health

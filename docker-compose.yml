@@ -105,6 +105,8 @@ services:
       nofile:
         soft: 65535
         hard: 65535
+    sysctls:
+      - vm.max_map_count=262144
     security_opt:
       - no-new-privileges:true
     volumes:
