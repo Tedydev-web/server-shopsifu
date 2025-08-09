@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1.7
 FROM node:20-alpine AS builder
 
-ENV NODE_ENV=production \
-    HUSKY=0
+ENV NODE_ENV=development \
+    HUSKY=0 \
+    HUSKY_SKIP_INSTALL=1
 
 # Install build dependencies
 RUN apk add --no-cache --virtual .build-deps \
@@ -18,7 +19,7 @@ COPY package.json package-lock.json ./
 # Install all dependencies (including devDependencies)
 RUN --mount=type=cache,target=/root/.npm \
     --mount=type=cache,target=/root/.cache/node-gyp \
-    npm ci --prefer-offline --no-audit --no-fund --loglevel=error
+    npm ci --include=dev --prefer-offline --no-audit --no-fund --loglevel=error
 
 # Copy Prisma schema
 COPY prisma ./prisma/
