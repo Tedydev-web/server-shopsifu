@@ -1,8 +1,4 @@
 # syntax=docker/dockerfile:1.7
-LABEL org.opencontainers.image.title="server-shopsifu" \
-      org.opencontainers.image.source="https://github.com/Tedydev-web/server-shopsifu" \
-      org.opencontainers.image.description="Shopsifu backend (NestJS) production image" \
-      org.opencontainers.image.licenses="Proprietary"
 FROM node:20-alpine AS builder
 
 ENV NODE_ENV=production
@@ -39,6 +35,11 @@ RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 RUN npm prune --omit=dev && npm cache clean --force && apk del .build-deps
 
 FROM node:20-alpine AS production
+
+LABEL org.opencontainers.image.title="server-shopsifu" \
+      org.opencontainers.image.source="https://github.com/Tedydev-web/server-shopsifu" \
+      org.opencontainers.image.description="Shopsifu backend (NestJS) production image" \
+      org.opencontainers.image.licenses="Proprietary"
 
 ENV NODE_ENV=production \
     TZ=Asia/Ho_Chi_Minh \
