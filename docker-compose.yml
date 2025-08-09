@@ -111,10 +111,15 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ['CMD-SHELL', "curl -s http://localhost:9200 | grep -q 'You Know, for Search'"]
+      # Chờ cluster đạt tối thiểu yellow (có thể mất thời gian khi khởi động lại/làm ấm index)
+      test: [
+        'CMD-SHELL',
+        'curl -fsS http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=60s >/dev/null || exit 1'
+      ]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 10
+      start_period: 120s
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
@@ -145,6 +150,12 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:5601/api/status | grep -q kibana']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   server:
     image: ${SERVER_IMAGE:-ghcr.io/tedydev-web/server-shopsifu:latest}
