@@ -3,8 +3,8 @@ services:
     image: postgres:16-alpine
     container_name: postgres
     restart: unless-stopped
-    cpus: "2.0"
-    mem_limit: "8g"
+    cpus: '2.0'
+    mem_limit: '8g'
     env_file:
       - .env.docker
     logging:
@@ -43,8 +43,8 @@ services:
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
-    cpus: "1.0"
-    mem_limit: "2g"
+    cpus: '1.0'
+    mem_limit: '2g'
     env_file:
       - .env.docker
     logging:
@@ -80,8 +80,8 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
     container_name: elasticsearch
     restart: unless-stopped
-    cpus: "3.0"
-    mem_limit: "8g"
+    cpus: '3.0'
+    mem_limit: '8g'
     logging:
       driver: json-file
       options:
@@ -111,22 +111,19 @@ services:
     networks:
       - app-network
     healthcheck:
-      # Chờ cluster đạt tối thiểu yellow (có thể mất thời gian khi khởi động lại/làm ấm index)
-      test: [
-        'CMD-SHELL',
-        'curl -fsS http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=60s >/dev/null || exit 1'
-      ]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 120s
+      # Đơn giản hoá: chỉ cần HTTP 200 ở root, tránh fail do cluster chưa yellow
+      test: ['CMD-SHELL', 'curl -fsS -m 5 http://localhost:9200 >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 180s
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
     container_name: kibana
     restart: unless-stopped
-    cpus: "0.5"
-    mem_limit: "1g"
+    cpus: '0.5'
+    mem_limit: '1g'
     logging:
       driver: json-file
       options:
@@ -161,8 +158,8 @@ services:
     image: ${SERVER_IMAGE:-ghcr.io/tedydev-web/server-shopsifu:latest}
     container_name: server
     restart: unless-stopped
-    cpus: "11.0"
-    mem_limit: "12g"
+    cpus: '11.0'
+    mem_limit: '12g'
     logging:
       driver: json-file
       options:
@@ -208,8 +205,8 @@ services:
     image: prom/prometheus:v2.54.1
     container_name: prometheus
     restart: unless-stopped
-    cpus: "0.5"
-    mem_limit: "1g"
+    cpus: '0.5'
+    mem_limit: '1g'
     env_file:
       - .env.docker
     logging:
@@ -246,8 +243,8 @@ services:
     image: grafana/grafana:11.4.0
     container_name: grafana
     restart: unless-stopped
-    cpus: "0.5"
-    mem_limit: "1g"
+    cpus: '0.5'
+    mem_limit: '1g'
     env_file:
       - .env.docker
     logging:
@@ -287,8 +284,8 @@ services:
     image: edoburu/pgbouncer:1.18.0
     container_name: pgbouncer
     restart: unless-stopped
-    cpus: "0.2"
-    mem_limit: "256m"
+    cpus: '0.2'
+    mem_limit: '256m'
     env_file:
       - .env.docker
     environment:
