@@ -108,17 +108,28 @@ jobs:
             set -euo pipefail
             cd "$PROJECT_PATH"
 
-            # Thiết lập & persist kernel sysctl trên host (cần sudo quyền)
-            sudo tee /etc/sysctl.d/90-shopsifu-performance.conf >/dev/null <<'EOF'
+            # Thiết lập &amp; persist kernel sysctl trên host (tương thích sudo có mật khẩu)
+            SUDO_PASS='${{ secrets.VPS_SUDO_PASSWORD }}'
+            if [ -n "$SUDO_PASS" ]; then
+              printf '%s\n' "$SUDO_PASS" | sudo -S bash -eu -c "cat &gt;/etc/sysctl.d/90-shopsifu-performance.conf &lt;&lt;'EOF'
             vm.max_map_count = 262144
             fs.file-max = 1048576
             net.core.somaxconn = 16384
             EOF
-            sudo sysctl --system || true
+            sysctl --system || true"
+            else
+              sudo tee /etc/sysctl.d/90-shopsifu-performance.conf &gt;/dev/null &lt;&lt;'EOF'
+            vm.max_map_count = 262144
+            fs.file-max = 1048576
+            net.core.somaxconn = 16384
+            EOF
+              sudo sysctl --system || true
+            fi
 
-            # Bảo đảm repo đồng bộ tuyệt đối
-            git fetch --prune --tags origin master
-            git reset --hard origin/master
+            # Bảo đảm repo đồng bộ tuyệt đối theo nhánh đang deploy
+            BRANCH='${{ github.ref_name }}'
+            git fetch --prune --tags origin "$BRANCH"
+            git reset --hard "origin/$BRANCH"
 
             # Đăng nhập GHCR để pull image
             echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
@@ -127,6 +138,7 @@ jobs:
             export SERVER_IMAGE="ghcr.io/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }}"
 
             # Dùng đúng file môi trường production
+            docker compose --env-file .env.docker config -q
             docker compose --env-file .env.docker pull
             # Không fail sớm nếu có service chưa kịp healthy để còn có log chẩn đoán
             docker compose --env-file .env.docker up -d --force-recreate || true
@@ -172,7 +184,7 @@ jobs:
         id: health
         continue-on-error: true
         env:
-          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL || 'https://api.shopsifu.live/health' }}
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
         run: |
           set -euo pipefail
 
@@ -382,7 +394,7 @@ jobs:
             export PROJECT_PATH='${{ secrets.STAGING_PATH_PROJECT }}'
             set -euo pipefail
             cd "$PROJECT_PATH"
-            git fetch origin master
+            git fetch --all --tags
             git reset --hard HEAD~1
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
             DIGEST_TAG="$BRANCH-$(git rev-parse HEAD)"
