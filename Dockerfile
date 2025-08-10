@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1.7
 FROM node:20-alpine AS builder
+ARG BUILD_VERSION
+ARG BUILD_DATE
+ARG GIT_SHA
 
 ENV NODE_ENV=development \
     HUSKY=0 \
@@ -37,16 +40,24 @@ RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 RUN npm prune --omit=dev && npm cache clean --force && apk del .build-deps
 
 FROM node:20-alpine AS production
+ARG BUILD_VERSION
+ARG BUILD_DATE
+ARG GIT_SHA
 
 LABEL org.opencontainers.image.title="server-shopsifu" \
       org.opencontainers.image.source="https://github.com/Tedydev-web/server-shopsifu" \
       org.opencontainers.image.description="Shopsifu backend (NestJS) production image" \
-      org.opencontainers.image.licenses="Proprietary"
+      org.opencontainers.image.licenses="Proprietary" \
+      org.opencontainers.image.version="${BUILD_VERSION}" \
+      org.opencontainers.image.revision="${GIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_DATE}"
 
 ENV NODE_ENV=production \
     TZ=Asia/Ho_Chi_Minh \
     PRISMA_CLIENT_ENGINE_TYPE=library \
-    PRISMA_HIDE_UPDATE_MESSAGE=1
+    PRISMA_HIDE_UPDATE_MESSAGE=1 \
+    PM2_DISABLE_MONIT=1 \
+    PM2_NO_INTERACTION=1
 
 # Set working directory
 WORKDIR /app
@@ -70,6 +81,7 @@ COPY --chown=nestjs:nodejs --from=builder /app/ecosystem.config.js ./
 COPY --chown=nestjs:nodejs --from=builder /app/prisma ./prisma
 COPY --chown=nestjs:nodejs --from=builder /app/src/shared/languages ./src/shared/languages
 
+ENV UV_THREADPOOL_SIZE=64
 USER nestjs
 
 # Expose port

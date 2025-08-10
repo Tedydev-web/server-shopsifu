@@ -15,6 +15,8 @@ coverage
 .env.local
 .env.*.local
 !.env.docker
+.npmrc
+.envrc
 
 # Development files
 .vscode
@@ -42,19 +44,18 @@ coverage
 *.test.js
 *.spec.js
 jest.config.js
+.nyc_output
+playwright-report
 
 # Linting
 .eslintrc.js
 .eslintignore
 .prettierrc
 .prettierignore
+.eslintcache
 
 # Husky
 .husky
-
-# Database
-prisma/migrations
-prisma/migration_lock.toml
 
 # Logs (allow logs directory for PM2)
 # logs
@@ -64,6 +65,7 @@ lcov-report
 # Temporary files
 tmp
 temp
+.cache
 
 # OS generated files
 .DS_Store
@@ -77,3 +79,11 @@ Thumbs.db
 # Elasticsearch
 esdata
 certs
+
+# SSH & keys (avoid leaking secrets)
+.ssh
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
