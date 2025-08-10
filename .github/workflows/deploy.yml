@@ -326,7 +326,7 @@ jobs:
                     { name: "👤 Người thực hiện", value: "`\($actor)`", inline: true },
                     { name: "🔗 Commit HEAD", value: "[`\($commit_short)`](https://github.com/\($repo)/commit/\($commit_full))", inline: false },
                     { name: "📝 Nội dung HEAD", value: "\($commit_message)", inline: false },
-                    { name: "📚 Danh sách commits", value: \($commits_block), inline: false },
+                    { name: "📚 Danh sách commits", value: $commits_block, inline: false },
                     { name: "🖼️ Image", value: "Tags:\n`\($image_tags)`\nDigest:\n`\($image_digest)`", inline: false }
                   ],
                   url: "https://github.com/\($repo)/actions/runs/\($run_id)",
