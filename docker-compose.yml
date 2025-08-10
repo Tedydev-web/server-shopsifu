@@ -95,7 +95,9 @@ services:
       - discovery.type=single-node
       - bootstrap.memory_lock=true
       - 'ELASTICSEARCH_HEAP_SIZE=${ELASTICSEARCH_HEAP_SIZE:-1g}'
-      - 'ES_JAVA_OPTS=-Xms$${ELASTICSEARCH_HEAP_SIZE} -Xmx$${ELASTICSEARCH_HEAP_SIZE}'
+      # Lưu ý: phải để 1 dấu $ để docker compose expand tại thời điểm compose, tránh literal "${ELASTICSEARCH_HEAP_SIZE}" lọt vào JVM
+      # Do docker compose không expand từ env_file (.env.docker), biến này sẽ dùng default ở đây trừ khi bạn đặt trong .env của project hoặc set env khi chạy compose
+      - 'ES_JAVA_OPTS=-Xms${ELASTICSEARCH_HEAP_SIZE:-1g} -Xmx${ELASTICSEARCH_HEAP_SIZE:-1g}'
       - xpack.security.enabled=false
       - xpack.security.enrollment.enabled=false
     ulimits:
