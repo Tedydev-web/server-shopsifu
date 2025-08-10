@@ -111,14 +111,14 @@ jobs:
             # Thiết lập &amp; persist kernel sysctl trên host (tương thích sudo có mật khẩu)
             SUDO_PASS='${{ secrets.VPS_SUDO_PASSWORD }}'
             if [ -n "$SUDO_PASS" ]; then
-              printf '%s\n' "$SUDO_PASS" | sudo -S bash -eu -c "cat &gt;/etc/sysctl.d/90-shopsifu-performance.conf &lt;&lt;'EOF'
+              printf '%s\n' "$SUDO_PASS" | sudo -S bash -eu -c "cat >/etc/sysctl.d/90-shopsifu-performance.conf <<'EOF'
             vm.max_map_count = 262144
             fs.file-max = 1048576
             net.core.somaxconn = 16384
             EOF
             sysctl --system || true"
             else
-              sudo tee /etc/sysctl.d/90-shopsifu-performance.conf &gt;/dev/null &lt;&lt;'EOF'
+              sudo tee /etc/sysctl.d/90-shopsifu-performance.conf >/dev/null <<'EOF'
             vm.max_map_count = 262144
             fs.file-max = 1048576
             net.core.somaxconn = 16384
