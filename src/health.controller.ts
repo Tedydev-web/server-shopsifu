@@ -7,7 +7,7 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 export class HealthController {
   constructor(
     private readonly healthCheckService: HealthCheckService,
-    private readonly prismaService: PrismaService,
+    private readonly prismaService: PrismaService
   ) {}
 
   @Get()

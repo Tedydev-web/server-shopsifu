@@ -119,8 +119,32 @@ jobs:
               docker compose logs --tail=200 elasticsearch | cat || true
             fi
 
-      - name: Health check (post-deploy with retry)
+      - name: Health check (internal via SSH, retry)
+        id: internal_health
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.STAGING_VPS_IP_HOST }}
+          username: ${{ secrets.STAGING_VPS_USERNAME }}
+          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            ATTEMPTS=15
+            SLEEP=5
+            for i in $(seq 1 $ATTEMPTS); do
+              echo "[Internal] Attempt $i/$ATTEMPTS..."
+              CODE=$(curl -fsS -m 5 -o /dev/null -w "%{http_code}" http://localhost:3000/health || echo "000")
+              if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+                echo "[Internal] ✅ Health check passed with code $CODE"
+                exit 0
+              fi
+              sleep $SLEEP
+            done
+            echo "[Internal] ❌ Health check failed after $ATTEMPTS attempts"
+            exit 1
+
+      - name: Health check (external, best-effort)
         id: health
+        continue-on-error: true
         env:
           HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL || 'https://api.shopsifu.live/health' }}
         run: |
@@ -147,14 +171,14 @@ jobs:
 
           if [ "$PASS" -eq 1 ]; then
             echo "result=success" >> $GITHUB_OUTPUT
-            echo "✅ Health check passed with code $CODE"
+            echo "✅ (External) Health check passed with code $CODE"
           else
             echo "result=failure" >> $GITHUB_OUTPUT
-            echo "❌ Health check failed after $ATTEMPTS attempts" >&2
+            echo "⚠️ (External) Health check failed after $ATTEMPTS attempts (có thể do WAF)" >&2
           fi
 
       - name: Conditional rollback on health-check failure
-        if: steps.health.outputs.result != 'success'
+        if: steps.internal_health.outcome != 'success'
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.STAGING_VPS_IP_HOST }}
@@ -228,7 +252,7 @@ jobs:
 
       - name: Job Summary
         env:
-          STATUS: ${{ steps.health.outputs.result }}
+          STATUS: ${{ steps.internal_health.outcome == 'success' && 'success' || 'failure' }}
           BRANCH: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
           REPO: ${{ github.repository }}
@@ -258,7 +282,7 @@ jobs:
         if: always()
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          STATUS: ${{ steps.health.outputs.result }}
+          STATUS: ${{ steps.internal_health.outcome == 'success' && 'success' || 'failure' }}
           BRANCH: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
