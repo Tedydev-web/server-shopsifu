@@ -52,10 +52,11 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.repository }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/amd64,linux/arm64
+      # QEMU không cần thiết nếu chỉ build linux/amd64 → giảm thời gian build
+      # - name: Set up QEMU
+      #   uses: docker/setup-qemu-action@v3
+      #   with:
+      #     platforms: linux/amd64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -66,13 +67,15 @@ jobs:
         run: |
           echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           echo "version=${GITHUB_REF_NAME:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image (layer cache)
         id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
+          pull: true
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -82,8 +85,10 @@ jobs:
             GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          # Build một kiến trúc duy nhất để tối ưu thời gian (VPS prod chạy amd64)
+          platforms: linux/amd64
           provenance: false
+          sbom: false
 
   deploy-production:
     needs: build
@@ -136,12 +141,13 @@ jobs:
 
             # Pin image theo digest build từ job trước
             export SERVER_IMAGE="ghcr.io/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }}"
+            echo "Using image: $SERVER_IMAGE"
 
             # Dùng đúng file môi trường production
             docker compose --env-file .env.docker config -q
             docker compose --env-file .env.docker pull
             # Không fail sớm nếu có service chưa kịp healthy để còn có log chẩn đoán
-            docker compose --env-file .env.docker up -d --force-recreate || true
+            docker compose --env-file .env.docker up -d --force-recreate --remove-orphans || true
 
             # Kiểm tra nhanh trạng thái sau deploy
             sleep 20
@@ -156,6 +162,33 @@ jobs:
               echo '--- Elasticsearch logs (last 200 lines) ---'
               docker compose logs --tail=200 elasticsearch | cat || true
             fi
+            # Nếu Redis KHÔNG healthy, in log để chẩn đoán
+            if ! docker compose ps redis | grep -qi 'healthy'; then
+              echo '--- Redis logs (last 200 lines) ---'
+              docker compose logs --tail=200 redis | cat || true
+            fi
+            # Kiểm tra PgBouncer (mới bật) nếu không Up => in log
+            if ! docker compose ps pgbouncer | grep -qi 'Up'; then
+              echo '--- PgBouncer logs (last 200 lines) ---'
+              docker compose logs --tail=200 pgbouncer | cat || true
+            fi
+            # Kiểm tra Postgres nếu không Up => in log
+            if ! docker compose ps postgres | grep -qi 'Up'; then
+              echo '--- Postgres logs (last 200 lines) ---'
+              docker compose logs --tail=200 postgres | cat || true
+            fi
+
+      - name: Prune old Docker images on VPS (safe, keep last 7 days)
+        if: always()
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.STAGING_VPS_IP_HOST }}
+          username: ${{ secrets.STAGING_VPS_USERNAME }}
+          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            # Chỉ dọn image cũ, tránh đụng tới volumes/containers đang chạy
+            docker image prune -af --filter "until=168h" || true
 
       - name: Health check (internal via SSH, retry)
         id: internal_health
@@ -166,8 +199,8 @@ jobs:
           key: ${{ secrets.STAGING_VPS_SSH_KEY }}
           script: |
             set -euo pipefail
-            ATTEMPTS=15
-            SLEEP=5
+            ATTEMPTS=20
+            SLEEP=6
             for i in $(seq 1 $ATTEMPTS); do
               echo "[Internal] Attempt $i/$ATTEMPTS..."
               CODE=$(curl -fsS -m 5 -o /dev/null -w "%{http_code}" http://localhost:3000/health || echo "000")
@@ -191,9 +224,9 @@ jobs:
           URL="${HEALTHCHECK_URL:-https://api.shopsifu.live/health}"
           echo "Healthcheck URL: $URL"
 
-          # Retry up to 15 times, wait 5s between attempts (total ~75s)
-          ATTEMPTS=15
-          SLEEP=5
+          # Retry up to 20 times, wait 6s between attempts (~2 phút)
+          ATTEMPTS=20
+          SLEEP=6
           PASS=0
 
           for i in $(seq 1 $ATTEMPTS); do

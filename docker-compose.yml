@@ -137,8 +137,6 @@ services:
       - discovery.type=single-node
       - bootstrap.memory_lock=true
       - 'ELASTICSEARCH_HEAP_SIZE=${ELASTICSEARCH_HEAP_SIZE:-8g}'
-      # Lưu ý: phải để 1 dấu $ để docker compose expand tại thời điểm compose, tránh literal "${ELASTICSEARCH_HEAP_SIZE}" lọt vào JVM
-      # Do docker compose không expand từ env_file (.env.docker), biến này sẽ dùng default ở đây trừ khi bạn đặt trong .env của project hoặc set env khi chạy compose
       - 'ES_JAVA_OPTS=-Xms${ELASTICSEARCH_HEAP_SIZE:-8g} -Xmx${ELASTICSEARCH_HEAP_SIZE:-8g}'
       - xpack.security.enabled=false
       - xpack.security.enrollment.enabled=false
@@ -163,7 +161,6 @@ services:
     networks:
       - app-network
     healthcheck:
-      # Đơn giản hoá: chỉ cần HTTP 200 ở root, tránh fail do cluster chưa yellow
       test: ['CMD-SHELL', 'curl -fsS -m 5 http://localhost:9200 >/dev/null || exit 1']
       interval: 10s
       timeout: 10s
@@ -232,10 +229,7 @@ services:
     env_file:
       - .env.docker
     environment:
-      - NODE_OPTIONS=$${NODE_OPTIONS}
       - UV_THREADPOOL_SIZE=64
-      - PM2_INSTANCES=$${PM2_INSTANCES}
-      - PM2_MAX_MEM=$${PM2_MAX_MEM}
     networks:
       - app-network
     volumes:
@@ -320,10 +314,10 @@ services:
     ports:
       - '127.0.0.1:${GRAFANA_PORT:-3001}:3000'
     environment:
-      - GF_SECURITY_ADMIN_USER=$${GRAFANA_ADMIN_USER}
-      - GF_SECURITY_ADMIN_PASSWORD=$${GRAFANA_ADMIN_PASSWORD}
-      - GF_USERS_ALLOW_SIGN_UP=$${GRAFANA_ALLOW_SIGNUP}
-      - GF_AUTH_ANONYMOUS_ENABLED=$${GRAFANA_ANONYMOUS_ENABLED}
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=${GRAFANA_ALLOW_SIGNUP}
+      - GF_AUTH_ANONYMOUS_ENABLED=${GRAFANA_ANONYMOUS_ENABLED}
       - GF_SERVER_HTTP_PORT=3000
     volumes:
       - grafana_data:/var/lib/grafana
