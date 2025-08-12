@@ -4,28 +4,38 @@ services:
     container_name: postgres
     init: true
     restart: unless-stopped
-    cpus: '2.0'
-    mem_limit: '8g'
+    cpus: '8.0'
+    mem_limit: '16g'
     command:
       - 'postgres'
       - '-c'
-      - 'max_connections=300'
+      - 'max_connections=600'
       - '-c'
-      - 'shared_buffers=2GB'
+      - 'shared_buffers=6GB'
       - '-c'
-      - 'effective_cache_size=6GB'
+      - 'effective_cache_size=12GB'
       - '-c'
-      - 'work_mem=32MB'
+      - 'work_mem=64MB'
       - '-c'
-      - 'maintenance_work_mem=512MB'
+      - 'maintenance_work_mem=1GB'
       - '-c'
       - 'wal_compression=on'
       - '-c'
-      - 'max_wal_size=2GB'
+      - 'max_wal_size=4GB'
       - '-c'
       - 'checkpoint_timeout=15min'
       - '-c'
       - 'random_page_cost=1.1'
+      - '-c'
+      - 'effective_io_concurrency=200'
+      - '-c'
+      - 'max_worker_processes=16'
+      - '-c'
+      - 'max_parallel_workers=12'
+      - '-c'
+      - 'max_parallel_maintenance_workers=4'
+      - '-c'
+      - 'max_parallel_workers_per_gather=4'
       - '-c'
       - 'tcp_keepalives_idle=60'
       - '-c'
@@ -71,8 +81,8 @@ services:
     container_name: redis
     init: true
     restart: unless-stopped
-    cpus: '1.0'
-    mem_limit: '2g'
+    cpus: '2.0'
+    mem_limit: '4g'
     env_file:
       - .env.docker
     logging:
@@ -101,8 +111,8 @@ services:
       - -c
       - >
         exec redis-server --appendonly yes --appendfsync everysec
-        --maxmemory "$${REDIS_MAXMEMORY:-2gb}"
-        --maxmemory-policy noeviction
+        --maxmemory "$${REDIS_MAXMEMORY:-4gb}"
+        --maxmemory-policy allkeys-lru
         --timeout 0
         --tcp-keepalive 300
         --requirepass "$${REDIS_PASSWORD}"
@@ -112,8 +122,8 @@ services:
     container_name: elasticsearch
     init: true
     restart: unless-stopped
-    cpus: '3.0'
-    mem_limit: '8g'
+    cpus: '8.0'
+    mem_limit: '16g'
     logging:
       driver: json-file
       options:
@@ -126,10 +136,10 @@ services:
       - cluster.name=shopsifu-cluster
       - discovery.type=single-node
       - bootstrap.memory_lock=true
-      - 'ELASTICSEARCH_HEAP_SIZE=${ELASTICSEARCH_HEAP_SIZE:-4g}'
+      - 'ELASTICSEARCH_HEAP_SIZE=${ELASTICSEARCH_HEAP_SIZE:-8g}'
       # Lưu ý: phải để 1 dấu $ để docker compose expand tại thời điểm compose, tránh literal "${ELASTICSEARCH_HEAP_SIZE}" lọt vào JVM
       # Do docker compose không expand từ env_file (.env.docker), biến này sẽ dùng default ở đây trừ khi bạn đặt trong .env của project hoặc set env khi chạy compose
-      - 'ES_JAVA_OPTS=-Xms${ELASTICSEARCH_HEAP_SIZE:-4g} -Xmx${ELASTICSEARCH_HEAP_SIZE:-4g}'
+      - 'ES_JAVA_OPTS=-Xms${ELASTICSEARCH_HEAP_SIZE:-8g} -Xmx${ELASTICSEARCH_HEAP_SIZE:-8g}'
       - xpack.security.enabled=false
       - xpack.security.enrollment.enabled=false
       - node.store.allow_mmap=false
@@ -165,8 +175,8 @@ services:
     container_name: kibana
     init: true
     restart: unless-stopped
-    cpus: '0.5'
-    mem_limit: '1g'
+    cpus: '1.0'
+    mem_limit: '2g'
     logging:
       driver: json-file
       options:
@@ -175,7 +185,6 @@ services:
     env_file:
       - .env.docker
     environment:
-      - NODE_OPTIONS=$${NODE_OPTIONS}
       - SERVER_NAME=kibana
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - SERVER_SSL_ENABLED=false
@@ -203,8 +212,8 @@ services:
     container_name: server
     init: true
     restart: unless-stopped
-    cpus: '11.0'
-    mem_limit: '12g'
+    cpus: '24.0'
+    mem_limit: '24g'
     logging:
       driver: json-file
       options:
@@ -225,6 +234,8 @@ services:
     environment:
       - NODE_OPTIONS=$${NODE_OPTIONS}
       - UV_THREADPOOL_SIZE=64
+      - PM2_INSTANCES=$${PM2_INSTANCES}
+      - PM2_MAX_MEM=$${PM2_MAX_MEM}
     networks:
       - app-network
     volumes:
@@ -232,7 +243,7 @@ services:
       - ./certs:/app/certs
       - ./upload:/app/upload
     tmpfs:
-      - /tmp:size=256m
+      - /tmp:size=512m
     depends_on:
       postgres:
         condition: service_healthy
@@ -240,6 +251,8 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
+      pgbouncer:
+        condition: service_started
     healthcheck:
       test: ['CMD-SHELL', 'curl -f http://localhost:3000/health || exit 1']
       interval: 30s
@@ -328,53 +341,53 @@ services:
       retries: 3
       start_period: 30s
 
-  # pgbouncer:
-  #   image: edoburu/pgbouncer:1.18.0
-  #   container_name: pgbouncer
-  #   init: true
-  #   restart: unless-stopped
-  #   cpus: '0.2'
-  #   mem_limit: '256m'
-  #   env_file:
-  #     - .env.docker
-  #   environment:
-  #     - DB_HOST=postgres
-  #     - DB_PORT=5432
-  #     - DB_USER=${POSTGRES_USER}
-  #     - DB_PASSWORD=${POSTGRES_PASSWORD}
-  #     - DB_NAME=${POSTGRES_DB}
-  #     - POOL_MODE=${PGBOUNCER_POOL_MODE:-transaction}
-  #     - MAX_CLIENT_CONN=${PGBOUNCER_MAX_CLIENT_CONN:-1000}
-  #     - DEFAULT_POOL_SIZE=${PGBOUNCER_DEFAULT_POOL_SIZE:-20}
-  #     - MAX_DB_CONNECTIONS=${PGBOUNCER_MAX_DB_CONNECTIONS:-100}
-  #     - MAX_USER_CONNECTIONS=${PGBOUNCER_MAX_USER_CONNECTIONS:-100}
-  #     - DATABASES=shopsifu
-  #     - AUTH_TYPE=md5
-  #     - AUTH_FILE=/etc/pgbouncer/userlist.txt
-  #     - ADMIN_USERS=postgres
-  #     - STATS_USERS=postgres
-  #   ulimits:
-  #     nofile: 262144
-  #   ports:
-  #     - '127.0.0.1:${PGBOUNCER_PORT:-6432}:5432'
-  #   networks:
-  #     - app-network
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   logging:
-  #     driver: json-file
-  #     options:
-  #       max-size: '10m'
-  #       max-file: '5'
-  #   security_opt:
-  #     - no-new-privileges:true
-  #   healthcheck:
-  #     test: ['CMD-SHELL', 'pg_isready -h localhost -p 5432 -U postgres']
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 10s
+  pgbouncer:
+    image: edoburu/pgbouncer:1.18.0
+    container_name: pgbouncer
+    init: true
+    restart: unless-stopped
+    cpus: '1.0'
+    mem_limit: '512m'
+    env_file:
+      - .env.docker
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB}
+      - POOL_MODE=${PGBOUNCER_POOL_MODE:-transaction}
+      - MAX_CLIENT_CONN=${PGBOUNCER_MAX_CLIENT_CONN:-1000}
+      - DEFAULT_POOL_SIZE=${PGBOUNCER_DEFAULT_POOL_SIZE:-50}
+      - MAX_DB_CONNECTIONS=${PGBOUNCER_MAX_DB_CONNECTIONS:-200}
+      - MAX_USER_CONNECTIONS=${PGBOUNCER_MAX_USER_CONNECTIONS:-100}
+      - DATABASES=shopsifu
+      - AUTH_TYPE=md5
+      - AUTH_QUERY=SELECT usename, passwd FROM pg_catalog.pg_shadow
+      - ADMIN_USERS=postgres,shopsifu
+      - STATS_USERS=postgres,shopsifu
+    ulimits:
+      nofile: 262144
+    ports:
+      - '127.0.0.1:${PGBOUNCER_PORT:-6432}:5432'
+    networks:
+      - app-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h localhost -p 5432 -U ${POSTGRES_USER:-shopsifu}']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 networks:
   app-network:
