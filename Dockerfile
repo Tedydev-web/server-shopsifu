@@ -33,8 +33,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install dependencies with production optimization
-RUN npm ci --only=production --silent \
+# Install ALL dependencies (including devDependencies) for build process
+RUN npm ci --silent \
     && npm run generate \
     && npm cache clean --force
 
