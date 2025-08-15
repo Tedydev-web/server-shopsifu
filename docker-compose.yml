@@ -13,7 +13,7 @@ services:
     command: ['postgres', '-c', 'config_file=/etc/postgresql/postgresql.conf']
     env_file: [.env.docker]
     ports:
-      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+      - '0.0.0.0:${POSTGRES_PORT:-5432}:5432'
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -46,7 +46,7 @@ services:
     command: ['redis-server', '/usr/local/etc/redis/redis.conf']
     env_file: [.env.docker]
     ports:
-      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+      - '0.0.0.0:${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
       - ./config/redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -88,7 +88,7 @@ services:
     ulimits:
       nofile: { soft: 65536, hard: 65536 }
     ports:
-      - '127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200'
+      - '0.0.0.0:${ELASTICSEARCH_PORT:-9200}:9200'
     volumes:
       - esdata:/usr/share/elasticsearch/data
     networks: [app-network]
@@ -120,7 +120,7 @@ services:
       - SERVER_SSL_ENABLED=${KIBANA_SERVER_SSL_ENABLED}
       - XPACK_SECURITY_ENABLED=${KIBANA_XPACK_SECURITY_ENABLED}
     ports:
-      - '127.0.0.1:${KIBANA_PORT:-5601}:5601'
+      - '0.0.0.0:${KIBANA_PORT:-5601}:5601'
     volumes:
       - ./certs:/usr/share/kibana/config/certs:ro
       - ./config/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
@@ -326,7 +326,7 @@ services:
     mem_limit: '3g' # 9.375% RAM - Large connection pool management
 
     ports:
-      - '127.0.0.1:${PGBOUNCER_PORT:-6432}:6432'
+      - '0.0.0.0:${PGBOUNCER_PORT:-6432}:6432'
     volumes:
       - ./config/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./config/userlist.txt:/etc/pgbouncer/userlist.txt:ro
