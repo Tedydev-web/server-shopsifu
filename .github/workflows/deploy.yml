@@ -17,9 +17,9 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: tedydev-web/server-shopsifu
   PROJECT_NAME: server-shopsifu
-  VPS_HOST: ${{ secrets.STAGING_VPS_IP_HOST }}
-  VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
-  VPS_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
+  VPS_HOST: ${{ secrets.VPS_HOST }}
+  VPS_USER: ${{ secrets.VPS_USERNAME }}
+  VPS_PATH: ${{ secrets.VPS_PATH }}
 
 # ==============================================
 # REUSABLE WORKFLOW FUNCTIONS
@@ -184,7 +184,7 @@ jobs:
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
-          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             export PROJECT_PATH='${{ env.VPS_PATH }}'
             set -euo pipefail
@@ -215,7 +215,7 @@ jobs:
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
-          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             export PROJECT_PATH='${{ env.VPS_PATH }}'
             set -euo pipefail
@@ -232,7 +232,7 @@ jobs:
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
-          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             export PROJECT_PATH='${{ env.VPS_PATH }}'
             set -euo pipefail
@@ -256,7 +256,7 @@ jobs:
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
-          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -euo pipefail
             # Clean old images (keep last 7 days)
@@ -289,7 +289,7 @@ jobs:
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
-          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -euo pipefail
             ATTEMPTS=20
@@ -562,7 +562,7 @@ jobs:
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
-          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             export PROJECT_PATH='${{ env.VPS_PATH }}'
             set -euo pipefail
