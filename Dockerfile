@@ -1,95 +1,121 @@
-# syntax=docker/dockerfile:1.7
-FROM node:20-alpine AS builder
-ARG BUILD_VERSION
-ARG BUILD_DATE
-ARG GIT_SHA
+# ==============================================
+# SHOPIFU SERVER DOCKERFILE (PURE NODE.JS)
+# ==============================================
+# Multi-stage build for production optimization
+# Target: High-performance, high-concurrency Node.js application
 
-ENV NODE_ENV=development \
-    HUSKY=0 \
-    HUSKY_SKIP_INSTALL=1
+# ==============================================
+# BUILDER STAGE
+# ==============================================
+FROM node:20-alpine AS builder
+
+# Set build environment
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
+
+# NPM optimization for faster builds
+ENV NPM_CONFIG_CACHE=/tmp/npm-cache
+ENV NPM_CONFIG_PREFER_OFFLINE=true
+ENV NPM_CONFIG_AUDIT=false
+ENV NPM_CONFIG_FUND=false
 
 # Install build dependencies
-RUN apk add --no-cache --virtual .build-deps \
-    alpine-sdk \
-    python3
+RUN apk add --no-cache \
+    make \
+    g++ \
+    python3 \
+    && rm -rf /var/cache/apk/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json ./
-
-# Install all dependencies (including devDependencies)
-RUN --mount=type=cache,target=/root/.npm \
-    --mount=type=cache,target=/root/.cache/node-gyp \
-    npm ci --include=dev --prefer-offline --no-audit --no-fund --loglevel=error
-
-# Copy Prisma schema
+# Copy package files for dependency installation
+COPY package*.json ./
 COPY prisma ./prisma/
 
-# Generate Prisma client
-RUN --mount=type=cache,target=/root/.cache/prisma npm run generate
+# Install dependencies with production optimization
+RUN npm ci --only=production --silent \
+    && npm run generate \
+    && npm cache clean --force
 
-# Copy source code
-COPY . .
+# Copy source code and config files
+COPY src ./src
+COPY tsconfig*.json ./
+COPY nest-cli.json ./
 
-# Build dist
-RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
+# Build application
+RUN npm run build \
+    && npm prune --production
 
-# Remove devDependencies and build deps
-RUN npm prune --omit=dev && npm cache clean --force && apk del .build-deps
-
+# ==============================================
+# PRODUCTION STAGE
+# ==============================================
 FROM node:20-alpine AS production
-ARG BUILD_VERSION
-ARG BUILD_DATE
-ARG GIT_SHA
 
-LABEL org.opencontainers.image.title="server-shopsifu" \
-      org.opencontainers.image.source="https://github.com/Tedydev-web/server-shopsifu" \
-      org.opencontainers.image.description="Shopsifu backend (NestJS) production image" \
-      org.opencontainers.image.licenses="Proprietary" \
-      org.opencontainers.image.version="${BUILD_VERSION}" \
-      org.opencontainers.image.revision="${GIT_SHA}" \
-      org.opencontainers.image.created="${BUILD_DATE}"
+# Set production environment
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
 
-ENV NODE_ENV=production \
-    TZ=Asia/Ho_Chi_Minh \
-    PRISMA_CLIENT_ENGINE_TYPE=library \
-    PRISMA_HIDE_UPDATE_MESSAGE=1 \
-    PM2_DISABLE_MONIT=1 \
-    PM2_NO_INTERACTION=1
+# Create non-root user for security
+RUN addgroup -g 1001 -S nestjs \
+    && adduser -S nestjs -u 1001
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    dumb-init \
+    curl \
+    && rm -rf /var/cache/apk/*
 
 # Set working directory
 WORKDIR /app
 
-# Install minimal runtime deps and create non-root user
-RUN apk add --no-cache \
-      curl \
-      tzdata \
-      openssl \
-      libc6-compat \
-  && addgroup -g 1001 -S nodejs \
-  && adduser -S nestjs -u 1001 \
-  && npm install -g pm2@latest
+# Copy built application from builder stage
+COPY --from=builder --chown=nestjs:nestjs /app/dist ./dist
+COPY --from=builder --chown=nestjs:nestjs /app/node_modules ./node_modules
+COPY --from=builder --chown=nestjs:nestjs /app/package*.json ./
 
-# Copy built application from builder stage (with correct ownership)
-COPY --chown=nestjs:nodejs --from=builder /app/package.json ./
-COPY --chown=nestjs:nodejs --from=builder /app/package-lock.json ./
-COPY --chown=nestjs:nodejs --from=builder /app/node_modules ./node_modules
-COPY --chown=nestjs:nodejs --from=builder /app/dist ./dist
-COPY --chown=nestjs:nodejs --from=builder /app/ecosystem.config.js ./
-COPY --chown=nestjs:nodejs --from=builder /app/prisma ./prisma
-COPY --chown=nestjs:nodejs --from=builder /app/src/shared/languages ./src/shared/languages
+# Create necessary directories
+RUN mkdir -p /app/logs /app/certs /app/upload /app/temp \
+    && chown -R nestjs:nestjs /app
 
-ENV UV_THREADPOOL_SIZE=64
+# Switch to non-root user
 USER nestjs
+
+# ==============================================
+# RUNTIME CONFIGURATION
+# ==============================================
+# Node.js performance optimization
+ENV NODE_OPTIONS="--max-old-space-size=18000 --enable-source-maps"
+ENV UV_THREADPOOL_SIZE=48
+
+# Application configuration
+ENV PORT=3000
+ENV HOST=0.0.0.0
+
+# Health check configuration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+    CMD curl -f http://localhost:3000/health || exit 1
 
 # Expose port
 EXPOSE 3000
 
-# Healthcheck (đồng nhất với compose)
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -fsS http://localhost:3000/health || exit 1
+# ==============================================
+# ENTRYPOINT & COMMAND
+# ==============================================
+# Use dumb-init for proper signal handling
+ENTRYPOINT ["dumb-init", "--"]
 
-# Start production server
-CMD ["pm2-runtime", "ecosystem.config.js"]
+# Start application with cluster mode for high performance
+CMD ["node", "--max-old-space-size=18000", "dist/main.js"]
+
+# ==============================================
+# OCI LABELS (Container metadata)
+# ==============================================
+LABEL org.opencontainers.image.title="Shopsifu Server"
+LABEL org.opencontainers.image.description="High-performance e-commerce backend server"
+LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.vendor="Tedydev Web"
+LABEL org.opencontainers.image.authors="Tedydev Web Team"
+LABEL org.opencontainers.image.source="https://github.com/Tedydev-web/server-shopsifu"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.created="2025-01-27T00:00:00Z"

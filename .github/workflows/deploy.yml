@@ -1,4 +1,4 @@
-name: Build and Deploy
+name: 🚀 Build and Deploy Production
 
 on:
   push:
@@ -16,29 +16,83 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: tedydev-web/server-shopsifu
+  PROJECT_NAME: server-shopsifu
+  VPS_HOST: ${{ secrets.STAGING_VPS_IP_HOST }}
+  VPS_USER: ${{ secrets.STAGING_VPS_USERNAME }}
+  VPS_PATH: ${{ secrets.STAGING_PATH_PROJECT }}
 
+# ==============================================
+# REUSABLE WORKFLOW FUNCTIONS
+# ==============================================
 jobs:
-  build:
+  # ==============================================
+  # SECURITY SCANNING
+  # ==============================================
+  security-scan:
+    name: 🔒 Security Scan
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔍 Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: 📊 Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: 🚨 Check for high severity vulnerabilities
+        run: |
+          if [ -f "trivy-results.sarif" ]; then
+            HIGH_VULNS=$(grep -c '"level": "error"' trivy-results.sarif || echo "0")
+            if [ "$HIGH_VULNS" -gt 0 ]; then
+              echo "❌ Found $HIGH_VULNS high severity vulnerabilities"
+              exit 1
+            else
+              echo "✅ No high severity vulnerabilities found"
+            fi
+          fi
+
+  # ==============================================
+  # BUILD DOCKER IMAGE
+  # ==============================================
+  build:
+    name: 🏗️ Build Docker Image
+    needs: security-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       packages: write
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
       image-digest: ${{ steps.build.outputs.digest }}
+      build-status: ${{ job.status }}
+      build-time: ${{ steps.build.outputs.build-time }}
     steps:
-      - name: Checkout repository
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Log in to Container Registry
+      - name: 🔐 Login to Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: 🏷️ Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -51,25 +105,25 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.created=${{ steps.prep.outputs.date }}
 
-      # QEMU không cần thiết nếu chỉ build linux/amd64 → giảm thời gian build
-      # - name: Set up QEMU
-      #   uses: docker/setup-qemu-action@v3
-      #   with:
-      #     platforms: linux/amd64
-
-      - name: Set up Docker Buildx
+      - name: 🐳 Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:v0.12.0
+            network=host
 
-      - name: Prepare build metadata
+      - name: 📊 Prepare build metadata
         id: prep
         shell: bash
         run: |
           echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           echo "version=${GITHUB_REF_NAME:-unknown}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "build_start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push Docker image (layer cache)
+      - name: 🚀 Build and push Docker image
         id: build
         uses: docker/build-push-action@v5
         with:
@@ -83,45 +137,70 @@ jobs:
             BUILD_VERSION=${{ steps.prep.outputs.version }}
             BUILD_DATE=${{ steps.prep.outputs.date }}
             GIT_SHA=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          # Build một kiến trúc duy nhất để tối ưu thời gian (VPS prod chạy amd64)
+          cache-from: type=gha,scope=${{ github.workflow }}-${{ github.ref }}
+          cache-to: type=gha,mode=max,scope=${{ github.workflow }}-${{ github.ref }}
           platforms: linux/amd64
           provenance: false
           sbom: false
+          outputs: type=image,compression=gzip
 
-  deploy-production:
+      - name: 📊 Calculate build time
+        id: build-time
+        run: |
+          BUILD_END=$(date +%s)
+          BUILD_START=${{ steps.prep.outputs.build_start }}
+          BUILD_DURATION=$((BUILD_END - BUILD_START))
+          echo "build-time=$BUILD_DURATION" >> "$GITHUB_OUTPUT"
+          echo "⏱️ Build completed in ${BUILD_DURATION}s"
+
+      - name: 🧹 Cleanup build cache
+        if: always()
+        run: |
+          docker builder prune -f
+          docker system prune -f
+
+  # ==============================================
+  # DEPLOY TO PRODUCTION VPS
+  # ==============================================
+  deploy:
+    name: 🚀 Deploy to Production
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     permissions:
       contents: read
+      packages: read
+    outputs:
+      deploy-status: ${{ job.status }}
+      deploy-time: ${{ steps.deploy-time.outputs.deploy-time }}
     steps:
-      - name: Checkout repository
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Deploy to production VPS via SSH (key-based)
+      - name: 🔧 Setup VPS Performance
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.STAGING_VPS_IP_HOST }}
-          username: ${{ secrets.STAGING_VPS_USERNAME }}
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
           key: ${{ secrets.STAGING_VPS_SSH_KEY }}
           script: |
-            export PROJECT_PATH='${{ secrets.STAGING_PATH_PROJECT }}'
+            export PROJECT_PATH='${{ env.VPS_PATH }}'
             set -euo pipefail
             cd "$PROJECT_PATH"
 
-            # Thiết lập &amp; persist kernel sysctl trên host (tương thích sudo có mật khẩu)
+            # Setup kernel performance tuning
             SUDO_PASS='${{ secrets.VPS_SUDO_PASSWORD }}'
             if [ -n "$SUDO_PASS" ]; then
-              printf '%s\n' "$SUDO_PASS" | sudo -S bash -eu -c "cat >/etc/sysctl.d/90-shopsifu-performance.conf <<'EOF'
+              printf '%s\n' "$SUDO_PASS" | sudo -S bash -eu -c "
+                cat >/etc/sysctl.d/90-shopsifu-performance.conf <<'EOF'
             vm.max_map_count = 262144
             fs.file-max = 1048576
             net.core.somaxconn = 16384
             EOF
-            sysctl --system || true"
+                sysctl --system || true
+              "
             else
               sudo tee /etc/sysctl.d/90-shopsifu-performance.conf >/dev/null <<'EOF'
             vm.max_map_count = 262144
@@ -131,90 +210,112 @@ jobs:
               sudo sysctl --system || true
             fi
 
-            # Bảo đảm repo đồng bộ tuyệt đối theo nhánh đang deploy
+      - name: 🔄 Sync repository
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          script: |
+            export PROJECT_PATH='${{ env.VPS_PATH }}'
+            set -euo pipefail
+            cd "$PROJECT_PATH"
+
+            # Sync with current branch
             BRANCH='${{ github.ref_name }}'
             git fetch --prune --tags origin "$BRANCH"
             git reset --hard "origin/$BRANCH"
 
-            # Đăng nhập GHCR để pull image
+      - name: 🐳 Deploy application
+        id: deploy-app
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          script: |
+            export PROJECT_PATH='${{ env.VPS_PATH }}'
+            set -euo pipefail
+            cd "$PROJECT_PATH"
+
+            # Login to GHCR
             echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
-            # Pin image theo digest build từ job trước
+            # Use pinned image digest
             export SERVER_IMAGE="ghcr.io/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }}"
-            echo "Using image: $SERVER_IMAGE"
+            echo "🚀 Deploying image: $SERVER_IMAGE"
 
-            # Dùng đúng file môi trường production
+            # Deploy with Docker Compose
             docker compose --env-file .env.docker config -q
             docker compose --env-file .env.docker pull
-            # Không fail sớm nếu có service chưa kịp healthy để còn có log chẩn đoán
-            docker compose --env-file .env.docker up -d --force-recreate --remove-orphans || true
+            docker compose --env-file .env.docker up -d --force-recreate --remove-orphans
 
-            # Kiểm tra nhanh trạng thái sau deploy
-            sleep 20
-            docker compose ps
-            # Nếu server KHÔNG Up, in log để chẩn đoán
-            if ! docker compose ps server | grep -qi 'Up'; then
-              echo '--- Server logs (last 200 lines) ---'
-              docker compose logs --tail=200 server | cat || true
-            fi
-            # Nếu Elasticsearch KHÔNG healthy (unhealthy/exit/restarting), in log để chẩn đoán
-            if ! docker compose ps elasticsearch | grep -qi 'healthy'; then
-              echo '--- Elasticsearch logs (last 200 lines) ---'
-              docker compose logs --tail=200 elasticsearch | cat || true
-            fi
-            # Nếu Redis KHÔNG healthy, in log để chẩn đoán
-            if ! docker compose ps redis | grep -qi 'healthy'; then
-              echo '--- Redis logs (last 200 lines) ---'
-              docker compose logs --tail=200 redis | cat || true
-            fi
-            # Kiểm tra PgBouncer (mới bật) nếu không Up => in log
-            if ! docker compose ps pgbouncer | grep -qi 'Up'; then
-              echo '--- PgBouncer logs (last 200 lines) ---'
-              docker compose logs --tail=200 pgbouncer | cat || true
-            fi
-            # Kiểm tra Postgres nếu không Up => in log
-            if ! docker compose ps postgres | grep -qi 'Up'; then
-              echo '--- Postgres logs (last 200 lines) ---'
-              docker compose logs --tail=200 postgres | cat || true
-            fi
-
-      - name: Prune old Docker images on VPS (safe, keep last 7 days)
+      - name: 🧹 Cleanup old images
         if: always()
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.STAGING_VPS_IP_HOST }}
-          username: ${{ secrets.STAGING_VPS_USERNAME }}
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
           key: ${{ secrets.STAGING_VPS_SSH_KEY }}
           script: |
             set -euo pipefail
-            # Chỉ dọn image cũ, tránh đụng tới volumes/containers đang chạy
+            # Clean old images (keep last 7 days)
             docker image prune -af --filter "until=168h" || true
 
-      - name: Health check (internal via SSH, retry)
+      - name: 📊 Calculate deploy time
+        id: deploy-time
+        run: |
+          DEPLOY_END=$(date +%s)
+          DEPLOY_START=${{ steps.deploy-app.outputs.deploy_start || '0' }}
+          DEPLOY_DURATION=$((DEPLOY_END - DEPLOY_START))
+          echo "deploy-time=$DEPLOY_DURATION" >> "$GITHUB_OUTPUT"
+          echo "⏱️ Deploy completed in ${DEPLOY_DURATION}s"
+
+  # ==============================================
+  # HEALTH CHECK & MONITORING
+  # ==============================================
+  health-check:
+    name: 🏥 Health Check
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      health-status: ${{ job.status }}
+      health-time: ${{ steps.health-time.outputs.health-time }}
+    steps:
+      - name: 📊 Internal health check
         id: internal_health
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.STAGING_VPS_IP_HOST }}
-          username: ${{ secrets.STAGING_VPS_USERNAME }}
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
           key: ${{ secrets.STAGING_VPS_SSH_KEY }}
           script: |
             set -euo pipefail
             ATTEMPTS=20
             SLEEP=6
+
+            echo "🏥 Starting health check..."
+            HEALTH_START=$(date +%s)
+
             for i in $(seq 1 $ATTEMPTS); do
-              echo "[Internal] Attempt $i/$ATTEMPTS..."
+              echo "Attempt $i/$ATTEMPTS..."
               CODE=$(curl -fsS -m 5 -o /dev/null -w "%{http_code}" http://localhost:3000/health || echo "000")
               if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
-                echo "[Internal] ✅ Health check passed with code $CODE"
+                HEALTH_END=$(date +%s)
+                HEALTH_DURATION=$((HEALTH_END - HEALTH_START))
+                echo "✅ Health check passed with code $CODE in ${HEALTH_DURATION}s"
+                echo "health_duration=$HEALTH_DURATION" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
               sleep $SLEEP
             done
-            echo "[Internal] ❌ Health check failed after $ATTEMPTS attempts"
+
+            echo "❌ Health check failed after $ATTEMPTS attempts"
             exit 1
 
-      - name: Health check (external, best-effort)
-        id: health
+      - name: 🌐 External health check
+        id: external_health
         continue-on-error: true
         env:
           HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
@@ -222,16 +323,14 @@ jobs:
           set -euo pipefail
 
           URL="${HEALTHCHECK_URL:-https://api.shopsifu.live/health}"
-          echo "Healthcheck URL: $URL"
+          echo "🌐 External healthcheck URL: $URL"
 
-          # Retry up to 20 times, wait 6s between attempts (~2 phút)
           ATTEMPTS=20
           SLEEP=6
           PASS=0
 
           for i in $(seq 1 $ATTEMPTS); do
             echo "Attempt $i/$ATTEMPTS..."
-            # Accept any 2xx as success
             CODE=$(curl -fsS -m 5 -o /dev/null -w "%{http_code}" "$URL" || echo "000")
             if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
               PASS=1
@@ -242,37 +341,61 @@ jobs:
 
           if [ "$PASS" -eq 1 ]; then
             echo "result=success" >> $GITHUB_OUTPUT
-            echo "✅ (External) Health check passed with code $CODE"
+            echo "✅ External health check passed with code $CODE"
           else
             echo "result=failure" >> $GITHUB_OUTPUT
-            echo "⚠️ (External) Health check failed after $ATTEMPTS attempts (có thể do WAF)" >&2
+            echo "⚠️ External health check failed (may be due to WAF)"
           fi
 
-      - name: Get commit details (range-aware)
-        id: commit
+      - name: 📊 Calculate health check time
+        id: health-time
+        run: |
+          HEALTH_END=$(date +%s)
+          HEALTH_START=${{ steps.internal_health.outputs.health_start || '0' }}
+          HEALTH_DURATION=$((HEALTH_END - HEALTH_START))
+          echo "health-time=$HEALTH_DURATION" >> "$GITHUB_OUTPUT"
+          echo "⏱️ Health check completed in ${HEALTH_DURATION}s"
+
+  # ==============================================
+  # NOTIFICATION & REPORTING
+  # ==============================================
+  notification:
+    name: 📢 Send Notifications
+    needs: [build, deploy, health-check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    if: always()
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📊 Generate deployment report
+        id: report
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          # Bảo đảm đầy đủ lịch sử để truy vấn phạm vi commit
+          # Fetch full history
           git fetch --prune --unshallow || true
           git fetch --all --tags || true
 
           CURRENT_SHA="${{ github.sha }}"
           BEFORE_SHA="${{ github.event.before }}"
 
-          # Fallback nếu BEFORE_SHA trống (ví dụ workflow_dispatch)
+          # Fallback for BEFORE_SHA
           if [ -z "$BEFORE_SHA" ] || ! git rev-parse --verify "$BEFORE_SHA^{commit}" >/dev/null 2>&1; then
             BEFORE_SHA=$(git rev-parse "$CURRENT_SHA^" 2>/dev/null || echo "")
           fi
 
-          # Lấy thông tin commit HEAD
+          # Get commit details
           COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s" "$CURRENT_SHA" || true)
           COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" "$CURRENT_SHA" || true)
           COMMIT_DATE=$(git log -1 --pretty=format:"%cd" --date=iso-strict "$CURRENT_SHA" || date -u +%Y-%m-%dT%H:%M:%SZ)
 
-          # Tạo danh sách commit giữa BEFORE..CURRENT (không bao gồm BEFORE)
+          # Generate commit range
           COMMIT_RANGE=""
           if [ -n "$BEFORE_SHA" ]; then
             COMMIT_RANGE=$(git rev-list --reverse "$BEFORE_SHA..$CURRENT_SHA" 2>/dev/null || echo "")
@@ -287,12 +410,10 @@ jobs:
               COMMIT_LOG+="- [\`$(echo "$SHA" | cut -c1-7)\`](https://github.com/${{ github.repository }}/commit/$SHA) $MSG — _${AUTHOR}_\n"
             done <<< "$COMMIT_RANGE"
           else
-            # Không có phạm vi (single commit)
             SHORT=$(echo "$CURRENT_SHA" | cut -c1-7)
             COMMIT_LOG="- [\`$SHORT\`](https://github.com/${{ github.repository }}/commit/$CURRENT_SHA) $COMMIT_MESSAGE — _${COMMIT_AUTHOR}_\n"
           fi
 
-          # Xuất output cho step sau
           echo "message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
           echo "author=$COMMIT_AUTHOR" >> $GITHUB_OUTPUT
           echo "date=$COMMIT_DATE" >> $GITHUB_OUTPUT
@@ -300,16 +421,19 @@ jobs:
           echo -e "$COMMIT_LOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Job Summary
+      - name: 📋 Job Summary
         env:
-          STATUS: ${{ steps.internal_health.outcome == 'success' && 'success' || 'failure' }}
+          STATUS: ${{ needs.health-check.outcome == 'success' && 'success' || 'failure' }}
           BRANCH: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           IMAGE_TAGS: ${{ needs.build.outputs.image-tag }}
           IMAGE_DIGEST: ${{ needs.build.outputs.image-digest }}
-          COMMITS_BLOCK: ${{ steps.commit.outputs.log }}
+          COMMITS_BLOCK: ${{ steps.report.outputs.log }}
+          BUILD_TIME: ${{ needs.build.outputs.build-time }}
+          DEPLOY_TIME: ${{ needs.deploy.outputs.deploy-time }}
+          HEALTH_TIME: ${{ needs.health-check.outputs.health-time }}
         run: |
           {
             echo "# 🚀 Deploy Summary"
@@ -320,6 +444,12 @@ jobs:
             echo "**Branch:** `$BRANCH`"
             echo "**Run:** https://github.com/$REPO/actions/runs/$RUN_ID"
             echo
+            echo "## ⏱️ Performance Metrics"
+            echo "- **Build Time:** ${BUILD_TIME}s"
+            echo "- **Deploy Time:** ${DEPLOY_TIME}s"
+            echo "- **Health Check:** ${HEALTH_TIME}s"
+            echo "- **Total Time:** $((BUILD_TIME + DEPLOY_TIME + HEALTH_TIME))s"
+            echo
             echo "## 🔗 Artifact"
             echo "- **Image Tags:** \`$IMAGE_TAGS\`"
             echo "- **Image Digest:** \`$IMAGE_DIGEST\`"
@@ -328,31 +458,32 @@ jobs:
             echo "$COMMITS_BLOCK"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Send Discord Notification
-        if: always()
+      - name: 📢 Send Discord notification
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          STATUS: ${{ steps.internal_health.outcome == 'success' && 'success' || 'failure' }}
+          STATUS: ${{ needs.health-check.outcome == 'success' && 'success' || 'failure' }}
           BRANCH: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          COMMIT_MESSAGE: ${{ steps.commit.outputs.message }}
-          COMMIT_AUTHOR: ${{ steps.commit.outputs.author }}
-          COMMIT_DATE: ${{ steps.commit.outputs.date }}
+          COMMIT_MESSAGE: ${{ steps.report.outputs.message }}
+          COMMIT_AUTHOR: ${{ steps.report.outputs.author }}
+          COMMIT_DATE: ${{ steps.report.outputs.date }}
           IMAGE_TAGS: ${{ needs.build.outputs.image-tag }}
           IMAGE_DIGEST: ${{ needs.build.outputs.image-digest }}
-          COMMIT_LOG: ${{ steps.commit.outputs.log }}
+          COMMIT_LOG: ${{ steps.report.outputs.log }}
+          BUILD_TIME: ${{ needs.build.outputs.build-time }}
+          DEPLOY_TIME: ${{ needs.deploy.outputs.deploy-time }}
+          HEALTH_TIME: ${{ needs.health-check.outputs.health-time }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
 
           COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
           ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
-
           DESCRIPTION=$([ "$STATUS" = "success" ] && echo "🚀 **Triển khai Production thành công**" || echo "❌ **Deployment thất bại**")
 
-          # Nhận diện Conventional Commits icon cho commit HEAD
+          # Commit type icon
           COMMIT_TYPE_ICON="📝"
           case "$COMMIT_MESSAGE" in
             feat*) COMMIT_TYPE_ICON="✨";;
@@ -369,8 +500,8 @@ jobs:
             security*) COMMIT_TYPE_ICON="🔒";;
           esac
 
-          # Hiển thị danh sách commit của push hiện tại (1..n)
           COMMITS_BLOCK=${COMMIT_LOG:-"(không có dữ liệu commit)"}
+          TOTAL_TIME=$((BUILD_TIME + DEPLOY_TIME + HEALTH_TIME))
 
           JSON_PAYLOAD=$(jq -n \
             --arg status "$STATUS" \
@@ -389,6 +520,10 @@ jobs:
             --arg image_tags "$IMAGE_TAGS" \
             --arg image_digest "$IMAGE_DIGEST" \
             --arg commits_block "$COMMITS_BLOCK" \
+            --arg build_time "$BUILD_TIME" \
+            --arg deploy_time "$DEPLOY_TIME" \
+            --arg health_time "$HEALTH_TIME" \
+            --arg total_time "$TOTAL_TIME" \
             ' {
                 embeds: [{
                   title: "🚀 SERVER - Triển khai Production",
@@ -398,6 +533,7 @@ jobs:
                     { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
                     { name: "🌿 Nhánh", value: "`\($branch)`", inline: true },
                     { name: "👤 Người thực hiện", value: "`\($actor)`", inline: true },
+                    { name: "⏱️ Performance", value: "Build: \($build_time)s\nDeploy: \($deploy_time)s\nHealth: \($health_time)s\n**Total: \($total_time)s**", inline: false },
                     { name: "🔗 Commit HEAD", value: "[`\($commit_short)`](https://github.com/\($repo)/commit/\($commit_full))", inline: false },
                     { name: "📝 Nội dung HEAD", value: "\($commit_message)", inline: false },
                     { name: "📚 Danh sách commits", value: $commits_block, inline: false },
@@ -411,27 +547,43 @@ jobs:
 
           curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" || echo "Lỗi gửi thông báo Discord"
 
-  rollback-auto:
-    name: Automatic Rollback
-    needs: deploy-production
+  # ==============================================
+  # AUTOMATIC ROLLBACK
+  # ==============================================
+  rollback:
+    name: 🔄 Auto Rollback
+    needs: [deploy, health-check]
     runs-on: ubuntu-latest
-    if: failure()
+    if: failure() && needs.deploy.result == 'success'
+    timeout-minutes: 10
     steps:
-      - name: Rollback to previous commit (production via SSH key)
+      - name: 🔄 Rollback to previous commit
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.STAGING_VPS_IP_HOST }}
-          username: ${{ secrets.STAGING_VPS_USERNAME }}
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
           key: ${{ secrets.STAGING_VPS_SSH_KEY }}
           script: |
-            export PROJECT_PATH='${{ secrets.STAGING_PATH_PROJECT }}'
+            export PROJECT_PATH='${{ env.VPS_PATH }}'
             set -euo pipefail
             cd "$PROJECT_PATH"
+
+            echo "🔄 Starting automatic rollback..."
+
+            # Rollback to previous commit
             git fetch --all --tags
             git reset --hard HEAD~1
+
+            # Get branch and digest
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
             DIGEST_TAG="$BRANCH-$(git rev-parse HEAD)"
             export SERVER_IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:${DIGEST_TAG}"
+
+            echo "🔄 Rolling back to: $SERVER_IMAGE"
+
+            # Redeploy previous version
             docker compose --env-file .env.docker pull
             docker compose --env-file .env.docker down
             docker compose --env-file .env.docker up -d --force-recreate
+
+            echo "✅ Rollback completed successfully"

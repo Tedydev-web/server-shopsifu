@@ -1,0 +1,78 @@
+# Kibana Configuration for Production
+# Optimized for security and performance
+
+# Server Settings
+server.name: kibana
+server.host: 0.0.0.0
+server.port: 5601
+server.basePath: ''
+server.rewriteBasePath: false
+server.maxPayloadBytes: 1048576
+server.keepAliveTimeout: 120000
+
+# Elasticsearch Settings
+elasticsearch.hosts: ['http://elasticsearch:9200']
+elasticsearch.username: kibana_system
+elasticsearch.password: ${ELASTICSEARCH_PASSWORD}
+elasticsearch.requestTimeout: 30000
+elasticsearch.shardTimeout: 30000
+elasticsearch.pingTimeout: 1500
+elasticsearch.startupTimeout: 30000
+
+# Security Settings
+xpack.security.enabled: true
+xpack.security.encryptionKey: 'something_at_least_32_characters_long'
+xpack.encryptedSavedObjects.encryptionKey: 'something_at_least_32_characters_long'
+
+# Monitoring
+xpack.monitoring.enabled: true
+xpack.monitoring.ui.container.elasticsearch.enabled: true
+xpack.monitoring.ui.container.logstash.enabled: false
+
+# Reporting
+xpack.reporting.enabled: true
+xpack.reporting.kibanaServer.hostname: 'localhost'
+xpack.reporting.kibanaServer.port: 5601
+xpack.reporting.kibanaServer.protocol: 'http'
+
+# Canvas
+xpack.canvas.enabled: true
+
+# Maps
+xpack.maps.enabled: true
+
+# ML
+xpack.ml.enabled: false
+
+# Watcher
+xpack.watcher.enabled: false
+
+# Graph
+xpack.graph.enabled: false
+
+# Logging
+logging.verbose: false
+logging.dest: stdout
+logging.json: true
+logging.level: info
+
+# Performance
+optimize.bundleFilter: '!tests'
+optimize.useBundleCache: true
+optimize.bundleDir: 'optimize/bundles'
+
+# UI Settings
+uiSettings.overrides.useUiSetting: true
+uiSettings.overrides.useUiSettingValues: true
+
+# Telemetry
+telemetry.enabled: false
+telemetry.optIn: false
+telemetry.sendUsageTo: 'prod'
+
+# Advanced Settings
+elasticsearch.ssl.verify: false
+elasticsearch.ssl.certificateAuthorities: []
+elasticsearch.ssl.certificate: ''
+elasticsearch.ssl.key: ''
+elasticsearch.ssl.keyPassphrase: ''

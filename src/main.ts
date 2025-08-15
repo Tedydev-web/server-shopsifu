@@ -10,8 +10,18 @@ import express from 'express'
 import { Logger } from 'nestjs-pino'
 import { ConfigService } from '@nestjs/config'
 import bodyParser from 'body-parser'
+import cluster from 'cluster'
+import { cpus } from 'os'
 
-async function bootstrap(): Promise<void> {
+// ==============================================
+// CLUSTER CONFIGURATION
+// ==============================================
+const NUM_WORKERS = process.env.APP_WORKERS ? parseInt(process.env.APP_WORKERS) : cpus().length
+
+// ==============================================
+// WORKER PROCESS FUNCTION
+// ==============================================
+async function startWorker(): Promise<void> {
   const server = express()
   server.disable('x-powered-by')
   let app: any
@@ -32,9 +42,11 @@ async function bootstrap(): Promise<void> {
     const port = config.getOrThrow('app.http.port')
 
     // Middleware
-    app.use(helmet({
-      crossOriginResourcePolicy: { policy: 'cross-origin' }
-    }))
+    app.use(
+      helmet({
+        crossOriginResourcePolicy: { policy: 'cross-origin' }
+      })
+    )
     app.use(compression({ threshold: 1024 }))
     app.useLogger(logger)
     app.enableCors(config.get('app.cors'))
@@ -47,25 +59,9 @@ async function bootstrap(): Promise<void> {
     await websocketAdapter.connectToRedis()
     app.useWebSocketAdapter(websocketAdapter)
 
-    // // Global settings
-    // app.useGlobalPipes(
-    //   new ValidationPipe({
-    //     transform: true,
-    //     whitelist: true,
-    //     forbidNonWhitelisted: true
-    //   })
-    // )
-
-    // app.enableVersioning({
-    //   type: VersioningType.URI,
-    //   defaultVersion: '1'
-    // })
-
-    // useContainer(app.select(AppModule), { fallbackOnErrors: true })
-
     // Graceful shutdown
     const gracefulShutdown = async (signal: string) => {
-      logger.log(`Received ${signal}, shutting down gracefully...`)
+      logger.log(`Worker ${process.pid} received ${signal}, shutting down gracefully...`)
 
       // Close WebSocket adapter
       const websocketAdapter = app.get(WebsocketAdapter)
@@ -74,7 +70,7 @@ async function bootstrap(): Promise<void> {
       }
 
       await app.close()
-      logger.log('✅ Application closed cleanly. Bye!')
+      logger.log(`✅ Worker ${process.pid} closed cleanly. Bye!`)
       process.exit(0)
     }
 
@@ -84,15 +80,104 @@ async function bootstrap(): Promise<void> {
     // Start server
     await app.listen(port, host)
     if (typeof process.send === 'function') {
-      try { process.send('ready') } catch {}
+      try {
+        process.send('ready')
+      } catch {}
     }
 
     const appUrl = await app.getUrl()
-    logger.log(`🚀 Server running on: ${appUrl}`)
+    logger.log(`🚀 Worker ${process.pid} running on: ${appUrl}`)
   } catch (error) {
-    console.error('❌ Server failed to start:', error)
+    console.error(`❌ Worker ${process.pid} failed to start:`, error)
     if (app) await app.close()
     process.exit(1)
+  }
+}
+
+// ==============================================
+// MASTER PROCESS FUNCTION
+// ==============================================
+function startMaster(): void {
+  console.log(`🚀 Master process ${process.pid} starting ${NUM_WORKERS} workers...`)
+
+  // Fork workers
+  for (let i = 0; i < NUM_WORKERS; i++) {
+    const worker = cluster.fork()
+
+    worker.on('message', (message) => {
+      if (message === 'ready') {
+        console.log(`✅ Worker ${worker.process.pid} is ready`)
+      }
+    })
+
+    worker.on('exit', (code, signal) => {
+      if (signal) {
+        console.log(`⚠️ Worker ${worker.process.pid} was killed by signal: ${signal}`)
+      } else if (code !== 0) {
+        console.log(`❌ Worker ${worker.process.pid} exited with error code: ${code}`)
+      } else {
+        console.log(`✅ Worker ${worker.process.pid} exited successfully`)
+      }
+
+      // Restart worker if it crashes
+      if (code !== 0) {
+        console.log(`🔄 Restarting worker...`)
+        const newWorker = cluster.fork()
+
+        newWorker.on('message', (message) => {
+          if (message === 'ready') {
+            console.log(`✅ New worker ${newWorker.process.pid} is ready`)
+          }
+        })
+      }
+    })
+  }
+
+  // Handle master process shutdown
+  const gracefulShutdown = async (signal: string) => {
+    console.log(`\n🛑 Master process ${process.pid} received ${signal}, shutting down workers...`)
+
+    // Send SIGTERM to all workers
+    for (const id in cluster.workers) {
+      const worker = cluster.workers[id]
+      if (worker) {
+        worker.send('shutdown')
+        worker.kill('SIGTERM')
+      }
+    }
+
+    // Wait for workers to finish
+    setTimeout(() => {
+      console.log('⏰ Force killing remaining workers...')
+      for (const id in cluster.workers) {
+        const worker = cluster.workers[id]
+        if (worker) {
+          worker.kill('SIGKILL')
+        }
+      }
+      process.exit(0)
+    }, 10000)
+
+    process.exit(0)
+  }
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+
+  // Monitor workers
+  cluster.on('exit', (worker, code, signal) => {
+    console.log(`📊 Worker ${worker.process.pid} died. Code: ${code}, Signal: ${signal}`)
+  })
+}
+
+// ==============================================
+// BOOTSTRAP FUNCTION
+// ==============================================
+async function bootstrap(): Promise<void> {
+  if (cluster.isPrimary) {
+    startMaster()
+  } else {
+    await startWorker()
   }
 }
 

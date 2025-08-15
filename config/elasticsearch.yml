@@ -1,0 +1,84 @@
+# Elasticsearch Configuration for Production
+# Optimized for performance and security
+
+# Node Configuration
+node.name: es01
+cluster.name: shopsifu-cluster
+node.roles: [master, data, ingest]
+
+# Network Settings
+network.host: 0.0.0.0
+http.port: 9200
+transport.port: 9300
+
+# Discovery Settings
+discovery.type: single-node
+discovery.seed_hosts: []
+
+# Security Settings
+xpack.security.enabled: true
+xpack.security.enrollment.enabled: true
+xpack.security.http.ssl.enabled: false
+xpack.security.transport.ssl.enabled: false
+
+# Memory and Performance (Optimized for 4GB container)
+bootstrap.memory_lock: true
+indices.memory.index_buffer_size: 30%
+indices.queries.cache.size: 15%
+indices.fielddata.cache.size: 15%
+
+# Index Settings
+action.destructive_requires_name: true
+action.auto_create_index: false
+
+# Monitoring
+xpack.monitoring.enabled: true
+xpack.monitoring.collection.enabled: true
+
+# Machine Learning
+xpack.ml.enabled: false
+
+# Ingest
+ingest.geoip.downloader.enabled: false
+
+# Snapshot and Restore
+path.repo: ['/usr/share/elasticsearch/data/snapshots']
+
+# Logging
+logger.level: INFO
+logger.org.elasticsearch.transport: WARN
+logger.org.elasticsearch.discovery: WARN
+
+# Thread Pool Settings (Optimized for 4GB container)
+thread_pool.write.size: 8
+thread_pool.write.queue_size: 1000
+thread_pool.search.size: 8
+thread_pool.search.queue_size: 1000
+
+# Circuit Breaker Settings
+indices.breaker.total.limit: 70%
+indices.breaker.fielddata.limit: 40%
+indices.breaker.request.limit: 60%
+
+# Recovery Settings
+indices.recovery.max_bytes_per_sec: 100mb
+indices.recovery.max_concurrent_file_chunks: 5
+
+# Translog Settings
+index.translog.durability: async
+index.translog.sync_interval: 30s
+index.translog.flush_threshold_size: 512mb
+
+# Merge Settings
+index.merge.scheduler.max_thread_count: 4
+index.merge.policy.max_merge_at_once: 10
+index.merge.policy.max_merged_segment: 5gb
+
+# Refresh Settings
+index.refresh_interval: 1s
+index.number_of_shards: 1
+index.number_of_replicas: 0
+
+# Search Settings
+search.default_search_timeout: 30s
+search.default_allow_partial_search_results: false

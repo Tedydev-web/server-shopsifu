@@ -1,74 +1,32 @@
+version: '3.8'
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: postgres
-    init: true
     restart: unless-stopped
-    cpus: '8.0'
-    mem_limit: '16g'
-    command:
-      - 'postgres'
-      - '-c'
-      - 'max_connections=600'
-      - '-c'
-      - 'shared_buffers=6GB'
-      - '-c'
-      - 'effective_cache_size=12GB'
-      - '-c'
-      - 'work_mem=64MB'
-      - '-c'
-      - 'maintenance_work_mem=1GB'
-      - '-c'
-      - 'wal_compression=on'
-      - '-c'
-      - 'max_wal_size=4GB'
-      - '-c'
-      - 'checkpoint_timeout=15min'
-      - '-c'
-      - 'random_page_cost=1.1'
-      - '-c'
-      - 'effective_io_concurrency=200'
-      - '-c'
-      - 'max_worker_processes=16'
-      - '-c'
-      - 'max_parallel_workers=12'
-      - '-c'
-      - 'max_parallel_maintenance_workers=4'
-      - '-c'
-      - 'max_parallel_workers_per_gather=4'
-      - '-c'
-      - 'tcp_keepalives_idle=60'
-      - '-c'
-      - 'tcp_keepalives_interval=30'
-      - '-c'
-      - 'tcp_keepalives_count=10'
-    env_file:
-      - .env.docker
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '5'
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
-    shm_size: '1g'
-    security_opt:
-      - no-new-privileges:true
+
+    # ==============================================
+    # RESOURCE ALLOCATION (20 cores, 32GB total)
+    # ==============================================
+    cpus: '4.0' # 20% CPU - Database operations
+    mem_limit: '8g' # 25% RAM - Database cache & connections
+
+    command: ['postgres', '-c', 'config_file=/etc/postgresql/postgresql.conf']
+    env_file: [.env.docker]
     ports:
       - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_HOST_AUTH_METHOD=md5
-      - POSTGRES_INITDB_ARGS=--auth-host=md5
+      - POSTGRES_HOST_AUTH_METHOD=${POSTGRES_HOST_AUTH_METHOD}
+      - POSTGRES_INITDB_ARGS=${POSTGRES_INITDB_ARGS}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
-    networks:
-      - app-network
+      - ./config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks: [app-network]
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-shopsifu}']
       interval: 10s
@@ -79,89 +37,68 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis
-    init: true
     restart: unless-stopped
-    cpus: '2.0'
-    mem_limit: '4g'
-    env_file:
-      - .env.docker
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '5'
-    ulimits:
-      nofile: 262144
-    security_opt:
-      - no-new-privileges:true
+
+    # ==============================================
+    # RESOURCE ALLOCATION
+    # ==============================================
+    cpus: '2.0' # 10% CPU - Cache operations
+    mem_limit: '4g' # 12.5% RAM - Cache storage
+
+    command: ['redis-server', '/usr/local/etc/redis/redis.conf']
+    env_file: [.env.docker]
     ports:
       - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
-    networks:
-      - app-network
+      - ./config/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks: [app-network]
     healthcheck:
       test: ['CMD-SHELL', 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep -q PONG']
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-    command:
-      - sh
-      - -c
-      - >
-        exec redis-server --appendonly yes --appendfsync everysec
-        --maxmemory "$${REDIS_MAXMEMORY:-4gb}"
-        --maxmemory-policy allkeys-lru
-        --timeout 0
-        --tcp-keepalive 300
-        --requirepass "$${REDIS_PASSWORD}"
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
     container_name: elasticsearch
-    init: true
     restart: unless-stopped
-    cpus: '8.0'
-    mem_limit: '16g'
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '5'
-    env_file:
-      - .env.docker
+
+    # ==============================================
+    # RESOURCE ALLOCATION
+    # ==============================================
+    cpus: '2.0' # 10% CPU - Search operations
+    mem_limit: '4g' # 12.5% RAM - Search index & cache
+
+    env_file: [.env.docker]
     environment:
-      - node.name=es01
-      - cluster.name=shopsifu-cluster
-      - discovery.type=single-node
-      - bootstrap.memory_lock=true
-      - 'ELASTICSEARCH_HEAP_SIZE=${ELASTICSEARCH_HEAP_SIZE:-8g}'
-      - 'ES_JAVA_OPTS=-Xms${ELASTICSEARCH_HEAP_SIZE:-8g} -Xmx${ELASTICSEARCH_HEAP_SIZE:-8g}'
-      - xpack.security.enabled=false
-      - xpack.security.enrollment.enabled=false
-      - node.store.allow_mmap=false
-      - indices.memory.index_buffer_size=20%
-      - xpack.ml.enabled=false
-      - ingest.geoip.downloader.enabled=false
-      - action.destructive_requires_name=true
+      - node.name=${ELASTICSEARCH_NODE_NAME}
+      - cluster.name=${ELASTICSEARCH_CLUSTER_NAME}
+      - discovery.type=${ELASTICSEARCH_DISCOVERY_TYPE}
+      - bootstrap.memory_lock=${ELASTICSEARCH_BOOTSTRAP_MEMORY_LOCK}
+      - ELASTICSEARCH_HEAP_SIZE=${ELASTICSEARCH_HEAP_SIZE:-4g}
+      - ES_JAVA_OPTS=-Xms${ELASTICSEARCH_HEAP_SIZE:-4g} -Xmx${ELASTICSEARCH_HEAP_SIZE:-4g}
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=true
+      - ELASTIC_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - node.store.allow_mmap=${ELASTICSEARCH_NODE_STORE_ALLOW_MMAP}
+      - indices.memory.index_buffer_size=${ELASTICSEARCH_INDICES_MEMORY_INDEX_BUFFER_SIZE}
+      - xpack.ml.enabled=${ELASTICSEARCH_XPACK_ML_ENABLED}
+      - ingest.geoip.downloader.enabled=${ELASTICSEARCH_INGEST_GEOIP_DOWNLOADER_ENABLED}
+      - action.destructive_requires_name=${ELASTICSEARCH_ACTION_DESTRUCTIVE_REQUIRES_NAME}
     ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-      nofile:
-        soft: 262144
-        hard: 262144
-    security_opt:
-      - no-new-privileges:true
-    volumes:
-      - esdata:/usr/share/elasticsearch/data
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 262144, hard: 262144 }
     ports:
       - '127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200'
-    networks:
-      - app-network
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+      - ./config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+    networks: [app-network]
     healthcheck:
-      test: ['CMD-SHELL', 'curl -fsS -m 5 http://localhost:9200 >/dev/null || exit 1']
+      test:
+        ['CMD-SHELL', 'curl -fsS -m 5 -u elastic:$${ELASTICSEARCH_PASSWORD} http://localhost:9200 >/dev/null || exit 1']
       interval: 10s
       timeout: 10s
       retries: 60
@@ -170,34 +107,36 @@ services:
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
     container_name: kibana
-    init: true
     restart: unless-stopped
-    cpus: '1.0'
-    mem_limit: '2g'
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '5'
-    env_file:
-      - .env.docker
+
+    # ==============================================
+    # RESOURCE ALLOCATION
+    # ==============================================
+    cpus: '0.5' # 2.5% CPU - UI operations
+    mem_limit: '1g' # 3% RAM - UI rendering
+
+    env_file: [.env.docker]
     environment:
-      - SERVER_NAME=kibana
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - SERVER_SSL_ENABLED=false
+      - SERVER_NAME=${KIBANA_SERVER_NAME}
+      - ELASTICSEARCH_HOSTS=${KIBANA_ELASTICSEARCH_HOSTS}
+      - ELASTICSEARCH_USERNAME=${KIBANA_ELASTICSEARCH_USERNAME}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - SERVER_SSL_ENABLED=${KIBANA_SERVER_SSL_ENABLED}
+      - XPACK_SECURITY_ENABLED=${KIBANA_XPACK_SECURITY_ENABLED}
     ports:
       - '127.0.0.1:${KIBANA_PORT:-5601}:5601'
     volumes:
-      - ./certs:/usr/share/kibana/config/certs
-    networks:
-      - app-network
-    security_opt:
-      - no-new-privileges:true
+      - ./certs:/usr/share/kibana/config/certs:ro
+      - ./config/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+    networks: [app-network]
     depends_on:
-      elasticsearch:
-        condition: service_healthy
+      elasticsearch: { condition: service_healthy }
     healthcheck:
-      test: ['CMD-SHELL', 'curl -fsS http://localhost:5601/api/status | grep -q kibana']
+      test:
+        [
+          'CMD-SHELL',
+          'curl -fsS -u kibana_system:$${ELASTICSEARCH_PASSWORD} http://localhost:5601/api/status | grep -q kibana'
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -207,46 +146,88 @@ services:
     image: ${SERVER_IMAGE:-ghcr.io/tedydev-web/server-shopsifu:latest}
     pull_policy: always
     container_name: server
-    init: true
     restart: unless-stopped
-    cpus: '24.0'
-    mem_limit: '24g'
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '5'
+
+    # ==============================================
+    # RESOURCE ALLOCATION (MAIN APPLICATION)
+    # ==============================================
+    cpus: '12.0' # 60% CPU - Main application logic
+    mem_limit: '20g' # 62.5% RAM - Application memory & cache
+
+    # ==============================================
+    # SYSTEM OPTIMIZATION FOR HIGH TRAFFIC
+    # ==============================================
     ulimits:
-      nofile: 1048576
-    stop_grace_period: 30s
-    security_opt:
-      - no-new-privileges:true
-    sysctls:
-      net.core.somaxconn: 65535
-      net.ipv4.tcp_tw_reuse: '1'
+      nofile: 1048576 # 1M file descriptors for high concurrency
+      nproc: 65536 # High process limit
+      core: 0 # Disable core dumps in production
+
+    # ==============================================
+    # GRACEFUL SHUTDOWN
+    # ==============================================
+    stop_grace_period: 60s # Allow graceful shutdown for long-running requests
+
+    # ==============================================
+    # NETWORK & PORTS
+    # ==============================================
     ports:
       - '${SERVER_PORT:-3000}:3000'
-    env_file:
-      - .env.docker
+
+    # ==============================================
+    # ENVIRONMENT CONFIGURATION (PURE DOCKER)
+    # ==============================================
+    env_file: .env.docker
     environment:
-      - UV_THREADPOOL_SIZE=64
-    networks:
-      - app-network
+      # Node.js Performance Optimization
+      - NODE_ENV=production
+      - PORT=3000
+      - UV_THREADPOOL_SIZE=48 # 12 cores × 4 threads per core
+      - NODE_OPTIONS=--max-old-space-size=18000 # 18GB heap size
+
+      # Application Configuration
+      - APP_WORKERS=12 # 12 worker processes
+      - APP_CONCURRENT_REQUESTS=1000 # High concurrency support
+
+      # Database Connection Pool
+      - DB_POOL_MIN=20
+      - DB_POOL_MAX=100
+
+      # Redis Connection Pool
+      - REDIS_POOL_MIN=10
+      - REDIS_POOL_MAX=50
+
+    # ==============================================
+    # NETWORKING
+    # ==============================================
+    networks: [app-network]
+
+    # ==============================================
+    # VOLUMES & STORAGE
+    # ==============================================
     volumes:
-      - ./logs:/app/logs
-      - ./certs:/app/certs
-      - ./upload:/app/upload
+      - ./logs:/app/logs # Application logs
+      - ./certs:/app/certs # SSL certificates
+      - ./upload:/app/upload # User uploads
+
+    # ==============================================
+    # TEMPORARY STORAGE (RAM-based for performance)
+    # ==============================================
     tmpfs:
-      - /tmp:size=512m
+      - /tmp:size=2g # 2GB RAM for temp files
+      - /app/temp:size=1g # 1GB RAM for app temp files
+
+    # ==============================================
+    # DEPENDENCIES
+    # ==============================================
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-      pgbouncer:
-        condition: service_started
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      elasticsearch: { condition: service_healthy }
+      pgbouncer: { condition: service_started }
+
+    # ==============================================
+    # HEALTH MONITORING
+    # ==============================================
     healthcheck:
       test: ['CMD-SHELL', 'curl -f http://localhost:3000/health || exit 1']
       interval: 30s
@@ -257,35 +238,29 @@ services:
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: prometheus
-    init: true
     restart: unless-stopped
-    cpus: '0.5'
-    mem_limit: '1g'
-    env_file:
-      - .env.docker
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '5'
-    ulimits:
-      nofile: 65535
-    security_opt:
-      - no-new-privileges:true
+
+    # ==============================================
+    # RESOURCE ALLOCATION
+    # ==============================================
+    cpus: '0.5' # 2.5% CPU - Metrics collection
+    mem_limit: '1g' # 3% RAM - Metrics storage
+
+    env_file: [.env.docker]
     ports:
       - '127.0.0.1:${PROMETHEUS_PORT:-9090}:9090'
     volumes:
-      - ./monitoring/prometheus:/etc/prometheus
+      - ./monitoring/prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_DAYS:-7}d'
-      - '--web.enable-lifecycle'
-    networks:
-      - app-network
-    depends_on:
-      - server
+      - '--web.enable-lifecycle=${PROMETHEUS_WEB_ENABLE_LIFECYCLE}'
+      - '--web.enable-admin-api=${PROMETHEUS_WEB_ENABLE_ADMIN_API}'
+      - '--web.enable-telemetry=${PROMETHEUS_WEB_ENABLE_TELEMETRY}'
+    networks: [app-network]
+    depends_on: [server]
     healthcheck:
       test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1']
       interval: 30s
@@ -296,38 +271,34 @@ services:
   grafana:
     image: grafana/grafana:11.4.0
     container_name: grafana
-    init: true
     restart: unless-stopped
-    cpus: '0.5'
-    mem_limit: '1g'
-    env_file:
-      - .env.docker
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '5'
-    ulimits:
-      nofile: 65535
-    security_opt:
-      - no-new-privileges:true
-    ports:
-      - '127.0.0.1:${GRAFANA_PORT:-3001}:3000'
+
+    # ==============================================
+    # RESOURCE ALLOCATION
+    # ==============================================
+    cpus: '0.5' # 2.5% CPU - Dashboard rendering
+    mem_limit: '1g' # 3% RAM - Dashboard cache
+
+    env_file: [.env.docker]
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=${GRAFANA_ALLOW_SIGNUP}
       - GF_AUTH_ANONYMOUS_ENABLED=${GRAFANA_ANONYMOUS_ENABLED}
-      - GF_SERVER_HTTP_PORT=3000
+      - GF_SERVER_HTTP_PORT=${GRAFANA_SERVER_HTTP_PORT}
+      - GF_SECURITY_DISABLE_GRAVATAR=${GRAFANA_SECURITY_DISABLE_GRAVATAR}
+      - GF_SECURITY_COOKIE_SECURE=${GRAFANA_SECURITY_COOKIE_SECURE}
+      - GF_SECURITY_COOKIE_HTTPONLY=${GRAFANA_SECURITY_COOKIE_HTTPONLY}
+    ports:
+      - '127.0.0.1:${GRAFANA_PORT:-3001}:3000'
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
-    networks:
-      - app-network
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./config/grafana.ini:/etc/grafana/grafana.ini:ro
+    networks: [app-network]
     depends_on:
-      prometheus:
-        condition: service_healthy
+      prometheus: { condition: service_healthy }
     healthcheck:
       test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1']
       interval: 30s
@@ -338,46 +309,38 @@ services:
   pgbouncer:
     image: edoburu/pgbouncer:1.18.0
     container_name: pgbouncer
-    init: true
     restart: unless-stopped
-    cpus: '1.0'
-    mem_limit: '512m'
-    env_file:
-      - .env.docker
+
+    # ==============================================
+    # RESOURCE ALLOCATION
+    # ==============================================
+    cpus: '1.0' # 5% CPU - Connection pooling
+    mem_limit: '2g' # 6% RAM - Connection pool management
+
+    env_file: [.env.docker]
     environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
+      - DB_HOST=${PGBOUNCER_DB_HOST}
+      - DB_PORT=${PGBOUNCER_DB_PORT}
       - DB_USER=${POSTGRES_USER}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_NAME=${POSTGRES_DB}
       - POOL_MODE=${PGBOUNCER_POOL_MODE:-transaction}
-      - MAX_CLIENT_CONN=${PGBOUNCER_MAX_CLIENT_CONN:-1000}
-      - DEFAULT_POOL_SIZE=${PGBOUNCER_DEFAULT_POOL_SIZE:-50}
-      - MAX_DB_CONNECTIONS=${PGBOUNCER_MAX_DB_CONNECTIONS:-200}
-      - MAX_USER_CONNECTIONS=${PGBOUNCER_MAX_USER_CONNECTIONS:-100}
-      - DATABASES=shopsifu
-      - AUTH_TYPE=md5
-      - AUTH_QUERY=SELECT usename, passwd FROM pg_catalog.pg_shadow
-      - ADMIN_USERS=postgres,shopsifu
-      - STATS_USERS=postgres,shopsifu
-    ulimits:
-      nofile: 262144
+      - MAX_CLIENT_CONN=${PGBOUNCER_MAX_CLIENT_CONN:-2000} # Increased for high traffic
+      - DEFAULT_POOL_SIZE=${PGBOUNCER_DEFAULT_POOL_SIZE:-100} # Increased pool size
+      - MAX_DB_CONNECTIONS=${PGBOUNCER_MAX_DB_CONNECTIONS:-400} # Increased DB connections
+      - MAX_USER_CONNECTIONS=${PGBOUNCER_MAX_USER_CONNECTIONS:-200} # Increased user connections
+      - DATABASES=${PGBOUNCER_DATABASES}
+      - AUTH_TYPE=${PGBOUNCER_AUTH_TYPE}
+      - AUTH_QUERY=${PGBOUNCER_AUTH_QUERY}
+      - ADMIN_USERS=${PGBOUNCER_ADMIN_USERS}
+      - STATS_USERS=${PGBOUNCER_STATS_USERS}
     ports:
-      - '127.0.0.1:${PGBOUNCER_PORT:-6432}:5432'
-    networks:
-      - app-network
+      - '127.0.0.1:${PGBOUNCER_PORT:-6432}:6432'
+    networks: [app-network]
     depends_on:
-      postgres:
-        condition: service_healthy
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '5'
-    security_opt:
-      - no-new-privileges:true
+      postgres: { condition: service_healthy }
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -h localhost -p 5432 -U ${POSTGRES_USER:-shopsifu}']
+      test: ['CMD-SHELL', 'pg_isready -h localhost -p 6432 -U ${POSTGRES_USER:-shopsifu}']
       interval: 10s
       timeout: 5s
       retries: 3
@@ -387,6 +350,9 @@ networks:
   app-network:
     driver: bridge
     name: app-network
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
   postgres_data:
