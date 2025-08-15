@@ -144,7 +144,7 @@ out/
 
 # Prisma
 prisma/migrations/
-prisma/schema.prisma
+# prisma/schema.prisma - Cần thiết cho build process
 
 # Misc
 *.tgz
