@@ -5,10 +5,10 @@ services:
     restart: unless-stopped
 
     # ==============================================
-    # RESOURCE ALLOCATION (20 cores, 32GB total)
+    # RESOURCE ALLOCATION (24 cores, 32GB total - OPTIMIZED FOR 20K USERS)
     # ==============================================
-    cpus: '4.0' # 20% CPU - Database operations
-    mem_limit: '8g' # 25% RAM - Database cache & connections
+    cpus: '8.0' # 33% CPU - High concurrent database operations
+    mem_limit: '12g' # 37.5% RAM - Large connection pool & cache
 
     command: ['postgres', '-c', 'config_file=/etc/postgresql/postgresql.conf']
     env_file: [.env.docker]
@@ -38,10 +38,10 @@ services:
     restart: unless-stopped
 
     # ==============================================
-    # RESOURCE ALLOCATION
+    # RESOURCE ALLOCATION (OPTIMIZED FOR 20K USERS)
     # ==============================================
-    cpus: '2.0' # 10% CPU - Cache operations
-    mem_limit: '4g' # 12.5% RAM - Cache storage
+    cpus: '4.0' # 16.7% CPU - High frequency cache operations
+    mem_limit: '8g' # 25% RAM - Large cache storage for high concurrency
 
     command: ['redis-server', '/usr/local/etc/redis/redis.conf']
     env_file: [.env.docker]
@@ -64,10 +64,10 @@ services:
     restart: unless-stopped
 
     # ==============================================
-    # RESOURCE ALLOCATION
+    # RESOURCE ALLOCATION (OPTIMIZED FOR 20K USERS)
     # ==============================================
-    cpus: '2.0' # 10% CPU - Search operations
-    mem_limit: '4g' # 12.5% RAM - Search index & cache
+    cpus: '3.0' # 12.5% CPU - High frequency search operations
+    mem_limit: '6g' # 18.75% RAM - Large search index & cache
 
     env_file: [.env.docker]
     environment:
@@ -176,23 +176,23 @@ services:
     # ==============================================
     env_file: .env.docker
     environment:
-      # Node.js Performance Optimization
+      # Node.js Performance Optimization (OPTIMIZED FOR 20K USERS)
       - NODE_ENV=production
       - PORT=3000
-      - UV_THREADPOOL_SIZE=48 # 12 cores × 4 threads per core
-      - NODE_OPTIONS=--max-old-space-size=18000 # 18GB heap size
+      - UV_THREADPOOL_SIZE=96 # 24 cores × 4 threads per core
+      - NODE_OPTIONS=--max-old-space-size=24000 # 24GB heap size
 
-      # Application Configuration
-      - APP_WORKERS=12 # 12 worker processes
-      - APP_CONCURRENT_REQUESTS=1000 # High concurrency support
+      # Application Configuration (OPTIMIZED FOR 20K USERS)
+      - APP_WORKERS=24 # 24 worker processes (1 per core)
+      - APP_CONCURRENT_REQUESTS=5000 # Ultra high concurrency support
 
-      # Database Connection Pool
-      - DB_POOL_MIN=20
-      - DB_POOL_MAX=100
+      # Database Connection Pool (OPTIMIZED FOR 20K USERS)
+      - DB_POOL_MIN=50
+      - DB_POOL_MAX=200
 
-      # Redis Connection Pool
-      - REDIS_POOL_MIN=10
-      - REDIS_POOL_MAX=50
+      # Redis Connection Pool (OPTIMIZED FOR 20K USERS)
+      - REDIS_POOL_MIN=20
+      - REDIS_POOL_MAX=100
 
       # External API Secrets (from GitHub Secrets)
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
@@ -320,10 +320,10 @@ services:
     restart: unless-stopped
 
     # ==============================================
-    # RESOURCE ALLOCATION
+    # RESOURCE ALLOCATION (OPTIMIZED FOR 20K USERS)
     # ==============================================
-    cpus: '1.0' # 5% CPU - Connection pooling
-    mem_limit: '2g' # 6% RAM - Connection pool management
+    cpus: '2.0' # 8.3% CPU - High frequency connection management
+    mem_limit: '3g' # 9.375% RAM - Large connection pool management
 
     ports:
       - '127.0.0.1:${PGBOUNCER_PORT:-6432}:6432'

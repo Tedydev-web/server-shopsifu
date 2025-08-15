@@ -52,8 +52,8 @@ ENV NODE_ENV=production \
     TZ=Asia/Ho_Chi_Minh \
     PRISMA_CLIENT_ENGINE_TYPE=library \
     PRISMA_HIDE_UPDATE_MESSAGE=1 \
-    NODE_OPTIONS="--max-old-space-size=18000 --enable-source-maps" \
-    UV_THREADPOOL_SIZE=48
+    NODE_OPTIONS="--max-old-space-size=24000 --enable-source-maps --max-semi-space-size=512" \
+    UV_THREADPOOL_SIZE=96
 
 # Set working directory
 WORKDIR /app
@@ -92,5 +92,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
 # Use dumb-init for proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start application
-CMD ["node", "--max-old-space-size=18000", "dist/main.js"]
+# Start application (OPTIMIZED FOR 20K USERS)
+CMD ["node", "--max-old-space-size=24000", "--max-semi-space-size=512", "dist/main.js"]

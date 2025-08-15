@@ -21,11 +21,11 @@ discovery.seed_hosts: []
 xpack.security.http.ssl.enabled: false
 xpack.security.transport.ssl.enabled: false
 
-# Memory and Performance (Optimized for 4GB container)
+# Memory and Performance (OPTIMIZED FOR 20K USERS - 6GB container)
 # bootstrap.memory_lock: true  # Disabled for Docker compatibility
-indices.memory.index_buffer_size: 30%
-indices.queries.cache.size: 15%
-indices.fielddata.cache.size: 15%
+indices.memory.index_buffer_size: 40%
+indices.queries.cache.size: 20%
+indices.fielddata.cache.size: 20%
 
 # Index Settings
 action.destructive_requires_name: true
@@ -49,11 +49,11 @@ logger.level: INFO
 logger.org.elasticsearch.transport: WARN
 logger.org.elasticsearch.discovery: WARN
 
-# Thread Pool Settings (Optimized for 4GB container)
-thread_pool.write.size: 8
-thread_pool.write.queue_size: 1000
-thread_pool.search.size: 8
-thread_pool.search.queue_size: 1000
+# Thread Pool Settings (OPTIMIZED FOR 20K USERS - 6GB container)
+thread_pool.write.size: 16
+thread_pool.write.queue_size: 2000
+thread_pool.search.size: 16
+thread_pool.search.queue_size: 2000
 
 # Circuit Breaker Settings
 indices.breaker.total.limit: 70%
@@ -74,9 +74,9 @@ index.merge.scheduler.max_thread_count: 4
 index.merge.policy.max_merge_at_once: 10
 index.merge.policy.max_merged_segment: 5gb
 
-# Refresh Settings
-index.refresh_interval: 1s
-index.number_of_shards: 1
+# Refresh Settings (OPTIMIZED FOR HIGH THROUGHPUT)
+index.refresh_interval: 5s
+index.number_of_shards: 3
 index.number_of_replicas: 0
 
 # Search Settings
