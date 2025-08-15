@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -76,33 +74,31 @@ services:
       - node.name=${ELASTICSEARCH_NODE_NAME}
       - cluster.name=${ELASTICSEARCH_CLUSTER_NAME}
       - discovery.type=${ELASTICSEARCH_DISCOVERY_TYPE}
-      - bootstrap.memory_lock=${ELASTICSEARCH_BOOTSTRAP_MEMORY_LOCK}
-      - ELASTICSEARCH_HEAP_SIZE=${ELASTICSEARCH_HEAP_SIZE:-4g}
-      - ES_JAVA_OPTS=-Xms${ELASTICSEARCH_HEAP_SIZE:-4g} -Xmx${ELASTICSEARCH_HEAP_SIZE:-4g}
+      - bootstrap.memory_lock=false
+      - ELASTICSEARCH_HEAP_SIZE=2g
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
       - xpack.security.enabled=true
       - xpack.security.enrollment.enabled=true
       - ELASTIC_PASSWORD=${ELASTICSEARCH_PASSWORD}
-      - node.store.allow_mmap=${ELASTICSEARCH_NODE_STORE_ALLOW_MMAP}
-      - indices.memory.index_buffer_size=${ELASTICSEARCH_INDICES_MEMORY_INDEX_BUFFER_SIZE}
-      - xpack.ml.enabled=${ELASTICSEARCH_XPACK_ML_ENABLED}
-      - ingest.geoip.downloader.enabled=${ELASTICSEARCH_INGEST_GEOIP_DOWNLOADER_ENABLED}
-      - action.destructive_requires_name=${ELASTICSEARCH_ACTION_DESTRUCTIVE_REQUIRES_NAME}
+      - node.store.allow_mmap=false
+      - indices.memory.index_buffer_size=20%
+      - xpack.ml.enabled=false
+      - ingest.geoip.downloader.enabled=false
+      - action.destructive_requires_name=true
     ulimits:
-      memlock: { soft: -1, hard: -1 }
-      nofile: { soft: 262144, hard: 262144 }
+      nofile: { soft: 65536, hard: 65536 }
     ports:
       - '127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200'
     volumes:
       - esdata:/usr/share/elasticsearch/data
-      - ./config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
     networks: [app-network]
     healthcheck:
       test:
         ['CMD-SHELL', 'curl -fsS -m 5 -u elastic:$${ELASTICSEARCH_PASSWORD} http://localhost:9200 >/dev/null || exit 1']
-      interval: 10s
-      timeout: 10s
-      retries: 60
-      start_period: 300s
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 120s
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
@@ -143,8 +139,10 @@ services:
       start_period: 60s
 
   server:
-    image: ${SERVER_IMAGE:-ghcr.io/tedydev-web/server-shopsifu:latest}
-    pull_policy: always
+    image: ${SERVER_IMAGE:-server-shopsifu:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: server
     restart: unless-stopped
 
@@ -234,7 +232,6 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       elasticsearch: { condition: service_healthy }
-      pgbouncer: { condition: service_started }
 
     # ==============================================
     # HEALTH MONITORING
@@ -328,30 +325,16 @@ services:
     cpus: '1.0' # 5% CPU - Connection pooling
     mem_limit: '2g' # 6% RAM - Connection pool management
 
-    env_file: [.env.docker]
-    environment:
-      - DB_HOST=${PGBOUNCER_DB_HOST}
-      - DB_PORT=${PGBOUNCER_DB_PORT}
-      - DB_USER=${POSTGRES_USER}
-      - DB_PASSWORD=${POSTGRES_PASSWORD}
-      - DB_NAME=${POSTGRES_DB}
-      - POOL_MODE=${PGBOUNCER_POOL_MODE:-transaction}
-      - MAX_CLIENT_CONN=${PGBOUNCER_MAX_CLIENT_CONN:-2000} # Increased for high traffic
-      - DEFAULT_POOL_SIZE=${PGBOUNCER_DEFAULT_POOL_SIZE:-100} # Increased pool size
-      - MAX_DB_CONNECTIONS=${PGBOUNCER_MAX_DB_CONNECTIONS:-400} # Increased DB connections
-      - MAX_USER_CONNECTIONS=${PGBOUNCER_MAX_USER_CONNECTIONS:-200} # Increased user connections
-      - DATABASES=${PGBOUNCER_DATABASES}
-      - AUTH_TYPE=${PGBOUNCER_AUTH_TYPE}
-      - AUTH_QUERY=${PGBOUNCER_AUTH_QUERY}
-      - ADMIN_USERS=${PGBOUNCER_ADMIN_USERS}
-      - STATS_USERS=${PGBOUNCER_STATS_USERS}
     ports:
       - '127.0.0.1:${PGBOUNCER_PORT:-6432}:6432'
+    volumes:
+      - ./config/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./config/userlist.txt:/etc/pgbouncer/userlist.txt:ro
     networks: [app-network]
     depends_on:
       postgres: { condition: service_healthy }
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -h localhost -p 6432 -U ${POSTGRES_USER:-shopsifu}']
+      test: ['CMD-SHELL', 'pg_isready -h localhost -p 6432 -U shopsifu']
       interval: 10s
       timeout: 5s
       retries: 3

@@ -2,8 +2,8 @@
 # Optimized for performance and security
 
 # Node Configuration
-node.name: es01
-cluster.name: shopsifu-cluster
+# node.name: es01  # Set via environment variable
+# cluster.name: shopsifu-cluster  # Set via environment variable
 node.roles: [master, data, ingest]
 
 # Network Settings
@@ -12,17 +12,17 @@ http.port: 9200
 transport.port: 9300
 
 # Discovery Settings
-discovery.type: single-node
+# discovery.type: single-node  # Set via environment variable
 discovery.seed_hosts: []
 
 # Security Settings
-xpack.security.enabled: true
-xpack.security.enrollment.enabled: true
+# xpack.security.enabled: true  # Set via environment variable
+# xpack.security.enrollment.enabled: true  # Set via environment variable
 xpack.security.http.ssl.enabled: false
 xpack.security.transport.ssl.enabled: false
 
 # Memory and Performance (Optimized for 4GB container)
-bootstrap.memory_lock: true
+# bootstrap.memory_lock: true  # Disabled for Docker compatibility
 indices.memory.index_buffer_size: 30%
 indices.queries.cache.size: 15%
 indices.fielddata.cache.size: 15%

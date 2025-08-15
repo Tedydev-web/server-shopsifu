@@ -74,6 +74,7 @@ COPY --chown=nestjs:nodejs --from=builder /app/package-lock.json ./
 COPY --chown=nestjs:nodejs --from=builder /app/node_modules ./node_modules
 COPY --chown=nestjs:nodejs --from=builder /app/dist ./dist
 COPY --chown=nestjs:nodejs --from=builder /app/prisma ./prisma
+COPY --chown=nestjs:nodejs --from=builder /app/src/shared/languages ./src/shared/languages
 
 # Create necessary directories
 RUN mkdir -p /app/logs /app/certs /app/upload /app/temp \
