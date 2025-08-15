@@ -18,8 +18,10 @@ env:
   IMAGE_NAME: tedydev-web/server-shopsifu
   PROJECT_NAME: server-shopsifu
   VPS_HOST: ${{ secrets.VPS_HOST }}
-  VPS_USER: ${{ secrets.VPS_USERNAME }}
+  VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
   VPS_PATH: ${{ secrets.VPS_PATH }}
+  VPS_PORT: "22"
+  VPS_FINGERPRINT: ""
 
 # ==============================================
 # REUSABLE WORKFLOW FUNCTIONS
@@ -213,38 +215,26 @@ jobs:
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USER }}
+          username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             export PROJECT_PATH='${{ env.VPS_PATH }}'
             set -euo pipefail
             cd "$PROJECT_PATH"
 
-            # Setup kernel performance tuning
-            SUDO_PASS='${{ secrets.VPS_SUDO_PASSWORD }}'
-            if [ -n "$SUDO_PASS" ]; then
-              printf '%s\n' "$SUDO_PASS" | sudo -S bash -eu -c "
-                cat >/etc/sysctl.d/90-shopsifu-performance.conf <<'EOF'
+            # Setup kernel performance tuning (requires sudo access without password)
+            sudo tee /etc/sysctl.d/90-shopsifu-performance.conf >/dev/null <<'EOF'
             vm.max_map_count = 262144
             fs.file-max = 1048576
             net.core.somaxconn = 16384
             EOF
-                sysctl --system || true
-              "
-            else
-              sudo tee /etc/sysctl.d/90-shopsifu-performance.conf >/dev/null <<'EOF'
-            vm.max_map_count = 262144
-            fs.file-max = 1048576
-            net.core.somaxconn = 16384
-            EOF
-              sudo sysctl --system || true
-            fi
+            sudo sysctl --system || true
 
       - name: 🔄 Sync repository
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USER }}
+          username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             export PROJECT_PATH='${{ env.VPS_PATH }}'
@@ -263,20 +253,14 @@ jobs:
       - name: 🐳 Deploy application
         id: deploy-app
         uses: appleboy/ssh-action@v0.1.10
-        env:
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          PAYMENT_API_KEY: ${{ secrets.PAYMENT_API_KEY }}
-          VNPAY_TMN_CODE: ${{ secrets.VNPAY_TMN_CODE }}
-          VNPAY_SECURE_SECRET: ${{ secrets.VNPAY_SECURE_SECRET }}
-          S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
-          S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USER }}
+          username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ env.VPS_PORT && env.VPS_PORT || '22' }}
+          # passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          # fingerprint: ${{ env.VPS_FINGERPRINT }}
+          debug: true
           script: |
             export PROJECT_PATH='${{ env.VPS_PATH }}'
             set -euo pipefail
@@ -285,22 +269,16 @@ jobs:
             # Login to GHCR
             echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
-            # Use pinned image digest
-            export SERVER_IMAGE="ghcr.io/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }}"
+            # Use pinned image digest if available, otherwise fallback to branch tag
+            DIGEST='${{ needs.build.outputs.image-digest }}'
+            if [ -n "$DIGEST" ]; then
+              export SERVER_IMAGE="ghcr.io/${{ env.IMAGE_NAME }}@$DIGEST"
+            else
+              export SERVER_IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:${{ github.ref_name }}"
+            fi
             echo "🚀 Deploying image: $SERVER_IMAGE"
 
-            # Export secrets for Docker Compose
-            export GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID"
-            export GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET"
-            export PAYMENT_API_KEY="$PAYMENT_API_KEY"
-            export VNPAY_TMN_CODE="$VNPAY_TMN_CODE"
-            export VNPAY_SECURE_SECRET="$VNPAY_SECURE_SECRET"
-            export S3_ACCESS_KEY="$S3_ACCESS_KEY"
-            export S3_SECRET_KEY="$S3_SECRET_KEY"
-            export RESEND_API_KEY="$RESEND_API_KEY"
-            export SENTRY_DSN="$SENTRY_DSN"
-
-            # Deploy with Docker Compose
+            # Deploy with Docker Compose using .env.docker file
             docker compose --env-file .env.docker config -q
             docker compose --env-file .env.docker pull
             docker compose --env-file .env.docker up -d --force-recreate --remove-orphans
@@ -310,7 +288,7 @@ jobs:
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USER }}
+          username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -euo pipefail
@@ -347,7 +325,7 @@ jobs:
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USER }}
+          username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -euo pipefail
@@ -376,12 +354,10 @@ jobs:
       - name: 🌐 External health check
         id: external_health
         continue-on-error: true
-        env:
-          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
         run: |
           set -euo pipefail
 
-          URL="${HEALTHCHECK_URL:-https://api.shopsifu.live/health}"
+          URL="https://api.shopsifu.live/health"
           echo "🌐 External healthcheck URL: $URL"
 
           ATTEMPTS=20
@@ -620,7 +596,7 @@ jobs:
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USER }}
+          username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             export PROJECT_PATH='${{ env.VPS_PATH }}'
