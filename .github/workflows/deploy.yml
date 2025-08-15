@@ -138,8 +138,10 @@ jobs:
             BUILD_VERSION=${{ steps.prep.outputs.version }}
             BUILD_DATE=${{ steps.prep.outputs.date }}
             GIT_SHA=${{ github.sha }}
-          cache-from: type=gha,scope=${{ github.workflow }}-${{ github.ref }}
-          cache-to: type=gha,mode=max,scope=${{ github.workflow }}-${{ github.ref }}
+          # Temporarily disable cache due to GitHub Actions Cache service issues
+          # This will be re-enabled once GitHub fixes their cache service
+          # cache-from: type=gha,scope=${{ github.workflow }}-${{ github.ref }}
+          # cache-to: type=gha,mode=max,scope=${{ github.workflow }}-${{ github.ref }}
           platforms: linux/amd64
           provenance: false
           sbom: false
@@ -165,20 +167,20 @@ jobs:
         run: |
           # Verify that images were pushed successfully
           echo "🔍 Verifying Docker images..."
-          
+
           # Check if we have tags and images were pushed
           if [ -n "${{ steps.meta.outputs.tags }}" ]; then
             echo "✅ Docker build completed successfully"
             echo "Images pushed to GHCR:"
             echo "${{ steps.meta.outputs.tags }}"
-            
+
             # Check if we have digest (optional)
             if [ -n "${{ steps.build.outputs.digest }}" ]; then
               echo "Image digest: ${{ steps.build.outputs.digest }}"
             else
               echo "⚠️  Image digest not available (cache export failed)"
             fi
-            
+
             # Mark build as successful since images were pushed
             echo "✅ Build verification passed - proceeding to deploy"
             exit 0
