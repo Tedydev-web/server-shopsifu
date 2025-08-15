@@ -20,8 +20,8 @@ env:
   VPS_HOST: ${{ secrets.VPS_HOST }}
   VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
   VPS_PATH: ${{ secrets.VPS_PATH }}
-  VPS_PORT: "22"
-  VPS_FINGERPRINT: ""
+  VPS_PORT: '22'
+  VPS_FINGERPRINT: ''
 
 # ==============================================
 # REUSABLE WORKFLOW FUNCTIONS
@@ -198,7 +198,7 @@ jobs:
     name: 🚀 Deploy to Production
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
@@ -278,9 +278,38 @@ jobs:
             fi
             echo "🚀 Deploying image: $SERVER_IMAGE"
 
-            # Deploy with Docker Compose using .env.docker file
+                        # Deploy with Docker Compose using .env.docker file
             docker compose --env-file .env.docker config -q
-            docker compose --env-file .env.docker pull
+
+            # Pull images with increased timeout and retry
+            echo "🔄 Pulling Docker images..."
+            docker compose --env-file .env.docker pull --quiet || {
+              echo "⚠️ First pull attempt failed, retrying..."
+              sleep 10
+              docker compose --env-file .env.docker pull --quiet
+            }
+
+            # Check and kill processes using conflicting ports
+            echo "🔍 Checking for port conflicts..."
+            if lsof -ti:6379 >/dev/null 2>&1; then
+              echo "⚠️ Port 6379 (Redis) is in use, killing conflicting processes..."
+              lsof -ti:6379 | xargs kill -9 || true
+              sleep 2
+            fi
+
+            if lsof -ti:5432 >/dev/null 2>&1; then
+              echo "⚠️ Port 5432 (PostgreSQL) is in use, killing conflicting processes..."
+              lsof -ti:5432 | xargs kill -9 || true
+              sleep 2
+            fi
+
+            if lsof -ti:3000 >/dev/null 2>&1; then
+              echo "⚠️ Port 3000 (Server) is in use, killing conflicting processes..."
+              lsof -ti:3000 | xargs kill -9 || true
+              sleep 2
+            fi
+
+            echo "🚀 Starting containers..."
             docker compose --env-file .env.docker up -d --force-recreate --remove-orphans
 
       - name: 🧹 Cleanup old images
