@@ -46,7 +46,7 @@ COPY nest-cli.json ./
 
 # Build application
 RUN rm -rf dist \
-    && npm run build \
+    && npm run build --ignore-scripts \
     && npm prune --production
 
 # ==============================================
