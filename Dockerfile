@@ -34,7 +34,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install ALL dependencies (including devDependencies) for build process
-RUN npm ci --silent \
+RUN npm ci --silent --ignore-scripts \
     && npm run generate \
     && npm cache clean --force
 
