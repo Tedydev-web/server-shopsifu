@@ -43,10 +43,11 @@ RUN npm ci --silent --ignore-scripts \
 COPY src ./src
 COPY tsconfig*.json ./
 COPY nest-cli.json ./
+COPY .swcrc ./
 
-# Build application
+# Build application using npx to ensure proper binary resolution
 RUN rm -rf dist \
-    && npm run build --ignore-scripts \
+    && npx nest build \
     && npm prune --production
 
 # ==============================================
