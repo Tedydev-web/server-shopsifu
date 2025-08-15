@@ -5,7 +5,7 @@
   "author": "TedyDev",
   "private": true,
   "scripts": {
-    "prebuild": "rimraf dist",
+    "prebuild": "rm -rf dist",
     "build": "NODE_OPTIONS='--max-old-space-size=4096' npx @nestjs/cli build",
     "start": "node dist/main",
     "start:prod": "node dist/main",
