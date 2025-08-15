@@ -34,7 +34,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install ALL dependencies (including devDependencies) for build process
-RUN npm ci --silent \
+RUN HUSKY=0 npm ci --silent \
     && npm install -g prisma-json-types-generator \
     && npm run generate \
     && npm cache clean --force
