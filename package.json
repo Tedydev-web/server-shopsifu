@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "prebuild": "rimraf dist",
-    "build": "NODE_OPTIONS='--max-old-space-size=4096' nest build",
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' npx @nestjs/cli build",
     "start": "node dist/main",
     "start:prod": "node dist/main",
     "start:docker": "docker-compose up -d",

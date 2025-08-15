@@ -45,9 +45,9 @@ COPY tsconfig*.json ./
 COPY nest-cli.json ./
 COPY .swcrc ./
 
-# Build application using direct path to nest binary
+# Build application using npm script (keeps devDependencies until after build)
 RUN rm -rf dist \
-    && PATH="$PATH:./node_modules/.bin" npx nest build \
+    && npm run build \
     && npm prune --production
 
 # ==============================================
