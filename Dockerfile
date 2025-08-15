@@ -45,9 +45,9 @@ COPY tsconfig*.json ./
 COPY nest-cli.json ./
 COPY .swcrc ./
 
-# Build application using npx to ensure proper binary resolution
+# Build application using direct path to nest binary
 RUN rm -rf dist \
-    && npx nest build \
+    && PATH="$PATH:./node_modules/.bin" npx nest build \
     && npm prune --production
 
 # ==============================================
