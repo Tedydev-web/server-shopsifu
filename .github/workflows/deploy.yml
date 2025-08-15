@@ -126,6 +126,7 @@ jobs:
       - name: 🚀 Build and push Docker image
         id: build
         uses: docker/build-push-action@v5
+        continue-on-error: false
         with:
           context: .
           file: ./Dockerfile
@@ -158,6 +159,26 @@ jobs:
         run: |
           docker builder prune -f
           docker system prune -f
+
+      - name: ✅ Verify Docker images
+        if: always()
+        run: |
+          # Verify that images were pushed successfully
+          echo "🔍 Verifying Docker images..."
+          
+          # Check if we have image digest
+          if [ -n "${{ steps.build.outputs.digest }}" ]; then
+            echo "✅ Docker build completed successfully"
+            echo "Images pushed to GHCR:"
+            echo "${{ steps.meta.outputs.tags }}"
+            echo "Image digest: ${{ steps.build.outputs.digest }}"
+            
+            # Mark build as successful
+            exit 0
+          else
+            echo "❌ Docker build failed - no image digest found"
+            exit 1
+          fi
 
   # ==============================================
   # DEPLOY TO PRODUCTION VPS
