@@ -196,6 +196,17 @@ services:
       - REDIS_POOL_MIN=10
       - REDIS_POOL_MAX=50
 
+      # External API Secrets (from GitHub Secrets)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - PAYMENT_API_KEY=${PAYMENT_API_KEY}
+      - VNPAY_TMN_CODE=${VNPAY_TMN_CODE}
+      - VNPAY_SECURE_SECRET=${VNPAY_SECURE_SECRET}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - SENTRY_DSN=${SENTRY_DSN}
+
     # ==============================================
     # NETWORKING
     # ==============================================
