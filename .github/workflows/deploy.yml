@@ -226,6 +226,10 @@ jobs:
             git fetch --prune --tags origin "$BRANCH"
             git reset --hard "origin/$BRANCH"
 
+      - name: ⏱️ Start deploy timer
+        id: deploy-timer
+        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: 🐳 Deploy application
         id: deploy-app
         uses: appleboy/ssh-action@v0.1.10
@@ -242,7 +246,7 @@ jobs:
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
-          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             export PROJECT_PATH='${{ env.VPS_PATH }}'
             set -euo pipefail
@@ -287,7 +291,7 @@ jobs:
         id: deploy-time
         run: |
           DEPLOY_END=$(date +%s)
-          DEPLOY_START=${{ steps.deploy-app.outputs.deploy_start || '0' }}
+          DEPLOY_START=${{ steps.deploy-timer.outputs.start_time }}
           DEPLOY_DURATION=$((DEPLOY_END - DEPLOY_START))
           echo "deploy-time=$DEPLOY_DURATION" >> "$GITHUB_OUTPUT"
           echo "⏱️ Deploy completed in ${DEPLOY_DURATION}s"
@@ -304,6 +308,10 @@ jobs:
       health-status: ${{ job.status }}
       health-time: ${{ steps.health-time.outputs.health-time }}
     steps:
+      - name: ⏱️ Start health check timer
+        id: health-timer
+        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: 📊 Internal health check
         id: internal_health
         uses: appleboy/ssh-action@v0.1.10
@@ -372,7 +380,7 @@ jobs:
         id: health-time
         run: |
           HEALTH_END=$(date +%s)
-          HEALTH_START=${{ steps.internal_health.outputs.health_start || '0' }}
+          HEALTH_START=${{ steps.health-timer.outputs.start_time }}
           HEALTH_DURATION=$((HEALTH_END - HEALTH_START))
           echo "health-time=$HEALTH_DURATION" >> "$GITHUB_OUTPUT"
           echo "⏱️ Health check completed in ${HEALTH_DURATION}s"
