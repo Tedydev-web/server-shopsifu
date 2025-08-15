@@ -45,7 +45,8 @@ COPY tsconfig*.json ./
 COPY nest-cli.json ./
 
 # Build application
-RUN npm run build \
+RUN rm -rf dist \
+    && npm run build \
     && npm prune --production
 
 # ==============================================
