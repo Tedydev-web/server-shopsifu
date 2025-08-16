@@ -1,5 +1,5 @@
 # Elasticsearch Configuration for Production
-# Optimized for performance and security
+# OPTIMIZED FOR 30 CORES - 20GB CONTAINER - 50K+ USERS
 
 # Node Configuration
 # node.name: es01  # Set via environment variable
@@ -18,14 +18,14 @@ discovery.seed_hosts: []
 # Security Settings
 # xpack.security.enabled: true  # Set via environment variable
 # xpack.security.enrollment.enabled: true  # Set via environment variable
-xpack.security.http.ssl.enabled: false
-xpack.security.transport.ssl.enabled: false
+xpack.security.http.ssl.enabled = false
+xpack.security.transport.ssl.enabled = false
 
-# Memory and Performance (OPTIMIZED FOR 20K USERS - 6GB container)
+# Memory and Performance (OPTIMIZED FOR 50K+ USERS - 20GB container)
 # bootstrap.memory_lock: true  # Disabled for Docker compatibility
-indices.memory.index_buffer_size: 40%
-indices.queries.cache.size: 20%
-indices.fielddata.cache.size: 20%
+indices.memory.index_buffer_size: 50%
+indices.queries.cache.size: 25%
+indices.fielddata.cache.size: 25%
 
 # Index Settings
 action.destructive_requires_name: true
@@ -49,36 +49,70 @@ logger.level: INFO
 logger.org.elasticsearch.transport: WARN
 logger.org.elasticsearch.discovery: WARN
 
-# Thread Pool Settings (OPTIMIZED FOR 20K USERS - 6GB container)
-thread_pool.write.size: 16
-thread_pool.write.queue_size: 2000
-thread_pool.search.size: 16
-thread_pool.search.queue_size: 2000
+# Thread Pool Settings (OPTIMIZED FOR 30 CORES - 20GB container)
+thread_pool.write.size: 24
+thread_pool.write.queue_size: 5000
+thread_pool.search.size: 24
+thread_pool.search.queue_size: 5000
+thread_pool.get.size: 16
+thread_pool.get.queue_size: 2000
+thread_pool.analyze.size: 16
+thread_pool.analyze.queue_size: 2000
 
-# Circuit Breaker Settings
-indices.breaker.total.limit: 70%
-indices.breaker.fielddata.limit: 40%
-indices.breaker.request.limit: 60%
+# Circuit Breaker Settings (OPTIMIZED FOR 20GB RAM)
+indices.breaker.total.limit: 80%
+indices.breaker.fielddata.limit: 50%
+indices.breaker.request.limit: 70%
 
-# Recovery Settings
-indices.recovery.max_bytes_per_sec: 100mb
-indices.recovery.max_concurrent_file_chunks: 5
+# Recovery Settings (OPTIMIZED FOR HIGH THROUGHPUT)
+indices.recovery.max_bytes_per_sec: 200mb
+indices.recovery.max_concurrent_file_chunks: 8
 
-# Translog Settings
+# Translog Settings (OPTIMIZED FOR 20GB RAM)
 index.translog.durability: async
 index.translog.sync_interval: 30s
-index.translog.flush_threshold_size: 512mb
+index.translog.flush_threshold_size: 1gb
 
-# Merge Settings
-index.merge.scheduler.max_thread_count: 4
-index.merge.policy.max_merge_at_once: 10
-index.merge.policy.max_merged_segment: 5gb
+# Merge Settings (OPTIMIZED FOR 30 CORES)
+index.merge.scheduler.max_thread_count: 8
+index.merge.policy.max_merge_at_once: 15
+index.merge.policy.max_merged_segment: 10gb
 
 # Refresh Settings (OPTIMIZED FOR HIGH THROUGHPUT)
 index.refresh_interval: 5s
-index.number_of_shards: 3
+index.number_of_shards: 5
 index.number_of_replicas: 0
 
 # Search Settings
 search.default_search_timeout: 30s
 search.default_allow_partial_search_results: false
+
+# Performance Tuning (OPTIMIZED FOR 30 CORES)
+# Bulk operations
+bulk.max_size_mb: 1000
+bulk.max_docs: 10000
+
+# Index settings
+index.max_result_window: 100000
+index.max_inner_result_window: 1000
+
+# Query settings
+search.max_buckets: 100000
+search.max_keep_alive: 24h
+
+# Cache settings
+indices.requests.cache.size: 10%
+indices.breaker.total.limit: 80%
+
+# Network settings
+http.max_content_length: 100mb
+http.max_header_size: 8kb
+http.max_initial_line_length: 4kb
+
+# Thread pool optimization
+thread_pool.management.size: 4
+thread_pool.management.queue_size: 1000
+thread_pool.flush.size: 4
+thread_pool.flush.queue_size: 1000
+thread_pool.refresh.size: 4
+thread_pool.refresh.queue_size: 1000

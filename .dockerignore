@@ -101,7 +101,7 @@ Dockerfile*
 docker-compose*
 .dockerignore
 
-# Monitoring
+# Monitoring (sẽ được mount vào container)
 monitoring/
 
 # Scripts
@@ -136,7 +136,6 @@ __tests__/
 
 # Build artifacts
 build/
-dist/
 out/
 
 # TypeScript
@@ -149,3 +148,31 @@ prisma/migrations/
 # Misc
 *.tgz
 *.tar.gz
+
+# Performance optimization
+# Loại bỏ các file không cần thiết để giảm build context
+*.tmp
+*.temp
+*.cache
+.cache/
+.temp/
+.tmp/
+
+# Development dependencies
+.eslintrc*
+.prettierrc*
+.editorconfig
+.stylelintrc*
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+azure-pipelines.yml
+
+# Local development
+.local/
+local/
+dev/
+development/

@@ -5,10 +5,10 @@ services:
     restart: unless-stopped
 
     # ==============================================
-    # RESOURCE ALLOCATION (24 cores, 32GB total - OPTIMIZED FOR 20K USERS)
+    # RESOURCE ALLOCATION (30 cores, 95GB total - OPTIMIZED FOR 50K+ USERS)
     # ==============================================
-    cpus: '8.0' # 33% CPU - High concurrent database operations
-    mem_limit: '12g' # 37.5% RAM - Large connection pool & cache
+    cpus: '12.0' # 40% CPU - High concurrent database operations
+    mem_limit: '25g' # 26.3% RAM - Large connection pool & cache
 
     command: ['postgres', '-c', 'config_file=/etc/postgresql/postgresql.conf']
     env_file: [.env.docker]
@@ -38,10 +38,10 @@ services:
     restart: unless-stopped
 
     # ==============================================
-    # RESOURCE ALLOCATION (OPTIMIZED FOR 20K USERS)
+    # RESOURCE ALLOCATION (OPTIMIZED FOR 50K+ USERS)
     # ==============================================
-    cpus: '4.0' # 16.7% CPU - High frequency cache operations
-    mem_limit: '8g' # 25% RAM - Large cache storage for high concurrency
+    cpus: '6.0' # 20% CPU - High frequency cache operations
+    mem_limit: '25g' # 26.3% RAM - Large cache storage for high concurrency
 
     command: ['redis-server', '/usr/local/etc/redis/redis.conf']
     env_file: [.env.docker]
@@ -64,10 +64,10 @@ services:
     restart: unless-stopped
 
     # ==============================================
-    # RESOURCE ALLOCATION (OPTIMIZED FOR 20K USERS)
+    # RESOURCE ALLOCATION (OPTIMIZED FOR 50K+ USERS)
     # ==============================================
-    cpus: '3.0' # 12.5% CPU - High frequency search operations
-    mem_limit: '6g' # 18.75% RAM - Large search index & cache
+    cpus: '4.5' # 15% CPU - High frequency search operations
+    mem_limit: '20g' # 21% RAM - Large search index & cache
 
     env_file: [.env.docker]
     environment:
@@ -75,18 +75,18 @@ services:
       - cluster.name=${ELASTICSEARCH_CLUSTER_NAME}
       - discovery.type=${ELASTICSEARCH_DISCOVERY_TYPE}
       - bootstrap.memory_lock=false
-      - ELASTICSEARCH_HEAP_SIZE=2g
-      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+      - ELASTICSEARCH_HEAP_SIZE=16g
+      - ES_JAVA_OPTS=-Xms16g -Xmx16g
       - xpack.security.enabled=true
       - xpack.security.enrollment.enabled=true
       - ELASTIC_PASSWORD=${ELASTICSEARCH_PASSWORD}
       - node.store.allow_mmap=false
-      - indices.memory.index_buffer_size=20%
+      - indices.memory.index_buffer_size=30%
       - xpack.ml.enabled=false
       - ingest.geoip.downloader.enabled=false
       - action.destructive_requires_name=true
     ulimits:
-      nofile: { soft: 65536, hard: 65536 }
+      nofile: { soft: 131072, hard: 131072 }
     ports:
       - '0.0.0.0:${ELASTICSEARCH_PORT:-9200}:9200'
     volumes:
@@ -108,8 +108,8 @@ services:
     # ==============================================
     # RESOURCE ALLOCATION
     # ==============================================
-    cpus: '0.5' # 2.5% CPU - UI operations
-    mem_limit: '1g' # 3% RAM - UI rendering
+    cpus: '1.0' # 3.3% CPU - UI operations
+    mem_limit: '2g' # 2.1% RAM - UI rendering
 
     env_file: [.env.docker]
     environment:
@@ -147,17 +147,17 @@ services:
     restart: unless-stopped
 
     # ==============================================
-    # RESOURCE ALLOCATION (MAIN APPLICATION)
+    # RESOURCE ALLOCATION (MAIN APPLICATION - OPTIMIZED FOR 30 CORES)
     # ==============================================
-    cpus: '12.0' # 60% CPU - Main application logic
-    mem_limit: '20g' # 62.5% RAM - Application memory & cache
+    cpus: '18.0' # 60% CPU - Main application logic
+    mem_limit: '35g' # 36.8% RAM - Application memory & cache
 
     # ==============================================
-    # SYSTEM OPTIMIZATION FOR HIGH TRAFFIC
+    # SYSTEM OPTIMIZATION FOR HIGH TRAFFIC (50K+ USERS)
     # ==============================================
     ulimits:
-      nofile: 1048576 # 1M file descriptors for high concurrency
-      nproc: 65536 # High process limit
+      nofile: 2097152 # 2M file descriptors for ultra high concurrency
+      nproc: 131072 # High process limit
       core: 0 # Disable core dumps in production
 
     # ==============================================
@@ -172,27 +172,27 @@ services:
       - '${SERVER_PORT:-3000}:3000'
 
     # ==============================================
-    # ENVIRONMENT CONFIGURATION (PURE DOCKER)
+    # ENVIRONMENT CONFIGURATION (OPTIMIZED FOR 30 CORES)
     # ==============================================
     env_file: .env.docker
     environment:
-      # Node.js Performance Optimization (OPTIMIZED FOR 20K USERS)
+      # Node.js Performance Optimization (OPTIMIZED FOR 30 CORES)
       - NODE_ENV=production
       - PORT=3000
-      - UV_THREADPOOL_SIZE=96 # 24 cores × 4 threads per core
-      - NODE_OPTIONS=--max-old-space-size=24000 # 24GB heap size
+      - UV_THREADPOOL_SIZE=120 # 30 cores × 4 threads per core
+      - NODE_OPTIONS=--max-old-space-size=35000 # 35GB heap size
 
-      # Application Configuration (OPTIMIZED FOR 20K USERS)
-      - APP_WORKERS=24 # 24 worker processes (1 per core)
-      - APP_CONCURRENT_REQUESTS=5000 # Ultra high concurrency support
+      # Application Configuration (OPTIMIZED FOR 50K+ USERS)
+      - APP_WORKERS=30 # 30 worker processes (1 per core)
+      - APP_CONCURRENT_REQUESTS=10000 # Ultra high concurrency support
 
-      # Database Connection Pool (OPTIMIZED FOR 20K USERS)
-      - DB_POOL_MIN=50
-      - DB_POOL_MAX=200
+      # Database Connection Pool (OPTIMIZED FOR 50K+ USERS)
+      - DB_POOL_MIN=100
+      - DB_POOL_MAX=500
 
-      # Redis Connection Pool (OPTIMIZED FOR 20K USERS)
-      - REDIS_POOL_MIN=20
-      - REDIS_POOL_MAX=100
+      # Redis Connection Pool (OPTIMIZED FOR 50K+ USERS)
+      - REDIS_POOL_MIN=50
+      - REDIS_POOL_MAX=200
 
       # External API Secrets (from GitHub Secrets)
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
@@ -222,8 +222,8 @@ services:
     # TEMPORARY STORAGE (RAM-based for performance)
     # ==============================================
     tmpfs:
-      - /tmp:size=2g # 2GB RAM for temp files
-      - /app/temp:size=1g # 1GB RAM for app temp files
+      - /tmp:size=5g # 5GB RAM for temp files
+      - /app/temp:size=3g # 3GB RAM for app temp files
 
     # ==============================================
     # DEPENDENCIES
@@ -251,8 +251,8 @@ services:
     # ==============================================
     # RESOURCE ALLOCATION
     # ==============================================
-    cpus: '0.5' # 2.5% CPU - Metrics collection
-    mem_limit: '1g' # 3% RAM - Metrics storage
+    cpus: '1.0' # 3.3% CPU - Metrics collection
+    mem_limit: '2g' # 2.1% RAM - Metrics storage
 
     env_file: [.env.docker]
     ports:
@@ -263,7 +263,7 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_DAYS:-7}d'
+      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_DAYS:-30}d'
       - '--web.enable-lifecycle=${PROMETHEUS_WEB_ENABLE_LIFECYCLE}'
       - '--web.enable-admin-api=${PROMETHEUS_WEB_ENABLE_ADMIN_API}'
       - '--web.enable-telemetry=${PROMETHEUS_WEB_ENABLE_TELEMETRY}'
@@ -284,8 +284,8 @@ services:
     # ==============================================
     # RESOURCE ALLOCATION
     # ==============================================
-    cpus: '0.5' # 2.5% CPU - Dashboard rendering
-    mem_limit: '1g' # 3% RAM - Dashboard cache
+    cpus: '1.0' # 3.3% CPU - Dashboard rendering
+    mem_limit: '2g' # 2.1% RAM - Dashboard cache
 
     env_file: [.env.docker]
     environment:
@@ -320,10 +320,10 @@ services:
     restart: unless-stopped
 
     # ==============================================
-    # RESOURCE ALLOCATION (OPTIMIZED FOR 20K USERS)
+    # RESOURCE ALLOCATION (OPTIMIZED FOR 50K+ USERS)
     # ==============================================
-    cpus: '2.0' # 8.3% CPU - High frequency connection management
-    mem_limit: '3g' # 9.375% RAM - Large connection pool management
+    cpus: '3.0' # 10% CPU - High frequency connection management
+    mem_limit: '5g' # 5.3% RAM - Large connection pool management
 
     ports:
       - '0.0.0.0:${PGBOUNCER_PORT:-6432}:6432'
