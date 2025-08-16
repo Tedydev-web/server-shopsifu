@@ -16,9 +16,9 @@ on:
           - files
           - config
       retention_days:
-        description: 'Số ngày giữ backup (mặc định: 7)'
+        description: 'Số ngày giữ backup (mặc định: 3)'
         required: false
-        default: '7'
+        default: '3'
         type: string
 
 env:
@@ -245,8 +245,8 @@ jobs:
 
             echo "🧹 Cleaning up old backups..."
 
-            # Get retention days from input or default to 7
-            RETENTION_DAYS="${{ github.event.inputs.retention_days || '7' }}"
+            # Get retention days from input or default to 3
+            RETENTION_DAYS="${{ github.event.inputs.retention_days || '3' }}"
 
             # Remove old backups
             find "${{ env.BACKUP_PATH }}" -name "*.backup" -mtime +$RETENTION_DAYS -delete
@@ -282,7 +282,7 @@ jobs:
           STATUS: ${{ needs.backup.outcome == 'success' && 'success' || 'failure' }}
           BACKUP_TIME: ${{ needs.backup.outputs.backup-time }}
           BACKUP_TYPE: ${{ github.event.inputs.backup_type || 'full' }}
-          RETENTION_DAYS: ${{ github.event.inputs.retention_days || '7' }}
+          RETENTION_DAYS: ${{ github.event.inputs.retention_days || '3' }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
 

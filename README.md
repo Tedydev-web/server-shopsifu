@@ -87,6 +87,7 @@ docker stack rm shopsifu
 - **`scripts/docker-cleanup.sh`**: Clean up toàn bộ Docker resources
 - **`scripts/backup-manual.sh`**: Backup manual trực tiếp trên server
 - **`scripts/restore-backup.sh`**: Restore từ backup với interactive mode
+- **`scripts/backup-status.sh`**: Kiểm tra trạng thái backup và disk usage
 
 ### **Clean up thủ công**
 ```bash
@@ -162,7 +163,7 @@ docker volume ls
 ### **Automated Backup**
 - **Schedule**: Chạy mỗi ngày lúc 2:00 AM
 - **Location**: `/backup/shopsifu/`
-- **Retention**: 7 ngày (có thể tùy chỉnh)
+- **Retention**: 3 ngày (có thể tùy chỉnh)
 - **Types**: Database, Files, Configuration, Docker Volumes
 
 ### **Manual Backup**
@@ -172,6 +173,12 @@ docker volume ls
 
 # Backup với GitHub Actions
 # Actions > System Backup > Run workflow
+```
+
+### **Backup Status Check**
+```bash
+# Kiểm tra trạng thái backup
+./scripts/backup-status.sh
 ```
 
 ### **Restore from Backup**
@@ -226,7 +233,8 @@ docker volume ls
 │   ├── deploy-swarm.sh     # Deploy script
 │   ├── docker-cleanup.sh   # Cleanup script
 │   ├── backup-manual.sh    # Manual backup script
-│   └── restore-backup.sh   # Restore backup script
+│   ├── restore-backup.sh   # Restore backup script
+│   └── backup-status.sh    # Backup status check script
 ├── logs/                   # Application logs
 ├── certs/                  # SSL certificates
 ├── upload/                 # User uploads

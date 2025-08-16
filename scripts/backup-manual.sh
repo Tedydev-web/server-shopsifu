@@ -9,7 +9,7 @@ set -euo pipefail
 # Configuration
 BACKUP_PATH="/backup/shopsifu"
 PROJECT_PATH="/home/tedydev/shopsifu/server-shopsifu"
-RETENTION_DAYS=7
+RETENTION_DAYS=3
 
 # Colors for output
 RED='\033[0;31m'
