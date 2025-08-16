@@ -11,25 +11,17 @@ import { Logger } from 'nestjs-pino'
 import { ConfigService } from '@nestjs/config'
 import bodyParser from 'body-parser'
 
-// ==============================================
-// DOCKER SWARM OPTIMIZED MAIN APPLICATION
-// ==============================================
-// Loại bỏ Node.js cluster vì Docker Swarm sẽ quản lý scaling
-// Tối ưu cho single container với high performance
-
 async function bootstrap(): Promise<void> {
   const server = express()
   server.disable('x-powered-by')
+  let app: any
 
   try {
-    // Create app with Express adapter
-    const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
-      bufferLogs: true,
-      // Tối ưu cho Docker Swarm
-      logger: ['error', 'warn', 'log', 'debug', 'verbose']
+    // Create app
+    app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
+      bufferLogs: true
     })
 
-    // Body limits (OPTIMIZED FOR 30 CORES - 95GB RAM)
     server.use(bodyParser.json({ limit: '10mb' }))
     server.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }))
 
@@ -76,17 +68,30 @@ async function bootstrap(): Promise<void> {
     app.set('trust proxy', 'loopback')
     app.enableShutdownHooks()
 
-    // WebSocket adapter (OPTIMIZED FOR DOCKER SWARM)
+    // Websocket
     const websocketAdapter = new WebsocketAdapter(app)
     await websocketAdapter.connectToRedis()
     app.useWebSocketAdapter(websocketAdapter)
 
-    // Health check endpoint đã có trong HealthController
-    // Không cần tạo thêm ở đây
+    // // Global settings
+    // app.useGlobalPipes(
+    //   new ValidationPipe({
+    //     transform: true,
+    //     whitelist: true,
+    //     forbidNonWhitelisted: true
+    //   })
+    // )
 
-    // Graceful shutdown (OPTIMIZED FOR DOCKER SWARM)
+    // app.enableVersioning({
+    //   type: VersioningType.URI,
+    //   defaultVersion: '1'
+    // })
+
+    // useContainer(app.select(AppModule), { fallbackOnErrors: true })
+
+    // Graceful shutdown
     const gracefulShutdown = async (signal: string) => {
-      logger.log(`🛑 Container ${process.pid} received ${signal}, shutting down gracefully...`)
+      logger.log(`Received ${signal}, shutting down gracefully...`)
 
       try {
         // Close WebSocket adapter
@@ -105,12 +110,11 @@ async function bootstrap(): Promise<void> {
       }
     }
 
-    // Signal handlers
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
     process.on('SIGINT', () => gracefulShutdown('SIGINT'))
     process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // Docker Swarm restart signal
 
-    // Start server (OPTIMIZED FOR 30 CORES)
+    // Start server
     await app.listen(port, host)
 
     const appUrl = await app.getUrl()
