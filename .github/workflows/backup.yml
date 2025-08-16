@@ -1,0 +1,317 @@
+name: 🗄️ System Backup
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Chạy mỗi ngày lúc 2:00 AM
+  workflow_dispatch:
+    inputs:
+      backup_type:
+        description: 'Loại backup'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - database
+          - files
+          - config
+      retention_days:
+        description: 'Số ngày giữ backup (mặc định: 7)'
+        required: false
+        default: '7'
+        type: string
+
+env:
+  VPS_HOST: ${{ secrets.VPS_HOST }}
+  VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
+  VPS_PATH: ${{ secrets.VPS_PATH }}
+  BACKUP_PATH: /backup/shopsifu
+
+jobs:
+  backup:
+    name: 🗄️ Create System Backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⏱️ Start backup timer
+        id: backup-timer
+        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: 🗄️ Create backup directories
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            echo "🗄️ Setting up backup directories..."
+
+            # Create backup directories
+            sudo mkdir -p "${{ env.BACKUP_PATH }}"/{database,files,config,logs}
+            sudo chown -R $USER:$USER "${{ env.BACKUP_PATH }}"
+
+            # Create timestamp for backup
+            BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            echo "backup_timestamp=$BACKUP_TIMESTAMP" >> "$GITHUB_ENV"
+
+            echo "✅ Backup directories created with timestamp: $BACKUP_TIMESTAMP"
+
+      - name: 🗄️ Backup PostgreSQL Database
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd "${{ env.VPS_PATH }}"
+
+            echo "🗄️ Backing up PostgreSQL database..."
+
+            # Get backup timestamp
+            BACKUP_TIMESTAMP="${{ env.backup_timestamp }}"
+
+            # Create database backup
+            docker exec shopsifu_postgres.1 pg_dump -U shopsifu -d shopsifu --format=custom --file=/tmp/shopsifu_$BACKUP_TIMESTAMP.backup
+
+            # Copy backup from container
+            docker cp shopsifu_postgres.1:/tmp/shopsifu_$BACKUP_TIMESTAMP.backup "${{ env.BACKUP_PATH }}/database/"
+
+            # Verify backup file
+            if [ -f "${{ env.BACKUP_PATH }}/database/shopsifu_$BACKUP_TIMESTAMP.backup" ]; then
+              BACKUP_SIZE=$(du -h "${{ env.BACKUP_PATH }}/database/shopsifu_$BACKUP_TIMESTAMP.backup" | cut -f1)
+              echo "✅ Database backup completed: shopsifu_$BACKUP_TIMESTAMP.backup ($BACKUP_SIZE)"
+            else
+              echo "❌ Database backup failed"
+              exit 1
+            fi
+
+      - name: 🗄️ Backup Application Files
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd "${{ env.VPS_PATH }}"
+
+            echo "🗄️ Backing up application files..."
+
+            # Get backup timestamp
+            BACKUP_TIMESTAMP="${{ env.backup_timestamp }}"
+
+            # Create files backup
+            tar -czf "${{ env.BACKUP_PATH }}/files/shopsifu_files_$BACKUP_TIMESTAMP.tar.gz" \
+              --exclude=node_modules \
+              --exclude=.git \
+              --exclude=dist \
+              --exclude=logs \
+              --exclude=backup \
+              .
+
+            # Verify backup file
+            if [ -f "${{ env.BACKUP_PATH }}/files/shopsifu_files_$BACKUP_TIMESTAMP.tar.gz" ]; then
+              BACKUP_SIZE=$(du -h "${{ env.BACKUP_PATH }}/files/shopsifu_files_$BACKUP_TIMESTAMP.tar.gz" | cut -f1)
+              echo "✅ Files backup completed: shopsifu_files_$BACKUP_TIMESTAMP.tar.gz ($BACKUP_SIZE)"
+            else
+              echo "❌ Files backup failed"
+              exit 1
+            fi
+
+      - name: 🗄️ Backup Configuration Files
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd "${{ env.VPS_PATH }}"
+
+            echo "🗄️ Backing up configuration files..."
+
+            # Get backup timestamp
+            BACKUP_TIMESTAMP="${{ env.backup_timestamp }}"
+
+            # Create config backup
+            tar -czf "${{ env.BACKUP_PATH }}/config/shopsifu_config_$BACKUP_TIMESTAMP.tar.gz" \
+              config/ \
+              monitoring/ \
+              .env.docker \
+              docker-compose.swarm.yml \
+              Dockerfile
+
+            # Verify backup file
+            if [ -f "${{ env.BACKUP_PATH }}/config/shopsifu_config_$BACKUP_TIMESTAMP.tar.gz" ]; then
+              BACKUP_SIZE=$(du -h "${{ env.BACKUP_PATH }}/config/shopsifu_config_$BACKUP_TIMESTAMP.tar.gz" | cut -f1)
+              echo "✅ Config backup completed: shopsifu_config_$BACKUP_TIMESTAMP.tar.gz ($BACKUP_SIZE)"
+            else
+              echo "❌ Config backup failed"
+              exit 1
+            fi
+
+      - name: 🗄️ Backup Docker Volumes
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd "${{ env.VPS_PATH }}"
+
+            echo "🗄️ Backing up Docker volumes..."
+
+            # Get backup timestamp
+            BACKUP_TIMESTAMP="${{ env.backup_timestamp }}"
+
+            # Stop services temporarily for consistent backup
+            echo "⏸️ Stopping services for consistent backup..."
+            docker stack rm shopsifu || true
+            sleep 30
+
+            # Backup PostgreSQL data volume
+            docker run --rm -v postgres_data:/data -v "${{ env.BACKUP_PATH }}/database:/backup" \
+              alpine tar -czf /backup/postgres_data_$BACKUP_TIMESTAMP.tar.gz -C /data .
+
+            # Backup Redis data volume
+            docker run --rm -v redis_data:/data -v "${{ env.BACKUP_PATH }}/database:/backup" \
+              alpine tar -czf /backup/redis_data_$BACKUP_TIMESTAMP.tar.gz -C /data .
+
+            # Backup Elasticsearch data volume
+            docker run --rm -v esdata:/data -v "${{ env.BACKUP_PATH }}/database:/backup" \
+              alpine tar -czf /backup/elasticsearch_data_$BACKUP_TIMESTAMP.tar.gz -C /data .
+
+            # Restart services
+            echo "🔄 Restarting services..."
+            ./scripts/deploy-swarm.sh
+
+            echo "✅ Docker volumes backup completed"
+
+      - name: 🗄️ Create backup manifest
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            echo "🗄️ Creating backup manifest..."
+
+            # Get backup timestamp
+            BACKUP_TIMESTAMP="${{ env.backup_timestamp }}"
+
+            # Create manifest file
+            cat > "${{ env.BACKUP_PATH }}/shopsifu_backup_$BACKUP_TIMESTAMP.manifest" << EOF
+            ShopSifu System Backup Manifest
+            =================================
+
+            Backup Timestamp: $BACKUP_TIMESTAMP
+            Backup Date: $(date)
+            System: $(uname -a)
+            Docker Version: $(docker --version)
+
+            Backup Contents:
+            - Database: shopsifu_$BACKUP_TIMESTAMP.backup
+            - Files: shopsifu_files_$BACKUP_TIMESTAMP.tar.gz
+            - Config: shopsifu_config_$BACKUP_TIMESTAMP.tar.gz
+            - PostgreSQL Data: postgres_data_$BACKUP_TIMESTAMP.tar.gz
+            - Redis Data: redis_data_$BACKUP_TIMESTAMP.tar.gz
+            - Elasticsearch Data: elasticsearch_data_$BACKUP_TIMESTAMP.tar.gz
+
+            Total Size: $(du -sh "${{ env.BACKUP_PATH }}" | cut -f1)
+
+            Backup Location: ${{ env.BACKUP_PATH }}
+            Created by: GitHub Actions
+            EOF
+
+            echo "✅ Backup manifest created: shopsifu_backup_$BACKUP_TIMESTAMP.manifest"
+
+      - name: 🧹 Cleanup old backups
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            echo "🧹 Cleaning up old backups..."
+
+            # Get retention days from input or default to 7
+            RETENTION_DAYS="${{ github.event.inputs.retention_days || '7' }}"
+
+            # Remove old backups
+            find "${{ env.BACKUP_PATH }}" -name "*.backup" -mtime +$RETENTION_DAYS -delete
+            find "${{ env.BACKUP_PATH }}" -name "*.tar.gz" -mtime +$RETENTION_DAYS -delete
+            find "${{ env.BACKUP_PATH }}" -name "*.manifest" -mtime +$RETENTION_DAYS -delete
+
+            echo "✅ Cleaned up backups older than $RETENTION_DAYS days"
+
+            # Show current backup status
+            echo "📊 Current backup status:"
+            du -sh "${{ env.BACKUP_PATH }}"/*
+            echo "Total backup size: $(du -sh "${{ env.BACKUP_PATH }}" | cut -f1)"
+
+      - name: 📊 Calculate backup time
+        id: backup-time
+        run: |
+          BACKUP_END=$(date +%s)
+          BACKUP_START=${{ steps.backup-timer.outputs.start_time }}
+          BACKUP_DURATION=$((BACKUP_END - BACKUP_START))
+          echo "backup-time=$BACKUP_DURATION" >> "$GITHUB_OUTPUT"
+          echo "⏱️ Backup completed in ${BACKUP_DURATION}s"
+
+  notification:
+    name: 📢 Backup Notification
+    needs: backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    if: always()
+    steps:
+      - name: 📢 Send Discord notification
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          STATUS: ${{ needs.backup.outcome == 'success' && 'success' || 'failure' }}
+          BACKUP_TIME: ${{ needs.backup.outputs.backup-time }}
+          BACKUP_TYPE: ${{ github.event.inputs.backup_type || 'full' }}
+          RETENTION_DAYS: ${{ github.event.inputs.retention_days || '7' }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+
+          COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
+          ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
+          DESCRIPTION=$([ "$STATUS" = "success" ] && echo "🗄️ **Backup thành công**" || echo "❌ **Backup thất bại**")
+
+          JSON_PAYLOAD=$(jq -n \
+            --arg status "$STATUS" \
+            --arg icon "$ICON" \
+            --arg description "$DESCRIPTION" \
+            --arg color "$COLOR" \
+            --arg backup_time "$BACKUP_TIME" \
+            --arg backup_type "$BACKUP_TYPE" \
+            --arg retention_days "$RETENTION_DAYS" \
+            ' {
+                embeds: [{
+                  title: "🗄️ SYSTEM BACKUP",
+                  description: $description,
+                  color: ($color | tonumber),
+                  fields: [
+                    { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
+                    { name: "🗄️ Loại backup", value: $backup_type, inline: true },
+                    { name: "⏱️ Thời gian", value: "\($backup_time)s", inline: true },
+                    { name: "📅 Giữ lại", value: "\($retention_days) ngày", inline: true }
+                  ],
+                  footer: { "text": "🗄️ System Backup" },
+                  timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+                }]
+              }')
+
+          curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" || echo "Lỗi gửi thông báo Discord"

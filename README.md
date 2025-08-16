@@ -14,7 +14,17 @@ Backend server cho ứng dụng e-commerce ShopSifu, được xây dựng với 
 
 ## 🚀 **Khởi chạy với Docker Swarm**
 
-### 1. **Chuẩn bị môi trường**
+### 1. **Sử dụng script tự động (Khuyến nghị)**
+
+```bash
+# Deploy stack với script tự động
+./scripts/deploy-swarm.sh
+
+# Clean up Docker resources
+./scripts/docker-cleanup.sh
+```
+
+### 2. **Thủ công**
 
 ```bash
 # Kiểm tra Docker Swarm
@@ -23,47 +33,11 @@ docker info | grep -i swarm
 # Khởi tạo Swarm (nếu chưa có)
 docker swarm init
 
-# Tạo các thư mục cần thiết
-mkdir -p logs certs upload monitoring/prometheus monitoring/grafana
-```
-
-### 2. **Cấu hình môi trường**
-
-```bash
-# Copy file môi trường
-cp .env.example .env.docker
-
-# Chỉnh sửa các biến môi trường cần thiết
-nano .env.docker
-```
-
-### 3. **Khởi chạy stack**
-
-```bash
 # Deploy stack
 docker stack deploy -c docker-compose.swarm.yml shopsifu
 
 # Kiểm tra trạng thái
 docker service ls
-
-# Xem logs
-docker service logs shopsifu_server
-```
-
-### 4. **Kiểm tra hoạt động**
-
-```bash
-# Health check
-curl http://localhost:3000/health
-
-# Kiểm tra Elasticsearch
-curl http://localhost:9200
-
-# Kiểm tra Prometheus
-curl http://localhost:9090/-/healthy
-
-# Kiểm tra Grafana
-curl http://localhost:3001/api/health
 ```
 
 ## 🔧 **Quản lý Docker Swarm**
@@ -102,8 +76,49 @@ docker service rollback shopsifu_server
 # Dừng stack
 docker stack rm shopsifu
 
-# Xóa volumes (cẩn thận!)
+# Clean up resources
+./scripts/docker-cleanup.sh
+```
+
+## 🧹 **Docker Cleanup & Maintenance**
+
+### **Scripts tự động**
+- **`scripts/deploy-swarm.sh`**: Deploy stack với kiểm tra đầy đủ
+- **`scripts/docker-cleanup.sh`**: Clean up toàn bộ Docker resources
+- **`scripts/backup-manual.sh`**: Backup manual trực tiếp trên server
+- **`scripts/restore-backup.sh`**: Restore từ backup với interactive mode
+
+### **Clean up thủ công**
+```bash
+# Remove stack
+docker stack rm shopsifu
+
+# Clean up containers
+docker container prune -f
+
+# Clean up networks
+docker network prune -f
+
+# Clean up volumes
 docker volume prune -f
+
+# Clean up images
+docker image prune -f
+
+# Full system cleanup
+docker system prune -f
+```
+
+### **Kiểm tra resources**
+```bash
+# Xem disk usage
+docker system df
+
+# Xem build cache
+docker builder df
+
+# Xem volumes
+docker volume ls
 ```
 
 ## 📊 **Monitoring & Logging**
@@ -142,6 +157,41 @@ docker volume prune -f
 - **Security**: Disabled (development)
 - **Discovery**: Single node
 
+## 🗄️ **Backup & Recovery**
+
+### **Automated Backup**
+- **Schedule**: Chạy mỗi ngày lúc 2:00 AM
+- **Location**: `/backup/shopsifu/`
+- **Retention**: 7 ngày (có thể tùy chỉnh)
+- **Types**: Database, Files, Configuration, Docker Volumes
+
+### **Manual Backup**
+```bash
+# Backup trực tiếp trên server
+./scripts/backup-manual.sh
+
+# Backup với GitHub Actions
+# Actions > System Backup > Run workflow
+```
+
+### **Restore from Backup**
+```bash
+# Interactive restore mode
+./scripts/restore-backup.sh
+
+# Command line restore
+./scripts/restore-backup.sh --list                    # Liệt kê backups
+./scripts/restore-backup.sh --details 20241201_143022 # Chi tiết backup
+./scripts/restore-backup.sh --full-restore 20241201_143022 # Restore toàn bộ
+```
+
+### **Backup Contents**
+- **Database**: PostgreSQL dump với format custom
+- **Files**: Application source code (exclude node_modules, .git)
+- **Config**: Configuration files, Docker files, scripts
+- **Volumes**: Docker data volumes (PostgreSQL, Redis, Elasticsearch)
+- **Manifest**: Backup metadata và thông tin
+
 ## 🔒 **Security**
 
 ### **Production Checklist**
@@ -150,6 +200,8 @@ docker volume prune -f
 - [ ] Configure SSL/TLS
 - [ ] Restrict network access
 - [ ] Enable authentication cho monitoring
+- [ ] Configure backup encryption
+- [ ] Test backup restore procedures
 
 ### **Development Setup**
 - Security disabled cho dễ test
@@ -170,6 +222,11 @@ docker volume prune -f
 ├── monitoring/             # Monitoring configs
 │   ├── prometheus/         # Prometheus config
 │   └── grafana/            # Grafana config
+├── scripts/                # Automation scripts
+│   ├── deploy-swarm.sh     # Deploy script
+│   ├── docker-cleanup.sh   # Cleanup script
+│   ├── backup-manual.sh    # Manual backup script
+│   └── restore-backup.sh   # Restore backup script
 ├── logs/                   # Application logs
 ├── certs/                  # SSL certificates
 ├── upload/                 # User uploads
@@ -216,6 +273,21 @@ curl http://localhost:9200/_cluster/health
 docker exec -it $(docker ps -q -f name=elasticsearch) /usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -i
 ```
 
+### **Docker cleanup issues**
+```bash
+# Force remove stack
+docker stack rm --force shopsifu
+
+# Force remove services
+docker service rm --force $(docker service ls -q)
+
+# Force remove containers
+docker rm -f $(docker ps -aq)
+
+# Full system reset
+docker system prune -a -f --volumes
+```
+
 ## 📈 **Performance Tuning**
 
 ### **Server Optimization**
@@ -235,6 +307,69 @@ docker exec -it $(docker ps -q -f name=elasticsearch) /usr/share/elasticsearch/b
 - **IO Threads**: 8
 - **Persistence**: AOF + RDB
 - **Eviction**: noeviction
+
+## 🚀 **CI/CD Pipeline**
+
+### **Workflows**
+
+#### **🧪 Test Application** (`test.yml`)
+- **Trigger**: Push/PR to main, master, develop
+- **Jobs**: Test, Lint, Type Check
+- **Purpose**: Đảm bảo code quality trước khi merge
+
+#### **🏗️ Build Docker Image** (`build.yml`)
+- **Trigger**: Push/PR to main, master
+- **Jobs**: Security Scan, Build & Push
+- **Output**: Docker image trên GHCR
+
+#### **🚀 Deploy to Production** (`deploy-production.yml`)
+- **Trigger**: Build workflow thành công
+- **Jobs**: Deploy, Health Check, Notification
+- **Purpose**: Tự động deploy lên production
+
+#### **🔄 Rollback Production** (`rollback.yml`)
+- **Trigger**: Manual trigger
+- **Jobs**: Rollback, Health Check, Notification
+- **Purpose**: Khôi phục về version trước khi có vấn đề
+
+#### **📊 System Status Check** (`status.yml`)
+- **Trigger**: Scheduled (mỗi 6 giờ) + Manual
+- **Jobs**: Status Check, Notification
+- **Purpose**: Kiểm tra trạng thái hệ thống định kỳ
+
+#### **🗄️ System Backup** (`backup.yml`)
+- **Trigger**: Scheduled (mỗi ngày lúc 2:00 AM) + Manual
+- **Jobs**: Backup, Notification
+- **Purpose**: Backup toàn bộ hệ thống tự động
+
+### **Quy trình hoạt động**
+
+```mermaid
+graph LR
+    A[Push to main] --> B[Test]
+    B --> C[Build Image]
+    C --> D[Deploy to Production]
+    D --> E[Health Check]
+    E --> F[Notification]
+
+    G[Manual Rollback] --> H[Rollback]
+    H --> I[Health Check]
+    I --> J[Notification]
+```
+
+### **Manual Actions**
+
+#### **Deploy specific image**
+```bash
+# Trigger deploy workflow với image tag cụ thể
+# Actions > Deploy to Production > Run workflow > image_tag: v1.2.3
+```
+
+#### **Rollback**
+```bash
+# Actions > Rollback Production > Run workflow
+# Input: commit_sha (optional), reason
+```
 
 ## 🤝 **Contributing**
 

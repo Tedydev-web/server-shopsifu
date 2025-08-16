@@ -1,234 +1,46 @@
-name: 🚀 Build and Deploy Production
+name: 🚀 Deploy to Production
 
 on:
-  push:
+  workflow_run:
+    workflows: ['🏗️ Build Docker Image']
+    types: [completed]
     branches: [main, master]
   workflow_dispatch:
     inputs:
-      manual_rollback:
-        description: 'Commit SHA hoặc tag để rollback'
+      image_tag:
+        description: 'Image tag to deploy (optional)'
         required: false
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+        default: 'latest'
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: tedydev-web/server-shopsifu
-  PROJECT_NAME: server-shopsifu
   VPS_HOST: ${{ secrets.VPS_HOST }}
   VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
   VPS_PATH: ${{ secrets.VPS_PATH }}
-  VPS_PORT: '22'
-  VPS_FINGERPRINT: ''
 
-# ==============================================
-# REUSABLE WORKFLOW FUNCTIONS
-# ==============================================
 jobs:
-  # ==============================================
-  # SECURITY SCANNING
-  # ==============================================
-  security-scan:
-    name: 🔒 Security Scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🔍 Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      - name: 📊 Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: 🚨 Check for high severity vulnerabilities
-        run: |
-          if [ -f "trivy-results.sarif" ]; then
-            HIGH_VULNS=$(grep -c '"level": "error"' trivy-results.sarif || echo "0")
-            if [ "$HIGH_VULNS" -gt 0 ]; then
-              echo "❌ Found $HIGH_VULNS high severity vulnerabilities"
-              exit 1
-            else
-              echo "✅ No high severity vulnerabilities found"
-            fi
-          fi
-
-  # ==============================================
-  # BUILD DOCKER IMAGE
-  # ==============================================
-  build:
-    name: 🏗️ Build Docker Image
-    needs: security-scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
-      image-digest: ${{ steps.build.outputs.digest }}
-      build-status: ${{ job.status }}
-      build-time: ${{ steps.build.outputs.build-time }}
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🔐 Login to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 🏷️ Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-          labels: |
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.source=${{ github.repository }}
-            org.opencontainers.image.created=${{ steps.prep.outputs.date }}
-
-      - name: 🐳 Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:v0.12.0
-            network=host
-
-      - name: 📊 Prepare build metadata
-        id: prep
-        shell: bash
-        run: |
-          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-          echo "version=${GITHUB_REF_NAME:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          echo "build_start=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: 🚀 Build and push Docker image
-        id: build
-        uses: docker/build-push-action@v5
-        continue-on-error: false
-        with:
-          context: .
-          file: ./Dockerfile
-          pull: true
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BUILD_VERSION=${{ steps.prep.outputs.version }}
-            BUILD_DATE=${{ steps.prep.outputs.date }}
-            GIT_SHA=${{ github.sha }}
-          # Temporarily disable cache due to GitHub Actions Cache service issues
-          # This will be re-enabled once GitHub fixes their cache service
-          # cache-from: type=gha,scope=${{ github.workflow }}-${{ github.ref }}
-          # cache-to: type=gha,mode=max,scope=${{ github.workflow }}-${{ github.ref }}
-          platforms: linux/amd64
-          provenance: false
-          sbom: false
-          outputs: type=image,compression=gzip
-
-      - name: 📊 Calculate build time
-        id: build-time
-        run: |
-          BUILD_END=$(date +%s)
-          BUILD_START=${{ steps.prep.outputs.build_start }}
-          BUILD_DURATION=$((BUILD_END - BUILD_START))
-          echo "build-time=$BUILD_DURATION" >> "$GITHUB_OUTPUT"
-          echo "⏱️ Build completed in ${BUILD_DURATION}s"
-
-      - name: 🧹 Cleanup build cache
-        if: always()
-        run: |
-          docker builder prune -f
-          docker system prune -f
-
-      - name: ✅ Verify Docker images
-        if: always()
-        run: |
-          # Verify that images were pushed successfully
-          echo "🔍 Verifying Docker images..."
-
-          # Check if we have tags and images were pushed
-          if [ -n "${{ steps.meta.outputs.tags }}" ]; then
-            echo "✅ Docker build completed successfully"
-            echo "Images pushed to GHCR:"
-            echo "${{ steps.meta.outputs.tags }}"
-
-            # Check if we have digest (optional)
-            if [ -n "${{ steps.build.outputs.digest }}" ]; then
-              echo "Image digest: ${{ steps.build.outputs.digest }}"
-            else
-              echo "⚠️  Image digest not available (cache export failed)"
-            fi
-
-            # Mark build as successful since images were pushed
-            echo "✅ Build verification passed - proceeding to deploy"
-            exit 0
-          else
-            echo "❌ Docker build failed - no image tags found"
-            exit 1
-          fi
-
-  # ==============================================
-  # DEPLOY TO PRODUCTION VPS
-  # ==============================================
   deploy:
-    name: 🚀 Deploy to Production
-    needs: build
+    name: 🚀 Deploy Application
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: read
-    outputs:
-      deploy-status: ${{ job.status }}
-      deploy-time: ${{ steps.deploy-time.outputs.deploy-time }}
+    timeout-minutes: 20
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: 🔧 Setup VPS Performance
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            export PROJECT_PATH='${{ env.VPS_PATH }}'
-            set -euo pipefail
-            cd "$PROJECT_PATH"
+      - name: ⏱️ Start deploy timer
+        id: deploy-timer
+        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-            # Setup kernel performance tuning (requires sudo access without password)
-            sudo tee /etc/sysctl.d/90-shopsifu-performance.conf >/dev/null <<'EOF'
-            vm.max_map_count = 262144
-            fs.file-max = 1048576
-            net.core.somaxconn = 16384
-            EOF
-            sudo sysctl --system || true
+      - name: 🔍 Validate deployment inputs
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual deployment triggered"
+            echo "Image tag: ${{ github.event.inputs.image_tag }}"
+          else
+            echo "Automatic deployment from build workflow"
+          fi
 
       - name: 🔄 Sync repository
         uses: appleboy/ssh-action@v0.1.10
@@ -237,92 +49,38 @@ jobs:
           username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            export PROJECT_PATH='${{ env.VPS_PATH }}'
             set -euo pipefail
-            cd "$PROJECT_PATH"
+            cd "${{ env.VPS_PATH }}"
 
             # Sync with current branch
-            BRANCH='${{ github.ref_name }}'
-            git fetch --prune --tags origin "$BRANCH"
-            git reset --hard "origin/$BRANCH"
+            git fetch --prune --tags origin main
+            git reset --hard origin/main
 
-      - name: ⏱️ Start deploy timer
-        id: deploy-timer
-        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: 🐳 Deploy application
-        id: deploy-app
+      - name: 🐳 Deploy with Docker Swarm
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ env.VPS_PORT && env.VPS_PORT || '22' }}
-          # passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
-          # fingerprint: ${{ env.VPS_FINGERPRINT }}
-          debug: true
           script: |
-            export PROJECT_PATH='${{ env.VPS_PATH }}'
             set -euo pipefail
-            cd "$PROJECT_PATH"
+            cd "${{ env.VPS_PATH }}"
 
             # Login to GHCR
             echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
-            # Use pinned image digest if available, otherwise fallback to branch tag
-            DIGEST='${{ needs.build.outputs.image-digest }}'
-            if [ -n "$DIGEST" ]; then
-              export SERVER_IMAGE="ghcr.io/${{ env.IMAGE_NAME }}@$DIGEST"
-            else
-              export SERVER_IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:${{ github.ref_name }}"
+            # Deploy with Docker Swarm
+            echo "🚀 Deploying with Docker Swarm..."
+            ./scripts/deploy-swarm.sh
+
+            # Verify deployment
+            echo "🔍 Verifying deployment..."
+            sleep 30
+            if ! docker service ls | grep -q "shopsifu_server"; then
+              echo "❌ Deployment verification failed"
+              exit 1
             fi
-            echo "🚀 Deploying image: $SERVER_IMAGE"
-
-                        # Deploy with Docker Compose using .env.docker file
-            docker compose --env-file .env.docker config -q
-
-            # Pull images with increased timeout and retry
-            echo "🔄 Pulling Docker images..."
-            docker compose --env-file .env.docker pull --quiet || {
-              echo "⚠️ First pull attempt failed, retrying..."
-              sleep 10
-              docker compose --env-file .env.docker pull --quiet
-            }
-
-            # Check and kill processes using conflicting ports
-            echo "🔍 Checking for port conflicts..."
-            if lsof -ti:6379 >/dev/null 2>&1; then
-              echo "⚠️ Port 6379 (Redis) is in use, killing conflicting processes..."
-              lsof -ti:6379 | xargs kill -9 || true
-              sleep 2
-            fi
-
-            if lsof -ti:5432 >/dev/null 2>&1; then
-              echo "⚠️ Port 5432 (PostgreSQL) is in use, killing conflicting processes..."
-              lsof -ti:5432 | xargs kill -9 || true
-              sleep 2
-            fi
-
-            if lsof -ti:3000 >/dev/null 2>&1; then
-              echo "⚠️ Port 3000 (Server) is in use, killing conflicting processes..."
-              lsof -ti:3000 | xargs kill -9 || true
-              sleep 2
-            fi
-
-            echo "🚀 Starting containers..."
-            docker compose --env-file .env.docker up -d --force-recreate --remove-orphans
-
-      - name: 🧹 Cleanup old images
-        if: always()
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -euo pipefail
-            # Clean old images (keep last 7 days)
-            docker image prune -af --filter "until=168h" || true
+            echo "✅ Deployment verification passed"
 
       - name: 📊 Calculate deploy time
         id: deploy-time
@@ -333,24 +91,17 @@ jobs:
           echo "deploy-time=$DEPLOY_DURATION" >> "$GITHUB_OUTPUT"
           echo "⏱️ Deploy completed in ${DEPLOY_DURATION}s"
 
-  # ==============================================
-  # HEALTH CHECK & MONITORING
-  # ==============================================
   health-check:
     name: 🏥 Health Check
     needs: deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      health-status: ${{ job.status }}
-      health-time: ${{ steps.health-time.outputs.health-time }}
+    timeout-minutes: 10
     steps:
       - name: ⏱️ Start health check timer
         id: health-timer
         run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: 📊 Internal health check
-        id: internal_health
+      - name: 🏥 Perform health check
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ env.VPS_HOST }}
@@ -358,20 +109,15 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -euo pipefail
+
+            echo "🏥 Starting health check..."
             ATTEMPTS=20
             SLEEP=6
 
-            echo "🏥 Starting health check..."
-            HEALTH_START=$(date +%s)
-
             for i in $(seq 1 $ATTEMPTS); do
               echo "Attempt $i/$ATTEMPTS..."
-              CODE=$(curl -fsS -m 5 -o /dev/null -w "%{http_code}" http://localhost:3000/health || echo "000")
-              if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
-                HEALTH_END=$(date +%s)
-                HEALTH_DURATION=$((HEALTH_END - HEALTH_START))
-                echo "✅ Health check passed with code $CODE in ${HEALTH_DURATION}s"
-                echo "health_duration=$HEALTH_DURATION" >> "$GITHUB_OUTPUT"
+              if curl -fsS -m 5 http://localhost:3000/health > /dev/null; then
+                echo "✅ Health check passed!"
                 exit 0
               fi
               sleep $SLEEP
@@ -379,37 +125,6 @@ jobs:
 
             echo "❌ Health check failed after $ATTEMPTS attempts"
             exit 1
-
-      - name: 🌐 External health check
-        id: external_health
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-
-          URL="https://api.shopsifu.live/health"
-          echo "🌐 External healthcheck URL: $URL"
-
-          ATTEMPTS=20
-          SLEEP=6
-          PASS=0
-
-          for i in $(seq 1 $ATTEMPTS); do
-            echo "Attempt $i/$ATTEMPTS..."
-            CODE=$(curl -fsS -m 5 -o /dev/null -w "%{http_code}" "$URL" || echo "000")
-            if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
-              PASS=1
-              break
-            fi
-            sleep $SLEEP
-          done
-
-          if [ "$PASS" -eq 1 ]; then
-            echo "result=success" >> $GITHUB_OUTPUT
-            echo "✅ External health check passed with code $CODE"
-          else
-            echo "result=failure" >> $GITHUB_OUTPUT
-            echo "⚠️ External health check failed (may be due to WAF)"
-          fi
 
       - name: 📊 Calculate health check time
         id: health-time
@@ -420,124 +135,22 @@ jobs:
           echo "health-time=$HEALTH_DURATION" >> "$GITHUB_OUTPUT"
           echo "⏱️ Health check completed in ${HEALTH_DURATION}s"
 
-  # ==============================================
-  # NOTIFICATION & REPORTING
-  # ==============================================
   notification:
-    name: 📢 Send Notifications
-    needs: [build, deploy, health-check]
+    name: 📢 Send Notification
+    needs: [deploy, health-check]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     if: always()
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: 📊 Generate deployment report
-        id: report
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          # Fetch full history
-          git fetch --prune --unshallow || true
-          git fetch --all --tags || true
-
-          CURRENT_SHA="${{ github.sha }}"
-          BEFORE_SHA="${{ github.event.before }}"
-
-          # Fallback for BEFORE_SHA
-          if [ -z "$BEFORE_SHA" ] || ! git rev-parse --verify "$BEFORE_SHA^{commit}" >/dev/null 2>&1; then
-            BEFORE_SHA=$(git rev-parse "$CURRENT_SHA^" 2>/dev/null || echo "")
-          fi
-
-          # Get commit details
-          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s" "$CURRENT_SHA" || true)
-          COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" "$CURRENT_SHA" || true)
-          COMMIT_DATE=$(git log -1 --pretty=format:"%cd" --date=iso-strict "$CURRENT_SHA" || date -u +%Y-%m-%dT%H:%M:%SZ)
-
-          # Generate commit range
-          COMMIT_RANGE=""
-          if [ -n "$BEFORE_SHA" ]; then
-            COMMIT_RANGE=$(git rev-list --reverse "$BEFORE_SHA..$CURRENT_SHA" 2>/dev/null || echo "")
-          fi
-
-          COMMIT_LOG=""
-          if [ -n "$COMMIT_RANGE" ]; then
-            while read -r SHA; do
-              [ -z "$SHA" ] && continue
-              MSG=$(git log -1 --pretty=format:"%s" "$SHA")
-              AUTHOR=$(git log -1 --pretty=format:"%an" "$SHA")
-              COMMIT_LOG+="- [\`$(echo "$SHA" | cut -c1-7)\`](https://github.com/${{ github.repository }}/commit/$SHA) $MSG — _${AUTHOR}_\n"
-            done <<< "$COMMIT_RANGE"
-          else
-            SHORT=$(echo "$CURRENT_SHA" | cut -c1-7)
-            COMMIT_LOG="- [\`$SHORT\`](https://github.com/${{ github.repository }}/commit/$CURRENT_SHA) $COMMIT_MESSAGE — _${COMMIT_AUTHOR}_\n"
-          fi
-
-          echo "message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
-          echo "author=$COMMIT_AUTHOR" >> $GITHUB_OUTPUT
-          echo "date=$COMMIT_DATE" >> $GITHUB_OUTPUT
-          echo "log<<EOF" >> $GITHUB_OUTPUT
-          echo -e "$COMMIT_LOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: 📋 Job Summary
-        env:
-          STATUS: ${{ needs.health-check.outcome == 'success' && 'success' || 'failure' }}
-          BRANCH: ${{ github.ref_name }}
-          COMMIT: ${{ github.sha }}
-          REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-          IMAGE_TAGS: ${{ needs.build.outputs.image-tag }}
-          IMAGE_DIGEST: ${{ needs.build.outputs.image-digest }}
-          COMMITS_BLOCK: ${{ steps.report.outputs.log }}
-          BUILD_TIME: ${{ needs.build.outputs.build-time }}
-          DEPLOY_TIME: ${{ needs.deploy.outputs.deploy-time }}
-          HEALTH_TIME: ${{ needs.health-check.outputs.health-time }}
-        run: |
-          {
-            echo "# 🚀 Deploy Summary"
-            echo
-            echo "**Status:** ${STATUS^^}"
-            echo
-            echo "**Repository:** $REPO"
-            echo "**Branch:** `$BRANCH`"
-            echo "**Run:** https://github.com/$REPO/actions/runs/$RUN_ID"
-            echo
-            echo "## ⏱️ Performance Metrics"
-            echo "- **Build Time:** ${BUILD_TIME}s"
-            echo "- **Deploy Time:** ${DEPLOY_TIME}s"
-            echo "- **Health Check:** ${HEALTH_TIME}s"
-            echo "- **Total Time:** $((BUILD_TIME + DEPLOY_TIME + HEALTH_TIME))s"
-            echo
-            echo "## 🔗 Artifact"
-            echo "- **Image Tags:** \`$IMAGE_TAGS\`"
-            echo "- **Image Digest:** \`$IMAGE_DIGEST\`"
-            echo
-            echo "## 📚 Commits"
-            echo "$COMMITS_BLOCK"
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: 📢 Send Discord notification
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           STATUS: ${{ needs.health-check.outcome == 'success' && 'success' || 'failure' }}
-          BRANCH: ${{ github.ref_name }}
+          BRANCH: main
           COMMIT: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          COMMIT_MESSAGE: ${{ steps.report.outputs.message }}
-          COMMIT_AUTHOR: ${{ steps.report.outputs.author }}
-          COMMIT_DATE: ${{ steps.report.outputs.date }}
-          IMAGE_TAGS: ${{ needs.build.outputs.image-tag }}
-          IMAGE_DIGEST: ${{ needs.build.outputs.image-digest }}
-          COMMIT_LOG: ${{ steps.report.outputs.log }}
-          BUILD_TIME: ${{ needs.build.outputs.build-time }}
           DEPLOY_TIME: ${{ needs.deploy.outputs.deploy-time }}
           HEALTH_TIME: ${{ needs.health-check.outputs.health-time }}
         run: |
@@ -545,109 +158,33 @@ jobs:
 
           COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
           ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
-          DESCRIPTION=$([ "$STATUS" = "success" ] && echo "🚀 **Triển khai Production thành công**" || echo "❌ **Deployment thất bại**")
+          DESCRIPTION=$([ "$STATUS" = "success" ] && echo "🚀 **Deploy thành công**" || echo "❌ **Deploy thất bại**")
 
-          # Commit type icon
-          COMMIT_TYPE_ICON="📝"
-          case "$COMMIT_MESSAGE" in
-            feat*) COMMIT_TYPE_ICON="✨";;
-            fix*) COMMIT_TYPE_ICON="🐛";;
-            docs*) COMMIT_TYPE_ICON="📚";;
-            style*) COMMIT_TYPE_ICON="💄";;
-            refactor*) COMMIT_TYPE_ICON="♻️";;
-            test*) COMMIT_TYPE_ICON="🧪";;
-            chore*) COMMIT_TYPE_ICON="🔧";;
-            perf*) COMMIT_TYPE_ICON="⚡";;
-            ci*) COMMIT_TYPE_ICON="👷";;
-            build*) COMMIT_TYPE_ICON="📦";;
-            revert*) COMMIT_TYPE_ICON="⏪";;
-            security*) COMMIT_TYPE_ICON="🔒";;
-          esac
-
-          COMMITS_BLOCK=${COMMIT_LOG:-"(không có dữ liệu commit)"}
-          TOTAL_TIME=$((BUILD_TIME + DEPLOY_TIME + HEALTH_TIME))
+          TOTAL_TIME=$((DEPLOY_TIME + HEALTH_TIME))
 
           JSON_PAYLOAD=$(jq -n \
             --arg status "$STATUS" \
             --arg icon "$ICON" \
-            --arg branch "$BRANCH" \
-            --arg commit_short "$(echo $COMMIT | cut -c1-7)" \
-            --arg commit_full "$COMMIT" \
-            --arg repo "$REPO" \
-            --arg actor "$ACTOR" \
-            --arg run_id "$RUN_ID" \
-            --arg color "$COLOR" \
             --arg description "$DESCRIPTION" \
-            --arg commit_message "$COMMIT_TYPE_ICON $COMMIT_MESSAGE" \
-            --arg commit_author "$COMMIT_AUTHOR" \
-            --arg commit_date "$COMMIT_DATE" \
-            --arg image_tags "$IMAGE_TAGS" \
-            --arg image_digest "$IMAGE_DIGEST" \
-            --arg commits_block "$COMMITS_BLOCK" \
-            --arg build_time "$BUILD_TIME" \
+            --arg color "$COLOR" \
             --arg deploy_time "$DEPLOY_TIME" \
             --arg health_time "$HEALTH_TIME" \
             --arg total_time "$TOTAL_TIME" \
+            --arg repo "$REPO" \
+            --arg run_id "$RUN_ID" \
             ' {
                 embeds: [{
-                  title: "🚀 SERVER - Triển khai Production",
+                  title: "🚀 SERVER - Deploy Production",
                   description: $description,
                   color: ($color | tonumber),
                   fields: [
                     { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
-                    { name: "🌿 Nhánh", value: "`\($branch)`", inline: true },
-                    { name: "👤 Người thực hiện", value: "`\($actor)`", inline: true },
-                    { name: "⏱️ Performance", value: "Build: \($build_time)s\nDeploy: \($deploy_time)s\nHealth: \($health_time)s\n**Total: \($total_time)s**", inline: false },
-                    { name: "🔗 Commit HEAD", value: "[`\($commit_short)`](https://github.com/\($repo)/commit/\($commit_full))", inline: false },
-                    { name: "📝 Nội dung HEAD", value: "\($commit_message)", inline: false },
-                    { name: "📚 Danh sách commits", value: $commits_block, inline: false },
-                    { name: "🖼️ Image", value: "Tags:\n`\($image_tags)`\nDigest:\n`\($image_digest)`", inline: false }
+                    { name: "⏱️ Performance", value: "Deploy: \($deploy_time)s\nHealth: \($health_time)s\n**Total: \($total_time)s**", inline: false }
                   ],
                   url: "https://github.com/\($repo)/actions/runs/\($run_id)",
-                  footer: { "text": "🚀 Triển khai Production • \($commit_date)" },
+                  footer: { "text": "🚀 Deploy Production" },
                   timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
                 }]
               }')
 
           curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" || echo "Lỗi gửi thông báo Discord"
-
-  # ==============================================
-  # AUTOMATIC ROLLBACK
-  # ==============================================
-  rollback:
-    name: 🔄 Auto Rollback
-    needs: [deploy, health-check]
-    runs-on: ubuntu-latest
-    if: failure() && needs.deploy.result == 'success'
-    timeout-minutes: 10
-    steps:
-      - name: 🔄 Rollback to previous commit
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            export PROJECT_PATH='${{ env.VPS_PATH }}'
-            set -euo pipefail
-            cd "$PROJECT_PATH"
-
-            echo "🔄 Starting automatic rollback..."
-
-            # Rollback to previous commit
-            git fetch --all --tags
-            git reset --hard HEAD~1
-
-            # Get branch and digest
-            BRANCH=$(git rev-parse --abbrev-ref HEAD)
-            DIGEST_TAG="$BRANCH-$(git rev-parse HEAD)"
-            export SERVER_IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:${DIGEST_TAG}"
-
-            echo "🔄 Rolling back to: $SERVER_IMAGE"
-
-            # Redeploy previous version
-            docker compose --env-file .env.docker pull
-            docker compose --env-file .env.docker down
-            docker compose --env-file .env.docker up -d --force-recreate
-
-            echo "✅ Rollback completed successfully"

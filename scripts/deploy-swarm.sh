@@ -95,7 +95,7 @@ SERVICES=("postgres" "redis" "elasticsearch" "server" "pgbouncer" "prometheus" "
 for service in "${SERVICES[@]}"; do
     SERVICE_NAME="${STACK_NAME}_${service}"
     echo "📋 Service: $SERVICE_NAME"
-    
+
     if docker service ls | grep -q "$SERVICE_NAME"; then
         REPLICAS=$(docker service ls --filter "name=$SERVICE_NAME" --format "{{.Replicas}}")
         echo "   Status: $REPLICAS"
