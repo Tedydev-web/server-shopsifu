@@ -77,10 +77,10 @@ jobs:
             BACKUP_TIMESTAMP="${{ env.backup_timestamp }}"
 
             # Create database backup
-            docker exec shopsifu_postgres.1 pg_dump -U shopsifu -d shopsifu --format=custom --file=/tmp/shopsifu_$BACKUP_TIMESTAMP.backup
+            docker exec shopsifu_postgres pg_dump -U shopsifu -d shopsifu --format=custom --file=/tmp/shopsifu_$BACKUP_TIMESTAMP.backup
 
             # Copy backup from container
-            docker cp shopsifu_postgres.1:/tmp/shopsifu_$BACKUP_TIMESTAMP.backup "${{ env.BACKUP_PATH }}/database/"
+            docker cp shopsifu_postgres:/tmp/shopsifu_$BACKUP_TIMESTAMP.backup "${{ env.BACKUP_PATH }}/database/"
 
             # Verify backup file
             if [ -f "${{ env.BACKUP_PATH }}/database/shopsifu_$BACKUP_TIMESTAMP.backup" ]; then
@@ -139,12 +139,12 @@ jobs:
             # Get backup timestamp
             BACKUP_TIMESTAMP="${{ env.backup_timestamp }}"
 
-            # Create config backup
+            # Create config backup (không bao gồm nginx-config/ đã bị xóa)
             tar -czf "${{ env.BACKUP_PATH }}/config/shopsifu_config_$BACKUP_TIMESTAMP.tar.gz" \
               config/ \
               monitoring/ \
               .env.docker \
-              docker-compose.swarm.yml \
+              docker-compose.yml \
               Dockerfile
 
             # Verify backup file
@@ -173,24 +173,24 @@ jobs:
 
             # Stop services temporarily for consistent backup
             echo "⏸️ Stopping services for consistent backup..."
-            docker stack rm shopsifu || true
+            docker compose down
             sleep 30
 
             # Backup PostgreSQL data volume
-            docker run --rm -v postgres_data:/data -v "${{ env.BACKUP_PATH }}/database:/backup" \
+            docker run --rm -v shopsifu_postgres_data:/data -v "${{ env.BACKUP_PATH }}/database:/backup" \
               alpine tar -czf /backup/postgres_data_$BACKUP_TIMESTAMP.tar.gz -C /data .
 
             # Backup Redis data volume
-            docker run --rm -v redis_data:/data -v "${{ env.BACKUP_PATH }}/database:/backup" \
+            docker run --rm -v shopsifu_redis_data:/data -v "${{ env.BACKUP_PATH }}/database:/backup" \
               alpine tar -czf /backup/redis_data_$BACKUP_TIMESTAMP.tar.gz -C /data .
 
             # Backup Elasticsearch data volume
-            docker run --rm -v esdata:/data -v "${{ env.BACKUP_PATH }}/database:/backup" \
+            docker run --rm -v shopsifu_esdata:/data -v "${{ env.BACKUP_PATH }}/database:/backup" \
               alpine tar -czf /backup/elasticsearch_data_$BACKUP_TIMESTAMP.tar.gz -C /data .
 
             # Restart services
             echo "🔄 Restarting services..."
-            ./scripts/deploy-swarm.sh
+            docker compose up -d
 
             echo "✅ Docker volumes backup completed"
 

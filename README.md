@@ -88,6 +88,7 @@ docker stack rm shopsifu
 - **`scripts/backup-manual.sh`**: Backup manual trực tiếp trên server
 - **`scripts/restore-backup.sh`**: Restore từ backup với interactive mode
 - **`scripts/backup-status.sh`**: Kiểm tra trạng thái backup và disk usage
+- **`scripts/setup-loadbalancer.sh`**: Setup load balancer với Traefik và Nginx
 
 ### **Clean up thủ công**
 ```bash
@@ -158,13 +159,61 @@ docker volume ls
 - **Security**: Disabled (development)
 - **Discovery**: Single node
 
-## 🗄️ **Backup & Recovery**
+## 🚀 **Load Balancer & Reverse Proxy**
 
-### **Automated Backup**
-- **Schedule**: Chạy mỗi ngày lúc 2:00 AM
-- **Location**: `/backup/shopsifu/`
-- **Retention**: 3 ngày (có thể tùy chỉnh)
-- **Types**: Database, Files, Configuration, Docker Volumes
+### **Architecture Overview (OPTIMIZED)**
+```
+Internet → Traefik (Load Balancer + Edge Proxy) → Docker Swarm Services
+   ↓                    ↓                                ↓
+  443              SSL + Load Balancing           3x Server Replicas
+  HTTPS         Service Discovery + Health        + Monitoring Services
+```
+
+### **Components**
+
+#### **🚀 Traefik Load Balancer (Unified Solution)**
+- **Port**: 80 (HTTP), 443 (HTTPS)
+- **Role**: SSL termination, load balancing, service discovery
+- **Features**: Auto SSL with Let's Encrypt, sticky sessions, health checks
+- **Dashboard**: http://localhost:8080
+- **Security**: Built-in rate limiting, CORS, security headers
+
+### **Setup Load Balancer (OPTIMIZED)**
+```bash
+# Setup Traefik-only load balancer (run as root)
+sudo ./scripts/setup-traefik-only.sh
+
+# Deploy Docker Swarm stack
+./scripts/deploy-swarm.sh
+
+# Configure domains and SSL
+sudo ./scripts/configure-domains.sh
+```
+
+### **Alternative Setup (Legacy)**
+```bash
+# Setup Nginx + Traefik (not recommended)
+sudo ./scripts/setup-loadbalancer.sh
+```
+
+### **Endpoints**
+- **API**: https://api.shopsifu.live
+- **Kibana**: https://kibana.shopsifu.live
+- **Traefik Dashboard**: https://traefik.shopsifu.live
+- **Grafana**: https://grafana.shopsifu.live
+
+### **Load Balancing Features (OPTIMIZED)**
+- **Sticky Sessions**: User sessions stick to same server
+- **Health Checks**: Automatic failover for unhealthy instances
+- **Auto Scaling**: Docker Swarm handles scaling
+- **SSL Management**: Automatic certificate renewal with Let's Encrypt
+- **Service Discovery**: Automatic detection of new services
+- **Rate Limiting**: Built-in protection against DDoS
+- **CORS Handling**: Cross-origin request management
+- **Security Headers**: HSTS, XSS protection, CSRF protection
+- **HTTP/2 Support**: Modern protocol for better performance
+
+## 🗄️ **Backup & Recovery**
 
 ### **Manual Backup**
 ```bash
@@ -234,7 +283,8 @@ docker volume ls
 │   ├── docker-cleanup.sh   # Cleanup script
 │   ├── backup-manual.sh    # Manual backup script
 │   ├── restore-backup.sh   # Restore backup script
-│   └── backup-status.sh    # Backup status check script
+│   ├── backup-status.sh    # Backup status check script
+│   └── setup-loadbalancer.sh # Load balancer setup script
 ├── logs/                   # Application logs
 ├── certs/                  # SSL certificates
 ├── upload/                 # User uploads

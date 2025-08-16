@@ -1,45 +1,35 @@
-# Git
-.git
-.gitignore
-.gitattributes
-
-# Documentation
-docs/
-*.md
-README*
-
-# Development files
-node_modules/
+# Dependencies
+node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Build outputs
+dist
+build
+.next
+.nuxt
+
+# Environment files
+.env
 .env.local
 .env.development
 .env.test
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
+.env.production
+.env.docker
 
 # Logs
-logs/
+logs
 *.log
 
 # Runtime data
-pids/
+pids
 *.pid
 *.seed
 *.pid.lock
 
 # Coverage directory used by tools like istanbul
-coverage/
+coverage
 *.lcov
 
 # nyc test coverage
@@ -70,7 +60,6 @@ jspm_packages/
 .yarn-integrity
 
 # dotenv environment variables file
-.env
 .env.test
 
 # parcel-bundler cache (https://parceljs.org/)
@@ -84,10 +73,6 @@ jspm_packages/
 .nuxt
 dist
 
-# Gatsby files
-.cache/
-public
-
 # Storybook build outputs
 .out
 .storybook-out
@@ -96,27 +81,40 @@ public
 tmp/
 temp/
 
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
 # Docker
 Dockerfile*
 docker-compose*
 .dockerignore
 
-# Docker Swarm specific
-docker-compose.swarm.yml
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
 
-# Mounted volumes (không cần trong build context)
-monitoring/
-config/
-certs/
-upload/
-
-# Database
-*.sql
-*.db
-
-# Backup
-*.backup
-*.bak
+# Documentation
+README.md
+CHANGELOG.md
+docs/
 
 # Test files
 test/
@@ -127,69 +125,37 @@ __tests__/
 *.spec.js
 *.spec.ts
 
-# Build artifacts
-build/
-out/
-
-# TypeScript
-*.tsbuildinfo
-
-# Prisma
-prisma/migrations/
-# prisma/schema.prisma - Cần thiết cho build process
-
-# Misc
-*.tgz
-*.tar.gz
-
-# Performance optimization
-# Loại bỏ các file không cần thiết để giảm build context
+# Backup files
+*.backup
+*.bak
 *.tmp
-*.temp
-*.cache
-.cache/
-.temp/
-.tmp/
 
-# Development dependencies
-.eslintrc*
-.prettierrc*
-.editorconfig
-.stylelintrc*
+# Upload directory
+upload/
+uploads/
 
-# CI/CD
-.github/
-.gitlab-ci.yml
-.travis.yml
-.circleci/
-azure-pipelines.yml
+# Certificates
+certs/
+*.pem
+*.key
+*.crt
+
+# Monitoring data
+monitoring/prometheus/data/
+monitoring/grafana/data/
+
+# Database dumps
+*.sql
+*.dump
+*.backup
+
+# Archive files
+*.tar.gz
+*.zip
+*.rar
 
 # Local development
-.local/
-local/
-dev/
-development/
-
-# Docker Compose files (không cần trong build context)
-docker-compose.yml
-docker-compose.override.yml
-docker-compose.prod.yml
-docker-compose.dev.yml
-docker-compose.test.yml
-
-# Scripts (không cần trong build context)
-scripts/
-*.sh
-
-# Documentation
-README*.md
-CHANGELOG*.md
-LICENSE*
-CONTRIBUTING*.md
-
-# Development tools
-.nvmrc
-.node-version
-.prettierignore
-.eslintignore
-.stylelintignore
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -3,8 +3,8 @@ name: 🔄 Rollback Production
 on:
   workflow_dispatch:
     inputs:
-      commit_sha:
-        description: 'Commit SHA để rollback (để trống để rollback về commit trước)'
+      image_tag:
+        description: 'Image tag để rollback (để trống để rollback về latest)'
         required: false
         default: ''
       reason:
@@ -13,6 +13,8 @@ on:
         default: 'Manual rollback'
 
 env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: tedydev-web/server-shopsifu
   VPS_HOST: ${{ secrets.VPS_HOST }}
   VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
   VPS_PATH: ${{ secrets.VPS_PATH }}
@@ -38,57 +40,46 @@ jobs:
 
             echo "🔄 Starting rollback process..."
 
-            # Get current commit
-            CURRENT_COMMIT=$(git rev-parse HEAD)
-            echo "Current commit: $CURRENT_COMMIT"
-
-            # Determine target commit
-            TARGET_COMMIT="${{ github.event.inputs.commit_sha }}"
-            if [ -z "$TARGET_COMMIT" ]; then
-              TARGET_COMMIT=$(git rev-parse HEAD~1)
-              echo "Rolling back to previous commit: $TARGET_COMMIT"
-            else
-              echo "Rolling back to specified commit: $TARGET_COMMIT"
-            fi
-
-            # Verify target commit exists
-            if ! git rev-parse --verify "$TARGET_COMMIT" >/dev/null 2>&1; then
-              echo "❌ Target commit $TARGET_COMMIT does not exist"
-              exit 1
-            fi
-
-            # Verify target commit is different from current
-            if [ "$CURRENT_COMMIT" = "$TARGET_COMMIT" ]; then
-              echo "❌ Target commit is same as current commit"
-              exit 1
-            fi
-
-            # Create backup branch before rollback
-            BACKUP_BRANCH="backup-$(date +%Y%m%d-%H%M%S)"
-            git checkout -b "$BACKUP_BRANCH"
-            echo "✅ Created backup branch: $BACKUP_BRANCH"
+            # Login to GHCR
+            echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
             # Create emergency backup before rollback
             echo "🗄️ Creating emergency backup before rollback..."
             BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
             # Backup current database state
-            docker exec shopsifu_postgres.1 pg_dump -U shopsifu -d shopsifu --format=custom --file=/tmp/emergency_backup_$BACKUP_TIMESTAMP.backup
-            docker cp shopsifu_postgres.1:/tmp/emergency_backup_$BACKUP_TIMESTAMP.backup /backup/shopsifu/database/
+            docker exec shopsifu_postgres pg_dump -U shopsifu -d shopsifu --format=custom --file=/tmp/emergency_backup_$BACKUP_TIMESTAMP.backup
+            docker cp shopsifu_postgres:/tmp/emergency_backup_$BACKUP_TIMESTAMP.backup /backup/shopsifu/database/
 
             # Backup current config
-            tar -czf /backup/shopsifu/config/emergency_config_$BACKUP_TIMESTAMP.tar.gz config/ monitoring/ .env.docker docker-compose.swarm.yml
+            tar -czf /backup/shopsifu/config/emergency_config_$BACKUP_TIMESTAMP.tar.gz config/ monitoring/ .env.docker docker-compose.yml
 
             echo "✅ Emergency backup created: emergency_backup_$BACKUP_TIMESTAMP.backup"
 
-            # Switch back to main and perform rollback
-            git checkout main
-            git reset --hard "$TARGET_COMMIT"
-            echo "✅ Git reset completed"
+            # Stop services
+            echo "🛑 Stopping services..."
+            docker compose down
 
-            # Deploy with Docker Swarm
-            echo "🚀 Redeploying with Docker Swarm..."
-            ./scripts/deploy-swarm.sh
+            # Determine target image tag
+            TARGET_TAG="${{ github.event.inputs.image_tag }}"
+            if [ -z "$TARGET_TAG" ]; then
+              TARGET_TAG="latest"
+              echo "Rolling back to latest image tag: $TARGET_TAG"
+            else
+              echo "Rolling back to specified image tag: $TARGET_TAG"
+            fi
+
+            # Update docker-compose.yml with target image tag
+            echo "📝 Updating docker-compose.yml with image tag: $TARGET_TAG"
+            sed -i "s|image: ghcr.io/tedydev-web/server-shopsifu:.*|image: ghcr.io/tedydev-web/server-shopsifu:$TARGET_TAG|" docker-compose.yml
+
+            # Pull target image
+            echo "📥 Pulling target image: ghcr.io/tedydev-web/server-shopsifu:$TARGET_TAG"
+            docker pull "ghcr.io/tedydev-web/server-shopsifu:$TARGET_TAG"
+
+            # Deploy with target image
+            echo "🚀 Redeploying with target image..."
+            docker compose up -d
 
             echo "✅ Rollback completed successfully"
 
@@ -135,7 +126,7 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           STATUS: ${{ needs.health-check.outcome == 'success' && 'success' || 'failure' }}
           REASON: ${{ github.event.inputs.reason }}
-          COMMIT_SHA: ${{ github.event.inputs.commit_sha }}
+          IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
 
@@ -148,7 +139,7 @@ jobs:
             --arg icon "$ICON" \
             --arg description "$DESCRIPTION" \
             --arg reason "$REASON" \
-            --arg commit_sha "$COMMIT_SHA" \
+            --arg image_tag "$IMAGE_TAG" \
             --arg color "$COLOR" \
             ' {
                 embeds: [{
@@ -157,7 +148,8 @@ jobs:
                   color: ($color | tonumber),
                   fields: [
                     { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
-                    { name: "📝 Lý do", value: $reason, inline: false }
+                    { name: "📝 Lý do", value: $reason, inline: false },
+                    { name: "🐳 Image Tag", value: $image_tag, inline: true }
                   ],
                   footer: { "text": "🔄 Rollback Production" },
                   timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))

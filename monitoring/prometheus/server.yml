@@ -1,6 +1,9 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  external_labels:
+    cluster: shopsifu-production
+    environment: production
 
 rule_files:
 
@@ -8,12 +11,36 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
-  - job_name: 'shopsifu'
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  - job_name: 'shopsifu-api'
     static_configs:
-      - targets: ['server:3000']
+      - targets: ['shopsifu_server:3000']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
   - job_name: 'postgres'
     static_configs:
       - targets: ['postgres:5432']
+    metrics_path: /metrics
+    scrape_interval: 30s
+
   - job_name: 'redis'
     static_configs:
       - targets: ['redis:6379']
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch:9200']
+    metrics_path: /_prometheus/metrics
+    scrape_interval: 30s
+
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['localhost:8080']
+    metrics_path: /nginx_status
+    scrape_interval: 30s

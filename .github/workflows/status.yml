@@ -30,7 +30,7 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🔍 Check Docker Swarm Status
+      - name: 🔍 Check Docker Compose Status
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ env.VPS_HOST }}
@@ -40,20 +40,24 @@ jobs:
             set -euo pipefail
             cd "${{ env.VPS_PATH }}"
 
-            echo "🔍 Checking Docker Swarm status..."
+            echo "🔍 Checking Docker Compose status..."
 
-            # Check stack status
-            if docker stack ls | grep -q "shopsifu"; then
-              echo "✅ Stack 'shopsifu' exists"
-              docker service ls
+            # Check if docker-compose.yml exists
+            if [ -f "docker-compose.yml" ]; then
+              echo "✅ docker-compose.yml found"
             else
-              echo "❌ Stack 'shopsifu' not found"
+              echo "❌ docker-compose.yml not found"
               exit 1
             fi
 
-            # Check service health
-            echo "🏥 Checking service health..."
-            docker service ls --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}\t{{.Ports}}"
+            # Check service status
+            echo "🏥 Checking service status..."
+            docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+
+            # Check if all services are running
+            RUNNING_SERVICES=$(docker compose ps --filter "status=running" --format "{{.Name}}" | wc -l)
+            TOTAL_SERVICES=$(docker compose ps --format "{{.Name}}" | wc -l)
+            echo "📊 Services: $RUNNING_SERVICES/$TOTAL_SERVICES running"
 
       - name: 🗄️ Check Database Status
         uses: appleboy/ssh-action@v0.1.10
@@ -140,6 +144,33 @@ jobs:
             # Check server metrics
             echo "📈 Server metrics:"
             docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}"
+
+      - name: 📊 Check System Resources
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            echo "📊 Checking system resources..."
+
+            # Check disk usage
+            echo "💾 Disk usage:"
+            df -h /
+
+            # Check memory usage
+            echo "🧠 Memory usage:"
+            free -h
+
+            # Check CPU load
+            echo "⚡ CPU load:"
+            uptime
+
+            # Check Docker disk usage
+            echo "🐳 Docker disk usage:"
+            docker system df
 
   notification:
     name: 📢 Status Notification
