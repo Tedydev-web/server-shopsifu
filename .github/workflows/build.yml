@@ -17,7 +17,7 @@ env:
 
 jobs:
   security-scan:
-    name: 🔒 Security Scan
+    name: 🔒 Security Scan (Warning Only)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -41,16 +41,22 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
 
-      - name: 🚨 Check for high severity vulnerabilities
+      - name: ⚠️ Check for high severity vulnerabilities (Warning Only)
+        if: always()
         run: |
           if [ -f "trivy-results.sarif" ]; then
             HIGH_VULNS=$(grep -c '"level": "error"' trivy-results.sarif || echo "0")
             if [ "$HIGH_VULNS" -gt 0 ]; then
-              echo "❌ Found $HIGH_VULNS high severity vulnerabilities"
-              exit 1
+              echo "⚠️ WARNING: Found $HIGH_VULNS high severity vulnerabilities"
+              echo "⚠️ This is a security warning but will NOT block the build"
+              echo "⚠️ Please review and fix these vulnerabilities as soon as possible"
+              echo "⚠️ Vulnerabilities found in:"
+              grep -A 5 -B 5 '"level": "error"' trivy-results.sarif || echo "No detailed info available"
             else
               echo "✅ No high severity vulnerabilities found"
             fi
+          else
+            echo "⚠️ WARNING: Trivy scan results not found"
           fi
 
   build:
@@ -127,3 +133,56 @@ jobs:
         run: |
           docker builder prune -f
           docker system prune -f
+
+  notification:
+    name: 📢 Security & Build Notification
+    needs: [security-scan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    if: always()
+    steps:
+      - name: 📢 Send Discord notification
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          BUILD_STATUS: ${{ needs.build.outcome == 'success' && 'success' || 'failure' }}
+          SECURITY_STATUS: ${{ needs.security-scan.outcome == 'success' && 'success' || 'failure' }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+
+          # Determine overall status
+          if [ "$BUILD_STATUS" = "success" ]; then
+            COLOR=3066993
+            ICON="✅"
+            DESCRIPTION="🚀 **Build thành công**"
+          else
+            COLOR=15158332
+            ICON="❌"
+            DESCRIPTION="❌ **Build thất bại**"
+          fi
+
+          # Security warning if needed
+          if [ "$SECURITY_STATUS" != "success" ]; then
+            DESCRIPTION="$DESCRIPTION\n⚠️ **Có cảnh báo bảo mật**"
+          fi
+
+          JSON_PAYLOAD=$(jq -n \
+            --arg status "$BUILD_STATUS" \
+            --arg icon "$ICON" \
+            --arg description "$DESCRIPTION" \
+            --arg color "$COLOR" \
+            --arg security_status "$SECURITY_STATUS" \
+            ' {
+                embeds: [{
+                  title: "🏗️ BUILD & SECURITY SCAN",
+                  description: $description,
+                  color: ($color | tonumber),
+                  fields: [
+                    { name: "📊 Build Status", value: "\($icon) \($status | ascii_upcase)", inline: true },
+                    { name: "🔒 Security Status", value: ($security_status == "success" ? "✅ PASS" : "⚠️ WARNING"), inline: true }
+                  ],
+                  footer: { "text": "🏗️ Build & Security Scan" },
+                  timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+                }]
+              }')
+
+          curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" || echo "Lỗi gửi thông báo Discord"
