@@ -101,20 +101,13 @@ Dockerfile*
 docker-compose*
 .dockerignore
 
-# Monitoring (sẽ được mount vào container)
+# Docker Swarm specific
+docker-compose.swarm.yml
+
+# Mounted volumes (không cần trong build context)
 monitoring/
-
-# Scripts
-scripts/
-initialScript/
-
-# Config (sẽ được mount vào container)
 config/
-
-# Certs (sẽ được mount vào container)
 certs/
-
-# Upload (sẽ được mount vào container)
 upload/
 
 # Database
@@ -176,3 +169,27 @@ azure-pipelines.yml
 local/
 dev/
 development/
+
+# Docker Compose files (không cần trong build context)
+docker-compose.yml
+docker-compose.override.yml
+docker-compose.prod.yml
+docker-compose.dev.yml
+docker-compose.test.yml
+
+# Scripts (không cần trong build context)
+scripts/
+*.sh
+
+# Documentation
+README*.md
+CHANGELOG*.md
+LICENSE*
+CONTRIBUTING*.md
+
+# Development tools
+.nvmrc
+.node-version
+.prettierignore
+.eslintignore
+.stylelintignore

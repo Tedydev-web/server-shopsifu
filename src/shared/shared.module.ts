@@ -100,11 +100,13 @@ const sharedServices = [
 
     CacheModule.registerAsync({
       isGlobal: true,
-      useFactory: () => {
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => {
         return {
-          stores: [createKeyv(process.env.REDIS_URL)]
+          stores: [createKeyv(configService.get<string>('REDIS_URL'))]
         }
-      }
+      },
+      inject: [ConfigService]
     }),
 
     // Queue Management - Bull/Redis

@@ -17,7 +17,7 @@ export default registerAs(
           process.env.COOKIE_ACCESS_TOKEN_DOMAIN && process.env.COOKIE_ACCESS_TOKEN_DOMAIN !== '/'
             ? process.env.COOKIE_ACCESS_TOKEN_DOMAIN
             : undefined,
-        maxAge: ms(process.env.AUTH_ACCESS_TOKEN_EXP)
+        maxAge: ms(process.env.AUTH_ACCESS_TOKEN_EXP || '1d') // Provide a default value
       }
     },
 
@@ -32,7 +32,7 @@ export default registerAs(
           process.env.COOKIE_REFRESH_TOKEN_DOMAIN && process.env.COOKIE_REFRESH_TOKEN_DOMAIN !== '/'
             ? process.env.COOKIE_REFRESH_TOKEN_DOMAIN
             : undefined,
-        maxAge: ms(process.env.AUTH_REFRESH_TOKEN_EXP)
+        maxAge: ms(process.env.AUTH_REFRESH_TOKEN_EXP || '7d') // Provide a default value
       }
     },
 
@@ -47,7 +47,7 @@ export default registerAs(
           process.env.COOKIE_CSRF_TOKEN_DOMAIN && process.env.COOKIE_CSRF_TOKEN_DOMAIN !== '/'
             ? process.env.COOKIE_CSRF_TOKEN_DOMAIN
             : undefined,
-        maxAge: ms(process.env.COOKIE_CSRF_TOKEN_EXP)
+        maxAge: ms(process.env.COOKIE_CSRF_TOKEN_EXP || '1h') // Provide a default value
       }
     }
   })

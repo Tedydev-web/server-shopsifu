@@ -1,19 +1,18 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common'
 import { HealthIndicatorResult } from '@nestjs/terminus'
 import { PrismaClient } from '@prisma/client'
+import { ConfigService } from '@nestjs/config'
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  constructor() {
+  constructor(private readonly configService: ConfigService) {
+    const databaseUrl = configService.get<string>('DATABASE_URL')
+
     super({
       log: [
         {
           emit: 'event',
           level: 'query'
-        },
-        {
-          emit: 'stdout',
-          level: 'error'
         },
         {
           emit: 'stdout',
@@ -26,7 +25,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       ],
       datasources: {
         db: {
-          url: process.env.DATABASE_URL
+          url: databaseUrl
         }
       }
       // Tối ưu connection pooling cho production
@@ -42,10 +41,27 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    await this.$connect()
+    // Retry logic cho database connection
+    const maxRetries = 10
+    const retryDelay = 5000 // 5 seconds
 
-    // Log connection thành công
-    console.log('✅ Prisma connected to PostgreSQL with optimized configuration')
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await this.$connect()
+        console.log('✅ Prisma connected to PostgreSQL with optimized configuration')
+        break
+      } catch (error) {
+        console.log(`❌ Database connection attempt ${attempt}/${maxRetries} failed:`, error.message)
+
+        if (attempt === maxRetries) {
+          console.error('❌ Max retries reached. Database connection failed.')
+          throw error
+        }
+
+        console.log(`🔄 Retrying in ${retryDelay / 1000} seconds...`)
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
+      }
+    }
 
     // Log database info
     const dbInfo = (await this.$queryRaw`SELECT version() as version`) as Array<{ version: string }>

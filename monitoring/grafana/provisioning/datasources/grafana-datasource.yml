@@ -3,10 +3,11 @@ apiVersion: 1
 datasources:
   - name: Prometheus
     type: prometheus
-    url: http://prometheus:9090
     access: proxy
+    url: http://prometheus:9090
     isDefault: true
     editable: true
     jsonData:
       timeInterval: 15s
-      httpTimeout: 30000
+      queryTimeout: 60s
+      httpMethod: POST

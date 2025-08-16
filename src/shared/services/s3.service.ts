@@ -2,17 +2,20 @@ import { PutObjectCommand, S3 } from '@aws-sdk/client-s3'
 import { Upload } from '@aws-sdk/lib-storage'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { Injectable } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { readFileSync } from 'fs'
 import mime from 'mime-types'
+
 @Injectable()
 export class S3Service {
   private s3: S3
-  constructor() {
+
+  constructor(private readonly configService: ConfigService) {
     this.s3 = new S3({
-      region: process.env.S3_REGION as string,
+      region: this.configService.get<string>('S3_REGION'),
       credentials: {
-        secretAccessKey: process.env.S3_SECRET_KEY as string,
-        accessKeyId: process.env.S3_ACCESS_KEY as string
+        secretAccessKey: this.configService.get<string>('S3_SECRET_KEY'),
+        accessKeyId: this.configService.get<string>('S3_ACCESS_KEY')
       }
     })
   }
@@ -21,7 +24,7 @@ export class S3Service {
     const parallelUploads3 = new Upload({
       client: this.s3,
       params: {
-        Bucket: process.env.S3_BUCKET_NAME as string,
+        Bucket: this.configService.get<string>('S3_BUCKET_NAME'),
         Key: filename,
         Body: readFileSync(filepath),
         ContentType: contentType
@@ -37,7 +40,7 @@ export class S3Service {
   createPresignedUrlWithClient(filename: string) {
     const contentType = mime.lookup(filename) || 'application/octet-stream'
     const command = new PutObjectCommand({
-      Bucket: process.env.S3_BUCKET_NAME as string,
+      Bucket: this.configService.get<string>('S3_BUCKET_NAME'),
       Key: filename,
       ContentType: contentType
     })

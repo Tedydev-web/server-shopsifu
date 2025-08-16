@@ -9,36 +9,34 @@ server.basePath: ''
 server.rewriteBasePath: false
 server.maxPayloadBytes: 2097152
 server.keepAliveTimeout: 120000
-server.maxConnections = 1000
+server.maxConnections: 1000
 
 # Elasticsearch Settings
 elasticsearch.hosts: ['http://elasticsearch:9200']
-elasticsearch.username: kibana_system
-elasticsearch.password: ${ELASTICSEARCH_PASSWORD}
 elasticsearch.requestTimeout: 60000
 elasticsearch.shardTimeout: 60000
 elasticsearch.pingTimeout: 3000
 elasticsearch.startupTimeout: 60000
-elasticsearch.maxSockets = 100
-elasticsearch.maxRetries = 3
+elasticsearch.maxSockets: 100
+elasticsearch.maxRetries: 3
 
 # Security Settings
-xpack.security.enabled: true
+xpack.security.enabled: false
 xpack.security.encryptionKey: 'something_at_least_32_characters_long'
 xpack.encryptedSavedObjects.encryptionKey: 'something_at_least_32_characters_long'
 
 # Monitoring
 xpack.monitoring.enabled: true
 xpack.monitoring.ui.container.elasticsearch.enabled: true
-xpack.monitoring.ui.container.logstash.enabled = false
+xpack.monitoring.ui.container.logstash.enabled: false
 
 # Reporting
 xpack.reporting.enabled: true
 xpack.reporting.kibanaServer.hostname: 'localhost'
 xpack.reporting.kibanaServer.port: 5601
 xpack.reporting.kibanaServer.protocol: 'http'
-xpack.reporting.concurrent = 10
-xpack.reporting.queue.timeout = 120000
+xpack.reporting.concurrent: 10
+xpack.reporting.queue.timeout: 120000
 
 # Canvas
 xpack.canvas.enabled: true
@@ -65,7 +63,7 @@ logging.level: info
 optimize.bundleFilter: '!tests'
 optimize.useBundleCache: true
 optimize.bundleDir: 'optimize/bundles'
-optimize.maxBundleSize = 2097152
+optimize.maxBundleSize: 2097152
 
 # UI Settings
 uiSettings.overrides.useUiSetting: true
@@ -85,17 +83,17 @@ elasticsearch.ssl.keyPassphrase: ''
 
 # Performance Tuning (OPTIMIZED FOR 30 CORES)
 # Memory optimization
-optimize.memory = true
-optimize.workers = 4
+optimize.memory: true
+optimize.workers: 4
 
 # Search optimization
-search.timeout = 60000
-search.maxConcurrentShardRequests = 256
+search.timeout: 60000
+search.maxConcurrentShardRequests: 256
 
 # Index pattern optimization
-indexPattern:placeholders:enabled = true
-indexPattern:placeholders:sampleDataSets = true
+indexPattern.placeholders.enabled: true
+indexPattern.placeholders.sampleDataSets: true
 
 # Dashboard optimization
-dashboard:defaultTilesCount = 50
-dashboard:maxTilesCount = 100
+dashboard.defaultTilesCount: 50
+dashboard.maxTilesCount: 100

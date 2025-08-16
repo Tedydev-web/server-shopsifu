@@ -35,8 +35,8 @@ COPY tsconfig*.json ./
 COPY nest-cli.json ./
 COPY .swcrc ./
 
-# Build application (OPTIMIZED FOR 30 CORES - 95GB RAM)
-RUN NODE_OPTIONS="--max-old-space-size=8192" npm run build
+# Build application
+RUN npm run build
 
 # Remove devDependencies and build deps
 RUN npm prune --omit=dev && npm cache clean --force && apk del .build-deps
@@ -45,15 +45,13 @@ FROM node:20-alpine AS production
 
 LABEL org.opencontainers.image.title="server-shopsifu" \
       org.opencontainers.image.source="https://github.com/Tedydev-web/server-shopsifu" \
-      org.opencontainers.image.description="Shopsifu backend (NestJS) production image - OPTIMIZED FOR 30 CORES" \
+      org.opencontainers.image.description="Shopsifu backend (NestJS) production image" \
       org.opencontainers.image.licenses="MIT"
 
 ENV NODE_ENV=production \
     TZ=Asia/Ho_Chi_Minh \
     PRISMA_CLIENT_ENGINE_TYPE=library \
-    PRISMA_HIDE_UPDATE_MESSAGE=1 \
-    NODE_OPTIONS="--max-old-space-size=35000 --enable-source-maps --max-semi-space-size=1024" \
-    UV_THREADPOOL_SIZE=120
+    PRISMA_HIDE_UPDATE_MESSAGE=1
 
 # Set working directory
 WORKDIR /app
@@ -92,5 +90,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
 # Use dumb-init for proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start application (OPTIMIZED FOR 30 CORES - 95GB RAM)
-CMD ["node", "--max-old-space-size=35000", "--max-semi-space-size=1024", "dist/main.js"]
+# Start application
+CMD ["node", "dist/main.js"]
