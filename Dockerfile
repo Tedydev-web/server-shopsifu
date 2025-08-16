@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 ENV NODE_ENV=development \
     HUSKY=0 \
@@ -41,7 +41,7 @@ RUN npm run build
 # Remove devDependencies and build deps
 RUN npm prune --omit=dev && npm cache clean --force && apk del .build-deps
 
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 LABEL org.opencontainers.image.title="server-shopsifu" \
       org.opencontainers.image.source="https://github.com/Tedydev-web/server-shopsifu" \
@@ -57,14 +57,15 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 # Install minimal runtime deps and create non-root user
-RUN apk add --no-cache \
-      curl \
-      tzdata \
-      openssl \
-      libc6-compat \
-      dumb-init \
+RUN apk update && apk add --no-cache \
+      curl~=8.6.0 \
+      tzdata~=2024a \
+      openssl~=3.3.0 \
+      libc6-compat~=1.2.5 \
+      dumb-init~=1.2.5 \
   && addgroup -g 1001 -S nodejs \
-  && adduser -S nestjs -u 1001
+  && adduser -S nestjs -u 1001 \
+  && apk del --purge apk-tools
 
 # Copy built application from builder stage (with correct ownership)
 COPY --chown=nestjs:nodejs --from=builder /app/package.json ./
