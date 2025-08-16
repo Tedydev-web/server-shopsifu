@@ -58,11 +58,11 @@ WORKDIR /app
 
 # Install minimal runtime deps and create non-root user
 RUN apk update && apk add --no-cache \
-      curl~=8.6.0 \
-      tzdata~=2024a \
-      openssl~=3.3.0 \
-      libc6-compat~=1.2.5 \
-      dumb-init~=1.2.5 \
+      curl \
+      tzdata \
+      openssl \
+      libc6-compat \
+      dumb-init \
   && addgroup -g 1001 -S nodejs \
   && adduser -S nestjs -u 1001 \
   && apk del --purge apk-tools
