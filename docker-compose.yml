@@ -20,11 +20,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '12.0'
-          memory: 25G
+          cpus: '14.0'
+          memory: 30G
         reservations:
-          cpus: '8.0'
-          memory: 20G
+          cpus: '10.0'
+          memory: 25G
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-shopsifu}']
       interval: 10s
@@ -47,11 +47,11 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '8.0'
+          memory: 30G
+        reservations:
           cpus: '6.0'
           memory: 25G
-        reservations:
-          cpus: '4.0'
-          memory: 20G
     healthcheck:
       test: ['CMD-SHELL', 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep -q PONG']
       interval: 10s
@@ -68,7 +68,7 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - 'ES_JAVA_OPTS=-Xms16g -Xmx16g'
+      - 'ES_JAVA_OPTS=-Xms20g -Xmx20g'
     volumes:
       - esdata:/usr/share/elasticsearch/data
       - ./config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
@@ -84,11 +84,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.5'
-          memory: 20G
+          cpus: '6.0'
+          memory: 25G
         reservations:
-          cpus: '3.0'
-          memory: 16G
+          cpus: '4.0'
+          memory: 20G
     healthcheck:
       test: ['CMD-SHELL', 'curl -fsS -m 5 http://localhost:9200 >/dev/null || exit 1']
       interval: 30s
@@ -110,8 +110,8 @@ services:
       - ./certs:/app/certs
       - ./upload:/app/upload
     tmpfs:
-      - /tmp:size=2g
-      - /app/temp:size=1g
+      - /tmp:size=4g
+      - /app/temp:size=2g
     depends_on:
       - postgres
       - redis
@@ -121,11 +121,11 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '8.0'
+          memory: 16G
+        reservations:
           cpus: '6.0'
           memory: 12G
-        reservations:
-          cpus: '4.0'
-          memory: 8G
     healthcheck:
       test: ['CMD-SHELL', 'curl -f http://localhost:3000/health || exit 1']
       interval: 30s
@@ -149,11 +149,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.5'
-          memory: 2.5G
+          cpus: '2.0'
+          memory: 4G
         reservations:
-          cpus: '1.0'
-          memory: 2G
+          cpus: '1.5'
+          memory: 3G
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -h localhost -p 6432 -U shopsifu']
       interval: 10s
