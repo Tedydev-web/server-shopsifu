@@ -136,41 +136,107 @@ jobs:
     if: always()
     steps:
       - name: 📢 Send Discord notification
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          STATUS: ${{ needs.deploy.outcome == 'success' && 'success' || 'failure' }}
-          REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-          DEPLOY_TIME: ${{ needs.deploy.outputs.deploy-time }}
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          timeout: 60s
+          command_timeout: 120s
+          script: |
+            set -euo pipefail
 
-          COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
-          ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
-          DESCRIPTION=$([ "$STATUS" = "success" ] && echo "🚀 **Deploy thành công**" || echo "❌ **Deploy thất bại**")
+            # Set environment variables
+            export DISCORD_WEBHOOK="${{ secrets.DISCORD_WEBHOOK }}"
+            export STATUS="${{ needs.deploy.outcome == 'success' && 'success' || 'failure' }}"
+            export BRANCH="${{ github.ref_name }}"
+            export ACTOR="${{ github.actor }}"
+            export COMMIT_SHA="${{ github.sha }}"
+            export COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
+            export COMMIT_DATE="${{ github.event.head_commit.timestamp }}"
+            export REPO="${{ github.repository }}"
+            export RUN_ID="${{ github.run_id }}"
+            export DEPLOY_TIME="${{ needs.deploy.outputs.deploy-time }}"
 
-          JSON_PAYLOAD=$(jq -n \
-            --arg status "$STATUS" \
-            --arg icon "$ICON" \
-            --arg description "$DESCRIPTION" \
-            --arg color "$COLOR" \
-            --arg deploy_time "$DEPLOY_TIME" \
-            --arg repo "$REPO" \
-            --arg run_id "$RUN_ID" \
-            ' {
-                embeds: [{
-                  title: "🚀 SERVER - Deploy Production",
-                  description: $description,
-                  color: ($color | tonumber),
-                  fields: [
-                    { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
-                    { name: "⏱️ Deploy Time", value: "\($deploy_time)s", inline: true },
-                    { name: "📦 Repository", value: $repo, inline: true }
-                  ],
-                  url: "https://github.com/\($repo)/actions/runs/\($run_id)",
-                  footer: { "text": "🚀 Deploy Production" },
-                  timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
-                }]
-              }')
+            # Change to project directory
+            cd "${{ env.VPS_PATH }}" || exit 1
 
-          curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" || echo "Lỗi gửi thông báo Discord"
+            # Install jq if not present
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq jq
+
+            # Get commit information
+            COMMIT_SHORT_SHA=$(echo "$COMMIT_SHA" | cut -c1-7)
+
+            # Get commit list (all commits in this push)
+            COMMIT_LIST=$(git log --oneline --no-merges --since="1 hour ago" | head -10 | sed 's/^/• /')
+
+            # Get changes summary (last 10 commits)
+            CHANGES_SUMMARY=$(git log --stat --oneline -10 | grep -E "^ [0-9]+ files? changed" | tail -1 || echo "Changes detected")
+
+            # Get Docker status with NAME, CREATED, STATUS, PORTS
+            DOCKER_STATUS=$(docker ps --format "table {{.Names}}\t{{.CreatedAt}}\t{{.Status}}\t{{.Ports}}" | head -10)
+
+            # Get image info
+            IMAGE_INFO=$(docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep "shopsifu" | head -5)
+
+            COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
+            ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
+            DESCRIPTION=$([ "$STATUS" = "success" ] && echo "🚀 **Deploy thành công**" || echo "❌ **Deploy thất bại**")
+
+            JSON_PAYLOAD=$(jq -n \
+              --arg status "$STATUS" \
+              --arg icon "$ICON" \
+              --arg description "$DESCRIPTION" \
+              --arg color "$COLOR" \
+              --arg branch "$BRANCH" \
+              --arg actor "$ACTOR" \
+              --arg commit_sha "$COMMIT_SHORT_SHA" \
+              --arg commit_message "$COMMIT_MESSAGE" \
+              --arg commit_date "$COMMIT_DATE" \
+              --arg changes_summary "$CHANGES_SUMMARY" \
+              --arg commit_list "$COMMIT_LIST" \
+              --arg docker_status "$DOCKER_STATUS" \
+              --arg image_info "$IMAGE_INFO" \
+              --arg deploy_time "$DEPLOY_TIME" \
+              --arg repo "$REPO" \
+              --arg run_id "$RUN_ID" \
+              ' {
+                  embeds: [{
+                    title: "🚀 SERVER - Deploy Production",
+                    description: $description,
+                    color: ($color | tonumber),
+                    fields: [
+                      { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
+                      { name: "🌿 Nhánh", value: $branch, inline: true },
+                      { name: "👤 Người thực hiện", value: $actor, inline: true },
+                      { name: "🔗 Commit SHA", value: "`\($commit_sha)`", inline: true },
+                      { name: "📅 Commit Date", value: $commit_date, inline: true },
+                      { name: "⏱️ Deploy Time", value: "\($deploy_time)s", inline: true },
+                      { name: "📝 Commit Message", value: $commit_message, inline: false },
+                      { name: "📊 Changes Summary", value: $changes_summary, inline: false },
+                      { name: "📋 Danh sách Commits", value: $commit_list, inline: false },
+                      { name: "🐳 Docker Status", value: "```\($docker_status)```", inline: false },
+                      { name: "🖼️ Image Info", value: "```\($image_info)```", inline: false }
+                    ],
+                    url: "https://github.com/\($repo)/actions/runs/\($run_id)",
+                    footer: { "text": "🚀 Deploy Production" },
+                    timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+                  }]
+                }')
+
+            # Send to Discord with retry logic
+            MAX_RETRIES=3
+            for i in $(seq 1 $MAX_RETRIES); do
+              if curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK"; then
+                echo "✅ Discord notification sent successfully"
+                break
+              else
+                echo "⚠️ Attempt $i/$MAX_RETRIES failed"
+                if [ $i -lt $MAX_RETRIES ]; then
+                  sleep 2
+                else
+                  echo "❌ Failed to send Discord notification after $MAX_RETRIES attempts"
+                fi
+              fi
+            done
