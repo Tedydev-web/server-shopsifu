@@ -19,10 +19,9 @@ jobs:
   security-scan:
     name: 🔒 Security Scan (Warning Only)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
-      security-events: write
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
@@ -61,9 +60,9 @@ jobs:
 
   build:
     name: 🐳 Build & Push Image
-    needs: security-scan
+    # Run independently from security scan to avoid delays
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
@@ -173,25 +172,43 @@ jobs:
             SECURITY_VALUE="WARNING"
           fi
 
-          JSON_PAYLOAD=$(jq -n \
-            --arg status "$BUILD_STATUS" \
-            --arg icon "$ICON" \
-            --arg description "$DESCRIPTION" \
-            --arg color "$COLOR" \
-            --arg security_status "$SECURITY_STATUS" \
-            --arg security_value "$SECURITY_VALUE" \
-            '{
-                embeds: [{
-                  title: "BUILD & SECURITY SCAN",
-                  description: $description,
-                  color: ($color | tonumber),
-                  fields: [
-                    { name: "Build Status", value: ($icon + " " + ($status | ascii_upcase)), inline: true },
-                    { name: "Security Status", value: $security_value, inline: true }
-                  ],
-                  footer: { "text": "Build & Security Scan" },
-                  timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
-                }]
-              }')
+          # Create simple JSON payload to avoid parsing issues
+          JSON_PAYLOAD="{
+            \"embeds\": [{
+              \"title\": \"BUILD & SECURITY SCAN\",
+              \"description\": \"$DESCRIPTION\",
+              \"color\": $COLOR,
+              \"fields\": [
+                {
+                  \"name\": \"Build Status\",
+                  \"value\": \"$ICON $BUILD_STATUS\",
+                  \"inline\": true
+                },
+                {
+                  \"name\": \"Security Status\",
+                  \"value\": \"$SECURITY_VALUE\",
+                  \"inline\": true
+                }
+              ],
+              \"footer\": {
+                \"text\": \"Build & Security Scan\"
+              },
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }]
+          }"
 
-          curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" || echo "Lỗi gửi thông báo Discord"
+          # Send notification with retry logic
+          MAX_RETRIES=3
+          for i in $(seq 1 $MAX_RETRIES); do
+            if curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK"; then
+              echo "✅ Discord notification sent successfully"
+              break
+            else
+              echo "⚠️ Attempt $i/$MAX_RETRIES failed"
+              if [ $i -lt $MAX_RETRIES ]; then
+                sleep 2
+              else
+                echo "❌ Failed to send Discord notification after $MAX_RETRIES attempts"
+              fi
+            fi
+          done

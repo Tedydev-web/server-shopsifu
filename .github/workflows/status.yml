@@ -25,10 +25,25 @@ jobs:
   status-check:
     name: 📊 Check System Status
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
+
+      - name: 🔌 Test SSH Connection
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          timeout: 30s
+          command_timeout: 60s
+          script: |
+            echo "🔌 Testing SSH connection..."
+            echo "✅ SSH connection successful"
+            echo "📍 Current directory: $(pwd)"
+            echo "👤 User: $(whoami)"
+            echo "🖥️  Hostname: $(hostname)"
 
       - name: 🔍 Check Docker Compose Status
         uses: appleboy/ssh-action@v0.1.10
@@ -36,6 +51,8 @@ jobs:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          timeout: 60s
+          command_timeout: 120s
           script: |
             set -euo pipefail
             cd "${{ env.VPS_PATH }}"
@@ -47,6 +64,8 @@ jobs:
               echo "✅ docker-compose.yml found"
             else
               echo "❌ docker-compose.yml not found"
+              echo "📁 Current directory contents:"
+              ls -la
               exit 1
             fi
 

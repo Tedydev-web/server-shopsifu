@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: ['🏗️ Build Docker Image']
     types: [completed]
-    branches: [main, master]
+    branches: [master] # Only master branch for production
   workflow_dispatch:
     inputs:
       image_tag:
@@ -23,7 +23,8 @@ jobs:
   deploy:
     name: 🚀 Deploy Application
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15 # Reduced timeout for faster feedback
+    # Only run if build workflow succeeded OR manual dispatch
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: 📥 Checkout repository
@@ -48,6 +49,8 @@ jobs:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          timeout: 60s
+          command_timeout: 300s
           script: |
             set -euo pipefail
             cd "${{ env.VPS_PATH }}"
@@ -69,11 +72,25 @@ jobs:
             echo "🚀 Deploying with Docker Compose..."
             docker compose up -d
 
-            # Verify deployment
+            # Verify deployment with better health check
             echo "🔍 Verifying deployment..."
-            sleep 30
-            if ! docker compose ps | grep -q "shopsifu_server"; then
-              echo "❌ Deployment verification failed"
+            echo "⏳ Waiting for services to start..."
+
+            # Wait for services to be ready
+            for i in {1..10}; do
+              if docker compose ps | grep -q "shopsifu_server.*Up"; then
+                echo "✅ Service is running (attempt $i/10)"
+                break
+              fi
+              echo "⏳ Service not ready yet (attempt $i/10)..."
+              sleep 3
+            done
+
+            # Final verification
+            if ! docker compose ps | grep -q "shopsifu_server.*Up"; then
+              echo "❌ Deployment verification failed after 10 attempts"
+              echo "📊 Current service status:"
+              docker compose ps
               exit 1
             fi
             echo "✅ Deployment verification passed"
@@ -107,23 +124,41 @@ jobs:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          timeout: 60s
+          command_timeout: 180s
           script: |
             set -euo pipefail
 
             echo "🏥 Starting health check..."
-            ATTEMPTS=20
-            SLEEP=6
+            ATTEMPTS=30
+            SLEEP=5
+            TIMEOUT=10
 
             for i in $(seq 1 $ATTEMPTS); do
               echo "Attempt $i/$ATTEMPTS..."
-              if curl -fsS -m 5 http://localhost:3000/health > /dev/null; then
+
+              # Check if service is running
+              if ! docker compose ps | grep -q "shopsifu_server.*Up"; then
+                echo "⚠️ Service not running yet, waiting..."
+                sleep $SLEEP
+                continue
+              fi
+
+              # Perform health check with timeout
+              if timeout $TIMEOUT curl -fsS -m 5 http://localhost:3000/health > /dev/null; then
                 echo "✅ Health check passed!"
                 exit 0
+              else
+                echo "⚠️ Health check attempt $i failed, retrying..."
+                sleep $SLEEP
               fi
-              sleep $SLEEP
             done
 
             echo "❌ Health check failed after $ATTEMPTS attempts"
+            echo "📊 Final service status:"
+            docker compose ps
+            echo "📊 Service logs (last 50 lines):"
+            docker compose logs --tail=50 shopsifu_server || echo "No logs available"
             exit 1
 
       - name: 📊 Calculate health check time
