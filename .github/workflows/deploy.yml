@@ -186,11 +186,16 @@ jobs:
             # Get commit information
             COMMIT_SHORT_SHA=$(echo "$COMMIT_SHA" | cut -c1-7)
 
-            # Get commit list (all commits in this push) - fallback to recent commits if git log fails
-            COMMIT_LIST=$(git log --oneline --no-merges --since="1 hour ago" | head -8 | sed 's/^/• /' | sed 's/  */ /g' | tr '\n' ' ' 2>/dev/null || echo "• Recent commits (git log unavailable)")
-
-            # Get changes summary (last 10 commits) - fallback if git log fails
-            CHANGES_SUMMARY=$(git log --stat --oneline -10 | grep -E "^ [0-9]+ files? changed" | tail -1 2>/dev/null || echo "Changes detected (git log unavailable)")
+            # Get commit list for this specific push - using GitHub context
+            if [ "${{ github.event_name }}" = "workflow_run" ]; then
+              # For workflow_run events, get commits from the triggering workflow
+              COMMIT_LIST=$(git log --oneline --no-merges ${{ github.event.workflow_run.before }}..${{ github.event.workflow_run.after }} | sed 's/^/• /' 2>/dev/null || echo "• Commits from this push (git log unavailable)")
+              CHANGES_SUMMARY=$(git diff --stat ${{ github.event.workflow_run.before }}..${{ github.event.workflow_run.after }} | tail -1 | sed 's/^ //' 2>/dev/null || echo "Changes from this push (git diff unavailable)")
+            else
+              # For manual dispatch, get recent commits
+              COMMIT_LIST=$(git log --oneline --no-merges -5 | sed 's/^/• /' 2>/dev/null || echo "• Recent commits (git log unavailable)")
+              CHANGES_SUMMARY=$(git log --stat --oneline -5 | grep -E "^ [0-9]+ files? changed" | tail -1 2>/dev/null || echo "Changes detected (git log unavailable)")
+            fi
 
             # Get Docker status with better formatting for Discord
             DOCKER_STATUS=$(docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | head -8 2>/dev/null | sed 's/  */ | /g' | sed 's/| |/|/g' | sed 's/Up [0-9]* seconds/Up/g' | sed 's/Up [0-9]* minutes/Up/g' | sed 's/Up [0-9]* hours/Up/g' | tr '\n' ' ' || echo "Docker status unavailable")
@@ -220,7 +225,7 @@ jobs:
             COMMIT_MESSAGE=$(echo "$COMMIT_MESSAGE" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 1000)
             COMMIT_DATE=$(echo "$COMMIT_DATE" | tr -d '\n\r' | head -c 100)
             DEPLOY_TIME=$(echo "$DEPLOY_TIME" | tr -d '\n\r' | head -c 50)
-            COMMIT_LIST=$(echo "$COMMIT_LIST" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 800)
+            COMMIT_LIST=$(echo "$COMMIT_LIST" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 800)
             CHANGES_SUMMARY=$(echo "$CHANGES_SUMMARY" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 200)
             DOCKER_STATUS=$(echo "$DOCKER_STATUS" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | sed 's/Up [0-9]* seconds/Up/g' | head -c 1000)
             IMAGE_INFO=$(echo "$IMAGE_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 500)
@@ -285,7 +290,7 @@ jobs:
                       { name: "⏱️ Deploy Time", value: $deploy_time, inline: true },
                       { name: "📝 Commit Message", value: $commit_message, inline: false },
                       { name: "📊 Changes Summary", value: $changes_summary, inline: false },
-                      { name: "📋 Danh sách Commits", value: $commit_list, inline: false },
+                      { name: "📋 Danh sách Commits", value: "```\($commit_list)```", inline: false },
                       { name: "🐳 Docker Status", value: "```\($docker_status)```", inline: false },
                       { name: "🖼️ Image Info", value: "```\($image_info)```", inline: false },
                       { name: "💻 System Info", value: "```\($system_info)```", inline: false },
