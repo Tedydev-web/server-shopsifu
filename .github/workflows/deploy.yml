@@ -187,16 +187,16 @@ jobs:
             COMMIT_SHORT_SHA=$(echo "$COMMIT_SHA" | cut -c1-7)
 
             # Get commit list (all commits in this push) - fallback to recent commits if git log fails
-            COMMIT_LIST=$(git log --oneline --no-merges --since="1 hour ago" | head -10 | sed 's/^/• /' 2>/dev/null || echo "• Recent commits (git log unavailable)")
+            COMMIT_LIST=$(git log --oneline --no-merges --since="1 hour ago" | head -8 | sed 's/^/• /' | sed 's/  */ /g' | tr '\n' ' ' 2>/dev/null || echo "• Recent commits (git log unavailable)")
 
             # Get changes summary (last 10 commits) - fallback if git log fails
             CHANGES_SUMMARY=$(git log --stat --oneline -10 | grep -E "^ [0-9]+ files? changed" | tail -1 2>/dev/null || echo "Changes detected (git log unavailable)")
 
-            # Get Docker status with NAME, CREATED, STATUS, PORTS
-            DOCKER_STATUS=$(docker ps --format "table {{.Names}}\t{{.CreatedAt}}\t{{.Status}}\t{{.Ports}}" | head -10 2>/dev/null || echo "Docker status unavailable")
+            # Get Docker status with better formatting for Discord
+            DOCKER_STATUS=$(docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | head -8 2>/dev/null | sed 's/  */ | /g' | sed 's/| |/|/g' | sed 's/Up [0-9]* seconds/Up/g' | sed 's/Up [0-9]* minutes/Up/g' | sed 's/Up [0-9]* hours/Up/g' | tr '\n' ' ' || echo "Docker status unavailable")
 
-            # Get image info
-            IMAGE_INFO=$(docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep "shopsifu" | head -5 2>/dev/null || echo "Image info unavailable")
+            # Get image info with better formatting
+            IMAGE_INFO=$(docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep "shopsifu" | head -3 2>/dev/null | sed 's/  */ | /g' | sed 's/| |/|/g' | tr '\n' ' ' || echo "Image info unavailable")
 
             # Get system info
             SYSTEM_INFO=$(echo "CPU: $(nproc) cores | Memory: $(free -h | grep Mem | awk '{print $2}') | Disk: $(df -h / | tail -1 | awk '{print $4}') available" 2>/dev/null || echo "System info unavailable")
@@ -216,17 +216,17 @@ jobs:
             COMMIT_DATE="${COMMIT_DATE:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
             DEPLOY_TIME="${DEPLOY_TIME:-'N/A'}"
 
-            # Validate and sanitize values for JSON - improved sanitization
-            COMMIT_MESSAGE=$(echo "$COMMIT_MESSAGE" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 1000)
+            # Validate and sanitize values for JSON - improved sanitization with Discord formatting
+            COMMIT_MESSAGE=$(echo "$COMMIT_MESSAGE" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 1000)
             COMMIT_DATE=$(echo "$COMMIT_DATE" | tr -d '\n\r' | head -c 100)
             DEPLOY_TIME=$(echo "$DEPLOY_TIME" | tr -d '\n\r' | head -c 50)
-            COMMIT_LIST=$(echo "$COMMIT_LIST" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 800)
-            CHANGES_SUMMARY=$(echo "$CHANGES_SUMMARY" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 200)
-            DOCKER_STATUS=$(echo "$DOCKER_STATUS" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 1000)
-            IMAGE_INFO=$(echo "$IMAGE_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 500)
-            SYSTEM_INFO=$(echo "$SYSTEM_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 200)
-            ENV_INFO=$(echo "$ENV_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 300)
-            NETWORK_INFO=$(echo "$NETWORK_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 200)
+            COMMIT_LIST=$(echo "$COMMIT_LIST" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 800)
+            CHANGES_SUMMARY=$(echo "$CHANGES_SUMMARY" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 200)
+            DOCKER_STATUS=$(echo "$DOCKER_STATUS" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | sed 's/Up [0-9]* seconds/Up/g' | head -c 1000)
+            IMAGE_INFO=$(echo "$IMAGE_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 500)
+            SYSTEM_INFO=$(echo "$SYSTEM_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 200)
+            ENV_INFO=$(echo "$ENV_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 300)
+            NETWORK_INFO=$(echo "$NETWORK_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/  */ /g' | head -c 200)
 
             # Debug: Print sanitized values
             echo "🔍 Debug: Sanitized values:"
