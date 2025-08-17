@@ -22,12 +22,12 @@ jobs:
     if: always()
     steps:
       - name: 📥 Checkout repository for commit info
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: 📢 Send Discord notification
-        uses: appleboy/ssh-action@v0.1.10
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USERNAME }}
@@ -37,10 +37,7 @@ jobs:
           script: |
             set -euo pipefail
 
-            # Tối ưu hóa: Giảm output và tăng hiệu suất
-            exec 2>/dev/null || true
-
-            # Set environment variables
+            # Set environment variables (with error handling)
             export DISCORD_WEBHOOK="${{ secrets.DISCORD_WEBHOOK }}"
             export STATUS="${{ github.event.workflow_run.conclusion == 'success' && 'success' || 'failure' }}"
             export BRANCH="${{ github.event.workflow_run.head_branch || github.ref_name }}"
@@ -63,23 +60,43 @@ jobs:
             export COMMIT_MESSAGE="${{ github.event.workflow_run.head_commit.message || 'Deployment from build workflow' }}"
             export COMMIT_DATE="${{ github.event.workflow_run.head_commit.timestamp || github.event.workflow_run.created_at || '' }}"
 
-            # Change to project directory
-            cd "${{ env.VPS_PATH }}" || exit 1
+            # Change to project directory with better error handling
+            if [ -n "${{ env.VPS_PATH }}" ] && [ -d "${{ env.VPS_PATH }}" ]; then
+              cd "${{ env.VPS_PATH }}" || {
+                echo "⚠️ Cannot change to project directory, using current directory"
+                pwd
+              }
+            else
+              echo "⚠️ VPS_PATH not set or directory doesn't exist, using current directory"
+              pwd
+            fi
 
-            # Install jq if not present (silent install)
-            sudo apt-get update -qq >/dev/null 2>&1
-            sudo apt-get install -y -qq jq >/dev/null 2>&1
+            # Install jq if not present (with better error handling)
+            if ! command -v jq >/dev/null 2>&1; then
+              echo "📦 Installing jq..."
+              if sudo apt-get update -qq >/dev/null 2>&1 && sudo apt-get install -y -qq jq >/dev/null 2>&1; then
+                echo "✅ jq installed successfully"
+              else
+                echo "⚠️ Failed to install jq, using fallback method"
+                export JQ_UNAVAILABLE=true
+              fi
+            else
+              echo "✅ jq is already available"
+            fi
 
             # Get commit information
             COMMIT_SHORT_SHA=$(echo "$COMMIT_SHA" | cut -c1-7)
 
-            # Tối ưu hóa: Lấy commit info một cách hiệu quả
+            # Get commit info with improved error handling
+            echo "📊 Gathering commit information..."
+
             if [ "${{ github.event_name }}" = "workflow_run" ]; then
               HEAD_SHA="${{ github.event.workflow_run.head_sha || '' }}"
-              if [ -n "$HEAD_SHA" ]; then
+              if [ -n "$HEAD_SHA" ] && git rev-parse --verify "$HEAD_SHA" >/dev/null 2>&1; then
                 COMMIT_LIST=$(git log --oneline --no-merges -3 "$HEAD_SHA" 2>/dev/null | sed 's/^/• /' | head -3 || echo "• Recent commits from head SHA")
                 CHANGES_SUMMARY=$(git log --stat --oneline -1 "$HEAD_SHA" 2>/dev/null | grep -E "^ [0-9]+ files? changed" | tail -1 || echo "Changes from head SHA")
               else
+                echo "⚠️ HEAD_SHA not available or invalid, using current branch"
                 COMMIT_LIST=$(git log --oneline --no-merges -3 2>/dev/null | sed 's/^/• /' | head -3 || echo "• Recent commits")
                 CHANGES_SUMMARY=$(git log --stat --oneline -1 2>/dev/null | grep -E "^ [0-9]+ files? changed" | tail -1 || echo "Recent changes")
               fi
@@ -88,101 +105,158 @@ jobs:
               CHANGES_SUMMARY=$(git log --stat --oneline -1 2>/dev/null | grep -E "^ [0-9]+ files? changed" | tail -1 || echo "Recent changes")
             fi
 
-            # Tối ưu hóa: Giới hạn độ dài output và sanitize
+            # Sanitize and limit output length
             COMMIT_LIST=$(echo "$COMMIT_LIST" | head -3 | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 300)
             CHANGES_SUMMARY=$(echo "$CHANGES_SUMMARY" | head -c 100 | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
             COMMIT_MESSAGE=$(echo "$COMMIT_MESSAGE" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 200)
 
-            # Get Docker status (simplified)
-            DOCKER_STATUS=$(docker ps --format "table {{.Names}}\t{{.Status}}" | head -6 2>/dev/null | sed 's/  */ | /g' | tr '\n' ' ' | head -c 500 || echo "Docker status unavailable")
+            # Get Docker status with error handling
+            echo "🐳 Getting Docker status..."
+            if command -v docker >/dev/null 2>&1; then
+              DOCKER_STATUS=$(docker ps --format "table {{.Names}}\t{{.Status}}" 2>/dev/null | head -6 | sed 's/  */ | /g' | tr '\n' ' ' | head -c 500 || echo "Docker containers not accessible")
+            else
+              DOCKER_STATUS="Docker not available"
+            fi
 
-            # Get basic system info
-            SYSTEM_INFO="CPU: $(nproc) cores | Memory: $(free -h | grep Mem | awk '{print $2}' 2>/dev/null || echo 'N/A') | Disk: $(df -h / | tail -1 | awk '{print $4}' 2>/dev/null || echo 'N/A') available"
+            # Get basic system info with error handling
+            echo "💻 Getting system information..."
+            CPU_CORES=$(nproc 2>/dev/null || echo "N/A")
+            MEMORY=$(free -h 2>/dev/null | grep Mem | awk '{print $2}' || echo "N/A")
+            DISK_SPACE=$(df -h / 2>/dev/null | tail -1 | awk '{print $4}' || echo "N/A")
+            SYSTEM_INFO="CPU: $CPU_CORES cores | Memory: $MEMORY | Disk: $DISK_SPACE available"
 
             # Sanitize system info
             SYSTEM_INFO=$(echo "$SYSTEM_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 200)
 
-            # Create simplified JSON payload with better error handling
-            JSON_PAYLOAD=$(jq -n \
-              --arg status "$STATUS" \
-              --arg icon "$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")" \
-              --arg description "$([ "$STATUS" = "success" ] && echo "🚀 Deploy thành công" || echo "❌ Deploy thất bại")" \
-              --arg color "$([ "$STATUS" = "success" ] && echo "3066993" || echo "15158332")" \
-              --arg branch "$BRANCH" \
-              --arg actor "$ACTOR" \
-              --arg commit_sha "$COMMIT_SHORT_SHA" \
-              --arg commit_message "$COMMIT_MESSAGE" \
-              --arg changes_summary "$CHANGES_SUMMARY" \
-              --arg commit_list "$COMMIT_LIST" \
-              --arg docker_status "$DOCKER_STATUS" \
-              --arg system_info "$SYSTEM_INFO" \
-              --arg repo "$REPO" \
-              --arg run_id "$RUN_ID" \
-              --arg error_details "$ERROR_DETAILS" \
-              --arg failure_reason "$FAILURE_REASON" \
-              '{
-                embeds: [{
-                  title: "🚀 SERVER - Deploy Production",
-                  description: $description,
-                  color: ($color | tonumber),
-                  fields: [
-                    { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
-                    { name: "🌿 Nhánh", value: $branch, inline: true },
-                    { name: "👤 Người thực hiện", value: $actor, inline: true },
-                    { name: "🔗 Commit SHA", value: "`\($commit_sha)`", inline: true },
-                    { name: "📝 Commit Message", value: $commit_message, inline: false },
-                    { name: "📊 Changes Summary", value: $changes_summary, inline: false },
-                    { name: "📋 Danh sách Commits", value: "```\($commit_list)```", inline: false },
-                    { name: "🐳 Docker Status", value: "```\($docker_status)```", inline: false },
-                    { name: "💻 System Info", value: "```\($system_info)```", inline: false }
-                    $([ -n "$ERROR_DETAILS" ] && echo '{ name: "🚨 Error Details", value: $error_details, inline: false },' || echo '') \
-                    $([ -n "$ERROR_DETAILS" ] && echo '{ name: "❌ Failure Reason", value: $failure_reason, inline: false },' || echo '') \
-                  ],
-                  url: "https://github.com/\($repo)/actions/runs/\($run_id)",
-                  footer: { "text": "🚀 Deploy Production (Optimized)" },
-                  timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
-                }]
-              }' 2>/dev/null || echo '{"error": "JSON generation failed"}')
+            # Create JSON payload with improved error handling
+            echo "📝 Creating Discord notification payload..."
 
-            # Validate JSON payload with better error handling
-            if ! echo "$JSON_PAYLOAD" | jq . >/dev/null 2>&1; then
-              echo "❌ Invalid JSON payload generated"
-              echo "❌ JSON content: $JSON_PAYLOAD"
-              # Create a simple fallback payload
-              JSON_PAYLOAD='{"embeds":[{"title":"🚀 SERVER - Deploy Production","description":"🚀 Deploy thành công","color":3066993,"fields":[{"name":"📊 Trạng thái","value":"✅ SUCCESS","inline":true},{"name":"🌿 Nhánh","value":"'$BRANCH'","inline":true},{"name":"👤 Người thực hiện","value":"'$ACTOR'","inline":true},{"name":"🔗 Commit SHA","value":"`'$COMMIT_SHORT_SHA'`","inline":true}],"footer":{"text":"🚀 Deploy Production (Fallback"},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}]}'
+            if [ "${JQ_UNAVAILABLE:-false}" = "true" ]; then
+              echo "⚠️ jq unavailable, using fallback JSON creation"
+              # Create fallback payload without jq
+              JSON_PAYLOAD='{"embeds":[{"title":"🚀 SERVER - Deploy Production","description":"'
+              if [ "$STATUS" = "success" ]; then
+                JSON_PAYLOAD="${JSON_PAYLOAD}🚀 Deploy thành công"
+              else
+                JSON_PAYLOAD="${JSON_PAYLOAD}❌ Deploy thất bại"
+              fi
+              JSON_PAYLOAD="${JSON_PAYLOAD}'","color":'
+              if [ "$STATUS" = "success" ]; then
+                JSON_PAYLOAD="${JSON_PAYLOAD}3066993"
+              else
+                JSON_PAYLOAD="${JSON_PAYLOAD}15158332"
+              fi
+              JSON_PAYLOAD="${JSON_PAYLOAD}',"fields":[{"name":"📊 Trạng thái","value":"'
+              if [ "$STATUS" = "success" ]; then
+                JSON_PAYLOAD="${JSON_PAYLOAD}✅ SUCCESS"
+              else
+                JSON_PAYLOAD="${JSON_PAYLOAD}❌ FAILURE"
+              fi
+              JSON_PAYLOAD="${JSON_PAYLOAD}'","inline":true},{"name":"🌿 Nhánh","value":"'"$BRANCH"'","inline":true},{"name":"👤 Người thực hiện","value":"'"$ACTOR"'","inline":true},{"name":"🔗 Commit SHA","value":"`'"$COMMIT_SHORT_SHA"'`","inline":true}],"footer":{"text":"🚀 Deploy Production (Fallback)"},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}]}'
+            else
+              # Use jq for proper JSON creation
+              JSON_PAYLOAD=$(jq -n \
+                --arg status "$STATUS" \
+                --arg icon "$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")" \
+                --arg description "$([ "$STATUS" = "success" ] && echo "🚀 Deploy thành công" || echo "❌ Deploy thất bại")" \
+                --arg color "$([ "$STATUS" = "success" ] && echo "3066993" || echo "15158332")" \
+                --arg branch "$BRANCH" \
+                --arg actor "$ACTOR" \
+                --arg commit_sha "$COMMIT_SHORT_SHA" \
+                --arg commit_message "$COMMIT_MESSAGE" \
+                --arg changes_summary "$CHANGES_SUMMARY" \
+                --arg commit_list "$COMMIT_LIST" \
+                --arg docker_status "$DOCKER_STATUS" \
+                --arg system_info "$SYSTEM_INFO" \
+                --arg repo "$REPO" \
+                --arg run_id "$RUN_ID" \
+                --arg error_details "$ERROR_DETAILS" \
+                --arg failure_reason "$FAILURE_REASON" \
+                '{
+                  embeds: [{
+                    title: "🚀 SERVER - Deploy Production",
+                    description: $description,
+                    color: ($color | tonumber),
+                    fields: [
+                      { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
+                      { name: "🌿 Nhánh", value: $branch, inline: true },
+                      { name: "👤 Người thực hiện", value: $actor, inline: true },
+                      { name: "🔗 Commit SHA", value: "`\($commit_sha)`", inline: true },
+                      { name: "📝 Commit Message", value: $commit_message, inline: false },
+                      { name: "📊 Changes Summary", value: $changes_summary, inline: false },
+                      { name: "📋 Danh sách Commits", value: "```\($commit_list)```", inline: false },
+                      { name: "🐳 Docker Status", value: "```\($docker_status)```", inline: false },
+                      { name: "💻 System Info", value: "```\($system_info)```", inline: false }
+                    ] + (if $error_details != "" then [
+                      { name: "🚨 Error Details", value: $error_details, inline: false },
+                      { name: "❌ Failure Reason", value: $failure_reason, inline: false }
+                    ] else [] end),
+                    url: "https://github.com/\($repo)/actions/runs/\($run_id)",
+                    footer: { "text": "🚀 Deploy Production (Enhanced)" },
+                    timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+                  }]
+                }' 2>/dev/null || {
+                  echo "⚠️ jq JSON creation failed, using fallback"
+                  JSON_PAYLOAD='{"embeds":[{"title":"🚀 SERVER - Deploy Production","description":"🚀 Deploy thành công","color":3066993,"fields":[{"name":"📊 Trạng thái","value":"✅ SUCCESS","inline":true},{"name":"🌿 Nhánh","value":"'"$BRANCH"'","inline":true},{"name":"👤 Người thực hiện","value":"'"$ACTOR"'","inline":true},{"name":"🔗 Commit SHA","value":"`'"$COMMIT_SHORT_SHA"'`","inline":true}],"footer":{"text":"🚀 Deploy Production (Fallback)"},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}]}'
+                }
+              )
             fi
 
-            # Send to Discord with improved retry logic
+            # Validate JSON payload
+            if [ "${JQ_UNAVAILABLE:-false}" != "true" ] && ! echo "$JSON_PAYLOAD" | jq . >/dev/null 2>&1; then
+              echo "⚠️ Invalid JSON payload generated, using simple fallback"
+              JSON_PAYLOAD='{"embeds":[{"title":"🚀 SERVER - Deploy Production","description":"'"$([ "$STATUS" = "success" ] && echo "🚀 Deploy thành công" || echo "❌ Deploy thất bại")"'","color":'"$([ "$STATUS" = "success" ] && echo "3066993" || echo "15158332")"',"fields":[{"name":"📊 Trạng thái","value":"'"$([ "$STATUS" = "success" ] && echo "✅ SUCCESS" || echo "❌ FAILURE")"'","inline":true},{"name":"🌿 Nhánh","value":"'"$BRANCH"'","inline":true},{"name":"👤 Người thực hiện","value":"'"$ACTOR"'","inline":true},{"name":"🔗 Commit SHA","value":"`'"$COMMIT_SHORT_SHA"'`","inline":true}],"footer":{"text":"🚀 Deploy Production (Simple)"},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}]}'
+            fi
+
+            # Send to Discord with enhanced retry logic
+            echo "📡 Sending Discord notification..."
             MAX_RETRIES=3
             SUCCESS=false
 
+            # Check if Discord webhook is available
+            if [ -z "$DISCORD_WEBHOOK" ]; then
+              echo "❌ Discord webhook not configured"
+              echo "⚠️ Skipping notification, but not failing the workflow"
+              exit 0
+            fi
+
             for i in $(seq 1 $MAX_RETRIES); do
               echo "🔄 Attempting to send Discord notification (attempt $i/$MAX_RETRIES)..."
-              
-              RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" 2>/dev/null || echo "HTTP_STATUS:000")
-              HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
-              
-              if [ "$HTTP_STATUS" = "204" ] || [ "$HTTP_STATUS" = "200" ]; then
-                echo "✅ Discord notification sent successfully (HTTP $HTTP_STATUS)"
-                SUCCESS=true
-                break
-              else
-                echo "⚠️ Attempt $i/$MAX_RETRIES failed (HTTP $HTTP_STATUS)"
-                if [ $i -lt $MAX_RETRIES ]; then
-                  echo "⏳ Waiting 2 seconds before retry..."
-                  sleep 2
+
+              # Send notification with timeout and better error handling
+              if RESPONSE=$(timeout 30 curl -s -w "\nHTTP_STATUS:%{http_code}" -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK" 2>/dev/null); then
+                HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+
+                if [ "$HTTP_STATUS" = "204" ] || [ "$HTTP_STATUS" = "200" ]; then
+                  echo "✅ Discord notification sent successfully (HTTP $HTTP_STATUS)"
+                  SUCCESS=true
+                  break
+                else
+                  echo "⚠️ Attempt $i/$MAX_RETRIES failed (HTTP $HTTP_STATUS)"
+                  if [ "$i" = "$MAX_RETRIES" ]; then
+                    echo "📝 Response details: $(echo "$RESPONSE" | head -5)"
+                  fi
                 fi
+              else
+                echo "⚠️ Attempt $i/$MAX_RETRIES failed (network/timeout error)"
+              fi
+
+              if [ $i -lt $MAX_RETRIES ]; then
+                echo "⏳ Waiting 3 seconds before retry..."
+                sleep 3
               fi
             done
 
+            # Final status report
             if [ "$SUCCESS" = "true" ]; then
               echo "🎉 Discord notification process completed successfully"
               echo "📊 Final status: $STATUS"
               echo "✅ All operations completed without errors"
+              exit 0
             else
               echo "❌ Failed to send Discord notification after $MAX_RETRIES attempts"
-              echo "❌ Final HTTP Status: $HTTP_STATUS"
-              echo "⚠️ Continuing without failing the workflow..."
-              # Don't exit with error code to avoid failing the workflow
+              echo "⚠️ Notification failed, but workflow continues without error"
+              echo "🔍 Check Discord webhook URL and network connectivity"
+              # Exit successfully to avoid failing the workflow
               exit 0
             fi
