@@ -116,8 +116,9 @@ jobs:
           provenance: false
           sbom: false
           outputs: type=image,compression=gzip
-          cache-from: type=gha,scope=${{ github.workflow }}-${{ github.ref }}
-          cache-to: type=gha,mode=max,scope=${{ github.workflow }}-${{ github.ref }}
+          # Temporarily disabled cache due to GitHub Actions Cache service issues
+          # cache-from: type=gha,scope=${{ github.workflow }}-${{ github.ref }}
+          # cache-to: type=gha,mode=max,scope=${{ github.workflow }}-${{ github.ref }}
 
       - name: ✅ Verify build
         run: |
