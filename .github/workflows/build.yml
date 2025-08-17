@@ -166,22 +166,30 @@ jobs:
             DESCRIPTION="$DESCRIPTION\n⚠️ **Có cảnh báo bảo mật**"
           fi
 
+          # Create JSON payload without emojis to avoid jq parsing issues
+          if [ "$SECURITY_STATUS" = "success" ]; then
+            SECURITY_VALUE="PASS"
+          else
+            SECURITY_VALUE="WARNING"
+          fi
+
           JSON_PAYLOAD=$(jq -n \
             --arg status "$BUILD_STATUS" \
             --arg icon "$ICON" \
             --arg description "$DESCRIPTION" \
             --arg color "$COLOR" \
             --arg security_status "$SECURITY_STATUS" \
-            ' {
+            --arg security_value "$SECURITY_VALUE" \
+            '{
                 embeds: [{
-                  title: "🏗️ BUILD & SECURITY SCAN",
+                  title: "BUILD & SECURITY SCAN",
                   description: $description,
                   color: ($color | tonumber),
                   fields: [
-                    { name: "📊 Build Status", value: "\($icon) \($status | ascii_upcase)", inline: true },
-                    { name: "🔒 Security Status", value: ($security_status == "success" ? "✅ PASS" : "⚠️ WARNING"), inline: true }
+                    { name: "Build Status", value: ($icon + " " + ($status | ascii_upcase)), inline: true },
+                    { name: "Security Status", value: $security_value, inline: true }
                   ],
-                  footer: { "text": "🏗️ Build & Security Scan" },
+                  footer: { "text": "Build & Security Scan" },
                   timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
                 }]
               }')
