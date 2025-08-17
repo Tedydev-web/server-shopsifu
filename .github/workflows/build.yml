@@ -102,19 +102,26 @@ jobs:
       - name: 📢 Send Discord notification
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          BUILD_STATUS: ${{ needs.build.outcome == 'success' && 'success' || 'failure' }}
+          BUILD_OUTCOME: ${{ needs.build.outcome }}
+          BUILD_RESULT: ${{ needs.build.result }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
 
-          # Determine build status
-          if [ "$BUILD_STATUS" = "success" ]; then
+          # Debug build status
+          echo "🔍 Build Outcome: $BUILD_OUTCOME"
+          echo "🔍 Build Result: $BUILD_RESULT"
+
+          # Determine build status with better logic
+          if [ "$BUILD_OUTCOME" = "success" ] || [ "$BUILD_RESULT" = "success" ]; then
             COLOR=3066993
             ICON="✅"
             DESCRIPTION="🚀 **Build thành công**"
+            BUILD_STATUS="SUCCESS"
           else
             COLOR=15158332
             ICON="❌"
             DESCRIPTION="❌ **Build thất bại**"
+            BUILD_STATUS="FAILURE"
           fi
 
           # Create simple JSON payload to avoid parsing issues
@@ -127,6 +134,11 @@ jobs:
                 {
                   \"name\": \"Build Status\",
                   \"value\": \"$ICON $BUILD_STATUS\",
+                  \"inline\": true
+                },
+                {
+                  \"name\": \"Build Outcome\",
+                  \"value\": \"$BUILD_OUTCOME\",
                   \"inline\": true
                 },
                 {
