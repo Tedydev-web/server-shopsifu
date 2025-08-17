@@ -81,8 +81,8 @@ RUN mkdir -p /app/logs /app/certs /app/upload /app/temp \
 
 USER nestjs
 
-# Expose port
-EXPOSE 3000
+# Expose ports for multi-port PM2 cluster
+EXPOSE 3000 3003 3004
 
 # Health check configuration
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
@@ -91,5 +91,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
 # Use dumb-init for proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start application
-CMD ["node", "dist/main.js"]
+# Start PM2 cluster directly
+CMD ["sh", "-c", "npx pm2 start ecosystem.config.js --no-daemon && tail -f /dev/null"]

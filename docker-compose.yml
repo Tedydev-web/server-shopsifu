@@ -103,15 +103,26 @@ services:
     image: ghcr.io/tedydev-web/server-shopsifu:latest
     container_name: shopsifu_server
     restart: unless-stopped
+    # PM2 cluster will start automatically via Dockerfile CMD
     ports:
-      - '3000:3000'
-      - '3003:3000'
-      - '3004:3000'
+      - '3000:3000' # Port 3000 host → Port 3000 container
+      - '3003:3003' # Port 3003 host → Port 3003 container
+      - '3004:3004' # Port 3004 host → Port 3004 container
     env_file: .env.docker
+    environment:
+      # PM2 Optimization - đồng bộ với Docker resource limits
+      WEB_CONCURRENCY: '8' # 8 workers tổng cộng
+      WORKER_MEM: '2000M' # 2GB per worker (16GB total / 8 workers)
+      UV_THREADPOOL_SIZE: '8' # 8 threads per worker
+      PM2_INSTANCES: '8' # Tổng số instances
+      NODE_ENV: 'production' # Production environment
+      TZ: 'Asia/Ho_Chi_Minh' # Timezone
     volumes:
       - ./logs:/app/logs
       - ./certs:/app/certs
       - ./upload:/app/upload
+      # PM2 ecosystem config mounted for runtime configuration
+      - ./ecosystem.config.js:/app/ecosystem.config.js:ro
     tmpfs:
       - /tmp:size=4g
       - /app/temp:size=2g
@@ -124,15 +135,19 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '8.0'
-          memory: 16G
+          cpus: '8.0' # 8 CPU cores cho 8 workers
+          memory: 16G # 2GB per worker (8 workers)
         reservations:
-          cpus: '6.0'
-          memory: 12G
+          cpus: '6.0' # Đảm bảo ít nhất 6 cores
+          memory: 12G # Đảm bảo ít nhất 1.5GB per worker
     healthcheck:
-      test: ['CMD-SHELL', 'curl -f http://localhost:3000/health || exit 1']
+      test:
+        [
+          'CMD-SHELL',
+          'curl -f http://localhost:3000/health && curl -f http://localhost:3003/health && curl -f http://localhost:3004/health || exit 1'
+        ]
       interval: 30s
-      timeout: 10s
+      timeout: 15s
       retries: 5
       start_period: 120s
 

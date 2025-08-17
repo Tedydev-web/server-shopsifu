@@ -95,28 +95,52 @@ jobs:
             echo "🚀 Deploying with Docker Compose..."
             docker compose up -d
 
-            # Verify deployment with better health check
-            echo "🔍 Verifying deployment..."
+            # Verify deployment with direct health checks
+            echo "🔍 Verifying PM2 cluster deployment..."
             echo "⏳ Waiting for services to start..."
 
-            # Wait for services to be ready
-            for i in {1..10}; do
-              if docker compose ps | grep -q "shopsifu_server.*Up"; then
-                echo "✅ Service is running (attempt $i/10)"
+            # Wait for all ports to be healthy
+            HEALTHY_PORTS=0
+            for i in {1..20}; do
+              echo "⏳ Health check attempt $i/20..."
+              
+              # Check if container is running
+              if ! docker compose ps | grep -q "shopsifu_server.*Up"; then
+                echo "⏳ Container not ready yet..."
+                sleep 3
+                continue
+              fi
+              
+              # Check all ports health
+              HEALTHY_PORTS=0
+              for port in 3000 3003 3004; do
+                if curl -f -s -m 10 http://localhost:$port/health > /dev/null; then
+                  echo "✅ Port $port: Healthy"
+                  HEALTHY_PORTS=$((HEALTHY_PORTS + 1))
+                else
+                  echo "❌ Port $port: Unhealthy"
+                fi
+              done
+              
+              if [ $HEALTHY_PORTS -eq 3 ]; then
+                echo "🎉 All ports are healthy! PM2 cluster deployment successful!"
                 break
               fi
-              echo "⏳ Service not ready yet (attempt $i/10)..."
+              
+              echo "⏳ Waiting for all ports to be healthy... ($HEALTHY_PORTS/3)"
               sleep 3
             done
 
             # Final verification
-            if ! docker compose ps | grep -q "shopsifu_server.*Up"; then
-              echo "❌ Deployment verification failed after 10 attempts"
+            if [ $HEALTHY_PORTS -ne 3 ]; then
+              echo "❌ PM2 cluster deployment verification failed after 20 attempts"
               echo "📊 Current service status:"
               docker compose ps
+              echo "📊 Container logs:"
+              docker logs shopsifu_server --tail 20
               exit 1
             fi
-            echo "✅ Deployment verification passed"
+            echo "✅ PM2 cluster deployment verification passed"
 
             # Show service status
             echo "📊 Service status:"
@@ -130,5 +154,3 @@ jobs:
           DEPLOY_DURATION=$((DEPLOY_END - DEPLOY_START))
           echo "deploy-time=$DEPLOY_DURATION" >> "$GITHUB_OUTPUT"
           echo "⏱️ Deploy completed in ${DEPLOY_DURATION}s"
-
-  
