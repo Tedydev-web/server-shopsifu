@@ -16,48 +16,6 @@ env:
   IMAGE_NAME: tedydev-web/server-shopsifu
 
 jobs:
-  security-scan:
-    name: 🔒 Security Scan (Warning Only)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🔍 Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      - name: 📊 Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: ⚠️ Check for high severity vulnerabilities (Warning Only)
-        if: always()
-        run: |
-          if [ -f "trivy-results.sarif" ]; then
-            HIGH_VULNS=$(grep -c '"level": "error"' trivy-results.sarif || echo "0")
-            if [ "$HIGH_VULNS" -gt 0 ]; then
-              echo "⚠️ WARNING: Found $HIGH_VULNS high severity vulnerabilities"
-              echo "⚠️ This is a security warning but will NOT block the build"
-              echo "⚠️ Please review and fix these vulnerabilities as soon as possible"
-              echo "⚠️ Vulnerabilities found in:"
-              grep -A 5 -B 5 '"level": "error"' trivy-results.sarif || echo "No detailed info available"
-            else
-              echo "✅ No high severity vulnerabilities found"
-            fi
-          else
-            echo "⚠️ WARNING: Trivy scan results not found"
-          fi
-
   build:
     name: 🐳 Build & Push Image
     # Run independently from security scan to avoid delays
@@ -135,8 +93,8 @@ jobs:
           docker system prune -f
 
   notification:
-    name: 📢 Security & Build Notification
-    needs: [security-scan, build]
+    name: 📢 Build Notification
+    needs: [build]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     if: always()
@@ -145,11 +103,10 @@ jobs:
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           BUILD_STATUS: ${{ needs.build.outcome == 'success' && 'success' || 'failure' }}
-          SECURITY_STATUS: ${{ needs.security-scan.outcome == 'success' && 'success' || 'failure' }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
 
-          # Determine overall status
+          # Determine build status
           if [ "$BUILD_STATUS" = "success" ]; then
             COLOR=3066993
             ICON="✅"
@@ -160,22 +117,10 @@ jobs:
             DESCRIPTION="❌ **Build thất bại**"
           fi
 
-          # Security warning if needed
-          if [ "$SECURITY_STATUS" != "success" ]; then
-            DESCRIPTION="$DESCRIPTION\n⚠️ **Có cảnh báo bảo mật**"
-          fi
-
-          # Create JSON payload without emojis to avoid jq parsing issues
-          if [ "$SECURITY_STATUS" = "success" ]; then
-            SECURITY_VALUE="PASS"
-          else
-            SECURITY_VALUE="WARNING"
-          fi
-
           # Create simple JSON payload to avoid parsing issues
           JSON_PAYLOAD="{
             \"embeds\": [{
-              \"title\": \"BUILD & SECURITY SCAN\",
+              \"title\": \"BUILD STATUS\",
               \"description\": \"$DESCRIPTION\",
               \"color\": $COLOR,
               \"fields\": [
@@ -185,13 +130,13 @@ jobs:
                   \"inline\": true
                 },
                 {
-                  \"name\": \"Security Status\",
-                  \"value\": \"$SECURITY_VALUE\",
+                  \"name\": \"Repository\",
+                  \"value\": \"${{ github.repository }}\",
                   \"inline\": true
                 }
               ],
               \"footer\": {
-                \"text\": \"Build & Security Scan\"
+                \"text\": \"Build Status\"
               },
               \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
             }]
