@@ -59,7 +59,7 @@ jobs:
             # Stop services
             echo "🛑 Stopping services..."
             VPS_PATH="${VPS_PATH:-shopsifu/server-shopsifu}"
-            docker compose -f "$VPS_PATH/docker-compose.yml" down
+            docker compose down
 
             # Determine target image tag
             TARGET_TAG="${{ github.event.inputs.image_tag }}"
@@ -80,7 +80,7 @@ jobs:
 
             # Deploy with target image
             echo "🚀 Redeploying with target image..."
-            docker compose -f "$VPS_PATH/docker-compose.yml" up -d
+            docker compose up -d
 
             echo "✅ Rollback completed successfully"
 

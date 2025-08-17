@@ -78,10 +78,10 @@ jobs:
               echo "📊 Running basic status check..."
 
               cd "$VPS_PATH"
-              docker compose -f "$VPS_PATH/docker-compose.yml" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+              docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
-              RUNNING_SERVICES=$(docker compose -f "$VPS_PATH/docker-compose.yml" ps --filter "status=running" --format "{{.Name}}" | wc -l)
-              TOTAL_SERVICES=$(docker compose -f "$VPS_PATH/docker-compose.yml" ps --format "{{.Name}}" | wc -l)
+              RUNNING_SERVICES=$(docker compose ps --filter "status=running" --format "{{.Name}}" | wc -l)
+              TOTAL_SERVICES=$(docker compose ps --format "{{.Name}}" | wc -l)
               echo "📊 Services: $RUNNING_SERVICES/$TOTAL_SERVICES running"
             fi
 
