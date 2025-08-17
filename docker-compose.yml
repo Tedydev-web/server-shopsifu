@@ -7,6 +7,7 @@ services:
     restart: unless-stopped
     ports:
       - '5432:5432'
+    env_file: .env.docker
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -38,6 +39,7 @@ services:
     restart: unless-stopped
     ports:
       - '6379:6379'
+    env_file: .env.docker
     volumes:
       - redis_data:/data
       - ./config/redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -53,7 +55,7 @@ services:
           cpus: '6.0'
           memory: 25G
     healthcheck:
-      test: ['CMD-SHELL', 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep -q PONG']
+      test: ['CMD-SHELL', 'redis-cli --no-auth-warning -a "$${REDIS_PASSWORD}" ping | grep -q PONG']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -65,10 +67,11 @@ services:
     restart: unless-stopped
     ports:
       - '9200:9200'
+    env_file: .env.docker
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - 'ES_JAVA_OPTS=-Xms20g -Xmx20g'
+      - 'ES_JAVA_OPTS=${ES_JAVA_OPTS}'
     volumes:
       - esdata:/usr/share/elasticsearch/data
       - ./config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
@@ -139,6 +142,7 @@ services:
     restart: unless-stopped
     ports:
       - '6432:6432'
+    env_file: .env.docker
     volumes:
       - ./config/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./config/userlist.txt:/etc/pgbouncer/userlist.txt:ro
@@ -167,7 +171,7 @@ services:
     restart: unless-stopped
     ports:
       - '9090:9090'
-    env_file: [.env.docker]
+    env_file: .env.docker
     volumes:
       - ./monitoring/prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus
@@ -198,6 +202,7 @@ services:
     restart: unless-stopped
     ports:
       - '3001:3000'
+    env_file: .env.docker
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_SECURITY_COOKIE_HTTPONLY=${GRAFANA_SECURITY_COOKIE_HTTPONLY}
@@ -229,9 +234,10 @@ services:
     restart: unless-stopped
     ports:
       - '5601:5601'
+    env_file: .env.docker
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - XPACK_SECURITY_ENABLED=false
+      - ELASTICSEARCH_HOSTS=${KIBANA_ELASTICSEARCH_HOSTS}
+      - XPACK_SECURITY_ENABLED=${KIBANA_XPACK_SECURITY_ENABLED}
     depends_on:
       - elasticsearch
     networks:
