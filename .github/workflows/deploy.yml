@@ -63,7 +63,7 @@ jobs:
             echo "🔍 Debug: VPS_PATH from secrets: ${{ secrets.VPS_PATH }}"
 
             # Set VPS_PATH explicitly
-            VPS_PATH="${VPS_PATH:-shopsifu/server-shopsifu}"
+            VPS_PATH="${VPS_PATH:-workspace/shopsifu/server-shopsifu}"
             echo "🔍 Debug: Final VPS_PATH: $VPS_PATH"
 
             # Change to correct directory

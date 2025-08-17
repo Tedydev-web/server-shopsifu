@@ -173,7 +173,7 @@ jobs:
 
             # Stop services temporarily for consistent backup
             echo "⏸️ Stopping services for consistent backup..."
-            VPS_PATH="${VPS_PATH:-shopsifu/server-shopsifu}"
+            VPS_PATH="${VPS_PATH:-workspace/shopsifu/server-shopsifu}"
             docker compose down
             sleep 30
 

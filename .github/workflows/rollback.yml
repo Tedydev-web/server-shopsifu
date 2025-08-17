@@ -58,7 +58,7 @@ jobs:
 
             # Stop services
             echo "🛑 Stopping services..."
-            VPS_PATH="${VPS_PATH:-shopsifu/server-shopsifu}"
+            VPS_PATH="${VPS_PATH:-workspace/shopsifu/server-shopsifu}"
             docker compose down
 
             # Determine target image tag
