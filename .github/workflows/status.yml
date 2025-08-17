@@ -45,101 +45,41 @@ jobs:
             echo "👤 User: $(whoami)"
             echo "🖥️  Hostname: $(hostname)"
 
-      - name: 🔍 Check Docker Compose Status
+      - name: 🔍 Run Comprehensive Health Check
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          timeout: 60s
-          command_timeout: 120s
-          script: |
-            set -euo pipefail
-            cd "${{ env.VPS_PATH }}"
-
-            echo "🔍 Checking Docker Compose status..."
-
-            # Check if docker-compose.yml exists
-            if [ -f "docker-compose.yml" ]; then
-              echo "✅ docker-compose.yml found"
-            else
-              echo "❌ docker-compose.yml not found"
-              echo "📁 Current directory contents:"
-              ls -la
-              exit 1
-            fi
-
-            # Check service status
-            echo "🏥 Checking service status..."
-            docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
-
-            # Check if all services are running
-            RUNNING_SERVICES=$(docker compose ps --filter "status=running" --format "{{.Name}}" | wc -l)
-            TOTAL_SERVICES=$(docker compose ps --format "{{.Name}}" | wc -l)
-            echo "📊 Services: $RUNNING_SERVICES/$TOTAL_SERVICES running"
-
-      - name: 🗄️ Check Database Status
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 300s
           script: |
             set -euo pipefail
 
-            echo "🗄️ Checking database status..."
+            echo "🔍 Running comprehensive health check..."
 
-            # Check PostgreSQL
-            if pg_isready -h localhost -p 5432 -U shopsifu; then
-              echo "✅ PostgreSQL is ready"
+            # Install required tools if not present
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq jq netcat-openbsd postgresql-client redis-tools
+
+            # Set environment variables
+            export VPS_PATH="${{ env.VPS_PATH }}"
+            export DISCORD_WEBHOOK="${{ secrets.DISCORD_WEBHOOK }}"
+
+            # Run comprehensive health check script
+            if [ -f "${{ env.VPS_PATH }}/scripts/comprehensive-health-check.sh" ]; then
+              chmod +x "${{ env.VPS_PATH }}/scripts/comprehensive-health-check.sh"
+              "${{ env.VPS_PATH }}/scripts/comprehensive-health-check.sh"
             else
-              echo "❌ PostgreSQL is not ready"
-            fi
+              echo "❌ Comprehensive health check script not found"
+              echo "📊 Running basic status check..."
 
-            # Check Redis
-            if redis-cli -a "Shopsifu2025" ping | grep -q "PONG"; then
-              echo "✅ Redis is ready"
-            else
-              echo "❌ Redis is not ready"
-            fi
+              cd "${{ env.VPS_PATH }}"
+              docker compose -f "${{ env.VPS_PATH }}/docker-compose.yml" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
-            # Check Elasticsearch
-            if curl -fsS http://localhost:9200 > /dev/null; then
-              echo "✅ Elasticsearch is ready"
-            else
-              echo "❌ Elasticsearch is not ready"
-            fi
-
-      - name: 📊 Check Monitoring Status
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -euo pipefail
-
-            echo "📊 Checking monitoring status..."
-
-            # Check Prometheus
-            if curl -fsS http://localhost:9090/-/healthy > /dev/null; then
-              echo "✅ Prometheus is healthy"
-            else
-              echo "❌ Prometheus is not healthy"
-            fi
-
-            # Check Grafana
-            if curl -fsS http://localhost:3001/api/health > /dev/null; then
-              echo "✅ Grafana is healthy"
-            else
-              echo "❌ Grafana is not healthy"
-            fi
-
-            # Check Kibana
-            if curl -fsS http://localhost:5601/api/status > /dev/null; then
-              echo "✅ Kibana is healthy"
-            else
-              echo "❌ Kibana is not healthy"
+              RUNNING_SERVICES=$(docker compose -f "${{ env.VPS_PATH }}/docker-compose.yml" ps --filter "status=running" --format "{{.Name}}" | wc -l)
+              TOTAL_SERVICES=$(docker compose -f "${{ env.VPS_PATH }}/docker-compose.yml" ps --format "{{.Name}}" | wc -l)
+              echo "📊 Services: $RUNNING_SERVICES/$TOTAL_SERVICES running"
             fi
 
       - name: 🚀 Check Application Status

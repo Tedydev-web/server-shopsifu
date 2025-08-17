@@ -62,15 +62,15 @@ jobs:
 
             # Stop existing services
             echo "🛑 Stopping existing services..."
-            docker compose down
+            docker compose -f ${{ env.VPS_PATH }}/docker-compose.yml down
 
             # Pull latest images from GHCR
             echo "📥 Pulling latest images from GitHub Container Registry..."
-            docker compose pull
+            docker compose -f ${{ env.VPS_PATH }}/docker-compose.yml pull
 
             # Deploy with Docker Compose
             echo "🚀 Deploying with Docker Compose..."
-            docker compose up -d
+            docker compose -f ${{ env.VPS_PATH }}/docker-compose.yml up -d
 
             # Verify deployment with better health check
             echo "🔍 Verifying deployment..."
@@ -78,7 +78,7 @@ jobs:
 
             # Wait for services to be ready
             for i in {1..10}; do
-              if docker compose ps | grep -q "shopsifu_server.*Up"; then
+              if docker compose -f ${{ env.VPS_PATH }}/docker-compose.yml ps | grep -q "shopsifu_server.*Up"; then
                 echo "✅ Service is running (attempt $i/10)"
                 break
               fi
@@ -87,17 +87,17 @@ jobs:
             done
 
             # Final verification
-            if ! docker compose ps | grep -q "shopsifu_server.*Up"; then
-              echo "❌ Deployment verification failed after 10 attempts"
-              echo "📊 Current service status:"
-              docker compose ps
+                          if ! docker compose -f ${{ env.VPS_PATH }}/docker-compose.yml ps | grep -q "shopsifu_server.*Up"; then
+                echo "❌ Deployment verification failed after 10 attempts"
+                echo "📊 Current service status:"
+                docker compose -f ${{ env.VPS_PATH }}/docker-compose.yml ps
               exit 1
             fi
             echo "✅ Deployment verification passed"
 
             # Show service status
             echo "📊 Service status:"
-            docker compose ps
+            docker compose -f ${{ env.VPS_PATH }}/docker-compose.yml ps
 
       - name: 📊 Calculate deploy time
         id: deploy-time
@@ -118,48 +118,63 @@ jobs:
         id: health-timer
         run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: 🏥 Perform health check
+      - name: 🏥 Perform comprehensive health check
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          timeout: 60s
-          command_timeout: 180s
+          timeout: 120s
+          command_timeout: 300s
           script: |
             set -euo pipefail
 
-            echo "🏥 Starting health check..."
-            ATTEMPTS=30
-            SLEEP=5
-            TIMEOUT=10
+            echo "🏥 Starting comprehensive health check..."
 
-            for i in $(seq 1 $ATTEMPTS); do
-              echo "Attempt $i/$ATTEMPTS..."
+            # Install required tools
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq jq netcat-openbsd postgresql-client redis-tools
 
-              # Check if service is running
-              if ! docker compose ps | grep -q "shopsifu_server.*Up"; then
-                echo "⚠️ Service not running yet, waiting..."
-                sleep $SLEEP
-                continue
-              fi
+            # Set environment variables
+            export VPS_PATH="${{ env.VPS_PATH }}"
+            export DISCORD_WEBHOOK="${{ secrets.DISCORD_WEBHOOK }}"
 
-              # Perform health check with timeout
-              if timeout $TIMEOUT curl -fsS -m 5 http://localhost:3000/health > /dev/null; then
-                echo "✅ Health check passed!"
-                exit 0
-              else
-                echo "⚠️ Health check attempt $i failed, retrying..."
-                sleep $SLEEP
-              fi
-            done
+            # Run comprehensive health check script
+            if [ -f "${{ env.VPS_PATH }}/scripts/comprehensive-health-check.sh" ]; then
+              chmod +x "${{ env.VPS_PATH }}/scripts/comprehensive-health-check.sh"
+              "${{ env.VPS_PATH }}/scripts/comprehensive-health-check.sh"
+            else
+              echo "❌ Comprehensive health check script not found"
+              echo "📊 Falling back to basic health check..."
 
-            echo "❌ Health check failed after $ATTEMPTS attempts"
-            echo "📊 Final service status:"
-            docker compose ps
-            echo "📊 Service logs (last 50 lines):"
-            docker compose logs --tail=50 shopsifu_server || echo "No logs available"
-            exit 1
+              # Basic health check fallback
+              cd "${{ env.VPS_PATH }}"
+              ATTEMPTS=30
+              SLEEP=5
+              TIMEOUT=10
+
+              for i in $(seq 1 $ATTEMPTS); do
+                echo "Attempt $i/$ATTEMPTS..."
+
+                if ! docker compose -f "${{ env.VPS_PATH }}/docker-compose.yml" ps | grep -q "shopsifu_server.*Up"; then
+                  echo "⚠️ Service not running yet, waiting..."
+                  sleep $SLEEP
+                  continue
+                fi
+
+                if timeout $TIMEOUT curl -fsS -m 5 http://localhost:3000/health > /dev/null; then
+                  echo "✅ Basic health check passed!"
+                  exit 0
+                else
+                  echo "⚠️ Health check attempt $i failed, retrying..."
+                  sleep $SLEEP
+                fi
+              done
+
+              echo "❌ Basic health check failed after $ATTEMPTS attempts"
+              docker compose -f "${{ env.VPS_PATH }}/docker-compose.yml" ps
+              exit 1
+            fi
 
       - name: 📊 Calculate health check time
         id: health-time

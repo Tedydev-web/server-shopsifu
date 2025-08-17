@@ -16,7 +16,7 @@ export class HealthController {
     return { status: 'ok', timestamp: new Date().toISOString() }
   }
 
-  @Get('check')
+  @Get('check-prisma')
   @HealthCheck()
   @IsPublic()
   public async getHealth() {

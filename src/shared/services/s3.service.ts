@@ -12,10 +12,10 @@ export class S3Service {
 
   constructor(private readonly configService: ConfigService) {
     this.s3 = new S3({
-      region: this.configService.get<string>('S3_REGION'),
+      region: this.configService.get<string>('S3_REGION') || 'eu-west-3',
       credentials: {
-        secretAccessKey: this.configService.get<string>('S3_SECRET_KEY'),
-        accessKeyId: this.configService.get<string>('S3_ACCESS_KEY')
+        secretAccessKey: this.configService.get<string>('S3_SECRET_KEY') || '',
+        accessKeyId: this.configService.get<string>('S3_ACCESS_KEY') || ''
       }
     })
   }
