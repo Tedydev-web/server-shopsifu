@@ -216,17 +216,17 @@ jobs:
             COMMIT_DATE="${COMMIT_DATE:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
             DEPLOY_TIME="${DEPLOY_TIME:-'N/A'}"
 
-            # Validate and sanitize values for JSON
-            COMMIT_MESSAGE=$(echo "$COMMIT_MESSAGE" | tr -d '\n\r' | sed 's/"/\\"/g')
-            COMMIT_DATE=$(echo "$COMMIT_DATE" | tr -d '\n\r')
-            DEPLOY_TIME=$(echo "$DEPLOY_TIME" | tr -d '\n\r')
-            COMMIT_LIST=$(echo "$COMMIT_LIST" | tr -d '\n\r' | sed 's/"/\\"/g')
-            CHANGES_SUMMARY=$(echo "$CHANGES_SUMMARY" | tr -d '\n\r' | sed 's/"/\\"/g')
-            DOCKER_STATUS=$(echo "$DOCKER_STATUS" | tr -d '\n\r' | sed 's/"/\\"/g')
-            IMAGE_INFO=$(echo "$IMAGE_INFO" | tr -d '\n\r' | sed 's/"/\\"/g')
-            SYSTEM_INFO=$(echo "$SYSTEM_INFO" | tr -d '\n\r' | sed 's/"/\\"/g')
-            ENV_INFO=$(echo "$ENV_INFO" | tr -d '\n\r' | sed 's/"/\\"/g')
-            NETWORK_INFO=$(echo "$NETWORK_INFO" | tr -d '\n\r' | sed 's/"/\\"/g')
+            # Validate and sanitize values for JSON - improved sanitization
+            COMMIT_MESSAGE=$(echo "$COMMIT_MESSAGE" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 1000)
+            COMMIT_DATE=$(echo "$COMMIT_DATE" | tr -d '\n\r' | head -c 100)
+            DEPLOY_TIME=$(echo "$DEPLOY_TIME" | tr -d '\n\r' | head -c 50)
+            COMMIT_LIST=$(echo "$COMMIT_LIST" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 800)
+            CHANGES_SUMMARY=$(echo "$CHANGES_SUMMARY" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 200)
+            DOCKER_STATUS=$(echo "$DOCKER_STATUS" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 1000)
+            IMAGE_INFO=$(echo "$IMAGE_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 500)
+            SYSTEM_INFO=$(echo "$SYSTEM_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 200)
+            ENV_INFO=$(echo "$ENV_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 300)
+            NETWORK_INFO=$(echo "$NETWORK_INFO" | tr -d '\n\r' | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | head -c 200)
 
             # Debug: Print sanitized values
             echo "🔍 Debug: Sanitized values:"
@@ -302,11 +302,20 @@ jobs:
             echo "🔍 Debug: JSON Payload:"
             echo "$JSON_PAYLOAD"
 
-            # Validate JSON payload
+            # Validate JSON payload with detailed error reporting
             if ! echo "$JSON_PAYLOAD" | jq . >/dev/null 2>&1; then
               echo "❌ Invalid JSON payload generated"
               echo "❌ JSON validation failed"
+              echo "❌ JSON validation error:"
+              echo "$JSON_PAYLOAD" | jq . 2>&1 || true
               echo "❌ Please check the generated JSON payload"
+              exit 1
+            fi
+
+            # Additional JSON structure validation
+            if ! echo "$JSON_PAYLOAD" | jq '.embeds[0].fields' >/dev/null 2>&1; then
+              echo "❌ Invalid embed structure in JSON payload"
+              echo "❌ Embed validation failed"
               exit 1
             fi
 
@@ -366,3 +375,9 @@ jobs:
             echo "📊 Final status: $STATUS"
             echo "⏱️ Total time: $DEPLOY_TIME"
             echo "📦 Final payload size: $(echo "$JSON_PAYLOAD" | wc -c) bytes"
+
+            # Fallback: Create a simple notification file for manual review
+            NOTIFICATION_FILE="/tmp/deploy_notification_$(date +%Y%m%d_%H%M%S).json"
+            echo "$JSON_PAYLOAD" > "$NOTIFICATION_FILE"
+            echo "📝 Fallback notification saved to: $NOTIFICATION_FILE"
+            echo "📝 You can manually review the notification content"
