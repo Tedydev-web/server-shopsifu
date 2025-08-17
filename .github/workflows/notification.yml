@@ -75,23 +75,36 @@ jobs:
             if [ "${{ github.event_name }}" = "workflow_run" ]; then
               # For workflow_run events, get commits from the triggering workflow
               # Check if before and after are available and valid
-              BEFORE_SHA="${{ github.event.workflow_run.before }}"
-              AFTER_SHA="${{ github.event.workflow_run.after }}"
+              BEFORE_SHA="${{ github.event.workflow_run.before || '' }}"
+              AFTER_SHA="${{ github.event.workflow_run.after || '' }}"
               
               echo "🔍 Debug: Git context for workflow_run:"
-              echo "  BEFORE_SHA: $BEFORE_SHA"
-              echo "  AFTER_SHA: $AFTER_SHA"
+              echo "  BEFORE_SHA: '$BEFORE_SHA'"
+              echo "  AFTER_SHA: '$AFTER_SHA'"
               echo "  Event name: ${{ github.event_name }}"
+              echo "  Workflow conclusion: ${{ github.event.workflow_run.conclusion }}"
+              echo "  Workflow status: ${{ github.event.workflow_run.status }}"
+              echo "  Head SHA: ${{ github.event.workflow_run.head_sha || 'N/A' }}"
               
+              # Try to get commit info from workflow_run context first
               if [ -n "$BEFORE_SHA" ] && [ -n "$AFTER_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
                 echo "✅ Using before..after range for git commands"
                 COMMIT_LIST=$(git log --oneline --no-merges "$BEFORE_SHA..$AFTER_SHA" | sed 's/^/• /' 2>/dev/null || echo "• Commits from this push (git log unavailable)")
                 CHANGES_SUMMARY=$(git diff --stat "$BEFORE_SHA..$AFTER_SHA" | tail -1 | sed 's/^ //' 2>/dev/null || echo "Changes from this push (git diff unavailable)")
               else
                 echo "⚠️ Falling back to recent commits (before/after not available or invalid)"
-                # Fallback to recent commits if before/after not available or invalid
-                COMMIT_LIST=$(git log --oneline --no-merges -5 | sed 's/^/• /' 2>/dev/null || echo "• Recent commits (git log unavailable)")
-                CHANGES_SUMMARY=$(git log --stat --oneline -5 | grep -E "^ [0-9]+ files? changed" | tail -1 2>/dev/null || echo "Changes detected (git log unavailable)")
+                # Try to get commits from head_sha if available
+                HEAD_SHA="${{ github.event.workflow_run.head_sha || '' }}"
+                if [ -n "$HEAD_SHA" ]; then
+                  echo "🔄 Trying to get commits from head SHA: $HEAD_SHA"
+                  COMMIT_LIST=$(git log --oneline --no-merges -5 "$HEAD_SHA" | sed 's/^/• /' 2>/dev/null || echo "• Recent commits from head SHA (git log unavailable)")
+                  CHANGES_SUMMARY=$(git log --stat --oneline -5 "$HEAD_SHA" | grep -E "^ [0-9]+ files? changed" | tail -1 2>/dev/null || echo "Changes from head SHA (git log unavailable)")
+                else
+                  echo "🔄 Using generic recent commits fallback"
+                  # Fallback to recent commits if before/after not available or invalid
+                  COMMIT_LIST=$(git log --oneline --no-merges -5 | sed 's/^/• /' 2>/dev/null || echo "• Recent commits (git log unavailable)")
+                  CHANGES_SUMMARY=$(git log --stat --oneline -5 | grep -E "^ [0-9]+ files? changed" | tail -1 2>/dev/null || echo "Changes detected (git log unavailable)")
+                fi
               fi
             else
               echo "🔍 Debug: Using manual dispatch fallback"
@@ -103,6 +116,17 @@ jobs:
             echo "🔍 Debug: Final commit info:"
             echo "  COMMIT_LIST: $COMMIT_LIST"
             echo "  CHANGES_SUMMARY: $CHANGES_SUMMARY"
+
+            # Ensure we have valid commit info
+            if [ -z "$COMMIT_LIST" ] || [ "$COMMIT_LIST" = "• Commits from this push (git log unavailable)" ] || [ "$COMMIT_LIST" = "• Recent commits (git log unavailable)" ] || [ "$COMMIT_LIST" = "• Recent commits from head SHA (git log unavailable)" ]; then
+              echo "⚠️ Warning: Commit list is empty or invalid, using fallback"
+              COMMIT_LIST="• Commit info unavailable - using fallback"
+            fi
+
+            if [ -z "$CHANGES_SUMMARY" ] || [ "$CHANGES_SUMMARY" = "Changes from this push (git diff unavailable)" ] || [ "$CHANGES_SUMMARY" = "Changes detected (git log unavailable)" ] || [ "$CHANGES_SUMMARY" = "Changes from head SHA (git log unavailable)" ]; then
+              echo "⚠️ Warning: Changes summary is empty or invalid, using fallback"
+              CHANGES_SUMMARY="Changes summary unavailable - using fallback"
+            fi
 
             # Get Docker status with smart formatting for Discord
             DOCKER_STATUS_RAW=$(docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | head -8 2>/dev/null || echo "Docker status unavailable")
@@ -379,3 +403,10 @@ jobs:
             echo "$JSON_PAYLOAD" > "$NOTIFICATION_FILE"
             echo "📝 Fallback notification saved to: $NOTIFICATION_FILE"
             echo "📝 You can manually review the notification content"
+
+            # Final success message
+            echo "🎉 Discord notification process completed successfully"
+            echo "📊 Final status: $STATUS"
+            echo "⏱️ Total time: $DEPLOY_TIME"
+            echo "📦 Final payload size: $(echo "$JSON_PAYLOAD" | wc -c) bytes"
+            echo "✅ All operations completed without errors"
