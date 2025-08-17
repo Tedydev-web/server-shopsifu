@@ -26,6 +26,9 @@ jobs:
     timeout-minutes: 15 # Reduced timeout for faster feedback
     # Only run if build workflow succeeded OR manual dispatch
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    outputs:
+      deploy-time: ${{ steps.deploy-time.outputs.deploy-time }}
+      deploy-status: ${{ job.status }}
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
@@ -135,6 +138,11 @@ jobs:
     timeout-minutes: 3
     if: always()
     steps:
+      - name: 📥 Checkout repository for commit info
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: 📢 Send Discord notification
         uses: appleboy/ssh-action@v0.1.10
         with:
@@ -148,15 +156,25 @@ jobs:
 
             # Set environment variables
             export DISCORD_WEBHOOK="${{ secrets.DISCORD_WEBHOOK }}"
-            export STATUS="${{ needs.deploy.outcome == 'success' && 'success' || 'failure' }}"
+            export STATUS="${{ needs.deploy.outputs.deploy-status == 'success' && 'success' || 'failure' }}"
             export BRANCH="${{ github.ref_name }}"
             export ACTOR="${{ github.actor }}"
             export COMMIT_SHA="${{ github.sha }}"
-            export COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
-            export COMMIT_DATE="${{ github.event.head_commit.timestamp }}"
+
+            # Get commit message and date from different sources
+            if [ "${{ github.event_name }}" = "workflow_run" ]; then
+              # For workflow_run events, try to get info from the triggering workflow
+              export COMMIT_MESSAGE="${{ github.event.workflow_run.head_commit.message || 'Deployment from build workflow' }}"
+              export COMMIT_DATE="${{ github.event.workflow_run.head_commit.timestamp || github.event.workflow_run.created_at || '' }}"
+            else
+              # For manual dispatch or other events
+              export COMMIT_MESSAGE="${{ github.event.head_commit.message || 'Manual deployment' }}"
+              export COMMIT_DATE="${{ github.event.head_commit.timestamp || '' }}"
+            fi
+
             export REPO="${{ github.repository }}"
             export RUN_ID="${{ github.run_id }}"
-            export DEPLOY_TIME="${{ needs.deploy.outputs.deploy-time }}"
+            export DEPLOY_TIME="${{ needs.deploy.outputs.deploy-time || 'N/A' }}"
 
             # Change to project directory
             cd "${{ env.VPS_PATH }}" || exit 1
@@ -168,21 +186,70 @@ jobs:
             # Get commit information
             COMMIT_SHORT_SHA=$(echo "$COMMIT_SHA" | cut -c1-7)
 
-            # Get commit list (all commits in this push)
-            COMMIT_LIST=$(git log --oneline --no-merges --since="1 hour ago" | head -10 | sed 's/^/• /')
+            # Get commit list (all commits in this push) - fallback to recent commits if git log fails
+            COMMIT_LIST=$(git log --oneline --no-merges --since="1 hour ago" | head -10 | sed 's/^/• /' 2>/dev/null || echo "• Recent commits (git log unavailable)")
 
-            # Get changes summary (last 10 commits)
-            CHANGES_SUMMARY=$(git log --stat --oneline -10 | grep -E "^ [0-9]+ files? changed" | tail -1 || echo "Changes detected")
+            # Get changes summary (last 10 commits) - fallback if git log fails
+            CHANGES_SUMMARY=$(git log --stat --oneline -10 | grep -E "^ [0-9]+ files? changed" | tail -1 2>/dev/null || echo "Changes detected (git log unavailable)")
 
             # Get Docker status with NAME, CREATED, STATUS, PORTS
-            DOCKER_STATUS=$(docker ps --format "table {{.Names}}\t{{.CreatedAt}}\t{{.Status}}\t{{.Ports}}" | head -10)
+            DOCKER_STATUS=$(docker ps --format "table {{.Names}}\t{{.CreatedAt}}\t{{.Status}}\t{{.Ports}}" | head -10 2>/dev/null || echo "Docker status unavailable")
 
             # Get image info
-            IMAGE_INFO=$(docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep "shopsifu" | head -5)
+            IMAGE_INFO=$(docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep "shopsifu" | head -5 2>/dev/null || echo "Image info unavailable")
+
+            # Get system info
+            SYSTEM_INFO=$(echo "CPU: $(nproc) cores | Memory: $(free -h | grep Mem | awk '{print $2}') | Disk: $(df -h / | tail -1 | awk '{print $4}') available" 2>/dev/null || echo "System info unavailable")
+
+            # Get deployment environment info
+            ENV_INFO=$(echo "Host: $(hostname) | OS: $(lsb_release -d | cut -f2) | Uptime: $(uptime -p)" 2>/dev/null || echo "Environment info unavailable")
+
+            # Get network info
+            NETWORK_INFO=$(echo "IP: $(hostname -I | awk '{print $1}') | Gateway: $(ip route | grep default | awk '{print $3}' | head -1)" 2>/dev/null || echo "Network info unavailable")
 
             COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
             ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
             DESCRIPTION=$([ "$STATUS" = "success" ] && echo "🚀 **Deploy thành công**" || echo "❌ **Deploy thất bại**")
+
+            # Handle empty values
+            COMMIT_MESSAGE="${COMMIT_MESSAGE:-'Deployment from build workflow'}"
+            COMMIT_DATE="${COMMIT_DATE:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
+            DEPLOY_TIME="${DEPLOY_TIME:-'N/A'}"
+
+            # Validate and sanitize values for JSON
+            COMMIT_MESSAGE=$(echo "$COMMIT_MESSAGE" | tr -d '\n\r' | sed 's/"/\\"/g')
+            COMMIT_DATE=$(echo "$COMMIT_DATE" | tr -d '\n\r')
+            DEPLOY_TIME=$(echo "$DEPLOY_TIME" | tr -d '\n\r')
+            COMMIT_LIST=$(echo "$COMMIT_LIST" | tr -d '\n\r' | sed 's/"/\\"/g')
+            CHANGES_SUMMARY=$(echo "$CHANGES_SUMMARY" | tr -d '\n\r' | sed 's/"/\\"/g')
+            DOCKER_STATUS=$(echo "$DOCKER_STATUS" | tr -d '\n\r' | sed 's/"/\\"/g')
+            IMAGE_INFO=$(echo "$IMAGE_INFO" | tr -d '\n\r' | sed 's/"/\\"/g')
+            SYSTEM_INFO=$(echo "$SYSTEM_INFO" | tr -d '\n\r' | sed 's/"/\\"/g')
+            ENV_INFO=$(echo "$ENV_INFO" | tr -d '\n\r' | sed 's/"/\\"/g')
+            NETWORK_INFO=$(echo "$NETWORK_INFO" | tr -d '\n\r' | sed 's/"/\\"/g')
+
+            # Debug: Print sanitized values
+            echo "🔍 Debug: Sanitized values:"
+            echo "  COMMIT_MESSAGE: $COMMIT_MESSAGE"
+            echo "  COMMIT_DATE: $COMMIT_DATE"
+            echo "  DEPLOY_TIME: $DEPLOY_TIME"
+            echo "  SYSTEM_INFO: $SYSTEM_INFO"
+            echo "  ENV_INFO: $ENV_INFO"
+            echo "  NETWORK_INFO: $NETWORK_INFO"
+
+            # Create a summary of all collected information
+            echo "📋 Summary of collected information:"
+            echo "  Status: $STATUS"
+            echo "  Branch: $BRANCH"
+            echo "  Actor: $ACTOR"
+            echo "  Commit SHA: $COMMIT_SHORT_SHA"
+            echo "  Commit Message: $COMMIT_MESSAGE"
+            echo "  Commit Date: $COMMIT_DATE"
+            echo "  Deploy Time: $DEPLOY_TIME"
+            echo "  Repo: $REPO"
+            echo "  Run ID: $RUN_ID"
+            echo "  Discord Webhook: ${DISCORD_WEBHOOK:0:50}..."
+            echo "  Total fields: 13"
 
             JSON_PAYLOAD=$(jq -n \
               --arg status "$STATUS" \
@@ -198,9 +265,12 @@ jobs:
               --arg commit_list "$COMMIT_LIST" \
               --arg docker_status "$DOCKER_STATUS" \
               --arg image_info "$IMAGE_INFO" \
+              --arg system_info "$SYSTEM_INFO" \
               --arg deploy_time "$DEPLOY_TIME" \
               --arg repo "$REPO" \
               --arg run_id "$RUN_ID" \
+              --arg env_info "$ENV_INFO" \
+              --arg network_info "$NETWORK_INFO" \
               ' {
                   embeds: [{
                     title: "🚀 SERVER - Deploy Production",
@@ -212,12 +282,15 @@ jobs:
                       { name: "👤 Người thực hiện", value: $actor, inline: true },
                       { name: "🔗 Commit SHA", value: "`\($commit_sha)`", inline: true },
                       { name: "📅 Commit Date", value: $commit_date, inline: true },
-                      { name: "⏱️ Deploy Time", value: "\($deploy_time)s", inline: true },
+                      { name: "⏱️ Deploy Time", value: $deploy_time, inline: true },
                       { name: "📝 Commit Message", value: $commit_message, inline: false },
                       { name: "📊 Changes Summary", value: $changes_summary, inline: false },
                       { name: "📋 Danh sách Commits", value: $commit_list, inline: false },
                       { name: "🐳 Docker Status", value: "```\($docker_status)```", inline: false },
-                      { name: "🖼️ Image Info", value: "```\($image_info)```", inline: false }
+                      { name: "🖼️ Image Info", value: "```\($image_info)```", inline: false },
+                      { name: "💻 System Info", value: "```\($system_info)```", inline: false },
+                      { name: "🌐 Môi trường", value: "```\($env_info)```", inline: false },
+                      { name: "🌐 Mạng", value: "```\($network_info)```", inline: false }
                     ],
                     url: "https://github.com/\($repo)/actions/runs/\($run_id)",
                     footer: { "text": "🚀 Deploy Production" },
@@ -225,18 +298,71 @@ jobs:
                   }]
                 }')
 
+            # Debug: Print JSON payload
+            echo "🔍 Debug: JSON Payload:"
+            echo "$JSON_PAYLOAD"
+
+            # Validate JSON payload
+            if ! echo "$JSON_PAYLOAD" | jq . >/dev/null 2>&1; then
+              echo "❌ Invalid JSON payload generated"
+              echo "❌ JSON validation failed"
+              echo "❌ Please check the generated JSON payload"
+              exit 1
+            fi
+
+            # Check JSON payload size (Discord has a limit of 6000 characters for embeds)
+            PAYLOAD_SIZE=$(echo "$JSON_PAYLOAD" | wc -c)
+            if [ "$PAYLOAD_SIZE" -gt 5000 ]; then
+              echo "⚠️ Warning: JSON payload is large ($PAYLOAD_SIZE bytes)"
+              echo "⚠️ Discord has embed limits, some content may be truncated"
+            fi
+
+            # Validate Discord webhook URL
+            if [[ ! "$DISCORD_WEBHOOK" =~ ^https://discord\.com/api/webhooks/[0-9]+/[a-zA-Z0-9_-]+$ ]]; then
+              echo "❌ Invalid Discord webhook URL format"
+              echo "❌ Expected format: https://discord.com/api/webhooks/[ID]/[TOKEN]"
+              exit 1
+            fi
+
             # Send to Discord with retry logic
             MAX_RETRIES=3
             for i in $(seq 1 $MAX_RETRIES); do
-              if curl -s -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK"; then
-                echo "✅ Discord notification sent successfully"
+              echo "🔄 Attempting to send Discord notification (attempt $i/$MAX_RETRIES)..."
+              echo "🔗 Discord webhook: ${DISCORD_WEBHOOK:0:50}..."
+              echo "📦 Payload size: $(echo "$JSON_PAYLOAD" | wc -c) bytes"
+
+              RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK")
+              HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+              RESPONSE_BODY=$(echo "$RESPONSE" | grep -v "HTTP_STATUS:")
+
+              echo "🔍 Debug: HTTP Status: $HTTP_STATUS"
+              echo "🔍 Debug: Response Body: $RESPONSE_BODY"
+
+              if [ "$HTTP_STATUS" = "204" ] || [ "$HTTP_STATUS" = "200" ]; then
+                echo "✅ Discord notification sent successfully (HTTP $HTTP_STATUS)"
+                echo "✅ Notification sent to Discord channel"
+                echo "✅ Payload size: $(echo "$JSON_PAYLOAD" | wc -c) bytes"
+                echo "✅ Response: $RESPONSE_BODY"
                 break
               else
-                echo "⚠️ Attempt $i/$MAX_RETRIES failed"
+                echo "⚠️ Attempt $i/$MAX_RETRIES failed (HTTP $HTTP_STATUS)"
+                echo "⚠️ Response: $RESPONSE_BODY"
                 if [ $i -lt $MAX_RETRIES ]; then
+                  echo "⏳ Waiting 2 seconds before retry..."
                   sleep 2
                 else
                   echo "❌ Failed to send Discord notification after $MAX_RETRIES attempts"
+                  echo "❌ Last response: $RESPONSE_BODY"
+                  echo "❌ Discord webhook URL: $DISCORD_WEBHOOK"
+                  echo "❌ Please check your Discord webhook configuration"
+                  echo "❌ Payload size: $(echo "$JSON_PAYLOAD" | wc -c) bytes"
+                  echo "❌ HTTP Status: $HTTP_STATUS"
+                  exit 1
                 fi
               fi
             done
+
+            echo "🎉 Discord notification process completed"
+            echo "📊 Final status: $STATUS"
+            echo "⏱️ Total time: $DEPLOY_TIME"
+            echo "📦 Final payload size: $(echo "$JSON_PAYLOAD" | wc -c) bytes"
