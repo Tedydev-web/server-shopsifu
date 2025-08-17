@@ -95,45 +95,42 @@ jobs:
             echo "🚀 Deploying with Docker Compose..."
             docker compose up -d
 
-            # Verify deployment with direct health checks
+            # Verify deployment with PM2 cluster health check
             echo "🔍 Verifying PM2 cluster deployment..."
             echo "⏳ Waiting for services to start..."
 
-            # Wait for all ports to be healthy
-            HEALTHY_PORTS=0
-            for i in {1..20}; do
-              echo "⏳ Health check attempt $i/20..."
+            # Wait for PM2 cluster to be ready
+            for i in {1..15}; do
+              echo "⏳ Health check attempt $i/15..."
               
               # Check if container is running
               if ! docker compose ps | grep -q "shopsifu_server.*Up"; then
                 echo "⏳ Container not ready yet..."
-                sleep 3
+                sleep 4
                 continue
               fi
               
-              # Check all ports health
-              HEALTHY_PORTS=0
-              for port in 3000 3003 3004; do
-                if curl -f -s -m 10 http://localhost:$port/health > /dev/null; then
-                  echo "✅ Port $port: Healthy"
-                  HEALTHY_PORTS=$((HEALTHY_PORTS + 1))
+              # Check PM2 cluster health
+              if docker exec shopsifu_server npx pm2 list | grep -q "online"; then
+                echo "✅ PM2 cluster is running (attempt $i/15)"
+                
+                # Verify port 3000 is healthy
+                if curl -f -s -m 10 http://localhost:3000/health > /dev/null; then
+                  echo "✅ Port 3000: Healthy"
+                  echo "🎉 PM2 cluster deployment successful!"
+                  break
                 else
-                  echo "❌ Port $port: Unhealthy"
+                  echo "❌ Port 3000: Unhealthy"
                 fi
-              done
-              
-              if [ $HEALTHY_PORTS -eq 3 ]; then
-                echo "🎉 All ports are healthy! PM2 cluster deployment successful!"
-                break
               fi
               
-              echo "⏳ Waiting for all ports to be healthy... ($HEALTHY_PORTS/3)"
-              sleep 3
+              echo "⏳ PM2 cluster not ready yet..."
+              sleep 4
             done
 
             # Final verification
-            if [ $HEALTHY_PORTS -ne 3 ]; then
-              echo "❌ PM2 cluster deployment verification failed after 20 attempts"
+            if ! curl -f -s -m 10 http://localhost:3000/health > /dev/null; then
+              echo "❌ PM2 cluster deployment verification failed after 15 attempts"
               echo "📊 Current service status:"
               docker compose ps
               echo "📊 Container logs:"

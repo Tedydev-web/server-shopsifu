@@ -81,8 +81,8 @@ RUN mkdir -p /app/logs /app/certs /app/upload /app/temp \
 
 USER nestjs
 
-# Expose ports for multi-port PM2 cluster
-EXPOSE 3000 3003 3004
+# Expose port for PM2 cluster
+EXPOSE 3000
 
 # Health check configuration
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
