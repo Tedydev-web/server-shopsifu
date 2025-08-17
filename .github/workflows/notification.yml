@@ -74,13 +74,35 @@ jobs:
             # Get commit list for this specific push - using GitHub context
             if [ "${{ github.event_name }}" = "workflow_run" ]; then
               # For workflow_run events, get commits from the triggering workflow
-              COMMIT_LIST=$(git log --oneline --no-merges ${{ github.event.workflow_run.before }}..${{ github.event.workflow_run.after }} | sed 's/^/• /' 2>/dev/null || echo "• Commits from this push (git log unavailable)")
-              CHANGES_SUMMARY=$(git diff --stat ${{ github.event.workflow_run.before }}..${{ github.event.workflow_run.after }} | tail -1 | sed 's/^ //' 2>/dev/null || echo "Changes from this push (git diff unavailable)")
+              # Check if before and after are available and valid
+              BEFORE_SHA="${{ github.event.workflow_run.before }}"
+              AFTER_SHA="${{ github.event.workflow_run.after }}"
+              
+              echo "🔍 Debug: Git context for workflow_run:"
+              echo "  BEFORE_SHA: $BEFORE_SHA"
+              echo "  AFTER_SHA: $AFTER_SHA"
+              echo "  Event name: ${{ github.event_name }}"
+              
+              if [ -n "$BEFORE_SHA" ] && [ -n "$AFTER_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+                echo "✅ Using before..after range for git commands"
+                COMMIT_LIST=$(git log --oneline --no-merges "$BEFORE_SHA..$AFTER_SHA" | sed 's/^/• /' 2>/dev/null || echo "• Commits from this push (git log unavailable)")
+                CHANGES_SUMMARY=$(git diff --stat "$BEFORE_SHA..$AFTER_SHA" | tail -1 | sed 's/^ //' 2>/dev/null || echo "Changes from this push (git diff unavailable)")
+              else
+                echo "⚠️ Falling back to recent commits (before/after not available or invalid)"
+                # Fallback to recent commits if before/after not available or invalid
+                COMMIT_LIST=$(git log --oneline --no-merges -5 | sed 's/^/• /' 2>/dev/null || echo "• Recent commits (git log unavailable)")
+                CHANGES_SUMMARY=$(git log --stat --oneline -5 | grep -E "^ [0-9]+ files? changed" | tail -1 2>/dev/null || echo "Changes detected (git log unavailable)")
+              fi
             else
+              echo "🔍 Debug: Using manual dispatch fallback"
               # For manual dispatch, get recent commits
               COMMIT_LIST=$(git log --oneline --no-merges -5 | sed 's/^/• /' 2>/dev/null || echo "• Recent commits (git log unavailable)")
               CHANGES_SUMMARY=$(git log --stat --oneline -5 | grep -E "^ [0-9]+ files? changed" | tail -1 2>/dev/null || echo "Changes detected (git log unavailable)")
             fi
+
+            echo "🔍 Debug: Final commit info:"
+            echo "  COMMIT_LIST: $COMMIT_LIST"
+            echo "  CHANGES_SUMMARY: $CHANGES_SUMMARY"
 
             # Get Docker status with smart formatting for Discord
             DOCKER_STATUS_RAW=$(docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | head -8 2>/dev/null || echo "Docker status unavailable")
