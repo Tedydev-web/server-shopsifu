@@ -317,10 +317,10 @@ jobs:
               echo "⚠️ Discord has embed limits, some content may be truncated"
             fi
 
-            # Validate Discord webhook URL
-            if [[ ! "$DISCORD_WEBHOOK" =~ ^https://discord\.com/api/webhooks/[0-9]+/[a-zA-Z0-9_-]+$ ]]; then
+            # Validate Discord webhook URL (allow both discord.com and canary.discord.com)
+            if [[ ! "$DISCORD_WEBHOOK" =~ ^https://(discord\.com|canary\.discord\.com)/api/webhooks/[0-9]+/[a-zA-Z0-9_-]+$ ]]; then
               echo "❌ Invalid Discord webhook URL format"
-              echo "❌ Expected format: https://discord.com/api/webhooks/[ID]/[TOKEN]"
+              echo "❌ Expected format: https://discord.com/api/webhooks/[ID]/[TOKEN] or https://canary.discord.com/api/webhooks/[ID]/[TOKEN]"
               exit 1
             fi
 
