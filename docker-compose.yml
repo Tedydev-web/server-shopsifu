@@ -211,8 +211,8 @@ services:
     ports:
       - '9121:9121'
     environment:
-      REDIS_ADDR: 'redis://shopsifu_redis:6379'
-      REDIS_PASSWORD: '${REDIS_PASSWORD}'
+      REDIS_ADDR: 'shopsifu_redis:6379'
+      REDIS_PASSWORD: 'Shopsifu2025'
       REDIS_NAMESPACE: 'redis'
       REDIS_EXPORTER_LOG_FORMAT: 'txt'
       REDIS_EXPORTER_IS_TILE38: 'false'
@@ -339,7 +339,7 @@ services:
       - ./monitoring/prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/server.yml'
+      - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=30d'
       - '--web.enable-lifecycle'
@@ -439,6 +439,38 @@ services:
       retries: 5
       start_period: 60s
 
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    container_name: shopsifu_alertmanager
+    restart: unless-stopped
+    ports:
+      - '9093:9093'
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.listen-address=:9093'
+      - '--cluster.listen-address=:9094'
+      - '--cluster.peer=shopsifu_alertmanager:9094'
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9093/-/healthy || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 volumes:
   postgres_data:
     driver: local
@@ -455,6 +487,9 @@ volumes:
   grafana_data:
     driver: local
     name: shopsifu_grafana_data
+  alertmanager_data:
+    driver: local
+    name: shopsifu_alertmanager_data
 
 networks:
   app-network:

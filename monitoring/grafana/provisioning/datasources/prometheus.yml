@@ -1,0 +1,25 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://shopsifu_prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: '15s'
+      queryTimeout: '60s'
+      httpMethod: 'POST'
+      manageAlerts: true
+      alertmanagerUid: 'alertmanager'
+      prometheusType: 'Prometheus'
+      prometheusVersion: '2.54.1'
+      cacheLevel: 'High'
+      incrementalQueryOverlapWindow: '10m'
+      disableRecordingRules: false
+      disableAlerting: false
+      maxDataPoints: 100000
+      maxLines: 1000
+      defaultEditor: 'code'
+      codeMode: 'code'

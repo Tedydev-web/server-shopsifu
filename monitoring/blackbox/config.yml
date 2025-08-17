@@ -1,0 +1,149 @@
+modules:
+  # HTTP Health Checks - Performance focused
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      preferred_ip_protocol: 'ip4'
+      valid_status_codes: [200, 201, 202, 203, 204, 205, 206, 207, 208, 226]
+      fail_if_ssl: false
+      fail_if_not_ssl: false
+      tls_config:
+        insecure_skip_verify: true
+      headers:
+        User-Agent: 'Prometheus/Blackbox Exporter'
+        Accept: '*/*'
+        Cache-Control: 'no-cache'
+      # Performance thresholds
+      fail_if_body_matches_regexp:
+        - 'error|exception|timeout|failed'
+      fail_if_header_matches:
+        - header: 'content-type'
+          regexp: 'text/html.*error'
+
+  # HTTP Performance Checks - Response time monitoring
+  http_performance:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: 'ip4'
+      valid_status_codes: [200]
+      fail_if_ssl: false
+      fail_if_not_ssl: false
+      tls_config:
+        insecure_skip_verify: true
+      headers:
+        User-Agent: 'Prometheus/Blackbox Exporter'
+        Accept: '*/*'
+        Cache-Control: 'no-cache'
+      # Performance validation
+      fail_if_body_matches_regexp:
+        - 'error|exception|timeout|failed'
+      fail_if_header_matches:
+        - header: 'content-type'
+          regexp: 'text/html.*error'
+
+  # HTTP POST Health Checks - API endpoints
+  http_post_2xx:
+    prober: http
+    timeout: 8s
+    http:
+      method: POST
+      preferred_ip_protocol: 'ip4'
+      valid_status_codes: [200, 201, 202, 203, 204, 205, 206, 207, 208, 226]
+      fail_if_ssl: false
+      fail_if_not_ssl: false
+      tls_config:
+        insecure_skip_verify: true
+      headers:
+        User-Agent: 'Prometheus/Blackbox Exporter'
+        Content-Type: 'application/json'
+        Accept: 'application/json'
+        Cache-Control: 'no-cache'
+      body: '{"test": "health_check", "timestamp": "{{ .Timestamp }}"}'
+      # Performance validation
+      fail_if_body_matches_regexp:
+        - 'error|exception|timeout|failed'
+
+  # TCP Connectivity Checks - Database and service ports
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: 'ip4'
+      tls: false
+
+  # TCP TLS Checks - Secure connections
+  tcp_tls:
+    prober: tcp
+    timeout: 8s
+    tcp:
+      preferred_ip_protocol: 'ip4'
+      tls: true
+      tls_config:
+        insecure_skip_verify: true
+
+  # ICMP Ping Checks - Network latency
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: 'ip4'
+
+  # DNS Resolution Checks - Service discovery (commented out - not needed)
+  # dns_tcp:
+  #   prober: dns
+  #   timeout: 5s
+  #   dns:
+  #     transport_protocol: "tcp"
+  #     preferred_ip_protocol: "ip4"
+  #     query_name: "kubernetes.default.svc.cluster.local"
+
+  # dns_udp:
+  #   prober: dns
+  #   timeout: 5s
+  #   dns:
+  #     transport_protocol: "udp"
+  #     preferred_ip_protocol: "ip4"
+  #     query_name: "kubernetes.default.svc.cluster.local"
+
+  # Custom API Health Check - ShopSifu specific
+  shopsifu_api_health:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: 'ip4'
+      valid_status_codes: [200]
+      fail_if_ssl: false
+      fail_if_not_ssl: false
+      tls_config:
+        insecure_skip_verify: true
+      headers:
+        User-Agent: 'Prometheus/Blackbox Exporter'
+        Accept: 'application/json'
+        Cache-Control: 'no-cache'
+      # API specific validation
+      fail_if_body_matches_regexp:
+        - 'error|exception|timeout|failed|unhealthy'
+      fail_if_header_matches:
+        - header: 'content-type'
+          regexp: 'application/json'
+      # Validate JSON response
+      fail_if_body_not_matches_regexp:
+        - '"status":"healthy"|"status":"ok"|"healthy":true'
+
+  # Database Health Check - PostgreSQL specific
+  postgres_health:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: 'ip4'
+      tls: false
+
+  # Redis Health Check - Redis specific
+  redis_health:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: 'ip4'
+      tls: false

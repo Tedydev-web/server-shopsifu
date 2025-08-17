@@ -1,0 +1,131 @@
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: 'localhost:25'
+  smtp_from: 'alertmanager@shopsifu.com'
+
+# Route configuration
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'web.hook'
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'critical-notifications'
+      group_wait: 0s
+      group_interval: 1s
+      repeat_interval: 5m
+      continue: true
+
+    # Performance alerts - high priority
+    - match:
+        service: api-server
+      receiver: 'performance-notifications'
+      group_wait: 30s
+      group_interval: 30s
+      repeat_interval: 15m
+      continue: true
+
+    # Database alerts - high priority
+    - match:
+        service: postgresql
+      receiver: 'database-notifications'
+      group_wait: 30s
+      group_interval: 30s
+      repeat_interval: 15m
+      continue: true
+
+    # Infrastructure alerts - medium priority
+    - match:
+        service: system
+      receiver: 'infrastructure-notifications'
+      group_wait: 1m
+      group_interval: 1m
+      repeat_interval: 30m
+      continue: true
+
+# Inhibition rules
+inhibit_rules:
+  # Inhibit critical alerts when service is down
+  - source_match:
+      severity: 'critical'
+      alertname: 'ServiceDown'
+    target_match:
+      severity: 'critical'
+    equal: ['instance', 'service']
+
+  # Inhibit performance alerts when infrastructure is critical
+  - source_match:
+      severity: 'critical'
+      service: 'system'
+    target_match:
+      severity: 'warning'
+      service: 'api-server'
+    equal: ['instance']
+
+# Receivers
+receivers:
+  - name: 'web.hook'
+    webhook_configs:
+      - url: 'http://127.0.0.1:5001/'
+        send_resolved: true
+
+  # Critical notifications - immediate action required
+  - name: 'critical-notifications'
+    webhook_configs:
+      - url: 'http://127.0.0.1:5001/critical'
+        send_resolved: true
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK'
+        channel: '#alerts-critical'
+        title: '🚨 CRITICAL ALERT: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
+        send_resolved: true
+    pagerduty_configs:
+      - routing_key: 'YOUR_PAGERDUTY_KEY'
+        description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
+        severity: '{{ if eq .CommonLabels.severity "critical" }}critical{{ else }}warning{{ end }}'
+        send_resolved: true
+
+  # Performance notifications - high priority
+  - name: 'performance-notifications'
+    webhook_configs:
+      - url: 'http://127.0.0.1:5001/performance'
+        send_resolved: true
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK'
+        channel: '#alerts-performance'
+        title: '⚡ PERFORMANCE ALERT: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
+        send_resolved: true
+
+  # Database notifications - high priority
+  - name: 'database-notifications'
+    webhook_configs:
+      - url: 'http://127.0.0.1:5001/database'
+        send_resolved: true
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK'
+        channel: '#alerts-database'
+        title: '🗄️ DATABASE ALERT: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
+        send_resolved: true
+
+  # Infrastructure notifications - medium priority
+  - name: 'infrastructure-notifications'
+    webhook_configs:
+      - url: 'http://127.0.0.1:5001/infrastructure'
+        send_resolved: true
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK'
+        channel: '#alerts-infrastructure'
+        title: '🏗️ INFRASTRUCTURE ALERT: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
+        send_resolved: true
+
+# Templates for notifications
+templates:
+  - '/etc/alertmanager/template/*.tmpl'
