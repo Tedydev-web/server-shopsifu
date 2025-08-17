@@ -45,44 +45,45 @@ jobs:
             echo "👤 User: $(whoami)"
             echo "🖥️  Hostname: $(hostname)"
 
-      - name: 🔍 Run Comprehensive Health Check
+      - name: 🔍 Check Basic System Status
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          timeout: 120s
-          command_timeout: 300s
+          timeout: 60s
+          command_timeout: 120s
           script: |
             set -euo pipefail
 
-            echo "🔍 Running comprehensive health check..."
+            echo "🔍 Checking basic system status..."
 
-                        # Install required tools if not present
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq jq netcat-openbsd postgresql-client redis-tools
-
-            # Set environment variables with fallback
+            # Set VPS_PATH with fallback
             VPS_PATH="${VPS_PATH:-shopsifu/server-shopsifu}"
-            export VPS_PATH="$VPS_PATH"
-            export DISCORD_WEBHOOK="${{ secrets.DISCORD_WEBHOOK }}"
-
             echo "🔍 Debug: VPS_PATH set to: $VPS_PATH"
 
-            # Run comprehensive health check script
-            if [ -f "$VPS_PATH/scripts/comprehensive-health-check.sh" ]; then
-              chmod +x "$VPS_PATH/scripts/comprehensive-health-check.sh"
-              "$VPS_PATH/scripts/comprehensive-health-check.sh"
+            # Change to correct directory
+            cd "$VPS_PATH" || {
+              echo "❌ Failed to change to directory: $VPS_PATH"
+              exit 1
+            }
+
+            echo "✅ Changed to directory: $(pwd)"
+
+            # Check service status
+            echo "🏥 Checking service status..."
+            docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+
+            # Count running services
+            RUNNING_SERVICES=$(docker compose ps --filter "status=running" --format "{{.Name}}" | wc -l)
+            TOTAL_SERVICES=$(docker compose ps --format "{{.Name}}" | wc -l)
+            echo "📊 Services: $RUNNING_SERVICES/$TOTAL_SERVICES running"
+
+            # Check application health
+            if curl -fsS http://localhost:3000/health > /dev/null; then
+              echo "✅ Application server is healthy"
             else
-              echo "❌ Comprehensive health check script not found"
-              echo "📊 Running basic status check..."
-
-              cd "$VPS_PATH"
-              docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
-
-              RUNNING_SERVICES=$(docker compose ps --filter "status=running" --format "{{.Name}}" | wc -l)
-              TOTAL_SERVICES=$(docker compose ps --format "{{.Name}}" | wc -l)
-              echo "📊 Services: $RUNNING_SERVICES/$TOTAL_SERVICES running"
+              echo "❌ Application server is not healthy"
             fi
 
       - name: 🚀 Check Application Status

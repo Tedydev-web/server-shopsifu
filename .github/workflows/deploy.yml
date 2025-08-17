@@ -128,89 +128,9 @@ jobs:
           echo "deploy-time=$DEPLOY_DURATION" >> "$GITHUB_OUTPUT"
           echo "⏱️ Deploy completed in ${DEPLOY_DURATION}s"
 
-  health-check:
-    name: 🏥 Health Check
-    needs: deploy
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: ⏱️ Start health check timer
-        id: health-timer
-        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: 🏥 Perform comprehensive health check
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          timeout: 120s
-          command_timeout: 300s
-          script: |
-            set -euo pipefail
-
-            echo "🏥 Starting comprehensive health check..."
-
-                        # Install required tools
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq jq netcat-openbsd postgresql-client redis-tools
-
-            # Set environment variables with fallback
-            VPS_PATH="${VPS_PATH:-shopsifu/server-shopsifu}"
-            export VPS_PATH="$VPS_PATH"
-            export DISCORD_WEBHOOK="${{ secrets.DISCORD_WEBHOOK }}"
-
-            echo "🔍 Debug: VPS_PATH set to: $VPS_PATH"
-
-            # Run comprehensive health check script
-            if [ -f "$VPS_PATH/scripts/comprehensive-health-check.sh" ]; then
-              chmod +x "$VPS_PATH/scripts/comprehensive-health-check.sh"
-              "$VPS_PATH/scripts/comprehensive-health-check.sh"
-            else
-              echo "❌ Comprehensive health check script not found"
-              echo "📊 Falling back to basic health check..."
-
-              # Basic health check fallback
-              cd "$VPS_PATH"
-              ATTEMPTS=30
-              SLEEP=5
-              TIMEOUT=10
-
-              for i in $(seq 1 $ATTEMPTS); do
-                echo "Attempt $i/$ATTEMPTS..."
-
-                if ! docker compose ps | grep -q "shopsifu_server.*Up"; then
-                  echo "⚠️ Service not running yet, waiting..."
-                  sleep $SLEEP
-                  continue
-                fi
-
-                if timeout $TIMEOUT curl -fsS -m 5 http://localhost:3000/health > /dev/null; then
-                  echo "✅ Basic health check passed!"
-                  exit 0
-                else
-                  echo "⚠️ Health check attempt $i failed, retrying..."
-                  sleep $SLEEP
-                fi
-              done
-
-              echo "❌ Basic health check failed after $ATTEMPTS attempts"
-              docker compose ps
-              exit 1
-            fi
-
-      - name: 📊 Calculate health check time
-        id: health-time
-        run: |
-          HEALTH_END=$(date +%s)
-          HEALTH_START=${{ steps.health-timer.outputs.start_time }}
-          HEALTH_DURATION=$((HEALTH_END - HEALTH_START))
-          echo "health-time=$HEALTH_DURATION" >> "$GITHUB_OUTPUT"
-          echo "⏱️ Health check completed in ${HEALTH_DURATION}s"
-
   notification:
     name: 📢 Send Notification
-    needs: [deploy, health-check]
+    needs: [deploy]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     if: always()
@@ -218,14 +138,10 @@ jobs:
       - name: 📢 Send Discord notification
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          STATUS: ${{ needs.health-check.outcome == 'success' && 'success' || 'failure' }}
-          BRANCH: main
-          COMMIT: ${{ github.sha }}
-          ACTOR: ${{ github.actor }}
+          STATUS: ${{ needs.deploy.outcome == 'success' && 'success' || 'failure' }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           DEPLOY_TIME: ${{ needs.deploy.outputs.deploy-time }}
-          HEALTH_TIME: ${{ needs.health-check.outputs.health-time }}
         run: |
           sudo apt-get update && sudo apt-get install -y jq
 
@@ -233,16 +149,12 @@ jobs:
           ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
           DESCRIPTION=$([ "$STATUS" = "success" ] && echo "🚀 **Deploy thành công**" || echo "❌ **Deploy thất bại**")
 
-          TOTAL_TIME=$((DEPLOY_TIME + HEALTH_TIME))
-
           JSON_PAYLOAD=$(jq -n \
             --arg status "$STATUS" \
             --arg icon "$ICON" \
             --arg description "$DESCRIPTION" \
             --arg color "$COLOR" \
             --arg deploy_time "$DEPLOY_TIME" \
-            --arg health_time "$HEALTH_TIME" \
-            --arg total_time "$TOTAL_TIME" \
             --arg repo "$REPO" \
             --arg run_id "$RUN_ID" \
             ' {
@@ -252,7 +164,8 @@ jobs:
                   color: ($color | tonumber),
                   fields: [
                     { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
-                    { name: "⏱️ Performance", value: "Deploy: \($deploy_time)s\nHealth: \($health_time)s\n**Total: \($total_time)s**", inline: false }
+                    { name: "⏱️ Deploy Time", value: "\($deploy_time)s", inline: true },
+                    { name: "📦 Repository", value: $repo, inline: true }
                   ],
                   url: "https://github.com/\($repo)/actions/runs/\($run_id)",
                   footer: { "text": "🚀 Deploy Production" },
