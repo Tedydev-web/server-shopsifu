@@ -173,7 +173,8 @@ jobs:
 
             # Stop services temporarily for consistent backup
             echo "⏸️ Stopping services for consistent backup..."
-            docker compose -f ${{ env.VPS_PATH }}/docker-compose.yml down
+            VPS_PATH="${VPS_PATH:-shopsifu/server-shopsifu}"
+            docker compose -f "$VPS_PATH/docker-compose.yml" down
             sleep 30
 
             # Backup PostgreSQL data volume
@@ -190,7 +191,7 @@ jobs:
 
             # Restart services
             echo "🔄 Restarting services..."
-            docker compose -f ${{ env.VPS_PATH }}/docker-compose.yml up -d
+            docker compose -f "$VPS_PATH/docker-compose.yml" up -d
 
             echo "✅ Docker volumes backup completed"
 

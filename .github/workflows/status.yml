@@ -58,27 +58,30 @@ jobs:
 
             echo "🔍 Running comprehensive health check..."
 
-            # Install required tools if not present
+                        # Install required tools if not present
             sudo apt-get update -qq
             sudo apt-get install -y -qq jq netcat-openbsd postgresql-client redis-tools
 
-            # Set environment variables
-            export VPS_PATH="${{ env.VPS_PATH }}"
+            # Set environment variables with fallback
+            VPS_PATH="${VPS_PATH:-shopsifu/server-shopsifu}"
+            export VPS_PATH="$VPS_PATH"
             export DISCORD_WEBHOOK="${{ secrets.DISCORD_WEBHOOK }}"
 
+            echo "🔍 Debug: VPS_PATH set to: $VPS_PATH"
+
             # Run comprehensive health check script
-            if [ -f "${{ env.VPS_PATH }}/scripts/comprehensive-health-check.sh" ]; then
-              chmod +x "${{ env.VPS_PATH }}/scripts/comprehensive-health-check.sh"
-              "${{ env.VPS_PATH }}/scripts/comprehensive-health-check.sh"
+            if [ -f "$VPS_PATH/scripts/comprehensive-health-check.sh" ]; then
+              chmod +x "$VPS_PATH/scripts/comprehensive-health-check.sh"
+              "$VPS_PATH/scripts/comprehensive-health-check.sh"
             else
               echo "❌ Comprehensive health check script not found"
               echo "📊 Running basic status check..."
 
-              cd "${{ env.VPS_PATH }}"
-              docker compose -f "${{ env.VPS_PATH }}/docker-compose.yml" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+              cd "$VPS_PATH"
+              docker compose -f "$VPS_PATH/docker-compose.yml" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
-              RUNNING_SERVICES=$(docker compose -f "${{ env.VPS_PATH }}/docker-compose.yml" ps --filter "status=running" --format "{{.Name}}" | wc -l)
-              TOTAL_SERVICES=$(docker compose -f "${{ env.VPS_PATH }}/docker-compose.yml" ps --format "{{.Name}}" | wc -l)
+              RUNNING_SERVICES=$(docker compose -f "$VPS_PATH/docker-compose.yml" ps --filter "status=running" --format "{{.Name}}" | wc -l)
+              TOTAL_SERVICES=$(docker compose -f "$VPS_PATH/docker-compose.yml" ps --format "{{.Name}}" | wc -l)
               echo "📊 Services: $RUNNING_SERVICES/$TOTAL_SERVICES running"
             fi
 
