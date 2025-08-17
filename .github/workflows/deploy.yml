@@ -197,20 +197,46 @@ jobs:
               CHANGES_SUMMARY=$(git log --stat --oneline -5 | grep -E "^ [0-9]+ files? changed" | tail -1 2>/dev/null || echo "Changes detected (git log unavailable)")
             fi
 
-            # Get Docker status with better formatting for Discord
-            DOCKER_STATUS=$(docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | head -8 2>/dev/null | sed 's/  */ | /g' | sed 's/| |/|/g' | sed 's/Up [0-9]* seconds/Up/g' | sed 's/Up [0-9]* minutes/Up/g' | sed 's/Up [0-9]* hours/Up/g' | tr '\n' ' ' || echo "Docker status unavailable")
+            # Get Docker status with smart formatting for Discord
+            DOCKER_STATUS_RAW=$(docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | head -8 2>/dev/null || echo "Docker status unavailable")
 
-            # Get image info with better formatting
-            IMAGE_INFO=$(docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep "shopsifu" | head -3 2>/dev/null | sed 's/  */ | /g' | sed 's/| |/|/g' | tr '\n' ' ' || echo "Image info unavailable")
+            # Check if we can fit table format, otherwise use list format
+            if [ "$(echo "$DOCKER_STATUS_RAW" | wc -c)" -lt 800 ]; then
+              # Use table format if small enough
+              DOCKER_STATUS=$(echo "$DOCKER_STATUS_RAW" | sed 's/  */ | /g' | sed 's/| |/|/g' | sed 's/Up [0-9]* seconds/Up/g' | sed 's/Up [0-9]* minutes/Up/g' | sed 's/Up [0-9]* hours/Up/g' | tr '\n' ' ')
+            else
+              # Use list format for better readability
+              DOCKER_STATUS=$(echo "$DOCKER_STATUS_RAW" | tail -n +2 | while read -r name status ports; do
+                if [ -n "$name" ]; then
+                  echo "• $name: $status | $ports"
+                fi
+              done | head -6)
+            fi
 
-            # Get system info
-            SYSTEM_INFO=$(echo "CPU: $(nproc) cores | Memory: $(free -h | grep Mem | awk '{print $2}') | Disk: $(df -h / | tail -1 | awk '{print $4}') available" 2>/dev/null || echo "System info unavailable")
+                        # Get info for the specific deployed image
+            DEPLOYED_IMAGE_FULL_NAME="${REGISTRY}/${IMAGE_NAME}:master-${COMMIT_SHORT_SHA}"
+            DEPLOYED_IMAGE_SIZE=$(docker images --format "{{.Size}}" "$DEPLOYED_IMAGE_FULL_NAME" 2>/dev/null || echo "N/A")
 
-            # Get deployment environment info
-            ENV_INFO=$(echo "Host: $(hostname) | OS: $(lsb_release -d | cut -f2) | Uptime: $(uptime -p)" 2>/dev/null || echo "Environment info unavailable")
+            if [ "$DEPLOYED_IMAGE_SIZE" != "N/A" ]; then
+              IMAGE_INFO="• Image: \`${DEPLOYED_IMAGE_FULL_NAME}\`\n• Size: \`${DEPLOYED_IMAGE_SIZE}\`\n• Tag: \`master-${COMMIT_SHORT_SHA}\`\n• Registry: \`${REGISTRY}\`\n• Install: \`docker pull ${DEPLOYED_IMAGE_FULL_NAME}\`"
+            else
+              # Fallback: try to get latest image info
+              LATEST_IMAGE_SIZE=$(docker images --format "{{.Size}}" "${REGISTRY}/${IMAGE_NAME}:latest" 2>/dev/null || echo "N/A")
+              if [ "$LATEST_IMAGE_SIZE" != "N/A" ]; then
+                IMAGE_INFO="• Image: \`${REGISTRY}/${IMAGE_NAME}:latest\`\n• Size: \`${LATEST_IMAGE_SIZE}\`\n• Tag: \`latest\`\n• Registry: \`${REGISTRY}\`\n• Install: \`docker pull ${REGISTRY}/${IMAGE_NAME}:latest\`"
+              else
+                IMAGE_INFO="• Deployed image info unavailable or not found locally on VPS."
+              fi
+            fi
 
-            # Get network info
-            NETWORK_INFO=$(echo "IP: $(hostname -I | awk '{print $1}') | Gateway: $(ip route | grep default | awk '{print $3}' | head -1)" 2>/dev/null || echo "Network info unavailable")
+            # Get system info with better formatting
+            SYSTEM_INFO=$(echo "CPU: $(nproc) cores\nMemory: $(free -h | grep Mem | awk '{print $2}')\nDisk: $(df -h / | tail -1 | awk '{print $4}') available" 2>/dev/null || echo "System info unavailable")
+
+            # Get deployment environment info with better formatting
+            ENV_INFO=$(echo "Host: $(hostname)\nOS: $(lsb_release -d | cut -f2)\nUptime: $(uptime -p)" 2>/dev/null || echo "Environment info unavailable")
+
+            # Get network info with better formatting
+            NETWORK_INFO=$(echo "IP: $(hostname -I | awk '{print $1}')\nGateway: $(ip route | grep default | awk '{print $3}' | head -1)" 2>/dev/null || echo "Network info unavailable")
 
             COLOR=$([ "$STATUS" = "success" ] && echo 3066993 || echo 15158332)
             ICON=$([ "$STATUS" = "success" ] && echo "✅" || echo "❌")
@@ -256,52 +282,94 @@ jobs:
             echo "  Discord Webhook: ${DISCORD_WEBHOOK:0:50}..."
             echo "  Total fields: 13"
 
-            JSON_PAYLOAD=$(jq -n \
-              --arg status "$STATUS" \
-              --arg icon "$ICON" \
-              --arg description "$DESCRIPTION" \
-              --arg color "$COLOR" \
-              --arg branch "$BRANCH" \
-              --arg actor "$ACTOR" \
-              --arg commit_sha "$COMMIT_SHORT_SHA" \
-              --arg commit_message "$COMMIT_MESSAGE" \
-              --arg commit_date "$COMMIT_DATE" \
-              --arg changes_summary "$CHANGES_SUMMARY" \
-              --arg commit_list "$COMMIT_LIST" \
-              --arg docker_status "$DOCKER_STATUS" \
-              --arg image_info "$IMAGE_INFO" \
-              --arg system_info "$SYSTEM_INFO" \
-              --arg deploy_time "$DEPLOY_TIME" \
-              --arg repo "$REPO" \
-              --arg run_id "$RUN_ID" \
-              --arg env_info "$ENV_INFO" \
-              --arg network_info "$NETWORK_INFO" \
-              ' {
-                  embeds: [{
-                    title: "🚀 SERVER - Deploy Production",
-                    description: $description,
-                    color: ($color | tonumber),
-                    fields: [
-                      { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
-                      { name: "🌿 Nhánh", value: $branch, inline: true },
-                      { name: "👤 Người thực hiện", value: $actor, inline: true },
-                      { name: "🔗 Commit SHA", value: "`\($commit_sha)`", inline: true },
-                      { name: "📅 Commit Date", value: $commit_date, inline: true },
-                      { name: "⏱️ Deploy Time", value: $deploy_time, inline: true },
-                      { name: "📝 Commit Message", value: $commit_message, inline: false },
-                      { name: "📊 Changes Summary", value: $changes_summary, inline: false },
-                      { name: "📋 Danh sách Commits", value: "```\($commit_list)```", inline: false },
-                      { name: "🐳 Docker Status", value: "```\($docker_status)```", inline: false },
-                      { name: "🖼️ Image Info", value: "```\($image_info)```", inline: false },
-                      { name: "💻 System Info", value: "```\($system_info)```", inline: false },
-                      { name: "🌐 Môi trường", value: "```\($env_info)```", inline: false },
-                      { name: "🌐 Mạng", value: "```\($network_info)```", inline: false }
-                    ],
-                    url: "https://github.com/\($repo)/actions/runs/\($run_id)",
-                    footer: { "text": "🚀 Deploy Production" },
-                    timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
-                  }]
-                }')
+            # Create smart JSON payload based on content size
+            if [ "$(echo "$DOCKER_STATUS" | wc -c)" -gt 800 ]; then
+              # Use compact format for large content
+              JSON_PAYLOAD=$(jq -n \
+                --arg status "$STATUS" \
+                --arg icon "$ICON" \
+                --arg description "$DESCRIPTION" \
+                --arg color "$COLOR" \
+                --arg branch "$BRANCH" \
+                --arg actor "$ACTOR" \
+                --arg commit_sha "$COMMIT_SHORT_SHA" \
+                --arg commit_message "$COMMIT_MESSAGE" \
+                --arg changes_summary "$CHANGES_SUMMARY" \
+                --arg commit_list "$COMMIT_LIST" \
+                --arg docker_status "$DOCKER_STATUS" \
+                --arg deploy_time "$DEPLOY_TIME" \
+                --arg repo "$REPO" \
+                --arg run_id "$RUN_ID" \
+                ' {
+                    embeds: [{
+                      title: "🚀 SERVER - Deploy Production",
+                      description: $description,
+                      color: ($color | tonumber),
+                      fields: [
+                        { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
+                        { name: "🌿 Nhánh", value: $branch, inline: true },
+                        { name: "👤 Người thực hiện", value: $actor, inline: true },
+                        { name: "🔗 Commit SHA", value: "`\($commit_sha)`", inline: true },
+                        { name: "⏱️ Deploy Time", value: $deploy_time, inline: true },
+                        { name: "📝 Commit Message", value: $commit_message, inline: false },
+                        { name: "📊 Changes Summary", value: $changes_summary, inline: false },
+                        { name: "📋 Danh sách Commits", value: "```\($commit_list)```", inline: false },
+                        { name: "🐳 Docker Status", value: "```\($docker_status)```", inline: false }
+                      ],
+                      url: "https://github.com/\($repo)/actions/runs/\($run_id)",
+                      footer: { "text": "🚀 Deploy Production (Compact)" },
+                      timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+                    }]
+                  }')
+            else
+              # Use full format for smaller content
+              JSON_PAYLOAD=$(jq -n \
+                --arg status "$STATUS" \
+                --arg icon "$ICON" \
+                --arg description "$DESCRIPTION" \
+                --arg color "$COLOR" \
+                --arg branch "$BRANCH" \
+                --arg actor "$ACTOR" \
+                --arg commit_sha "$COMMIT_SHORT_SHA" \
+                --arg commit_message "$COMMIT_MESSAGE" \
+                --arg commit_date "$COMMIT_DATE" \
+                --arg changes_summary "$CHANGES_SUMMARY" \
+                --arg commit_list "$COMMIT_LIST" \
+                --arg docker_status "$DOCKER_STATUS" \
+                --arg image_info "$IMAGE_INFO" \
+                --arg system_info "$SYSTEM_INFO" \
+                --arg deploy_time "$DEPLOY_TIME" \
+                --arg repo "$REPO" \
+                --arg run_id "$RUN_ID" \
+                --arg env_info "$ENV_INFO" \
+                --arg network_info "$NETWORK_INFO" \
+                ' {
+                    embeds: [{
+                      title: "🚀 SERVER - Deploy Production",
+                      description: $description,
+                      color: ($color | tonumber),
+                      fields: [
+                        { name: "📊 Trạng thái", value: "\($icon) \($status | ascii_upcase)", inline: true },
+                        { name: "🌿 Nhánh", value: $branch, inline: true },
+                        { name: "👤 Người thực hiện", value: $actor, inline: true },
+                        { name: "🔗 Commit SHA", value: "`\($commit_sha)`", inline: true },
+                        { name: "📅 Commit Date", value: $commit_date, inline: true },
+                        { name: "⏱️ Deploy Time", value: $deploy_time, inline: true },
+                        { name: "📝 Commit Message", value: $commit_message, inline: false },
+                        { name: "📊 Changes Summary", value: $changes_summary, inline: false },
+                        { name: "📋 Danh sách Commits", value: "```\($commit_list)```", inline: false },
+                        { name: "🐳 Docker Status", value: "```\($docker_status)```", inline: false },
+                        { name: "🖼️ Image Info", value: "$image_info", inline: false },
+                        { name: "💻 System Info", value: "```\($system_info)```", inline: false },
+                        { name: "🌐 Môi trường", value: "```\($env_info)```", inline: false },
+                        { name: "🌐 Mạng", value: "```\($network_info)```", inline: false }
+                      ],
+                      url: "https://github.com/\($repo)/actions/runs/\($run_id)",
+                      footer: { "text": "🚀 Deploy Production (Full)" },
+                      timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+                    }]
+                  }')
+            fi
 
             # Debug: Print JSON payload
             echo "🔍 Debug: JSON Payload:"
