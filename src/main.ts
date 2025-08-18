@@ -10,6 +10,7 @@ import express from 'express'
 import { Logger } from 'nestjs-pino'
 import { ConfigService } from '@nestjs/config'
 import bodyParser from 'body-parser'
+import { serveMetrics, wrapExpressForMetrics } from './metrics'
 
 async function bootstrap(): Promise<void> {
   const server = express()
@@ -40,8 +41,8 @@ async function bootstrap(): Promise<void> {
             defaultSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'"],
             scriptSrc: ["'self'"],
-            imgSrc: ["'self'", "data:", "https:"],
-          },
+            imgSrc: ["'self'", 'data:', 'https:']
+          }
         },
         // Tối ưu performance
         noSniff: true,
@@ -51,16 +52,18 @@ async function bootstrap(): Promise<void> {
     )
 
     // Compression (OPTIMIZED FOR HIGH TRAFFIC)
-    app.use(compression({
-      threshold: 1024,
-      level: 6, // Balance between compression and CPU usage
-      filter: (req, res) => {
-        if (req.headers['x-no-compression']) {
-          return false
+    app.use(
+      compression({
+        threshold: 1024,
+        level: 6, // Balance between compression and CPU usage
+        filter: (req, res) => {
+          if (req.headers['x-no-compression']) {
+            return false
+          }
+          return compression.filter(req, res)
         }
-        return compression.filter(req, res)
-      }
-    }))
+      })
+    )
 
     app.useLogger(logger)
     app.enableCors(config.get('app.cors'))
@@ -72,6 +75,11 @@ async function bootstrap(): Promise<void> {
     const websocketAdapter = new WebsocketAdapter(app)
     await websocketAdapter.connectToRedis()
     app.useWebSocketAdapter(websocketAdapter)
+
+    // Metrics per-worker (Prometheus)
+    wrapExpressForMetrics(server)
+    const metricsBasePort = Number(process.env.METRICS_BASE_PORT || 9200)
+    serveMetrics(metricsBasePort)
 
     // // Global settings
     // app.useGlobalPipes(
@@ -126,9 +134,10 @@ async function bootstrap(): Promise<void> {
     // Performance monitoring (OPTIMIZED FOR PRODUCTION)
     setInterval(() => {
       const memUsage = process.memoryUsage()
-      logger.log(`📊 Memory Usage - RSS: ${Math.round(memUsage.rss / 1024 / 1024)}MB, Heap: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`)
+      logger.log(
+        `📊 Memory Usage - RSS: ${Math.round(memUsage.rss / 1024 / 1024)}MB, Heap: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`
+      )
     }, 300000) // Log every 5 minutes
-
   } catch (error) {
     console.error(`❌ Container ${process.pid} failed to start:`, error)
     process.exit(1)

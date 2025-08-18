@@ -17,6 +17,7 @@ alerting:
     - static_configs:
         - targets:
             - alertmanager:9093
+            - shopsifu_alertmanager:9093
 
 scrape_configs:
   # Prometheus tự monitor
@@ -31,19 +32,49 @@ scrape_configs:
   # ShopSifu API Server - Performance monitoring
   - job_name: 'shopsifu-api'
     static_configs:
-      - targets: ['shopsifu_server:3000']
+      - targets:
+          [
+            '103.147.186.84:9500',
+            '103.147.186.84:9501',
+            '103.147.186.84:9502',
+            '103.147.186.84:9503',
+            '103.147.186.84:9504',
+            '103.147.186.84:9505',
+            '103.147.186.84:9506',
+            '103.147.186.84:9507',
+            '103.147.186.84:9508',
+            '103.147.186.84:9509',
+            '103.147.186.84:9510',
+            '103.147.186.84:9511',
+            '103.147.186.84:9512',
+            '103.147.186.84:9513',
+            '103.147.186.84:9514',
+            '103.147.186.84:9515',
+            '103.147.186.84:9516',
+            '103.147.186.84:9517',
+            '103.147.186.84:9518',
+            '103.147.186.84:9519',
+            '103.147.186.84:9520',
+            '103.147.186.84:9521',
+            '103.147.186.84:9522',
+            '103.147.186.84:9523',
+            '103.147.186.84:9524',
+            '103.147.186.84:9525',
+            '103.147.186.84:9526',
+            '103.147.186.84:9527',
+            '103.147.186.84:9528',
+            '103.147.186.84:9529',
+            '103.147.186.84:9530',
+            '103.147.186.84:9531'
+          ]
+        labels:
+          env: production
+          service: api
+          instance: vps-103-147-186-84
     metrics_path: /metrics
     scrape_interval: 15s
     scrape_timeout: 5s
     honor_labels: true
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        regex: '([^:]+)(?::\d+)?'
-        replacement: '${1}'
-      - source_labels: [__address__]
-        target_label: service
-        replacement: 'api-server'
 
   # PostgreSQL với postgres_exporter - Database performance
   - job_name: 'postgres'
@@ -117,17 +148,40 @@ scrape_configs:
   - job_name: 'system-monitor'
     static_configs:
       - targets: ['shopsifu_system_monitor:9226']
-    scrape_interval: 10s
-    scrape_timeout: 5s
-    metrics_path: /metrics
-    honor_labels: true
+  # Blackbox synthetic probe
+  - job_name: 'blackbox'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ['http://103.147.186.84:3000/health']
     relabel_configs:
       - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
         target_label: instance
-        regex: '([^:]+)(?::\d+)?'
-        replacement: '${1}'
-      - source_labels: [__address__]
-        target_label: service
-        replacement: 'system-monitor'
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+
+  # Nginx exporter
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['shopsifu_nginx_exporter:9113']
+
+  # Loki metrics
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['loki:3100']
+    metrics_path: /metrics
+
+  # Tempo metrics
+  - job_name: 'tempo'
+    static_configs:
+      - targets: ['tempo:3200']
+    metrics_path: /metrics
+  # PM2 exporter metrics
+  - job_name: 'pm2'
+    static_configs:
+      - targets: ['103.147.186.84:9209']
 
   # Prometheus Exporters

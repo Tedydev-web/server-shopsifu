@@ -22,11 +22,14 @@ export class SearchSyncService {
     private readonly es: ElasticsearchService,
     private readonly configService: ConfigService
   ) {
+    const password = this.configService.get<string>('redis.password')
+    const requireAuth = Boolean(this.configService.get('redis.requireAuth'))
+    const isPasswordProvided = requireAuth && typeof password === 'string' && password.trim().length > 0
     this.queue = new Queue(SEARCH_SYNC_QUEUE_NAME, {
       connection: {
         host: this.configService.get('redis.host'),
         port: this.configService.get('redis.port'),
-        password: this.configService.get('redis.password')
+        ...(isPasswordProvided ? { password } : {})
       }
     })
   }

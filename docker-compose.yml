@@ -87,6 +87,8 @@ services:
       - '--storage.tsdb.retention.time=30d'
     networks:
       - monitoring-network
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     deploy:
       resources:
         limits:
@@ -104,17 +106,28 @@ services:
 
   # Grafana
   grafana:
-    image: grafana/grafana:10.2.0
+    image: grafana/grafana:11.4.0
     container_name: shopsifu_grafana
     restart: unless-stopped
     ports:
       - '3001:3000'
+    env_file: .env.docker
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=Shopsifu2025
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_SECURITY_COOKIE_HTTPONLY=${GRAFANA_SECURITY_COOKIE_HTTPONLY}
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_USERS_ALLOW_ORG_CREATE=false
       - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_FEATURE_TOGGLES_ENABLE=publicDashboards
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_LOG_LEVEL=info
       - GF_SERVER_ROOT_URL=http://localhost:3001
-      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/system-overview.json
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
+      # Gỡ Home dashboard mặc định để bạn import qua UI tự do
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -125,17 +138,17 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 1G
+          cpus: '2.0'
+          memory: 4G
         reservations:
-          cpus: '0.2'
-          memory: 512M
+          cpus: '1.0'
+          memory: 2G
     healthcheck:
-      test: ['CMD-SHELL', 'curl -fsS http://localhost:3000/api/health || exit 1']
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1']
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 30s
 
   # PostgreSQL Exporter - kết nối tới host PostgreSQL
   postgres_exporter:
@@ -254,37 +267,6 @@ services:
           memory: 128M
     healthcheck:
       test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9100/metrics || exit 1']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  # cAdvisor
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.47.2
-    container_name: shopsifu_cadvisor
-    restart: unless-stopped
-    ports:
-      - '8080:8080'
-    privileged: true
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    networks:
-      - monitoring-network
-    deploy:
-      resources:
-        limits:
-          cpus: '0.3'
-          memory: 512M
-        reservations:
-          cpus: '0.1'
-          memory: 256M
-    healthcheck:
-      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1']
       interval: 30s
       timeout: 10s
       retries: 3

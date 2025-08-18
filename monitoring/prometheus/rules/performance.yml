@@ -108,3 +108,28 @@ groups:
         annotations:
           summary: 'System reboot detected'
           description: 'System has been rebooted'
+
+  - name: API SLO
+    rules:
+      - alert: APIErrorBudgetBurnFast
+        expr: (sum(rate(http_server_requests_total{service="api",status_code=~"5.."}[5m])) /
+          sum(rate(http_server_requests_total{service="api"}[5m]))) > (0.01 * 14.4)
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: 'Fast burn >14.4x (5m)' }
+      - alert: APIErrorBudgetBurnSlow
+        expr: (sum(rate(http_server_requests_total{service="api",status_code=~"5.."}[1h])) /
+          sum(rate(http_server_requests_total{service="api"}[1h]))) > (0.01 * 6)
+        for: 2h
+        labels: { severity: page }
+        annotations: { summary: 'Slow burn >6x (1h)' }
+
+      - alert: APIP99High
+        expr: histogram_quantile(0.99, sum by (le) (rate(http_server_duration_seconds_bucket{service="api"}[5m]))) > 0.8
+        for: 10m
+        labels: { severity: page }
+
+      - alert: CPUHigh
+        expr: avg by (instance) (rate(node_cpu_seconds_total{mode!="idle"}[5m])) > 0.9
+        for: 10m
+        labels: { severity: warning }

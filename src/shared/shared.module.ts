@@ -102,8 +102,10 @@ const sharedServices = [
       isGlobal: true,
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
+        const sanitizedUrl =
+          (configService.get<string>('redis.url') as string) || (configService.get<string>('REDIS_URL') as string)
         return {
-          stores: [createKeyv(configService.get<string>('REDIS_URL'))]
+          stores: [createKeyv(sanitizedUrl)]
         }
       },
       inject: [ConfigService]
@@ -112,13 +114,18 @@ const sharedServices = [
     // Queue Management - Bull/Redis
     BullModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get('redis.host'),
-          port: Number(configService.get('redis.port')),
-          password: configService.get('redis.password')
+      useFactory: (configService: ConfigService) => {
+        const password = configService.get<string>('redis.password')
+        const requireAuth = Boolean(configService.get('redis.requireAuth'))
+        const isPasswordProvided = requireAuth && typeof password === 'string' && password.trim().length > 0
+        return {
+          connection: {
+            host: configService.get('redis.host'),
+            port: Number(configService.get('redis.port')),
+            ...(isPasswordProvided ? { password } : {})
+          }
         }
-      }),
+      },
       inject: [ConfigService]
     }),
 

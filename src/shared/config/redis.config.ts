@@ -9,12 +9,31 @@ export default registerAs('redis', (): Record<string, any> => {
     password: process.env.REDIS_PASSWORD,
     tls: process.env.REDIS_ENABLE_TLS === 'true' ? {} : null,
     url: process.env.REDIS_URL,
-    connectionName: process.env.REDIS_CONNECTION_NAME
+    connectionName: process.env.REDIS_CONNECTION_NAME,
+    requireAuth: process.env.REDIS_REQUIRE_AUTH === 'true'
+  }
+
+  const isPasswordProvided: boolean =
+    config.requireAuth && typeof config.password === 'string' && config.password.trim().length > 0
+
+  // Nếu không có password, loại bỏ thông tin xác thực trong URL (nếu có)
+  let sanitizedUrl: string | undefined = config.url
+  if (!isPasswordProvided && typeof config.url === 'string' && config.url.length > 0) {
+    try {
+      const parsed = new URL(config.url)
+      if (parsed.username || parsed.password) {
+        parsed.username = ''
+        parsed.password = ''
+        sanitizedUrl = parsed.toString()
+      }
+    } catch {
+      // Bỏ qua nếu URL không hợp lệ; giữ nguyên
+    }
   }
 
   // Khởi tạo Redis client với connection pooling tối ưu
-  const redis = config.url
-    ? new Client(config.url, {
+  const redis = sanitizedUrl
+    ? new Client(sanitizedUrl, {
         // Tối ưu connection pooling
         maxRetriesPerRequest: 3,
         enableReadyCheck: true,
@@ -31,7 +50,7 @@ export default registerAs('redis', (): Record<string, any> => {
     : new Client({
         host: config.host,
         port: Number(config.port),
-        password: config.password,
+        ...(isPasswordProvided ? { password: config.password } : {}),
         tls: config.tls || undefined,
         // Tối ưu connection pooling
         maxRetriesPerRequest: 3,
@@ -55,6 +74,7 @@ export default registerAs('redis', (): Record<string, any> => {
 
   return {
     ...config,
+    url: sanitizedUrl ?? config.url,
     redis,
     redlock
   }
