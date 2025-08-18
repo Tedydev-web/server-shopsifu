@@ -1,2 +1,1 @@
 "shopsifu" "Shopsifu2025"
-"postgres" "Shopsifu2025"

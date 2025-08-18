@@ -1,313 +1,103 @@
 {
   "dashboard": {
     "id": null,
-    "title": "ShopSifu System Overview",
-    "tags": ["shopsifu", "overview", "system"],
+    "title": "VPS System Overview",
+    "tags": ["vps", "system", "performance"],
     "style": "dark",
     "timezone": "browser",
-    "panels": [
-      {
-        "id": 1,
-        "title": "System CPU Usage",
-        "type": "stat",
-        "targets": [
-          {
-            "expr": "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
-            "legendFormat": "CPU Usage"
-          }
-        ],
-        "fieldConfig": {
-          "defaults": {
-            "color": {
-              "mode": "thresholds"
-            },
-            "thresholds": {
-              "steps": [
-                { "color": "green", "value": null },
-                { "color": "yellow", "value": 70 },
-                { "color": "red", "value": 90 }
-              ]
-            },
-            "unit": "percent"
-          }
-        },
-        "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 }
-      },
-      {
-        "id": 2,
-        "title": "System Memory Usage",
-        "type": "stat",
-        "targets": [
-          {
-            "expr": "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100",
-            "legendFormat": "Memory Usage"
-          }
-        ],
-        "fieldConfig": {
-          "defaults": {
-            "color": {
-              "mode": "thresholds"
-            },
-            "thresholds": {
-              "steps": [
-                { "color": "green", "value": null },
-                { "color": "yellow", "value": 80 },
-                { "color": "red", "value": 90 }
-              ]
-            },
-            "unit": "percent"
-          }
-        },
-        "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 }
-      },
-      {
-        "id": 3,
-        "title": "Redis Connected Clients",
-        "type": "stat",
-        "targets": [
-          {
-            "expr": "redis_connected_clients",
-            "legendFormat": "Connected Clients"
-          }
-        ],
-        "fieldConfig": {
-          "defaults": {
-            "color": {
-              "mode": "thresholds"
-            },
-            "thresholds": {
-              "steps": [
-                { "color": "green", "value": null },
-                { "color": "yellow", "value": 50 },
-                { "color": "red", "value": 100 }
-              ]
-            }
-          }
-        },
-        "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 }
-      },
-      {
-        "id": 4,
-        "title": "PostgreSQL Active Connections",
-        "type": "stat",
-        "targets": [
-          {
-            "expr": "pg_stat_database_numbackends",
-            "legendFormat": "Active Connections"
-          }
-        ],
-        "fieldConfig": {
-          "defaults": {
-            "color": {
-              "mode": "thresholds"
-            },
-            "thresholds": {
-              "steps": [
-                { "color": "green", "value": null },
-                { "color": "yellow", "value": 20 },
-                { "color": "red", "value": 50 }
-              ]
-            }
-          }
-        },
-        "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 }
-      },
-      {
-        "id": 5,
-        "title": "System CPU Usage Over Time",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
-            "legendFormat": "CPU Usage"
-          }
-        ],
-        "fieldConfig": {
-          "defaults": {
-            "color": {
-              "mode": "palette-classic"
-            },
-            "custom": {
-              "axisLabel": "",
-              "axisPlacement": "auto",
-              "barAlignment": 0,
-              "drawStyle": "line",
-              "fillOpacity": 10,
-              "gradientMode": "none",
-              "hideFrom": {
-                "legend": false,
-                "tooltip": false,
-                "vis": false
-              },
-              "lineInterpolation": "linear",
-              "lineWidth": 1,
-              "pointSize": 5,
-              "scaleDistribution": {
-                "type": "linear"
-              },
-              "showPoints": "never",
-              "spanNulls": false,
-              "stacking": {
-                "group": "A",
-                "mode": "none"
-              },
-              "thresholdsStyle": {
-                "mode": "off"
-              }
-            },
-            "unit": "percent"
-          }
-        },
-        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
-      },
-      {
-        "id": 6,
-        "title": "System Memory Usage Over Time",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100",
-            "legendFormat": "Memory Usage"
-          }
-        ],
-        "fieldConfig": {
-          "defaults": {
-            "color": {
-              "mode": "palette-classic"
-            },
-            "custom": {
-              "axisLabel": "",
-              "axisPlacement": "auto",
-              "barAlignment": 0,
-              "drawStyle": "line",
-              "fillOpacity": 10,
-              "gradientMode": "none",
-              "hideFrom": {
-                "legend": false,
-                "tooltip": false,
-                "vis": false
-              },
-              "lineInterpolation": "linear",
-              "lineWidth": 1,
-              "pointSize": 5,
-              "scaleDistribution": {
-                "type": "linear"
-              },
-              "showPoints": "never",
-              "spanNulls": false,
-              "stacking": {
-                "group": "A",
-                "mode": "none"
-              },
-              "thresholdsStyle": {
-                "mode": "off"
-              }
-            },
-            "unit": "percent"
-          }
-        },
-        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
-      },
-      {
-        "id": 7,
-        "title": "Redis Memory Usage",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "redis_memory_used_bytes / 1024 / 1024",
-            "legendFormat": "Memory Usage (MB)"
-          }
-        ],
-        "fieldConfig": {
-          "defaults": {
-            "color": {
-              "mode": "palette-classic"
-            },
-            "custom": {
-              "axisLabel": "",
-              "axisPlacement": "auto",
-              "barAlignment": 0,
-              "drawStyle": "line",
-              "fillOpacity": 10,
-              "gradientMode": "none",
-              "hideFrom": {
-                "legend": false,
-                "tooltip": false,
-                "vis": false
-              },
-              "lineInterpolation": "linear",
-              "lineWidth": 1,
-              "pointSize": 5,
-              "scaleDistribution": {
-                "type": "linear"
-              },
-              "showPoints": "never",
-              "spanNulls": false,
-              "stacking": {
-                "group": "A",
-                "mode": "none"
-              },
-              "thresholdsStyle": {
-                "mode": "off"
-              }
-            },
-            "unit": "bytes"
-          }
-        },
-        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 }
-      },
-      {
-        "id": 8,
-        "title": "PostgreSQL Connections Over Time",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "pg_stat_database_numbackends",
-            "legendFormat": "Active Connections"
-          }
-        ],
-        "fieldConfig": {
-          "defaults": {
-            "color": {
-              "mode": "palette-classic"
-            },
-            "custom": {
-              "axisLabel": "",
-              "axisPlacement": "auto",
-              "barAlignment": 0,
-              "drawStyle": "line",
-              "fillOpacity": 10,
-              "gradientMode": "none",
-              "hideFrom": {
-                "legend": false,
-                "tooltip": false,
-                "vis": false
-              },
-              "lineInterpolation": "linear",
-              "lineWidth": 1,
-              "pointSize": 5,
-              "scaleDistribution": {
-                "type": "linear"
-              },
-              "showPoints": "never",
-              "spanNulls": false,
-              "stacking": {
-                "group": "A",
-                "mode": "none"
-              },
-              "thresholdsStyle": {
-                "mode": "off"
-              }
-            }
-          }
-        },
-        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 }
-      }
-    ],
+    "refresh": "30s",
     "time": {
       "from": "now-1h",
       "to": "now"
     },
-    "refresh": "30s"
+    "panels": [
+      {
+        "id": 1,
+        "title": "CPU Usage per Core",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "100 - (avg by (cpu) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "legendFormat": "CPU {{cpu}}"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "yAxes": [{ "unit": "percent", "min": 0, "max": 100 }]
+      },
+      {
+        "id": 2,
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100",
+            "legendFormat": "Memory Usage"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "yAxes": [{ "unit": "percent", "min": 0, "max": 100 }]
+      },
+      {
+        "id": 3,
+        "title": "System Load Average",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "node_load1",
+            "legendFormat": "1 min"
+          },
+          {
+            "expr": "node_load5",
+            "legendFormat": "5 min"
+          },
+          {
+            "expr": "node_load15",
+            "legendFormat": "15 min"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+      },
+      {
+        "id": 4,
+        "title": "Disk I/O",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(node_disk_io_time_seconds_total[5m])",
+            "legendFormat": "{{device}}"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
+      },
+      {
+        "id": 5,
+        "title": "Network I/O",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(node_network_receive_bytes_total[5m])",
+            "legendFormat": "{{device}} Receive"
+          },
+          {
+            "expr": "rate(node_network_transmit_bytes_total[5m])",
+            "legendFormat": "{{device}} Transmit"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 }
+      },
+      {
+        "id": 6,
+        "title": "Disk Space Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "(node_filesystem_size_bytes{mountpoint=\"/\"} - node_filesystem_avail_bytes{mountpoint=\"/\"}) / node_filesystem_size_bytes{mountpoint=\"/\"} * 100",
+            "legendFormat": "Root Filesystem"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "yAxes": [{ "unit": "percent", "min": 0, "max": 100 }]
+      }
+    ]
   }
 }

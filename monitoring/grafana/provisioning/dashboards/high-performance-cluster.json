@@ -1,0 +1,560 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "High-Performance PM2 Cluster - Real-time Monitoring",
+    "tags": ["high-performance", "pm2", "cluster", "real-time", "thread-pool"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Cluster Performance Overview",
+        "type": "row",
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+      },
+      {
+        "id": 2,
+        "title": "Active Workers",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(pm2_worker_status)",
+            "legendFormat": "Active Workers"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": 7 },
+                { "color": "green", "value": 8 }
+              ]
+            },
+            "unit": "short",
+            "min": 0,
+            "max": 8
+          }
+        },
+        "gridPos": { "h": 8, "w": 6, "x": 0, "y": 1 }
+      },
+      {
+        "id": 3,
+        "title": "Total Threads",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "system_total_threads",
+            "legendFormat": "Total Threads"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": { "h": 8, "w": 6, "x": 6, "y": 1 }
+      },
+      {
+        "id": 4,
+        "title": "System Load",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "system_load_1min",
+            "legendFormat": "1min Load"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 8 },
+                { "color": "red", "value": 16 }
+              ]
+            },
+            "decimals": 2
+          }
+        },
+        "gridPos": { "h": 8, "w": 6, "x": 12, "y": 1 }
+      },
+      {
+        "id": 5,
+        "title": "Network Connections",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "system_network_connections",
+            "legendFormat": "Connections"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": { "h": 8, "w": 6, "x": 18, "y": 1 }
+      },
+      {
+        "id": 6,
+        "title": "CPU Performance per Core",
+        "type": "row",
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 }
+      },
+      {
+        "id": 7,
+        "title": "CPU Usage per Core - Real-time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "system_cpu_per_core{core=\"0\"}",
+            "legendFormat": "Core 0"
+          },
+          {
+            "expr": "system_cpu_per_core{core=\"1\"}",
+            "legendFormat": "Core 1"
+          },
+          {
+            "expr": "system_cpu_per_core{core=\"2\"}",
+            "legendFormat": "Core 2"
+          },
+          {
+            "expr": "system_cpu_per_core{core=\"3\"}",
+            "legendFormat": "Core 3"
+          },
+          {
+            "expr": "system_cpu_per_core{core=\"4\"}",
+            "legendFormat": "Core 4"
+          },
+          {
+            "expr": "system_cpu_per_core{core=\"5\"}",
+            "legendFormat": "Core 5"
+          },
+          {
+            "expr": "system_cpu_per_core{core=\"6\"}",
+            "legendFormat": "Core 6"
+          },
+          {
+            "expr": "system_cpu_per_core{core=\"7\"}",
+            "legendFormat": "Core 7"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 5
+            },
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 70 },
+                { "color": "red", "value": 90 }
+              ]
+            },
+            "unit": "percent"
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 }
+      },
+      {
+        "id": 8,
+        "title": "System Load Average - Real-time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "system_load_1min",
+            "legendFormat": "1min Load"
+          },
+          {
+            "expr": "system_load_5min",
+            "legendFormat": "5min Load"
+          },
+          {
+            "expr": "system_load_15min",
+            "legendFormat": "15min Load"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 5
+            },
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 8 },
+                { "color": "red", "value": 16 }
+              ]
+            }
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 }
+      },
+      {
+        "id": 9,
+        "title": "PM2 Workers Performance",
+        "type": "row",
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 }
+      },
+      {
+        "id": 10,
+        "title": "PM2 Workers CPU Usage - Real-time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "pm2_worker_cpu_percent{worker_id=\"0\"}",
+            "legendFormat": "Worker 0"
+          },
+          {
+            "expr": "pm2_worker_cpu_percent{worker_id=\"1\"}",
+            "legendFormat": "Worker 1"
+          },
+          {
+            "expr": "pm2_worker_cpu_percent{worker_id=\"2\"}",
+            "legendFormat": "Worker 2"
+          },
+          {
+            "expr": "pm2_worker_cpu_percent{worker_id=\"3\"}",
+            "legendFormat": "Worker 3"
+          },
+          {
+            "expr": "pm2_worker_cpu_percent{worker_id=\"4\"}",
+            "legendFormat": "Worker 4"
+          },
+          {
+            "expr": "pm2_worker_cpu_percent{worker_id=\"5\"}",
+            "legendFormat": "Worker 5"
+          },
+          {
+            "expr": "pm2_worker_cpu_percent{worker_id=\"6\"}",
+            "legendFormat": "Worker 6"
+          },
+          {
+            "expr": "pm2_worker_cpu_percent{worker_id=\"7\"}",
+            "legendFormat": "Worker 7"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 5
+            },
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 70 },
+                { "color": "red", "value": 90 }
+              ]
+            },
+            "unit": "percent"
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 }
+      },
+      {
+        "id": 11,
+        "title": "PM2 Workers Memory Usage - Real-time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "pm2_worker_memory_bytes{worker_id=\"0\"} / 1024 / 1024",
+            "legendFormat": "Worker 0"
+          },
+          {
+            "expr": "pm2_worker_memory_bytes{worker_id=\"1\"} / 1024 / 1024",
+            "legendFormat": "Worker 1"
+          },
+          {
+            "expr": "pm2_worker_memory_bytes{worker_id=\"2\"} / 1024 / 1024",
+            "legendFormat": "Worker 2"
+          },
+          {
+            "expr": "pm2_worker_memory_bytes{worker_id=\"3\"} / 1024 / 1024",
+            "legendFormat": "Worker 3"
+          },
+          {
+            "expr": "pm2_worker_memory_bytes{worker_id=\"4\"} / 1024 / 1024",
+            "legendFormat": "Worker 4"
+          },
+          {
+            "expr": "pm2_worker_memory_bytes{worker_id=\"5\"} / 1024 / 1024",
+            "legendFormat": "Worker 5"
+          },
+          {
+            "expr": "pm2_worker_memory_bytes{worker_id=\"6\"} / 1024 / 1024",
+            "legendFormat": "Worker 6"
+          },
+          {
+            "expr": "pm2_worker_memory_bytes{worker_id=\"7\"} / 1024 / 1024",
+            "legendFormat": "Worker 7"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 5
+            },
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 1500 },
+                { "color": "red", "value": 2000 }
+              ]
+            },
+            "unit": "MB"
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 }
+      },
+      {
+        "id": 12,
+        "title": "Thread Pool Analysis",
+        "type": "row",
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 }
+      },
+      {
+        "id": 13,
+        "title": "Thread Count per Worker",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "pm2_worker_thread_count{worker_id=\"0\"}",
+            "legendFormat": "Worker 0"
+          },
+          {
+            "expr": "pm2_worker_thread_count{worker_id=\"1\"}",
+            "legendFormat": "Worker 1"
+          },
+          {
+            "expr": "pm2_worker_thread_count{worker_id=\"2\"}",
+            "legendFormat": "Worker 2"
+          },
+          {
+            "expr": "pm2_worker_thread_count{worker_id=\"3\"}",
+            "legendFormat": "Worker 3"
+          },
+          {
+            "expr": "pm2_worker_thread_count{worker_id=\"4\"}",
+            "legendFormat": "Worker 4"
+          },
+          {
+            "expr": "pm2_worker_thread_count{worker_id=\"5\"}",
+            "legendFormat": "Worker 5"
+          },
+          {
+            "expr": "pm2_worker_thread_count{worker_id=\"6\"}",
+            "legendFormat": "Worker 6"
+          },
+          {
+            "expr": "pm2_worker_thread_count{worker_id=\"7\"}",
+            "legendFormat": "Worker 7"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 5
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 }
+      },
+      {
+        "id": 14,
+        "title": "Total System Threads",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "system_total_threads",
+            "legendFormat": "Total Threads"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 10
+            }
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 }
+      },
+      {
+        "id": 15,
+        "title": "Network Performance",
+        "type": "row",
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 }
+      },
+      {
+        "id": 16,
+        "title": "Network I/O per Interface",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "system_network_rx_bytes{interface=\"eth0\"}",
+            "legendFormat": "eth0 RX"
+          },
+          {
+            "expr": "system_network_tx_bytes{interface=\"eth0\"}",
+            "legendFormat": "eth0 TX"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 5
+            },
+            "unit": "bytes"
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 }
+      },
+      {
+        "id": 17,
+        "title": "TCP Connection States",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "system_tcp_connections{state=\"ESTAB\"}",
+            "legendFormat": "Established"
+          },
+          {
+            "expr": "system_tcp_connections{state=\"TIME_WAIT\"}",
+            "legendFormat": "Time Wait"
+          },
+          {
+            "expr": "system_tcp_connections{state=\"CLOSE_WAIT\"}",
+            "legendFormat": "Close Wait"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 5
+            }
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 }
+      },
+      {
+        "id": 18,
+        "title": "Performance Metrics",
+        "type": "row",
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 }
+      },
+      {
+        "id": 19,
+        "title": "PM2 Exporter Response Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "pm2_exporter_response_time_ms",
+            "legendFormat": "Response Time"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 10
+            },
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 100 },
+                { "color": "red", "value": 500 }
+              ]
+            },
+            "unit": "ms"
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 }
+      },
+      {
+        "id": 20,
+        "title": "Disk I/O Utilization",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "system_disk_io",
+            "legendFormat": "Disk I/O"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 10
+            },
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 0.7 },
+                { "color": "red", "value": 0.9 }
+              ]
+            }
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 }
+      }
+    ],
+    "time": {
+      "from": "now-15m",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}
+
+

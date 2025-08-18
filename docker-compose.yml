@@ -1,172 +1,38 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: shopsifu_postgres
-    restart: unless-stopped
-    ports:
-      - '5432:5432'
-    env_file: .env.docker
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
-    command: postgres -c config_file=/etc/postgresql/postgresql.conf
-    networks:
-      - app-network
-    deploy:
-      resources:
-        limits:
-          cpus: '14.0'
-          memory: 30G
-        reservations:
-          cpus: '10.0'
-          memory: 25G
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-shopsifu}']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  redis:
-    image: redis:7-alpine
-    container_name: shopsifu_redis
-    restart: unless-stopped
-    ports:
-      - '6379:6379'
-    env_file: .env.docker
-    volumes:
-      - redis_data:/data
-      - ./config/redis.conf:/usr/local/etc/redis/redis.conf:ro
-    command: redis-server /usr/local/etc/redis/redis.conf
-    networks:
-      - app-network
-    deploy:
-      resources:
-        limits:
-          cpus: '8.0'
-          memory: 30G
-        reservations:
-          cpus: '6.0'
-          memory: 25G
-    healthcheck:
-      test: ['CMD-SHELL', 'redis-cli --no-auth-warning -a "$${REDIS_PASSWORD}" ping | grep -q PONG']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
-    container_name: shopsifu_elasticsearch
-    restart: unless-stopped
-    ports:
-      - '9200:9200'
-    env_file: .env.docker
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - 'ES_JAVA_OPTS=${ES_JAVA_OPTS}'
-    volumes:
-      - esdata:/usr/share/elasticsearch/data
-      - ./config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-      nofile:
-        soft: 131072
-        hard: 131072
-    networks:
-      - app-network
-    deploy:
-      resources:
-        limits:
-          cpus: '6.0'
-          memory: 25G
-        reservations:
-          cpus: '4.0'
-          memory: 20G
-    healthcheck:
-      test: ['CMD-SHELL', 'curl -fsS -m 5 http://localhost:9200 >/dev/null || exit 1']
-      interval: 30s
-      timeout: 15s
-      retries: 10
-      start_period: 120s
-
-  server:
-    image: ghcr.io/tedydev-web/server-shopsifu:latest
-    container_name: shopsifu_server
-    restart: unless-stopped
-    # PM2 cluster will start automatically via Dockerfile CMD
-    ports:
-      - '3000:3000' # Single port for PM2 cluster load balancing
-    env_file: .env.docker
-    environment:
-      # PM2 Optimization - đồng bộ với Docker resource limits
-      WEB_CONCURRENCY: '8' # 8 workers tổng cộng
-      WORKER_MEM: '2000M' # 2GB per worker (16GB total / 8 workers)
-      UV_THREADPOOL_SIZE: '8' # 8 threads per worker
-      PM2_INSTANCES: '8' # Tổng số instances
-      NODE_ENV: 'production' # Production environment
-      TZ: 'Asia/Ho_Chi_Minh' # Timezone
-    volumes:
-      - ./logs:/app/logs
-      - ./certs:/app/certs
-      - ./upload:/app/upload
-      # PM2 ecosystem config mounted for runtime configuration
-      - ./ecosystem.config.js:/app/ecosystem.config.js:ro
-    tmpfs:
-      - /tmp:size=4g
-      - /app/temp:size=2g
-    depends_on:
-      - postgres
-      - redis
-      - elasticsearch
-    networks:
-      - app-network
-    deploy:
-      resources:
-        limits:
-          cpus: '8.0' # 8 CPU cores cho 8 workers
-          memory: 16G # 2GB per worker (8 workers)
-        reservations:
-          cpus: '6.0' # Đảm bảo ít nhất 6 cores
-          memory: 12G # Đảm bảo ít nhất 1.5GB per worker
-    healthcheck:
-      test: ['CMD-SHELL', 'curl -f http://localhost:3000/health || exit 1']
-      interval: 60s
-      timeout: 20s
-      retries: 5
-      start_period: 180s
-
+  # PgBouncer - Connection pooling cho PostgreSQL (kết nối về host DB)
   pgbouncer:
     image: edoburu/pgbouncer:1.18.0
     container_name: shopsifu_pgbouncer
     restart: unless-stopped
     ports:
       - '6432:6432'
-    env_file: .env.docker
+    environment:
+      DB_HOST: 103.147.186.84
+      DB_USER: shopsifu
+      DB_PASSWORD: Shopsifu2025
+      DB_NAME: shopsifu
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 20
+      RESERVE_POOL_SIZE: 5
+      RESERVE_POOL_TIMEOUT: 5
+      MAX_DB_CONNECTIONS: 100
+      MAX_USER_CONNECTIONS: 100
     volumes:
-      - ./config/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
-      - ./config/userlist.txt:/etc/pgbouncer/userlist.txt:ro
-    depends_on:
-      - postgres
+      - ./monitoring/config/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./monitoring/config/userlist.txt:/etc/pgbouncer/userlist.txt:ro
     networks:
-      - app-network
+      - monitoring-network
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 4G
+          cpus: '1.0'
+          memory: 2G
         reservations:
-          cpus: '1.5'
-          memory: 3G
+          cpus: '0.5'
+          memory: 1G
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -h localhost -p 6432 -U shopsifu']
       interval: 10s
@@ -174,7 +40,104 @@ services:
       retries: 3
       start_period: 10s
 
-  # Prometheus Exporters
+  # Kibana - kết nối tới Elasticsearch trên host
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: shopsifu_kibana
+    restart: unless-stopped
+    ports:
+      - '5601:5601'
+    environment:
+      - ELASTICSEARCH_HOSTS=http://103.147.186.84:9200
+      - XPACK_SECURITY_ENABLED=false
+      - SERVER_NAME=shopsifu-kibana
+      - SERVER_HOST=0.0.0.0
+    networks:
+      - monitoring-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 512M
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:5601/api/status | grep -q kibana']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: shopsifu_prometheus
+    restart: unless-stopped
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+      - '--storage.tsdb.retention.time=30d'
+    networks:
+      - monitoring-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: shopsifu_grafana
+    restart: unless-stopped
+    ports:
+      - '3001:3000'
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=Shopsifu2025
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/system-overview.json
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 512M
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:3000/api/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # PostgreSQL Exporter - kết nối tới host PostgreSQL
   postgres_exporter:
     image: prometheuscommunity/postgres-exporter:v0.16.0
     container_name: shopsifu_postgres_exporter
@@ -182,30 +145,19 @@ services:
     ports:
       - '9187:9187'
     environment:
-      DATA_SOURCE_NAME: 'postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@shopsifu_postgres:5432/${POSTGRES_DB}?sslmode=disable'
+      DATA_SOURCE_NAME: 'postgresql://shopsifu:Shopsifu2025@103.147.186.84:5432/shopsifu?sslmode=disable'
       PG_EXPORTER_LOG_LEVEL: 'info'
       PG_EXPORTER_WEB_LISTEN_ADDRESS: ':9187'
-      PG_EXPORTER_WEB_TELEMETRY_PATH: '/metrics'
-      PG_EXPORTER_DISABLE_SETTINGS_METRICS: 'false'
-      PG_EXPORTER_DISABLE_DEFAULT_METRICS: 'false'
-      PG_EXPORTER_AUTO_DISCOVER_DATABASES: 'false'
-      PG_EXPORTER_EXCLUDE_DATABASES: ''
-      PG_EXPORTER_INCLUDE_DATABASES: ''
-      PG_EXPORTER_METRIC_PATH: '/metrics'
-      PG_EXPORTER_EXTEND_QUERY_PATH: ''
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
-      - app-network
+      - monitoring-network
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
           cpus: '0.2'
           memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     healthcheck:
       test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9187/metrics || exit 1']
       interval: 30s
@@ -213,6 +165,7 @@ services:
       retries: 3
       start_period: 30s
 
+  # Redis Exporter - kết nối tới host Redis
   redis_exporter:
     image: oliver006/redis_exporter:v1.60.0
     container_name: shopsifu_redis_exporter
@@ -220,28 +173,20 @@ services:
     ports:
       - '9121:9121'
     environment:
-      REDIS_ADDR: 'shopsifu_redis:6379'
-      REDIS_PASSWORD: 'Shopsifu2025'
+      REDIS_ADDR: '103.147.186.84:6379'
+      REDIS_PASSWORD: ''
       REDIS_NAMESPACE: 'redis'
       REDIS_EXPORTER_LOG_FORMAT: 'txt'
-      REDIS_EXPORTER_IS_TILE38: 'false'
-      REDIS_EXPORTER_EXPORT_CLIENT_LIST: 'true'
-      REDIS_EXPORTER_EXPORT_CLIENT_PORT: 'true'
-      REDIS_EXPORTER_EXPORT_REDIS_CONFIG: 'true'
-      REDIS_EXPORTER_EXPORT_REDIS_SCRAPE_INTERVAL: '15'
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
-      - app-network
+      - monitoring-network
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
           cpus: '0.2'
           memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     healthcheck:
       test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9121/metrics || exit 1']
       interval: 30s
@@ -249,7 +194,39 @@ services:
       retries: 3
       start_period: 30s
 
-  node-exporter:
+  # Elasticsearch Exporter - kết nối tới host ES
+  elasticsearch_exporter:
+    image: prometheuscommunity/elasticsearch-exporter:v1.6.0
+    container_name: shopsifu_elasticsearch_exporter
+    restart: unless-stopped
+    ports:
+      - '9114:9114'
+    environment:
+      ES_URI: 'http://103.147.186.84:9200'
+      ES_TIMEOUT: '30s'
+      ES_ALL: 'true'
+      ES_INDICES: 'true'
+      ES_INDICES_SETTINGS: 'true'
+      ES_SHARDS: 'true'
+    networks:
+      - monitoring-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9114/metrics || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Node Exporter
+  node_exporter:
     image: prom/node-exporter:v1.8.0
     container_name: shopsifu_node_exporter
     restart: unless-stopped
@@ -266,15 +243,15 @@ services:
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
       - '--collector.filesystem.fs-types-exclude=^(sys|proc|auto)fs$$'
     networks:
-      - app-network
+      - monitoring-network
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
           cpus: '0.2'
           memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     healthcheck:
       test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9100/metrics || exit 1']
       interval: 30s
@@ -282,6 +259,7 @@ services:
       retries: 3
       start_period: 30s
 
+  # cAdvisor
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.47.2
     container_name: shopsifu_cadvisor
@@ -296,15 +274,15 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     networks:
-      - app-network
+      - monitoring-network
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
+          cpus: '0.3'
           memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
     healthcheck:
       test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1']
       interval: 30s
@@ -312,167 +290,30 @@ services:
       retries: 3
       start_period: 30s
 
-  blackbox:
-    image: prom/blackbox-exporter:v0.25.0
-    container_name: shopsifu_blackbox
-    restart: unless-stopped
-    ports:
-      - '9115:9115'
-    volumes:
-      - ./monitoring/blackbox/config.yml:/etc/blackbox_exporter/config.yml:ro
-    networks:
-      - app-network
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.2'
-          memory: 256M
-    healthcheck:
-      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9115/metrics || exit 1']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  prometheus:
-    image: prom/prometheus:v2.54.1
-    container_name: shopsifu_prometheus
-    restart: unless-stopped
-    ports:
-      - '9090:9090'
-    env_file: .env.docker
-    volumes:
-      - ./monitoring/prometheus:/etc/prometheus:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
-      - '--web.enable-lifecycle'
-      - '--web.enable-admin-api'
-      - '--storage.tsdb.retention.size=50GB'
-      - '--storage.tsdb.wal-compression'
-      - '--storage.tsdb.max-block-duration=2h'
-      - '--storage.tsdb.min-block-duration=15m'
-    networks:
-      - app-network
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 2G
-    healthcheck:
-      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  grafana:
-    image: grafana/grafana:11.4.0
-    container_name: shopsifu_grafana
-    restart: unless-stopped
-    ports:
-      - '3001:3000'
-    env_file: .env.docker
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
-      - GF_SECURITY_COOKIE_HTTPONLY=${GRAFANA_SECURITY_COOKIE_HTTPONLY}
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_USERS_ALLOW_ORG_CREATE=false
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
-      - GF_FEATURE_TOGGLES_ENABLE=publicDashboards
-      - GF_ANALYTICS_REPORTING_ENABLED=false
-      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
-      - GF_SECURITY_DISABLE_GRAVATAR=true
-      - GF_LOG_LEVEL=info
-      - GF_SERVER_ROOT_URL=http://localhost:3001
-      - GF_SERVER_SERVE_FROM_SUB_PATH=false
-      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/system-overview.json
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-    depends_on:
-      - prometheus
-    networks:
-      - app-network
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 2G
-    healthcheck:
-      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.13.4
-    container_name: shopsifu_kibana
-    restart: unless-stopped
-    ports:
-      - '5601:5601'
-    env_file: .env.docker
-    environment:
-      - ELASTICSEARCH_HOSTS=${KIBANA_ELASTICSEARCH_HOSTS}
-      - XPACK_SECURITY_ENABLED=${KIBANA_XPACK_SECURITY_ENABLED}
-    depends_on:
-      - elasticsearch
-    networks:
-      - app-network
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 1G
-    healthcheck:
-      test: ['CMD-SHELL', 'curl -fsS http://localhost:5601/api/status | grep -q kibana']
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
+  # Alertmanager
   alertmanager:
-    image: prom/alertmanager:v0.28.0
+    image: prom/alertmanager:v0.26.0
     container_name: shopsifu_alertmanager
     restart: unless-stopped
     ports:
       - '9093:9093'
     volumes:
-      - ./monitoring/alertmanager:/etc/alertmanager:ro
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
       - '--web.listen-address=:9093'
-      - '--cluster.listen-address=:9094'
-      - '--cluster.peer=shopsifu_alertmanager:9094'
     networks:
-      - app-network
+      - monitoring-network
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
           cpus: '0.2'
           memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     healthcheck:
       test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9093/-/healthy || exit 1']
       interval: 30s
@@ -481,15 +322,6 @@ services:
       start_period: 30s
 
 volumes:
-  postgres_data:
-    driver: local
-    name: shopsifu_postgres_data
-  redis_data:
-    driver: local
-    name: shopsifu_redis_data
-  esdata:
-    driver: local
-    name: shopsifu_elasticsearch_data
   prometheus_data:
     driver: local
     name: shopsifu_prometheus_data
@@ -501,5 +333,5 @@ volumes:
     name: shopsifu_alertmanager_data
 
 networks:
-  app-network:
+  monitoring-network:
     driver: bridge

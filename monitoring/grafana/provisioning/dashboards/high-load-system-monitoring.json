@@ -1,0 +1,295 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "High-Load System Monitoring",
+    "tags": ["vps", "high-load", "system", "performance", "threads", "cpu"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "10s",
+    "time": {
+      "from": "now-30m",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "CPU Usage per Core (Real-time)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "cpu_core_usage{mode=\"user\"}",
+            "legendFormat": "CPU {{cpu}} - User"
+          },
+          {
+            "expr": "cpu_core_usage{mode=\"system\"}",
+            "legendFormat": "CPU {{cpu}} - System"
+          },
+          {
+            "expr": "cpu_core_usage{mode=\"iowait\"}",
+            "legendFormat": "CPU {{cpu}} - I/O Wait"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "yAxes": [{ "unit": "percent", "min": 0, "max": 100 }],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "fillOpacity": 10,
+              "showPoints": "never"
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "System Load Average vs CPU Cores",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "system_load_1min",
+            "legendFormat": "1 min Load"
+          },
+          {
+            "expr": "system_load_5min",
+            "legendFormat": "5 min Load"
+          },
+          {
+            "expr": "system_load_15min",
+            "legendFormat": "15 min Load"
+          },
+          {
+            "expr": "count(count by (cpu) (node_cpu_seconds_total))",
+            "legendFormat": "CPU Cores"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "fillOpacity": 10,
+              "showPoints": "never"
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Thread Count & Process Monitoring",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "system_total_threads",
+            "legendFormat": "Total System Threads"
+          },
+          {
+            "expr": "pm2_total_threads",
+            "legendFormat": "PM2 Process Threads"
+          },
+          {
+            "expr": "system_running_processes",
+            "legendFormat": "Running Processes"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "fillOpacity": 10,
+              "showPoints": "never"
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Memory Usage & Swap",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "memory_usage_percent",
+            "legendFormat": "Memory Usage %"
+          },
+          {
+            "expr": "swap_usage_percent",
+            "legendFormat": "Swap Usage %"
+          },
+          {
+            "expr": "memory_used_bytes / 1024 / 1024 / 1024",
+            "legendFormat": "Memory Used (GB)"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "yAxes": [{ "unit": "percent", "min": 0, "max": 100 }],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "fillOpacity": 10,
+              "showPoints": "never"
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Disk I/O Performance",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "disk_io_utilization",
+            "legendFormat": "{{device}} - Utilization %"
+          },
+          {
+            "expr": "disk_io_await",
+            "legendFormat": "{{device}} - Await Time (ms)"
+          },
+          {
+            "expr": "disk_io_rps",
+            "legendFormat": "{{device}} - Read Ops/s"
+          },
+          {
+            "expr": "disk_io_wps",
+            "legendFormat": "{{device}} - Write Ops/s"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "fillOpacity": 10,
+              "showPoints": "never"
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Network I/O & Connections",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(node_network_receive_bytes_total[5m]) / 1024 / 1024",
+            "legendFormat": "{{device}} - Receive (MB/s)"
+          },
+          {
+            "expr": "rate(node_network_transmit_bytes_total[5m]) / 1024 / 1024",
+            "legendFormat": "{{device}} - Transmit (MB/s)"
+          },
+          {
+            "expr": "node_tcp_connection_states{state=\"ESTABLISHED\"}",
+            "legendFormat": "TCP Established"
+          },
+          {
+            "expr": "node_tcp_connection_states{state=\"TIME_WAIT\"}",
+            "legendFormat": "TCP Time Wait"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "fillOpacity": 10,
+              "showPoints": "never"
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "System Monitor Performance",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "system_monitor_collection_time_ms",
+            "legendFormat": "Metrics Collection Time"
+          }
+        ],
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 24 },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 100 },
+                { "color": "red", "value": 500 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "CPU Core Count",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "count(count by (cpu) (node_cpu_seconds_total))",
+            "legendFormat": "CPU Cores"
+          }
+        ],
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 24 },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "Total System Threads",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "system_total_threads",
+            "legendFormat": "Total Threads"
+          }
+        ],
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 24 },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "PM2 Process Threads",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "pm2_total_threads",
+            "legendFormat": "PM2 Threads"
+          }
+        ],
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 24 },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+

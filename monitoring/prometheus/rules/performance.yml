@@ -1,222 +1,110 @@
 groups:
-  - name: shopsifu_performance
+  - name: VPS Performance Monitoring
     rules:
-      # API Performance Alerts
-      - alert: HighResponseTime
-        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 0.5
-        for: 2m
+      # CPU Monitoring
+      - alert: HighCPUUsagePerCore
+        expr: 100 - (avg by (cpu) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 3m
         labels:
           severity: warning
-          service: api-server
         annotations:
-          summary: "High API response time detected"
-          description: "95th percentile response time is {{ $value }}s for {{ $labels.instance }}"
+          summary: 'High CPU usage on {{ $labels.cpu }}'
+          description: 'CPU usage is {{ $value }}% on {{ $labels.cpu }} for more than 3 minutes'
 
-      - alert: CriticalResponseTime
-        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1.0
-        for: 1m
+      - alert: CriticalCPUUsagePerCore
+        expr: 100 - (avg by (cpu) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
         labels:
           severity: critical
-          service: api-server
         annotations:
-          summary: "Critical API response time detected"
-          description: "95th percentile response time is {{ $value }}s for {{ $labels.instance }}"
+          summary: 'Critical CPU usage on {{ $labels.cpu }}'
+          description: 'CPU usage is {{ $value }}% on {{ $labels.cpu }} for more than 2 minutes'
 
-      - alert: HighErrorRate
-        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
-        for: 2m
-        labels:
-          severity: warning
-          service: api-server
-        annotations:
-          summary: "High error rate detected"
-          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.instance }}"
-
-      - alert: CriticalErrorRate
-        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.10
-        for: 1m
-        labels:
-          severity: critical
-          service: api-server
-        annotations:
-          summary: "Critical error rate detected"
-          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.instance }}"
-
-  - name: shopsifu_database
-    rules:
-      # Database Performance Alerts
-      - alert: HighDatabaseConnections
-        expr: pg_stat_database_numbackends > 80
-        for: 2m
-        labels:
-          severity: warning
-          service: postgresql
-        annotations:
-          summary: "High database connections detected"
-          description: "Database {{ $labels.datname }} has {{ $value }} active connections"
-
-      - alert: CriticalDatabaseConnections
-        expr: pg_stat_database_numbackends > 95
-        for: 1m
-        labels:
-          severity: critical
-          service: postgresql
-        annotations:
-          summary: "Critical database connections detected"
-          description: "Database {{ $labels.datname }} has {{ $value }} active connections"
-
-      - alert: SlowQueries
-        expr: rate(pg_stat_activity_max_tx_duration[5m]) > 30
-        for: 2m
-        labels:
-          severity: warning
-          service: postgresql
-        annotations:
-          summary: "Slow queries detected"
-          description: "Longest transaction duration is {{ $value }}s"
-
-      - alert: HighDatabaseSize
-        expr: pg_database_size_bytes > 1e12
-        for: 5m
-        labels:
-          severity: warning
-          service: postgresql
-        annotations:
-          summary: "Large database size detected"
-          description: "Database {{ $labels.datname }} size is {{ $value | humanize }}B"
-
-  - name: shopsifu_cache
-    rules:
-      # Redis Performance Alerts
-      - alert: HighRedisMemoryUsage
-        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
-        for: 2m
-        labels:
-          severity: warning
-          service: redis
-        annotations:
-          summary: "High Redis memory usage detected"
-          description: "Redis memory usage is {{ $value | humanizePercentage }}"
-
-      - alert: CriticalRedisMemoryUsage
-        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.95
-        for: 1m
-        labels:
-          severity: critical
-          service: redis
-        annotations:
-          summary: "Critical Redis memory usage detected"
-          description: "Redis memory usage is {{ $value | humanizePercentage }}"
-
-      - alert: HighRedisConnections
-        expr: redis_connected_clients > 100
-        for: 2m
-        labels:
-          severity: warning
-          service: redis
-        annotations:
-          summary: "High Redis connections detected"
-          description: "Redis has {{ $value }} connected clients"
-
-      - alert: RedisSlowCommands
-        expr: rate(redis_commands_duration_seconds_sum[5m]) / rate(redis_commands_duration_seconds_count[5m]) > 0.1
-        for: 2m
-        labels:
-          severity: warning
-          service: redis
-        annotations:
-          summary: "Slow Redis commands detected"
-          description: "Average command duration is {{ $value }}s"
-
-  - name: shopsifu_infrastructure
-    rules:
-      # System Performance Alerts
-      - alert: HighCPUUsage
-        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
-        for: 2m
-        labels:
-          severity: warning
-          service: system
-        annotations:
-          summary: "High CPU usage detected"
-          description: "CPU usage is {{ $value }}% on {{ $labels.instance }}"
-
-      - alert: CriticalCPUUsage
-        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
-        for: 1m
-        labels:
-          severity: critical
-          service: system
-        annotations:
-          summary: "Critical CPU usage detected"
-          description: "CPU usage is {{ $value }}% on {{ $labels.instance }}"
-
+      # Memory Monitoring
       - alert: HighMemoryUsage
-        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.85
-        for: 2m
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 3m
         labels:
           severity: warning
-          service: system
         annotations:
-          summary: "High memory usage detected"
-          description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+          summary: 'High memory usage'
+          description: 'Memory usage is {{ $value }}% for more than 3 minutes'
 
       - alert: CriticalMemoryUsage
-        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.95
-        for: 1m
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 95
+        for: 2m
         labels:
           severity: critical
-          service: system
         annotations:
-          summary: "Critical memory usage detected"
-          description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+          summary: 'Critical memory usage'
+          description: 'Memory usage is {{ $value }}% for more than 2 minutes'
 
-      - alert: HighDiskUsage
-        expr: (node_filesystem_size_bytes - node_filesystem_avail_bytes) / node_filesystem_size_bytes > 0.85
+      # Load Average Monitoring
+      - alert: HighLoadAverage
+        expr: node_load1 > count(count by (cpu) (node_cpu_seconds_total)) * 0.8
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High system load average'
+          description: '1-minute load average is {{ $value }} for more than 3 minutes'
+
+      - alert: CriticalLoadAverage
+        expr: node_load1 > count(count by (cpu) (node_cpu_seconds_total)) * 1.2
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Critical system load average'
+          description: '1-minute load average is {{ $value }} for more than 2 minutes'
+
+      # Disk I/O Monitoring
+      - alert: HighDiskIO
+        expr: rate(node_disk_io_time_seconds_total[5m]) > 0.8
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High disk I/O utilization'
+          description: 'Disk I/O utilization is {{ $value }} for more than 3 minutes'
+
+      # Network I/O Monitoring
+      - alert: HighNetworkIO
+        expr: rate(node_network_receive_bytes_total[5m]) + rate(node_network_transmit_bytes_total[5m]) > 1000000000
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High network I/O'
+          description: 'Network I/O is {{ $value }} bytes/s for more than 3 minutes'
+
+  - name: VPS Infrastructure Health
+    rules:
+      # Disk Space Monitoring
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100) < 15
         for: 5m
         labels:
           severity: warning
-          service: system
         annotations:
-          summary: "High disk usage detected"
-          description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+          summary: 'Low disk space on root filesystem'
+          description: 'Disk space is {{ $value }}% available on root filesystem'
 
-      - alert: CriticalDiskUsage
-        expr: (node_filesystem_size_bytes - node_filesystem_avail_bytes) / node_filesystem_size_bytes > 0.95
+      - alert: CriticalDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100) < 5
         for: 2m
         labels:
           severity: critical
-          service: system
         annotations:
-          summary: "Critical disk usage detected"
-          description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+          summary: 'Critical disk space on root filesystem'
+          description: 'Disk space is {{ $value }}% available on root filesystem'
 
-  - name: shopsifu_availability
-    rules:
-      # Availability Alerts
-      - alert: ServiceDown
-        expr: up == 0
-        for: 1m
+      # System Uptime Monitoring
+      - alert: SystemReboot
+        expr: node_boot_time_seconds > 0
+        for: 0m
         labels:
-          severity: critical
+          severity: info
         annotations:
-          summary: "Service is down"
-          description: "Service {{ $labels.job }} on {{ $labels.instance }} is down"
-
-      - alert: HighLatency
-        expr: probe_duration_seconds > 1
-        for: 2m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High latency detected"
-          description: "Probe duration is {{ $value }}s for {{ $labels.instance }}"
-
-      - alert: ServiceUnreachable
-        expr: probe_success == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Service is unreachable"
-          description: "Service {{ $labels.instance }} is unreachable"
+          summary: 'System reboot detected'
+          description: 'System has been rebooted'

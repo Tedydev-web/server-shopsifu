@@ -3,12 +3,12 @@ global:
   smtp_smarthost: 'localhost:25'
   smtp_from: 'alertmanager@shopsifu.com'
 
-# Route configuration
+# Route configuration - Simplified for VPS
 route:
-  group_by: ['alertname', 'cluster', 'service']
-  group_wait: 10s
-  group_interval: 10s
-  repeat_interval: 1h
+  group_by: ['alertname', 'service']
+  group_wait: 30s
+  group_interval: 1m
+  repeat_interval: 2h
   receiver: 'web.hook'
   routes:
     # Critical alerts - immediate notification
@@ -16,38 +16,29 @@ route:
         severity: critical
       receiver: 'critical-notifications'
       group_wait: 0s
-      group_interval: 1s
-      repeat_interval: 5m
+      group_interval: 30s
+      repeat_interval: 10m
       continue: true
 
     # Performance alerts - high priority
     - match:
         service: api-server
       receiver: 'performance-notifications'
-      group_wait: 30s
-      group_interval: 30s
-      repeat_interval: 15m
+      group_wait: 1m
+      group_interval: 1m
+      repeat_interval: 30m
       continue: true
 
     # Database alerts - high priority
     - match:
         service: postgresql
       receiver: 'database-notifications'
-      group_wait: 30s
-      group_interval: 30s
-      repeat_interval: 15m
-      continue: true
-
-    # Infrastructure alerts - medium priority
-    - match:
-        service: system
-      receiver: 'infrastructure-notifications'
       group_wait: 1m
       group_interval: 1m
       repeat_interval: 30m
       continue: true
 
-# Inhibition rules
+# Inhibition rules - Simplified
 inhibit_rules:
   # Inhibit critical alerts when service is down
   - source_match:
@@ -57,16 +48,7 @@ inhibit_rules:
       severity: 'critical'
     equal: ['instance', 'service']
 
-  # Inhibit performance alerts when infrastructure is critical
-  - source_match:
-      severity: 'critical'
-      service: 'system'
-    target_match:
-      severity: 'warning'
-      service: 'api-server'
-    equal: ['instance']
-
-# Receivers
+# Receivers - Simplified for VPS
 receivers:
   - name: 'web.hook'
     webhook_configs:
@@ -83,11 +65,6 @@ receivers:
         channel: '#alerts-critical'
         title: '🚨 CRITICAL ALERT: {{ .GroupLabels.alertname }}'
         text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
-        send_resolved: true
-    pagerduty_configs:
-      - routing_key: 'YOUR_PAGERDUTY_KEY'
-        description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
-        severity: '{{ if eq .CommonLabels.severity "critical" }}critical{{ else }}warning{{ end }}'
         send_resolved: true
 
   # Performance notifications - high priority
@@ -111,18 +88,6 @@ receivers:
       - api_url: 'https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK'
         channel: '#alerts-database'
         title: '🗄️ DATABASE ALERT: {{ .GroupLabels.alertname }}'
-        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
-        send_resolved: true
-
-  # Infrastructure notifications - medium priority
-  - name: 'infrastructure-notifications'
-    webhook_configs:
-      - url: 'http://127.0.0.1:5001/infrastructure'
-        send_resolved: true
-    slack_configs:
-      - api_url: 'https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK'
-        channel: '#alerts-infrastructure'
-        title: '🏗️ INFRASTRUCTURE ALERT: {{ .GroupLabels.alertname }}'
         text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
         send_resolved: true
 
