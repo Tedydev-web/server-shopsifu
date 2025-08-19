@@ -117,12 +117,16 @@ export class ProductRepo {
           productTranslations: {
             where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null }
           },
-          orders: {
-            where: {
-              deletedAt: null,
-              status: 'DELIVERED'
-            }
-          }
+          ...(sortBy === SortBy.Sale
+            ? {
+                orders: {
+                  where: {
+                    deletedAt: null,
+                    status: 'DELIVERED'
+                  }
+                }
+              }
+            : {})
         },
         orderBy: caculatedOrderBy,
         skip,

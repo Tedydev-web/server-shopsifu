@@ -7,6 +7,7 @@ import { ProductService } from 'src/routes/product/product.service'
 
 @Module({
   providers: [ProductService, ManageProductService, ProductRepo],
-  controllers: [ProductController, ManageProductController]
+  controllers: [ProductController, ManageProductController],
+  exports: [ProductRepo]
 })
 export class ProductModule {}

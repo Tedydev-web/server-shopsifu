@@ -13,27 +13,11 @@ export default registerAs('redis', (): Record<string, any> => {
     requireAuth: process.env.REDIS_REQUIRE_AUTH === 'true'
   }
 
-  const isPasswordProvided: boolean =
-    config.requireAuth && typeof config.password === 'string' && config.password.trim().length > 0
-
-  // Nếu không có password, loại bỏ thông tin xác thực trong URL (nếu có)
-  let sanitizedUrl: string | undefined = config.url
-  if (!isPasswordProvided && typeof config.url === 'string' && config.url.length > 0) {
-    try {
-      const parsed = new URL(config.url)
-      if (parsed.username || parsed.password) {
-        parsed.username = ''
-        parsed.password = ''
-        sanitizedUrl = parsed.toString()
-      }
-    } catch {
-      // Bỏ qua nếu URL không hợp lệ; giữ nguyên
-    }
-  }
+  const isPasswordProvided: boolean = typeof config.password === 'string' && config.password.trim().length > 0
 
   // Khởi tạo Redis client với connection pooling tối ưu
-  const redis = sanitizedUrl
-    ? new Client(sanitizedUrl, {
+  const redis = config.url
+    ? new Client(config.url, {
         // Tối ưu connection pooling
         maxRetriesPerRequest: 3,
         enableReadyCheck: true,
@@ -74,7 +58,7 @@ export default registerAs('redis', (): Record<string, any> => {
 
   return {
     ...config,
-    url: sanitizedUrl ?? config.url,
+    url: config.url,
     redis,
     redlock
   }

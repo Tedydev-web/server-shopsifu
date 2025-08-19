@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common'
+import { Controller, Get, Header, Param, Query } from '@nestjs/common'
 import { SkipThrottle } from '@nestjs/throttler'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
@@ -18,6 +18,7 @@ export class ProductController {
 
   @Get()
   @ZodSerializerDto(GetProductsResDTO)
+  @Header('Cache-Control', 'public, max-age=30, s-maxage=30, stale-while-revalidate=60')
   list(@Query() query: GetProductsQueryDTO) {
     return this.productService.list({
       query

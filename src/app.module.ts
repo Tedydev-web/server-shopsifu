@@ -27,6 +27,7 @@ import { RemoveRefreshTokenCronjob } from 'src/cronjobs/remove-refresh-token.cro
 import { TransformInterceptor } from 'src/shared/interceptor/transform.interceptor'
 import { MetricsInterceptor } from 'src/shared/interceptor/metrics.interceptor'
 import { ExpireDiscountCronjob } from 'src/cronjobs/expire-discount.cronjob'
+import { PrecomputeHomeFeedCronjob } from 'src/cronjobs/precompute-home-feed.cronjob'
 import { ScheduleModule } from '@nestjs/schedule'
 import { LanguageModule } from 'src/routes/language/language.module'
 import { DiscountModule } from './routes/discount/discount.module'
@@ -78,7 +79,8 @@ import { TerminusModule } from '@nestjs/terminus'
       useClass: ThrottlerBehindProxyGuard
     },
     RemoveRefreshTokenCronjob,
-    ExpireDiscountCronjob
+    ExpireDiscountCronjob,
+    PrecomputeHomeFeedCronjob
   ],
   controllers: [HealthController]
 })
