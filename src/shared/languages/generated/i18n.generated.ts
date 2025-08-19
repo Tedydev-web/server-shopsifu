@@ -211,7 +211,7 @@ export type I18nTranslations = {
         "media": {
             "success": {
                 "UPLOAD_SUCCESS": string;
-                "GET_PRESIGNED_URL_SUCCESS": string;
+                "GET_BATCH_PRESIGNED_URLS_SUCCESS": string;
                 "DELETE_SUCCESS": string;
             };
             "error": {
