@@ -44,6 +44,6 @@ export class S3Service {
       Key: filename,
       ContentType: contentType
     })
-    return getSignedUrl(this.s3, command, { expiresIn: 10 })
+    return getSignedUrl(this.s3, command, { expiresIn: 300 })
   }
 }

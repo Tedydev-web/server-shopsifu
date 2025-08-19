@@ -15,7 +15,7 @@ import { FilesInterceptor } from '@nestjs/platform-express'
 import { Response } from 'express'
 import { ZodSerializerDto } from 'nestjs-zod'
 import path from 'path'
-import { PresignedUploadFileBodyDTO, PresignedUploadFileResDTO, UploadFilesResDTO } from 'src/routes/media/media.dto'
+import { UploadFilesResDTO, BatchPresignedUploadBodyDTO, BatchPresignedUploadResDTO } from 'src/routes/media/media.dto'
 import { MediaService } from 'src/routes/media/media.service'
 import { ParseFilePipeWithUnlink } from 'src/routes/media/parse-file-pipe-with-unlink.pipe'
 import { UPLOAD_DIR } from 'src/shared/constants/other.constant'
@@ -24,6 +24,7 @@ import { IsPublic } from 'src/shared/decorators/auth.decorator'
 @Controller('media')
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
+
   @Post('images/upload')
   @ZodSerializerDto(UploadFilesResDTO)
   @UseInterceptors(
@@ -61,10 +62,10 @@ export class MediaController {
     })
   }
 
-  @Post('images/upload/presigned-url')
-  @ZodSerializerDto(PresignedUploadFileResDTO)
+  @Post('images/upload/presigned-urls')
+  @ZodSerializerDto(BatchPresignedUploadResDTO)
   @IsPublic()
-  async createPresignedUrl(@Body() body: PresignedUploadFileBodyDTO) {
-    return this.mediaService.getPresignUrl(body as any)
+  async createBatchPresignedUrls(@Body() body: BatchPresignedUploadBodyDTO) {
+    return this.mediaService.getBatchPresignUrls(body.files)
   }
 }

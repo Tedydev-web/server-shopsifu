@@ -2,9 +2,9 @@ import { Injectable } from '@nestjs/common'
 import { S3Service } from 'src/shared/services/s3.service'
 import { unlink } from 'fs/promises'
 import { generateRandomFilename } from 'src/shared/helpers'
-import { PresignedUploadFileBodyType } from 'src/routes/media/media.model'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
+
 @Injectable()
 export class MediaService {
   constructor(
@@ -38,14 +38,24 @@ export class MediaService {
     }
   }
 
-  async getPresignUrl(body: PresignedUploadFileBodyType) {
-    const randomFilename = generateRandomFilename(body.filename)
-    const presignedUrl = await this.s3Service.createPresignedUrlWithClient(randomFilename)
-    const url = presignedUrl.split('?')[0]
+  async getBatchPresignUrls(files: Array<{ filename: string; filesize: number }>) {
+    const presignedUrls = await Promise.all(
+      files.map(async (file) => {
+        const randomFilename = generateRandomFilename(file.filename)
+        const presignedUrl = await this.s3Service.createPresignedUrlWithClient(randomFilename)
+
+        return {
+          originalFilename: file.filename,
+          filename: randomFilename,
+          presignedUrl,
+          url: presignedUrl.split('?')[0]
+        }
+      })
+    )
+
     return {
-      message: this.i18n.t('media.media.success.GET_PRESIGNED_URL_SUCCESS'),
-      presignedUrl,
-      url
+      message: this.i18n.t('media.media.success.GET_BATCH_PRESIGNED_URLS_SUCCESS'),
+      data: presignedUrls
     }
   }
 }

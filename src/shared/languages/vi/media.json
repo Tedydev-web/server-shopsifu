@@ -2,7 +2,7 @@
   "media": {
     "success": {
       "UPLOAD_SUCCESS": "Tải lên file thành công",
-      "GET_PRESIGNED_URL_SUCCESS": "Lấy URL ký trước thành công",
+      "GET_BATCH_PRESIGNED_URLS_SUCCESS": "Lấy danh sách URL ký trước thành công",
       "DELETE_SUCCESS": "Xóa file thành công"
     },
     "error": {

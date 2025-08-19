@@ -1,11 +1,16 @@
 import { z } from 'zod'
 
-export const PresignedUploadFileBodySchema = z
-  .object({
-    filename: z.string(),
-    filesize: z.number().max(1 * 1024 * 1024) // 1MB
-  })
-  .strict()
+export const BatchPresignedUploadBodySchema = z.object({
+  files: z
+    .array(
+      z.object({
+        filename: z.string(),
+        filesize: z.number().max(5 * 1024 * 1024) // 5MB per file
+      })
+    )
+    .min(1)
+    .max(100) // Giống như FilesInterceptor
+})
 
 export const UploadFilesResSchema = z.object({
   message: z.string().optional(),
@@ -16,10 +21,16 @@ export const UploadFilesResSchema = z.object({
   )
 })
 
-export const PresignedUploadFileResSchema = z.object({
+export const BatchPresignedUploadResSchema = z.object({
   message: z.string().optional(),
-  presignedUrl: z.string(),
-  url: z.string()
+  data: z.array(
+    z.object({
+      originalFilename: z.string(),
+      filename: z.string(),
+      presignedUrl: z.string(),
+      url: z.string()
+    })
+  )
 })
 
-export type PresignedUploadFileBodyType = z.infer<typeof PresignedUploadFileBodySchema>
+export type BatchPresignedUploadBodyType = z.infer<typeof BatchPresignedUploadBodySchema>
