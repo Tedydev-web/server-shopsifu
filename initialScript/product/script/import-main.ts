@@ -25,6 +25,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from '../../../src/app.module'
 import { SearchSyncService } from '../../../src/shared/services/search-sync.service'
+import { createLanguages } from '../../init/create-languages'
 
 const prisma = new PrismaClient()
 
@@ -60,6 +61,10 @@ type ReviewMediaData = {
 async function main() {
   logger.log('🚀 Bắt đầu import dữ liệu Shopee...')
   await prisma.$connect()
+
+  // 0. Tạo ngôn ngữ cơ bản trước
+  await createLanguages()
+
   const jsonPath = require('path').join(process.cwd(), 'initialScript', 'product', 'data', 'Shopee-products.json')
   const products: ShopeeProduct[] = await readJsonStream(jsonPath)
 
