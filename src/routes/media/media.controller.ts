@@ -25,12 +25,12 @@ import { IsPublic } from 'src/shared/decorators/auth.decorator'
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
-  @Post('images/upload')
+  @Post('images/uploads')
   @ZodSerializerDto(UploadFilesResDTO)
   @UseInterceptors(
     FilesInterceptor('files', 100, {
       limits: {
-        fileSize: 5 * 1024 * 1024 // 1MB
+        fileSize: 10 * 1024 * 1024 // 10MB
       }
     })
   )

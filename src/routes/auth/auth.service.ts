@@ -182,10 +182,7 @@ export class AuthService {
 
     this.cookieService.setAuthCookies(res, tokens.accessToken, tokens.refreshToken)
 
-    return {
-      message: 'Đăng nhập thành công',
-      data: user
-    }
+    return { message: 'Đăng nhập thành công' }
   }
 
   async generateTokens({ userId, deviceId, roleId, roleName }: AccessTokenPayloadCreate) {

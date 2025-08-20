@@ -39,7 +39,8 @@ export class GoogleService {
       access_type: 'offline',
       scope,
       include_granted_scopes: true,
-      state: stateString
+      state: stateString,
+      redirect_uri: this.configService.get('auth.google.client.redirectUriGoogleCallback')
     })
     return { url }
   }
@@ -58,7 +59,10 @@ export class GoogleService {
         console.error('Error parsing state', error)
       }
       // 2. Dùng code để lấy token
-      const { tokens } = await this.oauth2Client.getToken(code)
+      const { tokens } = await this.oauth2Client.getToken({
+        code,
+        redirect_uri: this.configService.get('auth.google.client.redirectUriGoogleCallback')
+      })
       this.oauth2Client.setCredentials(tokens)
 
       // 3. Lấy thông tin google user

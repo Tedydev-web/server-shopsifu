@@ -6,7 +6,6 @@ import {
   ForgotPasswordBodyDTO,
   GetAuthorizationUrlResDTO,
   LoginBodyDTO,
-  LoginResDTO,
   RegisterBodyDTO,
   RegisterResDTO,
   SendOTPBodyDTO,
@@ -49,7 +48,8 @@ export class AuthController {
   @Post('login')
   @IsPublic()
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(LoginResDTO)
+  // Sử dụng Cookie-based Authentication: không trả user trong body, chỉ trả message
+  @ZodSerializerDto(MessageResDTO)
   async login(
     @Body() body: LoginBodyDTO,
     @UserAgent() userAgent: string,
@@ -111,13 +111,14 @@ export class AuthController {
   @IsPublic()
   async googleCallback(@Query('code') code: string, @Query('state') state: string, @Res() res: Response) {
     try {
+      // Lấy token từ GoogleService
       const data = await this.googleService.googleCallback({
         code,
         state
       })
-      return res.redirect(
-        `${this.configService.get('auth.google.client.redirectUri')}?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`
-      )
+      // Thiết lập Cookie thay vì đính kèm accessToken/refreshToken lên URL
+      this.cookieService.setAuthCookies(res, data.accessToken, data.refreshToken)
+      return res.redirect(`${this.configService.get('auth.google.client.redirectUri')}`)
     } catch (error) {
       const message =
         error instanceof Error
