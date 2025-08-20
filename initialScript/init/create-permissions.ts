@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core'
 import { AppModule } from '../../src/app.module'
 import { HTTPMethod, RoleName } from '../../src/shared/constants/role.constant'
 import { PrismaService } from '../../src/shared/services/prisma.service'
+import { PrismaClient } from '@prisma/client'
 
 const SellerModule = [
   'AUTH',
@@ -15,7 +16,7 @@ const SellerModule = [
   'SEARCH'
 ]
 const ClientModule = ['AUTH', 'MEDIA', 'PROFILE', 'CART', 'ORDERS', 'REVIEWS', 'SEARCH']
-const prisma = new PrismaService()
+const prisma = new PrismaClient()
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)

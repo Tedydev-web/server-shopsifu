@@ -1,8 +1,9 @@
-import { HashingService } from 'src/shared/services/hashing.service'
-import { PrismaService } from 'src/shared/services/prisma.service'
-import { RoleName } from 'src/shared/constants/role.constant'
-import { UserStatus } from 'src/shared/constants/user.constant'
-const prisma = new PrismaService()
+import { HashingService } from '../../src/shared/services/hashing.service'
+import { PrismaClient } from '@prisma/client'
+import { RoleName } from '../../src/shared/constants/role.constant'
+import { UserStatus } from '../../src/shared/constants/user.constant'
+
+const prisma = new PrismaClient()
 const hashingService = new HashingService()
 const main = async () => {
   const roleCount = await prisma.role.count()

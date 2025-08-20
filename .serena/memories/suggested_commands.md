@@ -1,0 +1,25 @@
+# Lệnh gợi ý
+- Phát triển
+  - `npm run dev` chạy Nest watch mode
+  - `npm run build` build với Nest CLI (SWC)
+  - `npm start` chạy `dist/main`
+  - Debug: `npm run debug`
+- CSDL & Prisma
+  - `npm run generate` tạo Prisma Client
+  - `npm run migrate` migrate dev
+  - `npm run migrate:prod` deploy migration prod
+  - `npm run studio` mở Prisma Studio
+  - `npm run db:reset` reset DB và seed (cẩn trọng, xoá dữ liệu dev)
+- Seed & dữ liệu mẫu
+  - `npm run seed` chạy init + permissions + languages + import sản phẩm + sync ES
+  - `npm run init-seed-data` chỉ init data cơ bản
+  - `npm run clear-products` xoá dữ liệu sản phẩm mẫu
+  - `npm run import:products` nhập sản phẩm và sync ES
+  - `npm run sync-to-elasticsearch` đồng bộ ES
+- Chất lượng mã
+  - `npm run lint` chạy ESLint (có `--fix`)
+  - `npm run format` chạy Prettier
+  - `npm test` chạy Jest
+- Docker (stack quan sát)
+  - `npm run start:docker` bật pgbouncer/kibana/prometheus/grafana/exporters
+  - `npm run start:docker:build` build lại images trước khi bật

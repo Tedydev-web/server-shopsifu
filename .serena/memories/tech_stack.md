@@ -1,0 +1,15 @@
+# Tech stack
+- Runtime: Node.js, TypeScript 5.
+- Framework: NestJS 11 (Express adapter), Schedule, Terminus, Swagger (có dependency), WebSockets.
+- Build: SWC (`nest-cli.json` builder: swc), `prebuild` xoá `dist`.
+- ORM: Prisma 6 (`prisma/schema.prisma`, PostgreSQL qua `DATABASE_URL`).
+- Messaging/Queue: BullMQ (`@nestjs/bullmq`) với Redis.
+- Cache/Store: ioredis, cache-manager.
+- Search: Elasticsearch 8 (`@elastic/elasticsearch`).
+- Realtime: Socket.IO với Redis adapter.
+- Metrics/Observability: prom-client, prometheus-gc-stats, Grafana, Kibana.
+- Bảo mật/Middleware: helmet, compression, cookie-parser, CORS, throttler guard.
+- i18n: `nestjs-i18n` và assets trong `src/shared/languages` (được copy ra `dist`).
+- Logging: nestjs-pino (Logger service).
+- Email: `resend`, `react-email`.
+- Kiểm thử & Tooling: Jest 30, ts-jest, ESLint 9, Prettier 3, Husky, lint-staged.

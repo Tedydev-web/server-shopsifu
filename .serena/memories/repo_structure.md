@@ -1,0 +1,12 @@
+# Cấu trúc thư mục chính
+- `src/` mã nguồn NestJS
+  - `routes/*` mỗi domain là một module tách biệt: controller, dto, model, repo, service
+  - `shared/*` module chia sẻ: config, constants, decorators, dtos/models, filters, guards, interceptor, repositories, services, pipes, producers, consumers, languages
+  - `websockets/*` gateway, adapter, module
+  - `cronjobs/*` tác vụ định kỳ
+  - `metrics.ts` tích hợp Prometheus
+  - `main.ts`, `app.module.ts`
+- `prisma/` schema và migrations
+- `initialScript/` seed/init dữ liệu và import sản phẩm (Shopee sample), sync Elasticsearch
+- `docker-compose.yml` stack quan sát (pgbouncer, kibana, prometheus, grafana, exporters)
+- Cấu hình TS: `tsconfig.json`, `nest-cli.json`
