@@ -4,7 +4,7 @@ import { Job } from 'bullmq'
 import { Inject } from '@nestjs/common'
 import { GHN_CLIENT } from 'src/shared/constants/shipping.constants'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { CREATE_SHIPPING_ORDER_JOB, SHIPPING_QUEUE_NAME } from 'src/shared/constants/queue.constant'
+import { SHIPPING_QUEUE_NAME } from 'src/shared/constants/queue.constant'
 import { CreateOrderType } from 'src/routes/shipping/shipping.model'
 import { Ghn } from 'giaohangnhanh'
 
@@ -32,9 +32,11 @@ export class ShippingConsumer extends WorkerHost {
           where: { orderId: orderData.client_order_code }
         })
 
-        if (existingShipping) {
-          this.logger.log(`Order ${orderData.client_order_code} already has shipping, skipping`)
-          return { message: 'Order already has shipping' }
+        if (existingShipping && existingShipping.orderCode && existingShipping.orderCode !== 'TEMP_ORDER_CODE') {
+          this.logger.log(
+            `Order ${orderData.client_order_code} already has GHN shipping order ${existingShipping.orderCode}, skipping`
+          )
+          return { message: 'Order already has GHN shipping order', orderCode: existingShipping.orderCode }
         }
       }
 
@@ -108,7 +110,7 @@ export class ShippingConsumer extends WorkerHost {
         await this.prismaService.order.update({
           where: { id: orderData.client_order_code },
           data: {
-            status: 'PROCESSING' as any,
+            status: 'PENDING_PICKUP',
             updatedAt: new Date()
           }
         })

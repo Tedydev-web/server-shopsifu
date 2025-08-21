@@ -117,17 +117,17 @@ export class OrderService {
         const isCod = shop.isCod === true
         const codAmount = isCod ? (perShopMap.get(shop.shopId)?.payment ?? 0) : 0
 
-        // Tạo OrderShipping record trực tiếp
+        // Tạo OrderShipping record với thông tin tạm thời
         try {
           await this.prismaService.orderShipping.create({
             data: {
               orderId: order.id,
-              orderCode: `GHN_${order.id.substring(0, 8)}`, // Temporary code
-              serviceId: info.service_id || 0,
-              serviceTypeId: info.service_type_id || 0,
-              shippingFee: info.shippingFee || 0,
+              orderCode: 'TEMP_ORDER_CODE', // Mã tạm thời
+              serviceId: info.service_id,
+              serviceTypeId: info.service_type_id,
+              shippingFee: info.shippingFee,
               codAmount: codAmount,
-              expectedDeliveryTime: null, // Sẽ được cập nhật từ GHN
+              expectedDeliveryTime: null,
               trackingUrl: null,
               status: 'PENDING',
               fromAddress: info.from_address,
@@ -136,8 +136,8 @@ export class OrderService {
               fromProvinceName: info.from_province_name,
               fromDistrictName: info.from_district_name,
               fromWardName: info.from_ward_name,
-              fromDistrictId: info.from_district_id || 0,
-              fromWardCode: info.from_ward_code || '',
+              fromDistrictId: 0,
+              fromWardCode: '',
               toAddress: shop.receiver.address,
               toName: shop.receiver.name,
               toPhone: shop.receiver.phone,
@@ -187,7 +187,7 @@ export class OrderService {
             })),
             payment_type_id: isCod ? GHN_PAYMENT_TYPE.COD : GHN_PAYMENT_TYPE.PREPAID,
             note: info.note,
-            required_note: info.required_note
+            required_note: info.required_note || 'CHOTHUHANG'
           })
         } catch (error) {
           console.error('Failed to enqueue shipping order:', error)
