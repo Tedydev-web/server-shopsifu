@@ -1,15 +1,14 @@
 import { Injectable } from '@nestjs/common'
-import { google } from 'googleapis'
-import { OAuth2Client } from 'google-auth-library'
-import { v4 as uuidv4 } from 'uuid'
 import { ConfigService } from '@nestjs/config'
-import { AuthRepository } from './auth.repo'
+import { OAuth2Client } from 'google-auth-library'
+import { google } from 'googleapis'
+import { GoogleAuthStateType } from 'src/routes/auth/auth.model'
+import { AuthRepository } from 'src/routes/auth/auth.repo'
+import { AuthService } from 'src/routes/auth/auth.service'
+import { GoogleUserInfoError } from 'src/routes/auth/auth.error'
 import { HashingService } from 'src/shared/services/hashing.service'
+import { v4 as uuidv4 } from 'uuid'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
-import { AuthService } from './auth.service'
-import { GoogleAuthStateType } from './auth.model'
-import { GoogleUserDataSchema } from 'src/shared/models/shared-user.model'
-import { GoogleUserInfoError } from './auth.error'
 
 @Injectable()
 export class GoogleService {
@@ -24,13 +23,12 @@ export class GoogleService {
     this.oauth2Client = new google.auth.OAuth2(
       this.configService.get('auth.google.client.id'),
       this.configService.get('auth.google.client.secret'),
-      this.configService.get('auth.google.client.redirectUriGoogleCallback')
+      this.configService.get('auth.google.client.redirectUri')
     )
   }
-
   getAuthorizationUrl({ userAgent, ip }: GoogleAuthStateType) {
     const scope = ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email']
-    // Chuyển Object sang string base64 an toàn bởi lên url
+    // Chuyển Object sang string base64 an toàn bỏ lên url
     const stateString = Buffer.from(
       JSON.stringify({
         userAgent,
@@ -41,12 +39,10 @@ export class GoogleService {
       access_type: 'offline',
       scope,
       include_granted_scopes: true,
-      state: stateString,
-      redirect_uri: this.configService.get('auth.google.client.redirectUriGoogleCallback')
+      state: stateString
     })
     return { url }
   }
-
   async googleCallback({ code, state }: { code: string; state: string }) {
     try {
       let userAgent = 'Unknown'
@@ -61,12 +57,8 @@ export class GoogleService {
       } catch (error) {
         console.error('Error parsing state', error)
       }
-
       // 2. Dùng code để lấy token
-      const { tokens } = await this.oauth2Client.getToken({
-        code,
-        redirect_uri: this.configService.get('auth.google.client.redirectUriGoogleCallback')
-      })
+      const { tokens } = await this.oauth2Client.getToken(code)
       this.oauth2Client.setCredentials(tokens)
 
       // 3. Lấy thông tin google user
@@ -79,49 +71,34 @@ export class GoogleService {
         throw GoogleUserInfoError
       }
 
-      // 4. Validate và sanitize dữ liệu từ Google
-      const validatedGoogleData = GoogleUserDataSchema.parse({
-        email: data.email,
-        name: data.name,
-        picture: data.picture
-      })
-
       let user = await this.authRepository.findUniqueUserIncludeRole({
-        email: validatedGoogleData.email
+        email: data.email
       })
-
       // Nếu không có user tức là người mới, vậy nên sẽ tiến hành đăng ký
       if (!user) {
         const clientRoleId = await this.sharedRoleRepository.getClientRoleId()
         const randomPassword = uuidv4()
         const hashedPassword = await this.hashingService.hash(randomPassword)
-
-        // Đảm bảo dữ liệu phù hợp với database schema
-        const userData = {
-          email: validatedGoogleData.email,
-          name: validatedGoogleData.name || 'Unknown User',
+        user = await this.authRepository.createUserInclueRole({
+          email: data.email,
+          name: data.name ?? '',
           password: hashedPassword,
           roleId: clientRoleId,
-          phoneNumber: '', // Để trống vì Google không cung cấp số điện thoại
-          avatar: validatedGoogleData.picture
-        }
-
-        user = await this.authRepository.createUserInclueRole(userData)
+          phoneNumber: '',
+          avatar: data.picture ?? null
+        })
       }
-
       const device = await this.authRepository.createDevice({
         userId: user.id,
         userAgent,
         ip
       })
-
       const authTokens = await this.authService.generateTokens({
         userId: user.id,
         deviceId: device.id,
         roleId: user.roleId,
         roleName: user.role.name
       })
-
       return authTokens
     } catch (error) {
       console.error('Error in googleCallback', error)

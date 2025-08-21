@@ -17,7 +17,6 @@ async function bootstrap(): Promise<void> {
   let app: any
 
   try {
-    // Create app
     app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
       bufferLogs: true
     })
@@ -30,11 +29,9 @@ async function bootstrap(): Promise<void> {
     const host = config.getOrThrow('app.http.host')
     const port = config.getOrThrow('app.http.port')
 
-    // Middleware (OPTIMIZED FOR PRODUCTION)
     app.use(
       helmet({
         crossOriginResourcePolicy: { policy: 'cross-origin' },
-        // Tối ưu security cho production
         contentSecurityPolicy: {
           directives: {
             defaultSrc: ["'self'"],
@@ -43,18 +40,16 @@ async function bootstrap(): Promise<void> {
             imgSrc: ["'self'", 'data:', 'https:']
           }
         },
-        // Tối ưu performance
         noSniff: true,
         xssFilter: true,
         frameguard: { action: 'deny' }
       })
     )
 
-    // Compression (OPTIMIZED FOR HIGH TRAFFIC)
     app.use(
       compression({
         threshold: 1024,
-        level: 6, // Balance between compression and CPU usage
+        level: 6,
         filter: (req, res) => {
           if (req.headers['x-no-compression']) {
             return false
@@ -104,7 +99,7 @@ async function bootstrap(): Promise<void> {
         // Close application
         await app.close()
 
-        logger.log(`✅ Container ${process.pid} closed cleanly. Bye!`)
+        logger.log(`✅ Application closed cleanly. Bye!`)
         process.exit(0)
       } catch (error) {
         logger.error(`❌ Error during shutdown:`, error)
@@ -114,18 +109,15 @@ async function bootstrap(): Promise<void> {
 
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
     process.on('SIGINT', () => gracefulShutdown('SIGINT'))
-    process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // Docker Swarm restart signal
 
     // Start server
     await app.listen(port, host)
 
     const appUrl = await app.getUrl()
-    logger.log(`🚀 Container ${process.pid} running on: ${appUrl}`)
+    logger.log(`🚀 Application running on: ${appUrl}`)
     logger.log(`📊 Environment: ${config.get('NODE_ENV')}`)
-    logger.log(`🔧 Workers: Single container (Docker Swarm managed)`)
     logger.log(`💾 Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB used`)
 
-    // Performance monitoring (OPTIMIZED FOR PRODUCTION)
     setInterval(() => {
       const memUsage = process.memoryUsage()
       logger.log(
@@ -133,7 +125,7 @@ async function bootstrap(): Promise<void> {
       )
     }, 300000) // Log every 5 minutes
   } catch (error) {
-    console.error(`❌ Container ${process.pid} failed to start:`, error)
+    console.error(`❌ Application failed to start:`, error)
     process.exit(1)
   }
 }

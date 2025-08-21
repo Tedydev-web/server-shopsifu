@@ -111,14 +111,13 @@ export class AuthController {
   @IsPublic()
   async googleCallback(@Query('code') code: string, @Query('state') state: string, @Res() res: Response) {
     try {
-      // Lấy token từ GoogleService
       const data = await this.googleService.googleCallback({
         code,
         state
       })
-      // Thiết lập Cookie thay vì đính kèm accessToken/refreshToken lên URL
-      this.cookieService.setAuthCookies(res, data.accessToken, data.refreshToken)
-      return res.redirect(`${this.configService.get('auth.google.client.redirectUri')}`)
+      return res.redirect(
+        `${this.configService.get('auth.google.client.redirectUri')}?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`
+      )
     } catch (error) {
       const message =
         error instanceof Error
