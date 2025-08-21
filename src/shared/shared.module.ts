@@ -34,7 +34,6 @@ import { SearchSyncService } from './services/search-sync.service'
 import { SearchSyncConsumer } from './consumers/search-sync.consumer'
 import { SEARCH_SYNC_QUEUE_NAME } from './constants/search-sync.constant'
 import { PaymentConsumer } from './consumers/payment.consumer'
-import { MetricsService } from './services/metrics.service'
 
 const sharedServices = [
   PrismaService,
@@ -52,8 +51,7 @@ const sharedServices = [
   ElasticsearchService,
   SearchSyncService,
   SearchSyncConsumer,
-  PaymentConsumer,
-  MetricsService
+  PaymentConsumer
 ]
 
 @Global()

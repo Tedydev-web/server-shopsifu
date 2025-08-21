@@ -10,7 +10,6 @@ import express from 'express'
 import { Logger } from 'nestjs-pino'
 import { ConfigService } from '@nestjs/config'
 import bodyParser from 'body-parser'
-import { serveMetrics, wrapExpressForMetrics } from './metrics'
 
 async function bootstrap(): Promise<void> {
   const server = express()
@@ -75,11 +74,6 @@ async function bootstrap(): Promise<void> {
     const websocketAdapter = new WebsocketAdapter(app)
     await websocketAdapter.connectToRedis()
     app.useWebSocketAdapter(websocketAdapter)
-
-    // Metrics per-worker (Prometheus)
-    wrapExpressForMetrics(server)
-    const metricsBasePort = Number(process.env.METRICS_BASE_PORT || 9200)
-    serveMetrics(metricsBasePort)
 
     // // Global settings
     // app.useGlobalPipes(

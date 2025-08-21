@@ -84,6 +84,6 @@ export const createLoggerConfig = (configService: ConfigService): Params => {
         return `${req.method} ${req.url} - ${res.statusCode} - ${err.message}`
       }
     },
-    exclude: ['/health', '/metrics', '/favicon.ico']
+    exclude: ['/health', '/favicon.ico']
   }
 }

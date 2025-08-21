@@ -2,6 +2,7 @@ import { AddressType, UserStatus } from 'src/shared/constants/user.constant'
 import { PermissionSchema } from 'src/shared/models/shared-permission.model'
 import { RoleSchema } from 'src/shared/models/shared-role.model'
 import { z } from 'zod'
+
 export const UserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
@@ -19,13 +20,27 @@ export const UserSchema = z.object({
   createdAt: z.date(),
   updatedAt: z.date()
 })
+
 /**
  * Schema validation cho dữ liệu Google OAuth
  */
 export const GoogleUserDataSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(500).optional().default(''),
-  picture: z.string().max(1000).nullable().optional().default(null)
+  picture: z
+    .string()
+    .max(1000)
+    .nullable()
+    .optional()
+    .default(null)
+    .transform((val) => {
+      // Nếu URL avatar quá dài, cắt ngắn hoặc để null
+      if (val && val.length > 1000) {
+        console.warn('Google avatar URL too long, truncating:', val.length, 'characters')
+        return val.substring(0, 1000)
+      }
+      return val
+    })
 })
 
 export type GoogleUserDataType = z.infer<typeof GoogleUserDataSchema>
