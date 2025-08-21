@@ -72,7 +72,14 @@ export const DiscountSnapshotSchema = z.object({
 
 export const OrderIncludeProductSKUSnapshotAndDiscountSchema = OrderSchema.extend({
   items: z.array(ProductSKUSnapshotSchema),
-  discounts: z.array(DiscountSnapshotSchema)
+  discounts: z.array(DiscountSnapshotSchema),
+  // Thêm thông tin vận chuyển tối thiểu để tính phí ship khi thanh toán online
+  shipping: z
+    .object({
+      shippingFee: z.number().optional()
+    })
+    .nullable()
+    .optional()
 })
 
 export type OrderType = z.infer<typeof OrderSchema>

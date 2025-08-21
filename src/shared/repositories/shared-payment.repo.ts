@@ -2,7 +2,6 @@ import { Injectable, BadRequestException } from '@nestjs/common'
 import { OrderStatus } from 'src/shared/constants/order.constant'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { OrderIncludeProductSKUSnapshotAndDiscountType } from '../models/shared-order.model'
 import { PaymentProducer } from '../queue/producer/payment.producer'
 
 /**
@@ -25,7 +24,8 @@ export class SharedPaymentRepository {
         orders: {
           include: {
             items: true,
-            discounts: true
+            discounts: true,
+            shipping: true
           }
         }
       }
@@ -40,25 +40,20 @@ export class SharedPaymentRepository {
    * @param expectedAmount - Số tiền mong đợi (VND)
    * @param actualAmount - Số tiền thực tế (VND)
    */
-  validatePaymentAmount(
-    orders: OrderIncludeProductSKUSnapshotAndDiscountType[],
-    expectedAmount: string,
-    actualAmount: string | number
-  ) {
-    const totalPrice = this.getTotalPrice(orders)
+  validatePaymentAmount(expectedAmount: string, actualAmount: string | number) {
     const expected = parseFloat(expectedAmount)
     const actual = parseFloat(actualAmount.toString())
 
     // So sánh với tolerance 0.01 để tránh lỗi float precision
     if (Math.abs(expected - actual) > 0.01) {
-      throw new BadRequestException(`Price not match, expected ${totalPrice} but got ${actual}`)
+      throw new BadRequestException(`Price not match, expected ${expected} but got ${actual}`)
     }
   }
 
   /**
    * Cập nhật trạng thái payment và orders khi thanh toán thành công
    */
-  async updatePaymentAndOrdersOnSuccess(paymentId: number, orders: OrderIncludeProductSKUSnapshotAndDiscountType[]) {
+  async updatePaymentAndOrdersOnSuccess(paymentId: number, orders: Array<{ id: string }>) {
     await Promise.all([
       this.prismaService.payment.update({
         where: { id: paymentId },
@@ -75,7 +70,7 @@ export class SharedPaymentRepository {
   /**
    * Cập nhật trạng thái payment và orders khi thanh toán thất bại
    */
-  async updatePaymentAndOrdersOnFailed(paymentId: number, orders: OrderIncludeProductSKUSnapshotAndDiscountType[]) {
+  async updatePaymentAndOrdersOnFailed(paymentId: number, orders: Array<{ id: string }>) {
     await Promise.all([
       this.prismaService.payment.update({
         where: { id: paymentId },
@@ -137,16 +132,23 @@ export class SharedPaymentRepository {
   }
 
   /**
-   * Tính tổng tiền các order (đã trừ giảm giá)
+   * Tính tổng tiền các order bao gồm shipping fee (đã trừ giảm giá)
    */
-  getTotalPrice(orders: OrderIncludeProductSKUSnapshotAndDiscountType[]): string {
-    return orders
-      .reduce((total, order) => {
-        const productTotal = order.items.reduce((sum: number, sku: any) => sum + sku.skuPrice * sku.quantity, 0)
-        const discountTotal = order.discounts?.reduce((sum: number, d: any) => sum + d.discountAmount, 0) || 0
-        return total + (productTotal - discountTotal)
-      }, 0)
-      .toString()
+  getTotalPrice(
+    orders: Array<{
+      items: Array<{ skuPrice: number; quantity: number }>
+      discounts?: Array<{ discountAmount: number }> | null
+      shipping?: { shippingFee: number | null } | null
+    }>
+  ): string {
+    const basePrice = orders.reduce((totalOrder, order) => {
+      const productTotal = order.items.reduce((sum: number, sku: any) => sum + sku.skuPrice * sku.quantity, 0)
+      const discountTotal = (order.discounts || [])?.reduce((sum: number, d: any) => sum + d.discountAmount, 0) || 0
+      return totalOrder + (productTotal - discountTotal)
+    }, 0)
+
+    const shippingFee = orders.reduce((total, order) => total + (order.shipping?.shippingFee || 0), 0)
+    return (basePrice + shippingFee).toString()
   }
 
   /**

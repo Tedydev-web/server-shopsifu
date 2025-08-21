@@ -35,6 +35,7 @@ import { SearchSyncService } from './services/search-sync.service'
 import { SearchSyncConsumer } from './queue/consumer/search-sync.consumer'
 import { SEARCH_SYNC_QUEUE_NAME } from './constants/search-sync.constant'
 import { PaymentConsumer } from './queue/consumer/payment.consumer'
+import { ShippingConsumer } from './queue/consumer/shipping.consumer'
 import { PricingService } from './services/pricing.service'
 import { Ghn } from 'giaohangnhanh'
 import { GHN_CLIENT } from './constants/shipping.constants'
@@ -57,6 +58,7 @@ const sharedServices = [
   SearchSyncService,
   SearchSyncConsumer,
   PaymentConsumer,
+  ShippingConsumer,
   PricingService
 ]
 

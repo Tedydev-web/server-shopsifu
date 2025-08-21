@@ -59,7 +59,6 @@ export class SepayRepo {
 
       // 4. Validate số tiền
       this.sharedPaymentRepository.validatePaymentAmount(
-        orders,
         this.sharedPaymentRepository.getTotalPrice(orders),
         body.transferAmount
       )

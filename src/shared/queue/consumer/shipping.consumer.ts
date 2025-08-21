@@ -1,0 +1,131 @@
+import { Processor, WorkerHost } from '@nestjs/bullmq'
+import { Injectable, Logger } from '@nestjs/common'
+import { Job } from 'bullmq'
+import { Inject } from '@nestjs/common'
+import { GHN_CLIENT } from 'src/shared/constants/shipping.constants'
+import { PrismaService } from 'src/shared/services/prisma.service'
+import { CREATE_SHIPPING_ORDER_JOB, SHIPPING_QUEUE_NAME } from 'src/shared/constants/queue.constant'
+import { CreateOrderType } from 'src/routes/shipping/shipping.model'
+import { Ghn } from 'giaohangnhanh'
+
+@Injectable()
+@Processor(SHIPPING_QUEUE_NAME)
+export class ShippingConsumer extends WorkerHost {
+  private readonly logger = new Logger(ShippingConsumer.name)
+
+  constructor(
+    @Inject(GHN_CLIENT) private readonly ghn: Ghn,
+    private readonly prismaService: PrismaService
+  ) {
+    super()
+  }
+
+  async process(job: Job<CreateOrderType>) {
+    try {
+      this.logger.log(`Processing shipping order creation for job ${job.id}`)
+
+      const orderData = job.data
+
+      // Kiểm tra xem order đã có shipping chưa (idempotency)
+      if (orderData.client_order_code) {
+        const existingShipping = await this.prismaService.orderShipping.findUnique({
+          where: { orderId: orderData.client_order_code }
+        })
+
+        if (existingShipping) {
+          this.logger.log(`Order ${orderData.client_order_code} already has shipping, skipping`)
+          return { message: 'Order already has shipping' }
+        }
+      }
+
+      // Tạo GHN order
+      const ghnResponse = await this.ghn.order.createOrder(orderData)
+
+      if (!ghnResponse || !ghnResponse.order_code) {
+        throw new Error('Failed to create GHN order: Invalid response')
+      }
+
+      // Lưu thông tin shipping vào database
+      const orderShipping = await this.prismaService.orderShipping.upsert({
+        where: { orderId: orderData.client_order_code || '' },
+        update: {
+          orderCode: ghnResponse.order_code,
+          serviceId: orderData.service_id || 0,
+          serviceTypeId: orderData.service_type_id || 0,
+          shippingFee: orderData.cod_amount || 0,
+          codAmount: orderData.cod_amount || 0,
+          expectedDeliveryTime: ghnResponse.expected_delivery_time
+            ? new Date(ghnResponse.expected_delivery_time)
+            : null,
+          trackingUrl: null, // GHN response không có tracking_url
+          status: 'PENDING',
+          fromAddress: orderData.from_address,
+          fromName: orderData.from_name,
+          fromPhone: orderData.from_phone,
+          fromProvinceName: orderData.from_province_name,
+          fromDistrictName: orderData.from_district_name,
+          fromWardName: orderData.from_ward_name,
+          fromDistrictId: 0, // Không có trong CreateOrderType
+          fromWardCode: '', // Không có trong CreateOrderType
+          toAddress: orderData.to_address,
+          toName: orderData.to_name,
+          toPhone: orderData.to_phone,
+          toDistrictId: orderData.to_district_id,
+          toWardCode: orderData.to_ward_code,
+          lastUpdatedAt: new Date()
+        },
+        create: {
+          orderId: orderData.client_order_code || '',
+          orderCode: ghnResponse.order_code,
+          serviceId: orderData.service_id || 0,
+          serviceTypeId: orderData.service_type_id || 0,
+          shippingFee: orderData.cod_amount || 0,
+          codAmount: orderData.cod_amount || 0,
+          expectedDeliveryTime: ghnResponse.expected_delivery_time
+            ? new Date(ghnResponse.expected_delivery_time)
+            : null,
+          trackingUrl: null,
+          status: 'PENDING',
+          fromAddress: orderData.from_address,
+          fromName: orderData.from_name,
+          fromPhone: orderData.from_phone,
+          fromProvinceName: orderData.from_province_name,
+          fromDistrictName: orderData.from_district_name,
+          fromWardName: orderData.from_ward_name,
+          fromDistrictId: 0,
+          fromWardCode: '',
+          toAddress: orderData.to_address,
+          toName: orderData.to_name,
+          toPhone: orderData.to_phone,
+          toDistrictId: orderData.to_district_id,
+          toWardCode: orderData.to_ward_code,
+          lastUpdatedAt: new Date()
+        }
+      })
+
+      // Cập nhật trạng thái order
+      if (orderData.client_order_code) {
+        await this.prismaService.order.update({
+          where: { id: orderData.client_order_code },
+          data: {
+            status: 'PROCESSING' as any,
+            updatedAt: new Date()
+          }
+        })
+      }
+
+      this.logger.log(
+        `Successfully created shipping order ${ghnResponse.order_code} for order ${orderData.client_order_code}`
+      )
+
+      return {
+        message: 'Shipping order created successfully',
+        orderCode: ghnResponse.order_code,
+        orderShippingId: orderShipping.id
+      }
+    } catch (error) {
+      this.logger.error(`Failed to process shipping order creation: ${error.message}`, error.stack)
+      throw error
+    }
+  }
+}

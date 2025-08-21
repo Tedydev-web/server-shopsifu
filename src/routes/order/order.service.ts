@@ -107,15 +107,50 @@ export class OrderService {
 
     const result = await this.orderRepo.create(user.userId, body)
 
-    // Orchestrate tạo GHN vận đơn theo từng shop
+    // Lưu shipping info trực tiếp vào order và tạo OrderShipping record
     await Promise.all(
-      body.map(async (shop) => {
-        if (!shop.shippingInfo) return
+      result.orders.map(async (order) => {
+        const shop = body.find((s) => s.shopId === order.shopId)
+        if (!shop?.shippingInfo) return
 
         const info = shop.shippingInfo
         const isCod = shop.isCod === true
         const codAmount = isCod ? (perShopMap.get(shop.shopId)?.payment ?? 0) : 0
 
+        // Tạo OrderShipping record trực tiếp
+        try {
+          await this.prismaService.orderShipping.create({
+            data: {
+              orderId: order.id,
+              orderCode: `GHN_${order.id.substring(0, 8)}`, // Temporary code
+              serviceId: info.service_id || 0,
+              serviceTypeId: info.service_type_id || 0,
+              shippingFee: info.shippingFee || 0,
+              codAmount: codAmount,
+              expectedDeliveryTime: null, // Sẽ được cập nhật từ GHN
+              trackingUrl: null,
+              status: 'PENDING',
+              fromAddress: info.from_address,
+              fromName: info.from_name,
+              fromPhone: info.from_phone,
+              fromProvinceName: info.from_province_name,
+              fromDistrictName: info.from_district_name,
+              fromWardName: info.from_ward_name,
+              fromDistrictId: info.from_district_id || 0,
+              fromWardCode: info.from_ward_code || '',
+              toAddress: shop.receiver.address,
+              toName: shop.receiver.name,
+              toPhone: shop.receiver.phone,
+              toDistrictId: info.to_district_id,
+              toWardCode: info.to_ward_code,
+              lastUpdatedAt: new Date()
+            }
+          })
+        } catch (error) {
+          console.error('Failed to create OrderShipping record:', error)
+        }
+
+        // Enqueue job để tạo GHN order
         try {
           await this.shippingProducer.enqueueCreateOrder({
             from_address: info.from_address,
@@ -129,7 +164,7 @@ export class OrderService {
             to_address: shop.receiver.address,
             to_ward_code: info.to_ward_code,
             to_district_id: info.to_district_id,
-            client_order_code: result.orders?.[0]?.id || result.paymentId.toString(),
+            client_order_code: order.id, // Sử dụng order.id thay vì paymentId
             cod_amount: codAmount,
             content: undefined,
             weight: info.weight,
@@ -155,7 +190,6 @@ export class OrderService {
             required_note: info.required_note
           })
         } catch (error) {
-          // Log error nhưng không fail order creation
           console.error('Failed to enqueue shipping order:', error)
         }
       })
@@ -177,6 +211,20 @@ export class OrderService {
 
   async detail(user: AccessTokenPayload, orderId: string) {
     const result = await this.orderRepo.detail(user.userId, orderId)
+
+    // Lấy shipping info từ OrderShipping
+    if (result.data) {
+      const orderShipping = await this.prismaService.orderShipping.findUnique({
+        where: { orderId: result.data.id }
+      })
+
+      if (orderShipping && orderShipping.shippingFee !== null) {
+        result.data.totalShippingFee = orderShipping.shippingFee
+        result.data.totalPayment =
+          result.data.totalItemCost + orderShipping.shippingFee - result.data.totalVoucherDiscount
+      }
+    }
+
     return {
       message: this.i18n.t('order.order.success.GET_DETAIL_SUCCESS'),
       data: result.data

@@ -56,7 +56,6 @@ export class VNPayRepo {
       // Validate số tiền (VNPay amount đã chia 100)
       const actualAmount = Number(vnpayData.vnp_Amount) / 100
       this.sharedPaymentRepository.validatePaymentAmount(
-        orders,
         this.sharedPaymentRepository.getTotalPrice(orders),
         actualAmount
       )
@@ -81,11 +80,7 @@ export class VNPayRepo {
     const orders = payment.orders
     // Validate số tiền (queryData.vnp_Amount đã được thư viện xử lý - chia 100)
     const actualAmount = Number(queryData.vnp_Amount)
-    this.sharedPaymentRepository.validatePaymentAmount(
-      orders,
-      this.sharedPaymentRepository.getTotalPrice(orders),
-      actualAmount
-    )
+    this.sharedPaymentRepository.validatePaymentAmount(this.sharedPaymentRepository.getTotalPrice(orders), actualAmount)
     return { payment, orders, paymentId }
   }
 
