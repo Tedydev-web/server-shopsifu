@@ -26,15 +26,15 @@ export const WardSchema = z.object({
   Extension: z.string().optional()
 })
 
-// Schema cho Service (dịch vụ vận chuyển) - khớp với GetServiceResponse thực tế
+// Schema cho Service (dịch vụ vận chuyển)
 export const ServiceSchema = z.object({
   service_id: z.number(),
   short_name: z.string(),
   service_type_id: z.number(),
-  config_fee_id: z.string().optional(), // Có thể undefined
-  extra_cost_id: z.string().optional(), // Có thể undefined
-  standard_config_fee_id: z.string().optional(), // Có thể undefined
-  standard_extra_cost_id: z.string().optional() // Có thể undefined
+  config_fee_id: z.string().nullable().optional(),
+  extra_cost_id: z.string().nullable().optional(),
+  standard_config_fee_id: z.string().nullable().optional(),
+  standard_extra_cost_id: z.string().nullable().optional()
 })
 
 // Schema cho CalculateShippingFee request - khớp với CalculateShippingFee
@@ -60,15 +60,15 @@ export const CalculateShippingFeeResponseSchema = z.object({
   total: z.number(),
   service_fee: z.number(),
   insurance_fee: z.number(),
-  pick_station_fee: z.number().optional(), // Có thể undefined
-  coupon_value: z.number().optional(), // Có thể undefined
-  r2s_fee: z.number().optional(), // Có thể undefined
-  document_return: z.number().optional(), // Có thể undefined
-  double_check: z.number().optional(), // Có thể undefined
-  cod_fee: z.number().optional(), // Có thể undefined
-  pick_remote_areas_fee: z.number().optional(), // Có thể undefined
-  deliver_remote_areas_fee: z.number().optional(), // Có thể undefined
-  cod_failed_fee: z.number().optional() // Có thể undefined
+  pick_station_fee: z.number().optional(),
+  coupon_value: z.number().optional(),
+  r2s_fee: z.number().optional(),
+  document_return: z.number().optional(),
+  double_check: z.number().optional(),
+  cod_fee: z.number().optional(),
+  pick_remote_areas_fee: z.number().optional(),
+  deliver_remote_areas_fee: z.number().optional(),
+  cod_failed_fee: z.number().optional()
 })
 
 // Response schemas

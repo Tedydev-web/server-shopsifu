@@ -121,9 +121,17 @@ export class ShippingService {
 
       const services = await this.ghnService.calculateFee.getServiceList(fromDistrictId, toDistrictId)
 
+      const normalized = services.map((s: any) => ({
+        ...s,
+        config_fee_id: s.config_fee_id === '' ? null : s.config_fee_id,
+        extra_cost_id: s.extra_cost_id === '' ? null : s.extra_cost_id,
+        standard_config_fee_id: s.standard_config_fee_id === '' ? null : s.standard_config_fee_id,
+        standard_extra_cost_id: s.standard_extra_cost_id === '' ? null : s.standard_extra_cost_id
+      }))
+
       return {
         message: this.i18n.t('ship.success.GET_SERVICE_LIST_SUCCESS'),
-        data: services
+        data: normalized
       }
     } catch (error) {
       if (error === InvalidDistrictIdException) {
