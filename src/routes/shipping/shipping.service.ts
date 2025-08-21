@@ -1,5 +1,4 @@
 import { Injectable, Inject } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { Ghn } from 'giaohangnhanh'
@@ -29,7 +28,6 @@ export class ShippingService {
   private readonly ghnService: Ghn
 
   constructor(
-    private readonly configService: ConfigService,
     private readonly i18n: I18nService<I18nTranslations>,
     @Inject(GHN_CLIENT) ghnClient: Ghn
   ) {

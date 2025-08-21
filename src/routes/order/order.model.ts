@@ -56,9 +56,19 @@ export const CreateOrderBodySchema = z
   .min(1)
 
 // Thêm schema cho API calculate
-export const CalculateOrderBodySchema = z.object({
-  cartItemIds: z.array(z.string()).min(1),
-  discountCodes: z.array(z.string()).optional()
+// =============== Schema: tính theo từng shop (giống UI Shopee) ===============
+export const CalculateOrderPerShopSchema = z.object({
+  shops: z
+    .array(
+      z.object({
+        shopId: z.string(),
+        cartItemIds: z.array(z.string()).min(1),
+        shippingFee: z.number().nonnegative().default(0),
+        discountCodes: z.array(z.string()).optional()
+      })
+    )
+    .min(1),
+  platformDiscountCodes: z.array(z.string()).optional()
 })
 
 export const CalculateOrderResSchema = z.object({
@@ -67,7 +77,20 @@ export const CalculateOrderResSchema = z.object({
     totalItemCost: z.number(),
     totalShippingFee: z.number(),
     totalVoucherDiscount: z.number(),
-    totalPayment: z.number()
+    totalPayment: z.number(),
+    shops: z
+      .array(
+        z.object({
+          shopId: z.string(),
+          itemCost: z.number(),
+          shippingFee: z.number(),
+          voucherDiscount: z.number(),
+          platformVoucherDiscount: z.number().optional(),
+          itemCount: z.number().optional(),
+          payment: z.number()
+        })
+      )
+      .optional()
   })
 })
 
@@ -102,6 +125,6 @@ export type GetOrderParamsType = z.infer<typeof GetOrderParamsSchema>
 export type CreateOrderBodyType = z.infer<typeof CreateOrderBodySchema>
 export type CreateOrderResType = z.infer<typeof CreateOrderResSchema>
 export type CancelOrderResType = z.infer<typeof CancelOrderResSchema>
-export type CalculateOrderBodyType = z.infer<typeof CalculateOrderBodySchema>
 export type CalculateOrderResType = z.infer<typeof CalculateOrderResSchema>
+export type CalculateOrderPerShopType = z.infer<typeof CalculateOrderPerShopSchema>
 export type GetAvailableDiscountsBodyType = z.infer<typeof GetAvailableDiscountsBodySchema>

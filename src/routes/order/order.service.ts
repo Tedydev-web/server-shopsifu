@@ -1,24 +1,24 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
-import { CreateOrderBodyType, GetOrderListQueryType, CalculateOrderBodyType } from 'src/routes/order/order.model'
+import { CreateOrderBodyType, GetOrderListQueryType } from 'src/routes/order/order.model'
 import { OrderRepo } from 'src/routes/order/order.repo'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { calculateDiscountAmount, validateDiscountForOrder } from 'src/shared/helpers'
+import { PricingService } from 'src/shared/services/pricing.service'
 import {
   DiscountUsageLimitExceededException,
   DiscountNotApplicableException,
   DiscountExpiredException
 } from 'src/routes/discount/discount.error'
-import { DiscountStatus } from 'src/shared/constants/discount.constant'
 
 @Injectable()
 export class OrderService {
   constructor(
     private readonly orderRepo: OrderRepo,
     private readonly i18n: I18nService<I18nTranslations>,
-    private readonly prismaService: PrismaService
+    private readonly prismaService: PrismaService,
+    private readonly pricingService: PricingService
   ) {}
 
   async list(user: AccessTokenPayload, query: GetOrderListQueryType) {
@@ -113,126 +113,15 @@ export class OrderService {
     }
   }
 
-  async calculate(user: AccessTokenPayload, body: CalculateOrderBodyType) {
-    // Lấy cartItems
-    const cartItems = await this.prismaService.cartItem.findMany({
-      where: { id: { in: body.cartItemIds }, userId: user.userId },
-      include: {
-        sku: {
-          include: {
-            product: {
-              include: {
-                productTranslations: true,
-                brand: true,
-                categories: true
-              }
-            }
-          }
-        }
-      }
+  async calculate(user: AccessTokenPayload, body: any) {
+    const result = await this.pricingService.tinhTamTinhDonHang(user, {
+      shops: body.shops,
+      platformDiscountCodes: body.platformDiscountCodes
     })
-
-    if (!cartItems.length) {
-      return {
-        message: this.i18n.t('order.order.success.CALCULATE_SUCCESS'),
-        data: {
-          totalItemCost: 0,
-          totalShippingFee: 0,
-          totalVoucherDiscount: 0,
-          totalPayment: 0
-        }
-      }
-    }
-
-    const totalPayment = cartItems.reduce((sum, item) => sum + item.sku.price * item.quantity, 0)
-
-    if (!body.discountCodes || body.discountCodes.length === 0) {
-      return {
-        message: this.i18n.t('order.order.success.CALCULATE_SUCCESS'),
-        data: {
-          totalItemCost: totalPayment,
-          totalShippingFee: 0,
-          totalVoucherDiscount: 0,
-          totalPayment: totalPayment
-        }
-      }
-    }
-
-    // Lấy thông tin các discount
-    const discounts = await this.prismaService.discount.findMany({
-      where: {
-        code: { in: body.discountCodes },
-        discountStatus: DiscountStatus.ACTIVE,
-        startDate: { lte: new Date() },
-        endDate: { gte: new Date() },
-        deletedAt: null
-      },
-      include: {
-        products: { select: { id: true } },
-        categories: { select: { id: true } },
-        brands: { select: { id: true } }
-      }
-    })
-
-    if (!discounts.length) {
-      return {
-        message: this.i18n.t('order.order.success.CALCULATE_SUCCESS'),
-        data: {
-          totalItemCost: totalPayment,
-          totalShippingFee: 0,
-          totalVoucherDiscount: 0,
-          totalPayment: totalPayment
-        }
-      }
-    }
-
-    // Chuẩn bị dữ liệu để kiểm tra eligibility
-    const productIds = cartItems.map((item) => item.sku.product.id)
-    const categoryIds = cartItems
-      .map((item) => item.sku.product.categories.map((c) => c.id))
-      .flat()
-      .filter(Boolean)
-    const brandIds = cartItems.map((item) => item.sku.product.brand.id).filter(Boolean)
-
-    // Lấy thông tin user usage count một lần để tránh N+1 queries
-    const userDiscountUsage = await this.prismaService.discountSnapshot.groupBy({
-      by: ['discountId'],
-      where: {
-        discountId: { in: discounts.map((d) => d.id) },
-        order: { userId: user.userId }
-      },
-      _count: { discountId: true }
-    })
-
-    const userUsageMap = new Map(userDiscountUsage.map((item) => [item.discountId, item._count.discountId]))
-
-    // Lọc và validate discounts
-    const validDiscounts = discounts.filter((discount) => {
-      const userUsageCount = userUsageMap.get(discount.id) || 0
-      return validateDiscountForOrder(discount, totalPayment, productIds, categoryIds, brandIds, userUsageCount)
-    })
-
-    // Tính toán discount amounts
-    const appliedDiscounts = validDiscounts.map((discount) => {
-      const discountAmount = calculateDiscountAmount(discount, totalPayment)
-      return {
-        code: discount.code,
-        name: discount.name,
-        amount: discountAmount
-      }
-    })
-
-    const totalVoucherDiscountAmount = appliedDiscounts.reduce((sum, d) => sum + d.amount, 0)
-    const grandTotal = totalPayment - totalVoucherDiscountAmount
 
     return {
       message: this.i18n.t('order.order.success.CALCULATE_SUCCESS'),
-      data: {
-        totalItemCost: totalPayment,
-        totalShippingFee: 0,
-        totalVoucherDiscount: -totalVoucherDiscountAmount,
-        totalPayment: Math.max(0, grandTotal)
-      }
+      data: result
     }
   }
 }
