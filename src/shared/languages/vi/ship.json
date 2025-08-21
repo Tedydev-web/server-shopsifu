@@ -4,7 +4,10 @@
     "GET_DISTRICTS_SUCCESS": "Lấy danh sách quận/huyện thành công",
     "GET_WARDS_SUCCESS": "Lấy danh sách phường/xã thành công",
     "GET_SERVICE_LIST_SUCCESS": "Lấy danh sách dịch vụ vận chuyển thành công",
-    "CALCULATE_FEE_SUCCESS": "Tính phí vận chuyển thành công"
+    "CALCULATE_FEE_SUCCESS": "Tính phí vận chuyển thành công",
+    "CALCULATE_DELIVERY_TIME_SUCCESS": "Tính thời gian giao hàng thành công",
+    "PREVIEW_ORDER_SUCCESS": "Xem trước đơn hàng thành công",
+    "CREATE_ORDER_SUCCESS": "Tạo đơn hàng thành công"
   },
   "error": {
     "SERVICE_UNAVAILABLE": "Dịch vụ vận chuyển hiện không khả dụng, vui lòng thử lại sau",

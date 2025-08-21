@@ -11,7 +11,11 @@ import {
   GetServiceListResType,
   CalculateShippingFeeResType,
   GetServiceListQueryType,
-  CalculateShippingFeeType
+  CalculateShippingFeeType,
+  CalculateExpectedDeliveryTimeType,
+  CalculateExpectedDeliveryTimeResType,
+  CreateOrderType,
+  CreateOrderResType
 } from './shipping.model'
 import {
   ShippingServiceUnavailableException,
@@ -213,6 +217,110 @@ export class ShippingService {
         throw error
       }
 
+      throw ShippingServiceUnavailableException
+    }
+  }
+
+  // =============== Order Features (Phase 1) ===============
+  async calculateExpectedDeliveryTime(
+    data: CalculateExpectedDeliveryTimeType
+  ): Promise<CalculateExpectedDeliveryTimeResType> {
+    try {
+      const { service_id, to_district_id, to_ward_code, from_district_id, from_ward_code } = data
+
+      if (!service_id || service_id <= 0) {
+        throw MissingServiceIdentifierException
+      }
+
+      if (!to_district_id || to_district_id <= 0) {
+        throw InvalidDistrictIdException
+      }
+
+      if (!to_ward_code) {
+        throw MissingWardCodeException
+      }
+
+      if (!from_district_id || from_district_id <= 0) {
+        throw InvalidDistrictIdException
+      }
+
+      if (!from_ward_code) {
+        throw MissingWardCodeException
+      }
+
+      const result = await this.ghnService.order.calculateExpectedDeliveryTime({
+        service_id,
+        to_district_id,
+        to_ward_code,
+        from_district_id,
+        from_ward_code
+      })
+
+      return {
+        message: this.i18n.t('ship.success.CALCULATE_DELIVERY_TIME_SUCCESS'),
+        data: {
+          leadtime: result.leadtime,
+          order_date: result.order_date?.toString(),
+          expected_delivery_time: result.leadtime ? new Date(result.leadtime * 1000).toISOString() : undefined
+        }
+      }
+    } catch (_error) {
+      if (
+        error === MissingServiceIdentifierException ||
+        error === InvalidDistrictIdException ||
+        error === MissingWardCodeException
+      ) {
+        throw error
+      }
+      throw ShippingServiceUnavailableException
+    }
+  }
+
+  async createOrder(data: CreateOrderType): Promise<CreateOrderResType> {
+    try {
+      // Map data để phù hợp với GHN API
+      const ghnData = {
+        from_address: data.from_address,
+        from_name: data.from_name,
+        from_phone: data.from_phone,
+        from_province_name: data.from_province_name,
+        from_district_name: data.from_district_name,
+        from_ward_name: data.from_ward_name,
+        to_name: data.to_name,
+        to_phone: data.to_phone,
+        to_address: data.to_address,
+        to_ward_code: data.to_ward_code,
+        to_district_id: data.to_district_id,
+        return_phone: data.return_phone,
+        return_address: data.return_address,
+        return_district_id: data.return_district_id,
+        return_ward_code: data.return_ward_code,
+        client_order_code: data.client_order_code || null,
+        cod_amount: data.cod_amount,
+        content: data.content,
+        weight: data.weight,
+        length: data.length,
+        width: data.width,
+        height: data.height,
+        pick_station_id: data.pick_station_id,
+        insurance_value: data.insurance_value,
+        service_id: data.service_id,
+        service_type_id: data.service_type_id,
+        coupon: data.coupon,
+        pick_shift: data.pick_shift,
+        items: data.items,
+        payment_type_id: data.payment_type_id,
+        note: data.note,
+        required_note: data.required_note
+      }
+
+      const result = await this.ghnService.order.createOrder(ghnData)
+
+      return {
+        message: this.i18n.t('ship.success.CREATE_ORDER_SUCCESS'),
+        data: result
+      }
+    } catch (_error) {
       throw ShippingServiceUnavailableException
     }
   }

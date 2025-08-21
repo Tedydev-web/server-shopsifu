@@ -8,7 +8,11 @@ import {
   GetServiceListResSchema,
   CalculateShippingFeeResSchema,
   GetServiceListQuerySchema,
-  CalculateShippingFeeSchema
+  CalculateShippingFeeSchema,
+  CalculateExpectedDeliveryTimeSchema,
+  CalculateExpectedDeliveryTimeResSchema,
+  CreateOrderSchema,
+  CreateOrderResSchema
 } from './shipping.model'
 
 export class GetProvincesResDTO extends createZodDto(GetProvincesResSchema) {}
@@ -21,3 +25,8 @@ export class GetServiceListResDTO extends createZodDto(GetServiceListResSchema) 
 export class CalculateShippingFeeResDTO extends createZodDto(CalculateShippingFeeResSchema) {}
 export class GetServiceListQueryDTO extends createZodDto(GetServiceListQuerySchema) {}
 export class CalculateShippingFeeDTO extends createZodDto(CalculateShippingFeeSchema) {}
+
+export class CalculateExpectedDeliveryTimeDTO extends createZodDto(CalculateExpectedDeliveryTimeSchema) {}
+export class CalculateExpectedDeliveryTimeResDTO extends createZodDto(CalculateExpectedDeliveryTimeResSchema) {}
+export class CreateOrderDTO extends createZodDto(CreateOrderSchema) {}
+export class CreateOrderResDTO extends createZodDto(CreateOrderResSchema) {}

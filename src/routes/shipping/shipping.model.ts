@@ -111,7 +111,69 @@ export const GetServiceListQuerySchema = z.object({
   toDistrictId: z.coerce.number().int().positive()
 })
 
-// Type exports
+// =============== Schema: Order Features (Phase 1) ===============
+export const CalculateExpectedDeliveryTimeSchema = z.object({
+  service_id: z.number(),
+  to_district_id: z.number(),
+  to_ward_code: z.string(),
+  from_district_id: z.number(),
+  from_ward_code: z.string()
+})
+
+export const CalculateExpectedDeliveryTimeResSchema = z.object({
+  message: z.string().optional(),
+  data: z.object({
+    leadtime: z.number(),
+    order_date: z.number().optional(),
+    expected_delivery_time: z.string().optional()
+  })
+})
+
+const FeeResponseSchema = z.object({
+  main_service: z.number(),
+  insurance: z.number(),
+  station_do: z.number(),
+  station_pu: z.number(),
+  return: z.number(),
+  r2s: z.number(),
+  coupon: z.number(),
+  document_return: z.number().optional(),
+  double_check: z.number().optional(),
+  double_check_deliver: z.number().optional(),
+  pick_remote_areas_fee: z.number().optional(),
+  deliver_remote_areas_fee: z.number().optional(),
+  pick_remote_areas_fee_return: z.number().optional(),
+  deliver_remote_areas_fee_return: z.number().optional(),
+  cod_failed_fee: z.number().optional()
+})
+
+export const PreviewOrderResSchema = z.object({
+  message: z.string().optional(),
+  data: z.object({
+    order_code: z.string(),
+    sort_code: z.string(),
+    trans_type: z.string(),
+    total_fee: z.number(),
+    expected_delivery_time: z.union([z.string(), z.date()]),
+    fee: FeeResponseSchema,
+    ward_encode: z.string().optional(),
+    district_encode: z.string().optional(),
+    operation_partner: z.string().optional()
+  })
+})
+
+export const CreateOrderSchema = PreviewOrderSchema.extend({
+  from_address: z.string(),
+  from_name: z.string(),
+  from_phone: z.string(),
+  from_province_name: z.string(),
+  from_district_name: z.string(),
+  from_ward_name: z.string()
+})
+
+export const CreateOrderResSchema = PreviewOrderResSchema
+
+// =============== Types ===============
 export type ProvinceType = z.infer<typeof ProvinceSchema>
 export type DistrictType = z.infer<typeof DistrictSchema>
 export type WardType = z.infer<typeof WardSchema>
@@ -128,3 +190,10 @@ export type CalculateShippingFeeResType = z.infer<typeof CalculateShippingFeeRes
 export type GetDistrictsQueryType = z.infer<typeof GetDistrictsQuerySchema>
 export type GetWardsQueryType = z.infer<typeof GetWardsQuerySchema>
 export type GetServiceListQueryType = z.infer<typeof GetServiceListQuerySchema>
+
+export type CalculateExpectedDeliveryTimeType = z.infer<typeof CalculateExpectedDeliveryTimeSchema>
+export type CalculateExpectedDeliveryTimeResType = z.infer<typeof CalculateExpectedDeliveryTimeResSchema>
+export type PreviewOrderType = z.infer<typeof PreviewOrderSchema>
+export type PreviewOrderResType = z.infer<typeof PreviewOrderResSchema>
+export type CreateOrderType = z.infer<typeof CreateOrderSchema>
+export type CreateOrderResType = z.infer<typeof CreateOrderResSchema>

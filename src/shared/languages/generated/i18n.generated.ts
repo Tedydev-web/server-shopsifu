@@ -425,6 +425,9 @@ export type I18nTranslations = {
             "GET_WARDS_SUCCESS": string;
             "GET_SERVICE_LIST_SUCCESS": string;
             "CALCULATE_FEE_SUCCESS": string;
+            "CALCULATE_DELIVERY_TIME_SUCCESS": string;
+            "PREVIEW_ORDER_SUCCESS": string;
+            "CREATE_ORDER_SUCCESS": string;
         };
         "error": {
             "SERVICE_UNAVAILABLE": string;

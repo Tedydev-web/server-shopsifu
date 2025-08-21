@@ -7,7 +7,11 @@ import {
   GetDistrictsResDTO,
   GetWardsResDTO,
   GetServiceListResDTO,
-  CalculateShippingFeeResDTO
+  CalculateShippingFeeResDTO,
+  CalculateExpectedDeliveryTimeDTO,
+  CalculateExpectedDeliveryTimeResDTO,
+  CreateOrderDTO,
+  CreateOrderResDTO
 } from './shipping.dto'
 import { GetDistrictsQueryDTO, GetWardsQueryDTO, GetServiceListQueryDTO, CalculateShippingFeeDTO } from './shipping.dto'
 
@@ -48,5 +52,19 @@ export class ShippingController {
   @ZodSerializerDto(CalculateShippingFeeResDTO)
   calculateShippingFee(@Body() data: CalculateShippingFeeDTO) {
     return this.shippingService.calculateShippingFee(data)
+  }
+
+  @Post('delivery-time')
+  @IsPublic()
+  @ZodSerializerDto(CalculateExpectedDeliveryTimeResDTO)
+  calculateExpectedDeliveryTime(@Body() data: CalculateExpectedDeliveryTimeDTO) {
+    return this.shippingService.calculateExpectedDeliveryTime(data)
+  }
+
+  @Post('create-order')
+  @IsPublic()
+  @ZodSerializerDto(CreateOrderResDTO)
+  createOrder(@Body() data: CreateOrderDTO) {
+    return this.shippingService.createOrder(data)
   }
 }
