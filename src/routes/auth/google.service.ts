@@ -9,6 +9,8 @@ import { GoogleUserInfoError } from 'src/routes/auth/auth.error'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { v4 as uuidv4 } from 'uuid'
 import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
+import { Response } from 'express'
+import { CookieService } from 'src/shared/services/cookie.service'
 
 @Injectable()
 export class GoogleService {
@@ -18,12 +20,13 @@ export class GoogleService {
     private readonly hashingService: HashingService,
     private readonly sharedRoleRepository: SharedRoleRepository,
     private readonly authService: AuthService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly cookieService: CookieService
   ) {
     this.oauth2Client = new google.auth.OAuth2(
       this.configService.get('auth.google.client.id'),
       this.configService.get('auth.google.client.secret'),
-      this.configService.get('auth.google.client.redirectUri')
+      this.configService.get('auth.google.client.redirectUriGoogleCallback')
     )
   }
   getAuthorizationUrl({ userAgent, ip }: GoogleAuthStateType) {
@@ -43,7 +46,7 @@ export class GoogleService {
     })
     return { url }
   }
-  async googleCallback({ code, state }: { code: string; state: string }) {
+  async googleCallback({ code, state, res }: { code: string; state: string; res: Response }) {
     try {
       let userAgent = 'Unknown'
       let ip = 'Unknown'
@@ -84,7 +87,7 @@ export class GoogleService {
           name: data.name ?? '',
           password: hashedPassword,
           roleId: clientRoleId,
-          phoneNumber: '',
+          phoneNumber: null, // ✅ Sử dụng null thay vì empty string
           avatar: data.picture ?? null
         })
       }
@@ -99,7 +102,11 @@ export class GoogleService {
         roleId: user.roleId,
         roleName: user.role.name
       })
-      return authTokens
+
+      // Set cookies thay vì trả về tokens
+      this.cookieService.setAuthCookies(res, authTokens.accessToken, authTokens.refreshToken)
+
+      return { message: 'Đăng nhập bằng Google thành công' }
     } catch (error) {
       console.error('Error in googleCallback', error)
       throw error

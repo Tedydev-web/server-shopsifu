@@ -91,9 +91,8 @@ export class AuthController {
   logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     // Lấy đúng tên cookie refresh_token
     const refreshToken = req.cookies?.refresh_token
-    // Xóa cookie phía client
-    res.cookie('access_token', '', { maxAge: 0, httpOnly: true, secure: true, sameSite: 'none' })
-    res.cookie('refresh_token', '', { maxAge: 0, httpOnly: true, secure: true, sameSite: 'none' })
+    // Xóa cookie phía client sử dụng CookieService
+    this.cookieService.clearAuthCookies(res)
     return this.authService.logout(refreshToken)
   }
 
@@ -111,19 +110,21 @@ export class AuthController {
   @IsPublic()
   async googleCallback(@Query('code') code: string, @Query('state') state: string, @Res() res: Response) {
     try {
-      const data = await this.googleService.googleCallback({
+      await this.googleService.googleCallback({
         code,
-        state
+        state,
+        res
       })
-      return res.redirect(
-        `${this.configService.get('auth.google.client.redirectUri')}?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`
-      )
+      // Redirect về trang chủ hoặc dashboard sau khi đăng nhập thành công
+      const redirectUrl = this.configService.get('auth.google.client.redirectUri')
+      return res.redirect(redirectUrl)
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : 'Đã xảy ra lỗi khi đăng nhập bằng Google, vui lòng thử lại bằng cách khác'
-      return res.redirect(`${this.configService.get('auth.google.client.redirectUri')}?errorMessage=${message}`)
+      const redirectUrl = this.configService.get('auth.google.client.redirectUri')
+      return res.redirect(`${redirectUrl}?errorMessage=${encodeURIComponent(message)}`)
     }
   }
 

@@ -36,7 +36,7 @@ model User {
   email                       String                @unique
   name                        String                @db.VarChar(500)
   password                    String                @db.VarChar(500)
-  phoneNumber                 String                @unique @db.VarChar(50)
+  phoneNumber                 String?               @unique @db.VarChar(50)
   avatar                      String?               @db.VarChar(1000)
   totpSecret                  String?               @db.VarChar(1000)
   status                      UserStatus            @default(INACTIVE)
