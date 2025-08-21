@@ -1,0 +1,18 @@
+{
+  "success": {
+    "GET_PROVINCES_SUCCESS": "Lấy danh sách tỉnh/thành phố thành công",
+    "GET_DISTRICTS_SUCCESS": "Lấy danh sách quận/huyện thành công",
+    "GET_WARDS_SUCCESS": "Lấy danh sách phường/xã thành công",
+    "GET_SERVICE_LIST_SUCCESS": "Lấy danh sách dịch vụ vận chuyển thành công",
+    "CALCULATE_FEE_SUCCESS": "Tính phí vận chuyển thành công"
+  },
+  "error": {
+    "SERVICE_UNAVAILABLE": "Dịch vụ vận chuyển hiện không khả dụng, vui lòng thử lại sau",
+    "INVALID_PROVINCE_ID": "Mã tỉnh/thành phố không hợp lệ",
+    "INVALID_DISTRICT_ID": "Mã quận/huyện không hợp lệ",
+    "INVALID_WARD_CODE": "Mã phường/xã không hợp lệ",
+    "MISSING_WARD_CODE": "Thiếu mã phường/xã",
+    "INVALID_DIMENSIONS": "Kích thước hoặc khối lượng không hợp lệ",
+    "MISSING_SERVICE_IDENTIFIER": "Thiếu thông tin dịch vụ (service_id hoặc service_type_id)"
+  }
+}

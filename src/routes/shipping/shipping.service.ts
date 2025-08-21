@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
@@ -8,13 +8,21 @@ import {
   GetDistrictsResType,
   GetWardsResType,
   GetDistrictsQueryType,
-  GetWardsQueryType
+  GetWardsQueryType,
+  GetServiceListResType,
+  CalculateShippingFeeResType,
+  GetServiceListQueryType,
+  CalculateShippingFeeType
 } from './shipping.model'
 import {
   ShippingServiceUnavailableException,
   InvalidProvinceIdException,
-  InvalidDistrictIdException
+  InvalidDistrictIdException,
+  MissingWardCodeException,
+  InvalidDimensionsException,
+  MissingServiceIdentifierException
 } from './shipping.error'
+import { GHN_CLIENT } from '../../shared/constants/shipping.constants'
 
 @Injectable()
 export class ShippingService {
@@ -22,31 +30,10 @@ export class ShippingService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly i18n: I18nService<I18nTranslations>
+    private readonly i18n: I18nService<I18nTranslations>,
+    @Inject(GHN_CLIENT) ghnClient: Ghn
   ) {
-    // Khởi tạo GHN service với config từ environment
-    const token = this.configService.get<string>('GHN_TOKEN')
-    const shopId = this.configService.get<number>('GHN_SHOP_ID')
-    const host = this.configService.get<string>('GHN_HOST')
-    const testMode = this.configService.get<boolean>('GHN_TEST_MODE') ?? true
-
-    // Validate required config
-    if (!token) {
-      throw new Error('GHN_TOKEN is required in environment variables')
-    }
-    if (!shopId) {
-      throw new Error('GHN_SHOP_ID is required in environment variables')
-    }
-    if (!host) {
-      throw new Error('GHN_HOST is required in environment variables')
-    }
-
-    this.ghnService = new Ghn({
-      token,
-      shopId,
-      host,
-      testMode
-    })
+    this.ghnService = ghnClient
   }
 
   /**
@@ -57,10 +44,10 @@ export class ShippingService {
       const provinces = await this.ghnService.address.getProvinces()
 
       return {
-        message: 'Lấy danh sách tỉnh/thành phố thành công',
+        message: this.i18n.t('ship.success.GET_PROVINCES_SUCCESS'),
         data: provinces
       }
-    } catch (error) {
+    } catch {
       throw ShippingServiceUnavailableException
     }
   }
@@ -79,7 +66,7 @@ export class ShippingService {
       const districts = await this.ghnService.address.getDistricts(provinceId)
 
       return {
-        message: 'Lấy danh sách quận/huyện thành công',
+        message: this.i18n.t('ship.success.GET_DISTRICTS_SUCCESS'),
         data: districts
       }
     } catch (error) {
@@ -105,11 +92,118 @@ export class ShippingService {
       const wards = await this.ghnService.address.getWards(districtId)
 
       return {
-        message: 'Lấy danh sách phường/xã thành công',
+        message: this.i18n.t('ship.success.GET_WARDS_SUCCESS'),
         data: wards
       }
     } catch (error) {
       if (error === InvalidDistrictIdException) {
+        throw error
+      }
+
+      throw ShippingServiceUnavailableException
+    }
+  }
+
+  /**
+   * Lấy danh sách dịch vụ vận chuyển có sẵn
+   */
+  async getServiceList(query: GetServiceListQueryType): Promise<GetServiceListResType> {
+    try {
+      const { fromDistrictId, toDistrictId } = query
+
+      if (!fromDistrictId || fromDistrictId <= 0) {
+        throw InvalidDistrictIdException
+      }
+
+      if (!toDistrictId || toDistrictId <= 0) {
+        throw InvalidDistrictIdException
+      }
+
+      const services = await this.ghnService.calculateFee.getServiceList(fromDistrictId, toDistrictId)
+
+      return {
+        message: this.i18n.t('ship.success.GET_SERVICE_LIST_SUCCESS'),
+        data: services
+      }
+    } catch (error) {
+      if (error === InvalidDistrictIdException) {
+        throw error
+      }
+
+      throw ShippingServiceUnavailableException
+    }
+  }
+
+  /**
+   * Tính phí vận chuyển
+   */
+  async calculateShippingFee(data: CalculateShippingFeeType): Promise<CalculateShippingFeeResType> {
+    try {
+      const {
+        to_district_id,
+        to_ward_code,
+        height,
+        weight,
+        length,
+        width,
+        service_type_id,
+        service_id,
+        from_district_id,
+        from_ward_code,
+        insurance_value,
+        coupon,
+        cod_failed_amount,
+        cod_value
+      } = data
+
+      if (!to_district_id || to_district_id <= 0) {
+        throw InvalidDistrictIdException
+      }
+
+      if (!to_ward_code) {
+        throw MissingWardCodeException
+      }
+
+      if (height <= 0 || weight <= 0 || length <= 0 || width <= 0) {
+        throw InvalidDimensionsException
+      }
+
+      if (!service_type_id && !service_id) {
+        throw MissingServiceIdentifierException
+      }
+
+      const shipData = {
+        to_district_id,
+        to_ward_code,
+        height,
+        weight,
+        length,
+        width,
+        service_type_id,
+        service_id,
+        from_district_id,
+        from_ward_code,
+        insurance_value,
+        coupon,
+        cod_failed_amount,
+        cod_value
+      }
+
+      const response = await this.ghnService.calculateFee.calculateShippingFee(shipData)
+
+      const feeData = response
+
+      return {
+        message: this.i18n.t('ship.success.CALCULATE_FEE_SUCCESS'),
+        data: feeData
+      }
+    } catch (error) {
+      if (
+        error === InvalidDistrictIdException ||
+        error === MissingWardCodeException ||
+        error === InvalidDimensionsException ||
+        error === MissingServiceIdentifierException
+      ) {
         throw error
       }
 

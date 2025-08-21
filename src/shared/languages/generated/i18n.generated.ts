@@ -418,6 +418,24 @@ export type I18nTranslations = {
             };
         };
     };
+    "ship": {
+        "success": {
+            "GET_PROVINCES_SUCCESS": string;
+            "GET_DISTRICTS_SUCCESS": string;
+            "GET_WARDS_SUCCESS": string;
+            "GET_SERVICE_LIST_SUCCESS": string;
+            "CALCULATE_FEE_SUCCESS": string;
+        };
+        "error": {
+            "SERVICE_UNAVAILABLE": string;
+            "INVALID_PROVINCE_ID": string;
+            "INVALID_DISTRICT_ID": string;
+            "INVALID_WARD_CODE": string;
+            "MISSING_WARD_CODE": string;
+            "INVALID_DIMENSIONS": string;
+            "MISSING_SERVICE_IDENTIFIER": string;
+        };
+    };
     "user": {
         "user": {
             "success": {

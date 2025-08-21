@@ -2,28 +2,49 @@ import { BadRequestException, InternalServerErrorException } from '@nestjs/commo
 
 export const ShippingServiceUnavailableException = new InternalServerErrorException([
   {
-    message: 'Error.ShippingServiceUnavailable',
+    message: 'shipping.error.SERVICE_UNAVAILABLE',
     path: 'shipping'
   }
 ])
 
 export const InvalidProvinceIdException = new BadRequestException([
   {
-    message: 'Error.InvalidProvinceId',
+    message: 'shipping.error.INVALID_PROVINCE_ID',
     path: 'provinceId'
   }
 ])
 
 export const InvalidDistrictIdException = new BadRequestException([
   {
-    message: 'Error.InvalidDistrictId',
+    message: 'shipping.error.INVALID_DISTRICT_ID',
     path: 'districtId'
   }
 ])
 
 export const InvalidWardCodeException = new BadRequestException([
   {
-    message: 'Error.InvalidWardCode',
+    message: 'shipping.error.INVALID_WARD_CODE',
     path: 'wardCode'
+  }
+])
+
+export const MissingWardCodeException = new BadRequestException([
+  {
+    message: 'shipping.error.MISSING_WARD_CODE',
+    path: 'wardCode'
+  }
+])
+
+export const InvalidDimensionsException = new BadRequestException([
+  {
+    message: 'shipping.error.INVALID_DIMENSIONS',
+    path: 'dimensions'
+  }
+])
+
+export const MissingServiceIdentifierException = new BadRequestException([
+  {
+    message: 'shipping.error.MISSING_SERVICE_IDENTIFIER',
+    path: 'service'
   }
 ])
