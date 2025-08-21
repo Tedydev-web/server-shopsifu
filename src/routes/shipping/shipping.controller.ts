@@ -10,8 +10,8 @@ import {
   CalculateShippingFeeResDTO,
   CalculateExpectedDeliveryTimeDTO,
   CalculateExpectedDeliveryTimeResDTO,
-  CreateOrderDTO,
-  CreateOrderResDTO
+  GHNWebhookPayloadDTO,
+  GHNWebhookResponseDTO
 } from './shipping.dto'
 import { GetDistrictsQueryDTO, GetWardsQueryDTO, GetServiceListQueryDTO, CalculateShippingFeeDTO } from './shipping.dto'
 
@@ -61,10 +61,11 @@ export class ShippingController {
     return this.shippingService.calculateExpectedDeliveryTime(data)
   }
 
-  @Post('create-order')
+  // Webhook GHN - cập nhật trạng thái vận đơn (internal)
+  @Post('webhook/order-status')
   @IsPublic()
-  @ZodSerializerDto(CreateOrderResDTO)
-  createOrder(@Body() data: CreateOrderDTO) {
-    return this.shippingService.createOrder(data)
+  @ZodSerializerDto(GHNWebhookResponseDTO)
+  async ghnOrderStatus(@Body() body: GHNWebhookPayloadDTO) {
+    return this.shippingService.processOrderStatusUpdate(body)
   }
 }

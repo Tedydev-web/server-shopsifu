@@ -1,4 +1,4 @@
-import { BadRequestException, InternalServerErrorException } from '@nestjs/common'
+import { BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common'
 
 export const ShippingServiceUnavailableException = new InternalServerErrorException([
   {
@@ -46,5 +46,26 @@ export const MissingServiceIdentifierException = new BadRequestException([
   {
     message: 'shipping.error.MISSING_SERVICE_IDENTIFIER',
     path: 'service'
+  }
+])
+
+export const ShippingOrderNotFoundException = new NotFoundException([
+  {
+    message: 'shipping.error.ORDER_NOT_FOUND',
+    path: 'orderCode'
+  }
+])
+
+export const InvalidWebhookPayloadException = new BadRequestException([
+  {
+    message: 'shipping.error.INVALID_WEBHOOK_PAYLOAD',
+    path: 'webhook'
+  }
+])
+
+export const ShippingOrderCreationFailedException = new InternalServerErrorException([
+  {
+    message: 'shipping.error.ORDER_CREATION_FAILED',
+    path: 'shipping'
   }
 ])

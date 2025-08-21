@@ -6,19 +6,21 @@ import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { PricingService } from 'src/shared/services/pricing.service'
+import { ShippingProducer } from 'src/shared/queue/producer/shipping.producer'
+import { GHN_PAYMENT_TYPE } from 'src/shared/constants/shipping.constants'
 import {
   DiscountUsageLimitExceededException,
   DiscountNotApplicableException,
   DiscountExpiredException
 } from 'src/routes/discount/discount.error'
-
 @Injectable()
 export class OrderService {
   constructor(
     private readonly orderRepo: OrderRepo,
     private readonly i18n: I18nService<I18nTranslations>,
     private readonly prismaService: PrismaService,
-    private readonly pricingService: PricingService
+    private readonly pricingService: PricingService,
+    private readonly shippingProducer: ShippingProducer
   ) {}
 
   async list(user: AccessTokenPayload, query: GetOrderListQueryType) {
@@ -90,7 +92,75 @@ export class OrderService {
       }
     }
 
+    // Tính tạm tính để lấy breakdown per shop (itemCost, shippingFee, voucher allocation, payment)
+    const calc = await this.pricingService.tinhTamTinhDonHang(user, {
+      shops: body.map((s) => ({
+        shopId: s.shopId,
+        cartItemIds: s.cartItemIds,
+        shippingFee: s.shippingInfo?.shippingFee ?? 0,
+        discountCodes: s.discountCodes
+      })),
+      platformDiscountCodes: []
+    })
+    const perShopMap = new Map<string, { payment: number }>()
+    ;(calc.shops || []).forEach((sh) => perShopMap.set(sh.shopId, { payment: sh.payment }))
+
     const result = await this.orderRepo.create(user.userId, body)
+
+    // Orchestrate tạo GHN vận đơn theo từng shop
+    await Promise.all(
+      body.map(async (shop) => {
+        if (!shop.shippingInfo) return
+
+        const info = shop.shippingInfo
+        const isCod = shop.isCod === true
+        const codAmount = isCod ? (perShopMap.get(shop.shopId)?.payment ?? 0) : 0
+
+        try {
+          await this.shippingProducer.enqueueCreateOrder({
+            from_address: info.from_address,
+            from_name: info.from_name,
+            from_phone: info.from_phone,
+            from_province_name: info.from_province_name,
+            from_district_name: info.from_district_name,
+            from_ward_name: info.from_ward_name,
+            to_name: shop.receiver.name,
+            to_phone: shop.receiver.phone,
+            to_address: shop.receiver.address,
+            to_ward_code: info.to_ward_code,
+            to_district_id: info.to_district_id,
+            client_order_code: result.orders?.[0]?.id || result.paymentId.toString(),
+            cod_amount: codAmount,
+            content: undefined,
+            weight: info.weight,
+            length: info.length,
+            width: info.width,
+            height: info.height,
+            pick_station_id: undefined,
+            insurance_value: undefined,
+            service_id: info.service_id,
+            service_type_id: info.service_type_id,
+            coupon: info.coupon ?? null,
+            pick_shift: info.pick_shift,
+            items: shop.cartItemIds.map((cartItemId) => ({
+              name: `Item ${cartItemId.substring(0, 6)}`,
+              quantity: 1,
+              weight: info.weight,
+              length: info.length,
+              width: info.width,
+              height: info.height
+            })),
+            payment_type_id: isCod ? GHN_PAYMENT_TYPE.COD : GHN_PAYMENT_TYPE.PREPAID,
+            note: info.note,
+            required_note: info.required_note
+          })
+        } catch (error) {
+          // Log error nhưng không fail order creation
+          console.error('Failed to enqueue shipping order:', error)
+        }
+      })
+    )
+
     return {
       message: this.i18n.t('order.order.success.CREATE_SUCCESS'),
       data: result

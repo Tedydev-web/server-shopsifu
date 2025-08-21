@@ -16,7 +16,6 @@ import { S3Service } from 'src/shared/services/s3.service'
 import { SharedPaymentRepository } from './repositories/shared-payment.repo'
 import { SharedWebsocketRepository } from './repositories/shared-websocket.repo'
 import path from 'path'
-import { existsSync } from 'fs'
 import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
 import { Resolvable, ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler'
 import { ScheduleModule } from '@nestjs/schedule'
@@ -27,14 +26,18 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { createKeyv } from '@keyv/redis'
 import configs from 'src/shared/config'
 import { createLoggerConfig } from './config/logger.config'
-import { PaymentProducer } from './producers/payment.producer'
+import { PaymentProducer } from './queue/producer/payment.producer'
+import { ShippingProducer } from './queue/producer/shipping.producer'
 import { PAYMENT_QUEUE_NAME } from './constants/queue.constant'
+import { SHIPPING_QUEUE_NAME } from './constants/queue.constant'
 import { ElasticsearchService } from './services/elasticsearch.service'
 import { SearchSyncService } from './services/search-sync.service'
-import { SearchSyncConsumer } from './consumers/search-sync.consumer'
+import { SearchSyncConsumer } from './queue/consumer/search-sync.consumer'
 import { SEARCH_SYNC_QUEUE_NAME } from './constants/search-sync.constant'
-import { PaymentConsumer } from './consumers/payment.consumer'
+import { PaymentConsumer } from './queue/consumer/payment.consumer'
 import { PricingService } from './services/pricing.service'
+import { Ghn } from 'giaohangnhanh'
+import { GHN_CLIENT } from './constants/shipping.constants'
 
 const sharedServices = [
   PrismaService,
@@ -49,6 +52,7 @@ const sharedServices = [
   SharedWebsocketRepository,
   S3Service,
   PaymentProducer,
+  ShippingProducer,
   ElasticsearchService,
   SearchSyncService,
   SearchSyncConsumer,
@@ -65,9 +69,27 @@ const sharedServices = [
     {
       provide: APP_GUARD,
       useClass: AuthenticationGuard
+    },
+    {
+      provide: GHN_CLIENT,
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const token = configService.get<string>('GHN_TOKEN')
+        const shopIdRaw = configService.get<string>('GHN_SHOP_ID')
+        const host = configService.get<string>('GHN_HOST')
+        const testModeRaw = configService.get<string>('GHN_TEST_MODE')
+        const trackingHost = configService.get<string>('GHN_TRACKING_HOST')
+        if (!token) throw new Error('GHN_TOKEN is required in environment variables')
+        if (!shopIdRaw) throw new Error('GHN_SHOP_ID is required in environment variables')
+        if (!host) throw new Error('GHN_HOST is required in environment variables')
+        const shopId = Number(shopIdRaw)
+        if (!Number.isFinite(shopId) || shopId <= 0) throw new Error('GHN_SHOP_ID must be a positive number')
+        const testMode = String(testModeRaw ?? 'true').toLowerCase() === 'true'
+        return new Ghn({ token, shopId, host, testMode, trackingHost })
+      }
     }
   ],
-  exports: sharedServices,
+  exports: [...sharedServices, GHN_CLIENT],
   imports: [
     // Configuration - Global
     ConfigModule.forRoot({
@@ -132,6 +154,11 @@ const sharedServices = [
     // Payment Queue
     BullModule.registerQueue({
       name: PAYMENT_QUEUE_NAME
+    }),
+
+    // Shipping Queue
+    BullModule.registerQueue({
+      name: SHIPPING_QUEUE_NAME
     }),
 
     // Search Sync Queue

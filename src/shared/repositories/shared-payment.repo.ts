@@ -3,7 +3,7 @@ import { OrderStatus } from 'src/shared/constants/order.constant'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { OrderIncludeProductSKUSnapshotAndDiscountType } from '../models/shared-order.model'
-import { PaymentProducer } from '../producers/payment.producer'
+import { PaymentProducer } from '../queue/producer/payment.producer'
 
 /**
  * Repository dùng chung cho các gateway thanh toán

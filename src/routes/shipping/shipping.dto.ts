@@ -12,7 +12,9 @@ import {
   CalculateExpectedDeliveryTimeSchema,
   CalculateExpectedDeliveryTimeResSchema,
   CreateOrderSchema,
-  CreateOrderResSchema
+  CreateOrderResSchema,
+  GHNWebhookPayloadSchema,
+  GHNWebhookResponseSchema
 } from './shipping.model'
 
 export class GetProvincesResDTO extends createZodDto(GetProvincesResSchema) {}
@@ -30,3 +32,6 @@ export class CalculateExpectedDeliveryTimeDTO extends createZodDto(CalculateExpe
 export class CalculateExpectedDeliveryTimeResDTO extends createZodDto(CalculateExpectedDeliveryTimeResSchema) {}
 export class CreateOrderDTO extends createZodDto(CreateOrderSchema) {}
 export class CreateOrderResDTO extends createZodDto(CreateOrderResSchema) {}
+
+export class GHNWebhookPayloadDTO extends createZodDto(GHNWebhookPayloadSchema) {}
+export class GHNWebhookResponseDTO extends createZodDto(GHNWebhookResponseSchema) {}

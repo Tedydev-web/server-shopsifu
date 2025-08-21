@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { parse } from 'date-fns'
 import { WebhookPaymentBodyType } from 'src/routes/payment/sepay/sepay.model'
-import { PaymentProducer } from 'src/shared/producers/payment.producer'
+import { PaymentProducer } from 'src/shared/queue/producer/payment.producer'
 import { PREFIX_PAYMENT_CODE } from 'src/shared/constants/other.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { SharedPaymentRepository } from 'src/shared/repositories/shared-payment.repo'

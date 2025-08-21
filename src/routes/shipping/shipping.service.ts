@@ -14,8 +14,7 @@ import {
   CalculateShippingFeeType,
   CalculateExpectedDeliveryTimeType,
   CalculateExpectedDeliveryTimeResType,
-  CreateOrderType,
-  CreateOrderResType
+  GHNWebhookPayloadType
 } from './shipping.model'
 import {
   ShippingServiceUnavailableException,
@@ -23,20 +22,20 @@ import {
   InvalidDistrictIdException,
   MissingWardCodeException,
   InvalidDimensionsException,
-  MissingServiceIdentifierException
+  MissingServiceIdentifierException,
+  InvalidWebhookPayloadException,
+  ShippingOrderNotFoundException
 } from './shipping.error'
 import { GHN_CLIENT } from '../../shared/constants/shipping.constants'
+import { ShippingRepo } from './shipping.repo'
 
 @Injectable()
 export class ShippingService {
-  private readonly ghnService: Ghn
-
   constructor(
     private readonly i18n: I18nService<I18nTranslations>,
-    @Inject(GHN_CLIENT) ghnClient: Ghn
-  ) {
-    this.ghnService = ghnClient
-  }
+    @Inject(GHN_CLIENT) private readonly ghnService: Ghn,
+    private readonly shippingRepo: ShippingRepo
+  ) {}
 
   /**
    * Lấy danh sách tỉnh/thành phố
@@ -260,11 +259,11 @@ export class ShippingService {
         message: this.i18n.t('ship.success.CALCULATE_DELIVERY_TIME_SUCCESS'),
         data: {
           leadtime: result.leadtime,
-          order_date: result.order_date?.toString(),
+          order_date: result.order_date,
           expected_delivery_time: result.leadtime ? new Date(result.leadtime * 1000).toISOString() : undefined
         }
       }
-    } catch (_error) {
+    } catch (error) {
       if (
         error === MissingServiceIdentifierException ||
         error === InvalidDistrictIdException ||
@@ -276,52 +275,27 @@ export class ShippingService {
     }
   }
 
-  async createOrder(data: CreateOrderType): Promise<CreateOrderResType> {
+  async processOrderStatusUpdate(payload: GHNWebhookPayloadType): Promise<{ message: string }> {
     try {
-      // Map data để phù hợp với GHN API
-      const ghnData = {
-        from_address: data.from_address,
-        from_name: data.from_name,
-        from_phone: data.from_phone,
-        from_province_name: data.from_province_name,
-        from_district_name: data.from_district_name,
-        from_ward_name: data.from_ward_name,
-        to_name: data.to_name,
-        to_phone: data.to_phone,
-        to_address: data.to_address,
-        to_ward_code: data.to_ward_code,
-        to_district_id: data.to_district_id,
-        return_phone: data.return_phone,
-        return_address: data.return_address,
-        return_district_id: data.return_district_id,
-        return_ward_code: data.return_ward_code,
-        client_order_code: data.client_order_code || null,
-        cod_amount: data.cod_amount,
-        content: data.content,
-        weight: data.weight,
-        length: data.length,
-        width: data.width,
-        height: data.height,
-        pick_station_id: data.pick_station_id,
-        insurance_value: data.insurance_value,
-        service_id: data.service_id,
-        service_type_id: data.service_type_id,
-        coupon: data.coupon,
-        pick_shift: data.pick_shift,
-        items: data.items,
-        payment_type_id: data.payment_type_id,
-        note: data.note,
-        required_note: data.required_note
+      const orderCode = payload.OrderCode || payload.order_code
+      const status = payload.Status || payload.status
+
+      if (!orderCode || !status) {
+        throw InvalidWebhookPayloadException
       }
 
-      const result = await this.ghnService.order.createOrder(ghnData)
-
-      return {
-        message: this.i18n.t('ship.success.CREATE_ORDER_SUCCESS'),
-        data: result
+      const shipping = await this.shippingRepo.findByOrderCode(orderCode)
+      if (!shipping) {
+        throw ShippingOrderNotFoundException
       }
-    } catch (_error) {
-      throw ShippingServiceUnavailableException
+
+      await this.shippingRepo.updateStatus(shipping.orderId, status)
+
+      await this.shippingRepo.updateOrderStatus(shipping.orderId, status)
+
+      return { message: 'OK' }
+    } catch {
+      return { message: 'ignored' }
     }
   }
 }

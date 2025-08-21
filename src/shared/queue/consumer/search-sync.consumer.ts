@@ -1,14 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Processor, WorkerHost } from '@nestjs/bullmq'
 import { Job } from 'bullmq'
-import { SearchSyncService } from '../services/search-sync.service'
+import { SearchSyncService } from '../../services/search-sync.service'
 import {
   SEARCH_SYNC_QUEUE_NAME,
   SYNC_PRODUCT_JOB,
   SYNC_PRODUCTS_BATCH_JOB,
   DELETE_PRODUCT_JOB
-} from '../constants/search-sync.constant'
-import { SyncProductJobType, SyncProductsBatchJobType } from '../models/search-sync.model'
+} from '../../constants/search-sync.constant'
+import { SyncProductJobType, SyncProductsBatchJobType } from '../../models/search-sync.model'
 
 @Injectable()
 @Processor(SEARCH_SYNC_QUEUE_NAME)

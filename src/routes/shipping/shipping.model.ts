@@ -162,13 +162,56 @@ export const PreviewOrderResSchema = z.object({
   })
 })
 
-export const CreateOrderSchema = PreviewOrderSchema.extend({
+export const CreateOrderSchema = z.object({
   from_address: z.string(),
   from_name: z.string(),
   from_phone: z.string(),
   from_province_name: z.string(),
   from_district_name: z.string(),
-  from_ward_name: z.string()
+  from_ward_name: z.string(),
+  to_name: z.string(),
+  to_phone: z.string(),
+  to_address: z.string(),
+  to_ward_code: z.string(),
+  to_district_id: z.number(),
+  client_order_code: z.string().nullable(),
+  cod_amount: z.number().optional(),
+  content: z.string().optional(),
+  weight: z.number(),
+  length: z.number(),
+  width: z.number(),
+  height: z.number(),
+  pick_station_id: z.number().optional(),
+  insurance_value: z.number().optional(),
+  service_id: z.number().optional(),
+  service_type_id: z.number().optional(),
+  coupon: z.string().nullable().optional(),
+  pick_shift: z.array(z.number()).optional(),
+  items: z.array(
+    z.object({
+      name: z.string(),
+      quantity: z.number(),
+      weight: z.number(),
+      length: z.number().optional(),
+      width: z.number().optional(),
+      height: z.number().optional()
+    })
+  ),
+  payment_type_id: z.number(),
+  note: z.string().optional(),
+  required_note: z.string().optional()
+})
+// Schema cho webhook payload từ GHN
+export const GHNWebhookPayloadSchema = z.object({
+  OrderCode: z.string().optional(),
+  order_code: z.string().optional(),
+  Status: z.string().optional(),
+  status: z.string().optional()
+})
+
+// Schema cho webhook response
+export const GHNWebhookResponseSchema = z.object({
+  message: z.string()
 })
 
 export const CreateOrderResSchema = PreviewOrderResSchema
@@ -193,7 +236,9 @@ export type GetServiceListQueryType = z.infer<typeof GetServiceListQuerySchema>
 
 export type CalculateExpectedDeliveryTimeType = z.infer<typeof CalculateExpectedDeliveryTimeSchema>
 export type CalculateExpectedDeliveryTimeResType = z.infer<typeof CalculateExpectedDeliveryTimeResSchema>
-export type PreviewOrderType = z.infer<typeof PreviewOrderSchema>
 export type PreviewOrderResType = z.infer<typeof PreviewOrderResSchema>
 export type CreateOrderType = z.infer<typeof CreateOrderSchema>
 export type CreateOrderResType = z.infer<typeof CreateOrderResSchema>
+
+export type GHNWebhookPayloadType = z.infer<typeof GHNWebhookPayloadSchema>
+export type GHNWebhookResponseType = z.infer<typeof GHNWebhookResponseSchema>

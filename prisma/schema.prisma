@@ -521,6 +521,7 @@ model Order {
   items       ProductSKUSnapshot[]
   reviews     Review[]
   products    Product[]            @relation("OrderToProduct")
+  shipping    OrderShipping?
 
   @@index([deletedAt])
   @@index([status, deletedAt])
@@ -540,6 +541,39 @@ model Payment {
 
   @@index([status])
   @@index([createdAt])
+}
+
+model OrderShipping {
+  id                   String    @id @default(uuid())
+  orderId              String    @unique
+  orderCode            String?   @unique
+  serviceId            Int?
+  serviceTypeId        Int?
+  shippingFee          Int?
+  codAmount            Int?
+  expectedDeliveryTime DateTime?
+  trackingUrl          String?
+  status               String?
+  // from
+  fromAddress          String?
+  fromName             String?
+  fromPhone            String?
+  fromProvinceName     String?
+  fromDistrictName     String?
+  fromWardName         String?
+  fromDistrictId       Int?
+  fromWardCode         String?
+  // to
+  toAddress            String?
+  toName               String?
+  toPhone              String?
+  toDistrictId         Int?
+  toWardCode           String?
+  createdAt            DateTime  @default(now())
+  lastUpdatedAt        DateTime  @updatedAt
+  order                Order     @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status])
 }
 
 model Websocket {

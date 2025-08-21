@@ -50,7 +50,44 @@ export const CreateOrderBodySchema = z
         address: z.string()
       }),
       cartItemIds: z.array(z.string()).min(1),
-      discountCodes: z.array(z.string()).optional()
+      discountCodes: z.array(z.string()).optional(),
+      // Thông tin GHN để orchestrate tạo vận đơn (tuỳ chọn)
+      shippingInfo: z
+        .object({
+          // from_*: địa chỉ cửa hàng (shop)
+          from_address: z.string(),
+          from_name: z.string(),
+          from_phone: z.string(),
+          from_province_name: z.string(),
+          from_district_name: z.string(),
+          from_ward_name: z.string(),
+          from_district_id: z.number(),
+          from_ward_code: z.string(),
+          // to_*: địa chỉ người nhận
+          to_district_id: z.number(),
+          to_ward_code: z.string(),
+          // Dịch vụ
+          service_id: z.number().optional(),
+          service_type_id: z.number().optional(),
+          // Kích thước/khối lượng
+          weight: z.number(),
+          length: z.number(),
+          width: z.number(),
+          height: z.number(),
+          // Phí ship đã chọn (để tính COD)
+          shippingFee: z.number().nonnegative().default(0),
+          // Ghi chú GHN
+          payment_type_id: z.number().optional(),
+          note: z.string().optional(),
+          required_note: z.string().optional(),
+          coupon: z.string().nullable().optional(),
+          pick_shift: z.array(z.number()).optional()
+        })
+        .optional()
+        .refine((v) => !v || typeof v.service_id === 'number' || typeof v.service_type_id === 'number', {
+          message: 'shipping.error.MISSING_SERVICE_IDENTIFIER'
+        }),
+      isCod: z.boolean().optional()
     })
   )
   .min(1)
