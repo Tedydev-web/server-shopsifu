@@ -2,15 +2,14 @@ import { AddressType, UserStatus } from 'src/shared/constants/user.constant'
 import { PermissionSchema } from 'src/shared/models/shared-permission.model'
 import { RoleSchema } from 'src/shared/models/shared-role.model'
 import { z } from 'zod'
-
 export const UserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
-  name: z.string().min(1).max(100),
-  password: z.string().min(6).max(100),
-  phoneNumber: z.string().min(9).max(15),
-  avatar: z.string().nullable(),
-  totpSecret: z.string().nullable(),
+  name: z.string().min(1).max(500), // Cập nhật từ max(100) thành max(500) để phù hợp với database
+  password: z.string().min(6).max(500), // Cập nhật từ max(100) thành max(500) để phù hợp với database
+  phoneNumber: z.string().min(9).max(50), // Cập nhật từ max(15) thành max(50) để phù hợp với database
+  avatar: z.string().max(1000).nullable(), // Thêm max(1000) để phù hợp với database
+  totpSecret: z.string().max(1000).nullable(), // Thêm max(1000) để phù hợp với database
   status: z.nativeEnum(UserStatus),
   roleId: z.string(),
   createdById: z.string().nullable(),
@@ -20,12 +19,22 @@ export const UserSchema = z.object({
   createdAt: z.date(),
   updatedAt: z.date()
 })
+/**
+ * Schema validation cho dữ liệu Google OAuth
+ */
+export const GoogleUserDataSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1).max(500).optional().default(''),
+  picture: z.string().max(1000).nullable().optional().default(null)
+})
+
+export type GoogleUserDataType = z.infer<typeof GoogleUserDataSchema>
 
 export const AddressSchema = z.object({
   id: z.string(),
   name: z.string().min(1).max(500),
   recipient: z.string().min(1).max(500).optional(),
-  phoneNumber: z.string().min(9).max(15).optional(),
+  phoneNumber: z.string().min(9).max(50).optional(),
   province: z.string().min(1).max(200).optional(),
   district: z.string().min(1).max(200).optional(),
   ward: z.string().min(1).max(200).optional(),

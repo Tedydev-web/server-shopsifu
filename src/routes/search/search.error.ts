@@ -49,7 +49,9 @@ export const ElasticsearchConnectionException = new ServiceUnavailableException(
   'search.search.error.ELASTICSEARCH_CONNECTION_FAILED'
 )
 
-export const ElasticsearchQueryException = new InternalServerErrorException('search.search.error.ELASTICSEARCH_QUERY_FAILED')
+export const ElasticsearchQueryException = new InternalServerErrorException(
+  'search.search.error.ELASTICSEARCH_QUERY_FAILED'
+)
 
 export const ElasticsearchIndexNotFoundException = new InternalServerErrorException(
   'search.search.error.ELASTICSEARCH_INDEX_NOT_FOUND'

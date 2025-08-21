@@ -1,6 +1,5 @@
 import { UnprocessableEntityException, BadRequestException, InternalServerErrorException } from '@nestjs/common'
 
-
 export const VNPayInvalidChecksumException = new UnprocessableEntityException([
   { message: 'payment.vnpay.error.VNPAY_INVALID_CHECKSUM', path: 'secureHash' }
 ])
