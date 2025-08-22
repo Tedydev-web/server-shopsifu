@@ -22,9 +22,9 @@ export async function importProducts(
   let skippedCount = 0
   const productIds: string[] = []
 
-  // Lấy products hiện có để so sánh
+  // Lấy products hiện có để so sánh (thay đổi từ chỉ lấy theo creatorUserId)
   const existingProducts = await tx.product.findMany({
-    where: { createdById: creatorUserId, deletedAt: null },
+    where: { deletedAt: null },
     select: {
       id: true,
       name: true,
@@ -34,7 +34,8 @@ export async function importProducts(
       brandId: true,
       images: true,
       variants: true,
-      specifications: true
+      specifications: true,
+      createdById: true
     }
   })
 
@@ -49,6 +50,9 @@ export async function importProducts(
       const productsToCreate: any[] = []
 
       for (const processed of chunk) {
+        // ✅ Sử dụng sellerId thật thay vì creatorUserId
+        const sellerId = processed.sellerId || creatorUserId
+
         const newProductData = {
           name: processed.shopeeData.title,
           description: processed.shopeeData['Product Description'] || '',
@@ -58,13 +62,13 @@ export async function importProducts(
           images: [...processed.validImages, ...processed.validVideos],
           variants: processed.variants,
           specifications: processed.specifications.length ? processed.specifications : null,
-          createdById: creatorUserId,
+          createdById: sellerId, // ✅ Thay đổi từ creatorUserId thành sellerId
           publishedAt: processed.shopeeData.is_available ? now : null,
           createdAt: now,
           updatedAt: now
         }
 
-        // Kiểm tra product hiện có
+        // Kiểm tra product hiện có (thay đổi logic tìm kiếm)
         const existingProduct = existingProducts.find((ep) => ep.name === newProductData.name)
 
         if (!existingProduct) {
@@ -111,11 +115,11 @@ export async function importProducts(
       if (productsToCreate.length > 0) {
         await tx.product.createMany({ data: productsToCreate, skipDuplicates: true })
 
-        // Lấy lại IDs của products mới tạo
+        // Lấy lại IDs của products mới tạo (thay đổi logic tìm kiếm)
         const createdProducts = await tx.product.findMany({
           where: {
             name: { in: productsToCreate.map((p) => p.name) },
-            createdById: creatorUserId
+            createdById: { in: productsToCreate.map((p) => p.createdById) }
           },
           select: { id: true, name: true },
           orderBy: { createdAt: 'desc' },

@@ -3,9 +3,73 @@ import { NestFactory } from '@nestjs/core'
 import { AppModule } from '../../../src/app.module'
 import { SearchSyncService } from '../../../src/shared/services/search-sync.service'
 import { Logger } from '@nestjs/common'
+import { Client } from '@elastic/elasticsearch'
 
 const prisma = new PrismaClient()
 const logger = new Logger('SyncToElasticsearch')
+
+// Cấu hình Elasticsearch
+const ES_CONFIG = {
+  node: 'http://103.147.186.84:9200',
+  indexName: 'products'
+}
+
+/**
+ * Clean Elasticsearch index trước khi sync
+ * Xóa tất cả documents cũ để tránh trùng lặp
+ */
+async function cleanElasticsearchIndex(): Promise<void> {
+  const client = new Client({ node: ES_CONFIG.node })
+
+  try {
+    logger.log('🧹 Bắt đầu clean Elasticsearch index...')
+
+    // Kiểm tra kết nối
+    const info = await client.info()
+    logger.log(`✅ Kết nối ES thành công - Version: ${info.version.number}`)
+
+    // Kiểm tra index có tồn tại không
+    const indexExists = await client.indices.exists({ index: ES_CONFIG.indexName })
+
+    if (indexExists) {
+      // Đếm documents hiện tại
+      const count = await client.count({ index: ES_CONFIG.indexName })
+      logger.log(`📊 Index ${ES_CONFIG.indexName} có ${count.count} documents`)
+
+      if (count.count > 0) {
+        logger.log(`🗑️  Đang xóa ${count.count} documents cũ...`)
+
+        // Xóa tất cả documents
+        const deleteResult = await client.deleteByQuery({
+          index: ES_CONFIG.indexName,
+          body: {
+            query: {
+              match_all: {}
+            }
+          }
+        })
+
+        logger.log(`✅ Đã xóa ${deleteResult.deleted} documents`)
+
+        // Tùy chọn xóa index hoàn toàn để tạo mới
+        logger.log('🔄 Đang xóa index để tạo mới...')
+        await client.indices.delete({ index: ES_CONFIG.indexName })
+        logger.log(`✅ Đã xóa index ${ES_CONFIG.indexName}`)
+      } else {
+        logger.log(`✅ Index ${ES_CONFIG.indexName} đã trống`)
+      }
+    } else {
+      logger.log(`ℹ️  Index ${ES_CONFIG.indexName} chưa tồn tại`)
+    }
+
+    logger.log('🧹 Clean Elasticsearch hoàn thành!')
+  } catch (error) {
+    logger.error('❌ Lỗi khi clean Elasticsearch:', error)
+    throw error
+  } finally {
+    await client.close()
+  }
+}
 
 /**
  * Sync tất cả products đã import lên Elasticsearch
@@ -17,7 +81,10 @@ async function syncAllProductsToElasticsearch(): Promise<void> {
   try {
     logger.log('🚀 Bắt đầu sync tất cả products lên Elasticsearch...')
 
-    // Lấy tất cả products đã import (có createdById)
+    // Bước 1: Clean Elasticsearch trước
+    await cleanElasticsearchIndex()
+
+    // Bước 2: Lấy tất cả products đã import (có createdById)
     const products = await prisma.product.findMany({
       where: {
         deletedAt: null,
@@ -36,12 +103,12 @@ async function syncAllProductsToElasticsearch(): Promise<void> {
       return
     }
 
-    // Tạo NestJS application context để sử dụng SearchSyncService
+    // Bước 3: Tạo NestJS application context để sử dụng SearchSyncService
     logger.log('🔧 Khởi tạo NestJS application context...')
     app = await NestFactory.createApplicationContext(AppModule)
     const searchSyncService = app.get(SearchSyncService)
 
-    // Sync theo batch để tránh quá tải
+    // Bước 4: Sync theo batch để tránh quá tải
     const batchSize = 100
     const batches = Array.from({ length: Math.ceil(products.length / batchSize) }, (_, i) =>
       products.slice(i * batchSize, (i + 1) * batchSize)
@@ -108,4 +175,4 @@ if (require.main === module) {
     })
 }
 
-export { syncAllProductsToElasticsearch }
+export { syncAllProductsToElasticsearch, cleanElasticsearchIndex }

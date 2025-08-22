@@ -181,35 +181,43 @@ async function main() {
   // 8. Import products
   const productResult = await importProducts(processedProducts, creatorUser.id, prisma)
 
-  // 8.1. Lấy lại productId và map vào processedProducts
+  // 8.1. Lấy lại productId và map vào processedProducts (sửa để tìm theo tất cả seller IDs)
+  const allSellerIds = [...new Set(processedProducts.map((p) => p.sellerId).filter(Boolean))]
   const createdProducts = await prisma.product.findMany({
-    where: { name: { in: processedProducts.map((p) => p.shopeeData.title) }, createdById: creatorUser.id },
-    select: { id: true, name: true }
-  })
-  const nameToProductId = new Map(createdProducts.map((p) => [p.name, p.id]))
-  processedProducts.forEach((p) => {
-    p.productId = nameToProductId.get(p.shopeeData.title)
+    where: {
+      name: { in: processedProducts.map((p) => p.shopeeData.title) },
+      createdById: { in: allSellerIds }
+    },
+    select: { id: true, name: true, createdById: true }
   })
 
-  // 8.2. Import SKUs cho từng product
+  // Tạo map từ (name, createdById) -> productId để tìm chính xác
+  const nameAndSellerToProductId = new Map(createdProducts.map((p) => [`${p.name}_${p.createdById}`, p.id]))
+
+  processedProducts.forEach((p) => {
+    const key = `${p.shopeeData.title}_${p.sellerId}`
+    p.productId = nameAndSellerToProductId.get(key)
+  })
+
+  // 8.2. Import SKUs cho từng product (sử dụng sellerId thay vì creatorUserId)
   const skusData = processedProducts.flatMap((p) =>
     p.skus.map((sku) => ({
       ...sku,
       productId: p.productId!,
-      createdById: creatorUser.id,
+      createdById: p.sellerId || creatorUser.id, // ✅ Sử dụng sellerId thay vì creatorUserId
       createdAt: new Date(),
       updatedAt: new Date()
     }))
   )
   if (skusData.length) await importSKUs(skusData, prisma)
 
-  // 8.3. Import ProductTranslations cho từng product (tiếng Việt)
+  // 8.3. Import ProductTranslations cho từng product (tiếng Việt) - sử dụng sellerId
   const translationsData = processedProducts.map((p) => ({
     productId: p.productId!,
     languageId: CONFIG.VIETNAMESE_LANGUAGE_ID,
     name: p.shopeeData.title,
     description: p.shopeeData['Product Description'] || '',
-    createdById: creatorUser.id,
+    createdById: p.sellerId || creatorUser.id, // ✅ Sử dụng sellerId thay vì creatorUserId
     createdAt: new Date(),
     updatedAt: new Date()
   }))
@@ -313,7 +321,8 @@ async function main() {
             isPlatform: false,
             displayType: 'PUBLIC',
             discountApplyType: 'SPECIFIC',
-            createdById: creatorUser.id,
+            createdById: p.sellerId || creatorUser.id, // ✅ Sử dụng sellerId thay vì creatorUserId
+            shopId: p.sellerId || null, // ✅ Thêm shopId để liên kết với shop
             createdAt: new Date(),
             updatedAt: new Date(),
             products: {
