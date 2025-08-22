@@ -61,7 +61,6 @@ export class ShippingController {
     return this.shippingService.calculateExpectedDeliveryTime(data)
   }
 
-  // Webhook GHN - cập nhật trạng thái vận đơn (internal)
   @Post('webhook/order-status')
   @IsPublic()
   @ZodSerializerDto(GHNWebhookResponseDTO)

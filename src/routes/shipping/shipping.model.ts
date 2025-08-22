@@ -1,24 +1,21 @@
 import { z } from 'zod'
 
-// Schema cho Province - GHN API có thể trả về undefined cho một số field
 export const ProvinceSchema = z.object({
   ProvinceID: z.number(),
   ProvinceName: z.string(),
-  Code: z.string().optional(), // Có thể undefined
-  CountryID: z.number().optional(), // Có thể undefined
+  Code: z.string().optional(),
+  CountryID: z.number().optional(),
   Extension: z.string().optional()
 })
 
-// Schema cho District
 export const DistrictSchema = z.object({
   DistrictID: z.number(),
   ProvinceID: z.number(),
   DistrictName: z.string(),
-  Code: z.string().optional(), // Có thể undefined
+  Code: z.string().optional(),
   Extension: z.string().optional()
 })
 
-// Schema cho Ward
 export const WardSchema = z.object({
   WardCode: z.string(),
   DistrictID: z.number(),
@@ -26,7 +23,6 @@ export const WardSchema = z.object({
   Extension: z.string().optional()
 })
 
-// Schema cho Service (dịch vụ vận chuyển)
 export const ServiceSchema = z.object({
   service_id: z.number(),
   short_name: z.string(),
@@ -37,7 +33,6 @@ export const ServiceSchema = z.object({
   standard_extra_cost_id: z.string().nullable().optional()
 })
 
-// Schema cho CalculateShippingFee request - khớp với CalculateShippingFee
 export const CalculateShippingFeeSchema = z.object({
   to_district_id: z.number(),
   to_ward_code: z.string(),
@@ -55,7 +50,6 @@ export const CalculateShippingFeeSchema = z.object({
   cod_value: z.number().optional()
 })
 
-// Schema cho CalculateShippingFee response - khớp với CalculateShippingFeeResponse thực tế
 export const CalculateShippingFeeResponseSchema = z.object({
   total: z.number(),
   service_fee: z.number(),
@@ -71,7 +65,6 @@ export const CalculateShippingFeeResponseSchema = z.object({
   cod_failed_fee: z.number().optional()
 })
 
-// Response schemas
 export const GetProvincesResSchema = z.object({
   message: z.string().optional(),
   data: z.array(ProvinceSchema)
@@ -97,7 +90,6 @@ export const CalculateShippingFeeResSchema = z.object({
   data: CalculateShippingFeeResponseSchema
 })
 
-// Query schemas
 export const GetDistrictsQuerySchema = z.object({
   provinceId: z.coerce.number().int().positive()
 })
@@ -111,7 +103,6 @@ export const GetServiceListQuerySchema = z.object({
   toDistrictId: z.coerce.number().int().positive()
 })
 
-// =============== Schema: Order Features (Phase 1) ===============
 export const CalculateExpectedDeliveryTimeSchema = z.object({
   service_id: z.number(),
   to_district_id: z.number(),
@@ -204,7 +195,7 @@ export const CreateOrderSchema = z.object({
   note: z.string().optional(),
   required_note: z.string().optional()
 })
-// Schema cho webhook payload từ GHN
+
 export const GHNWebhookPayloadSchema = z.object({
   OrderCode: z.string().optional(),
   order_code: z.string().optional(),
@@ -212,14 +203,12 @@ export const GHNWebhookPayloadSchema = z.object({
   status: z.string().optional()
 })
 
-// Schema cho webhook response
 export const GHNWebhookResponseSchema = z.object({
   message: z.string()
 })
 
 export const CreateOrderResSchema = PreviewOrderResSchema
 
-// =============== Types ===============
 export type ProvinceType = z.infer<typeof ProvinceSchema>
 export type DistrictType = z.infer<typeof DistrictSchema>
 export type WardType = z.infer<typeof WardSchema>

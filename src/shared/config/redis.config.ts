@@ -15,37 +15,34 @@ export default registerAs('redis', (): Record<string, any> => {
 
   const isPasswordProvided: boolean = typeof config.password === 'string' && config.password.trim().length > 0
 
-  // Redis options chung cho cả hai trường hợp
   const commonRedisOptions = {
-    // Connection settings
-    lazyConnect: false, // Kết nối ngay lập tức để kiểm tra
+    lazyConnect: true,
     connectionName: config.connectionName || 'shopsifu-main',
-
-    // Timeout settings
-    connectTimeout: 15000,
-    commandTimeout: 10000,
-
-    // Retry settings
-    maxRetriesPerRequest: 5,
-
-    // Auto reconnect
+    connectTimeout: 30000,
+    commandTimeout: 20000,
+    keepAlive: 60000,
+    retryDelayOnFailover: 100,
+    retryDelayOnClusterDown: 300,
+    retryDelayOnTryAgain: 100,
     autoResubscribe: true,
     autoResendUnfulfilledCommands: true,
+    reconnectOnError: (err) => {
+      const targetError = 'READONLY'
+      if (err.message.includes(targetError)) {
+        return true
+      }
+      return false
+    },
 
-    // Health check
-    healthCheckInterval: 30000,
-
-    // Connection pool
-    keepAlive: 30000,
     family: 4,
-
-    // Error handling
     enableReadyCheck: true,
     enableOfflineQueue: true,
-    maxLoadingTimeout: 10000
+    maxLoadingTimeout: 20000,
+
+    maxRetriesPerRequest: 3,
+    showFriendlyErrorStack: process.env.NODE_ENV === 'development'
   }
 
-  // Khởi tạo Redis client với connection pooling tối ưu và error handling
   const redis = config.url
     ? new Client(config.url, commonRedisOptions)
     : new Client({
@@ -56,7 +53,6 @@ export default registerAs('redis', (): Record<string, any> => {
         ...commonRedisOptions
       })
 
-  // Event handlers để xử lý connection errors
   redis.on('error', (error) => {
     console.error('❌ Redis connection error:', error.message)
   })
@@ -81,12 +77,11 @@ export default registerAs('redis', (): Record<string, any> => {
     console.log('🔌 Redis connection ended')
   })
 
-  // Khởi tạo Redlock với retry logic tốt hơn
   const redlock = new Redlock([redis], {
-    retryCount: 5, // Tăng retry count
-    retryDelay: 200, // time in ms
-    retryJitter: 100, // Thêm jitter để tránh thundering herd
-    automaticExtensionThreshold: 500 // Tự động extend lock
+    retryCount: 10,
+    retryDelay: 200,
+    retryJitter: 100,
+    automaticExtensionThreshold: 500
   })
 
   return {

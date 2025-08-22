@@ -15,6 +15,7 @@ import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import { S3Service } from 'src/shared/services/s3.service'
 import { SharedPaymentRepository } from './repositories/shared-payment.repo'
 import { SharedWebsocketRepository } from './repositories/shared-websocket.repo'
+import { RedisHealthService } from '../health.service'
 import path from 'path'
 import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
 import { Resolvable, ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler'
@@ -59,7 +60,8 @@ const sharedServices = [
   SearchSyncConsumer,
   PaymentConsumer,
   ShippingConsumer,
-  PricingService
+  PricingService,
+  RedisHealthService
 ]
 
 @Global()
