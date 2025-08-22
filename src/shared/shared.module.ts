@@ -142,11 +142,44 @@ const sharedServices = [
         const password = configService.get<string>('redis.password')
         const requireAuth = Boolean(configService.get('redis.requireAuth'))
         const isPasswordProvided = requireAuth && typeof password === 'string' && password.trim().length > 0
+
         return {
           connection: {
             host: configService.get('redis.host'),
             port: Number(configService.get('redis.port')),
-            ...(isPasswordProvided ? { password } : {})
+            ...(isPasswordProvided ? { password } : {}),
+            // Cải thiện connection stability
+            connectTimeout: 15000,
+            commandTimeout: 10000,
+            lazyConnect: false,
+            maxRetriesPerRequest: 5,
+            // Auto reconnect
+            autoResubscribe: true,
+            autoResendUnfulfilledCommands: true,
+            // Health check
+            healthCheckInterval: 30000,
+            // Connection pool
+            keepAlive: 30000,
+            family: 4,
+            // Error handling
+            enableReadyCheck: true,
+            enableOfflineQueue: true,
+            maxLoadingTimeout: 10000
+          },
+          // Cải thiện queue stability
+          defaultJobOptions: {
+            removeOnComplete: 100,
+            removeOnFail: 50,
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 2000
+            }
+          },
+          // Cải thiện worker stability
+          worker: {
+            concurrency: 1, // Giảm concurrency để tránh quá tải
+            maxStalledCount: 1
           }
         }
       },
