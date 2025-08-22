@@ -49,8 +49,8 @@ export class ShippingService {
         message: this.i18n.t('ship.success.GET_PROVINCES_SUCCESS'),
         data: provinces
       }
-    } catch {
-      throw ShippingServiceUnavailableException
+    } catch (error) {
+      throw error
     }
   }
 
@@ -76,7 +76,7 @@ export class ShippingService {
         throw error
       }
 
-      throw ShippingServiceUnavailableException
+      throw error
     }
   }
 
@@ -102,7 +102,7 @@ export class ShippingService {
         throw error
       }
 
-      throw ShippingServiceUnavailableException
+      throw error
     }
   }
 
@@ -140,7 +140,7 @@ export class ShippingService {
         throw error
       }
 
-      throw ShippingServiceUnavailableException
+      throw error
     }
   }
 

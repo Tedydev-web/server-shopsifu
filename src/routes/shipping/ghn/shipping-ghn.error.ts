@@ -1,6 +1,11 @@
-import { BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  NotFoundException,
+  ServiceUnavailableException
+} from '@nestjs/common'
 
-export const ShippingServiceUnavailableException = new InternalServerErrorException([
+export const ShippingServiceUnavailableException = new ServiceUnavailableException([
   {
     message: 'shipping.error.SERVICE_UNAVAILABLE',
     path: 'shipping'
