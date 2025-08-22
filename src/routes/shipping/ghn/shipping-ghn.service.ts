@@ -15,7 +15,7 @@ import {
   CalculateExpectedDeliveryTimeType,
   CalculateExpectedDeliveryTimeResType,
   GHNWebhookPayloadType
-} from './shipping.model'
+} from './shipping-ghn.model'
 import {
   ShippingServiceUnavailableException,
   InvalidProvinceIdException,
@@ -25,9 +25,9 @@ import {
   MissingServiceIdentifierException,
   InvalidWebhookPayloadException,
   ShippingOrderNotFoundException
-} from './shipping.error'
-import { GHN_CLIENT } from '../../shared/constants/shipping.constants'
-import { ShippingRepo } from './shipping.repo'
+} from './shipping-ghn.error'
+import { GHN_CLIENT } from 'src/shared/constants/shipping.constants'
+import { ShippingRepo } from './shipping-ghn.repo'
 import { OrderShippingStatusType } from 'src/shared/constants/order-shipping.constants'
 
 @Injectable()

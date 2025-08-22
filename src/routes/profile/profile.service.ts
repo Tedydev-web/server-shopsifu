@@ -7,7 +7,6 @@ import {
   UpdateAddressBodyType,
   GetUserAddressesResType,
   GetUserAddressDetailResType,
-  GetUserStatisticsResType
 } from './profile.model'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { HashingService } from 'src/shared/services/hashing.service'

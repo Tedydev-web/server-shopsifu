@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { ShippingController } from './shipping.controller'
-import { ShippingService } from './shipping.service'
-import { ShippingRepo } from './shipping.repo'
+import { ShippingController } from './shipping-ghn.controller'
+import { ShippingService } from './shipping-ghn.service'
+import { ShippingRepo } from './shipping-ghn.repo'
 
 @Module({
   imports: [ConfigModule],

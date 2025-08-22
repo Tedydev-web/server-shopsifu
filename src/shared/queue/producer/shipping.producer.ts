@@ -2,7 +2,7 @@ import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable, Logger } from '@nestjs/common'
 import { Queue } from 'bullmq'
 import { CREATE_SHIPPING_ORDER_JOB, SHIPPING_QUEUE_NAME } from 'src/shared/constants/queue.constant'
-import { CreateOrderType } from 'src/routes/shipping/shipping.model'
+import { CreateOrderType } from 'src/routes/shipping/ghn/shipping-ghn.model'
 
 @Injectable()
 export class ShippingProducer {

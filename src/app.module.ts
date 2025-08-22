@@ -30,7 +30,7 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { LanguageModule } from 'src/routes/language/language.module'
 import { DiscountModule } from './routes/discount/discount.module'
 import { SearchModule } from './routes/search/search.module'
-import { ShippingModule } from './routes/shipping/shipping.module'
+import { ShippingModule } from './routes/shipping/ghn/shipping-ghn.module'
 import { HealthController } from 'src/health.controller'
 import { TerminusModule } from '@nestjs/terminus'
 

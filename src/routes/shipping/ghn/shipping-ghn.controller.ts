@@ -1,7 +1,7 @@
 import { Controller, Get, Query, Post, Body } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
-import { ShippingService } from './shipping.service'
+import { ShippingService } from './shipping-ghn.service'
 import {
   GetProvincesResDTO,
   GetDistrictsResDTO,
@@ -12,10 +12,15 @@ import {
   CalculateExpectedDeliveryTimeResDTO,
   GHNWebhookPayloadDTO,
   GHNWebhookResponseDTO
-} from './shipping.dto'
-import { GetDistrictsQueryDTO, GetWardsQueryDTO, GetServiceListQueryDTO, CalculateShippingFeeDTO } from './shipping.dto'
+} from './shipping-ghn.dto'
+import {
+  GetDistrictsQueryDTO,
+  GetWardsQueryDTO,
+  GetServiceListQueryDTO,
+  CalculateShippingFeeDTO
+} from './shipping-ghn.dto'
 
-@Controller('shipping')
+@Controller('shipping/ghn')
 export class ShippingController {
   constructor(private readonly shippingService: ShippingService) {}
 

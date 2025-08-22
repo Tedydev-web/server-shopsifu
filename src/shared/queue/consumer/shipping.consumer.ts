@@ -6,7 +6,7 @@ import { GHN_CLIENT } from 'src/shared/constants/shipping.constants'
 import { OrderShippingStatus } from 'src/shared/constants/order-shipping.constants'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { SHIPPING_QUEUE_NAME } from 'src/shared/constants/queue.constant'
-import { CreateOrderType } from 'src/routes/shipping/shipping.model'
+import { CreateOrderType } from 'src/routes/shipping/ghn/shipping-ghn.model'
 import { Ghn } from 'giaohangnhanh'
 
 @Injectable()

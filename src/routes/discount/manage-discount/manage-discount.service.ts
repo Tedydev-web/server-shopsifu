@@ -5,7 +5,6 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { DiscountRepo } from '../discount.repo'
 import {
   GetManageDiscountsQueryType,
-  GetDiscountDetailResType,
   CreateDiscountBodyType,
   UpdateDiscountBodyType
 } from '../discount.model'

@@ -15,7 +15,7 @@ import {
   CreateOrderResSchema,
   GHNWebhookPayloadSchema,
   GHNWebhookResponseSchema
-} from './shipping.model'
+} from './shipping-ghn.model'
 
 export class GetProvincesResDTO extends createZodDto(GetProvincesResSchema) {}
 export class GetDistrictsResDTO extends createZodDto(GetDistrictsResSchema) {}
