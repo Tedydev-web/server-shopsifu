@@ -1,7 +1,6 @@
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from '../../src/app.module'
 import { HTTPMethod, RoleName } from '../../src/shared/constants/role.constant'
-import { PrismaService } from '../../src/shared/services/prisma.service'
 import { PrismaClient } from '@prisma/client'
 
 const SellerModule = [
@@ -13,7 +12,9 @@ const SellerModule = [
   'CART',
   'ORDERS',
   'REVIEWS',
-  'SEARCH'
+  'SEARCH',
+  'DISCOUNTS',
+  'MANAGE-DISCOUNT'
 ]
 const ClientModule = ['AUTH', 'MEDIA', 'PROFILE', 'CART', 'ORDERS', 'REVIEWS', 'SEARCH']
 const prisma = new PrismaClient()
