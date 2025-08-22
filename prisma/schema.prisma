@@ -630,13 +630,19 @@ model Message {
 }
 
 model Address {
-  id          String        @id @default(uuid())
-  name        String        @db.VarChar(500)
-  recipient   String?       @db.VarChar(500)
-  phoneNumber String?       @db.VarChar(50)
-  province    String        @db.VarChar(200)
-  district    String        @db.VarChar(200)
-  ward        String        @db.VarChar(200)
+  id          String  @id @default(uuid())
+  name        String  @db.VarChar(500)
+  recipient   String? @db.VarChar(500)
+  phoneNumber String? @db.VarChar(50)
+  province    String  @db.VarChar(200)
+  district    String  @db.VarChar(200)
+  ward        String  @db.VarChar(200)
+
+  // GHN ID fields for API integration
+  provinceId Int? // GHN ProvinceID
+  districtId Int? // GHN DistrictID
+  wardCode   String? @db.VarChar(20) // GHN WardCode
+
   street      String        @db.VarChar(500)
   addressType AddressType   @default(HOME)
   createdById String

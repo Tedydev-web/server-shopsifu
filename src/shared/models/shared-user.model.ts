@@ -29,6 +29,12 @@ export const AddressSchema = z.object({
   province: z.string().min(1).max(200).optional(),
   district: z.string().min(1).max(200).optional(),
   ward: z.string().min(1).max(200).optional(),
+
+  // GHN ID fields for API integration
+  provinceId: z.number().int().positive().nullable(),
+  districtId: z.number().int().positive().nullable(),
+  wardCode: z.string().max(20).nullable(),
+
   street: z.string().min(1).max(500).optional(),
   addressType: z.nativeEnum(AddressType),
   createdById: z.string().nullable(),
