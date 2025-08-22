@@ -543,17 +543,32 @@ model Payment {
   @@index([createdAt])
 }
 
+enum OrderShippingStatus {
+  DRAFT
+  ENQUEUED
+  CREATED
+  FAILED
+}
+
 model OrderShipping {
-  id                   String    @id @default(uuid())
-  orderId              String    @unique
-  orderCode            String?   @unique
+  id                   String               @id @default(uuid())
+  orderId              String               @unique
+  orderCode            String?              @unique
   serviceId            Int?
   serviceTypeId        Int?
+  configFeeId          String?
+  extraCostId          String?
+  weight               Int?
+  length               Int?
+  width                Int?
+  height               Int?
   shippingFee          Int?
   codAmount            Int?
   expectedDeliveryTime DateTime?
   trackingUrl          String?
-  status               String?
+  status               OrderShippingStatus?
+  attempts             Int                  @default(0)
+  lastError            String?
   // from
   fromAddress          String?
   fromName             String?
@@ -569,9 +584,12 @@ model OrderShipping {
   toPhone              String?
   toDistrictId         Int?
   toWardCode           String?
-  createdAt            DateTime  @default(now())
-  lastUpdatedAt        DateTime  @updatedAt
-  order                Order     @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  note                 String?
+  requiredNote         String?
+  pickShift            Json?
+  createdAt            DateTime             @default(now())
+  lastUpdatedAt        DateTime             @updatedAt
+  order                Order                @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([status])
 }

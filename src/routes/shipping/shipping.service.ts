@@ -28,6 +28,7 @@ import {
 } from './shipping.error'
 import { GHN_CLIENT } from '../../shared/constants/shipping.constants'
 import { ShippingRepo } from './shipping.repo'
+import { OrderShippingStatusType } from 'src/shared/constants/order-shipping.constants'
 
 @Injectable()
 export class ShippingService {
@@ -289,9 +290,9 @@ export class ShippingService {
         throw ShippingOrderNotFoundException
       }
 
-      await this.shippingRepo.updateStatus(shipping.orderId, status)
+      await this.shippingRepo.updateStatus(shipping.orderId, status as OrderShippingStatusType)
 
-      await this.shippingRepo.updateOrderStatus(shipping.orderId, status)
+      await this.shippingRepo.updateOrderStatus(shipping.orderId, status as OrderShippingStatusType)
 
       return { message: 'OK' }
     } catch {

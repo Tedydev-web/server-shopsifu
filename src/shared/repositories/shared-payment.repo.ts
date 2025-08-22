@@ -3,6 +3,10 @@ import { OrderStatus } from 'src/shared/constants/order.constant'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { PaymentProducer } from '../queue/producer/payment.producer'
+import { ShippingProducer } from '../queue/producer/shipping.producer'
+import { ConfigService } from '@nestjs/config'
+import { GHN_PAYMENT_TYPE } from 'src/shared/constants/shipping.constants'
+import { OrderShippingStatus } from 'src/shared/constants/order-shipping.constants'
 
 /**
  * Repository dùng chung cho các gateway thanh toán
@@ -11,7 +15,9 @@ import { PaymentProducer } from '../queue/producer/payment.producer'
 export class SharedPaymentRepository {
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly paymentProducer: PaymentProducer
+    private readonly paymentProducer: PaymentProducer,
+    private readonly shippingProducer: ShippingProducer,
+    private readonly configService: ConfigService
   ) {}
 
   /**
@@ -65,6 +71,123 @@ export class SharedPaymentRepository {
       }),
       this.paymentProducer.removeJob(paymentId)
     ])
+
+    // Tạo GHN order cho online payment sau khi thanh toán thành công
+    await this.createGHNOrdersForOnlinePayment(orders)
+  }
+
+  /**
+   * Tạo GHN orders cho online payment sau khi thanh toán thành công
+   */
+  private async createGHNOrdersForOnlinePayment(orders: Array<{ id: string }>) {
+    try {
+      // Lấy thông tin đầy đủ của orders với shipping info
+      const orderIds = orders.map((order) => order.id)
+
+      const [ordersWithDetails, orderItems, shopAddresses] = await Promise.all([
+        // Lấy thông tin cơ bản của orders
+        this.prismaService.order.findMany({
+          where: { id: { in: orderIds } },
+          include: {
+            shop: true
+          }
+        }),
+
+        // Lấy items của orders
+        this.prismaService.productSKUSnapshot.findMany({
+          where: { orderId: { in: orderIds } }
+        }),
+
+        // Lấy địa chỉ shop
+        this.prismaService.userAddress.findMany({
+          where: {
+            userId: {
+              in: (
+                await this.prismaService.order.findMany({ where: { id: { in: orderIds } }, select: { shopId: true } })
+              )
+                .map((o) => o.shopId)
+                .filter((id): id is string => Boolean(id))
+            },
+            isDefault: true
+          },
+          include: { address: true }
+        })
+      ])
+
+      // Lấy thông tin shipping riêng
+      const orderShippings = await this.prismaService.orderShipping.findMany({
+        where: { orderId: { in: orderIds } }
+      })
+
+      // Tạo GHN order cho mỗi order có shipping info
+      for (const order of ordersWithDetails) {
+        // Tìm địa chỉ shop tương ứng
+        const shopAddress = shopAddresses.find((a) => a.userId === order.shopId)?.address
+        // Tìm OrderShipping tương ứng với order
+        const orderShipping = orderShippings.find((s) => s.orderId === order.id)
+
+        if (shopAddress && order.receiver && orderShipping) {
+          const receiver = order.receiver as any
+
+          // Sử dụng thông tin từ OrderShipping đã lưu trước đó
+          await this.shippingProducer.enqueueCreateOrder({
+            from_address: orderShipping.fromAddress || '',
+            from_name: orderShipping.fromName || '',
+            from_phone: orderShipping.fromPhone || '',
+            from_province_name: orderShipping.fromProvinceName || '',
+            from_district_name: orderShipping.fromDistrictName || '',
+            from_ward_name: orderShipping.fromWardName || '',
+
+            to_name: orderShipping.toName || '',
+            to_phone: orderShipping.toPhone || '',
+            to_address: orderShipping.toAddress || '',
+            to_ward_code: orderShipping.toWardCode || '',
+            to_district_id: orderShipping.toDistrictId || 0,
+
+            client_order_code: `SSPX${order.id}`,
+            cod_amount: 0, // Online payment nên cod_amount = 0
+            shippingFee: orderShipping.shippingFee || 0,
+            content: undefined,
+            weight: orderShipping.weight || 1000,
+            length: orderShipping.length || 30,
+            width: orderShipping.width || 20,
+            height: orderShipping.height || 15,
+            pick_station_id: undefined,
+            insurance_value: undefined,
+            service_id: orderShipping.serviceId || undefined,
+            service_type_id: orderShipping.serviceTypeId || undefined,
+            config_fee_id: orderShipping.configFeeId || undefined,
+            extra_cost_id: orderShipping.extraCostId || undefined,
+            coupon: null,
+            pick_shift: orderShipping.pickShift ? JSON.parse(orderShipping.pickShift as string) : undefined,
+            items: orderItems
+              .filter((item) => item.orderId === order.id)
+              .map((item) => ({
+                name: `Item ${item.skuId?.substring(0, 6) || 'UNKNOWN'}`,
+                quantity: item.quantity,
+                weight: orderShipping.weight || 1000,
+                length: orderShipping.length || 30,
+                width: orderShipping.width || 20,
+                height: orderShipping.height || 15
+              })),
+            payment_type_id: GHN_PAYMENT_TYPE.PREPAID,
+            note: orderShipping.note || 'Online payment completed',
+            required_note: orderShipping.requiredNote || 'CHOTHUHANG'
+          })
+
+          // Cập nhật trạng thái OrderShipping thành ENQUEUED
+          await this.prismaService.orderShipping.update({
+            where: { orderId: order.id },
+            data: { status: OrderShippingStatus.ENQUEUED }
+          })
+        } else {
+          console.error(`Missing shipping info for order ${order.id}`)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to create GHN orders for online payment:', error)
+      // Không throw error để không ảnh hưởng đến flow thanh toán chính
+    }
   }
 
   /**

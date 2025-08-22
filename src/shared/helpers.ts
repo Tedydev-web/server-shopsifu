@@ -132,3 +132,16 @@ export function prepareDiscountSnapshotData(discount: any, discountAmount: numbe
     discountId: discount.id
   }
 }
+
+export function normalizePhoneForGHN(phone: string | null | undefined): string {
+  if (!phone) return ''
+  const trimmed: string = String(phone).trim()
+  if (trimmed.length === 0) return ''
+  const e164Vietnam: boolean = trimmed.startsWith('+84')
+  const raw: string = e164Vietnam ? `0${trimmed.slice(3)}` : trimmed
+  const digitsOnly: string = raw.replace(/\D/g, '')
+  // Yêu cầu: 10 số, đầu số di động VN hợp lệ: 03x, 056/058/059, 07x, 08x, 09x
+  const isValidMobileVN: boolean = /^0(3\d|56|58|59|7\d|8\d|9\d)\d{7}$/.test(digitsOnly)
+  if (!isValidMobileVN) return ''
+  return digitsOnly
+}

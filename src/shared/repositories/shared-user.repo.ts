@@ -139,6 +139,9 @@ export class SharedUserRepository {
       if (data.district) addressData.district = data.district
       if (data.ward) addressData.ward = data.ward
       if (data.street) addressData.street = data.street
+      if (data.provinceId !== undefined) addressData.provinceId = data.provinceId
+      if (data.districtId !== undefined) addressData.districtId = data.districtId
+      if (data.wardCode !== undefined) addressData.wardCode = data.wardCode
 
       const address = await tx.address.create({
         data: addressData

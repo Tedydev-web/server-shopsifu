@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { CreateOrderBodyType, GetOrderListQueryType } from 'src/routes/order/order.model'
 import { OrderRepo } from 'src/routes/order/order.repo'
 import { I18nService } from 'nestjs-i18n'
@@ -7,13 +7,17 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { PricingService } from 'src/shared/services/pricing.service'
 import { ShippingProducer } from 'src/shared/queue/producer/shipping.producer'
 import { GHN_PAYMENT_TYPE } from 'src/shared/constants/shipping.constants'
+import { OrderShippingStatus } from 'src/shared/constants/order-shipping.constants'
 import {
   DiscountUsageLimitExceededException,
   DiscountNotApplicableException,
   DiscountExpiredException
 } from 'src/routes/discount/discount.error'
+import { normalizePhoneForGHN } from 'src/shared/helpers'
 @Injectable()
 export class OrderService {
+  private readonly logger = new Logger(OrderService.name)
+
   constructor(
     private readonly orderRepo: OrderRepo,
     private readonly i18n: I18nService<I18nTranslations>,
@@ -31,14 +35,17 @@ export class OrderService {
   }
 
   async create(user: AccessTokenPayload, body: CreateOrderBodyType) {
-    // Thu thập tất cả discount codes
-    const allDiscountCodes = body
+    // Thu thập tất cả discount codes (shop + platform)
+    const shopDiscountCodes = body.shops
       .filter((shop) => shop.discountCodes && Array.isArray(shop.discountCodes))
       .flatMap((shop) => shop.discountCodes)
       .filter((code): code is string => code !== undefined)
 
+    const platformDiscountCodes = body.platformDiscountCodes || []
+    const allDiscountCodes = [...shopDiscountCodes, ...platformDiscountCodes]
+
     if (allDiscountCodes.length > 0) {
-      // Validate discounts thông qua Repository
+      // Validate tất cả discounts thông qua Repository
       const discountInfo = await this.orderRepo.validateDiscounts(allDiscountCodes, user.userId)
       const { discounts, userUsageMap } = discountInfo
 
@@ -66,25 +73,28 @@ export class OrderService {
       }
     }
 
-    // Tính tạm tính để lấy breakdown per shop (itemCost, shippingFee, voucher allocation, payment)
     const calc = await this.pricingService.tinhTamTinhDonHang(user, {
-      shops: body.map((s) => ({
+      shops: body.shops.map((s) => ({
         shopId: s.shopId,
         cartItemIds: s.cartItemIds,
         shippingFee: s.shippingInfo?.shippingFee ?? 0,
         discountCodes: s.discountCodes
       })),
-      platformDiscountCodes: []
+      platformDiscountCodes: body.platformDiscountCodes
     })
-    const perShopMap = new Map<string, { payment: number }>()
-    ;(calc.shops || []).forEach((sh) => perShopMap.set(sh.shopId, { payment: sh.payment }))
+    const perShopMap = new Map<string, { payment: number; platformVoucherDiscount: number }>()
+    ;(calc.shops || []).forEach((sh) =>
+      perShopMap.set(sh.shopId, {
+        payment: sh.payment,
+        platformVoucherDiscount: sh.platformVoucherDiscount || 0
+      })
+    )
 
-    const result = await this.orderRepo.create(user.userId, body)
+    const result = await this.orderRepo.create(user.userId, body.shops, body.platformDiscountCodes)
 
-    // Lưu shipping info trực tiếp vào order và tạo OrderShipping record
     await Promise.all(
       result.orders.map(async (order) => {
-        const shop = body.find((s) => s.shopId === order.shopId)
+        const shop = body.shops.find((s) => s.shopId === order.shopId)
         if (!shop?.shippingInfo) return
 
         // Lấy shop info với address từ Repository
@@ -92,81 +102,98 @@ export class OrderService {
         const { shop: shopData, address: shopAddressRecord } = shopInfo
 
         const info = shop.shippingInfo
+
         const isCod = shop.isCod === true
-        const codAmount = isCod ? (perShopMap.get(shop.shopId)?.payment ?? 0) : 0
+        const shopPayment = perShopMap.get(shop.shopId)
+        const codAmount = isCod ? (shopPayment?.payment ?? 0) : 0
 
-        // Tạo OrderShipping record thông qua Repository
-        try {
-          await this.orderRepo.createOrderShipping({
-            orderId: order.id,
-            serviceId: info.service_id,
-            serviceTypeId: info.service_type_id,
-            shippingFee: info.shippingFee,
-            codAmount: codAmount,
-            fromAddress: shopAddressRecord.street || '',
-            fromName: shopData.name,
-            fromPhone: shopData.phoneNumber || '',
-            fromProvinceName: shopAddressRecord.province || '',
-            fromDistrictName: shopAddressRecord.district || '',
-            fromWardName: shopAddressRecord.ward || '',
-            fromDistrictId: shopAddressRecord.districtId || 0,
-            fromWardCode: shopAddressRecord.wardCode || '',
-            toAddress: shop.receiver.address,
-            toName: shop.receiver.name,
-            toPhone: shop.receiver.phone,
-            toDistrictId: 0, // Không có GHN ID cho user address
-            toWardCode: '' // Không có GHN ID cho user address
-          })
-        } catch (error) {
-          console.error('Failed to create OrderShipping record:', error)
-        }
+        // Tạo OrderShipping record với trạng thái DRAFT để lưu thông tin shipping
+        const orderShipping = await this.orderRepo.createOrderShipping({
+          orderId: order.id,
+          serviceId: info.service_id,
+          serviceTypeId: info.service_type_id,
+          configFeeId: info.config_fee_id,
+          extraCostId: info.extra_cost_id,
+          weight: info.weight,
+          length: info.length,
+          width: info.width,
+          height: info.height,
+          shippingFee: info.shippingFee ?? 0,
+          codAmount: codAmount,
+          note: info.note,
+          requiredNote: info.required_note || 'CHOTHUHANG',
+          pickShift: info.pick_shift ? JSON.stringify(info.pick_shift) : null,
+          status: OrderShippingStatus.DRAFT,
+          fromAddress: shopAddressRecord.street || '',
+          fromName: shopData.name,
+          fromPhone: normalizePhoneForGHN(shopAddressRecord.phoneNumber || shopData.phoneNumber) || '0987654321',
+          fromProvinceName: shopAddressRecord.province || '',
+          fromDistrictName: shopAddressRecord.district || '',
+          fromWardName: shopAddressRecord.ward || '',
+          fromDistrictId: shopAddressRecord.districtId || 0,
+          fromWardCode: shopAddressRecord.wardCode || '',
+          toAddress: shop.receiver.address,
+          toName: shop.receiver.name,
+          toPhone: normalizePhoneForGHN(shop.receiver.phone),
+          toDistrictId: shop.receiver.districtId || 0,
+          toWardCode: shop.receiver.wardCode || ''
+        })
 
-        // Enqueue job để tạo GHN order với thông tin từ address
-        try {
-          await this.shippingProducer.enqueueCreateOrder({
-            // Sử dụng SHOP address từ shopId (tự động lấy)
-            from_address: shopAddressRecord.street || '',
-            from_name: shopData.name,
-            from_phone: shopData.phoneNumber || '',
-            from_province_name: shopAddressRecord.province || '',
-            from_district_name: shopAddressRecord.district || '',
-            from_ward_name: shopAddressRecord.ward || '',
+        // Chỉ tạo GHN order ngay lập tức cho COD
+        // Online payment sẽ tạo GHN order sau khi thanh toán thành công
+        if (isCod) {
+          try {
+            await this.shippingProducer.enqueueCreateOrder({
+              from_address: shopAddressRecord.street || '',
+              from_name: shopData.name,
+              from_phone: normalizePhoneForGHN(shopAddressRecord.phoneNumber || shopData.phoneNumber) || '0987654321',
+              from_province_name: shopAddressRecord.province || '',
+              from_district_name: shopAddressRecord.district || '',
+              from_ward_name: shopAddressRecord.ward || '',
 
-            // Sử dụng thông tin từ receiver (text address)
-            to_name: shop.receiver.name,
-            to_phone: shop.receiver.phone,
-            to_address: shop.receiver.address,
-            to_ward_code: '', // Không có GHN ID
-            to_district_id: 0, // Không có GHN ID
+              to_name: shop.receiver.name,
+              to_phone: normalizePhoneForGHN(shop.receiver.phone),
+              to_address: shop.receiver.address,
+              to_ward_code: shop.receiver.wardCode || '',
+              to_district_id: shop.receiver.districtId || 0,
 
-            client_order_code: order.id,
-            cod_amount: codAmount,
-            content: undefined,
-            weight: info.weight,
-            length: info.length,
-            width: info.width,
-            height: info.height,
-            pick_station_id: undefined,
-            insurance_value: undefined,
-            service_id: info.service_id,
-            service_type_id: info.service_type_id,
-            coupon: info.coupon ?? null,
-            pick_shift: info.pick_shift,
-            items: shop.cartItemIds.map((cartItemId) => ({
-              name: `Item ${cartItemId.substring(0, 6)}`,
-              quantity: 1,
+              client_order_code: `SSPX${order.id}`,
+              cod_amount: codAmount,
+              shippingFee: info.shippingFee ?? 0,
+              content: undefined,
               weight: info.weight,
               length: info.length,
               width: info.width,
-              height: info.height
-            })),
-            payment_type_id: isCod ? GHN_PAYMENT_TYPE.COD : GHN_PAYMENT_TYPE.PREPAID,
-            note: info.note,
-            required_note: info.required_note || 'CHOTHUHANG'
-          })
-        } catch (error) {
-          console.error('Failed to enqueue shipping order:', error)
+              height: info.height,
+              pick_station_id: undefined,
+              insurance_value: undefined,
+              service_id: info.service_id,
+              service_type_id: info.service_type_id,
+              config_fee_id: info.config_fee_id,
+              extra_cost_id: info.extra_cost_id,
+              coupon: info.coupon ?? null,
+              pick_shift: info.pick_shift,
+              items: shop.cartItemIds.map((cartItemId) => ({
+                name: `Item ${cartItemId.substring(0, 6)}`,
+                quantity: 1,
+                weight: info.weight,
+                length: info.length,
+                width: info.width,
+                height: info.height
+              })),
+              payment_type_id: GHN_PAYMENT_TYPE.COD,
+              note: info.note,
+              required_note: info.required_note || 'CHOTHUHANG'
+            })
+
+            // Cập nhật trạng thái OrderShipping thành ENQUEUED
+            await this.orderRepo.updateOrderShippingStatus(order.id, OrderShippingStatus.ENQUEUED)
+          } catch (error) {
+            console.error('Failed to enqueue COD shipping order:', error)
+          }
         }
+        // Online payment: GHN order sẽ được tạo sau khi thanh toán thành công
+        // thông qua webhook callback từ VNPay/Sepay
       })
     )
 

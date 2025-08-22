@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { OrderShipping } from '@prisma/client'
+import { OrderShipping, OrderShippingStatus } from '@prisma/client'
 
 @Injectable()
 export class ShippingRepo {
@@ -36,7 +36,7 @@ export class ShippingRepo {
     codAmount?: number
     expectedDeliveryTime?: Date
     trackingUrl?: string
-    status?: string
+    status?: OrderShippingStatus
     fromAddress?: string
     fromName?: string
     fromPhone?: string
@@ -106,7 +106,7 @@ export class ShippingRepo {
   /**
    * Cập nhật trạng thái shipping
    */
-  async updateStatus(orderId: string, status: string): Promise<OrderShipping> {
+  async updateStatus(orderId: string, status: OrderShippingStatus): Promise<OrderShipping> {
     return this.prisma.orderShipping.update({
       where: { orderId },
       data: { status }
@@ -116,7 +116,7 @@ export class ShippingRepo {
   /**
    * Cập nhật trạng thái order khi shipping thay đổi
    */
-  async updateOrderStatus(orderId: string, status: string): Promise<void> {
+  async updateOrderStatus(orderId: string, status: OrderShippingStatus): Promise<void> {
     let orderStatus: 'PENDING_DELIVERY' | 'DELIVERED' | 'CANCELLED' | undefined
 
     if (status.includes('DELIVERED')) {

@@ -40,40 +40,49 @@ export const GetOrderDetailResSchema = z.object({
   })
 })
 
-export const CreateOrderBodySchema = z
-  .array(
-    z.object({
-      shopId: z.string(),
-      receiver: z.object({
-        name: z.string(),
-        phone: z.string().min(9).max(20),
-        address: z.string()
-      }),
-      cartItemIds: z.array(z.string()).min(1),
-      discountCodes: z.array(z.string()).optional(),
-      shippingInfo: z
-        .object({
-          service_id: z.number().optional(),
-          service_type_id: z.number().optional(),
-          weight: z.number().positive(),
-          length: z.number().positive(),
-          width: z.number().positive(),
-          height: z.number().positive(),
-          shippingFee: z.number().nonnegative().default(0),
-          payment_type_id: z.number().optional(),
-          note: z.string().optional(),
-          required_note: z.string().optional(),
-          coupon: z.string().nullable().optional(),
-          pick_shift: z.array(z.number()).optional()
-        })
-        .optional()
-        .refine((v) => !v || typeof v.service_id === 'number' || typeof v.service_type_id === 'number', {
-          message: 'shipping.error.MISSING_SERVICE_IDENTIFIER'
+export const CreateOrderBodySchema = z.object({
+  shops: z
+    .array(
+      z.object({
+        shopId: z.string(),
+        receiver: z.object({
+          name: z.string(),
+          phone: z.string().min(9).max(20),
+          address: z.string(),
+          provinceId: z.number().int().positive().optional(),
+          districtId: z.number().int().positive().optional(),
+          wardCode: z.string().optional()
         }),
-      isCod: z.boolean().optional()
-    })
-  )
-  .min(1)
+        cartItemIds: z.array(z.string()).min(1),
+        discountCodes: z.array(z.string()).optional(), // Shop-level discounts
+        shippingInfo: z
+          .object({
+            service_id: z.number().optional(),
+            service_type_id: z.number().optional(),
+            // ID cấu hình phí từ GHN service list
+            config_fee_id: z.string().optional(),
+            extra_cost_id: z.string().optional(),
+            weight: z.number().positive(),
+            length: z.number().positive(),
+            width: z.number().positive(),
+            height: z.number().positive(),
+            shippingFee: z.number().nonnegative().default(0),
+            payment_type_id: z.number().optional(),
+            note: z.string().optional(),
+            required_note: z.string().optional(),
+            coupon: z.string().nullable().optional(),
+            pick_shift: z.array(z.number()).optional()
+          })
+          .optional()
+          .refine((v) => !v || typeof v.service_id === 'number' || typeof v.service_type_id === 'number', {
+            message: 'shipping.error.MISSING_SERVICE_IDENTIFIER'
+          }),
+        isCod: z.boolean().optional()
+      })
+    )
+    .min(1),
+  platformDiscountCodes: z.array(z.string()).optional() // Platform-level discounts
+})
 
 export const CalculateOrderPerShopSchema = z.object({
   shops: z

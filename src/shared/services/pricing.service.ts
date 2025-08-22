@@ -36,6 +36,7 @@ export class PricingService {
       itemCost: number
       shippingFee: number
       voucherDiscount: number
+      platformVoucherDiscount: number
       payment: number
     }>
   }> {

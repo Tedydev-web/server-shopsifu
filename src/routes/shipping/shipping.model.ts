@@ -176,6 +176,7 @@ export const CreateOrderSchema = z.object({
   to_district_id: z.number(),
   client_order_code: z.string().nullable(),
   cod_amount: z.number().optional(),
+  shippingFee: z.number().optional(),
   content: z.string().optional(),
   weight: z.number(),
   length: z.number(),
@@ -185,6 +186,8 @@ export const CreateOrderSchema = z.object({
   insurance_value: z.number().optional(),
   service_id: z.number().optional(),
   service_type_id: z.number().optional(),
+  config_fee_id: z.string().optional(),
+  extra_cost_id: z.string().optional(),
   coupon: z.string().nullable().optional(),
   pick_shift: z.array(z.number()).optional(),
   items: z.array(
