@@ -29,6 +29,8 @@ import {
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { DiscountApplyType, DiscountStatus } from 'src/shared/constants/discount.constant'
+import { NotFoundRecordException } from 'src/shared/error'
+import { BadRequestException } from '@nestjs/common'
 
 @Injectable()
 export class OrderRepo {
@@ -322,6 +324,147 @@ export class OrderRepo {
       // Giải phóng lock
       await Promise.all(locks.map((lock) => lock.release().catch(() => {})))
     }
+  }
+
+  /**
+   * Validate và lấy discount info
+   */
+  async validateDiscounts(
+    discountCodes: string[],
+    userId: string
+  ): Promise<{
+    discounts: any[]
+    userUsageMap: Map<string, number>
+  }> {
+    if (discountCodes.length === 0) {
+      return {
+        discounts: [],
+        userUsageMap: new Map()
+      }
+    }
+
+    // Lấy thông tin tất cả discounts một lần
+    const discounts = await this.prismaService.discount.findMany({
+      where: { code: { in: discountCodes } },
+      include: {
+        products: { select: { id: true } },
+        categories: { select: { id: true } },
+        brands: { select: { id: true } }
+      }
+    })
+
+    if (discounts.length !== discountCodes.length) {
+      const foundCodes = discounts.map((d) => d.code)
+      const missingCodes = discountCodes.filter((code) => !foundCodes.includes(code))
+      throw new BadRequestException(`Mã voucher không tồn tại: ${missingCodes.join(', ')}`)
+    }
+
+    // Lấy thông tin usage count một lần để tránh N+1 queries
+    const userDiscountUsage = await this.prismaService.discountSnapshot.groupBy({
+      by: ['discountId'],
+      where: {
+        discountId: { in: discounts.map((d) => d.id) },
+        order: { userId }
+      },
+      _count: { discountId: true }
+    })
+
+    const userUsageMap = new Map(
+      userDiscountUsage
+        .filter((item) => item.discountId !== null)
+        .map((item) => [item.discountId!, item._count.discountId])
+    )
+
+    return { discounts, userUsageMap }
+  }
+
+  /**
+   * Lấy order shipping info
+   */
+  async getOrderShipping(orderId: string) {
+    return this.prismaService.orderShipping.findUnique({
+      where: { orderId }
+    })
+  }
+
+  /**
+   * Lấy shop info với address để tạo shipping
+   */
+  async getShopWithAddress(shopId: string) {
+    const shopData = await this.prismaService.user.findUnique({
+      where: { id: shopId }
+    })
+
+    if (!shopData) {
+      throw NotFoundRecordException
+    }
+
+    // Lấy shop address từ UserAddress
+    const shopUserAddress = await this.prismaService.userAddress.findFirst({
+      where: { userId: shopId },
+      include: { address: true }
+    })
+
+    if (!shopUserAddress || !shopUserAddress.address) {
+      throw NotFoundRecordException
+    }
+
+    return {
+      shop: shopData,
+      address: shopUserAddress.address
+    }
+  }
+
+  /**
+   * Tạo OrderShipping record
+   */
+  async createOrderShipping(data: {
+    orderId: string
+    serviceId?: number
+    serviceTypeId?: number
+    shippingFee: number
+    codAmount: number
+    fromAddress: string
+    fromName: string
+    fromPhone: string
+    fromProvinceName: string
+    fromDistrictName: string
+    fromWardName: string
+    fromDistrictId: number
+    fromWardCode: string
+    toAddress: string
+    toName: string
+    toPhone: string
+    toDistrictId: number
+    toWardCode: string
+  }) {
+    return this.prismaService.orderShipping.create({
+      data: {
+        orderId: data.orderId,
+        orderCode: 'TEMP_ORDER_CODE',
+        serviceId: data.serviceId,
+        serviceTypeId: data.serviceTypeId,
+        shippingFee: data.shippingFee,
+        codAmount: data.codAmount,
+        expectedDeliveryTime: null,
+        trackingUrl: null,
+        status: 'PENDING',
+        fromAddress: data.fromAddress,
+        fromName: data.fromName,
+        fromPhone: data.fromPhone,
+        fromProvinceName: data.fromProvinceName,
+        fromDistrictName: data.fromDistrictName,
+        fromWardName: data.fromWardName,
+        fromDistrictId: data.fromDistrictId,
+        fromWardCode: data.fromWardCode,
+        toAddress: data.toAddress,
+        toName: data.toName,
+        toPhone: data.toPhone,
+        toDistrictId: data.toDistrictId,
+        toWardCode: data.toWardCode,
+        lastUpdatedAt: new Date()
+      }
+    })
   }
 
   async detail(userId: string, orderid: string): Promise<GetOrderDetailResType> {

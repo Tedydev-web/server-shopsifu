@@ -1,10 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { CreateOrderBodyType, GetOrderListQueryType } from 'src/routes/order/order.model'
 import { OrderRepo } from 'src/routes/order/order.repo'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { PrismaService } from 'src/shared/services/prisma.service'
 import { PricingService } from 'src/shared/services/pricing.service'
 import { ShippingProducer } from 'src/shared/queue/producer/shipping.producer'
 import { GHN_PAYMENT_TYPE } from 'src/shared/constants/shipping.constants'
@@ -18,7 +17,6 @@ export class OrderService {
   constructor(
     private readonly orderRepo: OrderRepo,
     private readonly i18n: I18nService<I18nTranslations>,
-    private readonly prismaService: PrismaService,
     private readonly pricingService: PricingService,
     private readonly shippingProducer: ShippingProducer
   ) {}
@@ -40,33 +38,9 @@ export class OrderService {
       .filter((code): code is string => code !== undefined)
 
     if (allDiscountCodes.length > 0) {
-      // Lấy thông tin tất cả discounts một lần
-      const discounts = await this.prismaService.discount.findMany({
-        where: { code: { in: allDiscountCodes } },
-        include: {
-          products: { select: { id: true } },
-          categories: { select: { id: true } },
-          brands: { select: { id: true } }
-        }
-      })
-
-      if (discounts.length !== allDiscountCodes.length) {
-        const foundCodes = discounts.map((d) => d.code)
-        const missingCodes = allDiscountCodes.filter((code) => !foundCodes.includes(code))
-        throw new BadRequestException(`Mã voucher không tồn tại: ${missingCodes.join(', ')}`)
-      }
-
-      // Lấy thông tin usage count một lần để tránh N+1 queries
-      const userDiscountUsage = await this.prismaService.discountSnapshot.groupBy({
-        by: ['discountId'],
-        where: {
-          discountId: { in: discounts.map((d) => d.id) },
-          order: { userId: user.userId }
-        },
-        _count: { discountId: true }
-      })
-
-      const userUsageMap = new Map(userDiscountUsage.map((item) => [item.discountId, item._count.discountId]))
+      // Validate discounts thông qua Repository
+      const discountInfo = await this.orderRepo.validateDiscounts(allDiscountCodes, user.userId)
+      const { discounts, userUsageMap } = discountInfo
 
       for (const discount of discounts) {
         // Kiểm tra trạng thái và thời gian
@@ -113,58 +87,59 @@ export class OrderService {
         const shop = body.find((s) => s.shopId === order.shopId)
         if (!shop?.shippingInfo) return
 
+        // Lấy shop info với address từ Repository
+        const shopInfo = await this.orderRepo.getShopWithAddress(shop.shopId)
+        const { shop: shopData, address: shopAddressRecord } = shopInfo
+
         const info = shop.shippingInfo
         const isCod = shop.isCod === true
         const codAmount = isCod ? (perShopMap.get(shop.shopId)?.payment ?? 0) : 0
 
-        // Tạo OrderShipping record với thông tin tạm thời
+        // Tạo OrderShipping record thông qua Repository
         try {
-          await this.prismaService.orderShipping.create({
-            data: {
-              orderId: order.id,
-              orderCode: 'TEMP_ORDER_CODE', // Mã tạm thời
-              serviceId: info.service_id,
-              serviceTypeId: info.service_type_id,
-              shippingFee: info.shippingFee,
-              codAmount: codAmount,
-              expectedDeliveryTime: null,
-              trackingUrl: null,
-              status: 'PENDING',
-              fromAddress: info.from_address,
-              fromName: info.from_name,
-              fromPhone: info.from_phone,
-              fromProvinceName: info.from_province_name,
-              fromDistrictName: info.from_district_name,
-              fromWardName: info.from_ward_name,
-              fromDistrictId: 0,
-              fromWardCode: '',
-              toAddress: shop.receiver.address,
-              toName: shop.receiver.name,
-              toPhone: shop.receiver.phone,
-              toDistrictId: info.to_district_id,
-              toWardCode: info.to_ward_code,
-              lastUpdatedAt: new Date()
-            }
+          await this.orderRepo.createOrderShipping({
+            orderId: order.id,
+            serviceId: info.service_id,
+            serviceTypeId: info.service_type_id,
+            shippingFee: info.shippingFee,
+            codAmount: codAmount,
+            fromAddress: shopAddressRecord.street || '',
+            fromName: shopData.name,
+            fromPhone: shopData.phoneNumber || '',
+            fromProvinceName: shopAddressRecord.province || '',
+            fromDistrictName: shopAddressRecord.district || '',
+            fromWardName: shopAddressRecord.ward || '',
+            fromDistrictId: shopAddressRecord.districtId || 0,
+            fromWardCode: shopAddressRecord.wardCode || '',
+            toAddress: shop.receiver.address,
+            toName: shop.receiver.name,
+            toPhone: shop.receiver.phone,
+            toDistrictId: 0, // Không có GHN ID cho user address
+            toWardCode: '' // Không có GHN ID cho user address
           })
         } catch (error) {
           console.error('Failed to create OrderShipping record:', error)
         }
 
-        // Enqueue job để tạo GHN order
+        // Enqueue job để tạo GHN order với thông tin từ address
         try {
           await this.shippingProducer.enqueueCreateOrder({
-            from_address: info.from_address,
-            from_name: info.from_name,
-            from_phone: info.from_phone,
-            from_province_name: info.from_province_name,
-            from_district_name: info.from_district_name,
-            from_ward_name: info.from_ward_name,
+            // Sử dụng SHOP address từ shopId (tự động lấy)
+            from_address: shopAddressRecord.street || '',
+            from_name: shopData.name,
+            from_phone: shopData.phoneNumber || '',
+            from_province_name: shopAddressRecord.province || '',
+            from_district_name: shopAddressRecord.district || '',
+            from_ward_name: shopAddressRecord.ward || '',
+
+            // Sử dụng thông tin từ receiver (text address)
             to_name: shop.receiver.name,
             to_phone: shop.receiver.phone,
             to_address: shop.receiver.address,
-            to_ward_code: info.to_ward_code,
-            to_district_id: info.to_district_id,
-            client_order_code: order.id, // Sử dụng order.id thay vì paymentId
+            to_ward_code: '', // Không có GHN ID
+            to_district_id: 0, // Không có GHN ID
+
+            client_order_code: order.id,
             cod_amount: codAmount,
             content: undefined,
             weight: info.weight,
@@ -214,9 +189,7 @@ export class OrderService {
 
     // Lấy shipping info từ OrderShipping
     if (result.data) {
-      const orderShipping = await this.prismaService.orderShipping.findUnique({
-        where: { orderId: result.data.id }
-      })
+      const orderShipping = await this.orderRepo.getOrderShipping(result.data.id)
 
       if (orderShipping && orderShipping.shippingFee !== null) {
         result.data.totalShippingFee = orderShipping.shippingFee
