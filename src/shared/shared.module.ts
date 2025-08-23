@@ -38,6 +38,7 @@ import { SEARCH_SYNC_QUEUE_NAME } from './constants/search-sync.constant'
 import { PaymentConsumer } from './queue/consumer/payment.consumer'
 import { ShippingConsumer } from './queue/consumer/shipping.consumer'
 import { PricingService } from './services/pricing.service'
+import { RedisService } from './services/redis.service'
 import { Ghn } from 'giaohangnhanh'
 import { GHN_CLIENT } from './constants/shipping.constants'
 
@@ -61,6 +62,7 @@ const sharedServices = [
   PaymentConsumer,
   ShippingConsumer,
   PricingService,
+  RedisService,
   RedisHealthService
 ]
 
@@ -123,19 +125,16 @@ const sharedServices = [
 
     CacheModule.registerAsync({
       isGlobal: true,
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => {
-        const sanitizedUrl =
-          (configService.get<string>('redis.url') as string) || (configService.get<string>('REDIS_URL') as string)
+      useFactory: () => {
         return {
-          stores: [createKeyv(sanitizedUrl)]
+          stores: [createKeyv(process.env.REDIS_URL)]
         }
-      },
-      inject: [ConfigService]
+      }
     }),
 
     BullModule.forRootAsync({
       imports: [ConfigModule],
+<<<<<<< HEAD
       useFactory: (configService: ConfigService) => {
         const password = configService.get<string>('redis.password')
         const requireAuth = Boolean(configService.get('redis.requireAuth'))
@@ -194,8 +193,17 @@ const sharedServices = [
             concurrency: 1,
             maxStalledCount: 3
           }
+=======
+      useFactory: (configService: ConfigService) => ({
+        connection: {
+          host: configService.get('redis.host'),
+          port: Number(configService.get('redis.port')),
+          password: configService.get('redis.password'),
+          tls: configService.get('redis.tls'),
+          requireAuth: configService.get('redis.requireAuth')
+>>>>>>> 3c38a69 (chore(redis): cập nhật và cải tiến tích hợp Redis trong ứng dụng)
         }
-      },
+      }),
       inject: [ConfigService]
     }),
 

@@ -1,12 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { RoleRepo } from 'src/routes/role/role.repo'
 import { CreateRoleBodyType, GetRolesQueryType, UpdateRoleBodyType } from 'src/routes/role/role.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { ProhibitedActionOnBaseRoleException, RoleAlreadyExistsException } from 'src/routes/role/role.error'
 import { RoleName } from 'src/shared/constants/role.constant'
-import { CACHE_MANAGER } from '@nestjs/cache-manager'
-import { Cache } from 'cache-manager'
+import { RedisService } from 'src/shared/services/redis.service'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
@@ -15,7 +14,7 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 export class RoleService {
   constructor(
     private roleRepo: RoleRepo,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private readonly redisService: RedisService,
     private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
@@ -84,7 +83,7 @@ export class RoleService {
         updatedById: user.userId,
         data
       })
-      await this.cacheManager.del(`role:${updatedRole.id}`) // Xóa cache của role đã cập nhật
+      await this.redisService.del(`role:${updatedRole.id}`) // Xóa cache của role đã cập nhật
       return {
         message: this.i18n.t('role.role.success.UPDATE_SUCCESS'),
         data: updatedRole
@@ -107,7 +106,7 @@ export class RoleService {
         id,
         deletedById: user.userId
       })
-      await this.cacheManager.del(`role:${id}`) // Xóa cache của role đã xóa
+      await this.redisService.del(`role:${id}`) // Xóa cache của role đã xóa
       return {
         message: this.i18n.t('role.role.success.DELETE_SUCCESS')
       }

@@ -4,16 +4,17 @@ import Redlock from 'redlock'
 
 export default registerAs('redis', (): Record<string, any> => {
   const config = {
-    host: process.env.REDIS_HOST,
-    port: process.env.REDIS_PORT,
+    host: process.env.REDIS_HOST || 'localhost',
+    port: process.env.REDIS_PORT || '6379',
     password: process.env.REDIS_PASSWORD,
     tls: process.env.REDIS_ENABLE_TLS === 'true' ? {} : null,
-    url: process.env.REDIS_URL,
+    url: process.env.REDIS_URL || 'redis://localhost:6379',
     connectionName: process.env.REDIS_CONNECTION_NAME,
-    requireAuth: process.env.REDIS_REQUIRE_AUTH === 'true'
+    requireAuth: process.env.REDIS_REQUIRE_AUTH === 'true',
+    keyPrefix: process.env.REDIS_KEY_PREFIX || 'shopsifu:',
+    defaultTtl: Number(process.env.REDIS_DEFAULT_TTL) || 300,
+    enableLogging: process.env.REDIS_ENABLE_LOGGING !== 'false'
   }
-
-  const isPasswordProvided: boolean = typeof config.password === 'string' && config.password.trim().length > 0
 
   const commonRedisOptions = {
     lazyConnect: false,
@@ -65,11 +66,13 @@ export default registerAs('redis', (): Record<string, any> => {
     : new Client({
         host: config.host,
         port: Number(config.port),
-        ...(isPasswordProvided ? { password: config.password } : {}),
+        password: config.password,
         tls: config.tls || undefined,
+        ...(config.requireAuth ? { password: config.password } : {}),
         ...commonRedisOptions
       })
 
+<<<<<<< HEAD
   redis.on('error', (error: any) => {
     if (error.message?.includes('NOSCRIPT')) {
       return
@@ -107,6 +110,8 @@ export default registerAs('redis', (): Record<string, any> => {
 
   redis.on('end', () => {})
 
+=======
+>>>>>>> 3c38a69 (chore(redis): cập nhật và cải tiến tích hợp Redis trong ứng dụng)
   const redlock = new Redlock([redis], {
     retryCount: 10,
     retryDelay: 200,

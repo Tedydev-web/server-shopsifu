@@ -4,6 +4,7 @@ import { ServerOptions, Server, Socket } from 'socket.io'
 import { generateRoomUserId, generateRoomPaymentId, generateRoomUserDevice } from 'src/shared/helpers'
 import { SharedWebsocketRepository } from 'src/shared/repositories/shared-websocket.repo'
 import { TokenService } from 'src/shared/services/token.service'
+import { RedisService } from 'src/shared/services/redis.service'
 import { createAdapter } from '@socket.io/redis-adapter'
 import { ConfigService } from '@nestjs/config'
 import { parse } from 'cookie'
@@ -12,6 +13,7 @@ const namespaces = ['/', 'payment', 'chat']
 export class WebsocketAdapter extends IoAdapter {
   private readonly sharedWebsocketRepository: SharedWebsocketRepository
   private readonly tokenService: TokenService
+  private readonly redisService: RedisService
   private adapterConstructor: ReturnType<typeof createAdapter>
   private readonly configService: ConfigService
   private pubClient: any
@@ -21,30 +23,31 @@ export class WebsocketAdapter extends IoAdapter {
     super(app)
     this.sharedWebsocketRepository = app.get(SharedWebsocketRepository)
     this.tokenService = app.get(TokenService)
+    this.redisService = app.get(RedisService)
     this.configService = app.get(ConfigService)
   }
 
   async connectToRedis(): Promise<void> {
     try {
-      if (!this.configService) {
-        console.error('❌ ConfigService is not available')
+      if (!this.redisService) {
+        console.error('❌ RedisService is not available')
         console.log('⚠️ Continuing without Redis adapter for WebSocket')
         return
       }
 
-      // Sử dụng Redis client đã có từ config thay vì tạo mới
-      const redisClient = this.configService.get('redis.redis')
+      // Sử dụng Redis client từ RedisService
+      const redisClient = this.redisService.getClient()
 
       if (!redisClient) {
-        console.error('❌ Redis client is not available from config')
+        console.error('❌ Redis client is not available from RedisService')
         console.log('⚠️ Continuing without Redis adapter for WebSocket')
         return
       }
 
-      // Tạo adapter sử dụng Redis client đã có
+      // Tạo adapter sử dụng Redis client từ RedisService
       this.adapterConstructor = createAdapter(redisClient, redisClient.duplicate())
 
-      console.log('✅ Redis adapter connected successfully')
+      console.log('✅ Redis adapter connected successfully using RedisService')
     } catch (error) {
       console.error('❌ Failed to connect Redis adapter:', error)
       console.log('⚠️ Continuing without Redis adapter for WebSocket')

@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable } from '@nestjs/common'
+import { ForbiddenException, Injectable } from '@nestjs/common'
 import { ProductRepo } from 'src/routes/product/product.repo'
 import {
   CreateProductBodyType,
@@ -11,8 +11,7 @@ import { I18nContext, I18nService } from 'nestjs-i18n'
 import { RoleName } from 'src/shared/constants/role.constant'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { CACHE_MANAGER } from '@nestjs/cache-manager'
-import { Cache } from 'cache-manager'
+import { RedisService } from 'src/shared/services/redis.service'
 import { PRODUCT_LIST_VERSION_KEY } from '../../../shared/constants/product.constant'
 
 @Injectable()
@@ -20,7 +19,7 @@ export class ManageProductService {
   constructor(
     private productRepo: ProductRepo,
     private i18n: I18nService<I18nTranslations>,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    private readonly redisService: RedisService
   ) {}
 
   /**
@@ -171,8 +170,8 @@ export class ManageProductService {
    * Tăng version key để làm vô hiệu hoá toàn bộ cache danh sách sản phẩm
    */
   private async bumpProductListCacheVersion() {
-    const currentVersion = (await this.cacheManager.get<number>(PRODUCT_LIST_VERSION_KEY)) || 1
+    const currentVersion = (await this.redisService.get<number>(PRODUCT_LIST_VERSION_KEY)) || 1
     const nextVersion = currentVersion + 1
-    await this.cacheManager.set(PRODUCT_LIST_VERSION_KEY, nextVersion)
+    await this.redisService.set(PRODUCT_LIST_VERSION_KEY, nextVersion)
   }
 }

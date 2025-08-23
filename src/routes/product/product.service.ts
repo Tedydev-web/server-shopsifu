@@ -1,11 +1,10 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { ProductRepo } from 'src/routes/product/product.repo'
 import { GetProductsQueryType } from 'src/routes/product/product.model'
 import { NotFoundRecordException } from 'src/shared/error'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
-import { CACHE_MANAGER } from '@nestjs/cache-manager'
-import { Cache } from 'cache-manager'
+import { RedisService } from 'src/shared/services/redis.service'
 import {
   PRODUCT_LIST_CACHE_PREFIX,
   PRODUCT_LIST_TTL_MS,
@@ -17,7 +16,7 @@ export class ProductService {
   constructor(
     private productRepo: ProductRepo,
     private i18n: I18nService<I18nTranslations>,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    private readonly redisService: RedisService
   ) {}
 
   async list(props: { query: GetProductsQueryType }) {
@@ -33,12 +32,12 @@ export class ProductService {
       !props.query.createdById
 
     // Cache theo version key để dễ invalidation hàng loạt
-    const version = (await this.cacheManager.get<number>(PRODUCT_LIST_VERSION_KEY)) || 1
+    const version = (await this.redisService.get<number>(PRODUCT_LIST_VERSION_KEY)) || 1
     const rawKey = isDefaultHome
       ? `${PRODUCT_LIST_CACHE_PREFIX}:home:v${version}:lang:${lang}`
       : `${PRODUCT_LIST_CACHE_PREFIX}:q:${JSON.stringify(props.query)}:v${version}:lang:${lang}`
 
-    const cached = await this.cacheManager.get<any>(rawKey)
+    const cached = await this.redisService.get<any>(rawKey)
     if (cached) {
       // Revive Date cho dữ liệu lấy từ Redis (tránh ZodSerializationException)
       if (cached?.data && Array.isArray(cached.data)) {
@@ -77,7 +76,7 @@ export class ProductService {
       data: data.data,
       metadata: data.metadata
     }
-    await this.cacheManager.set(rawKey, response, PRODUCT_LIST_TTL_MS)
+    await this.redisService.set(rawKey, response, Math.floor(PRODUCT_LIST_TTL_MS / 1000))
     return response
   }
 

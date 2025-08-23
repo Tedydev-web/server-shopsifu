@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { PermissionRepo } from 'src/routes/permission/permission.repo'
 import {
   CreatePermissionBodyType,
@@ -8,8 +8,7 @@ import {
 import { NotFoundRecordException } from 'src/shared/error'
 import { isNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { PermissionAlreadyExistsException } from 'src/routes/permission/permission.error'
-import { CACHE_MANAGER } from '@nestjs/cache-manager'
-import { Cache } from 'cache-manager'
+import { RedisService } from 'src/shared/services/redis.service'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
@@ -18,7 +17,7 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 export class PermissionService {
   constructor(
     private permissionRepo: PermissionRepo,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private readonly redisService: RedisService,
     private readonly i18n: I18nService<I18nTranslations>
   ) {}
 
@@ -107,7 +106,7 @@ export class PermissionService {
     return Promise.all(
       roles.map((role) => {
         const cacheKey = `role:${role.id}`
-        return this.cacheManager.del(cacheKey)
+        return this.redisService.del(cacheKey)
       })
     )
   }

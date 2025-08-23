@@ -1,19 +1,11 @@
-import { CACHE_MANAGER } from '@nestjs/cache-manager'
-import {
-  Injectable,
-  CanActivate,
-  ExecutionContext,
-  UnauthorizedException,
-  ForbiddenException,
-  Inject
-} from '@nestjs/common'
-import { Cache } from 'cache-manager'
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common'
 import { keyBy } from 'lodash'
 import { REQUEST_ROLE_PERMISSIONS, REQUEST_USER_KEY } from 'src/shared/constants/auth.constant'
 import { HTTPMethod } from 'src/shared/constants/role.constant'
 import { RolePermissionsType } from 'src/shared/models/shared-role.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { TokenService } from 'src/shared/services/token.service'
+import { RedisService } from 'src/shared/services/redis.service'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 type Permission = RolePermissionsType['permissions'][number]
@@ -26,7 +18,7 @@ export class AccessTokenGuard implements CanActivate {
   constructor(
     private readonly tokenService: TokenService,
     private readonly prismaService: PrismaService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    private readonly redisService: RedisService
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -67,7 +59,7 @@ export class AccessTokenGuard implements CanActivate {
     const method = request.method as keyof typeof HTTPMethod
     const cacheKey = `role:${roleId}`
     // 1. Thử lấy từ cache
-    let cachedRole = await this.cacheManager.get<CachedRole>(cacheKey)
+    let cachedRole = await this.redisService.get<CachedRole>(cacheKey)
     // 2. Nếu không có trong cache, thì truy vấn từ cơ sở dữ liệu
     if (!cachedRole) {
       try {
@@ -92,7 +84,7 @@ export class AccessTokenGuard implements CanActivate {
         ) as CachedRole['permissions']
 
         cachedRole = { ...role, permissions: permissionObject }
-        await this.cacheManager.set(cacheKey, cachedRole, 1000 * 60 * 60) // Cache for 1 hour
+        await this.redisService.set(cacheKey, cachedRole, 3600) // Cache for 1 hour
         request[REQUEST_ROLE_PERMISSIONS] = role
       } catch {
         throw new ForbiddenException('Error.RoleNotFound')
