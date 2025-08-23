@@ -41,6 +41,9 @@ import { PricingService } from './services/pricing.service'
 import { RedisService } from './services/redis.service'
 import { Ghn } from 'giaohangnhanh'
 import { GHN_CLIENT } from './constants/shipping.constants'
+import { SharedOrderRepository } from './repositories/shared-order.repo'
+import { SharedDiscountRepository } from './repositories/shared-discount.repo'
+import { SharedShippingRepository } from './repositories/shared-shipping.repo'
 
 const sharedServices = [
   PrismaService,
@@ -63,7 +66,10 @@ const sharedServices = [
   ShippingConsumer,
   PricingService,
   RedisService,
-  RedisHealthService
+  RedisHealthService,
+  SharedOrderRepository,
+  SharedDiscountRepository,
+  SharedShippingRepository
 ]
 
 @Global()

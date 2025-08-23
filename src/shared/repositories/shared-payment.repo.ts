@@ -115,7 +115,10 @@ export class SharedPaymentRepository {
 
     const shopIds = ordersWithDetails.map((o) => o.shopId).filter((id): id is string => Boolean(id))
     const shopAddresses = await this.prismaService.userAddress.findMany({
-      where: { userId: { in: shopIds }, isDefault: true },
+      where: {
+        userId: { in: shopIds },
+        isDefault: true
+      },
       include: { address: true }
     })
 

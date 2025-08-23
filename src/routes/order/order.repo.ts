@@ -1,80 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { OrderStatus } from 'src/shared/constants/order.constant'
-import { OrderShippingStatusType } from 'src/shared/constants/order-shipping.constants'
-
-// Types for better type safety
-type CartItemWithDetails = {
-  id: string
-  quantity: number
-  skuId: string
-  userId: string
-  sku: {
-    id: string
-    price: number
-    stock: number
-    image: string
-    value: string
-    updatedAt: Date
-    createdById: string
-    product: {
-      id: string
-      name: string
-      deletedAt: Date | null
-      publishedAt: Date | null
-      brand: { id: string }
-      categories: { id: string }[]
-      productTranslations: {
-        id: string
-        name: string
-        description: string
-        languageId: string
-      }[]
-    }
-  }
-}
-
-type DiscountWithIncludes = {
-  id: string
-  code: string
-  name: string
-  description: string | null
-  value: number
-  discountType: string
-  discountApplyType: string
-  discountStatus: string
-  startDate: Date
-  endDate: Date
-  maxUses: number
-  maxUsesPerUser: number | null
-  usesCount: number
-  usersUsed: string[]
-  maxDiscountValue: number | null
-  minOrderValue: number | null
-  isPlatform: boolean
-  voucherType: string
-  displayType: string
-  products: { id: string }[]
-  categories: { id: string }[]
-  brands: { id: string }[]
-}
-
-type DiscountSnapshotData = {
-  name: string
-  description: string
-  discountType: string
-  value: number
-  code: string
-  maxDiscountValue: number
-  discountAmount: number
-  minOrderValue: number
-  isPlatform: boolean
-  voucherType: string
-  displayType: string
-  discountApplyType: string
-  targetInfo: any
-  discountId: string
-}
 import {
   CannotCancelOrderException,
   NotFoundCartItemException,
@@ -94,17 +20,9 @@ import {
 import { OrderProducer } from 'src/routes/order/order.producer'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { VersionConflictException } from 'src/shared/error'
-import {
-  calculateDiscountAmount,
-  isNotFoundPrismaError,
-  validateDiscountForOrder,
-  prepareDiscountSnapshotData
-} from 'src/shared/helpers'
+import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { DiscountApplyType, DiscountStatus } from 'src/shared/constants/discount.constant'
-import { NotFoundRecordException } from 'src/shared/error'
-import { BadRequestException } from '@nestjs/common'
 
 @Injectable()
 export class OrderRepo {
@@ -113,6 +31,10 @@ export class OrderRepo {
     private orderProducer: OrderProducer,
     private readonly configService: ConfigService
   ) {}
+
+  /**
+   * Lấy danh sách orders - Core CRUD
+   */
   async list(userId: string, query: GetOrderListQueryType): Promise<GetOrderListResType> {
     const { page, limit, status } = query
     const skip = (page - 1) * limit
@@ -152,10 +74,12 @@ export class OrderRepo {
     }
   }
 
+  /**
+   * Tạo order - Core CRUD (đơn giản, không có discount/shipping logic)
+   */
   async create(
     userId: string,
-    shops: CreateOrderBodyType['shops'],
-    platformDiscountCodes?: string[]
+    shops: CreateOrderBodyType['shops']
   ): Promise<{
     paymentId: number
     orders: CreateOrderResType['data']['orders']
@@ -168,12 +92,7 @@ export class OrderRepo {
     const locks = await this.acquireSkuLocks(skuIds)
 
     try {
-      const [paymentId, orders] = await this.createOrdersInTransaction(
-        userId,
-        shops,
-        allBodyCartItemIds,
-        platformDiscountCodes
-      )
+      const [paymentId, orders] = await this.createOrdersInTransaction(userId, shops, allBodyCartItemIds)
       return { paymentId, orders }
     } finally {
       await this.releaseLocks(locks)
@@ -181,7 +100,7 @@ export class OrderRepo {
   }
 
   /**
-   * Lấy SKU IDs từ cart items
+   * Lấy SKU IDs từ cart items - Core business logic
    */
   private async getSkuIdsFromCartItems(cartItemIds: string[], userId: string): Promise<string[]> {
     const cartItemsForSKUId = await this.prismaService.cartItem.findMany({
@@ -195,7 +114,7 @@ export class OrderRepo {
   }
 
   /**
-   * Acquire locks cho SKUs
+   * Acquire locks cho SKUs - Core business logic
    */
   private async acquireSkuLocks(skuIds: string[]) {
     const redlock = this.configService.get('redis.redlock')
@@ -203,20 +122,19 @@ export class OrderRepo {
   }
 
   /**
-   * Release locks
+   * Release locks - Core business logic
    */
   private async releaseLocks(locks: any[]) {
     await Promise.all(locks.map((lock) => lock.release().catch(() => {})))
   }
 
   /**
-   * Tạo orders trong transaction
+   * Tạo orders trong transaction - Core business logic
    */
   private async createOrdersInTransaction(
     userId: string,
     shops: CreateOrderBodyType['shops'],
-    allBodyCartItemIds: string[],
-    platformDiscountCodes?: string[]
+    allBodyCartItemIds: string[]
   ): Promise<[number, CreateOrderResType['data']['orders']]> {
     return this.prismaService.$transaction(async (tx) => {
       // Lấy và validate cart items
@@ -226,15 +144,8 @@ export class OrderRepo {
       // Tạo payment
       const payment = await this.createPayment(tx)
 
-      // Tạo orders với discounts
-      const orders = await this.createOrdersWithDiscounts(
-        tx,
-        shops,
-        cartItemMap,
-        payment.id,
-        userId,
-        platformDiscountCodes
-      )
+      // Tạo orders (đơn giản, không có discount logic)
+      const orders = await this.createSimpleOrders(tx, shops, cartItemMap, payment.id, userId)
 
       // Cleanup: xóa cart items và update stock
       await this.cleanupCartAndUpdateStock(tx, allBodyCartItemIds, cartItems)
@@ -247,13 +158,9 @@ export class OrderRepo {
   }
 
   /**
-   * Lấy cart items với details
+   * Lấy cart items với details - Core business logic
    */
-  private async getCartItemsWithDetails(
-    tx: any,
-    cartItemIds: string[],
-    userId: string
-  ): Promise<CartItemWithDetails[]> {
+  private async getCartItemsWithDetails(tx: any, cartItemIds: string[], userId: string): Promise<any[]> {
     return tx.cartItem.findMany({
       where: {
         id: { in: cartItemIds },
@@ -276,7 +183,7 @@ export class OrderRepo {
   }
 
   /**
-   * Tạo payment
+   * Tạo payment - Core business logic
    */
   private async createPayment(tx: any) {
     return tx.payment.create({
@@ -287,43 +194,19 @@ export class OrderRepo {
   }
 
   /**
-   * Tạo orders với discount processing
+   * Tạo orders đơn giản (không có discount logic) - Core business logic
    */
-  private async createOrdersWithDiscounts(
+  private async createSimpleOrders(
     tx: any,
     shops: CreateOrderBodyType['shops'],
     cartItemMap: Map<string, any>,
     paymentId: number,
-    userId: string,
-    platformDiscountCodes?: string[] // ✅ Thêm platform discounts
+    userId: string
   ): Promise<CreateOrderResType['data']['orders']> {
     const orders: CreateOrderResType['data']['orders'] = []
 
-    // Xử lý platform discounts trước
-    let platformDiscounts: any[] = []
-    if (platformDiscountCodes && platformDiscountCodes.length > 0) {
-      platformDiscounts = await this.getValidPlatformDiscountsForTransaction(tx, platformDiscountCodes, userId)
-    }
-
     for (const item of shops) {
-      const orderTotal = this.calculateOrderTotal(item.cartItemIds, cartItemMap)
-
-      // Xử lý shop discounts
-      const shopDiscounts = await this.processDiscountsForOrder(tx, item, cartItemMap, orderTotal, userId)
-
-      // Xử lý platform discounts cho shop này (sẽ được phân bổ theo tỷ lệ)
-      const platformDiscountsForShop = await this.processPlatformDiscountsForShop(
-        tx,
-        platformDiscounts,
-        orderTotal,
-        userId
-      )
-
       const order = await this.createSingleOrder(tx, item, cartItemMap, paymentId, userId)
-
-      // Tạo snapshots cho cả shop và platform discounts
-      await this.createDiscountSnapshots(tx, [...shopDiscounts, ...platformDiscountsForShop], order.id)
-
       orders.push(order)
     }
 
@@ -331,206 +214,12 @@ export class OrderRepo {
   }
 
   /**
-   * Tính tổng giá trị order
-   */
-  private calculateOrderTotal(cartItemIds: string[], cartItemMap: Map<string, CartItemWithDetails>): number {
-    return cartItemIds.reduce((sum, cartItemId) => {
-      const cartItem = cartItemMap.get(cartItemId)!
-      return sum + cartItem.sku.price * cartItem.quantity
-    }, 0)
-  }
-
-  /**
-   * Xử lý discounts cho một order - sử dụng validateDiscounts để tránh duplicate logic
-   */
-  private async processDiscountsForOrder(
-    tx: any,
-    orderItem: any,
-    cartItemMap: Map<string, CartItemWithDetails>,
-    orderTotal: number,
-    userId: string
-  ): Promise<DiscountSnapshotData[]> {
-    if (!orderItem.discountCodes || orderItem.discountCodes.length === 0) {
-      return []
-    }
-
-    // Sử dụng validateDiscounts method để get discount info
-    const { discounts } = await this.getValidDiscountsForTransaction(tx, orderItem.discountCodes, userId)
-
-    // Validate và apply discounts
-    const appliedDiscounts: DiscountSnapshotData[] = []
-    const { productIds, categoryIds, brandIds } = this.extractProductInfo(orderItem.cartItemIds, cartItemMap)
-
-    for (const discount of discounts) {
-      if (validateDiscountForOrder(discount, orderTotal, productIds, categoryIds, brandIds)) {
-        const discountAmount = calculateDiscountAmount(discount, orderTotal)
-        const targetInfo = this.prepareDiscountTargetInfo(discount)
-
-        appliedDiscounts.push(prepareDiscountSnapshotData(discount, discountAmount, targetInfo))
-
-        // Update discount usage
-        await tx.discount.update({
-          where: { id: discount.id },
-          data: {
-            usesCount: { increment: 1 },
-            usersUsed: { push: userId }
-          }
-        })
-      }
-    }
-
-    return appliedDiscounts
-  }
-
-  /**
-   * Get valid discounts cho transaction (không duplicate validateDiscounts logic)
-   */
-  private async getValidDiscountsForTransaction(
-    tx: any,
-    discountCodes: string[],
-    userId: string
-  ): Promise<{ discounts: DiscountWithIncludes[] }> {
-    const discounts = await tx.discount.findMany({
-      where: {
-        code: { in: discountCodes },
-        discountStatus: DiscountStatus.ACTIVE,
-        startDate: { lte: new Date() },
-        endDate: { gte: new Date() },
-        deletedAt: null
-      },
-      include: {
-        products: { select: { id: true } },
-        categories: { select: { id: true } },
-        brands: { select: { id: true } }
-      }
-    })
-
-    if (discounts.length !== discountCodes.length) {
-      const foundCodes = discounts.map((d) => d.code)
-      const missingCodes = discountCodes.filter((code) => !foundCodes.includes(code))
-      throw new BadRequestException(`Mã voucher không tồn tại: ${missingCodes.join(', ')}`)
-    }
-
-    return { discounts }
-  }
-
-  /**
-   * Get valid platform discounts cho transaction
-   */
-  private async getValidPlatformDiscountsForTransaction(
-    tx: any,
-    discountCodes: string[],
-    userId: string
-  ): Promise<DiscountWithIncludes[]> {
-    const discounts = await tx.discount.findMany({
-      where: {
-        code: { in: discountCodes },
-        discountStatus: DiscountStatus.ACTIVE,
-        startDate: { lte: new Date() },
-        endDate: { gte: new Date() },
-        deletedAt: null,
-        isPlatform: true // ✅ Chỉ lấy platform discounts
-      },
-      include: {
-        products: { select: { id: true } },
-        categories: { select: { id: true } },
-        brands: { select: { id: true } }
-      }
-    })
-
-    if (discounts.length !== discountCodes.length) {
-      const foundCodes = discounts.map((d) => d.code)
-      const missingCodes = discountCodes.filter((code) => !foundCodes.includes(code))
-      throw new BadRequestException(`Mã voucher nền tảng không tồn tại: ${missingCodes.join(', ')}`)
-    }
-
-    return discounts
-  }
-
-  /**
-   * Xử lý platform discounts cho một shop cụ thể
-   */
-  private async processPlatformDiscountsForShop(
-    tx: any,
-    platformDiscounts: DiscountWithIncludes[],
-    shopOrderTotal: number,
-    userId: string
-  ): Promise<DiscountSnapshotData[]> {
-    if (platformDiscounts.length === 0) {
-      return []
-    }
-
-    const appliedPlatformDiscounts: DiscountSnapshotData[] = []
-
-    for (const discount of platformDiscounts) {
-      // Tính discount amount cho shop này
-      const discountAmount = calculateDiscountAmount(discount, shopOrderTotal)
-
-      // Chuẩn bị target info
-      const targetInfo = this.prepareDiscountTargetInfo(discount)
-
-      appliedPlatformDiscounts.push(prepareDiscountSnapshotData(discount, discountAmount, targetInfo))
-
-      // Update discount usage
-      await tx.discount.update({
-        where: { id: discount.id },
-        data: {
-          usesCount: { increment: 1 },
-          usersUsed: { push: userId }
-        }
-      })
-    }
-
-    return appliedPlatformDiscounts
-  }
-
-  /**
-   * Extract product info từ cart items
-   */
-  private extractProductInfo(cartItemIds: string[], cartItemMap: Map<string, CartItemWithDetails>) {
-    const productIds = cartItemIds.map((cartItemId) => {
-      const cartItem = cartItemMap.get(cartItemId)!
-      return cartItem.sku.product.id
-    })
-
-    const categoryIds = cartItemIds
-      .map((cartItemId) => {
-        const cartItem = cartItemMap.get(cartItemId)!
-        return cartItem.sku.product.categories.map((c) => c.id)
-      })
-      .flat()
-      .filter(Boolean)
-
-    const brandIds = cartItemIds
-      .map((cartItemId) => {
-        const cartItem = cartItemMap.get(cartItemId)!
-        return cartItem.sku.product.brand.id
-      })
-      .filter(Boolean)
-
-    return { productIds, categoryIds, brandIds }
-  }
-
-  /**
-   * Chuẩn bị discount target info
-   */
-  private prepareDiscountTargetInfo(discount: DiscountWithIncludes) {
-    return discount.discountApplyType === DiscountApplyType.SPECIFIC
-      ? {
-          productIds: discount.products.map((p) => p.id),
-          categoryIds: discount.categories.map((c) => c.id),
-          brandIds: discount.brands.map((b) => b.id)
-        }
-      : null
-  }
-
-  /**
-   * Tạo một order
+   * Tạo một order - Core business logic
    */
   private async createSingleOrder(
     tx: any,
     orderItem: any,
-    cartItemMap: Map<string, CartItemWithDetails>,
+    cartItemMap: Map<string, any>,
     paymentId: number,
     userId: string
   ) {
@@ -573,23 +262,9 @@ export class OrderRepo {
   }
 
   /**
-   * Tạo discount snapshots
+   * Cleanup cart và update stock - Core business logic
    */
-  private async createDiscountSnapshots(tx: any, appliedDiscounts: DiscountSnapshotData[], orderId: string) {
-    for (const discountData of appliedDiscounts) {
-      await tx.discountSnapshot.create({
-        data: {
-          ...discountData,
-          orderId
-        }
-      })
-    }
-  }
-
-  /**
-   * Cleanup cart và update stock
-   */
-  private async cleanupCartAndUpdateStock(tx: any, cartItemIds: string[], cartItems: CartItemWithDetails[]) {
+  private async cleanupCartAndUpdateStock(tx: any, cartItemIds: string[], cartItems: any[]) {
     // Xóa cart items
     await tx.cartItem.deleteMany({
       where: {
@@ -620,192 +295,8 @@ export class OrderRepo {
   }
 
   /**
-   * Validate và lấy discount info
+   * Lấy chi tiết order - Core CRUD
    */
-  async validateDiscounts(
-    discountCodes: string[],
-    userId: string
-  ): Promise<{
-    discounts: DiscountWithIncludes[]
-    userUsageMap: Map<string, number>
-  }> {
-    if (discountCodes.length === 0) {
-      return {
-        discounts: [],
-        userUsageMap: new Map()
-      }
-    }
-
-    // Lấy thông tin tất cả discounts một lần
-    const discounts = await this.prismaService.discount.findMany({
-      where: { code: { in: discountCodes } },
-      include: {
-        products: { select: { id: true } },
-        categories: { select: { id: true } },
-        brands: { select: { id: true } }
-      }
-    })
-
-    if (discounts.length !== discountCodes.length) {
-      const foundCodes = discounts.map((d) => d.code)
-      const missingCodes = discountCodes.filter((code) => !foundCodes.includes(code))
-      throw new BadRequestException(`Mã voucher không tồn tại: ${missingCodes.join(', ')}`)
-    }
-
-    // Lấy thông tin usage count một lần để tránh N+1 queries
-    const userDiscountUsage = await this.prismaService.discountSnapshot.groupBy({
-      by: ['discountId'],
-      where: {
-        discountId: { in: discounts.map((d) => d.id) },
-        order: { userId }
-      },
-      _count: { discountId: true }
-    })
-
-    const userUsageMap = new Map(
-      userDiscountUsage
-        .filter((item) => item.discountId !== null)
-        .map((item) => [item.discountId!, item._count.discountId])
-    )
-
-    return { discounts, userUsageMap }
-  }
-
-  /**
-   * Lấy order shipping info
-   */
-  async getOrderShipping(orderId: string) {
-    return this.prismaService.orderShipping.findUnique({
-      where: { orderId }
-    })
-  }
-
-  /**
-   * Lấy shop info với address để tạo shipping
-   */
-  async getShopWithAddress(shopId: string) {
-    const shopData = await this.prismaService.user.findUnique({
-      where: { id: shopId }
-    })
-
-    if (!shopData) {
-      throw NotFoundRecordException
-    }
-
-    // Lấy shop address từ UserAddress
-    const shopUserAddress = await this.prismaService.userAddress.findFirst({
-      where: { userId: shopId },
-      include: { address: true }
-    })
-
-    if (!shopUserAddress || !shopUserAddress.address) {
-      throw NotFoundRecordException
-    }
-
-    return {
-      shop: shopData,
-      address: shopUserAddress.address
-    }
-  }
-
-  /**
-   * Tạo OrderShipping record
-   */
-  async createOrderShipping(data: {
-    orderId: string
-    serviceId?: number
-    serviceTypeId?: number
-    configFeeId?: string
-    extraCostId?: string
-    weight?: number
-    length?: number
-    width?: number
-    height?: number
-    shippingFee: number
-    codAmount: number
-    note?: string
-    requiredNote?: string
-    pickShift?: any
-    status?: OrderShippingStatusType
-    fromAddress: string
-    fromName: string
-    fromPhone: string
-    fromProvinceName: string
-    fromDistrictName: string
-    fromWardName: string
-    fromDistrictId: number
-    fromWardCode: string
-    toAddress: string
-    toName: string
-    toPhone: string
-    toDistrictId: number
-    toWardCode: string
-  }) {
-    return this.prismaService.orderShipping.create({
-      data: {
-        orderId: data.orderId,
-        serviceId: data.serviceId,
-        serviceTypeId: data.serviceTypeId,
-        configFeeId: data.configFeeId,
-        extraCostId: data.extraCostId,
-        weight: data.weight,
-        length: data.length,
-        width: data.width,
-        height: data.height,
-        shippingFee: data.shippingFee,
-        codAmount: data.codAmount,
-        expectedDeliveryTime: null,
-        trackingUrl: null,
-        status: data.status,
-        note: data.note,
-        requiredNote: data.requiredNote,
-        pickShift: data.pickShift,
-        attempts: 0,
-        lastError: null,
-        fromAddress: data.fromAddress,
-        fromName: data.fromName,
-        fromPhone: data.fromPhone,
-        fromProvinceName: data.fromProvinceName,
-        fromDistrictName: data.fromDistrictName,
-        fromWardName: data.fromWardName,
-        fromDistrictId: data.fromDistrictId,
-        fromWardCode: data.fromWardCode,
-        toAddress: data.toAddress,
-        toName: data.toName,
-        toPhone: data.toPhone,
-        toDistrictId: data.toDistrictId,
-        toWardCode: data.toWardCode
-      }
-    })
-  }
-
-  /**
-   * Cập nhật trạng thái OrderShipping
-   */
-  async updateOrderShippingStatus(orderId: string, status: OrderShippingStatusType) {
-    return this.prismaService.orderShipping.update({
-      where: { orderId },
-      data: { status }
-    })
-  }
-
-  /**
-   * Lấy GHN order code từ order ID
-   */
-  async getGHNOrderCode(orderId: string): Promise<string | null> {
-    const orderShipping = await this.prismaService.orderShipping.findUnique({
-      where: { orderId },
-      select: { orderCode: true, status: true }
-    })
-
-    // Chỉ trả về orderCode nếu shipping đã được tạo thành công
-    if (orderShipping?.status === 'CREATED' && orderShipping.orderCode) {
-      return orderShipping.orderCode
-    }
-
-    return null
-  }
-
   async detail(userId: string, orderid: string): Promise<GetOrderDetailResType> {
     const order = await this.prismaService.order.findUnique({
       where: {
@@ -814,30 +305,30 @@ export class OrderRepo {
         deletedAt: null
       },
       include: {
-        items: true,
-        discounts: true
+        items: true
       }
     })
     if (!order) {
       throw OrderNotFoundException
     }
 
-    // Tính toán giá trị cuối cùng
+    // Tính toán giá trị cơ bản (không có shipping/discount)
     const totalPayment = order.items.reduce((sum, item) => sum + item.skuPrice * item.quantity, 0)
-    const totalVoucherDiscount = order.discounts.reduce((sum, discount) => sum + discount.discountAmount, 0)
-    const totalOrderPayment = Math.max(0, totalPayment - totalVoucherDiscount)
 
     return {
       data: {
         ...order,
         totalItemCost: totalPayment,
         totalShippingFee: 0,
-        totalVoucherDiscount: -totalVoucherDiscount,
-        totalPayment: totalOrderPayment
+        totalVoucherDiscount: 0,
+        totalPayment: totalPayment
       }
     }
   }
 
+  /**
+   * Hủy order - Core CRUD
+   */
   async cancel(userId: string, orderId: string): Promise<CancelOrderResType> {
     try {
       const order = await this.prismaService.order.findUniqueOrThrow({
@@ -873,13 +364,13 @@ export class OrderRepo {
   }
 
   /**
-   * Validate cart items và trả về cartItemMap
+   * Validate cart items và trả về cartItemMap - Core business logic
    */
   private validateCartItems(
-    cartItems: CartItemWithDetails[],
+    cartItems: any[],
     allBodyCartItemIds: string[],
     shops: CreateOrderBodyType['shops']
-  ): Map<string, CartItemWithDetails> {
+  ): Map<string, any> {
     // 1. Kiểm tra xem tất cả cartItemIds có tồn tại trong cơ sở dữ liệu hay không
     if (cartItems.length !== allBodyCartItemIds.length) {
       throw NotFoundCartItemException
@@ -905,7 +396,7 @@ export class OrderRepo {
     }
 
     // 4. Kiểm tra xem các skuId trong cartItem gửi lên có thuộc về shopid gửi lên không
-    const cartItemMap = new Map<string, CartItemWithDetails>()
+    const cartItemMap = new Map<string, any>()
     cartItems.forEach((item) => {
       cartItemMap.set(item.id, item)
     })

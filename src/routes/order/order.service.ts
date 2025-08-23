@@ -1,31 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { CreateOrderBodyType, GetOrderListQueryType } from 'src/routes/order/order.model'
 import { OrderRepo } from 'src/routes/order/order.repo'
+import { SharedOrderRepository } from 'src/shared/repositories/shared-order.repo'
+import { SharedDiscountRepository } from 'src/shared/repositories/shared-discount.repo'
+import { SharedShippingRepository } from 'src/shared/repositories/shared-shipping.repo'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
-import { PricingService } from 'src/shared/services/pricing.service'
 import { ShippingProducer } from 'src/shared/queue/producer/shipping.producer'
 import { GHN_PAYMENT_TYPE } from 'src/shared/constants/shipping.constants'
 import { OrderShippingStatus } from 'src/shared/constants/order-shipping.constants'
-import {
-  DiscountUsageLimitExceededException,
-  DiscountNotApplicableException,
-  DiscountExpiredException
-} from 'src/routes/discount/discount.error'
 import { normalizePhoneForGHN } from 'src/shared/helpers'
-import { RedisService } from 'src/shared/services/redis.service'
-import { Cacheable, CacheEvict } from 'src/shared/decorators/cacheable.decorator'
+import { PricingService } from 'src/shared/services/pricing.service'
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name)
 
   constructor(
     private readonly orderRepo: OrderRepo,
+    private readonly sharedOrderRepo: SharedOrderRepository,
+    private readonly sharedDiscountRepo: SharedDiscountRepository,
+    private readonly sharedShippingRepo: SharedShippingRepository,
     private readonly i18n: I18nService<I18nTranslations>,
-    private readonly pricingService: PricingService,
     private readonly shippingProducer: ShippingProducer,
-    private readonly redisService: RedisService
+    private readonly pricingService: PricingService
   ) {}
 
   async list(user: AccessTokenPayload, query: GetOrderListQueryType) {
@@ -48,34 +46,35 @@ export class OrderService {
     const allDiscountCodes = [...shopDiscountCodes, ...platformDiscountCodes]
 
     if (allDiscountCodes.length > 0) {
-      // Validate tất cả discounts thông qua Repository
-      const discountInfo = await this.orderRepo.validateDiscounts(allDiscountCodes, user.userId)
+      // Validate tất cả discounts thông qua SharedDiscountRepository
+      const discountInfo = await this.sharedDiscountRepo.validateDiscountsForOrder(allDiscountCodes, user.userId)
       const { discounts, userUsageMap } = discountInfo
 
       for (const discount of discounts) {
         // Kiểm tra trạng thái và thời gian
         if (discount.discountStatus !== 'ACTIVE') {
-          throw DiscountNotApplicableException
+          throw new Error('Discount not applicable')
         }
 
         const now = new Date()
         if (now < discount.startDate || now > discount.endDate) {
-          throw DiscountExpiredException
+          throw new Error('Discount expired')
         }
 
         // Kiểm tra maxUses
         if (discount.maxUses > 0 && discount.usesCount >= discount.maxUses) {
-          throw DiscountUsageLimitExceededException
+          throw new Error('Discount usage limit exceeded')
         }
 
         // Kiểm tra maxUsesPerUser
         if (discount.maxUsesPerUser && discount.maxUsesPerUser > 0) {
           const usedCount = userUsageMap.get(discount.id) || 0
-          if (usedCount >= discount.maxUsesPerUser) throw DiscountUsageLimitExceededException
+          if (usedCount >= discount.maxUsesPerUser) throw new Error('Discount usage limit exceeded')
         }
       }
     }
 
+    // Tính toán pricing với discounts
     const calc = await this.pricingService.tinhTamTinhDonHang(user, {
       shops: body.shops.map((s) => ({
         shopId: s.shopId,
@@ -93,15 +92,16 @@ export class OrderService {
       })
     )
 
-    const result = await this.orderRepo.create(user.userId, body.shops, body.platformDiscountCodes)
+    // Tạo order đơn giản (không có discount logic)
+    const result = await this.orderRepo.create(user.userId, body.shops)
 
     await Promise.all(
       result.orders.map(async (order) => {
         const shop = body.shops.find((s) => s.shopId === order.shopId)
         if (!shop?.shippingInfo) return
 
-        // Lấy shop info với address từ Repository
-        const shopInfo = await this.orderRepo.getShopWithAddress(shop.shopId)
+        // Lấy shop info với address từ Shared Shipping Repository
+        const shopInfo = await this.sharedShippingRepo.getShopAddressForShipping(shop.shopId)
         const { shop: shopData, address: shopAddressRecord } = shopInfo
 
         const info = shop.shippingInfo
@@ -111,7 +111,7 @@ export class OrderService {
         const codAmount = isCod ? (shopPayment?.payment ?? 0) : 0
 
         // Tạo OrderShipping record với trạng thái DRAFT để lưu thông tin shipping
-        const orderShipping = await this.orderRepo.createOrderShipping({
+        const orderShipping = await this.sharedShippingRepo.createOrderShipping({
           orderId: order.id,
           serviceId: info.service_id,
           serviceTypeId: info.service_type_id,
@@ -190,7 +190,7 @@ export class OrderService {
             })
 
             // Cập nhật trạng thái OrderShipping thành ENQUEUED
-            await this.orderRepo.updateOrderShippingStatus(order.id, OrderShippingStatus.ENQUEUED)
+            await this.sharedShippingRepo.updateOrderShippingStatus(order.id, OrderShippingStatus.ENQUEUED)
           } catch (error) {
             console.error('Failed to enqueue COD shipping order:', error)
           }
@@ -220,8 +220,8 @@ export class OrderService {
     // Lấy shipping info từ OrderShipping
     if (result.data) {
       const [orderShipping, ghnOrderCode] = await Promise.all([
-        this.orderRepo.getOrderShipping(result.data.id),
-        this.orderRepo.getGHNOrderCode(result.data.id)
+        this.sharedShippingRepo.getOrderShippingInfo(result.data.id),
+        this.sharedShippingRepo.getGHNOrderCode(result.data.id)
       ])
 
       if (orderShipping && orderShipping.shippingFee !== null) {

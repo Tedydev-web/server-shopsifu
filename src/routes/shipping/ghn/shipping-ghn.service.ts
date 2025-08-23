@@ -2,6 +2,7 @@ import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { Ghn } from 'giaohangnhanh'
+import { SharedOrderRepository } from 'src/shared/repositories/shared-order.repo'
 import {
   GetProvincesResType,
   GetDistrictsResType,
@@ -37,9 +38,10 @@ export class ShippingService {
   private readonly logger = new Logger(ShippingService.name)
 
   constructor(
-    private readonly i18n: I18nService<I18nTranslations>,
+    private readonly i18n: I18nService,
     @Inject(GHN_CLIENT) private readonly ghnService: Ghn,
-    private readonly shippingRepo: ShippingRepo
+    private readonly shippingRepo: ShippingRepo,
+    private readonly sharedOrderRepo: SharedOrderRepository
   ) {}
 
   /**
@@ -334,6 +336,12 @@ export class ShippingService {
       // Kiểm tra trạng thái shipping - chỉ lấy thông tin khi đã tạo GHN order thành công
       if (shipping.status !== 'CREATED' || !shipping.orderCode) {
         throw new BadRequestException('Shipping order not ready - GHN order not created yet')
+      }
+
+      // Lấy thông tin order để validate
+      const order = await this.sharedOrderRepo.getOrderWithShippingForGHN(shipping.orderId)
+      if (!order) {
+        throw new BadRequestException('Order not found')
       }
 
       // Gọi API GHN để lấy thông tin đơn hàng
