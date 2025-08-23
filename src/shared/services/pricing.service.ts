@@ -140,9 +140,62 @@ export class PricingService {
             endDate: { gte: new Date() },
             deletedAt: null,
             isPlatform: true
+          },
+          include: {
+            products: { select: { id: true } },
+            categories: { select: { id: true } },
+            brands: { select: { id: true } }
           }
         })
-        platformVoucherAbs = discounts.map((d) => calculateDiscountAmount(d as any, sumItem)).reduce((s, v) => s + v, 0)
+
+        if (discounts.length > 0) {
+          // Lấy thông tin cart items để validate discount eligibility
+          const allProductIds = allCartItemIds.map((id) => cartItemMap.get(id)?.sku.product.id).filter(Boolean)
+          const allCategoryIds = allCartItemIds
+            .flatMap((id) => {
+              const item = cartItemMap.get(id)
+              return item?.sku.product.categories.map((c) => c.id) || []
+            })
+            .filter(Boolean)
+          const allBrandIds = allCartItemIds
+            .map((id) => {
+              const item = cartItemMap.get(id)
+              return item?.sku.product.brand?.id
+            })
+            .filter(Boolean)
+
+          // Validate và filter platform discounts
+          const validPlatformDiscounts = discounts.filter((discount) => {
+            // Kiểm tra minOrderValue
+            if (discount.minOrderValue > 0 && sumItem < discount.minOrderValue) {
+              return false
+            }
+
+            // Kiểm tra discountApplyType SPECIFIC
+            if (discount.discountApplyType === 'SPECIFIC') {
+              const hasValidProduct =
+                discount.products.length > 0 &&
+                allProductIds.some((productId) => discount.products.some((p) => p.id === productId))
+              const hasValidCategory =
+                discount.categories.length > 0 &&
+                allCategoryIds.some((categoryId) => discount.categories.some((c) => c.id === categoryId))
+              const hasValidBrand =
+                discount.brands.length > 0 &&
+                allBrandIds.some((brandId) => discount.brands.some((b) => b.id === brandId))
+
+              if (!hasValidProduct && !hasValidCategory && !hasValidBrand) {
+                return false
+              }
+            }
+
+            return true
+          })
+
+          // Tính toán platform discount amount
+          platformVoucherAbs = validPlatformDiscounts
+            .map((d) => calculateDiscountAmount(d as any, sumItem))
+            .reduce((sum, amount) => sum + amount, 0)
+        }
       }
 
       // Phân bổ voucher nền tảng theo tỷ lệ giá trị hàng mỗi shop

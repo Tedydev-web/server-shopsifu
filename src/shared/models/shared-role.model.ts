@@ -9,9 +9,9 @@ export const RoleSchema = z.object({
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),
   deletedById: z.string().nullable(),
-  deletedAt: z.date().nullable(),
-  createdAt: z.date(),
-  updatedAt: z.date()
+  deletedAt: z.union([z.string(), z.date()]).nullable(),
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()])
 })
 
 export const RolePermissionsSchema = RoleSchema.extend({

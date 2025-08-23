@@ -30,8 +30,8 @@ export const EsProductDocumentSchema = z.object({
   specifications: z.any().optional(),
   variants: z.any().optional(),
   attrs: z.array(EsAttributeSchema),
-  createdAt: z.date(),
-  updatedAt: z.date()
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()])
 })
 
 export type EsProductDocumentType = z.infer<typeof EsProductDocumentSchema>

@@ -84,7 +84,7 @@ export const GetUserStatisticsResSchema = z.object({
   data: z.object({
     totalOrders: z.number(),
     totalSpent: z.number(),
-    memberSince: z.date()
+    memberSince: z.union([z.string(), z.date()])
   })
 })
 

@@ -7,7 +7,7 @@ export const ReviewMediaSchema = z.object({
   url: z.string().max(1000),
   type: z.nativeEnum(MediaType),
   reviewId: z.string(),
-  createdAt: z.date()
+  createdAt: z.union([z.string(), z.date()])
 })
 
 export const ReviewSchema = z.object({
@@ -18,8 +18,8 @@ export const ReviewSchema = z.object({
   productId: z.string(),
   userId: z.string(),
   updateCount: z.number().int(),
-  createdAt: z.date(),
-  updatedAt: z.date()
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()])
 })
 
 export const CreateReviewBodySchema = ReviewSchema.pick({

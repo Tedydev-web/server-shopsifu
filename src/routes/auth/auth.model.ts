@@ -34,8 +34,8 @@ export const VerificationCodeSchema = z.object({
   email: z.string().email(),
   code: z.string().length(6),
   type: z.nativeEnum(TypeOfVerificationCode),
-  expiresAt: z.date(),
-  createdAt: z.date()
+  expiresAt: z.union([z.string(), z.date()]),
+  createdAt: z.union([z.string(), z.date()])
 })
 
 export const SendOTPBodySchema = VerificationCodeSchema.pick({
@@ -83,8 +83,8 @@ export const DeviceSchema = z.object({
   userId: z.string(),
   userAgent: z.string(),
   ip: z.string(),
-  lastActive: z.date(),
-  createdAt: z.date(),
+  lastActive: z.union([z.string(), z.date()]),
+  createdAt: z.union([z.string(), z.date()]),
   isActive: z.boolean()
 })
 
@@ -92,8 +92,8 @@ export const RefreshTokenSchema = z.object({
   token: z.string(),
   userId: z.string(),
   deviceId: z.string(),
-  expiresAt: z.date(),
-  createdAt: z.date()
+  expiresAt: z.union([z.string(), z.date()]),
+  createdAt: z.union([z.string(), z.date()])
 })
 
 export const LogoutBodySchema = RefreshTokenSchema
