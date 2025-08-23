@@ -18,21 +18,32 @@ export default registerAs('redis', (): Record<string, any> => {
   const commonRedisOptions = {
     lazyConnect: false,
     connectionName: config.connectionName || 'shopsifu-main',
-    connectTimeout: 10000,
-    commandTimeout: 8000,
-    keepAlive: 30000,
-    retryDelayOnFailover: 200,
-    retryDelayOnClusterDown: 300,
-    retryDelayOnTryAgain: 100,
-    autoResubscribe: true,
-    autoResendUnfulfilledCommands: true,
-    reconnectOnError: (err) => {
-      const targetError = 'READONLY'
-      if (err.message.includes(targetError)) {
-        return true
-      }
 
-      if (err.message.includes('Connection is closed') || err.message.includes('Socket closed unexpectedly')) {
+    connectTimeout: 20000,
+    commandTimeout: 15000,
+    keepAlive: 60000,
+
+    retryDelayOnFailover: 500,
+    retryDelayOnClusterDown: 1000,
+    retryDelayOnTryAgain: 300,
+    maxRetriesPerRequest: null,
+
+    autoResubscribe: true,
+    autoResendUnfulfilledCommands: false,
+
+    reconnectOnError: (err) => {
+      const errorMsg = err.message.toLowerCase()
+
+      if (
+        errorMsg.includes('socket') ||
+        errorMsg.includes('connection') ||
+        errorMsg.includes('econnreset') ||
+        errorMsg.includes('epipe') ||
+        errorMsg.includes('readonly') ||
+        errorMsg.includes('noscript') ||
+        err.code === 'NR_CLOSED'
+      ) {
+        console.log(`🔄 Redis auto-reconnect: ${err.message}`)
         return true
       }
       return false
@@ -41,10 +52,12 @@ export default registerAs('redis', (): Record<string, any> => {
     family: 4,
     enableReadyCheck: true,
     enableOfflineQueue: true,
-    maxLoadingTimeout: 10000,
+    maxLoadingTimeout: 20000,
 
-    maxRetriesPerRequest: 5,
-    showFriendlyErrorStack: process.env.NODE_ENV === 'development'
+    showFriendlyErrorStack: true,
+
+    dropBufferSupport: false,
+    enableAutoPipelining: true
   }
 
   const redis = config.url
@@ -57,8 +70,23 @@ export default registerAs('redis', (): Record<string, any> => {
         ...commonRedisOptions
       })
 
-  redis.on('error', (error) => {
-    console.error('❌ Redis connection error:', error.message)
+  redis.on('error', (error: any) => {
+    if (error.message?.includes('NOSCRIPT')) {
+      return
+    }
+
+    if (
+      error.message?.includes('Socket closed unexpectedly') ||
+      error.message?.includes('Connection is closed') ||
+      error.code === 'ECONNRESET' ||
+      error.code === 'EPIPE'
+    ) {
+      return
+    }
+
+    if (!error.message?.includes('timeout') && !error.message?.includes('connect')) {
+      console.error('❌ Redis critical error:', error.message)
+    }
   })
 
   redis.on('connect', () => {
@@ -69,17 +97,15 @@ export default registerAs('redis', (): Record<string, any> => {
     console.log('✅ Redis ready for commands')
   })
 
-  redis.on('close', () => {
-    console.log('⚠️ Redis connection closed')
-  })
+  redis.on('close', () => {})
 
   redis.on('reconnecting', (delay) => {
-    console.log(`🔄 Redis reconnecting in ${delay}ms`)
+    if (delay > 1000) {
+      console.log(`🔄 Redis reconnecting in ${delay}ms`)
+    }
   })
 
-  redis.on('end', () => {
-    console.log('🔌 Redis connection ended')
-  })
+  redis.on('end', () => {})
 
   const redlock = new Redlock([redis], {
     retryCount: 10,

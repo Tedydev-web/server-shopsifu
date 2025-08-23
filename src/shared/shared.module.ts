@@ -61,7 +61,7 @@ const sharedServices = [
   PaymentConsumer,
   ShippingConsumer,
   PricingService,
-  RedisHealthService,
+  RedisHealthService
 ]
 
 @Global()
@@ -95,7 +95,6 @@ const sharedServices = [
   ],
   exports: [...sharedServices, GHN_CLIENT],
   imports: [
-
     ConfigModule.forRoot({
       load: configs,
       isGlobal: true,
@@ -110,9 +109,7 @@ const sharedServices = [
       useFactory: createLoggerConfig
     }),
 
-
     ScheduleModule.forRoot(),
-
 
     I18nModule.forRoot({
       fallbackLanguage: 'en',
@@ -137,7 +134,6 @@ const sharedServices = [
       inject: [ConfigService]
     }),
 
-
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
@@ -150,57 +146,70 @@ const sharedServices = [
             host: configService.get('redis.host'),
             port: Number(configService.get('redis.port')),
             ...(isPasswordProvided ? { password } : {}),
-            connectTimeout: 8000,
-            commandTimeout: 6000,
-            lazyConnect: false,
-            maxRetriesPerRequest: 5,
-            retryDelayOnFailover: 200,
-            autoResubscribe: true,
-            autoResendUnfulfilledCommands: true,
-            keepAlive: 30000,
-            family: 4,
 
+            connectTimeout: 20000,
+            commandTimeout: 15000,
+            lazyConnect: false,
+            maxRetriesPerRequest: null,
+            retryDelayOnFailover: 500,
+
+            autoResubscribe: true,
+            autoResendUnfulfilledCommands: false,
+            keepAlive: 60000,
+            family: 4,
             enableReadyCheck: true,
             enableOfflineQueue: true,
-            maxLoadingTimeout: 8000,
-
+            maxLoadingTimeout: 20000,
             db: 0,
+
+            enableAutoPipelining: true,
+
+            reconnectOnError: (err: any) => {
+              if (
+                err.message.includes('Socket closed') ||
+                err.message.includes('ECONNRESET') ||
+                err.message.includes('EPIPE') ||
+                err.message.includes('NOSCRIPT') ||
+                err.message.includes('timeout') ||
+                err.message.includes('Connection is closed')
+              ) {
+                return true
+              }
+              return false
+            }
           },
 
           defaultJobOptions: {
-            removeOnComplete: 100,
-            removeOnFail: 50,
-            attempts: 3,
+            removeOnComplete: 50,
+            removeOnFail: 25,
+            attempts: 5,
             backoff: {
               type: 'exponential',
-              delay: 2000
-            }
+              delay: 3000
+            },
+            delay: 1000
           },
 
           worker: {
             concurrency: 1,
-            maxStalledCount: 1
+            maxStalledCount: 3
           }
         }
       },
       inject: [ConfigService]
     }),
 
-
     BullModule.registerQueue({
       name: PAYMENT_QUEUE_NAME
     }),
-
 
     BullModule.registerQueue({
       name: SHIPPING_QUEUE_NAME
     }),
 
-
     BullModule.registerQueue({
       name: SEARCH_SYNC_QUEUE_NAME
     }),
-
 
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
