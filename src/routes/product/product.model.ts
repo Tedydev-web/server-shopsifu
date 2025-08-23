@@ -76,6 +76,7 @@ export const ProductListItemSchema = z.object({
   basePrice: z.number(),
   virtualPrice: z.number(),
   images: z.array(z.string()),
+  publishedAt: z.union([z.string(), z.date()]).nullable(),
   createdAt: z.union([z.string(), z.date()]),
   updatedAt: z.union([z.string(), z.date()]),
   productTranslations: z.array(

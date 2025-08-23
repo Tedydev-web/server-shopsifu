@@ -120,6 +120,7 @@ export class ProductRepo {
           basePrice: true,
           virtualPrice: true,
           images: true,
+          publishedAt: true,
           createdAt: true,
           updatedAt: true,
           productTranslations: {
