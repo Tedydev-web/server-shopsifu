@@ -34,20 +34,17 @@ export const ServiceSchema = z.object({
 })
 
 export const CalculateShippingFeeSchema = z.object({
-  to_district_id: z.number(),
-  to_ward_code: z.string(),
   height: z.number().positive(),
   weight: z.number().positive(),
   length: z.number().positive(),
   width: z.number().positive(),
   service_type_id: z.number().optional(),
   service_id: z.number().optional(),
-  from_district_id: z.number().optional(),
-  from_ward_code: z.string().optional(),
   insurance_value: z.number().optional(),
   coupon: z.string().optional(),
   cod_failed_amount: z.number().optional(),
-  cod_value: z.number().optional()
+  cod_value: z.number().optional(),
+  cartItemIds: z.array(z.string()).optional()
 })
 
 export const CalculateShippingFeeResponseSchema = z.object({
@@ -99,16 +96,19 @@ export const GetWardsQuerySchema = z.object({
 })
 
 export const GetServiceListQuerySchema = z.object({
-  fromDistrictId: z.coerce.number().int().positive(),
-  toDistrictId: z.coerce.number().int().positive()
+  cartItemIds: z
+    .preprocess((value) => {
+      if (typeof value === 'string') {
+        return [value]
+      }
+      return value
+    }, z.array(z.string()))
+    .optional() // ✅ cartItemIds để xác định shop và user address
 })
 
 export const CalculateExpectedDeliveryTimeSchema = z.object({
   service_id: z.number(),
-  to_district_id: z.number(),
-  to_ward_code: z.string(),
-  from_district_id: z.number(),
-  from_ward_code: z.string()
+  cartItemIds: z.array(z.string()).optional() // ✅ cartItemIds để xác định shop và user address
 })
 
 export const CalculateExpectedDeliveryTimeResSchema = z.object({

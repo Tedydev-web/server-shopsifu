@@ -19,9 +19,9 @@ export const OrderSchema = z.object({
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),
   deletedById: z.string().nullable(),
-  deletedAt: z.date().nullable(),
-  createdAt: z.date(),
-  updatedAt: z.date()
+  deletedAt: z.union([z.string(), z.date()]).nullable(),
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()])
 })
 
 export const ProductSKUSnapshotSchema = z.object({
@@ -43,7 +43,7 @@ export const ProductSKUSnapshotSchema = z.object({
   orderId: z.string().nullable(),
   quantity: z.number(),
 
-  createdAt: z.date()
+  createdAt: z.union([z.string(), z.date()])
 })
 
 /**
@@ -66,8 +66,8 @@ export const DiscountSnapshotSchema = z.object({
   targetInfo: z.any().nullable(), // { productIds: string[], categoryIds: string[], brandIds: string[] }
   discountId: z.string().nullable(),
   orderId: z.string().nullable(),
-  createdAt: z.date(),
-  updatedAt: z.date()
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()])
 })
 
 export const OrderIncludeProductSKUSnapshotAndDiscountSchema = OrderSchema.extend({

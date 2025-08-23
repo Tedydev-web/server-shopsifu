@@ -1,6 +1,8 @@
 import { Controller, Get, Query, Post, Body } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { ShippingService } from './shipping-ghn.service'
 import {
   GetProvincesResDTO,
@@ -50,22 +52,28 @@ export class ShippingController {
   @Get('services')
   @IsPublic()
   @ZodSerializerDto(GetServiceListResDTO)
-  getServiceList(@Query() query: GetServiceListQueryDTO) {
-    return this.shippingService.getServiceList(query)
+  getServiceList(@Query() query: GetServiceListQueryDTO, @ActiveUser() user?: AccessTokenPayload) {
+    // 🎯 Auto-detection: Truyền user context để tự động detect địa chỉ
+    return this.shippingService.getServiceList(query, user)
   }
 
   @Post('calculate-fee')
   @IsPublic()
   @ZodSerializerDto(CalculateShippingFeeResDTO)
-  calculateShippingFee(@Body() data: CalculateShippingFeeDTO) {
-    return this.shippingService.calculateShippingFee(data)
+  calculateShippingFee(@Body() data: CalculateShippingFeeDTO, @ActiveUser() user?: AccessTokenPayload) {
+    // 🎯 Auto-detection: Truyền user context để tự động detect địa chỉ
+    return this.shippingService.calculateShippingFee(data, user)
   }
 
   @Post('delivery-time')
   @IsPublic()
   @ZodSerializerDto(CalculateExpectedDeliveryTimeResDTO)
-  calculateExpectedDeliveryTime(@Body() data: CalculateExpectedDeliveryTimeDTO) {
-    return this.shippingService.calculateExpectedDeliveryTime(data)
+  calculateExpectedDeliveryTime(
+    @Body() data: CalculateExpectedDeliveryTimeDTO,
+    @ActiveUser() user?: AccessTokenPayload
+  ) {
+    // 🎯 Auto-detection: Truyền user context để tự động detect địa chỉ
+    return this.shippingService.calculateExpectedDeliveryTime(data, user)
   }
 
   @Post('webhook/order-status')

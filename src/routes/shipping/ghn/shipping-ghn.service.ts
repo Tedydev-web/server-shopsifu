@@ -1,8 +1,8 @@
 import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
-import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { Ghn } from 'giaohangnhanh'
 import { SharedOrderRepository } from 'src/shared/repositories/shared-order.repo'
+import { PrismaService } from 'src/shared/services/prisma.service'
 import {
   GetProvincesResType,
   GetDistrictsResType,
@@ -32,6 +32,7 @@ import {
 import { GHN_CLIENT } from 'src/shared/constants/shipping.constants'
 import { ShippingRepo } from './shipping-ghn.repo'
 import { OrderShippingStatusType } from 'src/shared/constants/order-shipping.constants'
+import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class ShippingService {
@@ -41,12 +42,155 @@ export class ShippingService {
     private readonly i18n: I18nService,
     @Inject(GHN_CLIENT) private readonly ghnService: Ghn,
     private readonly shippingRepo: ShippingRepo,
-    private readonly sharedOrderRepo: SharedOrderRepository
+    private readonly sharedOrderRepo: SharedOrderRepository,
+    private readonly prismaService: PrismaService
   ) {}
 
   /**
-   * Lấy danh sách tỉnh/thành phố
+   * Auto-detect địa chỉ từ cartItemIds và user context
    */
+  private async detectUserAddresses(
+    user?: AccessTokenPayload,
+    cartItemIds?: string[]
+  ): Promise<{
+    fromDistrictId: number
+    fromWardCode: string
+    toDistrictId: number
+    toWardCode: string
+  }> {
+    try {
+      if (!user?.userId) {
+        throw new BadRequestException('User authentication required for auto-detection')
+      }
+
+      // Lấy địa chỉ mặc định của user
+      const userAddress = await this.prismaService.userAddress.findFirst({
+        where: {
+          userId: user.userId,
+          isDefault: true
+        },
+        include: { address: true }
+      })
+
+      if (!userAddress || !userAddress.address) {
+        throw new BadRequestException('User default address not found')
+      }
+
+      // Tìm shop address theo thứ tự ưu tiên
+      const shopAddress = await this.findShopAddress(user.userId, cartItemIds)
+
+      if (!shopAddress) {
+        throw new BadRequestException('Không thể xác định địa chỉ shop. Vui lòng truyền cartItemIds.')
+      }
+
+      return {
+        fromDistrictId: shopAddress.address.districtId || 0,
+        fromWardCode: shopAddress.address.wardCode || '',
+        toDistrictId: userAddress.address.districtId || 0,
+        toWardCode: userAddress.address.wardCode || ''
+      }
+    } catch (error) {
+      this.logger.error('Failed to detect user addresses:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Tìm shop address theo thứ tự ưu tiên
+   */
+  private async findShopAddress(userId: string, cartItemIds?: string[]): Promise<any> {
+    // Logic 1: Tìm từ cartItemIds được truyền vào (chính xác nhất)
+    if (cartItemIds && cartItemIds.length > 0) {
+      const cartItems = await this.prismaService.cartItem.findMany({
+        where: {
+          id: { in: cartItemIds },
+          userId: userId
+        },
+        include: {
+          sku: {
+            include: {
+              product: {
+                include: { createdBy: true }
+              }
+            }
+          }
+        },
+        take: 1
+      })
+
+      if (cartItems.length > 0) {
+        const shopId = cartItems[0]?.sku?.product?.createdBy?.id
+        if (shopId) {
+          const shopUserAddress = await this.prismaService.userAddress.findFirst({
+            where: { userId: shopId, isDefault: true },
+            include: { address: true }
+          })
+          if (shopUserAddress?.address) {
+            return { address: shopUserAddress.address }
+          }
+        }
+      }
+    }
+
+    // Logic 2: Fallback - Tìm từ cart items hiện tại của user
+    const cartItems = await this.prismaService.cartItem.findMany({
+      where: { userId: userId },
+      include: {
+        sku: {
+          include: {
+            product: {
+              include: { createdBy: true }
+            }
+          }
+        }
+      },
+      take: 1
+    })
+
+    if (cartItems.length > 0) {
+      const shopId = cartItems[0]?.sku?.product?.createdBy?.id
+      if (shopId) {
+        const shopUserAddress = await this.prismaService.userAddress.findFirst({
+          where: { userId: shopId, isDefault: true },
+          include: { address: true }
+        })
+        if (shopUserAddress?.address) {
+          return { address: shopUserAddress.address }
+        }
+      }
+    }
+
+    // Logic 3: Fallback - Tìm từ orders gần nhất
+    const recentOrder = await this.prismaService.order.findFirst({
+      where: { userId: userId },
+      include: { shop: true },
+      orderBy: { createdAt: 'desc' }
+    })
+
+    if (recentOrder?.shopId) {
+      const shopUserAddress = await this.prismaService.userAddress.findFirst({
+        where: { userId: recentOrder.shopId, isDefault: true },
+        include: { address: true }
+      })
+      if (shopUserAddress?.address) {
+        return { address: shopUserAddress.address }
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Xử lý error chung cho GHN API calls
+   */
+  private handleGHNError(error: any, context: string, specificExceptions: any[] = []): never {
+    if (specificExceptions.includes(error)) {
+      throw error
+    }
+    this.logger.error(`GHN API error in ${context}:`, error)
+    throw ShippingServiceUnavailableException
+  }
+
   async getProvinces(): Promise<GetProvincesResType> {
     try {
       const provinces = await this.ghnService.address.getProvinces()
@@ -56,14 +200,10 @@ export class ShippingService {
         data: provinces
       }
     } catch (error) {
-      this.logger.error('Failed to get provinces from GHN:', error)
-      throw ShippingServiceUnavailableException
+      this.handleGHNError(error, 'getProvinces')
     }
   }
 
-  /**
-   * Lấy danh sách quận/huyện theo tỉnh/thành phố
-   */
   async getDistricts(query: GetDistrictsQueryType): Promise<GetDistrictsResType> {
     try {
       const { provinceId } = query
@@ -79,18 +219,10 @@ export class ShippingService {
         data: districts
       }
     } catch (error) {
-      if (error === InvalidProvinceIdException) {
-        throw error
-      }
-
-      this.logger.error(`Failed to get districts for province ${query.provinceId}:`, error)
-      throw ShippingServiceUnavailableException
+      this.handleGHNError(error, 'getDistricts', [InvalidProvinceIdException])
     }
   }
 
-  /**
-   * Lấy danh sách phường/xã theo quận/huyện
-   */
   async getWards(query: GetWardsQueryType): Promise<GetWardsResType> {
     try {
       const { districtId } = query
@@ -106,21 +238,18 @@ export class ShippingService {
         data: wards
       }
     } catch (error) {
-      if (error === InvalidDistrictIdException) {
-        throw error
-      }
-
-      this.logger.error(`Failed to get wards for district ${query.districtId}:`, error)
-      throw ShippingServiceUnavailableException
+      this.handleGHNError(error, 'getWards', [InvalidDistrictIdException])
     }
   }
 
-  /**
-   * Lấy danh sách dịch vụ vận chuyển có sẵn
-   */
-  async getServiceList(query: GetServiceListQueryType): Promise<GetServiceListResType> {
+  async getServiceList(query: GetServiceListQueryType, user?: AccessTokenPayload): Promise<GetServiceListResType> {
     try {
-      const { fromDistrictId, toDistrictId } = query
+      const { cartItemIds } = query
+
+      // Auto-detection hoàn toàn từ cartItemIds
+      const detectedAddresses = await this.detectUserAddresses(user, cartItemIds)
+      const fromDistrictId = detectedAddresses.fromDistrictId
+      const toDistrictId = detectedAddresses.toDistrictId
 
       if (!fromDistrictId || fromDistrictId <= 0) {
         throw InvalidDistrictIdException
@@ -145,39 +274,39 @@ export class ShippingService {
         data: normalized
       }
     } catch (error) {
-      if (error === InvalidDistrictIdException) {
-        throw error
-      }
-
-      this.logger.error(
-        `Failed to get service list for districts ${query.fromDistrictId} -> ${query.toDistrictId}:`,
-        error
-      )
-      throw ShippingServiceUnavailableException
+      this.handleGHNError(error, 'getServiceList', [InvalidDistrictIdException])
     }
   }
 
   /**
-   * Tính phí vận chuyển
+   * Tính phí vận chuyển với auto-detection hoàn toàn
+   * 🎯 Logic: Sử dụng cartItemIds để xác định shop và user address
    */
-  async calculateShippingFee(data: CalculateShippingFeeType): Promise<CalculateShippingFeeResType> {
+  async calculateShippingFee(
+    data: CalculateShippingFeeType,
+    user?: AccessTokenPayload
+  ): Promise<CalculateShippingFeeResType> {
     try {
       const {
-        to_district_id,
-        to_ward_code,
         height,
         weight,
         length,
         width,
         service_type_id,
         service_id,
-        from_district_id,
-        from_ward_code,
         insurance_value,
         coupon,
         cod_failed_amount,
-        cod_value
+        cod_value,
+        cartItemIds
       } = data
+
+      // Auto-detection hoàn toàn từ cartItemIds
+      const detectedAddresses = await this.detectUserAddresses(user, cartItemIds)
+      const from_district_id = detectedAddresses.fromDistrictId
+      const from_ward_code = detectedAddresses.fromWardCode
+      const to_district_id = detectedAddresses.toDistrictId
+      const to_ward_code = detectedAddresses.toWardCode
 
       if (!to_district_id || to_district_id <= 0) {
         throw InvalidDistrictIdException
@@ -219,28 +348,28 @@ export class ShippingService {
         data: response
       }
     } catch (error) {
-      if (
-        error === InvalidDistrictIdException ||
-        error === MissingWardCodeException ||
-        error === InvalidDimensionsException ||
-        error === MissingServiceIdentifierException
-      ) {
-        throw error
-      }
-
-      this.logger.error('Failed to calculate shipping fee:', error)
-      throw ShippingServiceUnavailableException
+      this.handleGHNError(error, 'calculateShippingFee', [
+        InvalidDistrictIdException,
+        MissingWardCodeException,
+        InvalidDimensionsException,
+        MissingServiceIdentifierException
+      ])
     }
   }
 
-  /**
-   * Tính thời gian giao hàng dự kiến
-   */
   async calculateExpectedDeliveryTime(
-    data: CalculateExpectedDeliveryTimeType
+    data: CalculateExpectedDeliveryTimeType,
+    user?: AccessTokenPayload
   ): Promise<CalculateExpectedDeliveryTimeResType> {
     try {
-      const { service_id, to_district_id, to_ward_code, from_district_id, from_ward_code } = data
+      const { service_id, cartItemIds } = data
+
+      // Auto-detection hoàn toàn từ cartItemIds
+      const detectedAddresses = await this.detectUserAddresses(user, cartItemIds)
+      const from_district_id = detectedAddresses.fromDistrictId
+      const from_ward_code = detectedAddresses.fromWardCode
+      const to_district_id = detectedAddresses.toDistrictId
+      const to_ward_code = detectedAddresses.toWardCode
 
       if (!service_id || service_id <= 0) {
         throw MissingServiceIdentifierException
@@ -279,16 +408,11 @@ export class ShippingService {
         }
       }
     } catch (error) {
-      if (
-        error === MissingServiceIdentifierException ||
-        error === InvalidDistrictIdException ||
-        error === MissingWardCodeException
-      ) {
-        throw error
-      }
-
-      this.logger.error('Failed to calculate expected delivery time:', error)
-      throw ShippingServiceUnavailableException
+      this.handleGHNError(error, 'calculateExpectedDeliveryTime', [
+        MissingServiceIdentifierException,
+        InvalidDistrictIdException,
+        MissingWardCodeException
+      ])
     }
   }
 
@@ -379,9 +503,6 @@ export class ShippingService {
     }
   }
 
-  /**
-   * Transform GHN order info response cho frontend dễ sử dụng
-   */
   private transformOrderInfoResponse(ghnResponse: any): any {
     return {
       // Basic order info

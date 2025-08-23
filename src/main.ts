@@ -112,18 +112,6 @@ async function bootstrap(): Promise<void> {
 
     // Start server
     await app.listen(port, host)
-
-    const appUrl = await app.getUrl()
-    logger.log(`🚀 Application running on: ${appUrl}`)
-    logger.log(`📊 Environment: ${config.get('NODE_ENV')}`)
-    logger.log(`💾 Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB used`)
-
-    setInterval(() => {
-      const memUsage = process.memoryUsage()
-      logger.log(
-        `📊 Memory Usage - RSS: ${Math.round(memUsage.rss / 1024 / 1024)}MB, Heap: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`
-      )
-    }, 300000) // Log every 5 minutes
   } catch (error) {
     console.error(`❌ Application failed to start:`, error)
     process.exit(1)
