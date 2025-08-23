@@ -223,9 +223,8 @@ export class OrderService {
           result.data.totalItemCost + orderShipping.shippingFee - result.data.totalVoucherDiscount
       }
 
-      // Thêm GHN order code để frontend có thể gọi API lấy thông tin chi tiết
       if (ghnOrderCode) {
-        ;(result.data as any).ghnOrderCode = ghnOrderCode
+        ;(result.data as any).orderCode = ghnOrderCode
       }
     }
 

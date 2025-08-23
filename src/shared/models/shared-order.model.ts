@@ -32,7 +32,6 @@ export const ProductSKUSnapshotSchema = z.object({
     z.object({
       id: z.string(),
       name: z.string(),
-      description: z.string(),
       languageId: z.string()
     })
   ),

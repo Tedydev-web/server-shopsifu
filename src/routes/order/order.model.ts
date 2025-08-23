@@ -37,7 +37,7 @@ export const GetOrderDetailResSchema = z.object({
     totalShippingFee: z.number(),
     totalVoucherDiscount: z.number(),
     totalPayment: z.number(),
-    ghnOrderCode: z.string().optional()
+    orderCode: z.string().optional()
   })
 })
 
