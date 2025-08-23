@@ -12,7 +12,7 @@ import { RoleName } from 'src/shared/constants/role.constant'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { RedisService } from 'src/shared/services/redis.service'
-import { PRODUCT_LIST_VERSION_KEY } from '../../../shared/constants/product.constant'
+import { CacheEvict } from 'src/shared/decorators/cacheable.decorator'
 
 @Injectable()
 export class ManageProductService {
@@ -90,18 +90,25 @@ export class ManageProductService {
     }
   }
 
+  /**
+   * ⚡ Invalidate product & search cache khi tạo product mới
+   */
+  @CacheEvict(['products:*', 'ProductModule:product:*', 'SearchModule:search:*'])
   async create({ data, user }: { data: CreateProductBodyType; user: AccessTokenPayload }) {
     const product = await this.productRepo.create({
       createdById: user.userId,
       data
     })
-    await this.bumpProductListCacheVersion()
     return {
       message: this.i18n.t('product.product.success.CREATE_SUCCESS'),
       data: product.data
     }
   }
 
+  /**
+   * ⚡ Invalidate product & search cache khi update product
+   */
+  @CacheEvict(['products:*', 'ProductModule:product:*', 'SearchModule:search:*'])
   async update({
     productId,
     data,
@@ -126,7 +133,6 @@ export class ManageProductService {
         updatedById: user.userId,
         data
       })
-      await this.bumpProductListCacheVersion()
       return {
         message: this.i18n.t('product.product.success.UPDATE_SUCCESS'),
         data: updatedProduct
@@ -139,6 +145,10 @@ export class ManageProductService {
     }
   }
 
+  /**
+   * ⚡ Invalidate product & search cache khi delete product
+   */
+  @CacheEvict(['products:*', 'ProductModule:product:*', 'SearchModule:search:*'])
   async delete({ productId, user }: { productId: string; user: AccessTokenPayload }) {
     const product = await this.productRepo.findById(productId)
     if (!product) {
@@ -154,7 +164,6 @@ export class ManageProductService {
         id: productId,
         deletedById: user.userId
       })
-      await this.bumpProductListCacheVersion()
       return {
         message: this.i18n.t('product.product.success.DELETE_SUCCESS')
       }
@@ -164,14 +173,5 @@ export class ManageProductService {
       }
       throw error
     }
-  }
-
-  /**
-   * Tăng version key để làm vô hiệu hoá toàn bộ cache danh sách sản phẩm
-   */
-  private async bumpProductListCacheVersion() {
-    const currentVersion = (await this.redisService.get<number>(PRODUCT_LIST_VERSION_KEY)) || 1
-    const nextVersion = currentVersion + 1
-    await this.redisService.set(PRODUCT_LIST_VERSION_KEY, nextVersion)
   }
 }

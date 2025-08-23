@@ -7,14 +7,30 @@ import { PaginationQueryType } from 'src/shared/models/request.model'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
+import { Cacheable, CacheEvict } from 'src/shared/decorators/cacheable.decorator'
+import { RedisService } from 'src/shared/services/redis.service'
 
 @Injectable()
 export class BrandService {
   constructor(
     private brandRepo: BrandRepo,
-    private i18n: I18nService<I18nTranslations>
+    private i18n: I18nService<I18nTranslations>,
+    private readonly redisService: RedisService
   ) {}
 
+  /**
+   * 🎯 Cache brand list với dynamic key theo pagination và language
+   */
+  @Cacheable({
+    key: 'brand:list',
+    ttl: 1800, // 30 minutes
+    scope: 'module',
+    moduleName: 'BrandModule',
+    keyGenerator: (pagination: PaginationQueryType) => {
+      const lang = I18nContext.current()?.lang || 'vi'
+      return `${lang}:page:${pagination.page}:limit:${pagination.limit}`
+    }
+  })
   async list(pagination: PaginationQueryType) {
     const data = await this.brandRepo.list(pagination, I18nContext.current()?.lang as string)
     return {
@@ -24,6 +40,19 @@ export class BrandService {
     }
   }
 
+  /**
+   * 🎯 Cache brand detail theo ID và language
+   */
+  @Cacheable({
+    key: 'brand:detail',
+    ttl: 3600, // 1 hour
+    scope: 'module',
+    moduleName: 'BrandModule',
+    keyGenerator: (id: string) => {
+      const lang = I18nContext.current()?.lang || 'vi'
+      return `${id}:${lang}`
+    }
+  })
   async findById(id: string) {
     const brand = await this.brandRepo.findById(id, I18nContext.current()?.lang as string)
     if (!brand) {
@@ -35,6 +64,10 @@ export class BrandService {
     }
   }
 
+  /**
+   * ♻️ Invalidate brand cache khi tạo brand mới
+   */
+  @CacheEvict(['BrandModule:brand:list:*', 'BrandModule:brand:detail:*'])
   async create({ data, user }: { data: CreateBrandBodyType; user: AccessTokenPayload }) {
     const brand = await this.brandRepo.create({
       createdById: user.userId,
@@ -46,6 +79,10 @@ export class BrandService {
     }
   }
 
+  /**
+   * ♻️ Invalidate brand cache khi update brand
+   */
+  @CacheEvict(['BrandModule:brand:list:*', 'BrandModule:brand:detail:*'])
   async update({ id, data, user }: { id: string; data: UpdateBrandBodyType; user: AccessTokenPayload }) {
     try {
       const brand = await this.brandRepo.update({
@@ -65,6 +102,10 @@ export class BrandService {
     }
   }
 
+  /**
+   * ♻️ Invalidate brand cache khi delete brand
+   */
+  @CacheEvict(['BrandModule:brand:list:*', 'BrandModule:brand:detail:*'])
   async delete({ id, user }: { id: string; user: AccessTokenPayload }) {
     try {
       await this.brandRepo.delete({

@@ -5,11 +5,7 @@ import { NotFoundRecordException } from 'src/shared/error'
 import { I18nContext, I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { RedisService } from 'src/shared/services/redis.service'
-import {
-  PRODUCT_LIST_CACHE_PREFIX,
-  PRODUCT_LIST_TTL_MS,
-  PRODUCT_LIST_VERSION_KEY
-} from '../../shared/constants/product.constant'
+import { Cacheable } from 'src/shared/decorators/cacheable.decorator'
 
 @Injectable()
 export class ProductService {
@@ -19,43 +15,46 @@ export class ProductService {
     private readonly redisService: RedisService
   ) {}
 
+  @Cacheable({
+    key: 'products',
+    ttl: 7200,
+    scope: 'global',
+    keyGenerator: (props: { query: GetProductsQueryType }) => {
+      const lang = (I18nContext.current()?.lang as string) || 'vi'
+
+      const limit = props.query.limit || 10
+      const isHomepage =
+        (props.query.page ?? 1) === 1 &&
+        (limit === 48 || limit === 10) &&
+        !props.query.name &&
+        (!props.query.brandIds || props.query.brandIds.length === 0) &&
+        (!props.query.categories || props.query.categories.length === 0) &&
+        props.query.minPrice === undefined &&
+        props.query.maxPrice === undefined &&
+        !props.query.createdById
+
+      if (isHomepage) {
+        return `homepage:${lang}:${limit}`
+      }
+
+      const filters = {
+        p: props.query.page || 1,
+        l: props.query.limit || 10,
+        n: props.query.name || '',
+        b: props.query.brandIds?.sort().join(',') || '',
+        c: props.query.categories?.sort().join(',') || '',
+        min: props.query.minPrice || 0,
+        max: props.query.maxPrice || 0,
+        by: props.query.orderBy || '',
+        sort: props.query.sortBy || '',
+        user: props.query.createdById || ''
+      }
+
+      return `search:${lang}:${Buffer.from(JSON.stringify(filters)).toString('base64')}`
+    }
+  })
   async list(props: { query: GetProductsQueryType }) {
     const lang = (I18nContext.current()?.lang as string) || 'vi'
-    const isDefaultHome =
-      (props.query.page ?? 1) === 1 &&
-      (props.query.limit ?? 10) === 10 &&
-      !props.query.name &&
-      (!props.query.brandIds || props.query.brandIds.length === 0) &&
-      (!props.query.categories || props.query.categories.length === 0) &&
-      props.query.minPrice === undefined &&
-      props.query.maxPrice === undefined &&
-      !props.query.createdById
-
-    // Cache theo version key để dễ invalidation hàng loạt
-    const version = (await this.redisService.get<number>(PRODUCT_LIST_VERSION_KEY)) || 1
-    const rawKey = isDefaultHome
-      ? `${PRODUCT_LIST_CACHE_PREFIX}:home:v${version}:lang:${lang}`
-      : `${PRODUCT_LIST_CACHE_PREFIX}:q:${JSON.stringify(props.query)}:v${version}:lang:${lang}`
-
-    const cached = await this.redisService.get<any>(rawKey)
-    if (cached) {
-      // Revive Date cho dữ liệu lấy từ Redis (tránh ZodSerializationException)
-      if (cached?.data && Array.isArray(cached.data)) {
-        cached.data = cached.data.map((p: any) => ({
-          ...p,
-          createdAt: p.createdAt ? new Date(p.createdAt) : p.createdAt,
-          updatedAt: p.updatedAt ? new Date(p.updatedAt) : p.updatedAt,
-          productTranslations: Array.isArray(p.productTranslations)
-            ? p.productTranslations.map((t: any) => ({
-                ...t,
-                createdAt: t.createdAt ? new Date(t.createdAt) : t.createdAt,
-                updatedAt: t.updatedAt ? new Date(t.updatedAt) : t.updatedAt
-              }))
-            : p.productTranslations
-        }))
-      }
-      return cached
-    }
 
     const data = await this.productRepo.list({
       page: props.query.page,
@@ -71,15 +70,24 @@ export class ProductService {
       orderBy: props.query.orderBy,
       sortBy: props.query.sortBy
     })
-    const response = {
+
+    return {
       message: this.i18n.t('product.product.success.GET_SUCCESS'),
       data: data.data,
       metadata: data.metadata
     }
-    await this.redisService.set(rawKey, response, Math.floor(PRODUCT_LIST_TTL_MS / 1000))
-    return response
   }
 
+  @Cacheable({
+    key: 'product:detail',
+    ttl: 1800, // 30 minutes
+    scope: 'module',
+    moduleName: 'ProductModule',
+    keyGenerator: (props: { productId: string }) => {
+      const lang = I18nContext.current()?.lang || 'vi'
+      return `${props.productId}:${lang}:public`
+    }
+  })
   async getDetail(props: { productId: string }) {
     const product = await this.productRepo.getDetail({
       productId: props.productId,
