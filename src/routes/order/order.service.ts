@@ -14,6 +14,8 @@ import {
   DiscountExpiredException
 } from 'src/routes/discount/discount.error'
 import { normalizePhoneForGHN } from 'src/shared/helpers'
+import { RedisService } from 'src/shared/services/redis.service'
+import { Cacheable, CacheEvict } from 'src/shared/decorators/cacheable.decorator'
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name)
@@ -22,7 +24,8 @@ export class OrderService {
     private readonly orderRepo: OrderRepo,
     private readonly i18n: I18nService<I18nTranslations>,
     private readonly pricingService: PricingService,
-    private readonly shippingProducer: ShippingProducer
+    private readonly shippingProducer: ShippingProducer,
+    private readonly redisService: RedisService
   ) {}
 
   async list(user: AccessTokenPayload, query: GetOrderListQueryType) {
@@ -216,12 +219,20 @@ export class OrderService {
 
     // Lấy shipping info từ OrderShipping
     if (result.data) {
-      const orderShipping = await this.orderRepo.getOrderShipping(result.data.id)
+      const [orderShipping, ghnOrderCode] = await Promise.all([
+        this.orderRepo.getOrderShipping(result.data.id),
+        this.orderRepo.getGHNOrderCode(result.data.id)
+      ])
 
       if (orderShipping && orderShipping.shippingFee !== null) {
         result.data.totalShippingFee = orderShipping.shippingFee
         result.data.totalPayment =
           result.data.totalItemCost + orderShipping.shippingFee - result.data.totalVoucherDiscount
+      }
+
+      // Thêm GHN order code để frontend có thể gọi API lấy thông tin chi tiết
+      if (ghnOrderCode) {
+        ;(result.data as any).ghnOrderCode = ghnOrderCode
       }
     }
 

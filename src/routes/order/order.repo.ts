@@ -789,6 +789,23 @@ export class OrderRepo {
     })
   }
 
+  /**
+   * Lấy GHN order code từ order ID
+   */
+  async getGHNOrderCode(orderId: string): Promise<string | null> {
+    const orderShipping = await this.prismaService.orderShipping.findUnique({
+      where: { orderId },
+      select: { orderCode: true, status: true }
+    })
+
+    // Chỉ trả về orderCode nếu shipping đã được tạo thành công
+    if (orderShipping?.status === 'CREATED' && orderShipping.orderCode) {
+      return orderShipping.orderCode
+    }
+
+    return null
+  }
+
   async detail(userId: string, orderid: string): Promise<GetOrderDetailResType> {
     const order = await this.prismaService.order.findUnique({
       where: {

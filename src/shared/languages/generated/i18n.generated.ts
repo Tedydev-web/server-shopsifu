@@ -428,6 +428,7 @@ export type I18nTranslations = {
             "CALCULATE_DELIVERY_TIME_SUCCESS": string;
             "PREVIEW_ORDER_SUCCESS": string;
             "CREATE_ORDER_SUCCESS": string;
+            "GET_ORDER_INFO_SUCCESS": string;
         };
         "error": {
             "SERVICE_UNAVAILABLE": string;
@@ -437,6 +438,9 @@ export type I18nTranslations = {
             "MISSING_WARD_CODE": string;
             "INVALID_DIMENSIONS": string;
             "MISSING_SERVICE_IDENTIFIER": string;
+            "ORDER_NOT_FOUND": string;
+            "INVALID_WEBHOOK_PAYLOAD": string;
+            "ORDER_CREATION_FAILED": string;
         };
     };
     "user": {

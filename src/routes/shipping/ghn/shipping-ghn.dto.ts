@@ -14,7 +14,9 @@ import {
   CreateOrderSchema,
   CreateOrderResSchema,
   GHNWebhookPayloadSchema,
-  GHNWebhookResponseSchema
+  GHNWebhookResponseSchema,
+  GetOrderInfoQuerySchema,
+  GetOrderInfoResSchema
 } from './shipping-ghn.model'
 
 export class GetProvincesResDTO extends createZodDto(GetProvincesResSchema) {}
@@ -35,3 +37,6 @@ export class CreateOrderResDTO extends createZodDto(CreateOrderResSchema) {}
 
 export class GHNWebhookPayloadDTO extends createZodDto(GHNWebhookPayloadSchema) {}
 export class GHNWebhookResponseDTO extends createZodDto(GHNWebhookResponseSchema) {}
+
+export class GetOrderInfoQueryDTO extends createZodDto(GetOrderInfoQuerySchema) {}
+export class GetOrderInfoResDTO extends createZodDto(GetOrderInfoResSchema) {}

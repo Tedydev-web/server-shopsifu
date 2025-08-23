@@ -207,6 +207,20 @@ export const GHNWebhookResponseSchema = z.object({
   message: z.string()
 })
 
+// GHN Order Info Schemas
+export const GetOrderInfoQuerySchema = z.object({
+  orderCode: z.string().min(1, 'Order code is required')
+})
+
+// Sử dụng z.any() để tránh type conflicts với GHN API response
+// GHN API trả về structure phức tạp và có thể thay đổi
+export const OrderInfoDataSchema = z.any()
+
+export const GetOrderInfoResSchema = z.object({
+  message: z.string().optional(),
+  data: OrderInfoDataSchema
+})
+
 export const CreateOrderResSchema = PreviewOrderResSchema
 
 export type ProvinceType = z.infer<typeof ProvinceSchema>
@@ -234,3 +248,7 @@ export type CreateOrderResType = z.infer<typeof CreateOrderResSchema>
 
 export type GHNWebhookPayloadType = z.infer<typeof GHNWebhookPayloadSchema>
 export type GHNWebhookResponseType = z.infer<typeof GHNWebhookResponseSchema>
+
+export type GetOrderInfoQueryType = z.infer<typeof GetOrderInfoQuerySchema>
+export type OrderInfoDataType = any // GHN API response type
+export type GetOrderInfoResType = z.infer<typeof GetOrderInfoResSchema>

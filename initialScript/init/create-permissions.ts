@@ -14,9 +14,10 @@ const SellerModule = [
   'REVIEWS',
   'SEARCH',
   'DISCOUNTS',
-  'MANAGE-DISCOUNT'
+  'MANAGE-DISCOUNT',
+  'SHIPPING'
 ]
-const ClientModule = ['AUTH', 'MEDIA', 'PROFILE', 'CART', 'ORDERS', 'REVIEWS', 'SEARCH']
+const ClientModule = ['AUTH', 'MEDIA', 'PROFILE', 'CART', 'ORDERS', 'REVIEWS', 'SEARCH', 'SHIPPING']
 const prisma = new PrismaClient()
 
 async function bootstrap() {

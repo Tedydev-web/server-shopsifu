@@ -11,7 +11,9 @@ import {
   CalculateExpectedDeliveryTimeDTO,
   CalculateExpectedDeliveryTimeResDTO,
   GHNWebhookPayloadDTO,
-  GHNWebhookResponseDTO
+  GHNWebhookResponseDTO,
+  GetOrderInfoQueryDTO,
+  GetOrderInfoResDTO
 } from './shipping-ghn.dto'
 import {
   GetDistrictsQueryDTO,
@@ -71,5 +73,11 @@ export class ShippingController {
   @ZodSerializerDto(GHNWebhookResponseDTO)
   async ghnOrderStatus(@Body() body: GHNWebhookPayloadDTO) {
     return this.shippingService.processOrderStatusUpdate(body)
+  }
+
+  @Get('order-info')
+  @ZodSerializerDto(GetOrderInfoResDTO)
+  getOrderInfo(@Query() query: GetOrderInfoQueryDTO) {
+    return this.shippingService.getOrderInfo(query)
   }
 }

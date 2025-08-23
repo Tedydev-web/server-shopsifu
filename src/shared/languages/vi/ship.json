@@ -7,7 +7,8 @@
     "CALCULATE_FEE_SUCCESS": "Tính phí vận chuyển thành công",
     "CALCULATE_DELIVERY_TIME_SUCCESS": "Tính thời gian giao hàng thành công",
     "PREVIEW_ORDER_SUCCESS": "Xem trước đơn hàng thành công",
-    "CREATE_ORDER_SUCCESS": "Tạo đơn hàng thành công"
+    "CREATE_ORDER_SUCCESS": "Tạo đơn hàng thành công",
+    "GET_ORDER_INFO_SUCCESS": "Lấy thông tin đơn hàng thành công"
   },
   "error": {
     "SERVICE_UNAVAILABLE": "Dịch vụ vận chuyển hiện không khả dụng, vui lòng thử lại sau",
@@ -16,6 +17,9 @@
     "INVALID_WARD_CODE": "Mã phường/xã không hợp lệ",
     "MISSING_WARD_CODE": "Thiếu mã phường/xã",
     "INVALID_DIMENSIONS": "Kích thước hoặc khối lượng không hợp lệ",
-    "MISSING_SERVICE_IDENTIFIER": "Thiếu thông tin dịch vụ (service_id hoặc service_type_id)"
+    "MISSING_SERVICE_IDENTIFIER": "Thiếu thông tin dịch vụ (service_id hoặc service_type_id)",
+    "ORDER_NOT_FOUND": "Không tìm thấy đơn hàng vận chuyển",
+    "INVALID_WEBHOOK_PAYLOAD": "Dữ liệu webhook không hợp lệ",
+    "ORDER_CREATION_FAILED": "Tạo đơn hàng vận chuyển thất bại"
   }
 }
