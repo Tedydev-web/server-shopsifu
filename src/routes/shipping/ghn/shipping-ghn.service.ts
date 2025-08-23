@@ -279,14 +279,24 @@ export class ShippingService {
         weight,
         length,
         width,
-        service_type_id,
+        service_type_id: service_type_id || undefined,
         service_id,
         from_district_id,
         from_ward_code,
-        insurance_value,
-        coupon,
-        cod_failed_amount,
-        cod_value
+        insurance_value: insurance_value || undefined,
+        coupon: coupon || undefined,
+        cod_failed_amount: cod_failed_amount || undefined,
+        cod_value: cod_value || undefined,
+        items: [
+          {
+            name: 'Package',
+            quantity: 1,
+            height,
+            weight,
+            length,
+            width
+          }
+        ]
       }
 
       const response = await this.ghnService.calculateFee.calculateShippingFee(shipData)
