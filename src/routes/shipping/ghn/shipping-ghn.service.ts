@@ -17,7 +17,9 @@ import {
   CalculateExpectedDeliveryTimeResType,
   GHNWebhookPayloadType,
   GetOrderInfoQueryType,
-  GetOrderInfoResType
+  GetOrderInfoResType,
+  GetTrackingUrlQueryType,
+  GetTrackingUrlResType
 } from './shipping-ghn.model'
 import {
   ShippingServiceUnavailableException,
@@ -429,6 +431,63 @@ export class ShippingService {
         throw error
       }
 
+      if (error?.response?.status === 404) {
+        throw new BadRequestException('Order not found in GHN system')
+      }
+
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        throw new BadRequestException('Unauthorized access to GHN API')
+      }
+
+      throw ShippingServiceUnavailableException
+    }
+  }
+
+  /**
+   * Lấy URL theo dõi đơn hàng từ GHN
+   */
+  async getTrackingUrl(query: GetTrackingUrlQueryType): Promise<GetTrackingUrlResType> {
+    try {
+      const { orderCode } = query
+
+      if (!orderCode || orderCode.trim().length === 0) {
+        throw new BadRequestException('Order code is required and cannot be empty')
+      }
+
+      // Kiểm tra đơn hàng có tồn tại trong hệ thống không
+      const shipping = await this.shippingRepo.findByOrderCode(orderCode)
+      if (!shipping) {
+        throw ShippingOrderNotFoundException
+      }
+
+      // Kiểm tra trạng thái shipping - chỉ lấy tracking URL khi đã tạo GHN order thành công
+      if (shipping.status !== 'CREATED' || !shipping.orderCode) {
+        throw new BadRequestException('Shipping order not ready - GHN order not created yet')
+      }
+
+      // Gọi API GHN để lấy tracking URL
+      const trackingUrl = await this.ghnService.order.getTrackingUrl(orderCode)
+
+      if (!trackingUrl) {
+        throw new BadRequestException('No tracking URL returned from GHN')
+      }
+
+      return {
+        message: this.i18n.t('ship.success.GET_TRACKING_URL_SUCCESS'),
+        data: {
+          trackingUrl: trackingUrl.toString(),
+          orderCode
+        }
+      }
+    } catch (error) {
+      // Log error cho debugging
+      this.logger.error(`Failed to get tracking URL for orderCode: ${query.orderCode}`, error)
+
+      if (error === ShippingOrderNotFoundException || error instanceof BadRequestException) {
+        throw error
+      }
+
+      // Handle GHN API specific errors
       if (error?.response?.status === 404) {
         throw new BadRequestException('Order not found in GHN system')
       }

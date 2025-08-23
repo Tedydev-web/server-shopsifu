@@ -265,6 +265,19 @@ export const GetOrderInfoResSchema = z.object({
   data: OrderInfoDataSchema
 })
 
+// Schema cho Tracking URL
+export const GetTrackingUrlQuerySchema = z.object({
+  orderCode: z.string().min(1, 'Order code is required')
+})
+
+export const GetTrackingUrlResSchema = z.object({
+  message: z.string().optional(),
+  data: z.object({
+    trackingUrl: z.string(),
+    orderCode: z.string()
+  })
+})
+
 export const CreateOrderResSchema = PreviewOrderResSchema
 
 export type ProvinceType = z.infer<typeof ProvinceSchema>
@@ -296,3 +309,6 @@ export type GHNWebhookResponseType = z.infer<typeof GHNWebhookResponseSchema>
 export type GetOrderInfoQueryType = z.infer<typeof GetOrderInfoQuerySchema>
 export type OrderInfoDataType = z.infer<typeof OrderInfoDataSchema>
 export type GetOrderInfoResType = z.infer<typeof GetOrderInfoResSchema>
+
+export type GetTrackingUrlQueryType = z.infer<typeof GetTrackingUrlQuerySchema>
+export type GetTrackingUrlResType = z.infer<typeof GetTrackingUrlResSchema>

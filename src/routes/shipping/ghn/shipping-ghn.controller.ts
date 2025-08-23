@@ -15,7 +15,9 @@ import {
   GHNWebhookPayloadDTO,
   GHNWebhookResponseDTO,
   GetOrderInfoQueryDTO,
-  GetOrderInfoResDTO
+  GetOrderInfoResDTO,
+  GetTrackingUrlQueryDTO,
+  GetTrackingUrlResDTO
 } from './shipping-ghn.dto'
 import {
   GetDistrictsQueryDTO,
@@ -81,5 +83,11 @@ export class ShippingController {
   @ZodSerializerDto(GetOrderInfoResDTO)
   getOrderInfo(@Query() query: GetOrderInfoQueryDTO) {
     return this.shippingService.getOrderInfo(query)
+  }
+
+  @Get('tracking-url')
+  @ZodSerializerDto(GetTrackingUrlResDTO)
+  getTrackingUrl(@Query() query: GetTrackingUrlQueryDTO) {
+    return this.shippingService.getTrackingUrl(query)
   }
 }
