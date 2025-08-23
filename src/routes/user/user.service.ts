@@ -44,9 +44,32 @@ export class UserService {
     if (!user) {
       throw NotFoundRecordException
     }
+
+    // Lấy addresses và statistics để đáp ứng schema yêu cầu
+    const [addresses, orders] = await Promise.all([
+      this.sharedUserRepository.listAddressesByUserId(id),
+      this.sharedUserRepository.getUserOrders(id)
+    ])
+
+    // Tính statistics từ orders
+    const totalOrders = orders?.length ?? 0
+    const totalSpent = orders?.reduce((sum, order) => {
+      const orderTotal = order.items?.reduce((itemSum, item) => itemSum + Number(item.skuPrice) * item.quantity, 0) ?? 0
+      return sum + orderTotal
+    }, 0) ?? 0
+    const memberSince = user.createdAt
+
     return {
       message: this.i18n.t('user.user.success.GET_DETAIL_SUCCESS'),
-      data: user
+      data: {
+        ...user,
+        addresses,
+        statistics: {
+          totalOrders,
+          totalSpent,
+          memberSince
+        }
+      }
     }
   }
 

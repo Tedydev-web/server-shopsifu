@@ -53,6 +53,21 @@ export class SharedUserRepository {
     })
   }
 
+  /**
+   * Lấy orders của user với items để tính statistics
+   */
+  async getUserOrders(userId: string): Promise<any[]> {
+    return this.prismaService.order.findMany({
+      where: {
+        userId,
+        deletedAt: null
+      },
+      include: {
+        items: true
+      }
+    })
+  }
+
   update(where: { id: string }, data: Partial<UserType>): Promise<UserType | null> {
     return this.prismaService.user.update({
       where: {
