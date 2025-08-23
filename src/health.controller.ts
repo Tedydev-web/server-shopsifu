@@ -1,5 +1,5 @@
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus'
-import { Controller, Get } from '@nestjs/common'
+import { Controller, Get, Post } from '@nestjs/common'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { RedisHealthService } from './health.service'
@@ -112,6 +112,25 @@ export class HealthController {
     } catch (error) {
       return {
         message: 'Cache test failed',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }
+    }
+  }
+
+  @Post('cache/flush')
+  @IsPublic()
+  async flushCache() {
+    try {
+      await this.redisService.flushAll()
+      return {
+        message: '🧹 Cache cleared successfully',
+        timestamp: new Date().toISOString(),
+        action: 'FLUSHALL'
+      }
+    } catch (error) {
+      return {
+        message: '❌ Cache flush failed',
         error: error.message,
         timestamp: new Date().toISOString()
       }

@@ -4,6 +4,7 @@ import {
   CreateProductBodyType,
   GetProductDetailResType,
   GetProductsResType,
+  ProductListItemType,
   UpdateProductBodyType
 } from 'src/routes/product/product.model'
 import { ALL_LANGUAGE_CODE, OrderByType, SortBy, SortByType } from 'src/shared/constants/other.constant'
@@ -113,9 +114,19 @@ export class ProductRepo {
       }),
       this.prismaService.product.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          name: true,
+          basePrice: true,
+          virtualPrice: true,
+          images: true,
+          createdAt: true,
+          updatedAt: true,
           productTranslations: {
-            where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null }
+            where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { languageId, deletedAt: null },
+            select: {
+              name: true
+            }
           },
           ...(sortBy === SortBy.Sale
             ? {
@@ -123,6 +134,9 @@ export class ProductRepo {
                   where: {
                     deletedAt: null,
                     status: 'DELIVERED'
+                  },
+                  select: {
+                    id: true // Minimal select for count ordering
                   }
                 }
               }

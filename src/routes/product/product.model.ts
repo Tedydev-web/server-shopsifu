@@ -66,13 +66,31 @@ export const GetManageProductsQuerySchema = GetProductsQuerySchema.extend({
   createdById: z.string()
 })
 
+/**
+ * 🚀 Lightweight Product List Item - Optimized cho homepage
+ * Chỉ chứa fields cần thiết cho UI list view
+ */
+export const ProductListItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  basePrice: z.number(),
+  virtualPrice: z.number(),
+  images: z.array(z.string()),
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()]),
+  productTranslations: z.array(
+    z.object({
+      name: z.string()
+    })
+  )
+})
+
+/**
+ * ⚡ Optimized Products List Response - Ultra-fast cho homepage
+ */
 export const GetProductsResSchema = z.object({
   message: z.string().optional(),
-  data: z.array(
-    ProductSchema.extend({
-      productTranslations: z.array(ProductTranslationSchema)
-    })
-  ),
+  data: z.array(ProductListItemSchema),
   metadata: z.object({
     totalItems: z.number(),
     page: z.number(),
@@ -150,6 +168,7 @@ export const UpdateProductResSchema = z.object({
   data: ProductSchema
 })
 
+export type ProductListItemType = z.infer<typeof ProductListItemSchema>
 export type GetProductsResType = z.infer<typeof GetProductsResSchema>
 export type GetProductsQueryType = z.infer<typeof GetProductsQuerySchema>
 export type GetManageProductsQueryType = z.infer<typeof GetManageProductsQuerySchema>
