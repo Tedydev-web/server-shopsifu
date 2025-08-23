@@ -72,46 +72,6 @@ export default registerAs('redis', (): Record<string, any> => {
         ...commonRedisOptions
       })
 
-<<<<<<< HEAD
-  redis.on('error', (error: any) => {
-    if (error.message?.includes('NOSCRIPT')) {
-      return
-    }
-
-    if (
-      error.message?.includes('Socket closed unexpectedly') ||
-      error.message?.includes('Connection is closed') ||
-      error.code === 'ECONNRESET' ||
-      error.code === 'EPIPE'
-    ) {
-      return
-    }
-
-    if (!error.message?.includes('timeout') && !error.message?.includes('connect')) {
-      console.error('❌ Redis critical error:', error.message)
-    }
-  })
-
-  redis.on('connect', () => {
-    console.log('✅ Redis connected successfully')
-  })
-
-  redis.on('ready', () => {
-    console.log('✅ Redis ready for commands')
-  })
-
-  redis.on('close', () => {})
-
-  redis.on('reconnecting', (delay) => {
-    if (delay > 1000) {
-      console.log(`🔄 Redis reconnecting in ${delay}ms`)
-    }
-  })
-
-  redis.on('end', () => {})
-
-=======
->>>>>>> 3c38a69 (chore(redis): cập nhật và cải tiến tích hợp Redis trong ứng dụng)
   const redlock = new Redlock([redis], {
     retryCount: 10,
     retryDelay: 200,

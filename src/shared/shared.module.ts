@@ -134,66 +134,6 @@ const sharedServices = [
 
     BullModule.forRootAsync({
       imports: [ConfigModule],
-<<<<<<< HEAD
-      useFactory: (configService: ConfigService) => {
-        const password = configService.get<string>('redis.password')
-        const requireAuth = Boolean(configService.get('redis.requireAuth'))
-        const isPasswordProvided = requireAuth && typeof password === 'string' && password.trim().length > 0
-
-        return {
-          connection: {
-            host: configService.get('redis.host'),
-            port: Number(configService.get('redis.port')),
-            ...(isPasswordProvided ? { password } : {}),
-
-            connectTimeout: 20000,
-            commandTimeout: 15000,
-            lazyConnect: false,
-            maxRetriesPerRequest: null,
-            retryDelayOnFailover: 500,
-
-            autoResubscribe: true,
-            autoResendUnfulfilledCommands: false,
-            keepAlive: 60000,
-            family: 4,
-            enableReadyCheck: true,
-            enableOfflineQueue: true,
-            maxLoadingTimeout: 20000,
-            db: 0,
-
-            enableAutoPipelining: true,
-
-            reconnectOnError: (err: any) => {
-              if (
-                err.message.includes('Socket closed') ||
-                err.message.includes('ECONNRESET') ||
-                err.message.includes('EPIPE') ||
-                err.message.includes('NOSCRIPT') ||
-                err.message.includes('timeout') ||
-                err.message.includes('Connection is closed')
-              ) {
-                return true
-              }
-              return false
-            }
-          },
-
-          defaultJobOptions: {
-            removeOnComplete: 50,
-            removeOnFail: 25,
-            attempts: 5,
-            backoff: {
-              type: 'exponential',
-              delay: 3000
-            },
-            delay: 1000
-          },
-
-          worker: {
-            concurrency: 1,
-            maxStalledCount: 3
-          }
-=======
       useFactory: (configService: ConfigService) => ({
         connection: {
           host: configService.get('redis.host'),
@@ -201,7 +141,6 @@ const sharedServices = [
           password: configService.get('redis.password'),
           tls: configService.get('redis.tls'),
           requireAuth: configService.get('redis.requireAuth')
->>>>>>> 3c38a69 (chore(redis): cập nhật và cải tiến tích hợp Redis trong ứng dụng)
         }
       }),
       inject: [ConfigService]
