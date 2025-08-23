@@ -139,7 +139,7 @@ export class PricingService {
             startDate: { lte: new Date() },
             endDate: { gte: new Date() },
             deletedAt: null,
-            isPlatform: true
+            OR: [{ voucherType: 'PLATFORM' }, { isPlatform: true }]
           },
           include: {
             products: { select: { id: true } },
