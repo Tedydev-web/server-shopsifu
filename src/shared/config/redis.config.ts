@@ -16,12 +16,12 @@ export default registerAs('redis', (): Record<string, any> => {
   const isPasswordProvided: boolean = typeof config.password === 'string' && config.password.trim().length > 0
 
   const commonRedisOptions = {
-    lazyConnect: true,
+    lazyConnect: false,
     connectionName: config.connectionName || 'shopsifu-main',
-    connectTimeout: 30000,
-    commandTimeout: 20000,
-    keepAlive: 60000,
-    retryDelayOnFailover: 100,
+    connectTimeout: 10000,
+    commandTimeout: 8000,
+    keepAlive: 30000,
+    retryDelayOnFailover: 200,
     retryDelayOnClusterDown: 300,
     retryDelayOnTryAgain: 100,
     autoResubscribe: true,
@@ -31,15 +31,19 @@ export default registerAs('redis', (): Record<string, any> => {
       if (err.message.includes(targetError)) {
         return true
       }
+
+      if (err.message.includes('Connection is closed') || err.message.includes('Socket closed unexpectedly')) {
+        return true
+      }
       return false
     },
 
     family: 4,
     enableReadyCheck: true,
     enableOfflineQueue: true,
-    maxLoadingTimeout: 20000,
+    maxLoadingTimeout: 10000,
 
-    maxRetriesPerRequest: 3,
+    maxRetriesPerRequest: 5,
     showFriendlyErrorStack: process.env.NODE_ENV === 'development'
   }
 

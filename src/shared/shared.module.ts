@@ -61,7 +61,7 @@ const sharedServices = [
   PaymentConsumer,
   ShippingConsumer,
   PricingService,
-  RedisHealthService
+  RedisHealthService,
 ]
 
 @Global()
@@ -95,7 +95,7 @@ const sharedServices = [
   ],
   exports: [...sharedServices, GHN_CLIENT],
   imports: [
-    // Configuration - Global
+
     ConfigModule.forRoot({
       load: configs,
       isGlobal: true,
@@ -110,10 +110,10 @@ const sharedServices = [
       useFactory: createLoggerConfig
     }),
 
-    // Schedule Module - Cronjobs
+
     ScheduleModule.forRoot(),
 
-    // Internationalization - I18n
+
     I18nModule.forRoot({
       fallbackLanguage: 'en',
       loaderOptions: {
@@ -137,7 +137,7 @@ const sharedServices = [
       inject: [ConfigService]
     }),
 
-    // Queue Management - Bull/Redis
+
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
@@ -150,25 +150,23 @@ const sharedServices = [
             host: configService.get('redis.host'),
             port: Number(configService.get('redis.port')),
             ...(isPasswordProvided ? { password } : {}),
-            // Cải thiện connection stability
-            connectTimeout: 15000,
-            commandTimeout: 10000,
+            connectTimeout: 8000,
+            commandTimeout: 6000,
             lazyConnect: false,
             maxRetriesPerRequest: 5,
-            // Auto reconnect
+            retryDelayOnFailover: 200,
             autoResubscribe: true,
             autoResendUnfulfilledCommands: true,
-            // Health check
-            healthCheckInterval: 30000,
-            // Connection pool
             keepAlive: 30000,
             family: 4,
-            // Error handling
+
             enableReadyCheck: true,
             enableOfflineQueue: true,
-            maxLoadingTimeout: 10000
+            maxLoadingTimeout: 8000,
+
+            db: 0,
           },
-          // Cải thiện queue stability
+
           defaultJobOptions: {
             removeOnComplete: 100,
             removeOnFail: 50,
@@ -178,9 +176,9 @@ const sharedServices = [
               delay: 2000
             }
           },
-          // Cải thiện worker stability
+
           worker: {
-            concurrency: 1, // Giảm concurrency để tránh quá tải
+            concurrency: 1,
             maxStalledCount: 1
           }
         }
@@ -188,22 +186,22 @@ const sharedServices = [
       inject: [ConfigService]
     }),
 
-    // Payment Queue
+
     BullModule.registerQueue({
       name: PAYMENT_QUEUE_NAME
     }),
 
-    // Shipping Queue
+
     BullModule.registerQueue({
       name: SHIPPING_QUEUE_NAME
     }),
 
-    // Search Sync Queue
+
     BullModule.registerQueue({
       name: SEARCH_SYNC_QUEUE_NAME
     }),
 
-    // Rate Limiting - Throttler
+
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService): ThrottlerModuleOptions => ({
