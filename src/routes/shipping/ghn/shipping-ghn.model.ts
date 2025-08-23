@@ -44,7 +44,7 @@ export const CalculateShippingFeeSchema = z.object({
   coupon: z.string().optional(),
   cod_failed_amount: z.number().optional(),
   cod_value: z.number().optional(),
-  cartItemIds: z.array(z.string()).optional()
+  cartItemId: z.string().optional()
 })
 
 export const CalculateShippingFeeResponseSchema = z.object({
@@ -96,19 +96,12 @@ export const GetWardsQuerySchema = z.object({
 })
 
 export const GetServiceListQuerySchema = z.object({
-  cartItemIds: z
-    .preprocess((value) => {
-      if (typeof value === 'string') {
-        return [value]
-      }
-      return value
-    }, z.array(z.string()))
-    .optional() // ✅ cartItemIds để xác định shop và user address
+  cartItemId: z.string().optional()
 })
 
 export const CalculateExpectedDeliveryTimeSchema = z.object({
   service_id: z.number(),
-  cartItemIds: z.array(z.string()).optional() // ✅ cartItemIds để xác định shop và user address
+  cartItemId: z.string().optional()
 })
 
 export const CalculateExpectedDeliveryTimeResSchema = z.object({

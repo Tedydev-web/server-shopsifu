@@ -2,6 +2,7 @@ import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { Ghn } from 'giaohangnhanh'
 import { SharedOrderRepository } from 'src/shared/repositories/shared-order.repo'
+import { SharedShippingRepository } from 'src/shared/repositories/shared-shipping.repo'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import {
   GetProvincesResType,
@@ -43,6 +44,7 @@ export class ShippingService {
     @Inject(GHN_CLIENT) private readonly ghnService: Ghn,
     private readonly shippingRepo: ShippingRepo,
     private readonly sharedOrderRepo: SharedOrderRepository,
+    private readonly sharedShippingRepo: SharedShippingRepository,
     private readonly prismaService: PrismaService
   ) {}
 
@@ -50,8 +52,8 @@ export class ShippingService {
    * Auto-detect địa chỉ từ cartItemIds và user context
    */
   private async detectUserAddresses(
-    user?: AccessTokenPayload,
-    cartItemIds?: string[]
+    user: AccessTokenPayload,
+    cartItemId?: string
   ): Promise<{
     fromDistrictId: number
     fromWardCode: string
@@ -59,11 +61,13 @@ export class ShippingService {
     toWardCode: string
   }> {
     try {
-      if (!user?.userId) {
-        throw new BadRequestException('User authentication required for auto-detection')
-      }
+      this.logger.log(`🔍 detectUserAddresses called with userId: ${user?.userId}, cartItemId:`, cartItemId)
+
+      // User đã được validate bởi @ActiveUser() decorator
+      this.logger.log(`🔍 User authenticated with userId: ${user.userId}`)
 
       // Lấy địa chỉ mặc định của user
+      this.logger.log(`🔍 Looking for user default address for userId: ${user.userId}`)
       const userAddress = await this.prismaService.userAddress.findFirst({
         where: {
           userId: user.userId,
@@ -71,24 +75,31 @@ export class ShippingService {
         },
         include: { address: true }
       })
+      this.logger.log(`📍 User address found:`, userAddress?.address ? 'Yes' : 'No')
 
       if (!userAddress || !userAddress.address) {
+        this.logger.error(`❌ User default address not found for userId: ${user.userId}`)
         throw new BadRequestException('User default address not found')
       }
 
       // Tìm shop address theo thứ tự ưu tiên
-      const shopAddress = await this.findShopAddress(user.userId, cartItemIds)
+      this.logger.log(`🔍 Looking for shop address...`)
+      const shopAddress = await this.findShopAddress(user.userId, cartItemId)
+      this.logger.log(`📍 Shop address found:`, shopAddress ? 'Yes' : 'No')
 
       if (!shopAddress) {
-        throw new BadRequestException('Không thể xác định địa chỉ shop. Vui lòng truyền cartItemIds.')
+        this.logger.error(`❌ Cannot determine shop address. Please provide cartItemId.`)
+        throw new BadRequestException('Không thể xác định địa chỉ shop. Vui lòng truyền cartItemId.')
       }
 
-      return {
+      const result = {
         fromDistrictId: shopAddress.address.districtId || 0,
         fromWardCode: shopAddress.address.wardCode || '',
         toDistrictId: userAddress.address.districtId || 0,
         toWardCode: userAddress.address.wardCode || ''
       }
+      this.logger.log(`📍 Final detected addresses:`, result)
+      return result
     } catch (error) {
       this.logger.error('Failed to detect user addresses:', error)
       throw error
@@ -98,82 +109,43 @@ export class ShippingService {
   /**
    * Tìm shop address theo thứ tự ưu tiên
    */
-  private async findShopAddress(userId: string, cartItemIds?: string[]): Promise<any> {
-    // Logic 1: Tìm từ cartItemIds được truyền vào (chính xác nhất)
-    if (cartItemIds && cartItemIds.length > 0) {
-      const cartItems = await this.prismaService.cartItem.findMany({
+  private async findShopAddress(userId: string, cartItemId?: string): Promise<any> {
+    this.logger.log(`🔍 findShopAddress called with userId: ${userId}, cartItemId:`, cartItemId)
+    if (cartItemId) {
+      const cartItem = await this.prismaService.cartItem.findFirst({
         where: {
-          id: { in: cartItemIds },
+          id: cartItemId,
           userId: userId
         },
         include: {
           sku: {
             include: {
               product: {
-                include: { createdBy: true }
+                select: {
+                  id: true,
+                  createdById: true
+                }
               }
             }
           }
-        },
-        take: 1
+        }
       })
 
-      if (cartItems.length > 0) {
-        const shopId = cartItems[0]?.sku?.product?.createdBy?.id
+      if (cartItem) {
+        const shopId = cartItem.sku?.product?.createdById
+        this.logger.log(`🔍 Found shopId from cartItem: ${shopId}`)
         if (shopId) {
+          this.logger.log(`🔍 Looking for shop address for shopId: ${shopId}`)
           const shopUserAddress = await this.prismaService.userAddress.findFirst({
             where: { userId: shopId, isDefault: true },
             include: { address: true }
           })
+          this.logger.log(`📍 Shop address found for shopId ${shopId}:`, shopUserAddress?.address ? 'Yes' : 'No')
           if (shopUserAddress?.address) {
+            this.logger.log(`✅ Returning shop address for shopId: ${shopId}`)
             return { address: shopUserAddress.address }
           }
         }
-      }
-    }
-
-    // Logic 2: Fallback - Tìm từ cart items hiện tại của user
-    const cartItems = await this.prismaService.cartItem.findMany({
-      where: { userId: userId },
-      include: {
-        sku: {
-          include: {
-            product: {
-              include: { createdBy: true }
-            }
-          }
-        }
-      },
-      take: 1
-    })
-
-    if (cartItems.length > 0) {
-      const shopId = cartItems[0]?.sku?.product?.createdBy?.id
-      if (shopId) {
-        const shopUserAddress = await this.prismaService.userAddress.findFirst({
-          where: { userId: shopId, isDefault: true },
-          include: { address: true }
-        })
-        if (shopUserAddress?.address) {
-          return { address: shopUserAddress.address }
-        }
-      }
-    }
-
-    // Logic 3: Fallback - Tìm từ orders gần nhất
-    const recentOrder = await this.prismaService.order.findFirst({
-      where: { userId: userId },
-      include: { shop: true },
-      orderBy: { createdAt: 'desc' }
-    })
-
-    if (recentOrder?.shopId) {
-      const shopUserAddress = await this.prismaService.userAddress.findFirst({
-        where: { userId: recentOrder.shopId, isDefault: true },
-        include: { address: true }
-      })
-      if (shopUserAddress?.address) {
-        return { address: shopUserAddress.address }
       }
     }
 
@@ -242,24 +214,34 @@ export class ShippingService {
     }
   }
 
-  async getServiceList(query: GetServiceListQueryType, user?: AccessTokenPayload): Promise<GetServiceListResType> {
+  async getServiceList(query: GetServiceListQueryType, user: AccessTokenPayload): Promise<GetServiceListResType> {
     try {
-      const { cartItemIds } = query
+      const { cartItemId } = query
+      this.logger.log(`🔍 getServiceList called with cartItemId:`, cartItemId)
 
-      // Auto-detection hoàn toàn từ cartItemIds
-      const detectedAddresses = await this.detectUserAddresses(user, cartItemIds)
+      // Auto-detection hoàn toàn từ cartItemId
+      const detectedAddresses = await this.detectUserAddresses(user, cartItemId)
+      this.logger.log(`📍 Detected addresses:`, detectedAddresses)
       const fromDistrictId = detectedAddresses.fromDistrictId
       const toDistrictId = detectedAddresses.toDistrictId
 
+      this.logger.log(`🚚 GHN API params - fromDistrictId: ${fromDistrictId}, toDistrictId: ${toDistrictId}`)
+
       if (!fromDistrictId || fromDistrictId <= 0) {
+        this.logger.error(`❌ Invalid fromDistrictId: ${fromDistrictId}`)
         throw InvalidDistrictIdException
       }
 
       if (!toDistrictId || toDistrictId <= 0) {
+        this.logger.error(`❌ Invalid toDistrictId: ${toDistrictId}`)
         throw InvalidDistrictIdException
       }
 
+      this.logger.log(
+        `📡 Calling GHN API getServiceList with fromDistrictId: ${fromDistrictId}, toDistrictId: ${toDistrictId}`
+      )
       const services = await this.ghnService.calculateFee.getServiceList(fromDistrictId, toDistrictId)
+      this.logger.log(`✅ GHN API response received, services count:`, services?.length || 0)
 
       const normalized = services.map((s: any) => ({
         ...s,
@@ -269,11 +251,13 @@ export class ShippingService {
         standard_extra_cost_id: s.standard_extra_cost_id === '' ? null : s.standard_extra_cost_id
       }))
 
+      this.logger.log(`🎯 Normalized services count:`, normalized.length)
       return {
         message: this.i18n.t('ship.success.GET_SERVICE_LIST_SUCCESS'),
         data: normalized
       }
     } catch (error) {
+      this.logger.error(`💥 getServiceList error:`, error)
       this.handleGHNError(error, 'getServiceList', [InvalidDistrictIdException])
     }
   }
@@ -284,7 +268,7 @@ export class ShippingService {
    */
   async calculateShippingFee(
     data: CalculateShippingFeeType,
-    user?: AccessTokenPayload
+    user: AccessTokenPayload
   ): Promise<CalculateShippingFeeResType> {
     try {
       const {
@@ -298,11 +282,11 @@ export class ShippingService {
         coupon,
         cod_failed_amount,
         cod_value,
-        cartItemIds
+        cartItemId
       } = data
 
-      // Auto-detection hoàn toàn từ cartItemIds
-      const detectedAddresses = await this.detectUserAddresses(user, cartItemIds)
+      // Auto-detection hoàn toàn từ cartItemId
+      const detectedAddresses = await this.detectUserAddresses(user, cartItemId)
       const from_district_id = detectedAddresses.fromDistrictId
       const from_ward_code = detectedAddresses.fromWardCode
       const to_district_id = detectedAddresses.toDistrictId
@@ -359,13 +343,13 @@ export class ShippingService {
 
   async calculateExpectedDeliveryTime(
     data: CalculateExpectedDeliveryTimeType,
-    user?: AccessTokenPayload
+    user: AccessTokenPayload
   ): Promise<CalculateExpectedDeliveryTimeResType> {
     try {
-      const { service_id, cartItemIds } = data
+      const { service_id, cartItemId } = data
 
-      // Auto-detection hoàn toàn từ cartItemIds
-      const detectedAddresses = await this.detectUserAddresses(user, cartItemIds)
+      // Auto-detection hoàn toàn từ cartItemId
+      const detectedAddresses = await this.detectUserAddresses(user, cartItemId)
       const from_district_id = detectedAddresses.fromDistrictId
       const from_ward_code = detectedAddresses.fromWardCode
       const to_district_id = detectedAddresses.toDistrictId

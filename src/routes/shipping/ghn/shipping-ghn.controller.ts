@@ -50,29 +50,23 @@ export class ShippingController {
   }
 
   @Get('services')
-  @IsPublic()
   @ZodSerializerDto(GetServiceListResDTO)
-  getServiceList(@Query() query: GetServiceListQueryDTO, @ActiveUser() user?: AccessTokenPayload) {
-    // 🎯 Auto-detection: Truyền user context để tự động detect địa chỉ
+  getServiceList(@Query() query: GetServiceListQueryDTO, @ActiveUser() user: AccessTokenPayload) {
     return this.shippingService.getServiceList(query, user)
   }
 
   @Post('calculate-fee')
-  @IsPublic()
   @ZodSerializerDto(CalculateShippingFeeResDTO)
-  calculateShippingFee(@Body() data: CalculateShippingFeeDTO, @ActiveUser() user?: AccessTokenPayload) {
-    // 🎯 Auto-detection: Truyền user context để tự động detect địa chỉ
+  calculateShippingFee(@Body() data: CalculateShippingFeeDTO, @ActiveUser() user: AccessTokenPayload) {
     return this.shippingService.calculateShippingFee(data, user)
   }
 
   @Post('delivery-time')
-  @IsPublic()
   @ZodSerializerDto(CalculateExpectedDeliveryTimeResDTO)
   calculateExpectedDeliveryTime(
     @Body() data: CalculateExpectedDeliveryTimeDTO,
-    @ActiveUser() user?: AccessTokenPayload
+    @ActiveUser() user: AccessTokenPayload
   ) {
-    // 🎯 Auto-detection: Truyền user context để tự động detect địa chỉ
     return this.shippingService.calculateExpectedDeliveryTime(data, user)
   }
 
