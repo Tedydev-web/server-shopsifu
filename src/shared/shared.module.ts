@@ -86,17 +86,11 @@ const sharedServices = [
       provide: GHN_CLIENT,
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const token = configService.get<string>('GHN_TOKEN')
-        const shopIdRaw = configService.get<string>('GHN_SHOP_ID')
-        const host = configService.get<string>('GHN_HOST')
-        const testModeRaw = configService.get<string>('GHN_TEST_MODE')
-        const trackingHost = configService.get<string>('GHN_TRACKING_HOST')
-        if (!token) throw new Error('GHN_TOKEN is required in environment variables')
-        if (!shopIdRaw) throw new Error('GHN_SHOP_ID is required in environment variables')
-        if (!host) throw new Error('GHN_HOST is required in environment variables')
-        const shopId = Number(shopIdRaw)
-        if (!Number.isFinite(shopId) || shopId <= 0) throw new Error('GHN_SHOP_ID must be a positive number')
-        const testMode = String(testModeRaw ?? 'true').toLowerCase() === 'true'
+        const token = configService.getOrThrow<string>('GHN_TOKEN')
+        const shopId = configService.getOrThrow<number>('GHN_SHOP_ID')
+        const host = configService.getOrThrow<string>('GHN_HOST')
+        const testMode = configService.getOrThrow<boolean>('GHN_TEST_MODE')
+        const trackingHost = configService.getOrThrow<string>('GHN_TRACKING_HOST')
         return new Ghn({ token, shopId, host, testMode, trackingHost })
       }
     }

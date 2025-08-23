@@ -2,7 +2,6 @@ import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { Ghn } from 'giaohangnhanh'
 import { SharedOrderRepository } from 'src/shared/repositories/shared-order.repo'
-import { SharedShippingRepository } from 'src/shared/repositories/shared-shipping.repo'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import {
   GetProvincesResType,
@@ -44,13 +43,9 @@ export class ShippingService {
     @Inject(GHN_CLIENT) private readonly ghnService: Ghn,
     private readonly shippingRepo: ShippingRepo,
     private readonly sharedOrderRepo: SharedOrderRepository,
-    private readonly sharedShippingRepo: SharedShippingRepository,
     private readonly prismaService: PrismaService
   ) {}
 
-  /**
-   * Auto-detect địa chỉ từ cartItemIds và user context
-   */
   private async detectUserAddresses(
     user: AccessTokenPayload,
     cartItemId?: string
@@ -61,13 +56,6 @@ export class ShippingService {
     toWardCode: string
   }> {
     try {
-      this.logger.log(`🔍 detectUserAddresses called with userId: ${user?.userId}, cartItemId:`, cartItemId)
-
-      // User đã được validate bởi @ActiveUser() decorator
-      this.logger.log(`🔍 User authenticated with userId: ${user.userId}`)
-
-      // Lấy địa chỉ mặc định của user
-      this.logger.log(`🔍 Looking for user default address for userId: ${user.userId}`)
       const userAddress = await this.prismaService.userAddress.findFirst({
         where: {
           userId: user.userId,
@@ -75,17 +63,13 @@ export class ShippingService {
         },
         include: { address: true }
       })
-      this.logger.log(`📍 User address found:`, userAddress?.address ? 'Yes' : 'No')
 
       if (!userAddress || !userAddress.address) {
         this.logger.error(`❌ User default address not found for userId: ${user.userId}`)
         throw new BadRequestException('User default address not found')
       }
 
-      // Tìm shop address theo thứ tự ưu tiên
-      this.logger.log(`🔍 Looking for shop address...`)
       const shopAddress = await this.findShopAddress(user.userId, cartItemId)
-      this.logger.log(`📍 Shop address found:`, shopAddress ? 'Yes' : 'No')
 
       if (!shopAddress) {
         this.logger.error(`❌ Cannot determine shop address. Please provide cartItemId.`)
@@ -98,10 +82,8 @@ export class ShippingService {
         toDistrictId: userAddress.address.districtId || 0,
         toWardCode: userAddress.address.wardCode || ''
       }
-      this.logger.log(`📍 Final detected addresses:`, result)
       return result
     } catch (error) {
-      this.logger.error('Failed to detect user addresses:', error)
       throw error
     }
   }
@@ -110,7 +92,6 @@ export class ShippingService {
    * Tìm shop address theo thứ tự ưu tiên
    */
   private async findShopAddress(userId: string, cartItemId?: string): Promise<any> {
-    this.logger.log(`🔍 findShopAddress called with userId: ${userId}, cartItemId:`, cartItemId)
     if (cartItemId) {
       const cartItem = await this.prismaService.cartItem.findFirst({
         where: {
@@ -133,16 +114,12 @@ export class ShippingService {
 
       if (cartItem) {
         const shopId = cartItem.sku?.product?.createdById
-        this.logger.log(`🔍 Found shopId from cartItem: ${shopId}`)
         if (shopId) {
-          this.logger.log(`🔍 Looking for shop address for shopId: ${shopId}`)
           const shopUserAddress = await this.prismaService.userAddress.findFirst({
             where: { userId: shopId, isDefault: true },
             include: { address: true }
           })
-          this.logger.log(`📍 Shop address found for shopId ${shopId}:`, shopUserAddress?.address ? 'Yes' : 'No')
           if (shopUserAddress?.address) {
-            this.logger.log(`✅ Returning shop address for shopId: ${shopId}`)
             return { address: shopUserAddress.address }
           }
         }
@@ -155,11 +132,10 @@ export class ShippingService {
   /**
    * Xử lý error chung cho GHN API calls
    */
-  private handleGHNError(error: any, context: string, specificExceptions: any[] = []): never {
+  private handleGHNError(error: any, specificExceptions: any[] = []): never {
     if (specificExceptions.includes(error)) {
       throw error
     }
-    this.logger.error(`GHN API error in ${context}:`, error)
     throw ShippingServiceUnavailableException
   }
 
@@ -172,7 +148,7 @@ export class ShippingService {
         data: provinces
       }
     } catch (error) {
-      this.handleGHNError(error, 'getProvinces')
+      this.handleGHNError(error)
     }
   }
 
@@ -191,7 +167,7 @@ export class ShippingService {
         data: districts
       }
     } catch (error) {
-      this.handleGHNError(error, 'getDistricts', [InvalidProvinceIdException])
+      this.handleGHNError(error, [InvalidProvinceIdException])
     }
   }
 
@@ -210,38 +186,27 @@ export class ShippingService {
         data: wards
       }
     } catch (error) {
-      this.handleGHNError(error, 'getWards', [InvalidDistrictIdException])
+      this.handleGHNError(error, [InvalidDistrictIdException])
     }
   }
 
   async getServiceList(query: GetServiceListQueryType, user: AccessTokenPayload): Promise<GetServiceListResType> {
     try {
       const { cartItemId } = query
-      this.logger.log(`🔍 getServiceList called with cartItemId:`, cartItemId)
 
-      // Auto-detection hoàn toàn từ cartItemId
       const detectedAddresses = await this.detectUserAddresses(user, cartItemId)
-      this.logger.log(`📍 Detected addresses:`, detectedAddresses)
       const fromDistrictId = detectedAddresses.fromDistrictId
       const toDistrictId = detectedAddresses.toDistrictId
 
-      this.logger.log(`🚚 GHN API params - fromDistrictId: ${fromDistrictId}, toDistrictId: ${toDistrictId}`)
-
       if (!fromDistrictId || fromDistrictId <= 0) {
-        this.logger.error(`❌ Invalid fromDistrictId: ${fromDistrictId}`)
         throw InvalidDistrictIdException
       }
 
       if (!toDistrictId || toDistrictId <= 0) {
-        this.logger.error(`❌ Invalid toDistrictId: ${toDistrictId}`)
         throw InvalidDistrictIdException
       }
 
-      this.logger.log(
-        `📡 Calling GHN API getServiceList with fromDistrictId: ${fromDistrictId}, toDistrictId: ${toDistrictId}`
-      )
       const services = await this.ghnService.calculateFee.getServiceList(fromDistrictId, toDistrictId)
-      this.logger.log(`✅ GHN API response received, services count:`, services?.length || 0)
 
       const normalized = services.map((s: any) => ({
         ...s,
@@ -251,14 +216,12 @@ export class ShippingService {
         standard_extra_cost_id: s.standard_extra_cost_id === '' ? null : s.standard_extra_cost_id
       }))
 
-      this.logger.log(`🎯 Normalized services count:`, normalized.length)
       return {
         message: this.i18n.t('ship.success.GET_SERVICE_LIST_SUCCESS'),
         data: normalized
       }
     } catch (error) {
-      this.logger.error(`💥 getServiceList error:`, error)
-      this.handleGHNError(error, 'getServiceList', [InvalidDistrictIdException])
+      this.handleGHNError(error, [InvalidDistrictIdException])
     }
   }
 
@@ -285,7 +248,6 @@ export class ShippingService {
         cartItemId
       } = data
 
-      // Auto-detection hoàn toàn từ cartItemId
       const detectedAddresses = await this.detectUserAddresses(user, cartItemId)
       const from_district_id = detectedAddresses.fromDistrictId
       const from_ward_code = detectedAddresses.fromWardCode
@@ -332,7 +294,7 @@ export class ShippingService {
         data: response
       }
     } catch (error) {
-      this.handleGHNError(error, 'calculateShippingFee', [
+      this.handleGHNError(error, [
         InvalidDistrictIdException,
         MissingWardCodeException,
         InvalidDimensionsException,
@@ -348,7 +310,6 @@ export class ShippingService {
     try {
       const { service_id, cartItemId } = data
 
-      // Auto-detection hoàn toàn từ cartItemId
       const detectedAddresses = await this.detectUserAddresses(user, cartItemId)
       const from_district_id = detectedAddresses.fromDistrictId
       const from_ward_code = detectedAddresses.fromWardCode
@@ -392,7 +353,7 @@ export class ShippingService {
         }
       }
     } catch (error) {
-      this.handleGHNError(error, 'calculateExpectedDeliveryTime', [
+      this.handleGHNError(error, [
         MissingServiceIdentifierException,
         InvalidDistrictIdException,
         MissingWardCodeException
@@ -459,22 +420,15 @@ export class ShippingService {
         throw new BadRequestException('No order information returned from GHN')
       }
 
-      // Transform GHN response để frontend dễ sử dụng hơn
-      const transformedData = this.transformOrderInfoResponse(orderInfo)
-
       return {
         message: this.i18n.t('ship.success.GET_ORDER_INFO_SUCCESS'),
-        data: transformedData
+        data: orderInfo
       }
     } catch (error) {
-      // Log error cho debugging
-      this.logger.error(`Failed to get order info for orderCode: ${query.orderCode}`, error)
-
       if (error === ShippingOrderNotFoundException || error instanceof BadRequestException) {
         throw error
       }
 
-      // Handle GHN API specific errors
       if (error?.response?.status === 404) {
         throw new BadRequestException('Order not found in GHN system')
       }
@@ -484,90 +438,6 @@ export class ShippingService {
       }
 
       throw ShippingServiceUnavailableException
-    }
-  }
-
-  private transformOrderInfoResponse(ghnResponse: any): any {
-    return {
-      // Basic order info
-      order_code: ghnResponse.order_code,
-      client_order_code: ghnResponse.client_order_code,
-      status: ghnResponse.status,
-
-      // Dates (keep as-is, GHN handles string/Date conversion)
-      created_date: ghnResponse.created_date,
-      updated_date: ghnResponse.updated_date,
-      order_date: ghnResponse.order_date,
-      finish_date: ghnResponse.finish_date,
-      leadtime: ghnResponse.leadtime,
-
-      // From info (sender)
-      from_name: ghnResponse.from_name,
-      from_phone: ghnResponse.from_phone,
-      from_address: ghnResponse.from_address,
-      from_ward_code: ghnResponse.from_ward_code,
-      from_district_id: ghnResponse.from_district_id,
-
-      // To info (receiver)
-      to_name: ghnResponse.to_name,
-      to_phone: ghnResponse.to_phone,
-      to_address: ghnResponse.to_address,
-      to_ward_code: ghnResponse.to_ward_code,
-      to_district_id: ghnResponse.to_district_id,
-
-      // Package info
-      weight: ghnResponse.weight,
-      length: ghnResponse.length,
-      width: ghnResponse.width,
-      height: ghnResponse.height,
-      converted_weight: ghnResponse.converted_weight,
-
-      // Payment & fees
-      cod_amount: ghnResponse.cod_amount,
-      order_value: ghnResponse.order_value,
-      insurance_value: ghnResponse.insurance_value,
-      cod_collect_date: ghnResponse.cod_collect_date,
-      cod_transfer_date: ghnResponse.cod_transfer_date,
-      is_cod_collected: ghnResponse.is_cod_collected,
-      is_cod_transferred: ghnResponse.is_cod_transferred,
-
-      // Service info
-      service_id: ghnResponse.service_id,
-      service_type_id: ghnResponse.service_type_id,
-      payment_type_id: ghnResponse.payment_type_id,
-
-      // Notes & content
-      content: ghnResponse.content,
-      note: ghnResponse.note,
-      required_note: ghnResponse.required_note,
-      employee_note: ghnResponse.employee_note,
-      coupon: ghnResponse.coupon,
-
-      // Tracking & log (keep as raw unknown[] from GHN)
-      log: ghnResponse.log || [],
-      tag: ghnResponse.tag || [],
-
-      // Warehouse info
-      pick_warehouse_id: ghnResponse.pick_warehouse_id,
-      deliver_warehouse_id: ghnResponse.deliver_warehouse_id,
-      current_warehouse_id: ghnResponse.current_warehouse_id,
-      return_warehouse_id: ghnResponse.return_warehouse_id,
-      next_warehouse_id: ghnResponse.next_warehouse_id,
-
-      // Additional useful fields
-      soc_id: ghnResponse.soc_id,
-      version_no: ghnResponse.version_no,
-      updated_source: ghnResponse.updated_source,
-      updated_employee: ghnResponse.updated_employee,
-      updated_client: ghnResponse.updated_client,
-
-      // Return info
-      return_name: ghnResponse.return_name,
-      return_phone: ghnResponse.return_phone,
-      return_address: ghnResponse.return_address,
-
-      // Internal ID
-      _id: ghnResponse._id
     }
   }
 }

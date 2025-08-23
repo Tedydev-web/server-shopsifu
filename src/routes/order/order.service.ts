@@ -1,7 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { CreateOrderBodyType, GetOrderListQueryType } from 'src/routes/order/order.model'
 import { OrderRepo } from 'src/routes/order/order.repo'
-import { SharedOrderRepository } from 'src/shared/repositories/shared-order.repo'
 import { SharedDiscountRepository } from 'src/shared/repositories/shared-discount.repo'
 import { SharedShippingRepository } from 'src/shared/repositories/shared-shipping.repo'
 import { I18nService } from 'nestjs-i18n'
@@ -14,11 +13,8 @@ import { normalizePhoneForGHN } from 'src/shared/helpers'
 import { PricingService } from 'src/shared/services/pricing.service'
 @Injectable()
 export class OrderService {
-  private readonly logger = new Logger(OrderService.name)
-
   constructor(
     private readonly orderRepo: OrderRepo,
-    private readonly sharedOrderRepo: SharedOrderRepository,
     private readonly sharedDiscountRepo: SharedDiscountRepository,
     private readonly sharedShippingRepo: SharedShippingRepository,
     private readonly i18n: I18nService<I18nTranslations>,
@@ -36,7 +32,6 @@ export class OrderService {
   }
 
   async create(user: AccessTokenPayload, body: CreateOrderBodyType) {
-    // Thu thập tất cả discount codes (shop + platform)
     const shopDiscountCodes = body.shops
       .filter((shop) => shop.discountCodes && Array.isArray(shop.discountCodes))
       .flatMap((shop) => shop.discountCodes)
@@ -111,7 +106,7 @@ export class OrderService {
         const codAmount = isCod ? (shopPayment?.payment ?? 0) : 0
 
         // Tạo OrderShipping record với trạng thái DRAFT để lưu thông tin shipping
-        const orderShipping = await this.sharedShippingRepo.createOrderShipping({
+        await this.sharedShippingRepo.createOrderShipping({
           orderId: order.id,
           serviceId: info.service_id,
           serviceTypeId: info.service_type_id,
@@ -195,8 +190,6 @@ export class OrderService {
             console.error('Failed to enqueue COD shipping order:', error)
           }
         }
-        // Online payment: GHN order sẽ được tạo sau khi thanh toán thành công
-        // thông qua webhook callback từ VNPay/Sepay
       })
     )
 
