@@ -204,7 +204,61 @@ export const GetOrderInfoQuerySchema = z.object({
   orderCode: z.string().min(1, 'Order code is required')
 })
 
-export const OrderInfoDataSchema = z.any()
+// Schema cho thông tin đơn hàng GHN - chỉ giữ những field cần thiết cho UI
+export const OrderInfoDataSchema = z.object({
+  // Basic order info
+  order_code: z.string(),
+  client_order_code: z.string().nullable(),
+  status: z.string(),
+  created_date: z.union([z.string(), z.date()]),
+  updated_date: z.union([z.string(), z.date()]),
+
+  // From info (sender/shop)
+  from_name: z.string(),
+  from_phone: z.string(),
+  from_address: z.string(),
+  from_ward_code: z.string(),
+  from_district_id: z.number(),
+
+  // To info (receiver/customer)
+  to_name: z.string(),
+  to_phone: z.string(),
+  to_address: z.string(),
+  to_ward_code: z.string(),
+  to_district_id: z.number(),
+
+  // Package info
+  weight: z.number(),
+  converted_weight: z.number().nullable().optional(),
+  length: z.number(),
+  width: z.number(),
+  height: z.number(),
+  content: z.string().nullable().optional(),
+
+  // Service info
+  service_id: z.number(),
+  service_type_id: z.number(),
+  payment_type_id: z.number(),
+  cod_amount: z.number().nullable().optional(),
+  insurance_value: z.number().nullable().optional(),
+  order_value: z.number().nullable().optional(),
+
+  // Timing info
+  order_date: z.union([z.string(), z.date()]).nullable().optional(),
+  leadtime: z.union([z.string(), z.date()]).nullable().optional(),
+  finish_date: z.union([z.string(), z.date()]).nullable().optional(),
+
+  // Status & tracking
+  pick_warehouse_id: z.number().nullable().optional(),
+  deliver_warehouse_id: z.number().nullable().optional(),
+  current_warehouse_id: z.number().nullable().optional(),
+  log: z.any().optional(), // GHN API trả về unknown[] cho log
+  tag: z.array(z.string()).optional(),
+
+  // Additional useful fields
+  note: z.string().nullable().optional(),
+  required_note: z.string().nullable().optional()
+})
 
 export const GetOrderInfoResSchema = z.object({
   message: z.string().optional(),
@@ -240,5 +294,5 @@ export type GHNWebhookPayloadType = z.infer<typeof GHNWebhookPayloadSchema>
 export type GHNWebhookResponseType = z.infer<typeof GHNWebhookResponseSchema>
 
 export type GetOrderInfoQueryType = z.infer<typeof GetOrderInfoQuerySchema>
-export type OrderInfoDataType = any
+export type OrderInfoDataType = z.infer<typeof OrderInfoDataSchema>
 export type GetOrderInfoResType = z.infer<typeof GetOrderInfoResSchema>
