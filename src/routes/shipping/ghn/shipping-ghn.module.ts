@@ -12,6 +12,7 @@ import { SHIPPING_QUEUE_NAME } from 'src/shared/constants/queue.constant'
     })
   ],
   providers: [ShippingService, ShippingRepo],
-  controllers: [ShippingController]
+  controllers: [ShippingController],
+  exports: [ShippingService]
 })
 export class ShippingModule {}

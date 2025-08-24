@@ -23,6 +23,7 @@ import { VersionConflictException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { SharedShippingRepository } from 'src/shared/repositories/shared-shipping.repo'
 
 @Injectable()
 export class OrderRepo {
@@ -30,9 +31,14 @@ export class OrderRepo {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private orderProducer: OrderProducer,
-    private readonly configService: ConfigService
+    private orderProducer: OrderProducer, // TODO: Move to OrderService - business orchestration
+    private readonly configService: ConfigService, // TODO: Move lock logic to OrderService
+    private readonly sharedShippingRepo: SharedShippingRepository
   ) {}
+
+  // ============================================================
+  // CORE CRUD METHODS - Repository Pattern Compliant
+  // ============================================================
 
   /**
    * Lấy danh sách orders - Core CRUD (cho User xem đơn hàng của mình)
@@ -86,33 +92,25 @@ export class OrderRepo {
     paymentId: number
     orders: CreateOrderResType['data']['orders']
   }> {
-    this.logger.log(`[ORDER_REPO] Bắt đầu tạo orders cho user: ${userId}`)
-    this.logger.log(`[ORDER_REPO] Số lượng shops: ${shops.length}`)
-
     // Chuẩn bị dữ liệu ban đầu
     const allBodyCartItemIds = shops.map((item) => item.cartItemIds).flat()
-    this.logger.log(`[ORDER_REPO] Tổng số cart item IDs: ${allBodyCartItemIds.length}`)
-    this.logger.log(`[ORDER_REPO] Cart item IDs: ${JSON.stringify(allBodyCartItemIds)}`)
-
     const skuIds = await this.getSkuIdsFromCartItems(allBodyCartItemIds, userId)
-    this.logger.log(`[ORDER_REPO] SKU IDs từ cart items: ${JSON.stringify(skuIds)}`)
 
     // Acquire locks cho tất cả SKUs
-    this.logger.log(`[ORDER_REPO] Bắt đầu acquire locks cho ${skuIds.length} SKUs`)
     const locks = await this.acquireSkuLocks(skuIds)
-    this.logger.log(`[ORDER_REPO] Đã acquire ${locks.length} locks thành công`)
 
     try {
-      this.logger.log(`[ORDER_REPO] Bắt đầu tạo orders trong transaction`)
       const [paymentId, orders] = await this.createOrdersInTransaction(userId, shops, allBodyCartItemIds)
-      this.logger.log(`[ORDER_REPO] Transaction hoàn thành - paymentId: ${paymentId}, orders: ${orders.length}`)
       return { paymentId, orders }
     } finally {
-      this.logger.log(`[ORDER_REPO] Bắt đầu release ${locks.length} locks`)
       await this.releaseLocks(locks)
-      this.logger.log(`[ORDER_REPO] Đã release tất cả locks`)
     }
   }
+
+  // ============================================================
+  // BUSINESS LOGIC METHODS - Should be moved to OrderService
+  // TODO: Refactor to move business orchestration to Service layer
+  // ============================================================
 
   /**
    * Lấy SKU IDs từ cart items - Core business logic
@@ -130,6 +128,7 @@ export class OrderRepo {
 
   /**
    * Acquire locks cho SKUs - Core business logic
+   * TODO: Move lock management to OrderService - business orchestration concern
    */
   private async acquireSkuLocks(skuIds: string[]) {
     const redlock = this.configService.get('redis.redlock')
@@ -138,6 +137,7 @@ export class OrderRepo {
 
   /**
    * Release locks - Core business logic
+   * TODO: Move lock management to OrderService - business orchestration concern
    */
   private async releaseLocks(locks: any[]) {
     await Promise.all(locks.map((lock) => lock.release().catch(() => {})))
@@ -151,41 +151,24 @@ export class OrderRepo {
     shops: CreateOrderBodyType['shops'],
     allBodyCartItemIds: string[]
   ): Promise<[number, CreateOrderResType['data']['orders']]> {
-    this.logger.log(`[ORDER_REPO] Bắt đầu transaction tạo orders`)
-
     return this.prismaService.$transaction(async (tx) => {
-      this.logger.log(`[ORDER_REPO] Transaction started`)
-
       // Lấy và validate cart items
-      this.logger.log(`[ORDER_REPO] Lấy cart items với details`)
       const cartItems = await this.getCartItemsWithDetails(tx, allBodyCartItemIds, userId)
-      this.logger.log(`[ORDER_REPO] Lấy được ${cartItems.length} cart items`)
-
-      this.logger.log(`[ORDER_REPO] Bắt đầu validate cart items`)
       const cartItemMap = this.validateCartItems(cartItems, allBodyCartItemIds, shops)
-      this.logger.log(`[ORDER_REPO] Cart items validated thành công, map size: ${cartItemMap.size}`)
 
       // Tạo payment
-      this.logger.log(`[ORDER_REPO] Bắt đầu tạo payment`)
       const payment = await this.createPayment(tx)
-      this.logger.log(`[ORDER_REPO] Payment created: ${JSON.stringify(payment)}`)
 
       // Tạo orders (đơn giản, không có discount logic)
-      this.logger.log(`[ORDER_REPO] Bắt đầu tạo ${shops.length} orders`)
       const orders = await this.createSimpleOrders(tx, shops, cartItemMap, payment.id, userId)
-      this.logger.log(`[ORDER_REPO] Orders created: ${orders.length} orders`)
 
       // Cleanup: xóa cart items và update stock
-      this.logger.log(`[ORDER_REPO] Bắt đầu cleanup cart và update stock`)
       await this.cleanupCartAndUpdateStock(tx, allBodyCartItemIds, cartItems)
-      this.logger.log(`[ORDER_REPO] Cleanup hoàn thành`)
 
       // Schedule payment cancellation job
-      this.logger.log(`[ORDER_REPO] Bắt đầu schedule payment cancellation job cho paymentId: ${payment.id}`)
+      // TODO: Move queue scheduling to OrderService - business orchestration concern
       await this.orderProducer.addCancelPaymentJob(payment.id)
-      this.logger.log(`[ORDER_REPO] Payment cancellation job đã được schedule`)
 
-      this.logger.log(`[ORDER_REPO] Transaction hoàn thành thành công`)
       return [payment.id, orders]
     })
   }
@@ -236,17 +219,13 @@ export class OrderRepo {
     paymentId: number,
     userId: string
   ): Promise<CreateOrderResType['data']['orders']> {
-    this.logger.log(`[ORDER_REPO] Bắt đầu tạo ${shops.length} simple orders`)
     const orders: CreateOrderResType['data']['orders'] = []
 
-    for (const [index, item] of shops.entries()) {
-      this.logger.log(`[ORDER_REPO] Tạo order ${index + 1}/${shops.length} cho shop: ${item.shopId}`)
+    for (const item of shops) {
       const order = await this.createSingleOrder(tx, item, cartItemMap, paymentId, userId)
-      this.logger.log(`[ORDER_REPO] Order ${index + 1} created: ${JSON.stringify(order)}`)
       orders.push(order)
     }
 
-    this.logger.log(`[ORDER_REPO] Tất cả ${orders.length} orders đã được tạo`)
     return orders
   }
 
@@ -260,10 +239,6 @@ export class OrderRepo {
     paymentId: number,
     userId: string
   ) {
-    this.logger.log(
-      `[ORDER_REPO] Tạo single order cho shop: ${orderItem.shopId}, cartItems: ${orderItem.cartItemIds.length}`
-    )
-
     const orderData = {
       userId,
       status: OrderStatus.PENDING_PAYMENT,
@@ -299,36 +274,22 @@ export class OrderRepo {
       }
     }
 
-    this.logger.log(`[ORDER_REPO] Order data: ${JSON.stringify(orderData, null, 2)}`)
-
-    const order = await tx.order.create({ data: orderData })
-    this.logger.log(`[ORDER_REPO] Order created successfully: ${order.id}`)
-
-    return order
+    return tx.order.create({ data: orderData })
   }
 
   /**
    * Cleanup cart và update stock - Core business logic
    */
   private async cleanupCartAndUpdateStock(tx: any, cartItemIds: string[], cartItems: any[]) {
-    this.logger.log(`[ORDER_REPO] Bắt đầu cleanup cho ${cartItemIds.length} cart items`)
-
     // Xóa cart items
-    this.logger.log(`[ORDER_REPO] Xóa ${cartItemIds.length} cart items`)
     await tx.cartItem.deleteMany({
       where: {
         id: { in: cartItemIds }
       }
     })
-    this.logger.log(`[ORDER_REPO] Cart items đã được xóa`)
 
     // Update stock cho từng item
-    this.logger.log(`[ORDER_REPO] Bắt đầu update stock cho ${cartItems.length} items`)
-    for (const [index, item] of cartItems.entries()) {
-      this.logger.log(
-        `[ORDER_REPO] Update stock item ${index + 1}/${cartItems.length}: SKU ${item.sku.id}, quantity: ${item.quantity}, current stock: ${item.sku.stock}`
-      )
-
+    for (const item of cartItems) {
       await tx.sKU
         .update({
           where: {
@@ -347,11 +308,7 @@ export class OrderRepo {
           }
           throw e
         })
-
-      this.logger.log(`[ORDER_REPO] Stock updated thành công cho SKU ${item.sku.id}`)
     }
-
-    this.logger.log(`[ORDER_REPO] Cleanup và update stock hoàn thành`)
   }
 
   /**
@@ -389,7 +346,18 @@ export class OrderRepo {
   /**
    * Lấy danh sách orders theo shop (cho Seller xem đơn hàng của shop mình)
    */
-  async listByShop(shopId: string, query: any): Promise<any> {
+  async listByShop(
+    shopId: string,
+    query: {
+      page: number
+      limit: number
+      status?: OrderStatusType
+      startDate?: string
+      endDate?: string
+      customerName?: string
+      orderCode?: string
+    }
+  ): Promise<any> {
     const { page, limit, status, startDate, endDate, customerName, orderCode } = query
     const skip = (page - 1) * limit
     const take = limit
@@ -452,6 +420,7 @@ export class OrderRepo {
     })
 
     const [data, totalItems] = await Promise.all([data$, totalItem$])
+    const totalPages = Math.ceil(totalItems / limit)
 
     return {
       data,
@@ -459,8 +428,8 @@ export class OrderRepo {
         totalItems,
         page,
         limit,
-        totalPages: Math.ceil(totalItems / limit),
-        hasNext: page < Math.ceil(totalItems / limit),
+        totalPages,
+        hasNext: page < totalPages,
         hasPrev: page > 1
       }
     }
@@ -510,7 +479,7 @@ export class OrderRepo {
   /**
    * Cập nhật trạng thái đơn hàng của shop
    */
-  async updateOrderStatus(shopId: string, orderId: string, status: OrderStatusType, updatedById: string) {
+  async updateOrderStatus(shopId: string, orderId: string, status: OrderStatusType, updatedById: string): Promise<any> {
     return this.prismaService.order.update({
       where: {
         id: orderId,
@@ -540,6 +509,28 @@ export class OrderRepo {
       if (order.status !== OrderStatus.PENDING_PAYMENT) {
         throw CannotCancelOrderException
       }
+
+      // Kiểm tra xem order đã có GHN order chưa
+      const orderShipping = await this.prismaService.orderShipping.findUnique({
+        where: { orderId },
+        select: { orderCode: true, status: true }
+      })
+
+      // Nếu có GHN order, cần hủy trên GHN system trước
+      if (orderShipping?.orderCode && orderShipping.status === 'CREATED') {
+        try {
+          // Update OrderShipping status thành FAILED
+          await this.sharedShippingRepo.updateOrderShippingStatusForCancellation(
+            orderId,
+            'FAILED',
+            'Order cancelled by user - GHN order needs to be cancelled'
+          )
+        } catch (error) {
+          this.logger.error(`[ORDER_REPO] Lỗi khi xử lý OrderShipping: ${error.message}`)
+          // Tiếp tục hủy local order ngay cả khi có lỗi
+        }
+      }
+
       const updatedOrder = await this.prismaService.order.update({
         where: {
           id: orderId,
@@ -551,6 +542,7 @@ export class OrderRepo {
           updatedById: userId
         }
       })
+
       return {
         data: updatedOrder
       }
@@ -564,6 +556,8 @@ export class OrderRepo {
 
   /**
    * Validate cart items và trả về cartItemMap - Core business logic
+   * TODO: Move complex business validation to OrderService
+   * Repository should focus on data access, not business rules
    */
   private validateCartItems(
     cartItems: any[],
@@ -599,15 +593,14 @@ export class OrderRepo {
     cartItems.forEach((item) => {
       cartItemMap.set(item.id, item)
     })
-    const isValidShop = shops.every((item) => {
-      const bodyCartItemIds = item.cartItemIds
-      return bodyCartItemIds.every((cartItemId) => {
-        // Neu đã đến bước này thì cartItem luôn luôn có giá trị
-        // Vì chúng ta đã so sánh với allBodyCartItems.length ở trên rồi
+
+    const isValidShop = shops.every((item) =>
+      item.cartItemIds.every((cartItemId) => {
         const cartItem = cartItemMap.get(cartItemId)!
         return item.shopId === cartItem.sku.createdById
       })
-    })
+    )
+
     if (!isValidShop) {
       throw SKUNotBelongToShopException
     }
@@ -618,14 +611,14 @@ export class OrderRepo {
   /**
    * Cập nhật trạng thái nhiều orders cùng lúc
    */
-  async updateMultipleOrdersStatus(orderIds: string[], status: string) {
+  async updateMultipleOrdersStatus(orderIds: string[], status: OrderStatusType) {
     return this.prismaService.order.updateMany({
       where: {
         id: { in: orderIds },
         deletedAt: null
       },
       data: {
-        status: status as any
+        status
       }
     })
   }

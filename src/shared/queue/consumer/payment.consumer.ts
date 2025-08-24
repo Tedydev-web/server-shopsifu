@@ -14,18 +14,12 @@ export class PaymentConsumer extends WorkerHost {
   }
 
   async process(job: Job<{ paymentId: number }, any, string>): Promise<any> {
-    this.logger.log(`[PAYMENT_CONSUMER] Processing job: ${job.id} - ${job.name}`)
-    this.logger.log(`[PAYMENT_CONSUMER] Job data: ${JSON.stringify(job.data, null, 2)}`)
-
     try {
       switch (job.name) {
         case CANCEL_PAYMENT_JOB_NAME: {
           const { paymentId } = job.data
-          this.logger.log(`[PAYMENT_CONSUMER] Cancelling payment: ${paymentId}`)
 
-          const result = await this.sharedPaymentRepo.cancelPaymentAndOrder(paymentId)
-          this.logger.log(`[PAYMENT_CONSUMER] Payment cancelled successfully: ${paymentId}`)
-          this.logger.log(`[PAYMENT_CONSUMER] Result: ${JSON.stringify(result, null, 2)}`)
+          await this.sharedPaymentRepo.cancelPaymentAndOrder(paymentId)
 
           return { message: 'Payment cancelled successfully', paymentId }
         }
@@ -35,33 +29,7 @@ export class PaymentConsumer extends WorkerHost {
         }
       }
     } catch (error) {
-      this.logger.error(`[PAYMENT_CONSUMER] Job failed: ${job.id} - ${error.message}`, error.stack)
       throw error
     }
-  }
-
-  /**
-   * Xử lý khi job bắt đầu
-   */
-  async onActive(job: Job): Promise<void> {
-    this.logger.log(`[PAYMENT_CONSUMER] Job ${job.id} started processing`)
-    this.logger.log(`[PAYMENT_CONSUMER] Job name: ${job.name}, data: ${JSON.stringify(job.data, null, 2)}`)
-  }
-
-  /**
-   * Xử lý khi job hoàn thành
-   */
-  async onCompleted(job: Job): Promise<void> {
-    this.logger.log(`[PAYMENT_CONSUMER] Job ${job.id} completed successfully`)
-    this.logger.log(`[PAYMENT_CONSUMER] Job name: ${job.name}, result: ${JSON.stringify(job.returnvalue, null, 2)}`)
-  }
-
-  /**
-   * Xử lý khi job thất bại
-   */
-  async onFailed(job: Job, err: Error): Promise<void> {
-    this.logger.error(`[PAYMENT_CONSUMER] Job ${job.id} failed:`, err)
-    this.logger.error(`[PAYMENT_CONSUMER] Job name: ${job.name}, error: ${err.message}`)
-    this.logger.error(`[PAYMENT_CONSUMER] Error stack: ${err.stack}`)
   }
 }

@@ -50,9 +50,20 @@ export class OrderService {
 
     if (allDiscountCodes.length > 0) {
       this.logger.log(`[ORDER_CREATE] Bắt đầu validate discounts`)
-      // Validate tất cả discounts thông qua SharedDiscountRepository
-      const discountInfo = await this.sharedDiscountRepo.validateDiscountsForOrder(allDiscountCodes, user.userId)
-      const { discounts, userUsageMap } = discountInfo
+      // Lấy discounts data thông qua SharedDiscountRepository
+      const discounts = await this.sharedDiscountRepo.findDiscountsByCodes(allDiscountCodes)
+
+      // Validate business rules: Kiểm tra tất cả codes có tồn tại
+      if (discounts.length !== allDiscountCodes.length) {
+        const foundCodes = discounts.map((d) => d.code)
+        const missingCodes = allDiscountCodes.filter((code) => !foundCodes.includes(code))
+        throw new BadRequestException(`Mã voucher không tồn tại: ${missingCodes.join(', ')}`)
+      }
+
+      const userUsageMap = await this.sharedDiscountRepo.getUserDiscountUsage(
+        user.userId,
+        discounts.map((d) => d.id)
+      )
 
       this.logger.log(`[ORDER_CREATE] Discounts validated: ${discounts.length} codes`)
 

@@ -15,7 +15,6 @@ import { OrderProducer } from 'src/shared/queue/producer/order.producer'
     })
   ],
   providers: [OrderService, ManageOrderService, OrderRepo, OrderProducer],
-  controllers: [OrderController, ManageOrderController],
-  exports: [OrderRepo]
+  controllers: [OrderController, ManageOrderController]
 })
 export class OrderModule {}

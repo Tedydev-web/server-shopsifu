@@ -59,7 +59,7 @@ export class ManageOrderService {
 
     return {
       message: this.i18n.t('order.order.success.GET_DETAIL_SUCCESS'),
-      data: order
+      data: order.data
     }
   }
 

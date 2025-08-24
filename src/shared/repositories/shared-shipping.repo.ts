@@ -282,6 +282,41 @@ export class SharedShippingRepository {
   }
 
   /**
+   * Lấy OrderShipping info cho order - Bridge method
+   * Sử dụng bởi Order module để kiểm tra GHN order status
+   */
+  async getOrderShippingForCancellation(orderId: string) {
+    return this.prismaService.orderShipping.findUnique({
+      where: { orderId },
+      select: {
+        id: true,
+        orderCode: true,
+        status: true,
+        orderId: true
+      }
+    })
+  }
+
+  /**
+   * Update OrderShipping status - Bridge method
+   * Sử dụng bởi Order module để update status khi cancel order
+   */
+  async updateOrderShippingStatusForCancellation(
+    orderId: string,
+    status: OrderShippingStatusType,
+    errorMessage?: string
+  ) {
+    return this.prismaService.orderShipping.update({
+      where: { orderId },
+      data: {
+        status,
+        lastError: errorMessage,
+        lastUpdatedAt: new Date()
+      }
+    })
+  }
+
+  /**
    * Lấy order với shipping cho GHN - Bridge method
    * Sử dụng bởi Shipping module để lấy order data cho GHN API
    */

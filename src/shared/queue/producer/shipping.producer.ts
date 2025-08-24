@@ -15,7 +15,7 @@ export class ShippingProducer {
 
   constructor(@InjectQueue(SHIPPING_QUEUE_NAME) private shippingQueue: Queue) {}
 
-  async enqueueCreateOrder(jobData: CreateOrderType) {
+  async enqueueCreateOrder(jobData: CreateOrderType): Promise<any> {
     this.logger.log(`[SHIPPING_PRODUCER] Enqueue create order job: ${jobData.client_order_code}`)
 
     try {
@@ -34,11 +34,10 @@ export class ShippingProducer {
       }
 
       const job = await this.shippingQueue.add(CREATE_SHIPPING_ORDER_JOB, jobData, jobOptions)
-      this.logger.log(`[SHIPPING_PRODUCER] Job enqueued: ${job.id}`)
-
+      this.logger.log(`[SHIPPING_PRODUCER] Job enqueued successfully: ${job.id}`)
       return job
     } catch (error) {
-      this.logger.error(`[SHIPPING_PRODUCER] Enqueue failed: ${error.message}`)
+      this.logger.error(`[SHIPPING_PRODUCER] Failed to enqueue job: ${error.message}`)
       throw error
     }
   }
@@ -60,15 +59,16 @@ export class ShippingProducer {
       'length',
       'width',
       'height'
-    ]
+    ] as const
 
+    // Check required fields
     const missingFields = requiredFields.filter((field) => !jobData[field])
     if (missingFields.length > 0) {
       throw new Error(`Missing required fields: ${missingFields.join(', ')}`)
     }
 
     // Validate numeric fields
-    const numericFields = ['weight', 'length', 'width', 'height', 'service_id']
+    const numericFields = ['weight', 'length', 'width', 'height', 'service_id'] as const
     const invalidNumericFields = numericFields.filter((field) => {
       const value = jobData[field]
       return typeof value !== 'number' || value <= 0
@@ -78,14 +78,18 @@ export class ShippingProducer {
       throw new Error(`Invalid numeric fields: ${invalidNumericFields.join(', ')}`)
     }
 
-    // Validate phone number format
-    const phoneRegex = /^(\+84|84|0)[0-9]{9}$/
-    if (!phoneRegex.test(jobData.from_phone)) {
-      throw new Error(`Invalid from_phone format: ${jobData.from_phone}`)
-    }
+    // Validate phone numbers
+    this.validatePhoneNumber(jobData.from_phone, 'from_phone')
+    this.validatePhoneNumber(jobData.to_phone, 'to_phone')
+  }
 
-    if (!phoneRegex.test(jobData.to_phone)) {
-      throw new Error(`Invalid to_phone format: ${jobData.to_phone}`)
+  /**
+   * Validate phone number format
+   */
+  private validatePhoneNumber(phone: string, fieldName: string): void {
+    const phoneRegex = /^(\+84|84|0)[0-9]{9}$/
+    if (!phoneRegex.test(phone)) {
+      throw new Error(`Invalid ${fieldName} format: ${phone}`)
     }
   }
 
@@ -93,19 +97,25 @@ export class ShippingProducer {
    * Enqueue multiple shipping jobs
    */
   async enqueueMultipleShippingOrders(ordersData: CreateOrderType[]): Promise<void> {
-    this.logger.log(`[SHIPPING_PRODUCER] Enqueue ${ordersData.length} shipping jobs`)
+    this.logger.log(`[SHIPPING_PRODUCER] Enqueue ${ordersData.length} shipping orders`)
+
+    if (ordersData.length === 0) {
+      this.logger.warn(`[SHIPPING_PRODUCER] No orders to enqueue`)
+      return
+    }
 
     const results = await Promise.allSettled(ordersData.map((orderData) => this.enqueueCreateOrder(orderData)))
 
     const successful = results.filter((result) => result.status === 'fulfilled').length
     const failed = results.filter((result) => result.status === 'rejected').length
 
-    this.logger.log(`[SHIPPING_PRODUCER] Results: ${successful} successful, ${failed} failed`)
+    this.logger.log(`[SHIPPING_PRODUCER] Batch enqueue completed: ${successful} successful, ${failed} failed`)
 
     if (failed > 0) {
+      // Log failed jobs for debugging
       results.forEach((result, index) => {
         if (result.status === 'rejected') {
-          this.logger.error(`[SHIPPING_PRODUCER] Failed job ${index}: ${result.reason}`)
+          this.logger.error(`[SHIPPING_PRODUCER] Failed to enqueue order ${index}: ${result.reason}`)
         }
       })
       throw new Error(`Failed to enqueue ${failed} shipping jobs`)
@@ -115,7 +125,7 @@ export class ShippingProducer {
   /**
    * Enqueue GHN webhook processing job
    */
-  async enqueueWebhookProcessing(payload: GHNWebhookPayloadType) {
+  async enqueueWebhookProcessing(payload: GHNWebhookPayloadType): Promise<any> {
     this.logger.log(`[SHIPPING_PRODUCER] Enqueue webhook processing: ${payload.orderCode}`)
 
     try {
@@ -135,7 +145,7 @@ export class ShippingProducer {
       this.logger.log(`[SHIPPING_PRODUCER] Webhook job enqueued: ${job.id}`)
       return job
     } catch (error) {
-      this.logger.error(`[SHIPPING_PRODUCER] Webhook enqueue failed: ${error.message}`)
+      this.logger.error(`[SHIPPING_PRODUCER] Failed to enqueue webhook job: ${error.message}`)
       throw error
     }
   }

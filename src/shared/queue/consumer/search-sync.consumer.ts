@@ -23,8 +23,6 @@ export class SearchSyncConsumer extends WorkerHost {
    * Xử lý job đồng bộ một sản phẩm
    */
   async process(job: Job<SyncProductJobType, any, string>): Promise<void> {
-    this.logger.log(`Processing job ${job.id}: ${job.name}`)
-
     try {
       switch (job.name) {
         case SYNC_PRODUCT_JOB:
@@ -42,39 +40,8 @@ export class SearchSyncConsumer extends WorkerHost {
         default:
           this.logger.warn(`Unknown job type: ${job.name}`)
       }
-
-      this.logger.log(`Job ${job.id} completed successfully`)
     } catch (error) {
-      this.logger.error(`Job ${job.id} failed:`, error)
       throw error
     }
-  }
-
-  /**
-   * Xử lý khi job bắt đầu
-   */
-  async onActive(job: Job): Promise<void> {
-    this.logger.log(`Job ${job.id} started processing`)
-  }
-
-  /**
-   * Xử lý khi job hoàn thành
-   */
-  async onCompleted(job: Job): Promise<void> {
-    this.logger.log(`Job ${job.id} completed successfully`)
-  }
-
-  /**
-   * Xử lý khi job thất bại
-   */
-  async onFailed(job: Job, err: Error): Promise<void> {
-    this.logger.error(`Job ${job.id} failed:`, err)
-  }
-
-  /**
-   * Xử lý khi job bị retry
-   */
-  async onStalled(job: Job): Promise<void> {
-    this.logger.warn(`Job ${job.id} stalled`)
   }
 }
