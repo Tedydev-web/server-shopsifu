@@ -241,7 +241,9 @@ export class SharedShippingRepository {
 
       // Nếu không có default address, lấy address đầu tiên
       if (!shopUserAddress) {
-        this.logger.warn(`[SHARED_SHIPPING] Shop không có default address, thử lấy address đầu tiên cho shop: ${shopId}`)
+        this.logger.warn(
+          `[SHARED_SHIPPING] Shop không có default address, thử lấy address đầu tiên cho shop: ${shopId}`
+        )
         shopUserAddress = await this.prismaService.userAddress.findFirst({
           where: { userId: shopId },
           include: { address: true }
