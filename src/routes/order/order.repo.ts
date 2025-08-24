@@ -569,30 +569,4 @@ export class OrderRepo {
       }
     })
   }
-
-  /**
-   * Lấy orders theo danh sách IDs
-   */
-  async getOrdersByIds(orderIds: string[]) {
-    return this.prismaService.order.findMany({
-      where: {
-        id: { in: orderIds },
-        deletedAt: null
-      },
-      select: {
-        id: true,
-        userId: true,
-        status: true,
-        receiver: true,
-        shopId: true,
-        paymentId: true,
-        createdById: true,
-        updatedById: true,
-        deletedById: true,
-        deletedAt: true,
-        createdAt: true,
-        updatedAt: true
-      }
-    })
-  }
 }

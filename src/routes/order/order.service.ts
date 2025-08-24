@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, BadRequestException } from '@nestjs/common'
 import { CreateOrderBodyType, GetOrderListQueryType } from 'src/routes/order/order.model'
 import { OrderRepo } from 'src/routes/order/order.repo'
 import { SharedDiscountRepository } from 'src/shared/repositories/shared-discount.repo'
@@ -48,23 +48,25 @@ export class OrderService {
       for (const discount of discounts) {
         // Kiểm tra trạng thái và thời gian
         if (discount.discountStatus !== 'ACTIVE') {
-          throw new Error('Discount not applicable')
+          throw new BadRequestException('Mã giảm giá không khả dụng')
         }
 
         const now = new Date()
         if (now < discount.startDate || now > discount.endDate) {
-          throw new Error('Discount expired')
+          throw new BadRequestException('Mã giảm giá đã hết hạn')
         }
 
         // Kiểm tra maxUses
         if (discount.maxUses > 0 && discount.usesCount >= discount.maxUses) {
-          throw new Error('Discount usage limit exceeded')
+          throw new BadRequestException('Mã giảm giá đã hết lượt sử dụng')
         }
 
         // Kiểm tra maxUsesPerUser
         if (discount.maxUsesPerUser && discount.maxUsesPerUser > 0) {
           const usedCount = userUsageMap.get(discount.id) || 0
-          if (usedCount >= discount.maxUsesPerUser) throw new Error('Discount usage limit exceeded')
+          if (usedCount >= discount.maxUsesPerUser) {
+            throw new BadRequestException('Bạn đã sử dụng hết lượt cho mã giảm giá này')
+          }
         }
       }
     }
@@ -110,8 +112,8 @@ export class OrderService {
           orderId: order.id,
           serviceId: info.service_id,
           serviceTypeId: info.service_type_id,
-          configFeeId: info.config_fee_id,
-          extraCostId: info.extra_cost_id,
+          configFeeId: info.config_fee_id || '',
+          extraCostId: info.extra_cost_id || '',
           weight: info.weight,
           length: info.length,
           width: info.width,
@@ -137,7 +139,7 @@ export class OrderService {
           toWardCode: shop.receiver.wardCode || ''
         })
 
-        // Chỉ tạo GHN order ngay lập tức cho COD
+        // Tạo GHN order cho COD ngay lập tức
         // Online payment sẽ tạo GHN order sau khi thanh toán thành công
         if (isCod) {
           try {

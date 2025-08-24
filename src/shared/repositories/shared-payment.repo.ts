@@ -215,7 +215,9 @@ export class SharedPaymentRepository {
     await tx.order.updateMany({
       where: {
         id: { in: orders.map((order) => order.id) },
-        status: OrderStatus.PENDING_PAYMENT,
+        status: {
+          in: [OrderStatus.PENDING_PAYMENT, OrderStatus.PENDING_PACKAGING]
+        },
         deletedAt: null
       },
       data: { status: OrderStatus.CANCELLED }
