@@ -8,6 +8,8 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 import {
   CREATE_SHIPPING_ORDER_JOB,
   PROCESS_GHN_WEBHOOK_JOB,
+  CANCEL_GHN_ORDER_JOB,
+  CREATE_GHN_ORDER_JOB,
   SHIPPING_QUEUE_NAME
 } from 'src/shared/constants/queue.constant'
 import { CreateOrderType, GHNWebhookPayloadType } from 'src/routes/shipping/ghn/shipping-ghn.model'
@@ -45,6 +47,10 @@ export class ShippingConsumer extends WorkerHost {
           return await this.processCreateShippingOrder(job.data as CreateOrderType)
         case PROCESS_GHN_WEBHOOK_JOB:
           return await this.processWebhook(job as Job<GHNWebhookPayloadType>)
+        case CANCEL_GHN_ORDER_JOB:
+          return await this.processCancelGHNOrder(job.data as { orderCode: string; orderId: string })
+        case CREATE_GHN_ORDER_JOB:
+          return await this.processCreateGHNOrder(job.data as { orderId: string })
         default:
           throw new Error(`Unknown job type: ${job.name}`)
       }
@@ -104,9 +110,9 @@ export class ShippingConsumer extends WorkerHost {
       return { message: 'Unknown status, keeping current', orderCode, status }
     }
 
-    // Chỉ cho phép GHN cập nhật order từ PENDING_PICKUP trở đi
+    // Chỉ cho phép GHN cập nhật order từ PICKUPED trở đi
     const allowedStatuses = [
-      OrderStatus.PENDING_PICKUP,
+      OrderStatus.PICKUPED,
       OrderStatus.PENDING_DELIVERY,
       OrderStatus.DELIVERED,
       OrderStatus.RETURNED,
@@ -261,11 +267,11 @@ export class ShippingConsumer extends WorkerHost {
   private mapGHNStatusToOrderStatus(ghnStatus: string): (typeof OrderStatus)[keyof typeof OrderStatus] | null {
     const statusMap = {
       // Tạo đơn hàng
-      ready_to_pick: OrderStatus.PENDING_PICKUP,
+      ready_to_pick: OrderStatus.PICKUPED,
 
       // Lấy hàng
-      picking: OrderStatus.PENDING_PICKUP,
-      picked: OrderStatus.PENDING_PICKUP,
+      picking: OrderStatus.PICKUPED,
+      picked: OrderStatus.PICKUPED,
 
       // Vận chuyển
       storing: OrderStatus.PENDING_DELIVERY,
@@ -293,5 +299,166 @@ export class ShippingConsumer extends WorkerHost {
     } as const
 
     return statusMap[ghnStatus as keyof typeof statusMap] || null
+  }
+
+  /**
+   * Xử lý hủy đơn hàng GHN
+   */
+  private async processCancelGHNOrder(data: { orderCode: string; orderId: string }) {
+    const { orderCode, orderId } = data
+    this.logger.log(`[SHIPPING_CONSUMER] Bắt đầu hủy đơn hàng GHN: ${orderCode} cho order: ${orderId}`)
+
+    try {
+      // Gọi GHN API để hủy đơn hàng
+      const result = await this.ghnClient.order.cancelOrder({
+        orderCodes: [orderCode]
+      })
+
+      this.logger.log(`[SHIPPING_CONSUMER] Kết quả hủy đơn hàng GHN: ${JSON.stringify(result, null, 2)}`)
+
+      // Kiểm tra kết quả từ GHN
+      if (result && Array.isArray(result)) {
+        const orderResult = result.find((item: any) => item.order_code === orderCode)
+        if (orderResult && orderResult.result === true) {
+          this.logger.log(`[SHIPPING_CONSUMER] Hủy đơn hàng GHN thành công: ${orderCode}`)
+
+          // Cập nhật trạng thái OrderShipping thành CANCELLED
+          await this.prismaService.orderShipping.update({
+            where: { orderId },
+            data: {
+              status: OrderShippingStatus.CANCELLED,
+              lastUpdatedAt: new Date()
+            }
+          })
+
+          return {
+            success: true,
+            message: `Hủy đơn hàng GHN thành công: ${orderCode}`,
+            orderCode
+          }
+        }
+      }
+
+      throw new Error(`Không thể hủy đơn hàng GHN: ${orderCode}`)
+    } catch (error) {
+      this.logger.error(`[SHIPPING_CONSUMER] Lỗi khi hủy đơn hàng GHN: ${error.message}`)
+
+      // Cập nhật trạng thái OrderShipping thành FAILED
+      await this.ghnClient.order.cancelOrder({
+        orderCodes: [orderCode]
+      })
+
+      // Cập nhật trạng thái OrderShipping thành FAILED
+      await this.prismaService.orderShipping.update({
+        where: { orderId },
+        data: {
+          status: OrderShippingStatus.FAILED,
+          lastError: error.message,
+          lastUpdatedAt: new Date()
+        }
+      })
+
+      throw error
+    }
+  }
+
+  /**
+   * Xử lý tạo đơn hàng GHN
+   */
+  private async processCreateGHNOrder(data: { orderId: string }) {
+    const { orderId } = data
+    this.logger.log(`[SHIPPING_CONSUMER] Bắt đầu tạo đơn hàng GHN cho order: ${orderId}`)
+
+    try {
+      // Lấy thông tin OrderShipping
+      const orderShipping = await this.prismaService.orderShipping.findUnique({
+        where: { orderId }
+      })
+
+      if (!orderShipping) {
+        throw new Error(`Không tìm thấy OrderShipping cho order: ${orderId}`)
+      }
+
+      if (orderShipping.status !== 'DRAFT') {
+        throw new Error(`OrderShipping status không phù hợp để tạo GHN order: ${orderShipping.status}`)
+      }
+
+      // Tạo GHN order
+      const ghnOrderData = {
+        from_address: orderShipping.fromAddress || '',
+        from_name: orderShipping.fromName || '',
+        from_phone: orderShipping.fromPhone || '',
+        from_province_name: orderShipping.fromProvinceName || '',
+        from_district_name: orderShipping.fromDistrictName || '',
+        from_ward_name: orderShipping.fromWardName || '',
+        to_address: orderShipping.toAddress || '',
+        to_name: orderShipping.toName || '',
+        to_phone: orderShipping.toPhone || '',
+        to_district_id: orderShipping.toDistrictId || 0,
+        to_ward_code: orderShipping.toWardCode || '',
+        service_id: orderShipping.serviceId || 0,
+        service_type_id: orderShipping.serviceTypeId || 0,
+        weight: orderShipping.weight || 0,
+        length: orderShipping.length || 0,
+        width: orderShipping.width || 0,
+        height: orderShipping.height || 0,
+        cod_amount: orderShipping.codAmount || 0,
+        required_note: orderShipping.requiredNote || 'CHOTHUHANG',
+        client_order_code: orderId,
+        payment_type_id: 1, // COD
+        items: [
+          {
+            name: 'Sản phẩm',
+            quantity: 1,
+            weight: orderShipping.weight || 0
+          }
+        ]
+      }
+
+      this.logger.log(`[SHIPPING_CONSUMER] GHN order data: ${JSON.stringify(ghnOrderData, null, 2)}`)
+
+      // Gọi GHN API để tạo đơn hàng
+      const result = await this.ghnClient.order.createOrder(ghnOrderData)
+
+      this.logger.log(`[SHIPPING_CONSUMER] Kết quả tạo đơn hàng GHN: ${JSON.stringify(result, null, 2)}`)
+
+      // Kiểm tra kết quả từ GHN
+      if (result && result.order_code) {
+        this.logger.log(`[SHIPPING_CONSUMER] Tạo đơn hàng GHN thành công: ${result.order_code}`)
+
+        // Cập nhật OrderShipping với orderCode và status CREATED
+        await this.prismaService.orderShipping.update({
+          where: { orderId },
+          data: {
+            orderCode: result.order_code,
+            status: OrderShippingStatus.CREATED,
+            expectedDeliveryTime: result.expected_delivery_time ? new Date(result.expected_delivery_time) : null,
+            lastUpdatedAt: new Date()
+          }
+        })
+
+        return {
+          success: true,
+          message: `Tạo đơn hàng GHN thành công: ${result.order_code}`,
+          orderCode: result.order_code
+        }
+      }
+
+      throw new Error('Không thể tạo đơn hàng GHN')
+    } catch (error) {
+      this.logger.error(`[SHIPPING_CONSUMER] Lỗi khi tạo đơn hàng GHN: ${error.message}`)
+
+      // Cập nhật trạng thái OrderShipping thành FAILED
+      await this.prismaService.orderShipping.update({
+        where: { orderId },
+        data: {
+          status: OrderShippingStatus.FAILED,
+          lastError: error.message,
+          lastUpdatedAt: new Date()
+        }
+      })
+
+      throw error
+    }
   }
 }

@@ -492,28 +492,13 @@ export class OrderRepo {
   }
 
   /**
-   * Cập nhật trạng thái đơn hàng của shop
-   */
-  async updateOrderStatus(shopId: string, orderId: string, status: OrderStatusType, updatedById: string): Promise<any> {
-    return this.prismaService.order.update({
-      where: {
-        id: orderId,
-        shopId,
-        deletedAt: null
-      },
-      data: {
-        status,
-        updatedById,
-        updatedAt: new Date()
-      }
-    })
-  }
-
-  /**
    * Hủy order - Core CRUD
    */
   async cancel(userId: string, orderId: string): Promise<CancelOrderResType> {
+    this.logger.log(`[ORDER_REPO] Bắt đầu hủy order: ${orderId} cho user: ${userId}`)
+
     try {
+      this.logger.log(`[ORDER_REPO] Tìm order trong database...`)
       const order = await this.prismaService.order.findUniqueOrThrow({
         where: {
           id: orderId,
@@ -521,24 +506,44 @@ export class OrderRepo {
           deletedAt: null
         }
       })
-      if (order.status !== OrderStatus.PENDING_PAYMENT) {
+
+      this.logger.log(`[ORDER_REPO] Order found: ${JSON.stringify(order, null, 2)}`)
+      this.logger.log(`[ORDER_REPO] Order status: ${order.status}`)
+
+      // Kiểm tra xem status hiện tại có thể hủy được không
+      const cancellableStatuses: OrderStatusType[] = [
+        OrderStatus.PENDING_PAYMENT,
+        OrderStatus.PENDING_PACKAGING,
+        OrderStatus.PICKUPED,
+        OrderStatus.PENDING_DELIVERY
+      ]
+
+      if (!cancellableStatuses.includes(order.status as OrderStatusType)) {
+        this.logger.warn(`[ORDER_REPO] Không thể hủy order với status: ${order.status}`)
         throw CannotCancelOrderException
       }
 
       // Kiểm tra xem order đã có GHN order chưa
+      this.logger.log(`[ORDER_REPO] Kiểm tra OrderShipping cho order: ${orderId}`)
       const orderShipping = await this.prismaService.orderShipping.findUnique({
         where: { orderId },
         select: { orderCode: true, status: true }
       })
 
+      this.logger.log(`[ORDER_REPO] OrderShipping found: ${JSON.stringify(orderShipping, null, 2)}`)
+
       // Nếu có GHN order, cần hủy trên GHN system trước
       if (orderShipping?.orderCode && orderShipping.status === 'CREATED') {
         try {
+          // Hủy đơn hàng GHN
+          const cancelResult = await this.sharedShippingRepo.cancelGHNOrderForOrder(orderId)
+          this.logger.log(`[ORDER_REPO] Kết quả hủy đơn hàng GHN: ${JSON.stringify(cancelResult, null, 2)}`)
+
           // Update OrderShipping status thành FAILED
           await this.sharedShippingRepo.updateOrderShippingStatusForCancellation(
             orderId,
             'FAILED',
-            'Order cancelled by user - GHN order needs to be cancelled'
+            'Order cancelled by user - GHN order cancelled'
           )
         } catch (error) {
           this.logger.error(`[ORDER_REPO] Lỗi khi xử lý OrderShipping: ${error.message}`)

@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common'
+import { Injectable, Inject, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { Ghn } from 'giaohangnhanh'
 import { ConfigService } from '@nestjs/config'
@@ -46,6 +46,8 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class ShippingService {
+  private readonly logger = new Logger(ShippingService.name)
+
   constructor(
     private readonly i18n: I18nService,
     @Inject(GHN_CLIENT) private readonly ghnService: Ghn,
@@ -461,6 +463,50 @@ export class ShippingService {
         throw error
       }
       throw ShippingServiceUnavailableException
+    }
+  }
+
+  /**
+   * Hủy đơn hàng GHN
+   * @param orderCode Mã đơn hàng GHN cần hủy
+   * @returns Kết quả hủy đơn hàng
+   */
+  async cancelGHNOrder(orderCode: string): Promise<{ success: boolean; message: string }> {
+    try {
+      this.logger.log(`[GHN_SERVICE] Bắt đầu hủy đơn hàng GHN: ${orderCode}`)
+
+      if (!orderCode?.trim()) {
+        throw new Error('Order code is required')
+      }
+
+      // Gọi GHN API để hủy đơn hàng
+      const result = await this.ghnService.order.cancelOrder({
+        orderCodes: [orderCode]
+      })
+
+      this.logger.log(`[GHN_SERVICE] Kết quả hủy đơn hàng GHN: ${JSON.stringify(result, null, 2)}`)
+
+      // Kiểm tra kết quả từ GHN
+      if (result && Array.isArray(result)) {
+        const orderResult = result.find((item: any) => item.order_code === orderCode)
+        if (orderResult && orderResult.result === true) {
+          return {
+            success: true,
+            message: `Hủy đơn hàng GHN thành công: ${orderCode}`
+          }
+        }
+      }
+
+      return {
+        success: false,
+        message: `Không thể hủy đơn hàng GHN: ${orderCode}`
+      }
+    } catch (error) {
+      this.logger.error(`[GHN_SERVICE] Lỗi khi hủy đơn hàng GHN: ${error.message}`)
+      return {
+        success: false,
+        message: `Lỗi khi hủy đơn hàng GHN: ${error.message}`
+      }
     }
   }
 }

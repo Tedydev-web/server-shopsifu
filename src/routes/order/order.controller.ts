@@ -1,7 +1,6 @@
 import { Body, Controller, Get, Param, Post, Put, Query, Logger } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
-  CancelOrderBodyDTO,
   CancelOrderResDTO,
   CreateOrderBodyDTO,
   CreateOrderResDTO,
@@ -52,8 +51,17 @@ export class OrderController {
 
   @Put(':orderId')
   @ZodSerializerDto(CancelOrderResDTO)
-  cancel(@ActiveUser() user: AccessTokenPayload, @Param() param: GetOrderParamsDTO, @Body() _: CancelOrderBodyDTO) {
-    return this.orderService.cancel(user, param.orderId)
+  async cancel(@ActiveUser() user: AccessTokenPayload, @Param() param: GetOrderParamsDTO) {
+    this.logger.log(`[ORDER_CONTROLLER] PUT /orders/${param.orderId} - User: ${user.userId}`)
+
+    try {
+      const result = await this.orderService.cancel(user, param.orderId)
+      this.logger.log(`[ORDER_CONTROLLER] Order cancelled successfully: ${JSON.stringify(result, null, 2)}`)
+      return result
+    } catch (error) {
+      this.logger.error(`[ORDER_CONTROLLER] Lỗi khi hủy order: ${error.message}`, error.stack)
+      throw error
+    }
   }
 
   @Post('calculate')

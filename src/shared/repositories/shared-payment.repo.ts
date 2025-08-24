@@ -3,6 +3,7 @@ import { OrderStatus, OrderStatusType } from 'src/shared/constants/order.constan
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { PaymentProducer } from '../queue/producer/payment.producer'
+import { SharedShippingRepository } from './shared-shipping.repo'
 
 @Injectable()
 export class SharedPaymentRepository {
@@ -10,7 +11,8 @@ export class SharedPaymentRepository {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly paymentProducer: PaymentProducer
+    private readonly paymentProducer: PaymentProducer,
+    private readonly sharedShippingRepository: SharedShippingRepository
   ) {}
 
   async validateAndFindPayment(paymentId: number) {
@@ -52,6 +54,24 @@ export class SharedPaymentRepository {
     )
 
     this.logger.log(`[SHARED_PAYMENT] Payment và orders status updated thành công`)
+
+    // 3. Tạo GHN order cho các orders có online payment
+    try {
+      for (const order of orders) {
+        this.logger.log(`[SHARED_PAYMENT] Bắt đầu tạo GHN order cho order: ${order.id}`)
+
+        const result = await this.sharedShippingRepository.createGHNOrderForOrder(order.id)
+
+        if (result.success) {
+          this.logger.log(`[SHARED_PAYMENT] Đã enqueue job tạo GHN order cho order: ${order.id}`)
+        } else {
+          this.logger.warn(`[SHARED_PAYMENT] Không thể tạo GHN order cho order: ${order.id}: ${result.message}`)
+        }
+      }
+    } catch (error) {
+      this.logger.error(`[SHARED_PAYMENT] Lỗi khi tạo GHN orders: ${error.message}`)
+      // Không throw error vì payment đã thành công, chỉ log warning
+    }
   }
 
   private async updatePaymentStatus(paymentId: number, status: PaymentStatus) {

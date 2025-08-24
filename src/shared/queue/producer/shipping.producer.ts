@@ -4,6 +4,8 @@ import { Queue, JobsOptions } from 'bullmq'
 import {
   CREATE_SHIPPING_ORDER_JOB,
   PROCESS_GHN_WEBHOOK_JOB,
+  CANCEL_GHN_ORDER_JOB,
+  CREATE_GHN_ORDER_JOB,
   SHIPPING_QUEUE_NAME
 } from 'src/shared/constants/queue.constant'
 import { CreateOrderType, GHNWebhookPayloadType } from 'src/routes/shipping/ghn/shipping-ghn.model'
@@ -146,6 +148,75 @@ export class ShippingProducer {
       return job
     } catch (error) {
       this.logger.error(`[SHIPPING_PRODUCER] Failed to enqueue webhook job: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Enqueue job hủy đơn hàng GHN
+   */
+  async enqueueCancelGHNOrder(orderCode: string, orderId: string): Promise<any> {
+    this.logger.log(`[SHIPPING_PRODUCER] Enqueue cancel GHN order job: ${orderCode} for order: ${orderId}`)
+
+    try {
+      const jobId = `cancel-ghn-order-${orderCode}-${Date.now()}`
+
+      const job = await this.shippingQueue.add(
+        CANCEL_GHN_ORDER_JOB,
+        {
+          orderCode,
+          orderId
+        },
+        {
+          jobId,
+          removeOnComplete: true,
+          removeOnFail: true,
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 2000
+          }
+        }
+      )
+
+      this.logger.log(`[SHIPPING_PRODUCER] Cancel GHN order job enqueued: ${job.id}`)
+      return job
+    } catch (error) {
+      this.logger.error(`[SHIPPING_PRODUCER] Failed to enqueue cancel GHN order job: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Enqueue job tạo đơn hàng GHN
+   */
+  async enqueueCreateGHNOrder(orderId: string): Promise<any> {
+    this.logger.log(`[SHIPPING_PRODUCER] Enqueue create GHN order job for order: ${orderId}`)
+
+    try {
+      const jobId = `create-ghn-order-${orderId}-${Date.now()}`
+
+      const job = await this.shippingQueue.add(
+        CREATE_GHN_ORDER_JOB,
+        {
+          orderId
+        },
+        {
+          jobId,
+          removeOnComplete: true,
+          removeOnFail: true,
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 2000
+          }
+        }
+      )
+
+      this.logger.log(`[SHIPPING_PRODUCER] Create GHN order job enqueued: ${job.id}`)
+      return job
+    } catch (error) {
+      this.logger.error(`[SHIPPING_PRODUCER] Failed to enqueue create GHN order job: ${error.message}`)
       throw error
     }
   }

@@ -36,7 +36,7 @@ type OrderData = {
   status:
     | 'PENDING_PAYMENT'
     | 'PENDING_PACKAGING'
-    | 'PENDING_PICKUP'
+    | 'PICKUPED'
     | 'PENDING_DELIVERY'
     | 'DELIVERED'
     | 'RETURNED'

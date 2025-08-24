@@ -548,6 +548,7 @@ enum OrderShippingStatus {
   ENQUEUED
   CREATED
   FAILED
+  CANCELLED
 }
 
 model OrderShipping {
@@ -712,7 +713,7 @@ enum PaymentStatus {
 enum OrderStatus {
   PENDING_PAYMENT
   PENDING_PACKAGING
-  PENDING_PICKUP
+  PICKUPED
   PENDING_DELIVERY
   DELIVERED
   RETURNED

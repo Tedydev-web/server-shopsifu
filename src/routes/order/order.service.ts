@@ -283,10 +283,22 @@ export class OrderService {
   }
 
   async cancel(user: AccessTokenPayload, orderId: string) {
-    const result = await this.orderRepo.cancel(user.userId, orderId)
-    return {
-      message: this.i18n.t('order.order.success.CANCEL_SUCCESS'),
-      data: result.data
+    this.logger.log(`[ORDER_SERVICE] Bắt đầu hủy order: ${orderId} cho user: ${user.userId}`)
+
+    try {
+      const result = await this.orderRepo.cancel(user.userId, orderId)
+      this.logger.log(`[ORDER_SERVICE] Order cancelled successfully: ${JSON.stringify(result, null, 2)}`)
+
+      const response = {
+        message: this.i18n.t('order.order.success.CANCEL_SUCCESS'),
+        data: result.data
+      }
+
+      this.logger.log(`[ORDER_SERVICE] Response: ${JSON.stringify(response, null, 2)}`)
+      return response
+    } catch (error) {
+      this.logger.error(`[ORDER_SERVICE] Lỗi khi hủy order: ${error.message}`, error.stack)
+      throw error
     }
   }
 

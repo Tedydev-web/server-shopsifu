@@ -25,6 +25,17 @@ export const GetOrderListResSchema = z.object({
   })
 })
 
+export const GetManageOrderListResSchema = GetOrderListResSchema
+
+// Schema cho manage order list query
+export const GetManageOrderListQuerySchema = PaginationQuerySchema.extend({
+  status: OrderStatusSchema.optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  customerName: z.string().optional(),
+  orderCode: z.string().optional()
+})
+
 export const GetOrderListQuerySchema = PaginationQuerySchema.extend({
   status: OrderStatusSchema.optional()
 })
@@ -40,6 +51,9 @@ export const GetOrderDetailResSchema = z.object({
     orderCode: z.string().optional()
   })
 })
+
+// Schema cho manage order detail (kế thừa từ GetOrderDetailResSchema)
+export const GetManageOrderDetailResSchema = GetOrderDetailResSchema
 
 export const CreateOrderBodySchema = z.object({
   shops: z
@@ -125,11 +139,15 @@ export const CalculateOrderResSchema = z.object({
 export const CreateOrderResSchema = z.object({
   message: z.string().optional(),
   data: z.object({
-    orders: z.array(OrderSchema),
+    orders: z.array(
+      OrderSchema.extend({
+        orderCode: z.string().nullable().optional()
+      })
+    ),
     paymentId: z.number()
   })
 })
-export const CancelOrderBodySchema = z.object({})
+
 export const CancelOrderResSchema = z.object({
   message: z.string().optional(),
   data: OrderSchema
@@ -150,3 +168,6 @@ export type CreateOrderResType = z.infer<typeof CreateOrderResSchema>
 export type CancelOrderResType = z.infer<typeof CancelOrderResSchema>
 export type CalculateOrderResType = z.infer<typeof CalculateOrderResSchema>
 export type CalculateOrderPerShopType = z.infer<typeof CalculateOrderPerShopSchema>
+export type GetManageOrderListQueryType = z.infer<typeof GetManageOrderListQuerySchema>
+export type GetManageOrderListResType = z.infer<typeof GetManageOrderListResSchema>
+export type GetManageOrderDetailResType = z.infer<typeof GetManageOrderDetailResSchema>

@@ -6,7 +6,7 @@ export const OrderStatus = {
   PENDING_PACKAGING: 'PENDING_PACKAGING', // Người bán đang chuẩn bị hàng
 
   // 🚚 Trạng thái vận chuyển (Shipping)
-  PENDING_PICKUP: 'PENDING_PICKUP', // ĐVVC đã lấy hàng thành công
+  PICKUPED: 'PICKUPED', // ĐVVC đã lấy hàng thành công
   PENDING_DELIVERY: 'PENDING_DELIVERY', // Đơn hàng đang trong quá trình vận chuyển
 
   // ✅ Trạng thái hoàn thành
@@ -21,26 +21,25 @@ export type OrderStatusType = (typeof OrderStatus)[keyof typeof OrderStatus]
 
 // 🎯 Flow chuẩn hóa cho cả COD và Online
 export const ORDER_STATUS_FLOW = {
-  // COD Flow: PENDING_PAYMENT → PENDING_PACKAGING → PENDING_PICKUP → PENDING_DELIVERY → DELIVERED
-  // Online Flow: PENDING_PACKAGING → PENDING_PICKUP → PENDING_DELIVERY → DELIVERED
-
-  // Trạng thái Seller có thể cập nhật
-  SELLER_MANAGEABLE: [
-    OrderStatus.PENDING_PACKAGING,
-    OrderStatus.PENDING_PICKUP,
-    OrderStatus.PENDING_DELIVERY,
-    OrderStatus.DELIVERED,
-    OrderStatus.CANCELLED
-  ],
+  // COD Flow: PENDING_PAYMENT → PENDING_PACKAGING → PICKUPED → PENDING_DELIVERY → DELIVERED
+  // Online Flow: PENDING_PACKAGING → PICKUPED → PENDING_DELIVERY → DELIVERED
 
   // Trạng thái chỉ Admin có thể cập nhật
-  ADMIN_ONLY: [OrderStatus.PENDING_PAYMENT, OrderStatus.RETURNED],
+  ADMIN_ONLY: [
+    OrderStatus.PENDING_PAYMENT,
+    OrderStatus.PENDING_PACKAGING,
+    OrderStatus.PICKUPED,
+    OrderStatus.PENDING_DELIVERY,
+    OrderStatus.DELIVERED,
+    OrderStatus.CANCELLED,
+    OrderStatus.RETURNED
+  ],
 
   // Flow chuyển đổi hợp lệ
   VALID_TRANSITIONS: {
     [OrderStatus.PENDING_PAYMENT]: [OrderStatus.PENDING_PACKAGING, OrderStatus.CANCELLED],
-    [OrderStatus.PENDING_PACKAGING]: [OrderStatus.PENDING_PICKUP, OrderStatus.CANCELLED],
-    [OrderStatus.PENDING_PICKUP]: [OrderStatus.PENDING_DELIVERY, OrderStatus.CANCELLED],
+    [OrderStatus.PENDING_PACKAGING]: [OrderStatus.PICKUPED, OrderStatus.CANCELLED],
+    [OrderStatus.PICKUPED]: [OrderStatus.PENDING_DELIVERY, OrderStatus.CANCELLED],
     [OrderStatus.PENDING_DELIVERY]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
     [OrderStatus.DELIVERED]: [OrderStatus.RETURNED],
     [OrderStatus.CANCELLED]: [], // Không thể chuyển từ CANCELLED

@@ -1,12 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common'
+import { Controller, Get, Param, Query } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import { ManageOrderService } from './manage-order.service'
-import {
-  GetManageOrderDetailResDTO,
-  GetManageOrderListQueryDTO,
-  GetManageOrderListResDTO,
-  UpdateOrderStatusDTO
-} from './manage-order.dto'
+import { GetManageOrderDetailResDTO, GetManageOrderListQueryDTO, GetManageOrderListResDTO } from '../order.dto'
 import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
@@ -24,15 +19,5 @@ export class ManageOrderController {
   @ZodSerializerDto(GetManageOrderDetailResDTO)
   getDetail(@Param('orderId') orderId: string, @ActiveUser() user: AccessTokenPayload) {
     return this.manageOrderService.getDetail({ orderId, user })
-  }
-
-  @Patch(':orderId/status')
-  @ZodSerializerDto(GetManageOrderDetailResDTO)
-  updateStatus(
-    @Param('orderId') orderId: string,
-    @Body() body: UpdateOrderStatusDTO,
-    @ActiveUser() user: AccessTokenPayload
-  ) {
-    return this.manageOrderService.updateStatus({ orderId, data: body, user })
   }
 }
