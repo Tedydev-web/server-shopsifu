@@ -25,7 +25,30 @@ export const GetOrderListResSchema = z.object({
   })
 })
 
-export const GetManageOrderListResSchema = GetOrderListResSchema
+// Schema cho manage order list (có thêm orderCode field)
+export const GetManageOrderListResSchema = z.object({
+  message: z.string().optional(),
+  data: z.array(
+    OrderSchema.extend({
+      items: z.array(ProductSKUSnapshotSchema),
+      orderCode: z.string().nullable().optional() // Thêm orderCode field
+    }).omit({
+      receiver: true,
+      deletedAt: true,
+      deletedById: true,
+      createdById: true,
+      updatedById: true
+    })
+  ),
+  metadata: z.object({
+    totalItems: z.number(),
+    page: z.number(),
+    limit: z.number(),
+    totalPages: z.number(),
+    hasNext: z.boolean(),
+    hasPrev: z.boolean()
+  })
+})
 
 // Schema cho manage order list query
 export const GetManageOrderListQuerySchema = PaginationQuerySchema.extend({

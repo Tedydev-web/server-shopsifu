@@ -220,6 +220,7 @@ export class SharedShippingRepository {
     this.logger.log(`[SHARED_SHIPPING] Lấy shop address cho shop: ${shopId}`)
 
     try {
+      // 1. Kiểm tra shop có tồn tại không
       const shopData = await this.prismaService.user.findUnique({
         where: { id: shopId }
       })
@@ -231,19 +232,40 @@ export class SharedShippingRepository {
 
       this.logger.log(`[SHARED_SHIPPING] Shop data: ${JSON.stringify(shopData, null, 2)}`)
 
-      // Lấy shop address từ UserAddress
-      this.logger.log(`[SHARED_SHIPPING] Lấy shop address từ UserAddress`)
-      const shopUserAddress = await this.prismaService.userAddress.findFirst({
+      // 2. Lấy shop address từ UserAddress (default address trước, fallback về bất kỳ address nào)
+      this.logger.log(`[SHARED_SHIPPING] Lấy shop default address từ UserAddress`)
+      let shopUserAddress = await this.prismaService.userAddress.findFirst({
         where: { userId: shopId, isDefault: true },
         include: { address: true }
       })
 
-      if (!shopUserAddress || !shopUserAddress.address) {
-        this.logger.error(`[SHARED_SHIPPING] Shop address không tồn tại cho shop: ${shopId}`)
-        throw new Error('Shop address not found')
+      // Nếu không có default address, lấy address đầu tiên
+      if (!shopUserAddress) {
+        this.logger.warn(`[SHARED_SHIPPING] Shop không có default address, thử lấy address đầu tiên cho shop: ${shopId}`)
+        shopUserAddress = await this.prismaService.userAddress.findFirst({
+          where: { userId: shopId },
+          include: { address: true }
+        })
       }
 
+      if (!shopUserAddress) {
+        this.logger.error(`[SHARED_SHIPPING] Shop không có bất kỳ address nào cho shop: ${shopId}`)
+        throw new Error('Shop has no addresses')
+      }
+
+      if (!shopUserAddress.address) {
+        this.logger.error(`[SHARED_SHIPPING] Shop address record không có address data cho shop: ${shopId}`)
+        throw new Error('Shop address data not found')
+      }
+
+      this.logger.log(`[SHARED_SHIPPING] Shop UserAddress: ${JSON.stringify(shopUserAddress, null, 2)}`)
       this.logger.log(`[SHARED_SHIPPING] Shop address: ${JSON.stringify(shopUserAddress.address, null, 2)}`)
+
+      // 3. Kiểm tra address có đầy đủ thông tin không
+      if (!shopUserAddress.address.province || !shopUserAddress.address.district || !shopUserAddress.address.ward) {
+        this.logger.error(`[SHARED_SHIPPING] Shop address thiếu thông tin địa chỉ cho shop: ${shopId}`)
+        throw new Error('Shop address missing required location information')
+      }
 
       const result = {
         shop: shopData,
