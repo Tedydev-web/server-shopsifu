@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common'
+import { Injectable, BadRequestException, Logger } from '@nestjs/common'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { OrderShippingStatusType } from 'src/shared/constants/order-shipping.constants'
 import { normalizePhoneForGHN } from 'src/shared/helpers'
@@ -48,6 +48,8 @@ type OrderForShippingData = {
 
 @Injectable()
 export class SharedShippingRepository {
+  private readonly logger = new Logger(SharedShippingRepository.name)
+
   constructor(private readonly prismaService: PrismaService) {}
 
   /**
@@ -55,42 +57,53 @@ export class SharedShippingRepository {
    * Sử dụng bởi Order module để tạo shipping record khi tạo order
    */
   async createOrderShipping(data: CreateOrderShippingData) {
-    return this.prismaService.orderShipping.create({
-      data: {
-        orderId: data.orderId,
-        serviceId: data.serviceId,
-        serviceTypeId: data.serviceTypeId,
-        configFeeId: data.configFeeId,
-        extraCostId: data.extraCostId,
-        weight: data.weight,
-        length: data.length,
-        width: data.width,
-        height: data.height,
-        shippingFee: data.shippingFee,
-        codAmount: data.codAmount,
-        expectedDeliveryTime: null,
-        trackingUrl: null,
-        status: data.status,
-        note: data.note,
-        requiredNote: data.requiredNote,
-        pickShift: data.pickShift,
-        attempts: 0,
-        lastError: null,
-        fromAddress: data.fromAddress,
-        fromName: data.fromName,
-        fromPhone: data.fromPhone,
-        fromProvinceName: data.fromProvinceName,
-        fromDistrictName: data.fromDistrictName,
-        fromWardName: data.fromWardName,
-        fromDistrictId: data.fromDistrictId,
-        fromWardCode: data.fromWardCode,
-        toAddress: data.toAddress,
-        toName: data.toName,
-        toPhone: data.toPhone,
-        toDistrictId: data.toDistrictId,
-        toWardCode: data.toWardCode
-      }
-    })
+    this.logger.log(`[SHARED_SHIPPING] Bắt đầu tạo OrderShipping record cho order: ${data.orderId}`)
+    this.logger.log(`[SHARED_SHIPPING] OrderShipping data: ${JSON.stringify(data, null, 2)}`)
+
+    try {
+      const orderShipping = await this.prismaService.orderShipping.create({
+        data: {
+          orderId: data.orderId,
+          serviceId: data.serviceId,
+          serviceTypeId: data.serviceTypeId,
+          configFeeId: data.configFeeId,
+          extraCostId: data.extraCostId,
+          weight: data.weight,
+          length: data.length,
+          width: data.width,
+          height: data.height,
+          shippingFee: data.shippingFee,
+          codAmount: data.codAmount,
+          expectedDeliveryTime: null,
+          trackingUrl: null,
+          status: data.status,
+          note: data.note,
+          requiredNote: data.requiredNote,
+          pickShift: data.pickShift,
+          attempts: 0,
+          lastError: null,
+          fromAddress: data.fromAddress,
+          fromName: data.fromName,
+          fromPhone: data.fromPhone,
+          fromProvinceName: data.fromProvinceName,
+          fromDistrictName: data.fromDistrictName,
+          fromWardName: data.fromWardName,
+          fromDistrictId: data.fromDistrictId,
+          fromWardCode: data.fromWardCode,
+          toAddress: data.toAddress,
+          toName: data.toName,
+          toPhone: data.toPhone,
+          toDistrictId: data.toDistrictId,
+          toWardCode: data.toWardCode
+        }
+      })
+
+      this.logger.log(`[SHARED_SHIPPING] OrderShipping created successfully: ${JSON.stringify(orderShipping, null, 2)}`)
+      return orderShipping
+    } catch (error) {
+      this.logger.error(`[SHARED_SHIPPING] Lỗi khi tạo OrderShipping: ${error.message}`, error.stack)
+      throw error
+    }
   }
 
   /**
@@ -98,10 +111,20 @@ export class SharedShippingRepository {
    * Sử dụng bởi Order module để cập nhật shipping status
    */
   async updateOrderShippingStatus(orderId: string, status: OrderShippingStatusType) {
-    return this.prismaService.orderShipping.update({
-      where: { orderId },
-      data: { status }
-    })
+    this.logger.log(`[SHARED_SHIPPING] Cập nhật OrderShipping status cho order: ${orderId} thành: ${status}`)
+
+    try {
+      const result = await this.prismaService.orderShipping.update({
+        where: { orderId },
+        data: { status }
+      })
+
+      this.logger.log(`[SHARED_SHIPPING] OrderShipping status updated successfully: ${JSON.stringify(result, null, 2)}`)
+      return result
+    } catch (error) {
+      this.logger.error(`[SHARED_SHIPPING] Lỗi khi cập nhật OrderShipping status: ${error.message}`, error.stack)
+      throw error
+    }
   }
 
   /**
@@ -137,27 +160,44 @@ export class SharedShippingRepository {
    * Sử dụng bởi Shipping module để lấy shop address
    */
   async getShopAddressForShipping(shopId: string): Promise<ShopAddressInfo> {
-    const shopData = await this.prismaService.user.findUnique({
-      where: { id: shopId }
-    })
+    this.logger.log(`[SHARED_SHIPPING] Lấy shop address cho shop: ${shopId}`)
 
-    if (!shopData) {
-      throw new BadRequestException('Shop not found')
-    }
+    try {
+      const shopData = await this.prismaService.user.findUnique({
+        where: { id: shopId }
+      })
 
-    // Lấy shop address từ UserAddress
-    const shopUserAddress = await this.prismaService.userAddress.findFirst({
-      where: { userId: shopId, isDefault: true },
-      include: { address: true }
-    })
+      if (!shopData) {
+        this.logger.error(`[SHARED_SHIPPING] Shop không tồn tại: ${shopId}`)
+        throw new BadRequestException('Shop not found')
+      }
 
-    if (!shopUserAddress || !shopUserAddress.address) {
-      throw new BadRequestException('Shop address not found')
-    }
+      this.logger.log(`[SHARED_SHIPPING] Shop data: ${JSON.stringify(shopData, null, 2)}`)
 
-    return {
-      shop: shopData,
-      address: shopUserAddress.address
+      // Lấy shop address từ UserAddress
+      this.logger.log(`[SHARED_SHIPPING] Lấy shop address từ UserAddress`)
+      const shopUserAddress = await this.prismaService.userAddress.findFirst({
+        where: { userId: shopId, isDefault: true },
+        include: { address: true }
+      })
+
+      if (!shopUserAddress || !shopUserAddress.address) {
+        this.logger.error(`[SHARED_SHIPPING] Shop address không tồn tại cho shop: ${shopId}`)
+        throw new BadRequestException('Shop address not found')
+      }
+
+      this.logger.log(`[SHARED_SHIPPING] Shop address: ${JSON.stringify(shopUserAddress.address, null, 2)}`)
+
+      const result = {
+        shop: shopData,
+        address: shopUserAddress.address
+      }
+
+      this.logger.log(`[SHARED_SHIPPING] Shop address info: ${JSON.stringify(result, null, 2)}`)
+      return result
+    } catch (error) {
+      this.logger.error(`[SHARED_SHIPPING] Lỗi khi lấy shop address: ${error.message}`, error.stack)
+      throw error
     }
   }
 

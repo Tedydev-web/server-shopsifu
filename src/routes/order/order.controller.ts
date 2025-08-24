@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, Put, Query, Logger } from '@nestjs/common'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
   CancelOrderBodyDTO,
@@ -18,6 +18,8 @@ import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Controller('orders')
 export class OrderController {
+  private readonly logger = new Logger(OrderController.name)
+
   constructor(private readonly orderService: OrderService) {}
 
   @Get()
@@ -28,8 +30,18 @@ export class OrderController {
 
   @Post()
   @ZodSerializerDto(CreateOrderResDTO)
-  create(@ActiveUser() user: AccessTokenPayload, @Body() body: CreateOrderBodyDTO) {
-    return this.orderService.create(user, body as any)
+  async create(@ActiveUser() user: AccessTokenPayload, @Body() body: CreateOrderBodyDTO) {
+    this.logger.log(`[ORDER_CONTROLLER] POST /orders - User: ${user.userId}`)
+    this.logger.log(`[ORDER_CONTROLLER] Request body: ${JSON.stringify(body, null, 2)}`)
+
+    try {
+      const result = await this.orderService.create(user, body as any)
+      this.logger.log(`[ORDER_CONTROLLER] Order created successfully: ${JSON.stringify(result, null, 2)}`)
+      return result
+    } catch (error) {
+      this.logger.error(`[ORDER_CONTROLLER] Lỗi khi tạo order: ${error.message}`, error.stack)
+      throw error
+    }
   }
 
   @Get(':orderId')

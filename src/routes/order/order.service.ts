@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common'
+import { Injectable, BadRequestException, Logger } from '@nestjs/common'
 import { CreateOrderBodyType, GetOrderListQueryType } from 'src/routes/order/order.model'
 import { OrderRepo } from 'src/routes/order/order.repo'
 import { SharedDiscountRepository } from 'src/shared/repositories/shared-discount.repo'
@@ -13,6 +13,8 @@ import { normalizePhoneForGHN } from 'src/shared/helpers'
 import { PricingService } from 'src/shared/services/pricing.service'
 @Injectable()
 export class OrderService {
+  private readonly logger = new Logger(OrderService.name)
+
   constructor(
     private readonly orderRepo: OrderRepo,
     private readonly sharedDiscountRepo: SharedDiscountRepository,
@@ -32,6 +34,10 @@ export class OrderService {
   }
 
   async create(user: AccessTokenPayload, body: CreateOrderBodyType) {
+    this.logger.log(`[ORDER_CREATE] Bắt đầu tạo đơn hàng cho user: ${user.userId}`)
+    this.logger.log(`[ORDER_CREATE] Số lượng shops: ${body.shops.length}`)
+    this.logger.log(`[ORDER_CREATE] Body data: ${JSON.stringify(body, null, 2)}`)
+
     const shopDiscountCodes = body.shops
       .filter((shop) => shop.discountCodes && Array.isArray(shop.discountCodes))
       .flatMap((shop) => shop.discountCodes)
@@ -40,24 +46,38 @@ export class OrderService {
     const platformDiscountCodes = body.platformDiscountCodes || []
     const allDiscountCodes = [...shopDiscountCodes, ...platformDiscountCodes]
 
+    this.logger.log(`[ORDER_CREATE] Discount codes: ${JSON.stringify(allDiscountCodes)}`)
+
     if (allDiscountCodes.length > 0) {
+      this.logger.log(`[ORDER_CREATE] Bắt đầu validate discounts`)
       // Validate tất cả discounts thông qua SharedDiscountRepository
       const discountInfo = await this.sharedDiscountRepo.validateDiscountsForOrder(allDiscountCodes, user.userId)
       const { discounts, userUsageMap } = discountInfo
 
+      this.logger.log(`[ORDER_CREATE] Discounts validated: ${discounts.length} codes`)
+
       for (const discount of discounts) {
         // Kiểm tra trạng thái và thời gian
         if (discount.discountStatus !== 'ACTIVE') {
+          this.logger.error(
+            `[ORDER_CREATE] Discount không khả dụng: ${discount.id} - status: ${discount.discountStatus}`
+          )
           throw new BadRequestException('Mã giảm giá không khả dụng')
         }
 
         const now = new Date()
         if (now < discount.startDate || now > discount.endDate) {
+          this.logger.error(
+            `[ORDER_CREATE] Discount hết hạn: ${discount.id} - start: ${discount.startDate}, end: ${discount.endDate}, now: ${now}`
+          )
           throw new BadRequestException('Mã giảm giá đã hết hạn')
         }
 
         // Kiểm tra maxUses
         if (discount.maxUses > 0 && discount.usesCount >= discount.maxUses) {
+          this.logger.error(
+            `[ORDER_CREATE] Discount hết lượt: ${discount.id} - used: ${discount.usesCount}, max: ${discount.maxUses}`
+          )
           throw new BadRequestException('Mã giảm giá đã hết lượt sử dụng')
         }
 
@@ -65,12 +85,16 @@ export class OrderService {
         if (discount.maxUsesPerUser && discount.maxUsesPerUser > 0) {
           const usedCount = userUsageMap.get(discount.id) || 0
           if (usedCount >= discount.maxUsesPerUser) {
+            this.logger.error(
+              `[ORDER_CREATE] User đã dùng hết lượt discount: ${discount.id} - used: ${usedCount}, max: ${discount.maxUsesPerUser}`
+            )
             throw new BadRequestException('Bạn đã sử dụng hết lượt cho mã giảm giá này')
           }
         }
       }
     }
 
+    this.logger.log(`[ORDER_CREATE] Bắt đầu tính toán pricing`)
     // Tính toán pricing với discounts
     const calc = await this.pricingService.tinhTamTinhDonHang(user, {
       shops: body.shops.map((s) => ({
@@ -81,6 +105,9 @@ export class OrderService {
       })),
       platformDiscountCodes: body.platformDiscountCodes
     })
+
+    this.logger.log(`[ORDER_CREATE] Pricing calculated: ${JSON.stringify(calc, null, 2)}`)
+
     const perShopMap = new Map<string, { payment: number; platformVoucherDiscount: number }>()
     ;(calc.shops || []).forEach((sh) =>
       perShopMap.set(sh.shopId, {
@@ -89,17 +116,33 @@ export class OrderService {
       })
     )
 
+    this.logger.log(`[ORDER_CREATE] Bắt đầu tạo order trong database`)
     // Tạo order đơn giản (không có discount logic)
     const result = await this.orderRepo.create(user.userId, body.shops)
+    this.logger.log(`[ORDER_CREATE] Orders created: ${result.orders.length} orders, paymentId: ${result.paymentId}`)
 
+    this.logger.log(`[ORDER_CREATE] Bắt đầu xử lý shipping cho từng order`)
     await Promise.all(
       result.orders.map(async (order) => {
+        this.logger.log(`[ORDER_CREATE] Xử lý shipping cho order: ${order.id}, shopId: ${order.shopId}`)
+
         const shop = body.shops.find((s) => s.shopId === order.shopId)
-        if (!shop?.shippingInfo) return
+        if (!shop?.shippingInfo) {
+          this.logger.warn(`[ORDER_CREATE] Order ${order.id} không có shipping info, bỏ qua`)
+          return
+        }
+
+        this.logger.log(
+          `[ORDER_CREATE] Shipping info cho order ${order.id}: ${JSON.stringify(shop.shippingInfo, null, 2)}`
+        )
 
         // Lấy shop info với address từ Shared Shipping Repository
+        this.logger.log(`[ORDER_CREATE] Lấy shop address cho shop: ${shop.shopId}`)
         const shopInfo = await this.sharedShippingRepo.getShopAddressForShipping(shop.shopId)
         const { shop: shopData, address: shopAddressRecord } = shopInfo
+
+        this.logger.log(`[ORDER_CREATE] Shop data: ${JSON.stringify(shopData, null, 2)}`)
+        this.logger.log(`[ORDER_CREATE] Shop address: ${JSON.stringify(shopAddressRecord, null, 2)}`)
 
         const info = shop.shippingInfo
 
@@ -107,8 +150,13 @@ export class OrderService {
         const shopPayment = perShopMap.get(shop.shopId)
         const codAmount = isCod ? (shopPayment?.payment ?? 0) : 0
 
+        this.logger.log(
+          `[ORDER_CREATE] Order ${order.id} - isCod: ${isCod}, codAmount: ${codAmount}, shopPayment: ${JSON.stringify(shopPayment)}`
+        )
+
         // Tạo OrderShipping record với trạng thái DRAFT để lưu thông tin shipping
-        await this.sharedShippingRepo.createOrderShipping({
+        this.logger.log(`[ORDER_CREATE] Tạo OrderShipping record cho order: ${order.id}`)
+        const orderShipping = await this.sharedShippingRepo.createOrderShipping({
           orderId: order.id,
           serviceId: info.service_id,
           serviceTypeId: info.service_type_id,
@@ -139,11 +187,14 @@ export class OrderService {
           toWardCode: shop.receiver.wardCode || ''
         })
 
+        this.logger.log(`[ORDER_CREATE] OrderShipping created: ${JSON.stringify(orderShipping, null, 2)}`)
+
         // Tạo GHN order cho COD ngay lập tức
         // Online payment sẽ tạo GHN order sau khi thanh toán thành công
         if (isCod) {
+          this.logger.log(`[ORDER_CREATE] Order ${order.id} là COD, tạo GHN order ngay lập tức`)
           try {
-            await this.shippingProducer.enqueueCreateOrder({
+            const ghnOrderData = {
               from_address: shopAddressRecord.street || '',
               from_name: shopData.name,
               from_phone: normalizePhoneForGHN(shopAddressRecord.phoneNumber || shopData.phoneNumber) || '0987654321',
@@ -184,23 +235,36 @@ export class OrderService {
               payment_type_id: GHN_PAYMENT_TYPE.COD,
               note: info.note,
               required_note: info.required_note || 'CHOTHUHANG'
-            })
+            }
+
+            this.logger.log(`[ORDER_CREATE] GHN order data cho COD: ${JSON.stringify(ghnOrderData, null, 2)}`)
+
+            await this.shippingProducer.enqueueCreateOrder(ghnOrderData)
+            this.logger.log(`[ORDER_CREATE] GHN order đã được enqueue cho COD order: ${order.id}`)
 
             // Cập nhật trạng thái OrderShipping thành ENQUEUED
             await this.sharedShippingRepo.updateOrderShippingStatus(order.id, OrderShippingStatus.ENQUEUED)
+            this.logger.log(`[ORDER_CREATE] OrderShipping status updated to ENQUEUED cho order: ${order.id}`)
           } catch (error) {
+            this.logger.error(`[ORDER_CREATE] Lỗi khi tạo GHN order cho COD: ${error.message}`, error.stack)
             console.error('Failed to enqueue COD shipping order:', error)
           }
+        } else {
+          this.logger.log(
+            `[ORDER_CREATE] Order ${order.id} là online payment, sẽ tạo GHN order sau khi thanh toán thành công`
+          )
         }
       })
     )
 
+    this.logger.log(`[ORDER_CREATE] Bắt đầu cập nhật trạng thái COD orders`)
     // Cập nhật trạng thái COD orders thành PENDING_PACKAGING
     await this.updateCodOrdersStatus(result.orders, body.shops)
 
     // Cập nhật status trong response cho COD orders
     const updatedResult = this.updateCodOrdersInResponse(result, body.shops)
 
+    this.logger.log(`[ORDER_CREATE] Hoàn thành tạo đơn hàng. Kết quả: ${JSON.stringify(updatedResult, null, 2)}`)
     return {
       message: this.i18n.t('order.order.success.CREATE_SUCCESS'),
       data: updatedResult

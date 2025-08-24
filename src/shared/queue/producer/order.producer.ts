@@ -11,8 +11,11 @@ export class OrderProducer {
   constructor(@InjectQueue(PAYMENT_QUEUE_NAME) private paymentQueue: Queue) {}
 
   async addCancelPaymentJob(paymentId: number) {
+    this.logger.log(`[ORDER_PRODUCER] Bắt đầu thêm cancel payment job cho paymentId: ${paymentId}`)
+
     try {
-      this.logger.log(`Adding cancel payment job for paymentId: ${paymentId}`)
+      const jobId = generateCancelPaymentJobId(paymentId)
+      this.logger.log(`[ORDER_PRODUCER] Generated job ID: ${jobId}`)
 
       const job = await this.paymentQueue.add(
         CANCEL_PAYMENT_JOB_NAME,
@@ -20,17 +23,18 @@ export class OrderProducer {
           paymentId
         },
         {
-          delay: 1000 * 60, // delay 1 phút
-          jobId: generateCancelPaymentJobId(paymentId),
+          delay: 1000 * 60 * 15, // delay 15 phút
+          jobId: jobId,
           removeOnComplete: true,
           removeOnFail: true
         }
       )
 
-      this.logger.log(`Cancel payment job added successfully: ${job.id}`)
+      this.logger.log(`[ORDER_PRODUCER] Cancel payment job added successfully: ${job.id}`)
+      this.logger.log(`[ORDER_PRODUCER] Job details: name=${job.name}, data=${JSON.stringify(job.data, null, 2)}`)
       return job
     } catch (error) {
-      this.logger.error(`Failed to add cancel payment job: ${error.message}`, error.stack)
+      this.logger.error(`[ORDER_PRODUCER] Failed to add cancel payment job: ${error.message}`, error.stack)
       throw error
     }
   }

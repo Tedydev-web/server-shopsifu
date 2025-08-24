@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq'
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { Job } from 'bullmq'
 import { Inject } from '@nestjs/common'
 import { GHN_CLIENT } from 'src/shared/constants/shipping.constants'
@@ -21,25 +21,30 @@ import { OrderStatus } from 'src/shared/constants/order.constant'
   stalledInterval: 30000
 })
 export class ShippingConsumer extends WorkerHost {
+  private readonly logger = new Logger(ShippingConsumer.name)
+
   constructor(
-    @Inject(GHN_CLIENT) private readonly ghn: Ghn,
+    @Inject(GHN_CLIENT) private readonly ghnClient: Ghn,
     private readonly prismaService: PrismaService
   ) {
     super()
   }
 
-  async process(job: Job<CreateOrderType | GHNWebhookPayloadType>) {
+  async process(job: Job<CreateOrderType | GHNWebhookPayloadType, any, string>): Promise<any> {
+    this.logger.log(`[SHIPPING_CONSUMER] Xử lý job: ${job.id} - ${job.name}`)
+
     try {
-      if (job.name === CREATE_SHIPPING_ORDER_JOB) {
-        return this.processCreateOrder(job as Job<CreateOrderType>)
+      switch (job.name) {
+        case CREATE_SHIPPING_ORDER_JOB:
+          return await this.processCreateShippingOrder(job.data as CreateOrderType)
+        case PROCESS_GHN_WEBHOOK_JOB:
+          return await this.processWebhook(job as Job<GHNWebhookPayloadType>)
+        default:
+          throw new Error(`Unknown job type: ${job.name}`)
       }
-
-      if (job.name === PROCESS_GHN_WEBHOOK_JOB) {
-        return this.processWebhook(job as Job<GHNWebhookPayloadType>)
-      }
-
-      throw new Error(`Unknown job type: ${job.name}`)
     } catch (error) {
+      this.logger.error(`[SHIPPING_CONSUMER] Lỗi job ${job.id}: ${error.message}`)
+      await this.handleJobError(job, error)
       throw error
     }
   }
@@ -47,157 +52,179 @@ export class ShippingConsumer extends WorkerHost {
   /**
    * Xử lý tạo shipping order
    */
-  private async processCreateOrder(job: Job<CreateOrderType>) {
-    try {
-      const { client_order_code } = job.data
+  private async processCreateShippingOrder(data: CreateOrderType) {
+    const orderId = this.extractOrderIdFromClientOrderCode(data.client_order_code)
+    if (!orderId) {
+      throw new Error(`Invalid client_order_code: ${data.client_order_code}`)
+    }
 
-      if (!client_order_code) {
-        throw new Error('Missing client_order_code')
-      }
+    const existingShipping = await this.findExistingShipping(orderId)
+    if (!existingShipping) {
+      throw new Error(`OrderShipping not found for order: ${orderId}`)
+    }
 
-      const orderId = this.extractOrderId(client_order_code)
-      const existingShipping = await this.findExistingShipping(orderId)
+    if (this.isOrderAlreadyProcessed(existingShipping)) {
+      return { message: 'Order already processed', orderCode: existingShipping.orderCode }
+    }
 
-      if (existingShipping && this.isOrderAlreadyProcessed(existingShipping)) {
-        return {
-          message: 'Order already has GHN shipping order',
-          orderCode: existingShipping.orderCode
-        }
-      }
+    await this.updateOrderShippingStatus(orderId, OrderShippingStatus.ENQUEUED)
 
-      const ghnResponse = await this.createGHNOrder(job.data)
-      const orderShipping = await this.updateOrderShipping(orderId, ghnResponse)
+    const ghnResult = await this.createGHNOrder(data)
+    await this.updateOrderShippingWithGHNResponse(orderId, ghnResult)
 
-      return {
-        message: 'Shipping order created successfully',
-        orderCode: ghnResponse.order_code,
-        orderShippingId: orderShipping.id
-      }
-    } catch (error) {
-      if (job.data.client_order_code) {
-        await this.handleCreateOrderError(job.data.client_order_code, error)
-      }
-      throw error
+    return {
+      message: 'Shipping order created successfully',
+      orderCode: ghnResult.order_code,
+      expectedDeliveryTime: ghnResult.expected_delivery_time
     }
   }
 
   /**
-   * Xử lý GHN webhook trong background
+   * Xử lý GHN webhook
    */
   private async processWebhook(job: Job<GHNWebhookPayloadType>) {
-    try {
-      const { orderCode, status } = job.data
+    const { orderCode, status } = job.data
+    if (!orderCode || !status) {
+      throw new Error('Missing required fields: orderCode or status')
+    }
 
-      if (!orderCode || !status) {
-        throw new Error('Missing required fields: orderCode or status')
-      }
+    const shipping = await this.findShippingWithOrder(orderCode)
+    if (!shipping) {
+      return { message: 'No shipping record found', orderCode }
+    }
 
-      const shipping = await this.findShippingWithOrder(orderCode)
-      if (!shipping) {
-        return { message: 'No shipping record found', orderCode: orderCode }
-      }
+    const newOrderStatus = this.mapGHNStatusToOrderStatus(status)
+    if (!newOrderStatus) {
+      return { message: 'Unknown status, keeping current', orderCode, status }
+    }
 
-      const newOrderStatus = this.mapGHNStatusToOrderStatus(status)
-      if (!newOrderStatus) {
-        return { message: 'Unknown status, keeping current order status', orderCode: orderCode, status: status }
-      }
+    // Chỉ cho phép GHN cập nhật order từ PENDING_PICKUP trở đi
+    const allowedStatuses = [
+      OrderStatus.PENDING_PICKUP,
+      OrderStatus.PENDING_DELIVERY,
+      OrderStatus.DELIVERED,
+      OrderStatus.RETURNED,
+      OrderStatus.CANCELLED
+    ]
 
-      // Chỉ cho phép GHN cập nhật order nếu đã ở trạng thái PENDING_PICKUP trở đi
-      // Việc chuyển từ PENDING_PACKAGING → PENDING_PICKUP phải do Seller thực hiện
-      const allowedCurrentStatuses = [
-        OrderStatus.PENDING_PICKUP,
-        OrderStatus.PENDING_DELIVERY,
-        OrderStatus.DELIVERED,
-        OrderStatus.RETURNED,
-        OrderStatus.CANCELLED
-      ]
-
-      if (!allowedCurrentStatuses.includes(shipping.order.status as any)) {
-        return {
-          message: 'Order not ready for GHN status update',
-          orderCode: orderCode,
-          currentStatus: shipping.order.status,
-          ghnStatus: status
-        }
-      }
-
-      if (shipping.order.status !== newOrderStatus) {
-        await this.updateOrderStatus(shipping.orderId, newOrderStatus)
-      }
-
+    if (!allowedStatuses.includes(shipping.order.status as any)) {
       return {
-        message: 'Webhook processed successfully',
-        orderCode: orderCode,
-        oldStatus: shipping.order.status,
-        newStatus: newOrderStatus,
+        message: 'Order not ready for GHN status update',
+        orderCode,
+        currentStatus: shipping.order.status,
         ghnStatus: status
       }
-    } catch (error) {
-      const enhancedError = new Error(
-        `Webhook processing failed for orderCode: ${job.data.orderCode}. ${error.message}`
-      )
-      enhancedError.stack = error.stack
-      throw enhancedError
+    }
+
+    if (shipping.order.status !== newOrderStatus) {
+      await this.updateOrderStatus(shipping.orderId, newOrderStatus)
+    }
+
+    return {
+      message: 'Webhook processed successfully',
+      orderCode,
+      oldStatus: shipping.order.status,
+      newStatus: newOrderStatus,
+      ghnStatus: status
     }
   }
 
   /**
    * Helper methods
    */
-  private extractOrderId(clientOrderCode: string): string {
-    return clientOrderCode.startsWith('SSPX') ? clientOrderCode.substring(4) : clientOrderCode
-  }
-
-  private async findExistingShipping(orderId: string) {
-    return this.prismaService.orderShipping.findUnique({
-      where: { orderId }
-    })
+  private extractOrderIdFromClientOrderCode(clientOrderCode: string | null): string | null {
+    if (!clientOrderCode) return null
+    const match = clientOrderCode.match(/SSPX(.+)/)
+    return match ? match[1] : null
   }
 
   private isOrderAlreadyProcessed(shipping: any): boolean {
-    return (
-      shipping?.status === OrderShippingStatus.CREATED &&
-      shipping?.orderCode &&
-      shipping?.orderCode !== 'TEMP_ORDER_CODE'
-    )
+    return !!(shipping.orderCode && ['CREATED', 'PROCESSING'].includes(shipping.status))
   }
 
-  private async createGHNOrder(orderData: CreateOrderType) {
-    const ghnResponse = await this.ghn.order.createOrder(orderData)
+  private async updateOrderShippingStatus(orderId: string, status: string, errorMessage?: string): Promise<void> {
+    const updateData: any = {
+      status,
+      lastUpdatedAt: new Date(),
+      attempts: { increment: 1 }
+    }
 
-    if (!ghnResponse?.order_code) {
-      throw new Error('Failed to create GHN order: Invalid response')
+    if (errorMessage) {
+      updateData.lastError = errorMessage
+    }
+
+    await this.prismaService.orderShipping.updateMany({
+      where: { orderId },
+      data: updateData
+    })
+  }
+
+  private async updateOrderShippingWithGHNResponse(orderId: string, ghnResponse: any): Promise<void> {
+    const updateData = {
+      orderCode: ghnResponse.order_code,
+      expectedDeliveryTime: new Date(ghnResponse.expected_delivery_time),
+      status: OrderShippingStatus.CREATED,
+      attempts: { increment: 1 },
+      lastUpdatedAt: new Date(),
+      lastError: null
+    }
+
+    await this.prismaService.orderShipping.updateMany({
+      where: { orderId },
+      data: updateData
+    })
+  }
+
+  private async createGHNOrder(data: CreateOrderType): Promise<any> {
+    this.validateGHNOrderData(data)
+    const ghnResponse = await this.ghnClient.order.createOrder(data)
+
+    if (!ghnResponse.order_code) {
+      throw new Error(`GHN API response missing order_code: ${JSON.stringify(ghnResponse)}`)
     }
 
     return ghnResponse
   }
 
-  private async updateOrderShipping(
-    orderId: string,
-    ghnResponse: { order_code: string; expected_delivery_time?: string | Date }
-  ) {
-    return this.prismaService.orderShipping.update({
-      where: { orderId },
-      data: {
-        orderCode: ghnResponse.order_code,
-        expectedDeliveryTime: ghnResponse.expected_delivery_time ? new Date(ghnResponse.expected_delivery_time) : null,
-        status: OrderShippingStatus.CREATED,
-        attempts: { increment: 1 },
-        lastUpdatedAt: new Date()
-      }
-    })
+  private validateGHNOrderData(data: CreateOrderType): void {
+    const requiredFields = [
+      'from_address',
+      'from_name',
+      'from_phone',
+      'to_address',
+      'to_name',
+      'to_phone',
+      'service_id',
+      'weight',
+      'length',
+      'width',
+      'height'
+    ]
+
+    const missingFields = requiredFields.filter((field) => !data[field])
+    if (missingFields.length > 0) {
+      throw new Error(`Missing required fields: ${missingFields.join(', ')}`)
+    }
+
+    if (data.weight <= 0 || data.length <= 0 || data.width <= 0 || data.height <= 0) {
+      throw new Error(
+        `Invalid dimensions: weight=${data.weight}, length=${data.length}, width=${data.width}, height=${data.height}`
+      )
+    }
   }
 
-  private async handleCreateOrderError(clientOrderCode: string, error: Error) {
-    if (!clientOrderCode) return
-
-    await this.prismaService.orderShipping.update({
-      where: { orderId: this.extractOrderId(clientOrderCode) },
-      data: {
-        status: OrderShippingStatus.FAILED,
-        lastError: error.message.substring(0, 255),
-        attempts: { increment: 1 }
+  private async handleJobError(job: Job, error: Error): Promise<void> {
+    if (job.name === CREATE_SHIPPING_ORDER_JOB) {
+      const orderId = this.extractOrderIdFromClientOrderCode((job.data as CreateOrderType).client_order_code)
+      if (orderId) {
+        await this.updateOrderShippingStatus(orderId, OrderShippingStatus.FAILED, error.message)
       }
+    }
+  }
+
+  private async findExistingShipping(orderId: string) {
+    return this.prismaService.orderShipping.findUnique({
+      where: { orderId }
     })
   }
 
@@ -216,12 +243,11 @@ export class ShippingConsumer extends WorkerHost {
   }
 
   /**
-   * Map GHN status sang OrderStatus (7 trạng thái hệ thống)
-   * Flow mới: PENDING_PAYMENT → PENDING_PACKAGING → PENDING_PICKUP → PENDING_DELIVERY → DELIVERED
+   * Map GHN status sang OrderStatus
    */
   private mapGHNStatusToOrderStatus(ghnStatus: string): (typeof OrderStatus)[keyof typeof OrderStatus] | null {
     const statusMap: Record<string, (typeof OrderStatus)[keyof typeof OrderStatus]> = {
-      // Tạo đơn hàng - GHN sẽ chuyển order từ PENDING_PACKAGING → PENDING_PICKUP
+      // Tạo đơn hàng
       ready_to_pick: OrderStatus.PENDING_PICKUP,
 
       // Lấy hàng
@@ -253,8 +279,6 @@ export class ShippingConsumer extends WorkerHost {
       cancel: OrderStatus.CANCELLED
     }
 
-    const mappedStatus = statusMap[ghnStatus]
-
-    return mappedStatus || null
+    return statusMap[ghnStatus] || null
   }
 }
