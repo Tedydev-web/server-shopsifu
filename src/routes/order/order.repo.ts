@@ -418,7 +418,7 @@ export class OrderRepo {
       where
     })
 
-    // Lấy list order với thông tin user
+    // Lấy list order với thông tin user và shipping
     const data$ = await this.prismaService.order.findMany({
       where,
       include: {
@@ -429,6 +429,11 @@ export class OrderRepo {
             name: true,
             email: true,
             phoneNumber: true
+          }
+        },
+        shipping: {
+          select: {
+            orderCode: true
           }
         }
       },
@@ -442,8 +447,17 @@ export class OrderRepo {
     const [data, totalItems] = await Promise.all([data$, totalItem$])
     const totalPages = Math.ceil(totalItems / limit)
 
+    // Map orderCode từ shipping vào order và loại bỏ shipping object
+    const ordersWithOrderCode = data.map((order) => {
+      const { shipping, ...orderWithoutShipping } = order
+      return {
+        ...orderWithoutShipping,
+        orderCode: shipping?.orderCode || null
+      }
+    })
+
     return {
-      data,
+      data: ordersWithOrderCode,
       metadata: {
         totalItems,
         page,
@@ -506,7 +520,7 @@ export class OrderRepo {
       where
     })
 
-    // Lấy list order với thông tin user
+    // Lấy list order với thông tin user và shipping
     const data$ = await this.prismaService.order.findMany({
       where,
       include: {
@@ -517,6 +531,11 @@ export class OrderRepo {
             name: true,
             email: true,
             phoneNumber: true
+          }
+        },
+        shipping: {
+          select: {
+            orderCode: true
           }
         }
       },
@@ -564,6 +583,7 @@ export class OrderRepo {
 
           return {
             ...order,
+            orderCode: order.shipping?.orderCode || null,
             totalItemCost,
             totalShippingFee,
             totalVoucherDiscount,
@@ -577,6 +597,7 @@ export class OrderRepo {
 
           return {
             ...order,
+            orderCode: order.shipping?.orderCode || null,
             totalItemCost,
             totalShippingFee: 0,
             totalVoucherDiscount: 0,
@@ -618,6 +639,11 @@ export class OrderRepo {
             email: true,
             phoneNumber: true
           }
+        },
+        shipping: {
+          select: {
+            orderCode: true
+          }
         }
       }
     })
@@ -632,6 +658,7 @@ export class OrderRepo {
     return {
       data: {
         ...order,
+        orderCode: order.shipping?.orderCode || null,
         totalItemCost: totalPayment,
         totalShippingFee: 0,
         totalVoucherDiscount: 0,
@@ -658,6 +685,11 @@ export class OrderRepo {
             email: true,
             phoneNumber: true
           }
+        },
+        shipping: {
+          select: {
+            orderCode: true
+          }
         }
       }
     })
@@ -667,7 +699,10 @@ export class OrderRepo {
     }
 
     // Tính toán giá trị cơ bản
-    const totalItemCost = (order.items || []).reduce((sum, item) => sum + (item.skuPrice || 0) * (item.quantity || 0), 0)
+    const totalItemCost = (order.items || []).reduce(
+      (sum, item) => sum + (item.skuPrice || 0) * (item.quantity || 0),
+      0
+    )
 
     // Lấy shipping info để tính pricing đầy đủ
     const orderShipping = await this.prismaService.orderShipping.findUnique({
@@ -701,6 +736,7 @@ export class OrderRepo {
     return {
       data: {
         ...order,
+        orderCode: order.shipping?.orderCode || null,
         totalItemCost,
         totalShippingFee,
         totalVoucherDiscount,

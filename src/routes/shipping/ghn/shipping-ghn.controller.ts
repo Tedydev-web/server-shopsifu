@@ -17,9 +17,7 @@ import {
   GetOrderInfoQueryDTO,
   GetOrderInfoResDTO,
   GetTrackingUrlQueryDTO,
-  GetTrackingUrlResDTO,
-  PrintOrderDTO,
-  PrintOrderResDTO
+  GetTrackingUrlResDTO
 } from './shipping-ghn.dto'
 import {
   GetDistrictsQueryDTO,
@@ -91,11 +89,5 @@ export class ShippingController {
   @ZodSerializerDto(GetTrackingUrlResDTO)
   getTrackingUrl(@Query() query: GetTrackingUrlQueryDTO) {
     return this.shippingService.getTrackingUrl(query)
-  }
-
-  @Post('print-order')
-  @ZodSerializerDto(PrintOrderResDTO)
-  printOrder(@Body() data: PrintOrderDTO, @ActiveUser() user: AccessTokenPayload) {
-    return this.shippingService.printOrder(data, user)
   }
 }

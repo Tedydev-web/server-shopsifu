@@ -19,7 +19,6 @@ import {
   GetOrderInfoResSchema,
   GetTrackingUrlQuerySchema,
   GetTrackingUrlResSchema,
-  PrintOrderSchema,
   PrintOrderResSchema
 } from './shipping-ghn.model'
 
@@ -48,5 +47,4 @@ export class GetOrderInfoResDTO extends createZodDto(GetOrderInfoResSchema) {}
 export class GetTrackingUrlQueryDTO extends createZodDto(GetTrackingUrlQuerySchema) {}
 export class GetTrackingUrlResDTO extends createZodDto(GetTrackingUrlResSchema) {}
 
-export class PrintOrderDTO extends createZodDto(PrintOrderSchema) {}
 export class PrintOrderResDTO extends createZodDto(PrintOrderResSchema) {}
