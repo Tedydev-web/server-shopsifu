@@ -15,6 +15,7 @@ export const OrderSchema = z.object({
   }),
   shopId: z.string().nullable(),
   paymentId: z.number(),
+  orderCode: z.string().nullable(), // Thêm orderCode từ OrderShipping
 
   createdById: z.string().nullable(),
   updatedById: z.string().nullable(),

@@ -60,7 +60,12 @@ export class OrderRepo {
     const data$ = await this.prismaService.order.findMany({
       where,
       include: {
-        items: true
+        items: true,
+        shipping: {
+          select: {
+            orderCode: true
+          }
+        }
       },
       skip,
       take,
@@ -69,8 +74,18 @@ export class OrderRepo {
       }
     })
     const [data, totalItems] = await Promise.all([data$, totalItem$])
+
+    // Map orderCode từ shipping vào order và loại bỏ shipping object
+    const ordersWithOrderCode = data.map((order) => {
+      const { shipping, ...orderWithoutShipping } = order
+      return {
+        ...orderWithoutShipping,
+        orderCode: shipping?.orderCode || null
+      }
+    })
+
     return {
-      data,
+      data: ordersWithOrderCode,
       metadata: {
         totalItems,
         page,
@@ -543,8 +558,14 @@ export class OrderRepo {
         }
       })
 
+      // Thêm orderCode vào response
+      const orderWithOrderCode = {
+        ...updatedOrder,
+        orderCode: orderShipping?.orderCode || null
+      }
+
       return {
-        data: updatedOrder
+        data: orderWithOrderCode
       }
     } catch (error) {
       if (isNotFoundPrismaError(error)) {
