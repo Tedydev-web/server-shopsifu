@@ -13,6 +13,7 @@ export const GetOrderListResSchema = z.object({
     OrderSchema.extend({
       items: z.array(ProductSKUSnapshotSchema),
       discounts: z.array(DiscountSnapshotSchema).optional(),
+      orderCode: z.string().nullable().optional(),
       totalItemCost: z.number(),
       totalShippingFee: z.number(),
       totalVoucherDiscount: z.number(),
@@ -81,11 +82,17 @@ export const GetOrderDetailResSchema = z.object({
   message: z.string().optional(),
   data: OrderSchema.extend({
     items: z.array(ProductSKUSnapshotSchema),
-    orderCode: z.string().optional()
+    orderCode: z.string().nullable().optional()
   })
 })
 
-export const GetManageOrderDetailResSchema = GetOrderDetailResSchema
+export const GetManageOrderDetailResSchema = z.object({
+  message: z.string().optional(),
+  data: OrderSchema.extend({
+    items: z.array(ProductSKUSnapshotSchema),
+    orderCode: z.string().nullable().optional()
+  })
+})
 
 export const CreateOrderBodySchema = z.object({
   shops: z
@@ -182,7 +189,9 @@ export const CreateOrderResSchema = z.object({
 
 export const CancelOrderResSchema = z.object({
   message: z.string().optional(),
-  data: OrderSchema
+  data: OrderSchema.extend({
+    orderCode: z.string().nullable().optional()
+  })
 })
 
 export const GetOrderParamsSchema = z
