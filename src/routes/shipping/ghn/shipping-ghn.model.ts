@@ -173,9 +173,9 @@ export const CreateOrderSchema = z.object({
   config_fee_id: z.string().optional(),
   extra_cost_id: z.string().optional(),
   coupon: z.string().nullable().optional(),
-  pick_shift: z.array(z.number()).optional(),
-  items: z.array(
-    z.object({
+  pick_shift: z.number().array().optional(),
+  items: z
+    .object({
       name: z.string(),
       quantity: z.number(),
       weight: z.number(),
@@ -183,7 +183,7 @@ export const CreateOrderSchema = z.object({
       width: z.number().optional(),
       height: z.number().optional()
     })
-  ),
+    .array(),
   payment_type_id: z.number(),
   note: z.string().optional(),
   required_note: z.string().optional()
@@ -204,7 +204,6 @@ export const GetOrderInfoQuerySchema = z.object({
   orderCode: z.string().min(1, 'Order code is required')
 })
 
-// Schema cho thông tin đơn hàng GHN - chỉ giữ những field cần thiết cho UI
 export const OrderInfoDataSchema = z.object({
   // Basic order info
   order_code: z.string(),
@@ -252,8 +251,8 @@ export const OrderInfoDataSchema = z.object({
   pick_warehouse_id: z.number().nullable().optional(),
   deliver_warehouse_id: z.number().nullable().optional(),
   current_warehouse_id: z.number().nullable().optional(),
-  log: z.any().optional(), // GHN API trả về unknown[] cho log
-  tag: z.array(z.string()).optional(),
+  log: z.unknown().array().optional(),
+  tag: z.string().array().optional(),
 
   // Additional useful fields
   note: z.string().nullable().optional(),

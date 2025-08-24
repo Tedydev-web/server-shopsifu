@@ -8,7 +8,8 @@
     "CALCULATE_DELIVERY_TIME_SUCCESS": "Tính thời gian giao hàng thành công",
     "PREVIEW_ORDER_SUCCESS": "Xem trước đơn hàng thành công",
     "CREATE_ORDER_SUCCESS": "Tạo đơn hàng thành công",
-    "GET_ORDER_INFO_SUCCESS": "Lấy thông tin đơn hàng thành công"
+    "GET_ORDER_INFO_SUCCESS": "Lấy thông tin đơn hàng thành công",
+    "GET_TRACKING_URL_SUCCESS": "Lấy URL theo dõi đơn hàng thành công"
   },
   "error": {
     "SERVICE_UNAVAILABLE": "Dịch vụ vận chuyển hiện không khả dụng, vui lòng thử lại sau",
@@ -20,6 +21,12 @@
     "MISSING_SERVICE_IDENTIFIER": "Thiếu thông tin dịch vụ (service_id hoặc service_type_id)",
     "ORDER_NOT_FOUND": "Không tìm thấy đơn hàng vận chuyển",
     "INVALID_WEBHOOK_PAYLOAD": "Dữ liệu webhook không hợp lệ",
-    "ORDER_CREATION_FAILED": "Tạo đơn hàng vận chuyển thất bại"
+    "ORDER_CREATION_FAILED": "Tạo đơn hàng vận chuyển thất bại",
+    "USER_ADDRESS_NOT_FOUND": "Không tìm thấy địa chỉ mặc định của người dùng",
+    "SHOP_ADDRESS_NOT_FOUND": "Không thể xác định địa chỉ shop. Vui lòng truyền cartItemId",
+    "ORDER_CODE_REQUIRED": "Mã đơn hàng là bắt buộc và không được để trống",
+    "SHIPPING_ORDER_NOT_READY": "Đơn hàng vận chuyển chưa sẵn sàng - GHN order chưa được tạo",
+    "NO_ORDER_INFO_FROM_GHN": "Không có thông tin đơn hàng từ GHN",
+    "NO_TRACKING_URL_FROM_GHN": "Không có URL theo dõi từ GHN"
   }
 }

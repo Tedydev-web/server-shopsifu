@@ -429,6 +429,7 @@ export type I18nTranslations = {
             "PREVIEW_ORDER_SUCCESS": string;
             "CREATE_ORDER_SUCCESS": string;
             "GET_ORDER_INFO_SUCCESS": string;
+            "GET_TRACKING_URL_SUCCESS": string;
         };
         "error": {
             "SERVICE_UNAVAILABLE": string;
@@ -441,6 +442,12 @@ export type I18nTranslations = {
             "ORDER_NOT_FOUND": string;
             "INVALID_WEBHOOK_PAYLOAD": string;
             "ORDER_CREATION_FAILED": string;
+            "USER_ADDRESS_NOT_FOUND": string;
+            "SHOP_ADDRESS_NOT_FOUND": string;
+            "ORDER_CODE_REQUIRED": string;
+            "SHIPPING_ORDER_NOT_READY": string;
+            "NO_ORDER_INFO_FROM_GHN": string;
+            "NO_TRACKING_URL_FROM_GHN": string;
         };
     };
     "user": {

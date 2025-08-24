@@ -51,55 +51,34 @@ export class ShippingRepo {
     toDistrictId?: number
     toWardCode?: string
   }): Promise<OrderShipping> {
+    const shippingData = {
+      orderCode: data.orderCode,
+      serviceId: data.serviceId,
+      serviceTypeId: data.serviceTypeId,
+      shippingFee: data.shippingFee,
+      codAmount: data.codAmount,
+      expectedDeliveryTime: data.expectedDeliveryTime,
+      trackingUrl: data.trackingUrl,
+      status: data.status,
+      fromAddress: data.fromAddress,
+      fromName: data.fromName,
+      fromPhone: data.fromPhone,
+      fromProvinceName: data.fromProvinceName,
+      fromDistrictName: data.fromDistrictName,
+      fromWardName: data.fromWardName,
+      fromDistrictId: data.fromDistrictId,
+      fromWardCode: data.fromWardCode,
+      toAddress: data.toAddress,
+      toName: data.toName,
+      toPhone: data.toPhone,
+      toDistrictId: data.toDistrictId,
+      toWardCode: data.toWardCode
+    }
+
     return this.prisma.orderShipping.upsert({
       where: { orderId: data.orderId },
-      create: {
-        orderId: data.orderId,
-        orderCode: data.orderCode,
-        serviceId: data.serviceId,
-        serviceTypeId: data.serviceTypeId,
-        shippingFee: data.shippingFee,
-        codAmount: data.codAmount,
-        expectedDeliveryTime: data.expectedDeliveryTime,
-        trackingUrl: data.trackingUrl,
-        status: data.status,
-        fromAddress: data.fromAddress,
-        fromName: data.fromName,
-        fromPhone: data.fromPhone,
-        fromProvinceName: data.fromProvinceName,
-        fromDistrictName: data.fromDistrictName,
-        fromWardName: data.fromWardName,
-        fromDistrictId: data.fromDistrictId,
-        fromWardCode: data.fromWardCode,
-        toAddress: data.toAddress,
-        toName: data.toName,
-        toPhone: data.toPhone,
-        toDistrictId: data.toDistrictId,
-        toWardCode: data.toWardCode
-      },
-      update: {
-        orderCode: data.orderCode,
-        serviceId: data.serviceId,
-        serviceTypeId: data.serviceTypeId,
-        shippingFee: data.shippingFee,
-        codAmount: data.codAmount,
-        expectedDeliveryTime: data.expectedDeliveryTime,
-        trackingUrl: data.trackingUrl,
-        status: data.status,
-        fromAddress: data.fromAddress,
-        fromName: data.fromName,
-        fromPhone: data.fromPhone,
-        fromProvinceName: data.fromProvinceName,
-        fromDistrictName: data.fromDistrictName,
-        fromWardName: data.fromWardName,
-        fromDistrictId: data.fromDistrictId,
-        fromWardCode: data.fromWardCode,
-        toAddress: data.toAddress,
-        toName: data.toName,
-        toPhone: data.toPhone,
-        toDistrictId: data.toDistrictId,
-        toWardCode: data.toWardCode
-      }
+      create: { orderId: data.orderId, ...shippingData },
+      update: shippingData
     })
   }
 
@@ -117,15 +96,14 @@ export class ShippingRepo {
    * Cập nhật trạng thái order khi shipping thay đổi
    */
   async updateOrderStatus(orderId: string, status: OrderShippingStatus): Promise<void> {
-    let orderStatus: 'PENDING_DELIVERY' | 'DELIVERED' | 'CANCELLED' | undefined
-
-    if (status.includes('DELIVERED')) {
-      orderStatus = 'DELIVERED'
-    } else if (status.includes('PICK') || status.includes('PENDING')) {
-      orderStatus = 'PENDING_DELIVERY'
-    } else if (status.includes('CANCEL')) {
-      orderStatus = 'CANCELLED'
+    const orderStatusMap: Record<string, 'PENDING_DELIVERY' | 'DELIVERED' | 'CANCELLED'> = {
+      DELIVERED: 'DELIVERED',
+      PICK: 'PENDING_DELIVERY',
+      PENDING: 'PENDING_DELIVERY',
+      CANCEL: 'CANCELLED'
     }
+
+    const orderStatus = Object.entries(orderStatusMap).find(([key]) => status.includes(key))?.[1]
 
     if (orderStatus) {
       await this.prisma.order.update({

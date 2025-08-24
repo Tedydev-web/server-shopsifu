@@ -17,7 +17,7 @@ import {
   GetOrderListQueryType,
   GetOrderListResType
 } from 'src/routes/order/order.model'
-import { OrderProducer } from 'src/routes/order/order.producer'
+import { OrderProducer } from 'src/shared/queue/producer/order.producer'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { VersionConflictException } from 'src/shared/error'
 import { isNotFoundPrismaError } from 'src/shared/helpers'
