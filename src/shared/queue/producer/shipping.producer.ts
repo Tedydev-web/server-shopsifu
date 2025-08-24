@@ -7,7 +7,7 @@ import {
   SHIPPING_QUEUE_NAME
 } from 'src/shared/constants/queue.constant'
 import { CreateOrderType, GHNWebhookPayloadType } from 'src/routes/shipping/ghn/shipping-ghn.model'
-import { generateCancelPaymentJobId } from 'src/shared/helpers'
+import { generateShippingWebhookJobId } from 'src/shared/helpers'
 
 @Injectable()
 export class ShippingProducer {
@@ -17,10 +17,10 @@ export class ShippingProducer {
 
   async enqueueCreateOrder(jobData: CreateOrderType) {
     return this.shippingQueue.add(CREATE_SHIPPING_ORDER_JOB, jobData, {
-      removeOnComplete: true,
-      removeOnFail: true,
       attempts: 3,
-      backoff: { type: 'exponential', delay: 2000 }
+      backoff: { type: 'exponential', delay: 2000 },
+      removeOnComplete: true,
+      removeOnFail: true
     })
   }
 
@@ -31,12 +31,11 @@ export class ShippingProducer {
     return this.shippingQueue.add(
       PROCESS_GHN_WEBHOOK_JOB,
       {
-        orderCode: payload.OrderCode,
-        status: payload.Status
+        orderCode: payload.orderCode,
+        status: payload.status
       },
       {
-        delay: 0,
-        jobId: generateCancelPaymentJobId(Number(payload.OrderCode)),
+        jobId: generateShippingWebhookJobId(payload.orderCode || 'unknown'),
         removeOnComplete: true,
         removeOnFail: true
       }

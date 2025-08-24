@@ -6,7 +6,7 @@ export const GHN_PAYMENT_TYPE = {
   COD: 2 // Thanh toán khi nhận hàng
 } as const
 
-// GHN Order Status Mapping
+// GHN Order status Mapping
 export const GHN_ORDER_STATUS = {
   CREATED: 'CREATED',
   PENDING_PICKUP: 'PENDING_PICKUP',

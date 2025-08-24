@@ -44,7 +44,7 @@ elseif (POST /discounts/validate-code - Validate voucher code) then
   :Tìm discount theo code;
   if (Discount được tìm thấy?) then (có)
     :Kiểm tra discountStatus = 'ACTIVE';
-    if (Status hợp lệ?) then (có)
+    if (status hợp lệ?) then (có)
       :Kiểm tra thời gian hiệu lực;
       if (Thời gian hợp lệ?) then (có)
         :Kiểm tra số lần sử dụng;

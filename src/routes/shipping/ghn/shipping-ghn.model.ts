@@ -191,8 +191,8 @@ export const CreateOrderSchema = z.object({
 
 export const GHNWebhookPayloadSchema = z.object({
   // GHN API fields (camelCase only - theo tài liệu chính thức)
-  OrderCode: z.string().optional(),
-  Status: z.string().optional(),
+  orderCode: z.string().optional(),
+  status: z.string().optional(),
   Type: z.string().optional(),
   Time: z.string().optional(),
   ShopID: z.number().optional(),
@@ -293,7 +293,7 @@ export const OrderInfoDataSchema = z.object({
   leadtime: z.union([z.string(), z.date()]).nullable().optional(),
   finish_date: z.union([z.string(), z.date()]).nullable().optional(),
 
-  // Status & tracking
+  // status & tracking
   pick_warehouse_id: z.number().nullable().optional(),
   deliver_warehouse_id: z.number().nullable().optional(),
   current_warehouse_id: z.number().nullable().optional(),

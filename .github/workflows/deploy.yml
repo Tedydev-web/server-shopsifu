@@ -32,7 +32,7 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy via SSH & Get Server Status
+      - name: Deploy via SSH & Get Server status
         id: ssh_deploy
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} << 'EOF'
@@ -54,7 +54,7 @@ jobs:
           EOF
         continue-on-error: true
 
-      - name: Collect PM2 Status
+      - name: Collect PM2 status
         if: always()
         id: pm2_status
         run: |

@@ -29,6 +29,14 @@ export const generateCancelPaymentJobId = (paymentId: number) => {
   return `paymentId-${paymentId}`
 }
 
+export const generateShippingWebhookJobId = (orderCode: string) => {
+  return `shipping-webhook-${orderCode}`
+}
+
+export const generateSearchSyncJobId = (type: string, identifier: string) => {
+  return `search-sync-${type}-${identifier}`
+}
+
 export const generateRoomUserId = (userId: string) => {
   return `userId-${userId}`
 }

@@ -9,15 +9,19 @@ export class PaymentConsumer extends WorkerHost {
     super()
   }
   async process(job: Job<{ paymentId: number }, any, string>): Promise<any> {
-    switch (job.name) {
-      case CANCEL_PAYMENT_JOB_NAME: {
-        const { paymentId } = job.data
-        await this.sharedPaymentRepo.cancelPaymentAndOrder(paymentId)
-        return {}
+    try {
+      switch (job.name) {
+        case CANCEL_PAYMENT_JOB_NAME: {
+          const { paymentId } = job.data
+          await this.sharedPaymentRepo.cancelPaymentAndOrder(paymentId)
+          return { message: 'Payment cancelled successfully', paymentId }
+        }
+        default: {
+          throw new Error(`Unknown job type: ${job.name}`)
+        }
       }
-      default: {
-        break
-      }
+    } catch (error) {
+      throw error
     }
   }
 }

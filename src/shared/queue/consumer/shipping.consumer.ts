@@ -86,20 +86,20 @@ export class ShippingConsumer extends WorkerHost {
    */
   private async processWebhook(job: Job<GHNWebhookPayloadType>) {
     try {
-      const { OrderCode, Status } = job.data
+      const { orderCode, status } = job.data
 
-      if (!OrderCode || !Status) {
-        throw new Error('Missing required fields: OrderCode or Status')
+      if (!orderCode || !status) {
+        throw new Error('Missing required fields: orderCode or status')
       }
 
-      const shipping = await this.findShippingWithOrder(OrderCode)
+      const shipping = await this.findShippingWithOrder(orderCode)
       if (!shipping) {
-        return { message: 'No shipping record found', orderCode: OrderCode }
+        return { message: 'No shipping record found', orderCode: orderCode }
       }
 
-      const newOrderStatus = this.mapGHNStatusToOrderStatus(Status)
+      const newOrderStatus = this.mapGHNStatusToOrderStatus(status)
       if (!newOrderStatus) {
-        return { message: 'Unknown status, keeping current order status', orderCode: OrderCode, status: Status }
+        return { message: 'Unknown status, keeping current order status', orderCode: orderCode, status: status }
       }
 
       if (shipping.order.status !== newOrderStatus) {
@@ -108,14 +108,14 @@ export class ShippingConsumer extends WorkerHost {
 
       return {
         message: 'Webhook processed successfully',
-        orderCode: OrderCode,
+        orderCode: orderCode,
         oldStatus: shipping.order.status,
         newStatus: newOrderStatus,
-        ghnStatus: Status
+        ghnStatus: status
       }
     } catch (error) {
       const enhancedError = new Error(
-        `Webhook processing failed for orderCode: ${job.data.OrderCode}. ${error.message}`
+        `Webhook processing failed for orderCode: ${job.data.orderCode}. ${error.message}`
       )
       enhancedError.stack = error.stack
       throw enhancedError

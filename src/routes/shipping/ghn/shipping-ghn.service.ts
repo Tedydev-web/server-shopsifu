@@ -333,8 +333,8 @@ export class ShippingService {
     payload: GHNWebhookPayloadType
   ): Promise<{ message: string; code: number; timestamp: string; orderCode?: string; status?: string }> {
     try {
-      const orderCode = payload.OrderCode
-      const status = payload.Status
+      const orderCode = payload.orderCode
+      const status = payload.status
 
       if (!orderCode) {
         return {

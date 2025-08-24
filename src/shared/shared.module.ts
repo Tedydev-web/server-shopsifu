@@ -29,10 +29,10 @@ import configs from 'src/shared/config'
 import { createLoggerConfig } from './config/logger.config'
 import { PaymentProducer } from './queue/producer/payment.producer'
 import { ShippingProducer } from './queue/producer/shipping.producer'
-import { PAYMENT_QUEUE_NAME } from './constants/queue.constant'
-import { SHIPPING_QUEUE_NAME } from './constants/queue.constant'
+import { PAYMENT_QUEUE_NAME, SHIPPING_QUEUE_NAME } from './constants/queue.constant'
 import { ElasticsearchService } from './services/elasticsearch.service'
 import { SearchSyncService } from './services/search-sync.service'
+import { SearchSyncProducer } from './queue/producer/search-sync.producer'
 import { SearchSyncConsumer } from './queue/consumer/search-sync.consumer'
 import { SEARCH_SYNC_QUEUE_NAME } from './constants/search-sync.constant'
 import { PaymentConsumer } from './queue/consumer/payment.consumer'
@@ -61,6 +61,7 @@ const sharedServices = [
   ShippingProducer,
   ElasticsearchService,
   SearchSyncService,
+  SearchSyncProducer,
   SearchSyncConsumer,
   PaymentConsumer,
   ShippingConsumer,
