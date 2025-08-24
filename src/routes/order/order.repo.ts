@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { OrderStatus } from 'src/shared/constants/order.constant'
+import { OrderStatus, OrderStatusType } from 'src/shared/constants/order.constant'
 import {
   CannotCancelOrderException,
   NotFoundCartItemException,
@@ -33,7 +33,7 @@ export class OrderRepo {
   ) {}
 
   /**
-   * Lấy danh sách orders - Core CRUD
+   * Lấy danh sách orders - Core CRUD (cho User xem đơn hàng của mình)
    */
   async list(userId: string, query: GetOrderListQueryType): Promise<GetOrderListResType> {
     const { page, limit, status } = query
@@ -295,7 +295,7 @@ export class OrderRepo {
   }
 
   /**
-   * Lấy chi tiết order - Core CRUD
+   * Lấy chi tiết order - Core CRUD (cho User xem đơn hàng của mình)
    */
   async detail(userId: string, orderid: string): Promise<GetOrderDetailResType> {
     const order = await this.prismaService.order.findUnique({
@@ -324,6 +324,145 @@ export class OrderRepo {
         totalPayment: totalPayment
       }
     }
+  }
+
+  /**
+   * Lấy danh sách orders theo shop (cho Seller xem đơn hàng của shop mình)
+   */
+  async listByShop(shopId: string, query: any): Promise<any> {
+    const { page, limit, status, startDate, endDate, customerName, orderCode } = query
+    const skip = (page - 1) * limit
+    const take = limit
+
+    const where: Prisma.OrderWhereInput = {
+      shopId,
+      deletedAt: null,
+      status
+    }
+
+    // Filter theo ngày
+    if (startDate || endDate) {
+      where.createdAt = {}
+      if (startDate) where.createdAt.gte = new Date(startDate)
+      if (endDate) where.createdAt.lte = new Date(endDate)
+    }
+
+    // Filter theo tên khách hàng
+    if (customerName) {
+      where.user = {
+        name: {
+          contains: customerName,
+          mode: 'insensitive'
+        }
+      }
+    }
+
+    // Filter theo mã đơn hàng
+    if (orderCode) {
+      where.id = {
+        contains: orderCode,
+        mode: 'insensitive'
+      }
+    }
+
+    // Đếm tổng số order
+    const totalItem$ = this.prismaService.order.count({
+      where
+    })
+
+    // Lấy list order với thông tin user
+    const data$ = await this.prismaService.order.findMany({
+      where,
+      include: {
+        items: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phoneNumber: true
+          }
+        }
+      },
+      skip,
+      take,
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
+
+    const [data, totalItems] = await Promise.all([data$, totalItem$])
+
+    return {
+      data,
+      metadata: {
+        totalItems,
+        page,
+        limit,
+        totalPages: Math.ceil(totalItems / limit),
+        hasNext: page < Math.ceil(totalItems / limit),
+        hasPrev: page > 1
+      }
+    }
+  }
+
+  /**
+   * Lấy chi tiết order theo shop (cho Seller xem đơn hàng của shop mình)
+   */
+  async detailByShop(shopId: string, orderId: string): Promise<any> {
+    const order = await this.prismaService.order.findUnique({
+      where: {
+        id: orderId,
+        shopId,
+        deletedAt: null
+      },
+      include: {
+        items: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phoneNumber: true
+          }
+        }
+      }
+    })
+
+    if (!order) {
+      return null
+    }
+
+    // Tính toán giá trị cơ bản
+    const totalPayment = order.items.reduce((sum, item) => sum + item.skuPrice * item.quantity, 0)
+
+    return {
+      data: {
+        ...order,
+        totalItemCost: totalPayment,
+        totalShippingFee: 0,
+        totalVoucherDiscount: 0,
+        totalPayment: totalPayment
+      }
+    }
+  }
+
+  /**
+   * Cập nhật trạng thái đơn hàng của shop
+   */
+  async updateOrderStatus(shopId: string, orderId: string, status: OrderStatusType, updatedById: string) {
+    return this.prismaService.order.update({
+      where: {
+        id: orderId,
+        shopId,
+        deletedAt: null
+      },
+      data: {
+        status,
+        updatedById,
+        updatedAt: new Date()
+      }
+    })
   }
 
   /**

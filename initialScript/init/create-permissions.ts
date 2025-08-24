@@ -15,7 +15,8 @@ const SellerModule = [
   'SEARCH',
   'DISCOUNTS',
   'MANAGE-DISCOUNT',
-  'SHIPPING'
+  'SHIPPING',
+  'MANAGE-ORDER'
 ]
 const ClientModule = ['AUTH', 'MEDIA', 'PROFILE', 'CART', 'ORDERS', 'REVIEWS', 'SEARCH', 'SHIPPING']
 const prisma = new PrismaClient()

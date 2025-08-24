@@ -137,11 +137,11 @@ const sharedServices = [
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
         connection: {
-          host: configService.get('redis.host'),
-          port: Number(configService.get('redis.port')),
-          password: configService.get('redis.password'),
-          tls: configService.get('redis.tls'),
-          requireAuth: configService.get('redis.requireAuth')
+          host: configService.getOrThrow('redis.host'),
+          port: Number(configService.getOrThrow('redis.port')),
+          password: configService.getOrThrow('redis.password'),
+          tls: configService.get('redis.tls') || undefined,
+          requireAuth: configService.get('redis.requireAuth') || false
         }
       }),
       inject: [ConfigService]
