@@ -1,19 +1,26 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq'
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { Job } from 'bullmq'
 import { Inject } from '@nestjs/common'
 import { GHN_CLIENT } from 'src/shared/constants/shipping.constants'
 import { OrderShippingStatus } from 'src/shared/constants/order-shipping.constants'
 import { PrismaService } from 'src/shared/services/prisma.service'
-import { SHIPPING_QUEUE_NAME } from 'src/shared/constants/queue.constant'
-import { CreateOrderType } from 'src/routes/shipping/ghn/shipping-ghn.model'
+import {
+  CREATE_SHIPPING_ORDER_JOB,
+  PROCESS_GHN_WEBHOOK_JOB,
+  SHIPPING_QUEUE_NAME
+} from 'src/shared/constants/queue.constant'
+import { CreateOrderType, GHNWebhookPayloadType } from 'src/routes/shipping/ghn/shipping-ghn.model'
 import { Ghn } from 'giaohangnhanh'
+import { OrderStatus } from 'src/shared/constants/order.constant'
 
 @Injectable()
-@Processor(SHIPPING_QUEUE_NAME)
+@Processor(SHIPPING_QUEUE_NAME, {
+  concurrency: 2,
+  maxStalledCount: 1,
+  stalledInterval: 30000
+})
 export class ShippingConsumer extends WorkerHost {
-  private readonly logger = new Logger(ShippingConsumer.name)
-
   constructor(
     @Inject(GHN_CLIENT) private readonly ghn: Ghn,
     private readonly prismaService: PrismaService
@@ -21,82 +28,45 @@ export class ShippingConsumer extends WorkerHost {
     super()
   }
 
-  async process(job: Job<CreateOrderType>) {
+  async process(job: Job<CreateOrderType | GHNWebhookPayloadType>) {
     try {
-      this.logger.log(`Processing shipping order creation for job ${job.id}`)
+      if (job.name === CREATE_SHIPPING_ORDER_JOB) {
+        return this.processCreateOrder(job as Job<CreateOrderType>)
+      }
 
-      const orderData = job.data
+      if (job.name === PROCESS_GHN_WEBHOOK_JOB) {
+        return this.processWebhook(job as Job<GHNWebhookPayloadType>)
+      }
 
-      // Kiểm tra xem order đã có shipping chưa (idempotency)
-      if (job.data.client_order_code) {
-        const existingShipping = await this.prismaService.orderShipping.findUnique({
-          where: {
-            orderId: job.data.client_order_code.startsWith('SSPX')
-              ? job.data.client_order_code.substring(4)
-              : job.data.client_order_code
-          }
-        })
+      throw new Error(`Unknown job type: ${job.name}`)
+    } catch (error) {
+      throw error
+    }
+  }
 
-        if (!existingShipping) {
-          this.logger.error(`No OrderShipping record found for order ${job.data.client_order_code}`)
-          throw new Error(`No OrderShipping record found for order ${job.data.client_order_code}`)
-        }
+  /**
+   * Xử lý tạo shipping order
+   */
+  private async processCreateOrder(job: Job<CreateOrderType>) {
+    try {
+      const { client_order_code } = job.data
 
-        if (
-          existingShipping.status === OrderShippingStatus.CREATED &&
-          existingShipping.orderCode &&
-          existingShipping.orderCode !== 'TEMP_ORDER_CODE'
-        ) {
-          this.logger.log(
-            `Order ${job.data.client_order_code} already has GHN shipping order ${existingShipping.orderCode}, skipping`
-          )
-          return { message: 'Order already has GHN shipping order', orderCode: existingShipping.orderCode }
-        }
+      if (!client_order_code) {
+        throw new Error('Missing client_order_code')
+      }
 
-        // Kiểm tra trạng thái của OrderShipping
-        if (existingShipping.status !== OrderShippingStatus.ENQUEUED) {
-          this.logger.warn(
-            `OrderShipping for ${job.data.client_order_code} has unexpected status: ${existingShipping.status}`
-          )
+      const orderId = this.extractOrderId(client_order_code)
+      const existingShipping = await this.findExistingShipping(orderId)
+
+      if (existingShipping && this.isOrderAlreadyProcessed(existingShipping)) {
+        return {
+          message: 'Order already has GHN shipping order',
+          orderCode: existingShipping.orderCode
         }
       }
 
-      // Tạo GHN order
-      const ghnResponse = await this.ghn.order.createOrder(orderData)
-
-      if (!ghnResponse || !ghnResponse.order_code) {
-        // Cập nhật trạng thái OrderShipping thành FAILED
-        if (orderData.client_order_code) {
-          await this.prismaService.orderShipping.update({
-            where: { orderId: orderData.client_order_code },
-            data: {
-              status: OrderShippingStatus.FAILED,
-              lastError: 'Failed to create GHN order: Invalid response',
-              attempts: { increment: 1 }
-            }
-          })
-        }
-        throw new Error('Failed to create GHN order: Invalid response')
-      }
-
-      // Cập nhật thông tin shipping vào database
-      const orderShipping = await this.prismaService.orderShipping.update({
-        where: { orderId: (job.data.client_order_code || '').replace(/^SSPX/, '') },
-        data: {
-          orderCode: ghnResponse.order_code,
-          expectedDeliveryTime: ghnResponse.expected_delivery_time
-            ? new Date(ghnResponse.expected_delivery_time)
-            : null,
-          status: OrderShippingStatus.CREATED,
-          attempts: { increment: 1 },
-          lastUpdatedAt: new Date()
-        }
-      })
-      this.logger.log(`Order ${orderData.client_order_code} status remains PENDING_PAYMENT`)
-
-      this.logger.log(
-        `Successfully created shipping order ${ghnResponse.order_code} for order ${orderData.client_order_code}`
-      )
+      const ghnResponse = await this.createGHNOrder(job.data)
+      const orderShipping = await this.updateOrderShipping(orderId, ghnResponse)
 
       return {
         message: 'Shipping order created successfully',
@@ -104,25 +74,167 @@ export class ShippingConsumer extends WorkerHost {
         orderShippingId: orderShipping.id
       }
     } catch (error) {
-      this.logger.error(`Failed to process shipping order creation: ${error.message}`, error.stack)
-
-      // Cập nhật trạng thái OrderShipping thành FAILED nếu có lỗi
       if (job.data.client_order_code) {
-        try {
-          await this.prismaService.orderShipping.update({
-            where: { orderId: job.data.client_order_code },
-            data: {
-              status: OrderShippingStatus.FAILED,
-              lastError: `${error.message}`.substring(0, 255), // Giới hạn độ dài của lỗi
-              attempts: { increment: 1 }
-            }
-          })
-        } catch (updateError) {
-          this.logger.error(`Failed to update OrderShipping status: ${updateError.message}`)
-        }
+        await this.handleCreateOrderError(job.data.client_order_code, error)
       }
-
       throw error
     }
+  }
+
+  /**
+   * Xử lý GHN webhook trong background
+   */
+  private async processWebhook(job: Job<GHNWebhookPayloadType>) {
+    try {
+      const { OrderCode, Status } = job.data
+
+      if (!OrderCode || !Status) {
+        throw new Error('Missing required fields: OrderCode or Status')
+      }
+
+      const shipping = await this.findShippingWithOrder(OrderCode)
+      if (!shipping) {
+        return { message: 'No shipping record found', orderCode: OrderCode }
+      }
+
+      const newOrderStatus = this.mapGHNStatusToOrderStatus(Status)
+      if (!newOrderStatus) {
+        return { message: 'Unknown status, keeping current order status', orderCode: OrderCode, status: Status }
+      }
+
+      if (shipping.order.status !== newOrderStatus) {
+        await this.updateOrderStatus(shipping.orderId, newOrderStatus)
+      }
+
+      return {
+        message: 'Webhook processed successfully',
+        orderCode: OrderCode,
+        oldStatus: shipping.order.status,
+        newStatus: newOrderStatus,
+        ghnStatus: Status
+      }
+    } catch (error) {
+      const enhancedError = new Error(
+        `Webhook processing failed for orderCode: ${job.data.OrderCode}. ${error.message}`
+      )
+      enhancedError.stack = error.stack
+      throw enhancedError
+    }
+  }
+
+  /**
+   * Helper methods
+   */
+  private extractOrderId(clientOrderCode: string): string {
+    return clientOrderCode.startsWith('SSPX') ? clientOrderCode.substring(4) : clientOrderCode
+  }
+
+  private async findExistingShipping(orderId: string) {
+    return this.prismaService.orderShipping.findUnique({
+      where: { orderId }
+    })
+  }
+
+  private isOrderAlreadyProcessed(shipping: any): boolean {
+    return (
+      shipping?.status === OrderShippingStatus.CREATED &&
+      shipping?.orderCode &&
+      shipping?.orderCode !== 'TEMP_ORDER_CODE'
+    )
+  }
+
+  private async createGHNOrder(orderData: CreateOrderType) {
+    const ghnResponse = await this.ghn.order.createOrder(orderData)
+
+    if (!ghnResponse?.order_code) {
+      throw new Error('Failed to create GHN order: Invalid response')
+    }
+
+    return ghnResponse
+  }
+
+  private async updateOrderShipping(
+    orderId: string,
+    ghnResponse: { order_code: string; expected_delivery_time?: string | Date }
+  ) {
+    return this.prismaService.orderShipping.update({
+      where: { orderId },
+      data: {
+        orderCode: ghnResponse.order_code,
+        expectedDeliveryTime: ghnResponse.expected_delivery_time ? new Date(ghnResponse.expected_delivery_time) : null,
+        status: OrderShippingStatus.CREATED,
+        attempts: { increment: 1 },
+        lastUpdatedAt: new Date()
+      }
+    })
+  }
+
+  private async handleCreateOrderError(clientOrderCode: string, error: Error) {
+    if (!clientOrderCode) return
+
+    await this.prismaService.orderShipping.update({
+      where: { orderId: this.extractOrderId(clientOrderCode) },
+      data: {
+        status: OrderShippingStatus.FAILED,
+        lastError: error.message.substring(0, 255),
+        attempts: { increment: 1 }
+      }
+    })
+  }
+
+  private async findShippingWithOrder(orderCode: string) {
+    return this.prismaService.orderShipping.findFirst({
+      where: { orderCode },
+      include: { order: true }
+    })
+  }
+
+  private async updateOrderStatus(orderId: string, newStatus: (typeof OrderStatus)[keyof typeof OrderStatus]) {
+    return this.prismaService.order.update({
+      where: { id: orderId },
+      data: { status: newStatus }
+    })
+  }
+
+  /**
+   * Map GHN status sang OrderStatus (6 trạng thái hệ thống)
+   */
+  private mapGHNStatusToOrderStatus(ghnStatus: string): (typeof OrderStatus)[keyof typeof OrderStatus] | null {
+    const statusMap: Record<string, (typeof OrderStatus)[keyof typeof OrderStatus]> = {
+      // Tạo đơn hàng
+      ready_to_pick: OrderStatus.PENDING_PICKUP,
+
+      // Lấy hàng
+      picking: OrderStatus.PENDING_PICKUP,
+      picked: OrderStatus.PENDING_PICKUP,
+
+      // Vận chuyển
+      storing: OrderStatus.PENDING_DELIVERY,
+      transporting: OrderStatus.PENDING_DELIVERY,
+      sorting: OrderStatus.PENDING_DELIVERY,
+      delivering: OrderStatus.PENDING_DELIVERY,
+
+      // Giao hàng
+      delivered: OrderStatus.DELIVERED,
+      delivery_fail: OrderStatus.PENDING_DELIVERY,
+
+      // Trả hàng
+      waiting_to_return: OrderStatus.RETURNED,
+      return: OrderStatus.RETURNED,
+      return_transporting: OrderStatus.RETURNED,
+      return_sorting: OrderStatus.RETURNED,
+      returning: OrderStatus.RETURNED,
+      returned: OrderStatus.RETURNED,
+
+      // Ngoại lệ
+      exception: OrderStatus.CANCELLED,
+      damage: OrderStatus.CANCELLED,
+      lost: OrderStatus.CANCELLED,
+      cancel: OrderStatus.CANCELLED
+    }
+
+    const mappedStatus = statusMap[ghnStatus]
+
+    return mappedStatus || null
   }
 }

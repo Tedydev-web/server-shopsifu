@@ -4,6 +4,7 @@ import { Ghn } from 'giaohangnhanh'
 import { ConfigService } from '@nestjs/config'
 import { SharedOrderRepository } from 'src/shared/repositories/shared-order.repo'
 import { PrismaService } from 'src/shared/services/prisma.service'
+import { ShippingProducer } from 'src/shared/queue/producer/shipping.producer'
 import {
   GetProvincesResType,
   GetDistrictsResType,
@@ -29,7 +30,6 @@ import {
   MissingWardCodeException,
   InvalidDimensionsException,
   MissingServiceIdentifierException,
-  InvalidWebhookPayloadException,
   ShippingOrderNotFoundException,
   UserAddressNotFoundException,
   ShopAddressNotFoundException,
@@ -41,7 +41,7 @@ import {
 } from './shipping-ghn.error'
 import { GHN_CLIENT } from 'src/shared/constants/shipping.constants'
 import { ShippingRepo } from './shipping-ghn.repo'
-import { OrderShippingStatusType } from 'src/shared/constants/order-shipping.constants'
+
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 
 @Injectable()
@@ -52,7 +52,8 @@ export class ShippingService {
     private readonly configService: ConfigService,
     private readonly shippingRepo: ShippingRepo,
     private readonly sharedOrderRepo: SharedOrderRepository,
-    private readonly prismaService: PrismaService
+    private readonly prismaService: PrismaService,
+    private readonly shippingProducer: ShippingProducer
   ) {}
 
   private async detectUserAddresses(
@@ -328,28 +329,44 @@ export class ShippingService {
     }
   }
 
-  async processOrderStatusUpdate(payload: GHNWebhookPayloadType): Promise<{ message: string }> {
+  async processOrderStatusUpdate(
+    payload: GHNWebhookPayloadType
+  ): Promise<{ message: string; code: number; timestamp: string; orderCode?: string; status?: string }> {
     try {
-      const orderCode = payload.OrderCode || payload.order_code
-      const status = payload.Status || payload.status
+      const orderCode = payload.OrderCode
+      const status = payload.Status
 
-      if (!orderCode || !status) {
-        throw InvalidWebhookPayloadException
+      if (!orderCode) {
+        return {
+          message: 'Webhook ignored: Missing orderCode',
+          code: 400,
+          timestamp: new Date().toISOString()
+        }
       }
 
-      const shipping = await this.shippingRepo.findByOrderCode(orderCode)
-      if (!shipping) {
-        throw ShippingOrderNotFoundException
+      if (!status) {
+        return {
+          message: 'Webhook ignored: Missing status',
+          code: 400,
+          timestamp: new Date().toISOString()
+        }
       }
 
-      await Promise.all([
-        this.shippingRepo.updateStatus(shipping.orderId, status as OrderShippingStatusType),
-        this.shippingRepo.updateOrderStatus(shipping.orderId, status as OrderShippingStatusType)
-      ])
+      await this.shippingProducer.enqueueWebhookProcessing(payload)
 
-      return { message: 'OK' }
+      return {
+        message: this.i18n.t('ship.WEBHOOK_PROCESSED_SUCCESS'),
+        code: 200,
+        timestamp: new Date().toISOString(),
+        orderCode,
+        status
+      }
     } catch {
-      return { message: 'ignored' }
+      return {
+        message: this.i18n.t('ship.WEBHOOK_PROCESSING_FAILED'),
+        code: 200,
+        timestamp: new Date().toISOString()
+      }
     }
   }
 

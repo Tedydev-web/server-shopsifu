@@ -190,14 +190,60 @@ export const CreateOrderSchema = z.object({
 })
 
 export const GHNWebhookPayloadSchema = z.object({
+  // GHN API fields (camelCase only - theo tài liệu chính thức)
   OrderCode: z.string().optional(),
-  order_code: z.string().optional(),
   Status: z.string().optional(),
-  status: z.string().optional()
+  Type: z.string().optional(),
+  Time: z.string().optional(),
+  ShopID: z.number().optional(),
+  ClientOrderCode: z.string().optional(),
+  CODAmount: z.number().optional(),
+  Weight: z.number().optional(),
+  Length: z.number().optional(),
+  Width: z.number().optional(),
+  Height: z.number().optional(),
+  Description: z.string().optional(),
+  PaymentType: z.number().optional(),
+  TotalFee: z.number().optional(),
+  Warehouse: z.string().optional(),
+  IsPartialReturn: z.boolean().optional(),
+  PartialReturnCode: z.string().optional(),
+  Reason: z.string().optional(),
+  ReasonCode: z.string().optional(),
+  ConvertedWeight: z.number().optional(),
+  CODTransferDate: z.string().nullable().optional(),
+
+  // Fee object (camelCase only)
+  Fee: z
+    .object({
+      MainService: z.number().optional(),
+      Insurance: z.number().optional(),
+      StationDO: z.number().optional(),
+      StationPU: z.number().optional(),
+      Return: z.number().optional(),
+      R2S: z.number().optional(),
+      Coupon: z.number().optional(),
+      DocumentReturn: z.number().optional(),
+      DoubleCheck: z.number().optional(),
+      DoubleCheckDeliver: z.number().optional(),
+      PickRemoteAreasFee: z.number().optional(),
+      DeliverRemoteAreasFee: z.number().optional(),
+      PickRemoteAreasFeeReturn: z.number().optional(),
+      DeliverRemoteAreasFeeReturn: z.number().optional(),
+      CODFailedFee: z.number().optional(),
+      Total: z.number().optional()
+    })
+    .optional()
 })
 
 export const GHNWebhookResponseSchema = z.object({
-  message: z.string()
+  // GHN yêu cầu response code = 200 và JSON format
+  // Response này sẽ được GHN nhận để xác nhận webhook đã được xử lý
+  message: z.string(),
+  code: z.number().default(200),
+  timestamp: z.string().optional(),
+  orderCode: z.string().optional(),
+  status: z.string().optional()
 })
 
 export const GetOrderInfoQuerySchema = z.object({
