@@ -33,7 +33,14 @@ const prisma = new PrismaClient()
 type OrderData = {
   id: string
   userId: string
-  status: 'PENDING_PAYMENT' | 'PENDING_PICKUP' | 'PENDING_DELIVERY' | 'DELIVERED' | 'RETURNED' | 'CANCELLED'
+  status:
+    | 'PENDING_PAYMENT'
+    | 'PENDING_PACKAGING'
+    | 'PENDING_PICKUP'
+    | 'PENDING_DELIVERY'
+    | 'DELIVERED'
+    | 'RETURNED'
+    | 'CANCELLED'
   createdAt: Date
   updatedAt: Date
   receiver: string

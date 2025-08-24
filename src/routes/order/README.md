@@ -32,11 +32,36 @@ PATCH  /manage-order/orders/:orderId/status  # Cập nhật trạng thái đơn 
 
 ## 📊 Order Status Flow
 
+### **🎯 Flow chuẩn hóa (áp dụng cho cả COD và Online):**
+
 ```
-PENDING_PAYMENT → PENDING_PICKUP → PENDING_DELIVERY → DELIVERED
-       ↓                ↓                ↓
-    CANCELLED      CANCELLED        RETURNED
+PENDING_PAYMENT → PENDING_PACKAGING → PENDING_PICKUP → PENDING_DELIVERY → DELIVERED
+       ↓                ↓                ↓                ↓
+    CANCELLED      CANCELLED        CANCELLED        RETURNED
 ```
+
+**🔄 Flow chi tiết theo loại thanh toán:**
+- **COD**: Tạo order → Auto chuyển `PENDING_PACKAGING` → Seller quản lý từ đây
+- **Online**: Thanh toán → Auto chuyển `PENDING_PACKAGING` → Seller quản lý từ đây
+- **GHN Integration**: Chỉ cập nhật từ `PENDING_PICKUP` trở đi (không can thiệp vào `PENDING_PACKAGING`)
+
+### **📋 Chi tiết từng trạng thái:**
+
+| Trạng thái | Mô tả | Ai cập nhật | Ghi chú |
+|------------|-------|--------------|---------|
+| **`PENDING_PAYMENT`** | Chờ thanh toán (COD) hoặc xác nhận (Online) | Admin | Trạng thái ban đầu |
+| **`PENDING_PACKAGING`** | Người bán đang chuẩn bị hàng | Seller | Bước đầu tiên Seller quản lý |
+| **`PENDING_PICKUP`** | ĐVVC đã lấy hàng thành công | Seller | Bắt đầu vận chuyển |
+| **`PENDING_DELIVERY`** | Đơn hàng đang trong quá trình vận chuyển | Seller | Đang giao hàng |
+| **`DELIVERED`** | Đã giao hàng thành công | Seller | Hoàn thành |
+| **`CANCELLED`** | Đơn hàng bị hủy | Seller/Admin | Có thể hủy ở bất kỳ bước nào |
+| **`RETURNED`** | Đơn hàng bị hoàn trả | Admin | Chỉ sau khi DELIVERED |
+
+### **🔄 Quy tắc chuyển đổi trạng thái:**
+
+- **Seller chỉ được cập nhật**: `PENDING_PACKAGING`, `PENDING_PICKUP`, `PENDING_DELIVERY`, `DELIVERED`, `CANCELLED`
+- **Admin được cập nhật tất cả**: Bao gồm `PENDING_PAYMENT`, `RETURNED`
+- **Không thể quay ngược**: Ví dụ `DELIVERED` → `PENDING_PICKUP` là không hợp lệ
 
 ## 🔍 Query Parameters
 

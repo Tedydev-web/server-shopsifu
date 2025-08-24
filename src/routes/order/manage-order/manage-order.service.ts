@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException } from '@nestjs/common'
 import { OrderRepo } from '../order.repo'
 import { SharedShippingRepository } from 'src/shared/repositories/shared-shipping.repo'
 import { RoleName } from 'src/shared/constants/role.constant'
+import { OrderStatus } from 'src/shared/constants/order.constant'
 import { I18nService } from 'nestjs-i18n'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
@@ -76,8 +77,12 @@ export class ManageOrderService {
   }) {
     this.validateSellerPrivilege(user)
 
-    // Validate status transition
-    this.validateStatusTransition(data.status)
+    const currentOrder = await this.orderRepo.detailByShop(user.userId, orderId)
+    if (!currentOrder) {
+      throw new Error('Order not found')
+    }
+
+    this.validateStatusTransition(data.status, user.roleName)
 
     const updatedOrder = await this.orderRepo.updateOrderStatus(user.userId, orderId, data.status, user.userId)
 
@@ -90,10 +95,28 @@ export class ManageOrderService {
   /**
    * Validate việc chuyển đổi trạng thái đơn hàng
    */
-  private validateStatusTransition(newStatus: string): boolean {
-    // TODO: Implement status transition validation logic
-    // Ví dụ: PENDING_PAYMENT -> PENDING_PICKUP -> PENDING_DELIVERY -> DELIVERED
-    // Không cho phép: DELIVERED -> PENDING_PICKUP
+  private validateStatusTransition(newStatus: string, userRole: string): boolean {
+    if (userRole === RoleName.Seller) {
+      const sellerAllowedStatuses = [
+        OrderStatus.PENDING_PACKAGING,
+        OrderStatus.PENDING_PICKUP,
+        OrderStatus.PENDING_DELIVERY,
+        OrderStatus.DELIVERED,
+        OrderStatus.CANCELLED
+      ]
+
+      if (!sellerAllowedStatuses.includes(newStatus as any)) {
+        throw new ForbiddenException(
+          `Seller không được phép cập nhật trạng thái '${newStatus}'. ` +
+            `Trạng thái được phép: ${sellerAllowedStatuses.join(', ')}`
+        )
+      }
+    }
+
+    if (userRole === RoleName.Admin) {
+      return true
+    }
+
     return true
   }
 }

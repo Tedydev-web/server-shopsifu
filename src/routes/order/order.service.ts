@@ -193,9 +193,15 @@ export class OrderService {
       })
     )
 
+    // Cập nhật trạng thái COD orders thành PENDING_PACKAGING
+    await this.updateCodOrdersStatus(result.orders, body.shops)
+
+    // Fetch lại orders với status đã được cập nhật
+    const updatedResult = await this.getUpdatedOrdersResult(result)
+
     return {
       message: this.i18n.t('order.order.success.CREATE_SUCCESS'),
-      data: result
+      data: updatedResult
     }
   }
 
@@ -243,6 +249,48 @@ export class OrderService {
     return {
       message: this.i18n.t('order.order.success.CALCULATE_SUCCESS'),
       data: result
+    }
+  }
+
+  /**
+   * Cập nhật trạng thái COD orders thành PENDING_PACKAGING
+   */
+  private async updateCodOrdersStatus(
+    orders: Array<{ id: string; shopId: string | null }>,
+    shops: Array<{ shopId: string; isCod?: boolean }>
+  ) {
+    console.log('Debug - Input orders:', orders.map(o => ({ id: o.id, shopId: o.shopId })))
+    console.log('Debug - Input shops:', shops.map(s => ({ shopId: s.shopId, isCod: s.isCod })))
+    
+    const codOrderIds = orders
+      .filter((order) => {
+        if (!order.shopId) return false
+        const shop = shops.find((s) => s.shopId === order.shopId)
+        return shop?.isCod === true
+      })
+      .map((order) => order.id)
+
+    console.log('Debug - COD Order IDs:', codOrderIds)
+
+    if (codOrderIds.length > 0) {
+      await this.orderRepo.updateMultipleOrdersStatus(codOrderIds, 'PENDING_PACKAGING')
+      console.log('Debug - Updated COD orders to PENDING_PACKAGING')
+    }
+  }
+
+  /**
+   * Fetch lại orders với status đã được cập nhật
+   */
+  private async getUpdatedOrdersResult(originalResult: { paymentId: number; orders: any[] }) {
+    const orderIds = originalResult.orders.map(order => order.id)
+    const updatedOrders = await this.orderRepo.getOrdersByIds(orderIds)
+    
+    console.log('Debug - Original orders:', originalResult.orders.map(o => ({ id: o.id, status: o.status })))
+    console.log('Debug - Updated orders:', updatedOrders.map(o => ({ id: o.id, status: o.status })))
+    
+    return {
+      paymentId: originalResult.paymentId,
+      orders: updatedOrders
     }
   }
 }

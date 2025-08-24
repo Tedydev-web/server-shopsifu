@@ -554,4 +554,45 @@ export class OrderRepo {
 
     return cartItemMap
   }
+
+  /**
+   * Cập nhật trạng thái nhiều orders cùng lúc
+   */
+  async updateMultipleOrdersStatus(orderIds: string[], status: string) {
+    return this.prismaService.order.updateMany({
+      where: {
+        id: { in: orderIds },
+        deletedAt: null
+      },
+      data: {
+        status: status as any
+      }
+    })
+  }
+
+  /**
+   * Lấy orders theo danh sách IDs
+   */
+  async getOrdersByIds(orderIds: string[]) {
+    return this.prismaService.order.findMany({
+      where: {
+        id: { in: orderIds },
+        deletedAt: null
+      },
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        receiver: true,
+        shopId: true,
+        paymentId: true,
+        createdById: true,
+        updatedById: true,
+        deletedById: true,
+        deletedAt: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    })
+  }
 }

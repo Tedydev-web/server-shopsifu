@@ -102,6 +102,25 @@ export class ShippingConsumer extends WorkerHost {
         return { message: 'Unknown status, keeping current order status', orderCode: orderCode, status: status }
       }
 
+      // Chỉ cho phép GHN cập nhật order nếu đã ở trạng thái PENDING_PICKUP trở đi
+      // Việc chuyển từ PENDING_PACKAGING → PENDING_PICKUP phải do Seller thực hiện
+      const allowedCurrentStatuses = [
+        OrderStatus.PENDING_PICKUP,
+        OrderStatus.PENDING_DELIVERY,
+        OrderStatus.DELIVERED,
+        OrderStatus.RETURNED,
+        OrderStatus.CANCELLED
+      ]
+
+      if (!allowedCurrentStatuses.includes(shipping.order.status as any)) {
+        return {
+          message: 'Order not ready for GHN status update',
+          orderCode: orderCode,
+          currentStatus: shipping.order.status,
+          ghnStatus: status
+        }
+      }
+
       if (shipping.order.status !== newOrderStatus) {
         await this.updateOrderStatus(shipping.orderId, newOrderStatus)
       }
@@ -197,11 +216,12 @@ export class ShippingConsumer extends WorkerHost {
   }
 
   /**
-   * Map GHN status sang OrderStatus (6 trạng thái hệ thống)
+   * Map GHN status sang OrderStatus (7 trạng thái hệ thống)
+   * Flow mới: PENDING_PAYMENT → PENDING_PACKAGING → PENDING_PICKUP → PENDING_DELIVERY → DELIVERED
    */
   private mapGHNStatusToOrderStatus(ghnStatus: string): (typeof OrderStatus)[keyof typeof OrderStatus] | null {
     const statusMap: Record<string, (typeof OrderStatus)[keyof typeof OrderStatus]> = {
-      // Tạo đơn hàng
+      // Tạo đơn hàng - GHN sẽ chuyển order từ PENDING_PACKAGING → PENDING_PICKUP
       ready_to_pick: OrderStatus.PENDING_PICKUP,
 
       // Lấy hàng

@@ -55,7 +55,7 @@ export class SharedPaymentRepository {
     await this.updatePaymentStatus(paymentId, PaymentStatus.SUCCESS)
     await this.updateOrdersStatus(
       orders.map((o) => o.id),
-      OrderStatus.PENDING_PICKUP
+      OrderStatus.PENDING_PACKAGING
     )
     await this.paymentProducer.removeJob(paymentId)
 
