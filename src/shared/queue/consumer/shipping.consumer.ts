@@ -383,6 +383,10 @@ export class ShippingConsumer extends WorkerHost {
         throw new Error(`OrderShipping status không phù hợp để tạo GHN order: ${orderShipping.status}`)
       }
 
+      const isCodOrder = (orderShipping.codAmount || 0) > 0
+      const paymentTypeId = isCodOrder ? 2 : 1
+      const codAmount = isCodOrder ? orderShipping.codAmount || 0 : 0
+
       // Tạo GHN order
       const ghnOrderData = {
         from_address: orderShipping.fromAddress || '',
@@ -402,10 +406,10 @@ export class ShippingConsumer extends WorkerHost {
         length: orderShipping.length || 0,
         width: orderShipping.width || 0,
         height: orderShipping.height || 0,
-        cod_amount: orderShipping.codAmount || 0,
+        cod_amount: codAmount,
         required_note: orderShipping.requiredNote || 'CHOTHUHANG',
         client_order_code: orderId,
-        payment_type_id: 1, // COD
+        payment_type_id: paymentTypeId, // 1 = PREPAID, 2 = COD
         items: [
           {
             name: 'Sản phẩm',

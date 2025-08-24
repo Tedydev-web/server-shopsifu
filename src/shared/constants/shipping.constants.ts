@@ -1,9 +1,9 @@
 export const GHN_CLIENT = 'GHN_CLIENT' as const
 
-// GHN Payment Types
+// GHN Payment Types - Theo tài liệu chính thức GHN
 export const GHN_PAYMENT_TYPE = {
-  PREPAID: 1, // Thanh toán trước
-  COD: 2 // Thanh toán khi nhận hàng
+  PREPAID: 1, // Shop trả phí ship cho GHN (GHN vẫn tính phí ship)
+  COD: 2 // Thu tiền khi giao hàng (COD - bao gồm phí ship)
 } as const
 
 // GHN Order status Mapping
