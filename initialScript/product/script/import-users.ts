@@ -57,7 +57,7 @@ export async function importUsers(
     const name = typeof data === 'string' ? data : data.seller_name
     userDataPromises.push(
       hashingService
-        .hash(`${roleName.charAt(0).toUpperCase() + roleName.slice(1).toLowerCase()}1@@`)
+        .hash(`${roleName.charAt(0).toUpperCase() + roleName.slice(1).toLowerCase()}25`)
         .then((hashedPassword) => ({
           email,
           name,

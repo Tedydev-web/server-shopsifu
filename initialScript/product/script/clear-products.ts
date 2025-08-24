@@ -1,9 +1,10 @@
-import { PrismaService } from '../../../src/shared/services/prisma.service'
+import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaService()
+const prisma = new PrismaClient()
 
 async function clearProducts() {
   try {
+    await prisma.$connect()
     console.log('🗑️  Starting to clear imported products and related data...')
 
     // Tìm creator user (user được sử dụng để import)
@@ -221,6 +222,28 @@ async function clearProducts() {
     console.log(`• SKUs: ${remainingSKUs}`)
     console.log(`• Brands: ${remainingBrands}`)
     console.log(`• Categories: ${remainingCategories}`)
+
+    // 19. Clear cache để đảm bảo dữ liệu mới được load
+    console.log('\n🧹 Clearing application cache...')
+    try {
+      const cacheFlushUrl = process.env.APP_URL || 'http://localhost:3000'
+      const response = await fetch(`${cacheFlushUrl}/health/cache/flush`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log(`✅ Cache cleared successfully: ${result.message}`)
+      } else {
+        console.warn(`⚠️  Cache clear failed with status: ${response.status}`)
+      }
+    } catch (error) {
+      console.warn(`⚠️  Could not clear cache: ${error.message}`)
+      console.log('💡 Cache will be cleared automatically on next request or restart')
+    }
   } catch (error) {
     console.error('❌ Error clearing products:', error)
     throw error
@@ -264,6 +287,28 @@ async function clearAllData() {
   await prisma.discount.deleteMany({})
 
   console.log('✅ Cleared ALL data')
+
+  // Clear cache sau khi xóa tất cả data
+  console.log('\n🧹 Clearing application cache...')
+  try {
+    const cacheFlushUrl = process.env.APP_URL || 'http://localhost:3000'
+    const response = await fetch(`${cacheFlushUrl}/health/cache/flush`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (response.ok) {
+      const result = await response.json()
+      console.log(`✅ Cache cleared successfully: ${result.message}`)
+    } else {
+      console.warn(`⚠️  Cache clear failed with status: ${response.status}`)
+    }
+  } catch (error) {
+    console.warn(`⚠️  Could not clear cache: ${error.message}`)
+    console.log('💡 Cache will be cleared automatically on next request or restart')
+  }
 }
 
 export { clearProducts, clearAllData }

@@ -16,7 +16,7 @@ import { importBrands } from './import-brands'
 import { importCategories } from './import-categories'
 import { importUsers } from './import-users'
 import { importProducts } from './import-products'
-import { importAddresses } from './import-addresses'
+import { importFullAddressesFromGHN } from './import-addresses'
 import { importSKUs } from './import-skus'
 import { importProductTranslations } from './import-product-translations'
 import { importReviews } from './import-reviews'
@@ -103,8 +103,14 @@ async function main() {
   const clientMap = await importUsers(uniqueCustomers as Map<string, string>, 'CLIENT', creatorUser.id, prisma)
 
   // 6. Import addresses cho tất cả users
-  const allUsers = await prisma.user.findMany({ where: { deletedAt: null }, select: { id: true } })
-  await importAddresses(allUsers, creatorUser.id, prisma)
+  const allUsers = await prisma.user.findMany({
+    where: { deletedAt: null },
+    select: {
+      id: true,
+      role: { select: { name: true } }
+    }
+  })
+  await importFullAddressesFromGHN(allUsers, creatorUser.id, prisma)
 
   // 7. Chuẩn bị processedProducts (sử dụng logic đơn giản từ cơ chế cũ)
   const processedProducts: ProcessedProduct[] = validProducts.map((product, idx) => {
