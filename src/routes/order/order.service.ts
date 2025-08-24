@@ -196,8 +196,8 @@ export class OrderService {
     // Cập nhật trạng thái COD orders thành PENDING_PACKAGING
     await this.updateCodOrdersStatus(result.orders, body.shops)
 
-    // Fetch lại orders với status đã được cập nhật
-    const updatedResult = await this.getUpdatedOrdersResult(result)
+    // Cập nhật status trong response cho COD orders
+    const updatedResult = this.updateCodOrdersInResponse(result, body.shops)
 
     return {
       message: this.i18n.t('order.order.success.CREATE_SUCCESS'),
@@ -253,15 +253,12 @@ export class OrderService {
   }
 
   /**
-   * Cập nhật trạng thái COD orders thành PENDING_PACKAGING
+   * Cập nhật trạng thái COD orders thành PENDING_PACKAGING trong database
    */
   private async updateCodOrdersStatus(
     orders: Array<{ id: string; shopId: string | null }>,
     shops: Array<{ shopId: string; isCod?: boolean }>
   ) {
-    console.log('Debug - Input orders:', orders.map(o => ({ id: o.id, shopId: o.shopId })))
-    console.log('Debug - Input shops:', shops.map(s => ({ shopId: s.shopId, isCod: s.isCod })))
-    
     const codOrderIds = orders
       .filter((order) => {
         if (!order.shopId) return false
@@ -270,24 +267,33 @@ export class OrderService {
       })
       .map((order) => order.id)
 
-    console.log('Debug - COD Order IDs:', codOrderIds)
-
     if (codOrderIds.length > 0) {
       await this.orderRepo.updateMultipleOrdersStatus(codOrderIds, 'PENDING_PACKAGING')
-      console.log('Debug - Updated COD orders to PENDING_PACKAGING')
     }
   }
 
   /**
-   * Fetch lại orders với status đã được cập nhật
+   * Cập nhật status trong response cho COD orders
    */
-  private async getUpdatedOrdersResult(originalResult: { paymentId: number; orders: any[] }) {
-    const orderIds = originalResult.orders.map(order => order.id)
-    const updatedOrders = await this.orderRepo.getOrdersByIds(orderIds)
-    
-    console.log('Debug - Original orders:', originalResult.orders.map(o => ({ id: o.id, status: o.status })))
-    console.log('Debug - Updated orders:', updatedOrders.map(o => ({ id: o.id, status: o.status })))
-    
+  private updateCodOrdersInResponse(
+    originalResult: { paymentId: number; orders: any[] },
+    shops: Array<{ shopId: string; isCod?: boolean }>
+  ) {
+    const updatedOrders = originalResult.orders.map((order) => {
+      if (!order.shopId) return order
+
+      const shop = shops.find((s) => s.shopId === order.shopId)
+      if (shop?.isCod === true) {
+        return {
+          ...order,
+          status: 'PENDING_PACKAGING',
+          updatedAt: new Date().toISOString()
+        }
+      }
+
+      return order
+    })
+
     return {
       paymentId: originalResult.paymentId,
       orders: updatedOrders
