@@ -28,7 +28,15 @@ export class ManageOrderService {
   async list({ query, user }: { query: GetManageOrderListQueryType; user: AccessTokenPayload }) {
     this.validateSellerPrivilege(user)
 
-    const data = await this.orderRepo.listByShop(user.userId, query)
+    let data
+    if (user.roleName === 'ADMIN') {
+      // Admin có thể xem tất cả orders
+      data = await this.orderRepo.listForAdmin(query)
+    } else {
+      // Seller chỉ xem orders của shop mình
+      data = await this.orderRepo.listByShop(user.userId, query)
+    }
+
     return {
       message: this.i18n.t('order.order.success.GET_SUCCESS'),
       data: data.data,
@@ -48,7 +56,15 @@ export class ManageOrderService {
   }): Promise<GetManageOrderDetailResType> {
     this.validateSellerPrivilege(user)
 
-    const order = await this.orderRepo.detailByShop(user.userId, orderId)
+    let order
+    if (user.roleName === 'ADMIN') {
+      // Admin có thể xem tất cả orders - tìm order trực tiếp từ database
+      order = await this.orderRepo.detailForAdmin(orderId)
+    } else {
+      // Seller chỉ xem orders của shop mình
+      order = await this.orderRepo.detailByShop(user.userId, orderId)
+    }
+
     if (!order) {
       throw new Error('Order not found')
     }

@@ -26,9 +26,78 @@ export class OrderService {
 
   async list(user: AccessTokenPayload, query: GetOrderListQueryType) {
     const data = await this.orderRepo.list(user.userId, query)
+
+    // Tính toán giá cho từng order (bao gồm voucher, shipping)
+    const ordersWithPricing = await Promise.all(
+      data.data.map(async (order) => {
+        try {
+          // Lấy thông tin shipping để tính toán
+          const orderShipping = await this.sharedShippingRepo.getOrderShippingInfo(order.id)
+
+          // Tính toán giá trực tiếp từ order items (không cần gọi orderRepo.detail)
+          const totalItemCost = order.items.reduce((sum, item) => {
+            return sum + item.skuPrice * item.quantity
+          }, 0)
+
+          const totalShippingFee = orderShipping?.shippingFee || 0
+
+          // Lấy voucher discount từ order discounts hoặc tính từ pricing
+          let totalVoucherDiscount = 0
+
+          // Cách 1: Lấy từ order.discounts nếu có
+          if (order.discounts && order.discounts.length > 0) {
+            totalVoucherDiscount = order.discounts.reduce((sum, discount) => {
+              return sum + (discount.discountAmount || 0)
+            }, 0)
+          }
+
+          // Cách 2: Nếu không có discounts, tính từ pricing logic
+          // totalPayment = totalItemCost + totalShippingFee - totalVoucherDiscount
+          // => totalVoucherDiscount = totalItemCost + totalShippingFee - totalPayment
+          if (totalVoucherDiscount === 0 && orderShipping) {
+            // Với COD orders, totalPayment = codAmount
+            const expectedTotalPayment = orderShipping.codAmount || 0
+            const calculatedVoucherDiscount = totalItemCost + totalShippingFee - expectedTotalPayment
+
+            // Chỉ áp dụng nếu voucher discount hợp lý (> 0 và < totalItemCost)
+            if (calculatedVoucherDiscount > 0 && calculatedVoucherDiscount < totalItemCost) {
+              totalVoucherDiscount = calculatedVoucherDiscount
+              this.logger.log(
+                `[ORDER_SERVICE] Order ${order.id} - Calculated voucher discount: ${totalVoucherDiscount} from pricing logic`
+              )
+            }
+          }
+
+          const totalPayment = totalItemCost + totalShippingFee - totalVoucherDiscount
+
+          this.logger.log(
+            `[ORDER_SERVICE] Order ${order.id} - totalItemCost: ${totalItemCost}, totalShippingFee: ${totalShippingFee}, totalPayment: ${totalPayment}`
+          )
+
+          return {
+            ...order,
+            totalItemCost,
+            totalShippingFee,
+            totalVoucherDiscount,
+            totalPayment
+          }
+        } catch (error) {
+          this.logger.error(`[ORDER_SERVICE] Lỗi khi tính toán giá cho order ${order.id}: ${error.message}`)
+          // Trả về order với giá mặc định nếu có lỗi
+          return {
+            ...order,
+            totalItemCost: 0,
+            totalShippingFee: 0,
+            totalVoucherDiscount: 0,
+            totalPayment: 0
+          }
+        }
+      })
+    )
+
     return {
       message: this.i18n.t('order.order.success.GET_SUCCESS'),
-      data: data.data,
+      data: ordersWithPricing,
       metadata: data.metadata
     }
   }
@@ -312,14 +381,44 @@ export class OrderService {
         this.sharedShippingRepo.getGHNOrderCode(result.data.id)
       ])
 
+      // Tính toán lại giá chính xác (bao gồm voucher, shipping)
       if (orderShipping && orderShipping.shippingFee !== null) {
         result.data.totalShippingFee = orderShipping.shippingFee
+
+        // Tính totalVoucherDiscount từ pricing logic nếu chưa có
+        if (!result.data.totalVoucherDiscount || result.data.totalVoucherDiscount === 0) {
+          // Với COD orders: totalPayment = codAmount
+          const expectedTotalPayment = orderShipping.codAmount || 0
+          const calculatedVoucherDiscount =
+            (result.data.totalItemCost || 0) + orderShipping.shippingFee - expectedTotalPayment
+
+          // Chỉ áp dụng nếu voucher discount hợp lý (> 0 và < totalItemCost)
+          if (calculatedVoucherDiscount > 0 && calculatedVoucherDiscount < (result.data.totalItemCost || 0)) {
+            result.data.totalVoucherDiscount = calculatedVoucherDiscount
+            this.logger.log(
+              `[ORDER_SERVICE] Order ${orderId} - Calculated voucher discount: ${calculatedVoucherDiscount} from pricing logic`
+            )
+          }
+        }
+
+        // Tính lại totalPayment với voucher discount đã được tính
         result.data.totalPayment =
-          result.data.totalItemCost + orderShipping.shippingFee - result.data.totalVoucherDiscount
+          (result.data.totalItemCost || 0) + orderShipping.shippingFee - (result.data.totalVoucherDiscount || 0)
       }
 
+      // Thêm GHN order code nếu có
       if (ghnOrderCode) {
         ;(result.data as any).orderCode = ghnOrderCode
+      }
+
+      // Đảm bảo có đầy đủ thông tin giá
+      if (result.data.totalItemCost === undefined) result.data.totalItemCost = 0
+      if (result.data.totalVoucherDiscount === undefined) result.data.totalVoucherDiscount = 0
+      if (result.data.totalPayment === undefined) {
+        result.data.totalPayment =
+          (result.data.totalItemCost || 0) +
+          (result.data.totalShippingFee || 0) -
+          (result.data.totalVoucherDiscount || 0)
       }
     }
 

@@ -61,6 +61,7 @@ export class OrderRepo {
       where,
       include: {
         items: true,
+        discounts: true, // Thêm discounts để lấy voucher discount
         shipping: {
           select: {
             orderCode: true
@@ -80,7 +81,11 @@ export class OrderRepo {
       const { shipping, ...orderWithoutShipping } = order
       return {
         ...orderWithoutShipping,
-        orderCode: shipping?.orderCode || null
+        orderCode: shipping?.orderCode || null,
+        totalItemCost: 0,
+        totalShippingFee: 0,
+        totalVoucherDiscount: 0,
+        totalPayment: 0
       }
     })
 
@@ -451,6 +456,150 @@ export class OrderRepo {
   }
 
   /**
+   * Lấy danh sách orders cho admin (có thể xem tất cả orders)
+   */
+  async listForAdmin(query: {
+    page: number
+    limit: number
+    status?: OrderStatusType
+    startDate?: string
+    endDate?: string
+    customerName?: string
+    orderCode?: string
+  }): Promise<any> {
+    const { page, limit, status, startDate, endDate, customerName, orderCode } = query
+    const skip = (page - 1) * limit
+    const take = limit
+
+    const where: Prisma.OrderWhereInput = {
+      deletedAt: null,
+      status
+    }
+
+    // Filter theo ngày
+    if (startDate || endDate) {
+      where.createdAt = {}
+      if (startDate) where.createdAt.gte = new Date(startDate)
+      if (endDate) where.createdAt.lte = new Date(endDate)
+    }
+
+    // Filter theo tên khách hàng
+    if (customerName) {
+      where.user = {
+        name: {
+          contains: customerName,
+          mode: 'insensitive'
+        }
+      }
+    }
+
+    // Filter theo mã đơn hàng
+    if (orderCode) {
+      where.id = {
+        contains: orderCode,
+        mode: 'insensitive'
+      }
+    }
+
+    // Đếm tổng số order
+    const totalItem$ = this.prismaService.order.count({
+      where
+    })
+
+    // Lấy list order với thông tin user
+    const data$ = await this.prismaService.order.findMany({
+      where,
+      include: {
+        items: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phoneNumber: true
+          }
+        }
+      },
+      skip,
+      take,
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
+
+    const [data, totalItems] = await Promise.all([data$, totalItem$])
+    const totalPages = Math.ceil(totalItems / limit)
+
+    // Tính toán pricing cho từng order (tương tự như method list())
+    const ordersWithPricing = await Promise.all(
+      data.map(async (order) => {
+        try {
+          // Lấy shipping info để tính pricing
+          const orderShipping = await this.prismaService.orderShipping.findUnique({
+            where: { orderId: order.id },
+            select: { shippingFee: true, codAmount: true }
+          })
+
+          // Tính toán giá trực tiếp từ order items
+          const totalItemCost = order.items.reduce((sum, item) => {
+            return sum + item.skuPrice * item.quantity
+          }, 0)
+
+          const totalShippingFee = orderShipping?.shippingFee || 0
+
+          // Tính totalVoucherDiscount từ pricing logic
+          let totalVoucherDiscount = 0
+          if (orderShipping && orderShipping.codAmount && orderShipping.codAmount > 0) {
+            // Với COD orders: totalPayment = codAmount
+            const expectedTotalPayment = orderShipping.codAmount
+            const calculatedVoucherDiscount = totalItemCost + totalShippingFee - expectedTotalPayment
+
+            // Chỉ áp dụng nếu voucher discount hợp lý (> 0 và < totalItemCost)
+            if (calculatedVoucherDiscount > 0 && calculatedVoucherDiscount < totalItemCost) {
+              totalVoucherDiscount = calculatedVoucherDiscount
+            }
+          }
+
+          const totalPayment = totalItemCost + totalShippingFee - totalVoucherDiscount
+
+          return {
+            ...order,
+            totalItemCost,
+            totalShippingFee,
+            totalVoucherDiscount,
+            totalPayment
+          }
+        } catch (error) {
+          // Nếu có lỗi, trả về với giá trị mặc định
+          const totalItemCost = order.items.reduce((sum, item) => {
+            return sum + item.skuPrice * item.quantity
+          }, 0)
+
+          return {
+            ...order,
+            totalItemCost,
+            totalShippingFee: 0,
+            totalVoucherDiscount: 0,
+            totalPayment: totalItemCost
+          }
+        }
+      })
+    )
+
+    return {
+      data: ordersWithPricing,
+      metadata: {
+        totalItems,
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1
+      }
+    }
+  }
+
+  /**
    * Lấy chi tiết order theo shop (cho Seller xem đơn hàng của shop mình)
    */
   async detailByShop(shopId: string, orderId: string): Promise<any> {
@@ -487,6 +636,75 @@ export class OrderRepo {
         totalShippingFee: 0,
         totalVoucherDiscount: 0,
         totalPayment: totalPayment
+      }
+    }
+  }
+
+  /**
+   * Lấy chi tiết order cho admin (có thể xem tất cả orders)
+   */
+  async detailForAdmin(orderId: string): Promise<any> {
+    const order = await this.prismaService.order.findUnique({
+      where: {
+        id: orderId,
+        deletedAt: null
+      },
+      include: {
+        items: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phoneNumber: true
+          }
+        }
+      }
+    })
+
+    if (!order) {
+      return null
+    }
+
+    // Tính toán giá trị cơ bản
+    const totalItemCost = order.items.reduce((sum, item) => sum + item.skuPrice * item.quantity, 0)
+
+    // Lấy shipping info để tính pricing đầy đủ
+    const orderShipping = await this.prismaService.orderShipping.findUnique({
+      where: { orderId },
+      select: { shippingFee: true, codAmount: true }
+    })
+
+    // Tính totalVoucherDiscount từ pricing logic
+    let totalVoucherDiscount = 0
+    let totalShippingFee = 0
+    let totalPayment = totalItemCost
+
+    if (orderShipping) {
+      totalShippingFee = orderShipping.shippingFee || 0
+
+      // Với COD orders: totalPayment = codAmount
+      if (orderShipping.codAmount && orderShipping.codAmount > 0) {
+        const expectedTotalPayment = orderShipping.codAmount
+        const calculatedVoucherDiscount = totalItemCost + totalShippingFee - expectedTotalPayment
+
+        // Chỉ áp dụng nếu voucher discount hợp lý (> 0 và < totalItemCost)
+        if (calculatedVoucherDiscount > 0 && calculatedVoucherDiscount < totalItemCost) {
+          totalVoucherDiscount = calculatedVoucherDiscount
+        }
+      }
+
+      // Tính lại totalPayment với voucher discount đã được tính
+      totalPayment = totalItemCost + totalShippingFee - totalVoucherDiscount
+    }
+
+    return {
+      data: {
+        ...order,
+        totalItemCost,
+        totalShippingFee,
+        totalVoucherDiscount,
+        totalPayment
       }
     }
   }

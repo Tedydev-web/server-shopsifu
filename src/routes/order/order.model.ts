@@ -1,12 +1,22 @@
 import { PaginationQuerySchema } from 'src/shared/models/request.model'
-import { OrderSchema, OrderStatusSchema, ProductSKUSnapshotSchema } from 'src/shared/models/shared-order.model'
+import {
+  OrderSchema,
+  OrderStatusSchema,
+  ProductSKUSnapshotSchema,
+  DiscountSnapshotSchema
+} from 'src/shared/models/shared-order.model'
 import { z } from 'zod'
 
 export const GetOrderListResSchema = z.object({
   message: z.string().optional(),
   data: z.array(
     OrderSchema.extend({
-      items: z.array(ProductSKUSnapshotSchema)
+      items: z.array(ProductSKUSnapshotSchema),
+      discounts: z.array(DiscountSnapshotSchema).optional(),
+      totalItemCost: z.number(),
+      totalShippingFee: z.number(),
+      totalVoucherDiscount: z.number(),
+      totalPayment: z.number()
     }).omit({
       receiver: true,
       deletedAt: true,
@@ -25,13 +35,18 @@ export const GetOrderListResSchema = z.object({
   })
 })
 
-// Schema cho manage order list (có thêm orderCode field)
 export const GetManageOrderListResSchema = z.object({
   message: z.string().optional(),
   data: z.array(
     OrderSchema.extend({
       items: z.array(ProductSKUSnapshotSchema),
-      orderCode: z.string().nullable().optional() // Thêm orderCode field
+      discounts: z.array(DiscountSnapshotSchema).optional(),
+      orderCode: z.string().nullable().optional(),
+
+      totalItemCost: z.number(),
+      totalShippingFee: z.number(),
+      totalVoucherDiscount: z.number(),
+      totalPayment: z.number()
     }).omit({
       receiver: true,
       deletedAt: true,
@@ -50,7 +65,6 @@ export const GetManageOrderListResSchema = z.object({
   })
 })
 
-// Schema cho manage order list query
 export const GetManageOrderListQuerySchema = PaginationQuerySchema.extend({
   status: OrderStatusSchema.optional(),
   startDate: z.string().optional(),
@@ -67,15 +81,10 @@ export const GetOrderDetailResSchema = z.object({
   message: z.string().optional(),
   data: OrderSchema.extend({
     items: z.array(ProductSKUSnapshotSchema),
-    totalItemCost: z.number(),
-    totalShippingFee: z.number(),
-    totalVoucherDiscount: z.number(),
-    totalPayment: z.number(),
     orderCode: z.string().optional()
   })
 })
 
-// Schema cho manage order detail (kế thừa từ GetOrderDetailResSchema)
 export const GetManageOrderDetailResSchema = GetOrderDetailResSchema
 
 export const CreateOrderBodySchema = z.object({
@@ -92,12 +101,12 @@ export const CreateOrderBodySchema = z.object({
           wardCode: z.string().optional()
         }),
         cartItemIds: z.array(z.string()).min(1),
-        discountCodes: z.array(z.string()).optional(), // Shop-level discounts
+        discountCodes: z.array(z.string()).optional(),
         shippingInfo: z
           .object({
             service_id: z.number().optional(),
             service_type_id: z.number().optional(),
-            // ID cấu hình phí từ GHN service list
+
             config_fee_id: z.string().optional(),
             extra_cost_id: z.string().optional(),
             weight: z.number().positive(),
@@ -119,7 +128,7 @@ export const CreateOrderBodySchema = z.object({
       })
     )
     .min(1),
-  platformDiscountCodes: z.array(z.string()).optional() // Platform-level discounts
+  platformDiscountCodes: z.array(z.string()).optional()
 })
 
 export const CalculateOrderPerShopSchema = z.object({

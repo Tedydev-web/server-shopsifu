@@ -21,7 +21,12 @@ export const OrderSchema = z.object({
   deletedById: z.string().nullable(),
   deletedAt: z.union([z.string(), z.date()]).nullable(),
   createdAt: z.union([z.string(), z.date()]),
-  updatedAt: z.union([z.string(), z.date()])
+  updatedAt: z.union([z.string(), z.date()]),
+  // Thêm các field giá để trả về giống POST /orders/calculate
+  totalItemCost: z.number().optional(),
+  totalShippingFee: z.number().optional(),
+  totalVoucherDiscount: z.number().optional(),
+  totalPayment: z.number().optional()
 })
 
 export const ProductSKUSnapshotSchema = z.object({
