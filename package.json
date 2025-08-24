@@ -31,7 +31,8 @@
     "test": "jest --config test/jest.json --runInBand --passWithNoTests --forceExit",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --config test/jest.json --runInBand",
     "prepare": "husky",
-    "test:comprehensive": "ts-node src/scripts/test-comprehensive.ts"
+    "test:comprehensive": "ts-node src/scripts/test-comprehensive.ts",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.856.0",
@@ -123,6 +124,7 @@
     "husky": "^9.1.7",
     "jest": "^30.0.5",
     "lint-staged": "^16.1.2",
+    "patch-package": "^8.0.0",
     "prettier": "^3.6.2",
     "prisma": "^6.11.1",
     "prisma-json-types-generator": "^3.5.1",

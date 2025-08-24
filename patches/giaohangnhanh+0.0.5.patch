@@ -1,0 +1,76 @@
+diff --git a/node_modules/giaohangnhanh/lib/calculate-fee/CalculateFee.js b/node_modules/giaohangnhanh/lib/calculate-fee/CalculateFee.js
+index d4cb59b..1e8a48a 100644
+--- a/node_modules/giaohangnhanh/lib/calculate-fee/CalculateFee.js
++++ b/node_modules/giaohangnhanh/lib/calculate-fee/CalculateFee.js
+@@ -49,7 +49,7 @@ class CalculateFee extends ghn_abstract_1.GhnAbstract {
+         return __awaiter(this, void 0, void 0, function* () {
+             const getServiceListPath = 'shiip/public-api/v2/shipping-order/available-services';
+             const response = yield this.fetch((0, utils_1.resolveUrl)(this.globalConfig.host, getServiceListPath), {
+-                shop_id: this.globalConfig.shopId,
++                shop_id: (function(){ console.log("🔧 GHN Library: Converting shopId", typeof this.globalConfig.shopId, "->", parseInt(this.globalConfig.shopId)); return parseInt(this.globalConfig.shopId); }).call(this),
+                 from_district: fromDistrictId,
+                 to_district: toDistrictId,
+             });
+diff --git a/node_modules/giaohangnhanh/lib/ghn.abstract.js b/node_modules/giaohangnhanh/lib/ghn.abstract.js
+index cb3c18b..4ee3d65 100644
+--- a/node_modules/giaohangnhanh/lib/ghn.abstract.js
++++ b/node_modules/giaohangnhanh/lib/ghn.abstract.js
+@@ -34,7 +34,8 @@ class GhnAbstract {
+             headers: {
+                 'Content-Type': 'application/json',
+                 token: this.globalConfig.token,
+-                ShopId: `${this.globalConfig.shopId}`,
++                // Removed ShopId header as it causes 503 errors
++                // ShopId: `${this.globalConfig.shopId}`,
+             },
+             body: JSON.stringify(data),
+         });
+diff --git a/node_modules/giaohangnhanh/lib/ghn.abstract.js.backup b/node_modules/giaohangnhanh/lib/ghn.abstract.js.backup
+new file mode 100644
+index 0000000..cb3c18b
+--- /dev/null
++++ b/node_modules/giaohangnhanh/lib/ghn.abstract.js.backup
+@@ -0,0 +1,43 @@
++"use strict";
++var __rest = (this && this.__rest) || function (s, e) {
++    var t = {};
++    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
++        t[p] = s[p];
++    if (s != null && typeof Object.getOwnPropertySymbols === "function")
++        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
++            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
++                t[p[i]] = s[p[i]];
++        }
++    return t;
++};
++Object.defineProperty(exports, "__esModule", { value: true });
++exports.GhnAbstract = void 0;
++const ghn_constant_1 = require("./ghn.constant");
++class GhnAbstract {
++    constructor(_a) {
++        var { host = ghn_constant_1.GHN_DEV_API_URL, trackingHost = ghn_constant_1.GHN_TRACKING_DEV_API_URL } = _a, config = __rest(_a, ["host", "trackingHost"]);
++        if (!(config === null || config === void 0 ? void 0 : config.token)) {
++            throw new Error(`Invalid config, missing 'token'`);
++        }
++        if (!(config === null || config === void 0 ? void 0 : config.shopId)) {
++            throw new Error(`Invalid config, missing 'shopId'`);
++        }
++        if (config === null || config === void 0 ? void 0 : config.testMode) {
++            host = ghn_constant_1.GHN_DEV_API_URL;
++            trackingHost = ghn_constant_1.GHN_TRACKING_DEV_API_URL;
++        }
++        this.globalConfig = Object.assign(Object.assign({}, config), { host, trackingHost });
++    }
++    fetch(url, data, method) {
++        return fetch(url, {
++            method: method !== null && method !== void 0 ? method : 'POST',
++            headers: {
++                'Content-Type': 'application/json',
++                token: this.globalConfig.token,
++                ShopId: `${this.globalConfig.shopId}`,
++            },
++            body: JSON.stringify(data),
++        });
++    }
++}
++exports.GhnAbstract = GhnAbstract;
