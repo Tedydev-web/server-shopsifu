@@ -24,9 +24,17 @@ import { OrderStatus } from 'src/shared/constants/order.constant'
 
 @Injectable()
 @Processor(SHIPPING_QUEUE_NAME, {
-  concurrency: 2,
-  maxStalledCount: 1,
-  stalledInterval: 30000
+  concurrency: 3,
+  maxStalledCount: 2,
+  stalledInterval: 30000,
+  removeOnComplete: {
+    age: 1000 * 60 * 60,
+    count: 50
+  },
+  removeOnFail: {
+    age: 1000 * 60 * 60,
+    count: 20
+  }
 })
 export class ShippingConsumer extends WorkerHost {
   private readonly logger = new Logger(ShippingConsumer.name)

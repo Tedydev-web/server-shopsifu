@@ -126,11 +126,15 @@ const sharedServices = [
 
     CacheModule.registerAsync({
       isGlobal: true,
-      useFactory: () => {
+      useFactory: (configService: ConfigService) => {
+        const redisUrl = configService.get('redis.url') || process.env.REDIS_URL
+        const keyPrefix = configService.get('redis.keyPrefix') || 'shopsifu:'
+
         return {
-          stores: [createKeyv(process.env.REDIS_URL)]
+          stores: [createKeyv(redisUrl, { namespace: keyPrefix })]
         }
-      }
+      },
+      inject: [ConfigService]
     }),
 
     BullModule.forRootAsync({
@@ -142,7 +146,8 @@ const sharedServices = [
           password: configService.getOrThrow('redis.password'),
           tls: configService.get('redis.tls') || undefined,
           requireAuth: configService.get('redis.requireAuth') || false
-        }
+        },
+        prefix: 'shopsifu:bull'
       }),
       inject: [ConfigService]
     }),

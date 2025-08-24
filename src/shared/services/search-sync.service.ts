@@ -30,7 +30,8 @@ export class SearchSyncService {
         host: this.configService.get('redis.host'),
         port: this.configService.get('redis.port'),
         ...(isPasswordProvided ? { password } : {})
-      }
+      },
+      prefix: 'shopsifu:bull'
     })
   }
 
