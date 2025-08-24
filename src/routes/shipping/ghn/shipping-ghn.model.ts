@@ -355,5 +355,25 @@ export type GetOrderInfoQueryType = z.infer<typeof GetOrderInfoQuerySchema>
 export type OrderInfoDataType = z.infer<typeof OrderInfoDataSchema>
 export type GetOrderInfoResType = z.infer<typeof GetOrderInfoResSchema>
 
+// Schema cho Print Order
+export const PrintOrderSchema = z.object({
+  orderCodes: z.array(z.string().min(1, 'Order code is required')).min(1, 'At least one order code is required')
+})
+
+export const PrintOrderResSchema = z.object({
+  message: z.string().optional(),
+  data: z.object({
+    token: z.string(),
+    printUrls: z.object({
+      a5: z.string(),
+      '80x80': z.string(),
+      '50x72': z.string()
+    })
+  })
+})
+
+export type PrintOrderType = z.infer<typeof PrintOrderSchema>
+export type PrintOrderResType = z.infer<typeof PrintOrderResSchema>
+
 export type GetTrackingUrlQueryType = z.infer<typeof GetTrackingUrlQuerySchema>
 export type GetTrackingUrlResType = z.infer<typeof GetTrackingUrlResSchema>

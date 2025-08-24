@@ -158,7 +158,7 @@ export class SharedPaymentRepository {
 
   private calculateBasePrice(orders: any[]): number {
     return orders.reduce((totalOrder, order) => {
-      const productTotal = order.items.reduce((sum: number, sku: any) => sum + sku.skuPrice * sku.quantity, 0)
+              const productTotal = (order.items || []).reduce((sum: number, sku: any) => sum + (sku.skuPrice || 0) * (sku.quantity || 0), 0)
       const discountTotal = (order.discounts || [])?.reduce((sum: number, d: any) => sum + d.discountAmount, 0) || 0
       return totalOrder + (productTotal - discountTotal)
     }, 0)

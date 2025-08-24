@@ -430,6 +430,7 @@ export type I18nTranslations = {
             "CREATE_ORDER_SUCCESS": string;
             "GET_ORDER_INFO_SUCCESS": string;
             "GET_TRACKING_URL_SUCCESS": string;
+            "PRINT_ORDER_SUCCESS": string;
             "WEBHOOK_PROCESSED_SUCCESS": string;
             "WEBHOOK_IGNORED": string;
             "WEBHOOK_PROCESSING_FAILED": string;

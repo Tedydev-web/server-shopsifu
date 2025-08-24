@@ -350,7 +350,7 @@ export class OrderRepo {
     }
 
     // Tính toán giá trị cơ bản (không có shipping/discount)
-    const totalPayment = order.items.reduce((sum, item) => sum + item.skuPrice * item.quantity, 0)
+    const totalPayment = (order.items || []).reduce((sum, item) => sum + (item.skuPrice || 0) * (item.quantity || 0), 0)
 
     return {
       data: {
@@ -541,8 +541,8 @@ export class OrderRepo {
           })
 
           // Tính toán giá trực tiếp từ order items
-          const totalItemCost = order.items.reduce((sum, item) => {
-            return sum + item.skuPrice * item.quantity
+          const totalItemCost = (order.items || []).reduce((sum, item) => {
+            return sum + (item.skuPrice || 0) * (item.quantity || 0)
           }, 0)
 
           const totalShippingFee = orderShipping?.shippingFee || 0
@@ -571,8 +571,8 @@ export class OrderRepo {
           }
         } catch (error) {
           // Nếu có lỗi, trả về với giá trị mặc định
-          const totalItemCost = order.items.reduce((sum, item) => {
-            return sum + item.skuPrice * item.quantity
+          const totalItemCost = (order.items || []).reduce((sum, item) => {
+            return sum + (item.skuPrice || 0) * (item.quantity || 0)
           }, 0)
 
           return {
@@ -627,7 +627,7 @@ export class OrderRepo {
     }
 
     // Tính toán giá trị cơ bản
-    const totalPayment = order.items.reduce((sum, item) => sum + item.skuPrice * item.quantity, 0)
+    const totalPayment = (order.items || []).reduce((sum, item) => sum + (item.skuPrice || 0) * (item.quantity || 0), 0)
 
     return {
       data: {
@@ -667,7 +667,7 @@ export class OrderRepo {
     }
 
     // Tính toán giá trị cơ bản
-    const totalItemCost = order.items.reduce((sum, item) => sum + item.skuPrice * item.quantity, 0)
+    const totalItemCost = (order.items || []).reduce((sum, item) => sum + (item.skuPrice || 0) * (item.quantity || 0), 0)
 
     // Lấy shipping info để tính pricing đầy đủ
     const orderShipping = await this.prismaService.orderShipping.findUnique({

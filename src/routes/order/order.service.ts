@@ -35,7 +35,7 @@ export class OrderService {
           const orderShipping = await this.sharedShippingRepo.getOrderShippingInfo(order.id)
 
           // Tính toán giá trực tiếp từ order items (không cần gọi orderRepo.detail)
-          const totalItemCost = order.items.reduce((sum, item) => {
+          const totalItemCost = (order.items || []).reduce((sum, item) => {
             return sum + item.skuPrice * item.quantity
           }, 0)
 

@@ -2,6 +2,7 @@ import { Injectable, Inject, Logger } from '@nestjs/common'
 import { I18nService } from 'nestjs-i18n'
 import { Ghn } from 'giaohangnhanh'
 import { ConfigService } from '@nestjs/config'
+import axios from 'axios'
 import { SharedOrderRepository } from 'src/shared/repositories/shared-order.repo'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { ShippingProducer } from 'src/shared/queue/producer/shipping.producer'
@@ -21,7 +22,9 @@ import {
   GetOrderInfoQueryType,
   GetOrderInfoResType,
   GetTrackingUrlQueryType,
-  GetTrackingUrlResType
+  GetTrackingUrlResType,
+  PrintOrderType,
+  PrintOrderResType
 } from './shipping-ghn.model'
 import {
   ShippingServiceUnavailableException,
@@ -507,6 +510,78 @@ export class ShippingService {
         success: false,
         message: `Lỗi khi hủy đơn hàng GHN: ${error.message}`
       }
+    }
+  }
+
+  /**
+   * In đơn hàng GHN
+   * @param data Dữ liệu đơn hàng cần in
+   * @param user Thông tin user hiện tại
+   * @returns Token và URLs để in đơn hàng
+   */
+  async printOrder(data: PrintOrderType, user: AccessTokenPayload): Promise<PrintOrderResType> {
+    try {
+      this.logger.log(`[GHN_SERVICE] Bắt đầu tạo token in đơn hàng cho user: ${user.userId}`)
+
+      const { orderCodes } = data
+
+      if (!orderCodes || orderCodes.length === 0) {
+        throw new Error('Order codes are required')
+      }
+
+      // Validate order codes
+      for (const orderCode of orderCodes) {
+        if (!orderCode?.trim()) {
+          throw new Error('Invalid order code')
+        }
+      }
+
+      // Gọi GHN API để tạo token in đơn hàng
+      // Sử dụng axios để gọi trực tiếp GHN API vì package giaohangnhanh không có method printOrder
+      const ghnToken = this.configService.getOrThrow<string>('GHN_TOKEN')
+      const ghnHost = this.configService.get('GHN_HOST') || 'https://online-gateway.ghn.vn'
+
+      const response = await axios.post(
+        `${ghnHost}/shiip/public-api/v2/a5/gen-token`,
+        { order_codes: orderCodes },
+        {
+          headers: {
+            Token: ghnToken,
+            'Content-Type': 'application/json'
+          }
+        }
+      )
+
+      if (response.data.code !== 200) {
+        throw new Error(`GHN API error: ${response.data.message}`)
+      }
+
+      const result = response.data.data
+
+      this.logger.log(`[GHN_SERVICE] Kết quả tạo token in đơn hàng: ${JSON.stringify(result, null, 2)}`)
+
+      if (!result || !result.token) {
+        throw new Error('Failed to generate print token from GHN')
+      }
+
+      // Tạo URLs để in đơn hàng với các kích thước khác nhau
+      const baseUrl = this.configService.get('GHN_HOST') || 'https://online-gateway.ghn.vn'
+      const printUrls = {
+        a5: `${baseUrl}/a5/public-api/printA5?token=${result.token}`,
+        '80x80': `${baseUrl}/a5/public-api/print80x80?token=${result.token}`,
+        '50x72': `${baseUrl}/a5/public-api/print52x70?token=${result.token}`
+      }
+
+      return {
+        message: this.i18n.t('ship.success.PRINT_ORDER_SUCCESS'),
+        data: {
+          token: result.token,
+          printUrls
+        }
+      }
+    } catch (error) {
+      this.logger.error(`[GHN_SERVICE] Lỗi khi tạo token in đơn hàng: ${error.message}`)
+      throw ShippingServiceUnavailableException
     }
   }
 }

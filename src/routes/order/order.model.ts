@@ -43,10 +43,10 @@ export const GetManageOrderListResSchema = z.object({
       discounts: z.array(DiscountSnapshotSchema).optional(),
       orderCode: z.string().nullable().optional(),
 
-      totalItemCost: z.number(),
-      totalShippingFee: z.number(),
-      totalVoucherDiscount: z.number(),
-      totalPayment: z.number()
+      totalItemCost: z.number().optional().default(0),
+      totalShippingFee: z.number().optional().default(0),
+      totalVoucherDiscount: z.number().optional().default(0),
+      totalPayment: z.number().optional().default(0)
     }).omit({
       receiver: true,
       deletedAt: true,

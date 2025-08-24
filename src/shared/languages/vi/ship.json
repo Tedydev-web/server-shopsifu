@@ -10,6 +10,7 @@
     "CREATE_ORDER_SUCCESS": "Tạo đơn hàng thành công",
     "GET_ORDER_INFO_SUCCESS": "Lấy thông tin đơn hàng thành công",
     "GET_TRACKING_URL_SUCCESS": "Lấy URL theo dõi đơn hàng thành công",
+    "PRINT_ORDER_SUCCESS": "Tạo token in đơn hàng thành công",
     "WEBHOOK_PROCESSED_SUCCESS": "Webhook đã được xử lý thành công",
     "WEBHOOK_IGNORED": "Webhook đã được bỏ qua",
     "WEBHOOK_PROCESSING_FAILED": "Webhook xử lý thất bại"
