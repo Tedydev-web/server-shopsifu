@@ -342,7 +342,10 @@ export class OrderRepo {
         deletedAt: null
       },
       include: {
-        items: true
+        items: true,
+        shipping: {
+          select: { orderCode: true }
+        }
       }
     })
     if (!order) {
@@ -355,6 +358,7 @@ export class OrderRepo {
     return {
       data: {
         ...order,
+        orderCode: order.shipping?.orderCode || null,
         totalItemCost: totalPayment,
         totalShippingFee: 0,
         totalVoucherDiscount: 0,
