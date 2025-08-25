@@ -228,7 +228,8 @@ export class OrderService {
 
         const isCod = shop.isCod === true
         const shopPayment = perShopMap.get(shop.shopId)
-        const codAmount = isCod ? (shopPayment?.payment ?? 0) : 0
+        const shippingFeeForShop = info.shippingFee ?? 0
+        const codAmount = isCod ? Math.max(0, (shopPayment?.payment ?? 0) - shippingFeeForShop) : 0
 
         this.logger.log(
           `[ORDER_CREATE] Order ${order.id} - isCod: ${isCod}, codAmount: ${codAmount}, shopPayment: ${JSON.stringify(shopPayment)}`
@@ -289,6 +290,7 @@ export class OrderService {
               to_district_id: shop.receiver.districtId || 0,
 
               client_order_code: `SSPX${order.id}`,
+              // GHN cod_amount là số tiền cần thu hộ (chỉ tiền hàng sau giảm)
               cod_amount: codAmount,
               shippingFee: info.shippingFee ?? 0,
               content: undefined,
