@@ -17,7 +17,9 @@ export class ProductService {
 
   @Cacheable({
     key: 'products',
-    ttl: 7200,
+    ttl: 1800,
+    ttlJitter: 300,
+    staleTtl: 900,
     scope: 'global',
     keyGenerator: (props: { query: GetProductsQueryType }) => {
       const lang = (I18nContext.current()?.lang as string) || 'vi'
@@ -80,7 +82,9 @@ export class ProductService {
 
   @Cacheable({
     key: 'product:detail',
-    ttl: 1800, // 30 minutes
+    ttl: 3600,
+    ttlJitter: 600,
+    staleTtl: 1800,
     scope: 'module',
     moduleName: 'ProductModule',
     keyGenerator: (props: { productId: string }) => {

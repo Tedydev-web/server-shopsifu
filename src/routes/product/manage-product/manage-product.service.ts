@@ -12,6 +12,7 @@ import { RoleName } from 'src/shared/constants/role.constant'
 import { I18nTranslations } from 'src/shared/languages/generated/i18n.generated'
 import { AccessTokenPayload } from 'src/shared/types/jwt.type'
 import { RedisService } from 'src/shared/services/redis.service'
+import { CdnPurgeService } from 'src/shared/services/cdn-purge.service'
 import { CacheEvict } from 'src/shared/decorators/cacheable.decorator'
 
 @Injectable()
@@ -19,7 +20,8 @@ export class ManageProductService {
   constructor(
     private productRepo: ProductRepo,
     private i18n: I18nService<I18nTranslations>,
-    private readonly redisService: RedisService
+    private readonly redisService: RedisService,
+    private readonly cdnPurgeService: CdnPurgeService
   ) {}
 
   /**
@@ -99,6 +101,8 @@ export class ManageProductService {
       createdById: user.userId,
       data
     })
+    // Purge CDN theo Surrogate-Key (nếu có cấu hình)
+    await this.cdnPurgeService.purgeBySurrogateKeys(['product:list', `product:detail:${product.data.id}`])
     return {
       message: this.i18n.t('product.product.success.CREATE_SUCCESS'),
       data: product.data
@@ -133,6 +137,7 @@ export class ManageProductService {
         updatedById: user.userId,
         data
       })
+      await this.cdnPurgeService.purgeBySurrogateKeys(['product:list', `product:detail:${productId}`])
       return {
         message: this.i18n.t('product.product.success.UPDATE_SUCCESS'),
         data: updatedProduct
@@ -164,6 +169,7 @@ export class ManageProductService {
         id: productId,
         deletedById: user.userId
       })
+      await this.cdnPurgeService.purgeBySurrogateKeys(['product:list', `product:detail:${productId}`])
       return {
         message: this.i18n.t('product.product.success.DELETE_SUCCESS')
       }

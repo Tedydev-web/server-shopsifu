@@ -350,12 +350,6 @@ export class ShippingConsumer extends WorkerHost {
       throw new Error(`Không thể hủy đơn hàng GHN: ${orderCode}`)
     } catch (error) {
       this.logger.error(`[SHIPPING_CONSUMER] Lỗi khi hủy đơn hàng GHN: ${error.message}`)
-
-      // Cập nhật trạng thái OrderShipping thành FAILED
-      await this.ghnClient.order.cancelOrder({
-        orderCodes: [orderCode]
-      })
-
       // Cập nhật trạng thái OrderShipping thành FAILED
       await this.prismaService.orderShipping.update({
         where: { orderId },

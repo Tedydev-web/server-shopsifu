@@ -206,6 +206,32 @@ export class RedisService implements OnModuleDestroy {
   }
 
   /**
+   * Thử acquire 1 lock đơn giản qua SET NX EX
+   */
+  async tryAcquireLock(lockKey: string, ttlSeconds: number = 10): Promise<boolean> {
+    try {
+      const key = this.buildKey(`lock:${lockKey}`)
+      const res = await this.client.set(key, '1', 'EX', ttlSeconds, 'NX')
+      return res === 'OK'
+    } catch (error) {
+      this.logger.error(`Failed to acquire lock ${lockKey}:`, error)
+      return false
+    }
+  }
+
+  /**
+   * Giải phóng lock (best-effort)
+   */
+  async releaseLock(lockKey: string): Promise<void> {
+    try {
+      const key = this.buildKey(`lock:${lockKey}`)
+      await this.client.del(key)
+    } catch (error) {
+      this.logger.warn(`Failed to release lock ${lockKey}: ${error?.message}`)
+    }
+  }
+
+  /**
    * Flush all cache
    */
   async flushAll(): Promise<void> {

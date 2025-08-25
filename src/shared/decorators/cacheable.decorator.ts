@@ -12,6 +12,11 @@ export interface CacheableOptions {
   ttl?: number
 
   /**
+   * Jitter TTL (giây) để tránh cache stampede. TTL cuối = ttl + random(0..ttlJitter)
+   */
+  ttlJitter?: number
+
+  /**
    * Cache scope: 'global' or 'module' (default: 'global')
    */
   scope?: 'global' | 'module'
@@ -25,6 +30,12 @@ export interface CacheableOptions {
    * Enable JSON serialization (default: true)
    */
   serialize?: boolean
+
+  /**
+   * Stale-While-Revalidate window (giây). Nếu thiết lập, decorator sẽ lưu kèm
+   * expiresAt và staleUntil để có thể trả dữ liệu cũ và tái tạo nền.
+   */
+  staleTtl?: number
 
   /**
    * Function to generate dynamic cache key based on method arguments
@@ -57,6 +68,7 @@ export const REDIS_SERVICE_TOKEN = 'REDIS_SERVICE'
  */
 export function Cacheable(options: CacheableOptions) {
   const logger = new Logger('CacheableDecorator')
+  const inProgress = new Map<string, Promise<any>>()
 
   return function (target: any, propertyName: string, descriptor: PropertyDescriptor) {
     const method = descriptor.value
@@ -77,7 +89,53 @@ export function Cacheable(options: CacheableOptions) {
         const cachedResult = await redisService.get(cacheKey)
         if (cachedResult !== null) {
           logger.debug(`Cache hit for key: ${cacheKey}`)
-          return options.serialize !== false ? cachedResult : JSON.parse(cachedResult)
+          // Hỗ trợ SWR nếu có staleTtl: dữ liệu cache được lưu dạng wrapper { value, expiresAt, staleUntil }
+          if (
+            options.staleTtl &&
+            typeof cachedResult === 'object' &&
+            cachedResult !== null &&
+            'value' in cachedResult
+          ) {
+            const now = Date.now()
+            const expiresAt = new Date(cachedResult.expiresAt).getTime()
+            const staleUntil = new Date(cachedResult.staleUntil).getTime()
+            if (now < expiresAt) {
+              return cachedResult.value
+            }
+            if (now >= expiresAt && now < staleUntil) {
+              if (!inProgress.has(cacheKey)) {
+                // Soft lock phân tán: nếu lock đã tồn tại, không rebuild nền
+                const lockKey = `rebuild:${cacheKey}`
+                const gotLock = await redisService.tryAcquireLock(lockKey, 10)
+                if (!gotLock) {
+                  return cachedResult.value
+                }
+                const p = (async () => {
+                  try {
+                    const fresh = await method.apply(this, args)
+                    const ttlBase = options.ttl || 300
+                    const jitter = Math.floor(Math.random() * (options.ttlJitter || 0))
+                    const wrapper = {
+                      value: fresh,
+                      expiresAt: new Date(Date.now() + ttlBase * 1000).toISOString(),
+                      staleUntil: new Date(Date.now() + (ttlBase + (options.staleTtl || 0)) * 1000).toISOString()
+                    }
+                    await redisService.set(cacheKey, wrapper, ttlBase + (options.staleTtl || 0) + jitter)
+                  } catch (e) {
+                    logger.warn(`Background rebuild failed for key: ${cacheKey}`)
+                  } finally {
+                    await redisService.releaseLock(lockKey)
+                    inProgress.delete(cacheKey)
+                  }
+                })()
+                inProgress.set(cacheKey, p)
+              }
+              return cachedResult.value
+            }
+            // Hết luôn SWR window → rebuild đồng bộ
+          } else {
+            return options.serialize !== false ? cachedResult : JSON.parse(cachedResult)
+          }
         }
 
         logger.debug(`Cache miss for key: ${cacheKey}`)
@@ -92,8 +150,19 @@ export function Cacheable(options: CacheableOptions) {
         }
 
         // Cache the result
-        const valueToCache = options.serialize !== false ? result : JSON.stringify(result)
-        await redisService.set(cacheKey, valueToCache, options.ttl || 300)
+        const ttlBase = options.ttl || 300
+        const jitter = Math.floor(Math.random() * (options.ttlJitter || 0))
+        if (options.staleTtl) {
+          const wrapper = {
+            value: result,
+            expiresAt: new Date(Date.now() + ttlBase * 1000).toISOString(),
+            staleUntil: new Date(Date.now() + (ttlBase + options.staleTtl) * 1000).toISOString()
+          }
+          await redisService.set(cacheKey, wrapper, ttlBase + options.staleTtl + jitter)
+        } else {
+          const valueToCache = options.serialize !== false ? result : JSON.stringify(result)
+          await redisService.set(cacheKey, valueToCache, ttlBase + jitter)
+        }
 
         logger.debug(`Cached result for key: ${cacheKey}`)
         return result

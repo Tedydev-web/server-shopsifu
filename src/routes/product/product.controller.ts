@@ -9,7 +9,6 @@ import {
 } from 'src/routes/product/product.dto'
 import { ProductService } from 'src/routes/product/product.service'
 import { IsPublic } from 'src/shared/decorators/auth.decorator'
-import { Cacheable } from 'src/shared/decorators/cacheable.decorator'
 import { RedisService } from 'src/shared/services/redis.service'
 
 @SkipThrottle()
@@ -23,9 +22,19 @@ export class ProductController {
 
   @Get()
   @ZodSerializerDto(GetProductsResDTO)
-  @Header('Cache-Control', 'public, max-age=1800, s-maxage=3600, stale-while-revalidate=7200')
+  @Header(
+    'Cache-Control',
+    `${(() => {
+      const maxAge = 1800
+      const sMaxBase = 3600
+      const jitter = Math.round(sMaxBase * (Math.random() * 0.2 - 0.1)) // ±10%
+      const sMaxAge = sMaxBase + jitter
+      return `public, max-age=${maxAge}, s-maxage=${sMaxAge}, stale-while-revalidate=900`
+    })()}`
+  )
   @Header('Vary', 'Accept-Language, Accept-Encoding')
   @Header('X-Cache-Strategy', 'redis+cdn+browser+homepage-optimized')
+  @Header('CF-Cache-Status-Tip', 'SWR enabled; Surrogate-Key: product:list')
   list(@Query() query: GetProductsQueryDTO) {
     return this.productService.list({
       query
