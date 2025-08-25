@@ -29,7 +29,7 @@ export class ProductController {
       const sMaxBase = 3600
       const jitter = Math.round(sMaxBase * (Math.random() * 0.2 - 0.1)) // ±10%
       const sMaxAge = sMaxBase + jitter
-      return `public, max-age=${maxAge}, s-maxage=${sMaxAge}, stale-while-revalidate=900`
+      return `public, m   ax-age=${maxAge}, s-maxage=${sMaxAge}, stale-while-revalidate=900`
     })()}`
   )
   @Header('Vary', 'Accept-Language, Accept-Encoding')

@@ -88,7 +88,7 @@ export class ProductService {
     scope: 'module',
     moduleName: 'ProductModule',
     keyGenerator: (props: { productId: string }) => {
-      const lang = I18nContext.current()?.lang || 'vi'
+      const lang = 'vi'
       return `${props.productId}:${lang}:public`
     }
   })
