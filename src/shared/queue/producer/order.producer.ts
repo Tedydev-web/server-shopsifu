@@ -18,8 +18,7 @@ export class OrderProducer {
           paymentId
         },
         {
-          // delay: 1000 * 60 * 15, // delay 15 phút
-          delay: 1000 * 60, // delay 1 phút
+          delay: 1000 * 60 * 60 * 24, // delay 24 giờ
           jobId: jobId,
           removeOnComplete: true,
           removeOnFail: true
