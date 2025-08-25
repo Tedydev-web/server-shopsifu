@@ -4,7 +4,7 @@ module.exports = {
       name: 'server-shopsifu',
       script: './dist/main.js',
       watch: 'false',
-      instances: 20,
+      instances: 'max',
       exec_mode: 'cluster',
       max_memory_restart: '2G',
       node_args: '--max-old-space-size=2048 --max-semi-space-size=512',

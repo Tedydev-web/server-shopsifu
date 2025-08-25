@@ -90,10 +90,15 @@ export class SharedPaymentRepository {
 
   async updatePaymentAndOrdersOnFailed(paymentId: number, orders: Array<{ id: string }>) {
     await this.updatePaymentStatus(paymentId, PaymentStatus.FAILED)
-    await this.updateOrdersStatus(
-      orders.map((o) => o.id),
-      OrderStatus.CANCELLED
-    )
+    // Chỉ hủy các đơn đang ở trạng thái PENDING_PAYMENT
+    await this.prismaService.order.updateMany({
+      where: {
+        id: { in: orders.map((o) => o.id) },
+        status: OrderStatus.PENDING_PAYMENT,
+        deletedAt: null
+      },
+      data: { status: OrderStatus.CANCELLED }
+    })
     await this.paymentProducer.removeJob(paymentId)
   }
 
@@ -108,6 +113,15 @@ export class SharedPaymentRepository {
       await this.updatePaymentStatusInTransaction(tx, paymentId, PaymentStatus.FAILED)
     })
 
+    // Thử hủy GHN order nếu đã tồn tại (an toàn idempotent)
+    try {
+      for (const order of orders) {
+        await this.sharedShippingRepository.cancelGHNOrderForOrder(order.id)
+      }
+    } catch (error) {
+      this.logger.warn(`[SHARED_PAYMENT] Lỗi khi enqueue hủy GHN cho các orders: ${error?.message}`)
+    }
+
     await this.paymentProducer.removeJob(paymentId)
   }
 
@@ -115,9 +129,7 @@ export class SharedPaymentRepository {
     await tx.order.updateMany({
       where: {
         id: { in: orders.map((order) => order.id) },
-        status: {
-          in: [OrderStatus.PENDING_PAYMENT, OrderStatus.PENDING_PACKAGING]
-        },
+        status: OrderStatus.PENDING_PAYMENT,
         deletedAt: null
       },
       data: { status: OrderStatus.CANCELLED }
@@ -158,7 +170,10 @@ export class SharedPaymentRepository {
 
   private calculateBasePrice(orders: any[]): number {
     return orders.reduce((totalOrder, order) => {
-              const productTotal = (order.items || []).reduce((sum: number, sku: any) => sum + (sku.skuPrice || 0) * (sku.quantity || 0), 0)
+      const productTotal = (order.items || []).reduce(
+        (sum: number, sku: any) => sum + (sku.skuPrice || 0) * (sku.quantity || 0),
+        0
+      )
       const discountTotal = (order.discounts || [])?.reduce((sum: number, d: any) => sum + d.discountAmount, 0) || 0
       return totalOrder + (productTotal - discountTotal)
     }, 0)
