@@ -34,38 +34,38 @@ scrape_configs:
     static_configs:
       - targets:
           [
-            '103.147.186.84:9500',
-            '103.147.186.84:9501',
-            '103.147.186.84:9502',
-            '103.147.186.84:9503',
-            '103.147.186.84:9504',
-            '103.147.186.84:9505',
-            '103.147.186.84:9506',
-            '103.147.186.84:9507',
-            '103.147.186.84:9508',
-            '103.147.186.84:9509',
-            '103.147.186.84:9510',
-            '103.147.186.84:9511',
-            '103.147.186.84:9512',
-            '103.147.186.84:9513',
-            '103.147.186.84:9514',
-            '103.147.186.84:9515',
-            '103.147.186.84:9516',
-            '103.147.186.84:9517',
-            '103.147.186.84:9518',
-            '103.147.186.84:9519',
-            '103.147.186.84:9520',
-            '103.147.186.84:9521',
-            '103.147.186.84:9522',
-            '103.147.186.84:9523',
-            '103.147.186.84:9524',
-            '103.147.186.84:9525',
-            '103.147.186.84:9526',
-            '103.147.186.84:9527',
-            '103.147.186.84:9528',
-            '103.147.186.84:9529',
-            '103.147.186.84:9530',
-            '103.147.186.84:9531'
+            'localhost:9500',
+            'localhost:9501',
+            'localhost:9502',
+            'localhost:9503',
+            'localhost:9504',
+            'localhost:9505',
+            'localhost:9506',
+            'localhost:9507',
+            'localhost:9508',
+            'localhost:9509',
+            'localhost:9510',
+            'localhost:9511',
+            'localhost:9512',
+            'localhost:9513',
+            'localhost:9514',
+            'localhost:9515',
+            'localhost:9516',
+            'localhost:9517',
+            'localhost:9518',
+            'localhost:9519',
+            'localhost:9520',
+            'localhost:9521',
+            'localhost:9522',
+            'localhost:9523',
+            'localhost:9524',
+            'localhost:9525',
+            'localhost:9526',
+            'localhost:9527',
+            'localhost:9528',
+            'localhost:9529',
+            'localhost:9530',
+            'localhost:9531'
           ]
         labels:
           env: production
@@ -154,7 +154,7 @@ scrape_configs:
     params:
       module: [http_2xx]
     static_configs:
-      - targets: ['http://103.147.186.84:3000/health']
+      - targets: ['http://localhost:3000/health']
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -182,6 +182,6 @@ scrape_configs:
   # PM2 exporter metrics
   - job_name: 'pm2'
     static_configs:
-      - targets: ['103.147.186.84:9209']
+      - targets: ['localhost:9209']
 
   # Prometheus Exporters

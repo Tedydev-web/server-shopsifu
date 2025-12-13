@@ -22,6 +22,7 @@
     "init-seed-data": "ts-node -r tsconfig-paths/register initialScript/init/init-data.ts",
     "create-languages": "ts-node -r tsconfig-paths/register initialScript/init/create-languages.ts",
     "create-permissions": "ts-node -r tsconfig-paths/register initialScript/init/create-permissions.ts",
+    "import-products": "ts-node -r tsconfig-paths/register initialScript/product/script/import-products.ts",
     "clear-products": "ts-node -r tsconfig-paths/register initialScript/product/script/clear-products.ts",
     "sync-es": "ts-node -r tsconfig-paths/register initialScript/product/script/sync-to-elasticsearch.ts",
     "import:reset": "npm run clear-products && npm run import-products && npm run sync-to-elasticsearch",

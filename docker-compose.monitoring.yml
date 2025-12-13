@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # PgBouncer - Connection pooling cho PostgreSQL (kết nối về host DB)
+  # PgBouncer - Connection pooling cho PostgreSQL
   pgbouncer:
     image: edoburu/pgbouncer:1.18.0
     container_name: shopsifu_pgbouncer
@@ -9,7 +9,8 @@ services:
     ports:
       - '6432:6432'
     environment:
-      DB_HOST: 103.147.186.84
+      DB_HOST: postgres
+      DB_PORT: 5432
       DB_USER: shopsifu
       DB_PASSWORD: Shopsifu2025
       DB_NAME: shopsifu
@@ -24,7 +25,10 @@ services:
       - ./monitoring/config/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./monitoring/config/userlist.txt:/etc/pgbouncer/userlist.txt:ro
     networks:
-      - monitoring-network
+      - shopsifu-network
+    depends_on:
+      postgres:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -40,7 +44,7 @@ services:
       retries: 3
       start_period: 10s
 
-  # Kibana - kết nối tới Elasticsearch trên host
+  # Kibana - kết nối tới Elasticsearch
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
     container_name: shopsifu_kibana
@@ -48,12 +52,15 @@ services:
     ports:
       - '5601:5601'
     environment:
-      - ELASTICSEARCH_HOSTS=http://103.147.186.84:9200
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - XPACK_SECURITY_ENABLED=false
       - SERVER_NAME=shopsifu-kibana
       - SERVER_HOST=0.0.0.0
     networks:
-      - monitoring-network
+      - shopsifu-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -86,9 +93,7 @@ services:
       - '--web.enable-admin-api'
       - '--storage.tsdb.retention.time=30d'
     networks:
-      - monitoring-network
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
+      - shopsifu-network
     deploy:
       resources:
         limits:
@@ -126,15 +131,14 @@ services:
       - GF_LOG_LEVEL=info
       - GF_SERVER_ROOT_URL=http://localhost:3001
       - GF_SERVER_SERVE_FROM_SUB_PATH=false
-      # Gỡ Home dashboard mặc định để bạn import qua UI tự do
       - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - shopsifu-network
     depends_on:
       - prometheus
-    networks:
-      - monitoring-network
     deploy:
       resources:
         limits:
@@ -150,7 +154,7 @@ services:
       retries: 3
       start_period: 30s
 
-  # PostgreSQL Exporter - kết nối tới host PostgreSQL
+  # PostgreSQL Exporter - kết nối tới PostgreSQL container
   postgres_exporter:
     image: prometheuscommunity/postgres-exporter:v0.16.0
     container_name: shopsifu_postgres_exporter
@@ -158,11 +162,14 @@ services:
     ports:
       - '9187:9187'
     environment:
-      DATA_SOURCE_NAME: 'postgresql://shopsifu:Shopsifu2025@103.147.186.84:5432/shopsifu?sslmode=disable'
+      DATA_SOURCE_NAME: 'postgresql://shopsifu:Shopsifu2025@postgres:5432/shopsifu?sslmode=disable'
       PG_EXPORTER_LOG_LEVEL: 'info'
       PG_EXPORTER_WEB_LISTEN_ADDRESS: ':9187'
     networks:
-      - monitoring-network
+      - shopsifu-network
+    depends_on:
+      postgres:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -178,7 +185,7 @@ services:
       retries: 3
       start_period: 30s
 
-  # Redis Exporter - kết nối tới host Redis
+  # Redis Exporter - kết nối tới Redis container
   redis_exporter:
     image: oliver006/redis_exporter:v1.60.0
     container_name: shopsifu_redis_exporter
@@ -186,12 +193,14 @@ services:
     ports:
       - '9121:9121'
     environment:
-      REDIS_ADDR: '103.147.186.84:6379'
-      REDIS_PASSWORD: ''
+      REDIS_ADDR: 'redis:6379'
+      REDIS_PASSWORD: 'Shopsifu2025'
       REDIS_NAMESPACE: 'redis'
       REDIS_EXPORTER_LOG_FORMAT: 'txt'
     networks:
-      - monitoring-network
+      - shopsifu-network
+    # Note: redis service is defined in docker-compose.core.yml
+    # Start core services first: docker-compose -f docker-compose.core.yml up -d
     deploy:
       resources:
         limits:
@@ -207,7 +216,7 @@ services:
       retries: 3
       start_period: 30s
 
-  # Elasticsearch Exporter - kết nối tới host ES
+  # Elasticsearch Exporter - kết nối tới Elasticsearch container
   elasticsearch_exporter:
     image: prometheuscommunity/elasticsearch-exporter:v1.6.0
     container_name: shopsifu_elasticsearch_exporter
@@ -215,14 +224,17 @@ services:
     ports:
       - '9114:9114'
     environment:
-      ES_URI: 'http://103.147.186.84:9200'
+      ES_URI: 'http://elasticsearch:9200'
       ES_TIMEOUT: '30s'
       ES_ALL: 'true'
       ES_INDICES: 'true'
       ES_INDICES_SETTINGS: 'true'
       ES_SHARDS: 'true'
     networks:
-      - monitoring-network
+      - shopsifu-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -256,7 +268,7 @@ services:
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
       - '--collector.filesystem.fs-types-exclude=^(sys|proc|auto)fs$$'
     networks:
-      - monitoring-network
+      - shopsifu-network
     deploy:
       resources:
         limits:
@@ -287,7 +299,7 @@ services:
       - '--storage.path=/alertmanager'
       - '--web.listen-address=:9093'
     networks:
-      - monitoring-network
+      - shopsifu-network
     deploy:
       resources:
         limits:
@@ -315,5 +327,7 @@ volumes:
     name: shopsifu_alertmanager_data
 
 networks:
-  monitoring-network:
-    driver: bridge
+  shopsifu-network:
+    external: true
+    name: shopsifu-network
+

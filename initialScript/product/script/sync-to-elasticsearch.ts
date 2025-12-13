@@ -10,7 +10,7 @@ const logger = new Logger('SyncToElasticsearch')
 
 // Cấu hình Elasticsearch
 const ES_CONFIG = {
-  node: 'http://103.147.186.84:9200',
+  node: 'http://localhost:9200',
   indexName: 'products'
 }
 
